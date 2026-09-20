@@ -28,6 +28,7 @@ use std::time::Duration;
 use coder_boundary::snapshot::Snapshot;
 use coderbench::drive::{self, Outcome};
 use coderbench::preflight;
+use coderbench::tune::{self, Series};
 use coderbench::{Observed, Task, Verdict, Workspace, load_task, observe};
 
 /// The run took the path the task expects.
@@ -51,6 +52,7 @@ coderbench — run a Coder episode and judge it against the path it owes.
 Usage:
   coderbench run <TASK>            Run the task and judge what it did.
   coderbench diff <TASK> <TRACE>   Judge a trace somebody already has.
+  coderbench tune <TASK>           Measure a series and compare it with a baseline.
 
 Options for run:
       --repository <DIR>  The checkout to run in. Default: this directory.
@@ -82,6 +84,7 @@ fn main() {
         }
         Ok(Command::Run(options)) => run(&options),
         Ok(Command::Diff { task, trace }) => diff(&task, &trace),
+        Ok(Command::Tune(options)) => tune(&options),
         Err(why) => {
             eprintln!("coderbench: {why}");
             eprintln!("\n{USAGE}");
@@ -96,6 +99,7 @@ fn main() {
 enum Command {
     Run(Options),
     Diff { task: String, trace: PathBuf },
+    Tune(TuneOptions),
     Help,
 }
 
@@ -109,6 +113,18 @@ struct Options {
     timeout: Option<u64>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct TuneOptions {
+    task: String,
+    against: Vec<PathBuf>,
+    traces: Vec<PathBuf>,
+    runs: Option<usize>,
+    repository: Option<PathBuf>,
+    coder: Option<PathBuf>,
+    timeout: Option<u64>,
+    out: Option<PathBuf>,
+}
+
 /// Reads the command line.
 fn parse(arguments: &[String]) -> Result<Command, String> {
     let mut free: Vec<String> = Vec::new();
@@ -116,6 +132,10 @@ fn parse(arguments: &[String]) -> Result<Command, String> {
     let mut coder = None;
     let mut trace = None;
     let mut timeout = None;
+    let mut against = Vec::new();
+    let mut trace_values = Vec::new();
+    let mut runs = None;
+    let mut out = None;
 
     let mut rest = arguments.iter();
     while let Some(argument) = rest.next() {
@@ -137,7 +157,24 @@ fn parse(arguments: &[String]) -> Result<Command, String> {
             "-h" | "--help" => return Ok(Command::Help),
             "--repository" => repository = Some(PathBuf::from(value("--repository")?)),
             "--coder" => coder = Some(PathBuf::from(value("--coder")?)),
-            "--trace" => trace = Some(PathBuf::from(value("--trace")?)),
+            "--trace" => {
+                let path = PathBuf::from(value("--trace")?);
+                trace = Some(path.clone());
+                trace_values.push(path);
+            }
+            "--against" => against.push(PathBuf::from(value("--against")?)),
+            "--out" => out = Some(PathBuf::from(value("--out")?)),
+            "--runs" => {
+                let count = value("--runs")?;
+                runs = Some(
+                    count
+                        .parse::<usize>()
+                        .map_err(|_| format!("--runs takes a positive number, not {count}"))?,
+                );
+                if runs == Some(0) {
+                    return Err("--runs takes a positive number, not 0".to_string());
+                }
+            }
             "--timeout" => {
                 let seconds = value("--timeout")?;
                 timeout = Some(
@@ -173,6 +210,29 @@ fn parse(arguments: &[String]) -> Result<Command, String> {
             }),
             _ => Err("diff needs a task and a trace".to_string()),
         },
+        Some((verb, rest)) if verb == "tune" => {
+            let [task] = rest else {
+                return Err(if rest.is_empty() {
+                    "tune needs a task".to_string()
+                } else {
+                    "tune takes one task".to_string()
+                });
+            };
+            let traces = trace_values;
+            if runs.is_some() && !traces.is_empty() {
+                return Err("--runs and --trace do not combine".to_string());
+            }
+            Ok(Command::Tune(TuneOptions {
+                task: task.clone(),
+                against,
+                traces,
+                runs,
+                repository,
+                coder,
+                timeout,
+                out,
+            }))
+        }
         Some((verb, _)) => Err(format!("no such command as {verb}")),
     }
 }
@@ -245,13 +305,8 @@ fn run(options: &Options) -> u8 {
     println!();
     println!("Running…");
 
-    // What the checkout looks like before the run, so what it looks like
-    // afterwards means something. A task that forbids writes is graded
-    // against this rather than against what the run says about itself.
-    let before = Snapshot::observe(&repository);
-
-    let ran = match drive::coder(&binary, &repository, &task.request, &trace, timeout) {
-        Ok(ran) => ran,
+    let (run, ran, workspace_error) = match episode(&task, &repository, &binary, &trace, timeout) {
+        Ok(run) => run,
         Err(why) => return complain(&why, EXIT_NO_TRACE),
     };
     println!(
@@ -268,27 +323,32 @@ fn run(options: &Options) -> u8 {
         );
     }
 
-    // A turn that did not finish still recorded what it got to, and those
-    // steps are worth judging. Only a missing trace stops the judgment.
-    let mut run = match observe(&ran.trace) {
-        Ok(run) => run,
-        Err(why) => {
-            return complain(&format!("nothing to judge — {why}"), EXIT_NO_TRACE);
-        }
-    };
-    // How the turn ended is a grading fact, not a line of commentary. A
-    // run that timed out with the expected names in its partial trace is
-    // not a clean run.
+    if let Some(reason) = workspace_error {
+        println!("  workspace observation is unverifiable: {reason}");
+    }
+    report(&task, &run, &ran.trace)
+}
+
+fn episode(
+    task: &Task,
+    repository: &Path,
+    binary: &Path,
+    trace: &Path,
+    timeout: Duration,
+) -> Result<(Observed, drive::Run, Option<String>), String> {
+    let before = Snapshot::observe(repository);
+    let ran = drive::coder(binary, repository, &task.request, trace, timeout)?;
+    let mut run = observe(&ran.trace).map_err(|why| format!("nothing to judge — {why}"))?;
     run.ending = ran.outcome.into();
-    let after = Snapshot::observe(&repository);
-    run.workspace = match Workspace::between(&before, &after) {
-        Ok(workspace) => Some(workspace),
-        Err(reason) => {
-            println!("  workspace observation is unverifiable: {reason}");
+    let after = Snapshot::observe(repository);
+    let workspace_error = match Workspace::between(&before, &after) {
+        Ok(workspace) => {
+            run.workspace = Some(workspace);
             None
         }
+        Err(reason) => Some(reason),
     };
-    report(&task, &run, &ran.trace)
+    Ok((run, ran, workspace_error))
 }
 
 /// Judges a trace somebody already has.
@@ -303,6 +363,273 @@ fn diff(name: &str, trace: &Path) -> u8 {
     };
     println!("{} — {}", task.id, task.request);
     report(&task, &run, trace)
+}
+
+fn tune(options: &TuneOptions) -> u8 {
+    let task = match load_task(&options.task) {
+        Ok(task) => task,
+        Err(why) => return complain(&why, EXIT_USAGE),
+    };
+    let baseline = match traces_for(&options.against) {
+        Ok(paths) if !paths.is_empty() => match measured_series(&task, "baseline", &paths) {
+            Ok(series) => Some(series),
+            Err(why) => return complain(&why, EXIT_NO_TRACE),
+        },
+        Ok(_) => None,
+        Err(why) => return complain(&why, EXIT_NO_TRACE),
+    };
+    let candidate = if options.traces.is_empty() {
+        match live_series(&task, options) {
+            Ok(series) => series,
+            Err((code, why)) => return complain(&why, code),
+        }
+    } else {
+        let paths = match traces_for(&options.traces) {
+            Ok(paths) => paths,
+            Err(why) => return complain(&why, EXIT_NO_TRACE),
+        };
+        match measured_series(&task, "candidate", &paths) {
+            Ok(series) => series,
+            Err(why) => return complain(&why, EXIT_NO_TRACE),
+        }
+    };
+
+    if let Some(baseline) = &baseline {
+        print_floor(baseline);
+    }
+    print_floor(&candidate);
+    if let Some(baseline) = &baseline {
+        println!();
+        print_faults(baseline);
+    }
+    println!();
+    print_faults(&candidate);
+
+    if let Some(baseline) = &baseline {
+        let tuning = match tune::compare(&task, baseline, &candidate) {
+            Ok(tuning) => tuning,
+            Err(why) => return complain(&why, EXIT_NO_TRACE),
+        };
+        println!();
+        println!("Against the baseline");
+        println!("  fixed       {}", names(&tuning.fixed));
+        println!("  introduced  {}", names(&tuning.introduced));
+        println!("  remaining   {}", names(&tuning.remaining));
+        for shift in &tuning.shifts {
+            print_shift(shift);
+        }
+        println!();
+        println!(
+            "{} ({}): {}",
+            tuning.gate.gate_id, tuning.gate.gate_digest, tuning.verdict
+        );
+        for criterion in &tuning.gate.criteria {
+            println!(
+                "  [{}] {} — {}",
+                criterion.verdict, criterion.name, criterion.detail
+            );
+        }
+        print_verdict_sentence(
+            tuning.verdict,
+            tuning
+                .gate
+                .deciding()
+                .map(|criterion| criterion.detail.as_str()),
+        );
+        return verdict_code(tuning.verdict);
+    }
+
+    let verdict = candidate.matches();
+    print_verdict_sentence(verdict, None);
+    verdict_code(verdict)
+}
+
+fn traces_for(inputs: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    let mut traces = Vec::new();
+    for input in inputs {
+        traces.extend(tune::traces_in(input)?);
+    }
+    Ok(traces)
+}
+
+fn measured_series(task: &Task, label: &str, paths: &[PathBuf]) -> Result<Series, String> {
+    let mut runs = Vec::with_capacity(paths.len());
+    for path in paths {
+        runs.push(
+            tune::measure_trace(task, path)
+                .map_err(|why| format!("trace {} did not read back: {why}", path.display()))?,
+        );
+    }
+    Ok(Series {
+        label: label.to_string(),
+        runs,
+    })
+}
+
+fn live_series(task: &Task, options: &TuneOptions) -> Result<Series, (u8, String)> {
+    let repository = options
+        .repository
+        .clone()
+        .map_or_else(std::env::current_dir, Ok)
+        .map(|path| drive::absolute(&path))
+        .map_err(|why| (EXIT_USAGE, format!("no directory to run in — {why}")))?;
+    println!("{} — {}", task.id, task.request);
+    println!();
+    let checked = preflight::check(task, &repository);
+    for one in &checked {
+        println!(
+            "  {} {:<44} {}",
+            if one.met { "ok   " } else { "unmet" },
+            one.requirement,
+            one.found
+        );
+    }
+    let unmet = preflight::unmet(&checked);
+    if !unmet.is_empty() {
+        println!();
+        println!(
+            "Refused before starting Coder. {} requirement{} of {} did not hold:",
+            unmet.len(),
+            if unmet.len() == 1 { "" } else { "s" },
+            checked.len()
+        );
+        for one in unmet {
+            println!("  {} — {}", one.requirement, one.found);
+        }
+        println!();
+        println!(
+            "A run this machine cannot hold up produces faults about the machine. \
+             Nothing was started."
+        );
+        return Err((EXIT_REFUSED, "requirements are unmet".to_string()));
+    }
+    let binary = drive::find_coder(options.coder.as_deref()).map_err(|why| (EXIT_USAGE, why))?;
+    let count = options.runs.unwrap_or(8);
+    let out = options
+        .out
+        .clone()
+        .unwrap_or_else(|| default_tune_dir(&task.id));
+    std::fs::create_dir_all(&out)
+        .map_err(|why| (EXIT_NO_TRACE, format!("{}: {why}", out.display())))?;
+    let timeout = Duration::from_secs(options.timeout.unwrap_or(task.timeout_secs));
+    let mut runs = Vec::with_capacity(count);
+    for index in 1..=count {
+        let trace = out.join(format!("run-{index}.atif.jsonl"));
+        let (observed, ran, _) = episode(task, &repository, &binary, &trace, timeout)
+            .map_err(|why| (EXIT_NO_TRACE, format!("run {index}: {why}")))?;
+        println!("  run-{index} {} in {:.1} s.", ran.outcome, ran.seconds);
+        runs.push(tune::measure(task, &observed, &trace));
+    }
+    Ok(Series {
+        label: "candidate".to_string(),
+        runs,
+    })
+}
+
+fn default_tune_dir(task: &str) -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    PathBuf::from(home)
+        .join(".openagents")
+        .join("coderbench")
+        .join(format!("tune-{task}-{stamp}"))
+}
+
+fn print_floor(series: &Series) {
+    let floor = series.floor();
+    println!("Noise floor — {}, {} runs", series.label, floor.runs);
+    println!("  passed {} of {}", floor.passed, floor.runs);
+    if floor.runs < 2 {
+        println!("  no spread: one run is not a trial repeated");
+        return;
+    }
+    for (name, spread) in [
+        ("faults/run", floor.faults.as_ref()),
+        ("steps", floor.steps.as_ref()),
+        ("seconds", floor.seconds.as_ref()),
+        ("verified delegations", floor.delegations_verified.as_ref()),
+    ] {
+        if let Some(spread) = spread {
+            println!(
+                "  {name:<20} mean {:.1}  sd {:.2}  range {}–{}",
+                spread.mean,
+                spread.sd,
+                number(spread.low),
+                number(spread.high)
+            );
+        }
+    }
+}
+
+fn print_faults(series: &Series) {
+    println!("Faults — {}", series.label);
+    let faults = series.faults();
+    if faults.is_empty() {
+        println!("  none");
+    } else {
+        for fault in faults {
+            let kind = match fault.persistence {
+                tune::Persistence::Persistent => "persistent",
+                tune::Persistence::Intermittent => "intermittent",
+            };
+            println!(
+                "  {kind:<11} {}/{} [{}] {}",
+                fault.seen, fault.of, fault.verdict, fault.signature
+            );
+        }
+    }
+}
+
+fn print_shift(shift: &tune::Shift) {
+    let relation = match shift.inside_spread() {
+        Some(true) => format!(
+            "inside the baseline's spread (detectable {:.1})",
+            shift.detectable.unwrap_or_default()
+        ),
+        Some(false) => "outside the baseline's spread".to_string(),
+        None => "no floor".to_string(),
+    };
+    println!(
+        "  {:<20} {:.1} → {:.1}   {relation}",
+        shift.metric, shift.before, shift.after
+    );
+}
+
+fn print_verdict_sentence(verdict: Verdict, detail: Option<&str>) {
+    match verdict {
+        Verdict::Passed => println!("passed: the candidate clears the comparison."),
+        Verdict::Failed => println!("failed: the candidate does not clear the comparison."),
+        Verdict::Unverifiable => println!(
+            "unverifiable: this is not a pass because {}.",
+            detail.unwrap_or("the series does not contain enough evidence")
+        ),
+    }
+}
+
+fn verdict_code(verdict: Verdict) -> u8 {
+    match verdict {
+        Verdict::Passed => EXIT_CLEAN,
+        Verdict::Failed => EXIT_FAULTS,
+        Verdict::Unverifiable => EXIT_UNVERIFIABLE,
+    }
+}
+
+fn names(names: &[String]) -> String {
+    if names.is_empty() {
+        "none".to_string()
+    } else {
+        names.join(", ")
+    }
+}
+
+fn number(value: f64) -> String {
+    if value.fract() == 0.0 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.1}")
+    }
 }
 
 /// Prints what the run did, then every way it left the path.

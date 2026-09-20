@@ -562,3 +562,94 @@ fn writes_to_already_dirty_and_ignored_files_are_observed() {
         );
     }
 }
+
+#[test]
+fn tune_reads_recorded_series_and_uses_the_decision_gate() {
+    let directory = tempfile::tempdir().unwrap();
+    let task = task_with(directory.path(), r#"{}"#, "tune-recorded");
+    let traces = (1..=3)
+        .map(|index| {
+            let path = directory
+                .path()
+                .join(format!("recorded-{index}.atif.jsonl"));
+            std::fs::write(&path, authored_text()).unwrap();
+            path
+        })
+        .collect::<Vec<_>>();
+    let arguments = vec![
+        "tune".to_string(),
+        task.display().to_string(),
+        "--trace".to_string(),
+        traces[0].display().to_string(),
+        "--trace".to_string(),
+        traces[1].display().to_string(),
+        "--trace".to_string(),
+        traces[2].display().to_string(),
+        "--against".to_string(),
+        directory.path().display().to_string(),
+    ];
+    let refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
+    let output = coderbench(&refs);
+    let report = said(&output);
+    assert_eq!(output.status.code(), Some(4), "{report}");
+    assert!(report.contains("Noise floor"), "{report}");
+    assert!(report.contains("decision-v1"), "{report}");
+    assert!(report.contains("unverifiable"), "{report}");
+}
+
+#[test]
+fn tune_runs_the_requested_number_of_live_trials() {
+    let directory = tempfile::tempdir().unwrap();
+    let task = task_with(directory.path(), r#"{}"#, "tune-live");
+    let coder = fake_coder(directory.path(), &golden(), 0);
+    let out = directory.path().join("trials");
+    let task_arg = task.display().to_string();
+    let repository_arg = repository(directory.path()).display().to_string();
+    let coder_arg = coder.display().to_string();
+    let out_arg = out.display().to_string();
+    let output = coderbench(&[
+        "tune",
+        &task_arg,
+        "--repository",
+        &repository_arg,
+        "--coder",
+        &coder_arg,
+        "--runs",
+        "2",
+        "--out",
+        &out_arg,
+    ]);
+    let report = said(&output);
+    assert_eq!(output.status.code(), Some(0), "{report}");
+    assert!(report.contains("2 runs"), "{report}");
+    assert!(out.join("run-1.atif.jsonl").exists());
+    assert!(out.join("run-2.atif.jsonl").exists());
+}
+
+#[test]
+fn tune_refuses_before_a_required_capability_run() {
+    let directory = tempfile::tempdir().unwrap();
+    let task = task_with(
+        directory.path(),
+        r#"{"capabilities":["devin-local"]}"#,
+        "tune-refused",
+    );
+    let task_arg = task.display().to_string();
+    let out_arg = directory.path().join("trials").display().to_string();
+    let output = coderbench(&["tune", &task_arg, "--runs", "2", "--out", &out_arg]);
+    let report = said(&output);
+    assert_eq!(output.status.code(), Some(2), "{report}");
+    assert!(report.contains("Refused before starting Coder"), "{report}");
+}
+
+#[test]
+fn tune_rejects_invalid_usage() {
+    for arguments in [
+        vec!["tune"],
+        vec!["tune", "task", "--trace", "trace.atif.jsonl", "--runs", "2"],
+        vec!["tune", "task", "--runs", "soon"],
+    ] {
+        let output = coderbench(&arguments);
+        assert_eq!(output.status.code(), Some(64), "{}", said(&output));
+    }
+}
