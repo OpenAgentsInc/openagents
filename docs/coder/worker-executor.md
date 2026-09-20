@@ -74,6 +74,21 @@ Postgres relay: `coder -p "Reply with exactly the word pong"` returned
 
 ## As a service
 
+Before the first start, and after every edit to the environment file, run
+the binary with `--check` under the same environment. It prints the
+summary a start would and exits `0`, or `78` when the configuration must
+not be deployed: a secret or allowlist that does not parse, a door the
+environment names but cannot build, or `CODER_WORKER_ALLOW` unset while
+`CODER_RELAY` is not a loopback address. Read the `door` line of the
+summary too: with no key and no executor it says `stub`, which answers
+every job with canned text.
+
+```sh
+sudo systemd-run --quiet --wait --pipe --collect \
+  -p EnvironmentFile=/etc/coder-worker/coder-worker.env \
+  /opt/coder-worker/current/coder-worker --check
+```
+
 On a host, the worker runs under systemd from
 [`deploy/systemd/coder-worker.service`](../../deploy/systemd/coder-worker.service),
 with its variables in an environment file installed from
@@ -108,7 +123,15 @@ Two settings matter here that a single-turn worker does not care about:
 - **`CODER_WORKER_JOBS` bounds admission.** Unset, an executor door takes
   the manifest's `concurrent_max` (6 for `devin-local`). A job past the
   bound is refused `busy` before anything runs. Set it to what this host's
-  executor account can carry.
+  executor account can carry. A slot is held only while its job runs: a
+  job refused before running, a job whose executor failed, and a job
+  that timed out all give theirs back.
+- **The stated minutes are held by the worker too.** The executor ends a
+  run at the delegation's `minutes` and reports it as a typed refusal.
+  If it has not reported thirty seconds past that, the worker drops the
+  run, which ends the executor's process group, and refuses the job
+  `timed_out` itself. A job that states no minutes is held to ten. The
+  customer is answered either way; what changes is who said so.
 
 The worker log for a fan-out reads `probed`, then one `delegated: reading
 task, N min` per admitted job, then `answered in N ms` or `declined:

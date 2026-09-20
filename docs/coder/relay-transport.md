@@ -240,6 +240,38 @@ counted as present.
 runs a mock worker that sends one judgment and then nothing against a real
 relay, with both waits shortened so the test costs seconds.
 
+### What the worker guarantees
+
+The rows above are the terminal's reading of a relay that carries
+nothing. The worker's side of the same contract is that every request it
+can attribute to a customer gets a typed answer, and that nothing a relay
+or a customer sends stops it from serving the next one.
+`crates/coder/tests/worker_lifecycle.rs` runs the built binary against a
+loopback relay the test controls and holds it to each row.
+
+| What arrives | What the worker does | Code |
+| --- | --- | --- |
+| The relay drops the socket, restarts, or closes the subscription | Waits one second, doubling to a minute, connects again, subscribes again with the same filter. Jobs published while it was away are lost, since the kinds are ephemeral; the worker is not. | none; `relay: <why>; reconnecting in N s` in the log |
+| An event that does not parse, is not kind `25900`, does not verify, or names another worker | Set aside with one log line. Nothing proved who sent it, so nobody is answered. | none; `ignored <id prefix>: <why>` |
+| The same event ID a second time | Set aside. One request is answered once; the last 4096 IDs are remembered. | none; `ignored <id prefix>: already delivered` |
+| Content that does not decrypt under NIP-44, is not JSON, or is not a JSON object | Refused. The customer signed it, so the customer is told. | `malformed` |
+| A `v` the worker does not serve | Refused, at version 2. | `unsupported_version` |
+| A `created_at` more than ten minutes in the past | Refused as a replay: nothing on this path is stored, so an old request arriving now was not published now. | `stale` |
+| A customer off `CODER_WORKER_ALLOW` | Refused. | `not_admitted` |
+| A request past `CODER_WORKER_JOBS` | Refused before anything runs. | `busy` |
+| A delegation still running thirty seconds past its stated minutes, or any job past ten minutes | The run is dropped, which ends the executor's process group, and the customer is told. The slot comes back. | `timed_out` |
+
+Every refusal releases the job's slot, so `busy` is a statement about
+jobs running now, never about jobs that failed earlier. `malformed`,
+`stale`, and `timed_out` are this worker's codes; NIP-CJ lists its codes
+as examples rather than a closed set, and the terminal carries any code
+through as `refusal`.
+
+Before a worker is deployed, `coder-worker --check` reads the same
+configuration a run would and exits `78` when `CODER_WORKER_ALLOW` is
+unset and `CODER_RELAY` is not a loopback address: an open worker on a
+shared relay answers whoever finds its key.
+
 ## The label is not the job
 
 The relay delivers each answer as `["EVENT", <subscription>, <event>]`,
