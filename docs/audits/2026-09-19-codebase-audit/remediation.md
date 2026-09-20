@@ -143,3 +143,12 @@ A01, A17, and A18 separately as mandatory acceptance criteria.
 Existing statistical, question-quality, and feature work remains in the
 [original issue map](issues.md). These remediation issues add implementation
 acceptance criteria and targeted rechecks without duplicating that roadmap.
+
+## A24: generated files removed from the index
+
+Commit `e7d2eb47c0` removes the 80 generated Swift and Python paths and adds
+targeted ignore rules. A fresh checkout builds the Swift helper with the
+documented script, verifies its signature, and remains clean after the build.
+The [build record](../../lev/helper-build.md) identifies the source revision,
+toolchain, target, and binary digest. Intentional fixtures, measurement records,
+retained transcripts, and local operator artifacts are unchanged.
