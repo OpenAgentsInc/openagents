@@ -1,0 +1,21 @@
+{
+  "purpose": "Renew the canonical snapshot before bounded live measurement; preserve the 24-hour freshness limit and all revocations. No shared cache fetch performed.",
+  "command": [
+    "/tmp/openagents-supervision/root-target/debug/lev-policy",
+    "publish",
+    "--window",
+    "24h"
+  ],
+  "publisher_binary_sha256": "232963de10a411f8d5fb7cabab584ee6a79a4cac60e006c8576a059974fddb91",
+  "source_commit": "65ca0b7d62b2779527f7e07782f57e40e39f4c0b",
+  "started_utc": "2026-09-20T20:42:03.584491+00:00",
+  "finished_utc": "2026-09-20T20:42:03.828016+00:00",
+  "exit_code": 0,
+  "previous_sha256": "5dad31052293237f5e9c61b6007e37e588bfd41d8acc8e83eb2b67294105b711",
+  "renewed_sha256": "ac531fb0f31a7c7906504b5b93af6bb6393c63b23f2492ee7b385ac72a20ba91",
+  "verified_changed_fields": [
+    "issued"
+  ],
+  "freshness_window_seconds": 86400,
+  "revoked": []
+}

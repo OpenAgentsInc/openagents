@@ -109,3 +109,13 @@ dependency policy, and the PostgreSQL acceptance script including the
 release-load proof. Debian and Ubuntu install the PostgreSQL server binaries
 under `/usr/lib/postgresql/<version>/bin`, which is not on PATH by default;
 prepend it before running the gate. Soak and Metal were not run.
+
+## Apple serving matrix, 2026-09-20
+
+The [Apple serving verification record](lev/measurements/2026-09-20-apple-serving-matrix.md)
+records the actual #9426 commands on an Apple M5 Max running macOS 26.4.
+Lev default and `serve` tests and strict Lev/Kev Clippy passed. Weighted Kev
+Metal F32 conformance passed for all four retained variants, but the full
+`serve,metal` test command failed in its CPU HTTP round-trip test at the
+unchanged 10-second client deadline. bf16 remains unmeasured. This is a partial
+matrix, not a successful full gate; #9426 stays open.

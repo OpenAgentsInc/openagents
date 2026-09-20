@@ -1,0 +1,220 @@
+   Compiling hyper-util v0.1.20
+   Compiling tower-http v0.6.11
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling jev v0.1.0 (/Users/christopherdavid/work/openagents/crates/jev)
+   Compiling gym v0.1.0 (/Users/christopherdavid/work/openagents/crates/gym)
+   Compiling lev v0.1.0 (/Users/christopherdavid/work/openagents/crates/lev)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.29s
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/lev-d415f54accbdcef8)
+
+running 71 tests
+test admission::tests::position_bias_is_not_a_leak ... ok
+test admission::tests::a_sibling_read_above_the_control_is_a_leak ... ok
+test admission::tests::a_probe_that_cannot_read_the_state_proves_nothing ... ok
+test admission::tests::no_family_is_no_map ... ok
+test admission::tests::a_denial_names_its_step ... ok
+test estimator::tests::a_block_is_contiguous_and_starts_where_the_last_one_ended ... ok
+test api::tests::an_empty_question_map_is_refused ... ok
+test adapter::tests::a_container_round_trips_through_the_writer_and_the_reader ... ok
+test estimator::tests::a_block_past_the_seed_space_is_refused_rather_than_wrapped ... ok
+test api::tests::an_answer_carries_the_tag_jev_reads ... ok
+test api::tests::a_question_serializes_with_its_type_tag ... ok
+test api::tests::a_one_option_choice_is_not_a_choice ... ok
+test api::tests::score_levels_are_bounded_at_both_ends ... ok
+test api::tests::a_blank_or_padded_option_name_is_refused ... ok
+test estimator::tests::a_choice_answer_takes_the_selected_option ... ok
+test api::tests::a_calibrated_answer_names_its_selected_option_on_the_wire ... ok
+test adapter::tests::unknown_producer_metadata_round_trips ... ok
+test estimator::tests::a_choice_for_an_option_the_distribution_does_not_name_refuses ... ok
+test api::tests::a_choice_over_the_bound_is_refused_by_code ... ok
+test adapter::tests::a_directory_without_the_suffix_is_refused ... ok
+test estimator::tests::a_noul_answer_is_the_probability_of_yes ... ok
+test estimator::tests::a_score_is_the_probability_weighted_mean ... ok
+test estimator::tests::a_tied_argmax_resolves_to_the_last_level_listed ... ok
+test estimator::tests::a_map_that_sinks_the_selected_option_does_not_change_the_answer ... ok
+test estimator::tests::a_noul_or_score_carries_the_selected_option_through_an_inversion ... ok
+test estimator::tests::an_l2_estimate_carries_its_own_resolution ... ok
+test estimator::tests::confidence_is_distance_above_uniform ... ok
+test estimator::tests::two_blocks_never_share_a_seed ... ok
+test adapter::tests::a_signature_mismatch_refuses_with_its_own_code ... ok
+test adapter::tests::a_good_package_opens ... ok
+test adapter::tests::a_bad_signature_is_refused_at_open ... ok
+test adapter::tests::raw_tensor_bytes_are_refused_even_when_the_values_are_right ... ok
+test adapter::tests::a_zero_rank_is_refused ... ok
+test adapter::tests::a_half_draft_pair_is_not_a_package_state ... ok
+test manifest::tests::a_declared_interface_that_is_not_the_contract_is_refused ... ok
+test manifest::tests::a_manifest_pinned_to_another_base_is_refused ... ok
+test policy::tests::a_revocation_aimed_at_nothing_is_refused ... ok
+test manifest::tests::a_family_with_no_eval_ref_does_not_admit ... ok
+test policy::tests::a_snapshot_round_trips_through_its_own_writer ... ok
+test manifest::tests::a_manifest_round_trips_through_its_own_writer ... ok
+test manifest::tests::a_refused_eval_ref_does_not_admit_either ... ok
+test policy::tests::a_window_is_written_the_way_an_operator_says_it ... ok
+test policy::tests::a_cache_that_is_not_a_snapshot_refuses_rather_than_being_ignored ... ok
+test manifest::tests::a_map_fitted_against_another_door_may_not_be_named ... ok
+test policy::tests::a_fetch_that_does_not_digest_leaves_the_cache_alone ... ok
+test manifest::tests::the_package_on_disk_has_to_be_the_one_the_manifest_describes ... ok
+test policy::tests::a_family_scoped_revocation_stops_that_family_and_no_other ... ok
+test policy::tests::a_release_holds_the_window_lower_and_cannot_raise_it ... ok
+test render::tests::a_string_renders_as_itself ... ok
+test render::tests::an_object_renders_as_labelled_lines ... ok
+test render::tests::field_order_survives ... ok
+test render::tests::nesting_indents_and_nulls_drop_out ... ok
+test policy::tests::a_failed_fetch_leaves_the_door_on_its_own_clock ... ok
+test policy::tests::a_revocation_aimed_at_a_base_signature_stops_every_release_on_it ... ok
+test schema::tests::a_choice_admits_exactly_its_option_keys ... ok
+test schema::tests::a_hostile_state_reaches_the_prompt_and_never_the_instructions ... ok
+test schema::tests::a_noul_admits_no_and_yes_in_that_order ... ok
+test policy::tests::a_revocation_that_is_not_yet_in_effect_does_not_bite ... ok
+test schema::tests::a_score_admits_level_indices_and_keeps_its_legend ... ok
+test schema::tests::every_question_reads_the_same_state ... ok
+test manifest::tests::an_eval_ref_that_no_longer_matches_its_record_is_refused ... ok
+test schema::tests::option_text_cannot_add_an_option ... ok
+test policy::tests::deleting_the_cache_does_not_unmanage_the_release ... ok
+test policy::tests::a_current_snapshot_serves_and_a_revoked_release_does_not ... ok
+test policy::tests::the_window_is_the_maximum_enforcement_delay ... ok
+test observation::tests::observation_cannot_grant_admission_or_change_calibration_references ... ok
+test observation::tests::changed_bytes_counts_and_identities_are_rejected ... ok
+test suite::tests::the_shipped_suite_loads_and_its_digest_matches ... ok
+test suite::tests::the_splits_are_disjoint_and_both_populated ... ok
+test suite::tests::a_tampered_suite_is_refused ... ok
+test suite::tests::every_item_names_a_truth_its_question_admits ... ok
+
+test result: ok. 71 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running unittests src/bin/lev_adapter_check.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_adapter_check-84d314129759ff51)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_band.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_band-ec556ca991b886f6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_calibration_sweep.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_calibration_sweep-1b41e4cf42a8af7e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_measure.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_measure-50a51e20a3479aad)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_order_sweep.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_order_sweep-ca8a35f2e78626fb)
+
+running 5 tests
+test tests::the_population_spread_divides_by_every_value ... ok
+test tests::every_order_of_three_options_is_listed_once ... ok
+test tests::a_flip_is_an_item_that_answered_differently ... ok
+test tests::an_unanswered_item_leaves_the_denominator_rather_than_counting_as_agreement ... ok
+test tests::a_permutation_reorders_the_options_and_nothing_else ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_policy.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_policy-522ebec079f1ac5e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_render.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_render-0059d23f0efe9a66)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/lev_seed_sweep.rs (/tmp/openagents-supervision/root-target/debug/deps/lev_seed_sweep-5d4dc40ee753ff66)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/adapter.rs (/tmp/openagents-supervision/root-target/debug/deps/adapter-41b8afc5b03d0458)
+
+running 3 tests
+compatible adapter identifiers: ["fmadapter-lev-9799725"]
+test the_device_reports_the_base_signature_it_will_accept ... ok
+test the_runtime_loads_a_package_this_repository_wrote ... ok
+untrained adapter refused as expected: BridgeError
+test an_untrained_package_loads_and_then_fails_at_inference ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/admission.rs (/tmp/openagents-supervision/root-target/debug/deps/admission-46521a51ffa7b814)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/calibrated_answer_roundtrip.rs (/tmp/openagents-supervision/root-target/debug/deps/calibrated_answer_roundtrip-867c4980b27685a3)
+
+running 6 tests
+test calibrated_noul_preserves_the_fixed_answer_on_the_wire ... ok
+test calibrated_choice_preserves_the_fixed_answer_on_the_wire ... ok
+test calibrated_score_preserves_the_fixed_answer_on_the_wire ... ok
+test an_uncalibrated_answer_reads_the_same_either_way ... ok
+test a_tied_raw_maximum_serves_the_last_tied_level_through_the_wire ... ok
+test a_band_conditioned_map_preserves_the_fixed_answer_on_the_wire ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/conformance.rs (/tmp/openagents-supervision/root-target/debug/deps/conformance-4f8768691bfbd07d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/isolation.rs (/tmp/openagents-supervision/root-target/debug/deps/isolation-dc9007de8d0f98a5)
+
+running 2 tests
+test a_compiled_question_never_carries_a_sibling_question ... ok
+isolation over 8 seeds: sibling 0.75, absent 0.75, state 1.00
+test a_secret_in_a_sibling_reads_like_a_secret_that_was_never_named ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.63s
+
+     Running tests/manifests.rs (/tmp/openagents-supervision/root-target/debug/deps/manifests-bc6e6536fb9dc25f)
+
+running 7 tests
+test the_base_release_admits_exactly_the_families_its_records_admit ... ok
+test every_committed_manifest_loads_and_declares_this_build_of_the_contract ... ok
+test every_committed_manifest_names_a_policy_snapshot_it_can_resolve ... ok
+test every_eval_ref_matches_the_record_it_names ... ok
+test an_adapted_release_names_only_maps_fitted_against_itself ... ok
+test every_observation_ref_matches_its_retained_rows ... ok
+test the_package_is_checked_when_it_is_on_this_machine ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.40s
+
+     Running tests/pool.rs (/tmp/openagents-supervision/root-target/debug/deps/pool-ff21dec15a251749)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/revocation.rs (/tmp/openagents-supervision/root-target/debug/deps/revocation-d500db617ff25128)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/supervision.rs (/tmp/openagents-supervision/root-target/debug/deps/supervision-adfeb3b0edb67a6a)
+
+running 1 test
+test faults_retire_a_helper_and_the_lane_recovers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.82s
+
+   Doc-tests lev
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
