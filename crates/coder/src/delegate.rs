@@ -712,6 +712,32 @@ impl Task {
     }
 }
 
+/// What a delegation came to, against the answer its task stated.
+///
+/// This is the completion verdict a work item earns: `Passed` and `Failed`
+/// are checks that ran, and `Unverifiable` is a task that stated nothing
+/// to check against. An unverifiable delegation is never counted as
+/// passed, however plausible its output reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Verdict {
+    /// The delegate answered, and the answer is the one the task stated.
+    Passed,
+    /// The task stated an answer, and the delegate did not give it.
+    Failed,
+    /// The task stated no answer, so nothing was checked.
+    Unverifiable,
+}
+
+impl std::fmt::Display for Verdict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Verdict::Passed => "passed",
+            Verdict::Failed => "failed",
+            Verdict::Unverifiable => "unverifiable",
+        })
+    }
+}
+
 /// How a delegation ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Status {
@@ -846,6 +872,18 @@ impl Delegation {
     pub fn correct(&self) -> Option<bool> {
         let expected = self.task.expected.as_deref()?;
         Some(self.answered() && normalize(&self.output) == normalize(expected))
+    }
+
+    /// What the delegation comes to, judged against the answer the task
+    /// stated. A task that stated none is `Unverifiable`, whatever the
+    /// delegate returned: nothing that was not checked passes.
+    #[must_use]
+    pub fn verdict(&self) -> Verdict {
+        match self.correct() {
+            Some(true) => Verdict::Passed,
+            Some(false) => Verdict::Failed,
+            None => Verdict::Unverifiable,
+        }
     }
 
     /// What the trace records as the call's output: the answer when there
@@ -1979,18 +2017,23 @@ mod tests {
         assert_eq!(right.status, Status::Answered);
         assert_eq!(right.recorded_output(), "5");
         assert_eq!(right.correct(), Some(true));
+        assert_eq!(right.verdict(), Verdict::Passed);
         assert_eq!(right.outcome(), atif::Outcome::Completed);
 
         let wrong = delegator
             .run(Task::reading("how many", "crates/atif/src/document.rs").expecting("6"))
             .await;
         assert_eq!(wrong.correct(), Some(false));
+        assert_eq!(wrong.verdict(), Verdict::Failed);
 
-        // A task that says nothing about the answer is not graded.
+        // A task that says nothing about the answer is not graded, and an
+        // answer nobody graded is not a pass.
         let ungraded = delegator
             .run(Task::reading("how many", "crates/atif/src/document.rs"))
             .await;
+        assert_eq!(ungraded.status, Status::Answered);
         assert_eq!(ungraded.correct(), None);
+        assert_eq!(ungraded.verdict(), Verdict::Unverifiable);
     }
 
     /// A refusal, a timeout, and a non-zero exit are three different
@@ -3389,18 +3432,11 @@ mod tests {
         task.isolation = Isolation::Worktree;
         let delegation = delegator.run(task).await;
         assert_eq!(delegation.status, Status::Answered, "{delegation:?}");
-        assert!(
-            delegation
-                .output
-                .contains(delegation.workdir.to_str().unwrap()),
-            "the delegate saw its own worktree trusted: {}",
-            delegation.output
-        );
-        assert!(
-            !delegation
-                .output
-                .contains(repository.path().canonicalize().unwrap().to_str().unwrap()),
-            "the repository itself was not trusted: {}",
+        let seen: serde_json::Value = serde_json::from_str(&delegation.output).unwrap();
+        assert_eq!(
+            seen["trusted_paths"],
+            serde_json::json!([delegation.workdir]),
+            "the delegate saw its own worktree trusted, and nothing wider: {}",
             delegation.output
         );
         assert_eq!(
