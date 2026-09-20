@@ -1,5 +1,6 @@
 //! What the host found before it chose: the capabilities this machine can
-//! reach and the programs it could run.
+//! reach, the programs it could run, and the sources those programs may
+//! look work up in.
 //!
 //! The two reads belong together because the decision they feed is one
 //! decision. A program-selection question's option set is built from
@@ -16,15 +17,20 @@ use std::path::{Path, PathBuf};
 use crate::capability::{self, Found, Presence};
 use crate::delegate::Executor;
 use crate::program;
+use crate::source;
 use crate::trace::Recorder;
 
-/// One machine's capabilities and programs, read once.
+/// One machine's capabilities, programs, and task sources, read once.
 #[derive(Clone, Debug)]
 pub struct Survey {
     /// Every declared capability, probed against [`Survey::workspace`].
     pub capabilities: Vec<Found>,
     /// The programs this host would run.
     pub programs: program::Registry,
+    /// The sources a `query` step may name. A program names a source and
+    /// a host resolves it here, the way a `decide` step names a question
+    /// and the wording is resolved from `questions/`.
+    pub sources: source::Registry,
     /// The directory the capabilities were probed against. A capability
     /// that refuses one directory may accept another, so a survey is only
     /// true of the workspace it names.
@@ -36,16 +42,18 @@ impl Survey {
     /// capability against `workspace`.
     ///
     /// `repository` is the checkout the host is running in, whose
-    /// `capabilities/` and `programs/` directories are read before the
-    /// operator's own.
+    /// `capabilities/`, `programs/`, and `sources/` directories are read
+    /// before the operator's own.
     #[must_use]
     pub fn read(repository: Option<&Path>, workspace: &Path) -> Self {
         let capabilities =
             capability::Registry::open(&capability::search(repository)).probe_all(workspace);
         let programs = program::Registry::open(&program::search(repository));
+        let sources = source::Registry::open(&source::search(repository));
         Survey {
             capabilities,
             programs,
+            sources,
             workspace: workspace.to_path_buf(),
         }
     }
@@ -134,6 +142,10 @@ mod tests {
         );
         assert_eq!(survey.programs.programs().len(), 4);
         assert!(survey.programs.get("delegate-fan-out").is_some());
+        assert!(
+            survey.sources.get("work-list").is_some(),
+            "the repository declares a task source"
+        );
     }
 
     /// A machine with nothing declared surveys cleanly. Absence is not an
@@ -146,6 +158,11 @@ mod tests {
         assert!(survey.capabilities.is_empty());
         assert!(survey.options().is_empty());
         assert!(survey.programs.programs().is_empty());
+        assert!(survey.sources.slugs().is_empty());
+        assert!(
+            survey.sources.get("request").is_some(),
+            "the work a request carried is a source a machine has without declaring one"
+        );
     }
 
     #[test]

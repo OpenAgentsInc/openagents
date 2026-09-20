@@ -28,6 +28,9 @@
 //!   named steps with per-step bounds.
 //! - [`questions`] holds the wording a `decide` step names and must not
 //!   carry, addressed by identifier and digested as a whole.
+//! - [`source`] holds the work a `query` step names and must not carry:
+//!   where a lookup's answer comes from, the order it is in, and what the
+//!   lookup already knows about which items collide.
 //! - [`survey`] is the two of them together: what a host knows about itself
 //!   at the moment it starts choosing.
 //! - [`runtime`] runs a program's steps from the program: the bounds it
@@ -45,6 +48,7 @@ pub mod relay;
 pub mod repo;
 pub mod runtime;
 pub mod shell;
+pub mod source;
 pub mod survey;
 pub mod trace;
 pub mod turn;
@@ -62,6 +66,7 @@ pub use relay::{Identity, RelayDoor};
 pub use repo::Repo;
 pub use runtime::{Enforcement, Host, Inputs, Refused, Run, Runtime};
 pub use shell::{NotAPlan, Outcome, Plan, Proposal, Reply, ShellEvent, Status};
+pub use source::{Selection, Work};
 pub use survey::Survey;
 pub use trace::Recorder;
 pub use turn::{Completion, Event, Failure, Finished};

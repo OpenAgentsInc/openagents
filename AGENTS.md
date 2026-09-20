@@ -75,10 +75,10 @@ uses, and marks which are implemented and which are only specified.
   bounded task to an executor and runs a fan-out of them under a stated
   bound; read `docs/coder/delegate.md` before changing it, and do not
   offer delegation to the model as a tool it may elect. `capability`,
-  `program`, and `questions` read `capabilities/`, `programs/`, and
-  `questions/`, so what a machine can reach is probed rather than
-  hardcoded, and `runtime` runs a program's steps from the program.
-  `docs/programs.md` covers all four. The crate's second binary,
+  `program`, `questions`, and `source` read `capabilities/`, `programs/`,
+  `questions/`, and `sources/`, so what a machine can reach is probed
+  rather than hardcoded, and `runtime` runs a program's steps from the
+  program. `docs/programs.md` covers all five. The crate's second binary,
   `coder-worker`, is the other end of the relay door: it answers NIP-CJ
   job requests from a relay through an Open Responses door.
   `docs/coder/relay-transport.md` is the measured proof that the two ends
@@ -112,9 +112,12 @@ uses, and marks which are implemented and which are only specified.
 - The Block lane is the model for application behavior: the relay is the
   workspace, and application logic is expressed as event kinds plus relay
   policy rather than a private backend.
-- `capabilities/`, `programs/`, and `questions/` hold the local registry:
-  one NIP-CAP `kind:30180` manifest per file, one NIP-PRG `kind:30182`
-  program per file, and one question set per file. They are files before
-  they are events, and a host reads them from disk until the relay serves
-  them. A program never carries a question's wording; it names a set in
-  `questions/`, which is digested on its own so two runs are comparable.
+- `capabilities/`, `programs/`, `questions/`, and `sources/` hold the local
+  registry: one NIP-CAP `kind:30180` manifest per file, one NIP-PRG
+  `kind:30182` program per file, one question set per file, and one task
+  source per file. They are files before they are events, and a host reads
+  them from disk until the relay serves them. A program never carries a
+  question's wording; it names a set in `questions/`, which is digested on
+  its own so two runs are comparable. A program never carries a command
+  either; a `query` step names a source in `sources/`, and what that source
+  reads is the machine's business rather than the program's.

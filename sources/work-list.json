@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "slug": "work-list",
+  "name": "The work list this checkout carries",
+  "summary": "Reads an ordered work list from .coder/work-list.json, by identifier.",
+  "from": {"file": {"path": ".coder/work-list.json"}},
+  "order": "id"
+}

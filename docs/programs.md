@@ -99,11 +99,12 @@ carries both, and `crates/coder` reads them:
 | `capabilities/` | One `kind:30180` manifest per file. `devin-local` is the first. |
 | `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `review-changes`, `answer-question`, `run-suite`. |
 | `questions/` | One question set per file, addressed by identifier: `openagents.program.v1`, `openagents.independence.v1`, `openagents.completion.v1`. |
+| `sources/` | One task source per file. `work-list` is the first; `request` is built in. |
 
 A host reads `CODER_CAPABILITY_DIR` first, then the repository's directory,
-then `~/.openagents/capabilities`, and the same three for programs and for
-questions. The first definition of a slug wins, so an operator overrides a
-checkout without editing it.
+then `~/.openagents/capabilities`, and the same three for programs, for
+questions, and for sources. The first definition of a slug wins, so an
+operator overrides a checkout without editing it.
 
 ### A `decide` step names a question, and the wording lives elsewhere
 
@@ -134,6 +135,103 @@ The program registry read records the Nostr filter it would have sent
 beside the answer it got from disk, because the query is the part that has
 to keep working when the answer does not. Publishing to the relay changes
 where the answer comes from and not what was asked.
+
+### A `query` step names a source, and the command lives elsewhere
+
+The same rule, one step over, and it is the rule that decides whether a
+program can find work at all. A `query` step carries a **source slug** such
+as `request` or `work-list`. What that slug reads is a file in `sources/`,
+and a host that cannot resolve the slug refuses the step rather than falling
+back to whatever work was handed in.
+
+"Run `gh issue list`" is not a step kind. A program that carried a command
+would be code, and a program that carries none is the one property
+everything else rests on — it is what makes a program safe to read from a
+stranger. So the program says *which* lookup, the machine says *what* the
+lookup is, and the two can differ between machines running the same program
+the way a `delegate` step's executor already does.
+
+A source declares where its answer comes from and the order it is in:
+
+```jsonc
+{
+  "v": 1,
+  "slug": "work-list",
+  "name": "The work list this checkout carries",
+  "summary": "Reads an ordered work list from .coder/work-list.json, by identifier.",
+  "from": {"file": {"path": ".coder/work-list.json"}},
+  "order": "id"
+}
+```
+
+Two sources exist. `request` is the work the request carried, built in
+because its meaning cannot be anything else, and a file source reads a work
+list under the workspace. Neither runs a process. A source that spawned one
+would need the trust boundary and the subprocess bounds
+[#9427](https://github.com/OpenAgentsInc/openagents/issues/9427) is about,
+and a lookup that executed a manifest's argv because it had read that
+manifest is the finding rather than the fix. An operator who wants the open
+issues writes them to a work list with one command of their own.
+
+A work list names what each item touches and what it comes after:
+
+```jsonc
+{
+  "v": 1,
+  "work": [
+    {"id": "9391", "prompt": "…", "reads": "crates/gym/src/digest.rs", "writes": true},
+    {"id": "9401", "prompt": "…", "touches": ["crates/gym/src/gate.rs"], "after": ["9391"]}
+  ]
+}
+```
+
+### An explicit list is a source, not a shortcut
+
+`request` is reached through the same code every other source is, and that
+is deliberate. The first real burndown will run on work chosen by
+inspection, and work chosen by inspection has to exercise the ordering, the
+bound, and the collision record that a queried list depends on later. A
+second code path for the easy case is a second code path nobody tests.
+
+### What a lookup does, in order
+
+1. **Order.** Whatever the source answered with, in the order the source
+   declares — `given` or `id` — and the identifiers are recorded. A burndown
+   that silently reorders is not reproducible.
+2. **Declared order is enforced.** An item whose `after` names work still in
+   the same list is dropped from this batch and recorded as dropped, because
+   running the two at once is wrong by construction. #9391 has to land before
+   #9401, and that is a fact in the list rather than a judgment about it.
+3. **The bound.** More items than `max_results` either truncates or refuses,
+   as `on_overflow` says, and the trace records which happened along with
+   everything dropped and why.
+
+`delegate-fan-out` refuses. It is the stricter of the two and it is the one
+the backlog needs: the work is not independent, the gate that should catch
+that is the one #9414 measured at eleven of twelve wrong answers above the
+floor, and a lookup that quietly chose six of twenty-one would be making a
+selection nobody reviewed.
+
+### Collisions are computed, not asked about
+
+Work items that touch the same file cannot run beside each other, and that
+is discoverable without a model: it is in the list. The lookup records every
+path more than one selected item touches, and puts the collisions in front
+of the decision that follows.
+
+It records them rather than refusing on them, and the asymmetry is the
+measurement's.
+[#9414](https://github.com/OpenAgentsInc/openagents/issues/9414) put plans
+whose tasks genuinely collide to four doors: eleven of twelve answers
+cleared the 0.7 bound on the local ones, `kev-8b` at 0.96 and 0.97, and the
+wrong answers sat above the right ones, so raising the bound does not help.
+Only hosted Jev held. A gate in that state is not where a computable fact
+belongs, so the fact is computed and recorded whether or not the gate reads
+it. Which pairs genuinely collide is still the gate's question, and fixing
+the gate is #9414's work rather than the lookup's.
+
+A plan whose tasks touch six different files says nothing about collisions,
+so the state those measurements were taken against reads the way it did.
 
 ### Three states, not two
 
@@ -267,7 +365,7 @@ example of exactly that shape.
 `delegate-fan-out`, whose steps are in [NIP-PRG](../nips/openagents/NIP-PRG.md):
 
 ```text
-select  (query)     the top N open issues
+select  (query)     the work a named source answers with, ordered and bounded
         ↓
 independence (decide)  are these N tasks disjoint?      ← the measured one
         ↓
@@ -313,8 +411,8 @@ unrecognized kind is refused when the file is read. A kind this version
 recognizes and does not run — `program` and `module`, which are composition
 and WebAssembly — is refused at admission. Neither is skipped.
 
-**A `decide` step names a question, never its wording.** See the previous
-section.
+**A `decide` step names a question, never its wording**, and **a `query`
+step names a source, never a command.** See the previous section.
 
 **A refused step stops the program**, and the reason it stopped is what the
 run reports. An answer below a `refuse_below` floor, a check that will not
@@ -325,7 +423,7 @@ refusals, and each one stops the rest.
 
 | Kind | What the runtime does |
 | --- | --- |
-| `query` | Looks the work up and truncates it to `max_results`. A step with no source named reads the program's declared inputs. |
+| `query` | Resolves the source the step names, orders the answer, enforces the order the work declares, and holds it to `max_results` — truncating or refusing, as `on_overflow` says. A step naming no source reads the work the request carried. |
 | `decide` | Puts the named question set to a decision door and records `openagents.decision-call.v1`, with the set's identifier and digest beside the answer. |
 | `check` | Runs the admission test the `refuse_on` bound names. |
 | `delegate` | Hands the work to the executor the capability probe resolved, at the width, isolation, and wall bound the step states. |
@@ -361,7 +459,7 @@ operator's computer:
 
 | Step | What it did |
 | --- | --- |
-| `select` | 6 tasks |
+| `select` | 6 of 6 work items |
 | `independence` | `independent` 0.96, clearing the 0.7 floor |
 | `admit` | `minutes` kept by `devin-local`; `concurrent_max` and `isolation` kept by the host |
 | `fan_out` | 6 of 6 answered at a width of 6, one checkout each |
@@ -377,9 +475,14 @@ yourself with the command in `crates/coder/tests/program_run.rs`.
 ### What the runtime does not do yet
 
 - **Reach itself from an operator's sentence.** The call site is still a
-  caller in Rust. Wiring it into the turn needs a `select` step that can
-  find the work, because the operator's sentence names a count and not a
-  task list.
+  caller in Rust. The `select` step can now find work — it resolves a named
+  source, orders it, bounds it, and records what it dropped — so what is
+  left is the turn calling the runtime rather than the runtime having
+  nothing to look work up in.
+- **Read a source that is not a file.** Both sources are reads. An
+  executable source is where a lookup would reach a tracker directly, and it
+  waits on the trust boundary and subprocess bounds in
+  [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427).
 - **Compose.** No `program` step, no `module` step, no cycle detection, no
   depth bound, and nothing that fetches. All are specified, and none is
   needed to run the first program.

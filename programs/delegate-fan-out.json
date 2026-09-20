@@ -6,7 +6,8 @@
   "inputs": {"tasks": "list", "executor": "capability-slug"},
   "outputs": {"results": "list"},
   "steps": [
-    {"name": "select", "kind": "query", "bounds": {"max_results": 12}},
+    {"name": "select", "kind": "query", "source": "request",
+     "bounds": {"max_results": 12, "on_overflow": "refuse"}},
     {"name": "independence", "kind": "decide",
      "question": "openagents.independence.v1",
      "bounds": {"refuse_below": 0.7, "requires_calibration": true}},

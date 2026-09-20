@@ -70,7 +70,8 @@ them disagreeing refuses the program.
   "inputs": {"tasks": "list", "executor": "capability-slug"},
   "outputs": {"results": "list"},
   "steps": [
-    {"name": "select",       "kind": "query",    "bounds": {"max_results": 12}},
+    {"name": "select",       "kind": "query",    "source": "request",
+     "bounds": {"max_results": 12, "on_overflow": "refuse"}},
     {"name": "independence", "kind": "decide",
      "question": "openagents.independence.v1",
      "bounds": {"refuse_below": 0.7, "requires_calibration": true}},
@@ -114,6 +115,34 @@ Question text belongs to a separately addressed and separately digested
 question set, because rewording a question changes what was asked. A program
 that inlined its wording could not say which version produced a result, and
 two runs of "the same" program would not be comparable.
+
+### `query` steps name a source, not a command
+
+A `query` step carries a **source identifier** in `source`. It MUST NOT
+carry a command, an argv, a URL, or a path.
+
+This is the same rule as the one above, for the same reason and with more at
+stake: a program that carried a command would be code, and a program
+carrying no code is what makes one safe to read from a stranger. A host
+resolves the identifier against its own registry, and MUST refuse a step
+naming a source it cannot resolve rather than substituting one it can.
+
+What a source means is therefore local. Two machines running the same
+program may look the work up in different places, which is the same property
+[NIP-CAP](NIP-CAP.md) gives a `delegate` step's executor.
+
+A `query` step SHOULD carry two further bounds, and a host that enforces
+them is what makes a lookup reproducible:
+
+| Bound | Meaning |
+| --- | --- |
+| `max_results` | The most work the lookup may answer with. |
+| `on_overflow` | `truncate` keeps the first `max_results` in the recorded order; `refuse` refuses the step. **Absent means `truncate`.** |
+
+A host MUST record the order it put the answer in, what it selected, and
+what it dropped. A lookup that reordered silently is not reproducible, and a
+run that fanned out to six of twenty-one and cannot say which six has no
+evidence of what it did.
 
 ## Modules
 

@@ -32,6 +32,11 @@
 //! lives in [`crate::questions`], addressed by identifier and digested as
 //! a whole, and the run records which set answered beside the answer.
 //!
+//! **A `query` step names a source, never a command.** The source lives in
+//! [`crate::source`], addressed by slug, and a slug this host has no
+//! definition for refuses at admission. A step carrying an argv would make
+//! the program code, which is the one thing NIP-PRG says a program is not.
+//!
 //! **A refused step stops the program**, and the reason it stopped is what
 //! the run reports.
 //!
@@ -54,6 +59,7 @@ use serde_json::{Map, Value, json};
 use crate::delegate::{Bounds, Delegation, Delegator, Isolation, Task};
 use crate::program::{Kind, Program, Step};
 use crate::questions::{self, Fill, Set};
+use crate::source::{self, OnOverflow, Overflow, Selection, Source};
 use crate::survey::Survey;
 use crate::trace::{Recorder, answers_value};
 
@@ -211,7 +217,7 @@ impl Host {
 #[must_use]
 pub fn enforced(kind: Kind) -> &'static [&'static str] {
     match kind {
-        Kind::Query => &["max_results"],
+        Kind::Query => &["max_results", "on_overflow"],
         Kind::Decide => &["refuse_below", "requires_calibration", "per_requirement"],
         Kind::Check => &["refuse_on"],
         Kind::Delegate => &["concurrent_max", "isolation", "minutes"],
@@ -254,6 +260,9 @@ pub struct Run {
     pub steps: Vec<Ran>,
     /// Where the program stopped, when it stopped early.
     pub stopped: Option<Refused>,
+    /// What the `query` step looked up: the work, its order, what was
+    /// dropped, and what collides.
+    pub selection: Option<Selection>,
     /// Every delegation a `delegate` step started.
     pub delegations: Vec<Delegation>,
     /// The typed answers each `decide` step got, by step name.
@@ -436,10 +445,28 @@ impl Runtime {
             self.admit_bound(step, bound, value)?;
         }
         match step.kind {
+            Kind::Query => self.admit_source(step).map(|_| ()),
             Kind::Decide => self.admit_question(step),
             Kind::Check => self.admit_check(program, step),
             _ => Ok(()),
         }
+    }
+
+    /// The source a `query` step names, or why this host cannot read it.
+    ///
+    /// The same shape as a `decide` step's question: the program names a
+    /// slug, the host resolves it against its own registry, and a slug it
+    /// has no definition for refuses before the first step runs rather
+    /// than falling back to whatever work happened to be handed in.
+    fn admit_source(&self, step: &Step) -> Result<Source, Refused> {
+        let slug = step.source.as_deref().unwrap_or(source::REQUEST);
+        self.survey.sources.get(slug).ok_or_else(|| {
+            Refused::at(
+                &step.name,
+                "source_unresolved",
+                format!("this host has no source called {slug}, and a query step names one"),
+            )
+        })
     }
 
     /// Whether this host can hold to one bound as the program states it.
@@ -465,6 +492,12 @@ impl Runtime {
                 other => refuse(format!(
                     "this host runs no check that refuses on {}",
                     other.unwrap_or("that")
+                )),
+            },
+            "on_overflow" => match value.as_str().and_then(OnOverflow::named) {
+                Some(_) => Ok(()),
+                None => refuse(format!(
+                    "a lookup that answers with more than its bound truncates or refuses, and this step names {value}"
                 )),
             },
             "max_results" | "concurrent_max" | "minutes" => match value.as_u64() {
@@ -669,23 +702,23 @@ impl Runtime {
             self.report(&run, started, trace.as_deref_mut());
             return run;
         }
-        let mut tasks: Vec<Task> = Vec::new();
+        let mut selection = Selection::default();
         for step in &program.steps {
             let outcome = match step.kind {
-                Kind::Query => {
-                    self.select_tasks(step, inputs, trace.as_deref_mut())
-                        .map(|selected| {
-                            let output = format!("{} tasks", selected.len());
-                            tasks = selected;
-                            output
-                        })
-                }
+                Kind::Query => self
+                    .look_up(step, inputs, trace.as_deref_mut())
+                    .map(|found| {
+                        let output = found.output();
+                        selection = found.clone();
+                        run.selection = Some(found);
+                        output
+                    }),
                 Kind::Decide => {
                     self.decide(
                         step,
                         program,
                         inputs,
-                        &tasks,
+                        &selection,
                         &mut run,
                         trace.as_deref_mut(),
                     )
@@ -693,7 +726,7 @@ impl Runtime {
                 }
                 Kind::Check => self.check(step, program, inputs, trace.as_deref_mut()),
                 Kind::Delegate => {
-                    self.delegate(step, inputs, &tasks, &mut run, trace.as_deref_mut())
+                    self.delegate(step, inputs, &selection, &mut run, trace.as_deref_mut())
                         .await
                 }
                 // Admission refused these before the first step ran.
@@ -745,22 +778,35 @@ impl Runtime {
 
     /// A `query` step: the structured lookup that produces the work.
     ///
-    /// A query naming no source reads the program's declared inputs, which
-    /// for `delegate-fan-out` is the task list the operator's sentence
-    /// carried. `max_results` is the bound, and it is applied rather than
-    /// recorded: a lookup that answered with more than the step allows is
-    /// a step that ran unbounded.
-    fn select_tasks(
+    /// The step names a source, the host resolves it, and the answer is
+    /// ordered, held to `max_results`, and recorded. A query naming no
+    /// source reads the work the request carried, which is a source like
+    /// any other and reached through the same code — the first real
+    /// burndown runs on work chosen by inspection, and that must exercise
+    /// the path a queried list will later take.
+    ///
+    /// `max_results` is applied rather than described: a lookup that
+    /// answered with more than the step allows is a step that ran
+    /// unbounded. `on_overflow` says what applying it does, and the trace
+    /// records which happened along with everything that was left out.
+    fn look_up(
         &self,
         step: &Step,
         inputs: &Inputs,
         trace: Option<&mut Recorder>,
-    ) -> Result<Vec<Task>, Refused> {
-        if inputs.tasks.is_empty() {
+    ) -> Result<Selection, Refused> {
+        let source = self.admit_source(step)?;
+        let found = source
+            .read(&self.survey.workspace, &inputs.tasks)
+            .map_err(|reason| Refused::at(&step.name, "source_unreadable", reason))?;
+        if found.is_empty() {
             return Err(Refused::at(
                 &step.name,
                 "no_tasks",
-                "the lookup found no work, and a fan-out over nothing is not a fan-out",
+                format!(
+                    "{} answered with no work, and a fan-out over nothing is not a fan-out",
+                    source.slug
+                ),
             ));
         }
         let max = step
@@ -768,33 +814,60 @@ impl Runtime {
             .get("max_results")
             .and_then(Value::as_u64)
             .unwrap_or(u64::MAX) as usize;
-        let found = inputs.tasks.len();
-        let tasks: Vec<Task> = inputs.tasks.iter().take(max).cloned().collect();
+        let on_overflow = step
+            .bounds
+            .get("on_overflow")
+            .and_then(Value::as_str)
+            .and_then(OnOverflow::named)
+            .unwrap_or_default();
+        let selection = Selection::of(&source, found, max, on_overflow);
+
         let mut extra = self.step_extra(step);
-        extra.insert("found".to_string(), json!(found));
-        extra.insert("selected".to_string(), json!(tasks.len()));
+        extra.insert("source".to_string(), json!(selection.source));
+        extra.insert("resolved_from".to_string(), json!(selection.resolved_from));
+        extra.insert("order".to_string(), json!(selection.order.word()));
+        extra.insert("ordered".to_string(), json!(selection.ordered));
+        extra.insert("found".to_string(), json!(selection.found));
+        extra.insert("selected".to_string(), json!(selection.selected()));
+        extra.insert("overflow".to_string(), json!(selection.overflow.word()));
+        extra.insert("dropped".to_string(), selection.dropped_value());
+        if !selection.collisions.is_empty() {
+            extra.insert("collisions".to_string(), selection.collisions_value());
+        }
         extra.insert(
             "tasks".to_string(),
             json!(
-                tasks
+                selection
+                    .work
                     .iter()
-                    .enumerate()
-                    .map(|(n, task)| task_value(n, task))
+                    .map(source::Work::value)
                     .collect::<Vec<_>>()
             ),
         );
+        let refused = selection.overflow == Overflow::Refused;
         self.record(
             trace,
             &format!(
-                "Looked up the work the request names: {} tasks.",
-                tasks.len()
+                "Looked {} up from {}: {}.",
+                selection.source,
+                selection.resolved_from,
+                selection.output()
             ),
             Call {
                 id: String::new(),
                 name: SELECT_CALL.to_string(),
-                arguments: json!({ "source": "request", "max_results": max }),
-                output: format!("{} of {found} tasks", tasks.len()),
-                outcome: Outcome::Completed,
+                arguments: json!({
+                    "source": selection.source,
+                    "from": selection.resolved_from,
+                    "order": selection.order.word(),
+                    "max_results": max,
+                    "on_overflow": on_overflow.word(),
+                }),
+                output: selection.output(),
+                outcome: match refused {
+                    true => Outcome::Cancelled,
+                    false => Outcome::Completed,
+                },
                 milliseconds: 0,
                 purpose: Some(
                     "Find the work before asking whether it may run at once.".to_string(),
@@ -802,7 +875,28 @@ impl Runtime {
                 extra,
             },
         );
-        Ok(tasks)
+        if refused {
+            return Err(Refused::at(
+                &step.name,
+                "too_many_results",
+                format!(
+                    "{} answered with {} work items against a max_results of {max}, and this step refuses rather than choosing {max} of them",
+                    selection.source,
+                    selection.work.len()
+                ),
+            ));
+        }
+        if selection.is_empty() {
+            return Err(Refused::at(
+                &step.name,
+                "no_tasks",
+                format!(
+                    "every one of {}'s {} work items comes after work in the same list, so none of them can run beside the others",
+                    selection.source, selection.found
+                ),
+            ));
+        }
+        Ok(selection)
     }
 
     /// A `decide` step: one typed question set put to a decision door.
@@ -811,7 +905,7 @@ impl Runtime {
         step: &Step,
         program: &Program,
         inputs: &Inputs,
-        tasks: &[Task],
+        selection: &Selection,
         run: &mut Run,
         trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
@@ -822,11 +916,11 @@ impl Runtime {
             true => {
                 let requirements = requirement_names(run);
                 (
-                    requirements_state(run, tasks),
+                    requirements_state(run, selection),
                     Fill::Requirements(requirements),
                 )
             }
-            false => (plan_state(program, inputs, tasks), Fill::None),
+            false => (plan_state(program, inputs, selection), Fill::None),
         };
         let floor = step.bounds.get("refuse_below").and_then(Value::as_f64);
         let gate = set.gate.clone();
@@ -1020,7 +1114,7 @@ impl Runtime {
         &self,
         step: &Step,
         inputs: &Inputs,
-        tasks: &[Task],
+        selection: &Selection,
         run: &mut Run,
         trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
@@ -1055,10 +1149,11 @@ impl Runtime {
             .and_then(Value::as_u64)
             .unwrap_or(1) as usize;
         let minutes = step.bounds.get("minutes").and_then(Value::as_u64);
-        let bounded: Vec<Task> = tasks
-            .iter()
+        let bounded: Vec<Task> = selection
+            .tasks()
+            .into_iter()
             .map(|task| {
-                let mut task = task.clone();
+                let mut task = task;
                 task.isolation = isolation;
                 if let Some(minutes) = minutes {
                     task.bounds = Bounds::minutes(minutes);
@@ -1183,25 +1278,43 @@ impl Runtime {
 
 /// The state a plan question reads: named fields rather than a sentence,
 /// so a question can point at the tasks directly.
-fn plan_state(program: &Program, inputs: &Inputs, tasks: &[Task]) -> Value {
-    json!({
-        "plan": {
+///
+/// The collisions the lookup found are put in front of the decision when
+/// there are any, and left out when there are none. A plan whose tasks
+/// touch six different files therefore reads exactly as it did before the
+/// lookup could see a collision at all, which keeps the answers #9414
+/// measured comparable, and a plan whose tasks share a file says so in the
+/// state rather than leaving the door to work it out.
+fn plan_state(program: &Program, inputs: &Inputs, selection: &Selection) -> Value {
+    let mut state = Map::new();
+    state.insert(
+        "plan".to_string(),
+        json!({
             "program": program.slug,
             "request": inputs.request,
             "executor": inputs.executor,
-            "tasks": tasks.len(),
-        },
-        "tasks": tasks
-            .iter()
-            .enumerate()
-            .map(|(n, task)| task_value(n, task))
-            .collect::<Vec<_>>(),
-    })
+            "tasks": selection.len(),
+        }),
+    );
+    state.insert(
+        "tasks".to_string(),
+        json!(
+            selection
+                .work
+                .iter()
+                .map(source::Work::value)
+                .collect::<Vec<_>>()
+        ),
+    );
+    if !selection.collisions.is_empty() {
+        state.insert("collisions".to_string(), selection.collisions_value());
+    }
+    Value::Object(state)
 }
 
 /// The state a per-requirement question reads: one entry per delegation,
 /// under the name its question carries.
-fn requirements_state(run: &Run, tasks: &[Task]) -> Value {
+fn requirements_state(run: &Run, selection: &Selection) -> Value {
     let mut requirements = Map::new();
     for (n, delegation) in run.delegations.iter().enumerate() {
         requirements.insert(
@@ -1214,7 +1327,7 @@ fn requirements_state(run: &Run, tasks: &[Task]) -> Value {
             }),
         );
     }
-    json!({ "requirements": requirements, "tasks": tasks.len() })
+    json!({ "requirements": requirements, "tasks": selection.len() })
 }
 
 /// The names a per-requirement question set is asked under.
@@ -1223,18 +1336,13 @@ fn requirement_names(run: &Run) -> Vec<String> {
 }
 
 /// One requirement's name. `t1` is what the golden's delegation ids use.
+///
+/// The names are positional rather than the work's own identifiers, and
+/// the delegations are in the order the lookup recorded, so the `ordered`
+/// list in the `task_select` record is what maps `t1` back to the work it
+/// came from.
 fn requirement_name(n: usize) -> String {
     format!("t{}", n + 1)
-}
-
-/// One task, as a state object and a trace record spell it.
-fn task_value(n: usize, task: &Task) -> Value {
-    json!({
-        "id": requirement_name(n),
-        "prompt": task.prompt,
-        "reads": task.reads,
-        "writes": task.writes,
-    })
 }
 
 /// The probability an answer carries, whatever its type.

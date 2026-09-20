@@ -84,6 +84,13 @@ pub struct Step {
     /// The question identifier a `decide` step puts to a decision model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question: Option<String>,
+    /// The source a `query` step looks its work up from, by slug. A
+    /// program names a source and never a command: a step carrying an
+    /// argv would be code, and a program carries none. A `query` step
+    /// naming no source reads the work the request carried, which
+    /// [`crate::source::REQUEST`] is the name of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     /// The address of the child program a `program` step runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub program: Option<String>,
@@ -194,6 +201,22 @@ impl Program {
                         step.name
                     ));
                 }
+            }
+            match (&step.source, step.kind) {
+                (Some(source), Kind::Query) if !is_slug(source) => {
+                    return Err(format!(
+                        "query step {:?} names {source:?}, which is not a source slug",
+                        step.name
+                    ));
+                }
+                (Some(source), kind) if kind != Kind::Query => {
+                    return Err(format!(
+                        "step {:?} is a {} step and names the source {source:?}, which only a query step reads",
+                        step.name,
+                        kind.word()
+                    ));
+                }
+                _ => {}
             }
             if step.kind == Kind::Program && step.program.is_none() {
                 return Err(format!("program step {:?} names no program", step.name));
@@ -551,6 +574,29 @@ mod tests {
         assert!(reason.contains("instructions"), "{reason}");
     }
 
+    /// A `query` step names a source by slug. A step that named a command
+    /// would make the program code, and a source on a step that reads none
+    /// was written for a host that does something else with it.
+    #[test]
+    fn a_source_that_is_not_a_slug_or_not_on_a_query_step_is_refused() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"commanded","steps":[
+                {"name":"one","kind":"query","source":"gh issue list","bounds":{}}]}"#,
+        )
+        .unwrap();
+        let reason = program.validate().expect_err("that is not a slug");
+        assert!(reason.contains("source slug"), "{reason}");
+
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"misplaced","steps":[
+                {"name":"one","kind":"check","source":"backlog",
+                 "bounds":{"refuse_on":"cannot_enforce_intersection"}}]}"#,
+        )
+        .unwrap();
+        let reason = program.validate().expect_err("a check reads no source");
+        assert!(reason.contains("only a query step reads"), "{reason}");
+    }
+
     #[test]
     fn a_repeated_step_name_is_refused() {
         let program: Program = serde_json::from_str(
@@ -586,6 +632,20 @@ mod tests {
         assert_eq!(fan_out.kind, Kind::Delegate);
         assert_eq!(fan_out.bounds["concurrent_max"], json!(6));
         assert_eq!(fan_out.bounds["isolation"], json!("worktree"));
+
+        let select = program
+            .steps
+            .iter()
+            .find(|step| step.name == "select")
+            .unwrap();
+        assert_eq!(select.kind, Kind::Query);
+        assert_eq!(
+            select.source.as_deref(),
+            Some("request"),
+            "the lookup's source is named in the program"
+        );
+        assert_eq!(select.bounds["max_results"], json!(12));
+        assert_eq!(select.bounds["on_overflow"], json!("refuse"));
 
         let independence = program
             .steps

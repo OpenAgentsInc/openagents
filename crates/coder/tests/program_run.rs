@@ -317,6 +317,25 @@ fn fan_out(root: &Path) -> Program {
         .expect("the repository's own program")
 }
 
+/// One recorded call by name, read back out of the trace.
+fn call_named(path: &Path, name: &str) -> atif::Call {
+    atif::log::read(path)
+        .expect("the trace reads back")
+        .steps
+        .iter()
+        .filter_map(|step| step.call.as_ref())
+        .find(|call| call.name == name)
+        .unwrap_or_else(|| panic!("{name} ran"))
+        .clone()
+}
+
+/// One recorded decision call by name.
+fn decision_named(path: &Path, name: &str) -> atif::Call {
+    let call = call_named(path, name);
+    assert!(call.is_decision(), "{name} is a decision");
+    call
+}
+
 /// Every step runs, in the order the program lists them, and the bounds
 /// the program states are the bounds the run held to.
 #[tokio::test]
@@ -717,7 +736,8 @@ async fn a_lookup_that_found_no_work_refuses() {
     assert_eq!(stopped.code, "no_tasks");
 }
 
-/// `max_results` bounds the lookup rather than describing it.
+/// `max_results` bounds the lookup rather than describing it, and a step
+/// that truncates says which work it dropped.
 #[tokio::test]
 async fn the_lookup_holds_to_its_own_bound() {
     let machine = machine();
@@ -726,15 +746,271 @@ async fn the_lookup_holds_to_its_own_bound() {
     program.steps[0]
         .bounds
         .insert("max_results".to_string(), json!(2));
+    program.steps[0]
+        .bounds
+        .insert("on_overflow".to_string(), json!("truncate"));
     let mut inputs = inputs();
     inputs.tasks = inputs.tasks.into_iter().cycle().take(20).collect();
 
-    let run = runtime(root).await.run(&program, &inputs, None).await;
+    let traces = tempfile::tempdir().unwrap();
+    let mut recorder = Recorder::open(
+        traces.path(),
+        "kev-latest",
+        "stub",
+        &root.display().to_string(),
+    )
+    .unwrap();
+    let path = recorder.path().to_path_buf();
+    let run = runtime(root)
+        .await
+        .run(&program, &inputs, Some(&mut recorder))
+        .await;
+    drop(recorder);
+
     assert_eq!(run.stopped, None, "{:?}", run.stopped);
     assert_eq!(
         run.delegations.len(),
         2,
         "a lookup that answered with more than the step allows ran unbounded"
+    );
+
+    let lookup = call_named(&path, "task_select");
+    assert_eq!(lookup.extra["overflow"], json!("truncated"));
+    assert_eq!(lookup.extra["found"], json!(20));
+    assert_eq!(lookup.extra["selected"], json!(["t1", "t2"]));
+    assert_eq!(
+        lookup.extra["dropped"]
+            .as_array()
+            .expect("the dropped work is named")
+            .len(),
+        18,
+        "a run that fanned out to two of twenty says which eighteen it left"
+    );
+    assert_eq!(lookup.extra["dropped"][0]["id"], json!("t3"));
+    assert!(
+        lookup.extra["dropped"][0]["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("max_results of 2")),
+        "{:?}",
+        lookup.extra["dropped"][0]
+    );
+}
+
+/// The repository's own `select` step refuses instead of truncating, and
+/// the trace records the refusal as the lookup's answer.
+///
+/// Refusing is the stricter of the two and it is the one a burndown wants:
+/// the work is not independent, the gate that should catch that is the one
+/// #9414 measured at 11 of 12 wrong answers above the floor, and a lookup
+/// that quietly chose six of twenty-one would be making the selection
+/// nobody reviewed.
+#[tokio::test]
+async fn a_lookup_over_its_bound_refuses_rather_than_choosing() {
+    let machine = machine();
+    let root = machine.path();
+    let mut program = fan_out(root);
+    program.steps[0]
+        .bounds
+        .insert("max_results".to_string(), json!(4));
+    let mut inputs = inputs();
+    inputs.tasks = inputs.tasks.into_iter().cycle().take(21).collect();
+
+    let traces = tempfile::tempdir().unwrap();
+    let mut recorder = Recorder::open(
+        traces.path(),
+        "kev-latest",
+        "stub",
+        &root.display().to_string(),
+    )
+    .unwrap();
+    let path = recorder.path().to_path_buf();
+    let run = runtime(root)
+        .await
+        .run(&program, &inputs, Some(&mut recorder))
+        .await;
+    drop(recorder);
+
+    let stopped = run.stopped.as_ref().expect("twenty-one is more than four");
+    assert_eq!(stopped.step, "select");
+    assert_eq!(stopped.code, "too_many_results");
+    assert!(run.steps.is_empty(), "{:?}", run.step_names());
+    assert!(run.delegations.is_empty());
+
+    let lookup = call_named(&path, "task_select");
+    assert_eq!(lookup.extra["overflow"], json!("refused"));
+    assert_eq!(lookup.extra["found"], json!(21));
+    assert_eq!(lookup.arguments["on_overflow"], json!("refuse"));
+}
+
+/// A query step names a source, and a slug this host cannot resolve
+/// refuses before the first step runs.
+#[tokio::test]
+async fn a_source_this_host_does_not_resolve_refuses_the_program() {
+    let machine = machine();
+    let root = machine.path();
+    let mut program = fan_out(root);
+    program.steps[0].source = Some("the-open-backlog".to_string());
+
+    let runtime = runtime(root).await;
+    let refused = runtime
+        .admit(&program)
+        .expect_err("this host has no such source");
+    assert_eq!(refused.step, "select");
+    assert_eq!(refused.code, "source_unresolved");
+    assert!(refused.reason.contains("the-open-backlog"), "{refused}");
+
+    let run = runtime.run(&program, &inputs(), None).await;
+    assert!(run.steps.is_empty(), "{:?}", run.step_names());
+    assert_eq!(run.stopped, Some(refused));
+}
+
+/// Work looked up from a source and work handed in by the request take the
+/// same path: the same ordering, the same bound, the same record, and the
+/// same delegations at the end of it.
+///
+/// The list this reads has a shared path and a declared order, which is
+/// what the open backlog has. The shared path is recorded and the declared
+/// order is enforced.
+#[tokio::test]
+async fn a_file_source_is_the_path_an_explicit_list_takes() {
+    let machine = machine();
+    let root = machine.path();
+    std::fs::create_dir_all(root.join("sources")).unwrap();
+    std::fs::write(
+        root.join("sources").join("backlog.json"),
+        json!({
+            "v": 1,
+            "slug": "backlog",
+            "name": "A work list, for a test",
+            "summary": "Reads the work list this checkout carries.",
+            "from": {"file": {"path": ".coder/work-list.json"}},
+            "order": "id"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join(".coder")).unwrap();
+    // Out of order on purpose, so the recorded order is the source's
+    // answer rather than the file's.
+    std::fs::write(
+        root.join(".coder").join("work-list.json"),
+        json!({
+            "v": 1,
+            "work": [
+                {"id": "9401", "prompt": QUESTIONS[0].0, "reads": QUESTIONS[0].1,
+                 "after": ["9391"]},
+                {"id": "9393", "prompt": QUESTIONS[3].0, "reads": QUESTIONS[3].1},
+                {"id": "9391", "prompt": QUESTIONS[1].0, "reads": QUESTIONS[1].1},
+                {"id": "9392", "prompt": QUESTIONS[2].0, "reads": QUESTIONS[2].1,
+                 "touches": [QUESTIONS[1].1]}
+            ]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let mut program = fan_out(root);
+    program.steps[0].source = Some("backlog".to_string());
+
+    let traces = tempfile::tempdir().unwrap();
+    let mut recorder = Recorder::open(
+        traces.path(),
+        "kev-latest",
+        "stub",
+        &root.display().to_string(),
+    )
+    .unwrap();
+    let path = recorder.path().to_path_buf();
+    let run = runtime(root)
+        .await
+        .run(&program, &inputs(), Some(&mut recorder))
+        .await;
+    drop(recorder);
+
+    assert_eq!(run.stopped, None, "{:?}", run.stopped);
+    assert_eq!(
+        run.step_names(),
+        ["select", "independence", "admit", "fan_out", "accept"],
+        "a queried list runs the same five steps an explicit one does"
+    );
+    assert_eq!(run.delegations.len(), 3);
+    assert_eq!(run.answered(), 3);
+
+    let lookup = call_named(&path, "task_select");
+    assert_eq!(lookup.arguments["source"], json!("backlog"));
+    assert_eq!(
+        lookup.arguments["from"],
+        json!("file .coder/work-list.json")
+    );
+    assert_eq!(lookup.arguments["order"], json!("id"));
+    assert_eq!(
+        lookup.extra["ordered"],
+        json!(["9391", "9392", "9393", "9401"]),
+        "the order is the source's, and the trace records it"
+    );
+    assert_eq!(lookup.extra["selected"], json!(["9391", "9392", "9393"]));
+    assert_eq!(lookup.extra["overflow"], json!("none"));
+
+    // #9391 must land before #9401, and that is in the list rather than in
+    // a judgment about it.
+    assert_eq!(lookup.extra["dropped"][0]["id"], json!("9401"));
+    assert!(
+        lookup.extra["dropped"][0]["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("9391")),
+        "{:?}",
+        lookup.extra["dropped"][0]
+    );
+
+    // Two items touch one file. The lookup says so; it does not decide
+    // what to do about it.
+    assert_eq!(
+        lookup.extra["collisions"],
+        json!([{"path": QUESTIONS[1].1, "work": ["9391", "9392"]}])
+    );
+
+    // And the decision that follows reads the collision rather than
+    // working it out.
+    let independence = decision_named(&path, "independence");
+    assert_eq!(
+        independence.arguments["state"]["collisions"][0]["path"],
+        json!(QUESTIONS[1].1)
+    );
+}
+
+/// A plan whose tasks touch six different files reads the way it always
+/// did. The collision record is added when there is one, so the answers
+/// #9414 measured stay comparable to the ones this asks for now.
+#[tokio::test]
+async fn a_plan_with_no_collisions_says_nothing_about_collisions() {
+    let machine = machine();
+    let root = machine.path();
+    let traces = tempfile::tempdir().unwrap();
+    let mut recorder = Recorder::open(
+        traces.path(),
+        "kev-latest",
+        "stub",
+        &root.display().to_string(),
+    )
+    .unwrap();
+    let path = recorder.path().to_path_buf();
+    runtime(root)
+        .await
+        .run(&fan_out(root), &inputs(), Some(&mut recorder))
+        .await;
+    drop(recorder);
+
+    let state = &decision_named(&path, "independence").arguments["state"];
+    assert_eq!(state["collisions"], Value::Null);
+    assert_eq!(state["tasks"][0]["id"], json!("t1"));
+    assert_eq!(state["tasks"][0]["touches"], Value::Null);
+    assert_eq!(state["tasks"][0]["after"], Value::Null);
+    assert!(
+        call_named(&path, "task_select")
+            .extra
+            .get("collisions")
+            .is_none(),
+        "the lookup found none, so it says nothing about them"
     );
 }
 
