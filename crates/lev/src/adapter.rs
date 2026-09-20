@@ -214,7 +214,7 @@ pub fn read_records(bytes: &[u8]) -> Result<Vec<Record>> {
     let mut records = Vec::with_capacity(count as usize);
     let mut cursor = ALIGNMENT;
     for index in 0..count {
-        if cursor % ALIGNMENT != 0 {
+        if !cursor.is_multiple_of(ALIGNMENT) {
             return Err(invalid(format!(
                 "record {index} starts at {cursor}, which is not {ALIGNMENT}-byte aligned"
             )));

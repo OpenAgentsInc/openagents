@@ -481,7 +481,6 @@ impl Door {
     }
 
     /// The router, ready to serve.
-    #[must_use]
     pub fn router(self: Arc<Self>) -> axum::Router {
         axum::Router::new()
             .route("/v1/systemone", post(system_one))
