@@ -257,6 +257,43 @@ async fn bounded<T>(test: impl Future<Output = T>) -> T {
         .expect("the test finishes inside its bound")
 }
 
+/// One request is answered once. The same event delivered again is set
+/// aside with one log line, and the next request, a different event,
+/// is answered as usual.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_request_delivered_twice_is_answered_once() {
+    bounded(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let worker = Worker::start(&url, &[], &[]);
+        let (mut socket, _) = subscribe(&listener).await;
+
+        let job = request(&json!({"v": 2, "task": "ping"}));
+        deliver(&mut socket, &job).await;
+        deliver(&mut socket, &job).await;
+        let result = answer(&published(&mut socket).await, &job);
+        assert_eq!(result["type"], "result", "{result}");
+        let line = worker.log_until("already delivered").await;
+        assert!(
+            line.starts_with(&format!("ignored {}", &job.id[..16])),
+            "{line}"
+        );
+
+        let next = request(&json!({"v": 2, "task": "pong"}));
+        deliver(&mut socket, &next).await;
+        let result = answer(&published(&mut socket).await, &next);
+        assert_eq!(result["type"], "result", "{result}");
+        let ignored = worker
+            .seen()
+            .await
+            .iter()
+            .filter(|line| line.contains("already delivered"))
+            .count();
+        assert_eq!(ignored, 1, "{:?}", worker.seen().await);
+    })
+    .await;
+}
+
 /// A relay that hangs up, and then is not there for a while, is a fault
 /// the service outlives: the worker connects again with backoff,
 /// subscribes again with the same filter, and answers the next job as if

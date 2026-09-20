@@ -67,9 +67,15 @@
 //! stated minutes is refused `timed_out`, so no request is left without
 //! an answer. Read [`docs/coder/worker-executor.md`] for that path.
 //!
+//! One request is answered once. An event whose ID the worker has already
+//! seen is set aside, and a request whose `created_at` is more than ten
+//! minutes old is refused `stale`: nothing on this path is stored, so an
+//! old request arriving now is a replay, not a job.
+//!
 //! Read [`docs/coder/relay-transport.md`] for the proof this binary was
 //! written to make possible.
 
+use std::collections::VecDeque;
 use std::env;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -113,6 +119,25 @@ const RECONNECT_CEILING: Duration = Duration::from_secs(60);
 /// refused `timed_out` by the worker itself, so the customer hears from
 /// someone either way.
 const DELEGATION_GRACE: Duration = Duration::from_secs(30);
+
+/// How far in the past a request's `created_at` may be before it is
+/// refused `stale`.
+///
+/// Every NIP-CJ kind is ephemeral, so a live request is at most a clock
+/// skew old. One older than this was published a while ago and is
+/// arriving again: a relay replaying its log, or someone replaying a
+/// captured event to spend this worker. It is signed by the customer,
+/// so the customer is told, and nothing is generated.
+const REQUEST_WINDOW: Duration = Duration::from_secs(10 * 60);
+
+/// How many request IDs the worker remembers to drop a second delivery.
+///
+/// One request is answered once. The relay may deliver the same event
+/// again after a reconnect or through a second subscription, and a
+/// replayed event inside [`REQUEST_WINDOW`] carries the same ID as the
+/// original; both are set aside. The memory is bounded so a long-running
+/// worker does not grow with every job it ever saw.
+const SEEN_REQUESTS: usize = 4096;
 
 const USAGE: &str = "\
 coder-worker — answer NIP-CJ job requests from a relay.
@@ -291,6 +316,7 @@ async fn serve(options: &Options) -> Result<(), String> {
         frames,
         tasks: JoinSet::new(),
         answered: 0,
+        seen: VecDeque::with_capacity(SEEN_REQUESTS),
     };
     let mut backoff = RECONNECT_FLOOR;
     loop {
@@ -348,6 +374,8 @@ struct Worker<'a> {
     frames: mpsc::UnboundedReceiver<Value>,
     tasks: JoinSet<Result<(), String>>,
     answered: usize,
+    /// IDs of the last [`SEEN_REQUESTS`] requests, oldest first.
+    seen: VecDeque<String>,
 }
 
 impl Worker<'_> {
@@ -437,6 +465,14 @@ impl Worker<'_> {
                         eprintln!("ignored {}: {why}", &request.id[..request.id.len().min(16)]);
                         continue;
                     }
+                    if self.seen.contains(&request.id) {
+                        eprintln!("ignored {}: already delivered", &request.id[..16]);
+                        continue;
+                    }
+                    if self.seen.len() == SEEN_REQUESTS {
+                        self.seen.pop_front();
+                    }
+                    self.seen.push_back(request.id.clone());
                     // Admission is decided here, before anything is spawned:
                     // a job over the bound is refused `busy` at once rather
                     // than queued behind work the terminal cannot see.
@@ -597,6 +633,18 @@ impl Job {
                 version,
                 "not_admitted",
                 "this worker does not answer requests from your pubkey".to_string(),
+            );
+        }
+
+        let age = unix_now().saturating_sub(request.created_at);
+        if age > REQUEST_WINDOW.as_secs() {
+            return refuse(
+                version,
+                "stale",
+                format!(
+                    "the request was created {age} s ago, past the {} s this worker answers",
+                    REQUEST_WINDOW.as_secs()
+                ),
             );
         }
 
@@ -892,12 +940,13 @@ mod tests {
     ) -> Value {
         let (_, _, conversation) = identities();
         let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
-        response_to_content(door, content, decline, allow, admitted).await
+        response_to_content(door, content, unix_now(), decline, allow, admitted).await
     }
 
     async fn response_to_content(
         door: Door,
         content: String,
+        created_at: u64,
         decline: Option<&str>,
         allow: Option<Vec<String>>,
         admitted: bool,
@@ -905,7 +954,7 @@ mod tests {
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             let (worker, client, conversation) = identities();
             let request = client.signer().sign(
-                unix_now(),
+                created_at,
                 REQUEST_KIND,
                 vec![Tag::new(vec!["p".into(), worker.pubkey().to_string()])],
                 content,
@@ -962,7 +1011,7 @@ mod tests {
             (not_json, "not JSON"),
             (not_object, "not a JSON object"),
         ] {
-            let refused = response_to_content(stub(), content, None, None, true).await;
+            let refused = response_to_content(stub(), content, unix_now(), None, None, true).await;
             assert_eq!(refused["v"], PAYLOAD_VERSION, "{refused}");
             assert_eq!(refused["type"], "status");
             assert_eq!(refused["status"], "error");
@@ -972,6 +1021,29 @@ mod tests {
                 "{refused}"
             );
         }
+    }
+
+    /// A request created long before it arrived is a replay, not a job:
+    /// refused `stale`, so the customer whose key signed it hears about
+    /// it and nothing is generated.
+    #[tokio::test]
+    async fn a_replayed_old_request_is_refused_stale() {
+        let (_, _, conversation) = identities();
+        let content = nip44::encrypt(
+            &json!({"v": 2, "task": "hello"}).to_string(),
+            &conversation,
+            [43; 32],
+        )
+        .unwrap();
+        let stub = || Door::Stub(StubGenerate::default());
+        let old = unix_now() - REQUEST_WINDOW.as_secs() - 60;
+        let refused = response_to_content(stub(), content.clone(), old, None, None, true).await;
+        assert_eq!(refused["v"], 2);
+        assert_eq!(refused["type"], "status");
+        assert_eq!(refused["code"], "stale", "{refused}");
+        let fresh = unix_now() - REQUEST_WINDOW.as_secs() + 60;
+        let answered = response_to_content(stub(), content, fresh, None, None, true).await;
+        assert_eq!(answered["type"], "result", "{answered}");
     }
 
     /// An event that is not a signed job request naming this worker is
