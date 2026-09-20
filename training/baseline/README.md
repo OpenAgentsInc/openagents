@@ -3,10 +3,15 @@
 Frozen sentence embeddings plus multinomial logistic regression, scored on the
 same suite and the same metric panel as every door in this repository.
 
-This is a measurement harness, not a door. It answers one question: on
-`support-v2`, does the cheapest supervised method beat the decision models we
-built? The answer, and what it implies, live in
+This started as a measurement harness and is now also a door. `baseline.py`
+answers one question offline: on `support-v2`, does the cheapest supervised
+method beat the decision models we built? The answer, and what it implies,
+live in
 [`docs/decision-models/2026-09-19-frozen-embedding-baseline.md`](../../docs/decision-models/2026-09-19-frozen-embedding-baseline.md).
+`door.py` serves the same head as a TypeSafe-compatible `POST /v1/systemone`
+server so the Gym scores it through the store like every other door; that run
+is
+[`docs/decision-models/2026-09-20-frozen-embedding-door.md`](../../docs/decision-models/2026-09-20-frozen-embedding-door.md).
 
 ## Why this is Python
 
@@ -24,9 +29,35 @@ JSON records and a document; that is the whole contract.
 
 ```sh
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python numpy scikit-learn sentence-transformers
+uv pip install --python .venv/bin/python -r requirements.lock
 ./run.sh
 .venv/bin/python compare.py
+```
+
+`requirements.lock` pins every package, with the CPU-only `torch` wheel. Nothing
+here needs a GPU.
+
+## Serving it as a door
+
+```sh
+.venv/bin/python door.py \
+  --suite ../../crates/gym/suites/support-v2-three-way.json \
+  --encoder BAAI/bge-base-en-v1.5 \
+  --revision a5beb1e3e68b9ab74eb54cfd186867f64f240e1a \
+  --port 8020
+```
+
+The door fits one head per Choice family on the suite's `calibration`
+partition at startup, then serves `GET /v1/models`, `GET /health`, and
+`POST /v1/systemone`. A Noul or a Score request, and a Choice whose options
+are not the fitted set, get HTTP 422 with the typed refusal envelope the Rust
+client reads (`error.code`), so the Gym records them as door refusals rather
+than harness failures. Score it with the unchanged Gym:
+
+```sh
+cargo run -p gym --bin gym -- eval --door baseline-bge=http://127.0.0.1:8020 \
+  --suite crates/gym/suites/support-v2-three-way.json --partition development \
+  --record crates/gym/results/support-v2-three-way.jsonl --timeout 120
 ```
 
 `run.sh` produces every row in the record: two suites, four featurizers, both
@@ -39,6 +70,8 @@ can check the document's numbers without owning the encoders.
 | File | Holds |
 | --- | --- |
 | `baseline.py` | the measurement: fit, score, refuse, and write the record |
+| `door.py` | the same head behind `POST /v1/systemone`, for the Gym to score through the store |
+| `requirements.lock` | every Python package pinned, CPU-only |
 | `panel.py` | accuracy, ECE, Brier, log loss, and confident errors, ported from `crates/gym/src/calibrate.rs` |
 | `check_panel.py` | proves that port scores the way the Rust does, on the Rust tests' own fixtures |
 | `compare.py` | the baseline against the doors, judged against the measured noise floor |

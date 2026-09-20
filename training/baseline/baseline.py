@@ -129,9 +129,9 @@ class FrozenEncoder:
         self.model.eval()
 
     def features(self, fit_states: list[str], score_states: list[str]) -> tuple[np.ndarray, np.ndarray]:
-        return self._encode(fit_states), self._encode(score_states)
+        return self.encode(fit_states), self.encode(score_states)
 
-    def _encode(self, states: list[str]) -> np.ndarray:
+    def encode(self, states: list[str]) -> np.ndarray:
         return np.asarray(
             self.model.encode(states, normalize_embeddings=True, batch_size=32, show_progress_bar=False),
             dtype=np.float64,
