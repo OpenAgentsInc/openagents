@@ -93,3 +93,26 @@ coderbench run /absolute/path/to/task.json \
 A fresh trace path is required. Do not disable preflight, change the expected
 answers to match a run, or treat the metadata sidecar as a substitute for a live
 driver observation.
+
+## Second observation, Linux host
+
+The same task passed on a Linux host on 2026-09-20 with the `bwrap`
+boundary backend, at source revision `85012cfd3` plus the worktree change
+this note ships with. Coder answered in 38.3 seconds; CoderBench verified
+six of six delegations against the task's expected answers and an unchanged
+workspace, and exited `0`. Trace SHA-256:
+`89151915a286dc6509b3694b4d1da5a1651a72c0ff427add3fbe6bcab81a9735`.
+
+The first Linux attempt at `85012cfd3` failed with three faults, all Coder's
+own residue rather than a delegate's: `.coder`, `.coder/worktrees`, and
+`.git/coder-worktrees.lock` were created and left behind. The macOS golden
+did not see them because that checkout already held them. Coder now locks
+the common Git directory itself and removes the empty checkout parents when
+the last checkout leaves, so the workspace comparison reads clean on a fresh
+clone. Read [`delegate.md`](../delegate.md#coordinate-checkout-creation-and-cleanup).
+
+Two environment facts the preflight depends on: the checkout's `origin` must
+read as the GitHub URL, so a host whose Git configuration rewrites URLs
+through a proxy needs `GIT_CONFIG_GLOBAL=/dev/null` for the run; and the
+Devin CLI's state directory must sit inside the approval's writable grant
+(`XDG_DATA_HOME`), as [`worker-executor.md`](../worker-executor.md) describes.

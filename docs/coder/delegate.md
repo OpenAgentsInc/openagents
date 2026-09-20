@@ -273,10 +273,15 @@ must not overlap: a parallel program test reproduced `git worktree add` reading
 a sibling's `commondir` while that sibling was removed, leaving only five of six
 delegations answered. This is tracked in #9442.
 
-Coder now serializes these operations with `coder-worktrees.lock` in the common
-Git directory. Linked checkouts and separate Coder processes use the same lock.
-The lock is advisory; external tools must cooperate with it for the same
-guarantee. Delegated work stays concurrent because it runs outside the lock.
+Coder now serializes these operations with an exclusive `flock` on the common
+Git directory itself. Linked checkouts and separate Coder processes use the
+same lock. The lock is advisory; external tools must cooperate with it for the
+same guarantee. Delegated work stays concurrent because it runs outside the
+lock. Locking the directory rather than a file in it, and removing
+`.coder/worktrees` and `.coder` when the last checkout leaves them empty, is
+what lets a read-only fan-out leave the workspace exactly as it found it: the
+CoderBench workspace comparison reads every path, and a lock file or an empty
+metadata directory would count as a write.
 
 Lock acquisition and each Git subprocess have a 30-second bound. Git output is
 capped at 64 KiB per stream. Coder reserves a new directory atomically, so a

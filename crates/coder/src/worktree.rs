@@ -1,9 +1,15 @@
 //! Serialized Git worktree metadata changes, with concurrent delegate work.
 //!
 //! Git reads other worktrees' metadata when adding a checkout. Removing a
-//! sibling then can make that read fail. The common Git directory holds an
-//! advisory lock shared by Coder processes, including linked checkouts. Other
-//! tools must cooperate with this lock to get the same guarantee.
+//! sibling then can make that read fail. The common Git directory itself is
+//! the advisory lock shared by Coder processes, including linked checkouts:
+//! `flock` on the directory, so the lock leaves no file behind in a
+//! workspace a read-only fan-out promised not to write. Other tools must
+//! cooperate with this lock to get the same guarantee.
+//!
+//! The checkout parents under `.coder/worktrees` are created when the first
+//! checkout needs them and removed, under the same lock, when the last
+//! checkout leaves them empty.
 
 use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
@@ -14,7 +20,6 @@ use supervise::{Job, Limits};
 
 const GIT_WALL: Duration = Duration::from_secs(30);
 const LOCK_WALL: Duration = Duration::from_secs(30);
-const LOCK_NAME: &str = "coder-worktrees.lock";
 
 /// A detached checkout owned by one delegation.
 #[derive(Debug)]
@@ -36,38 +41,49 @@ impl Worktree {
             let repository = repository
                 .canonicalize()
                 .map_err(|error| format!("cannot resolve repository: {error}"))?;
-            let mut parent = repository.clone();
-            for component in Path::new(crate::delegate::WORKTREE_DIR) {
-                parent.push(component);
-                match std::fs::create_dir(&parent) {
-                    Ok(()) => {}
-                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-                    Err(error) => return Err(format!("cannot create worktree parent: {error}")),
+            let path = locked(&repository, |repository| {
+                let mut parent = repository.to_path_buf();
+                for component in Path::new(crate::delegate::WORKTREE_DIR) {
+                    parent.push(component);
+                    match std::fs::create_dir(&parent) {
+                        Ok(()) => {}
+                        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                        Err(error) => {
+                            return Err(format!("cannot create worktree parent: {error}"));
+                        }
+                    }
+                    parent = parent
+                        .canonicalize()
+                        .map_err(|error| format!("cannot resolve worktree parent: {error}"))?;
+                    if !parent.starts_with(repository) {
+                        return Err(
+                            "worktree parent leaves the repository through a symlink".into()
+                        );
+                    }
                 }
-                parent = parent
-                    .canonicalize()
-                    .map_err(|error| format!("cannot resolve worktree parent: {error}"))?;
-                if !parent.starts_with(&repository) {
-                    return Err("worktree parent leaves the repository through a symlink".into());
+                // Reserve an empty directory atomically. A recycled PID must
+                // never cause failed creation to remove a previous run's
+                // checkout.
+                let path = loop {
+                    let path = parent.join(unique_name());
+                    match std::fs::create_dir(&path) {
+                        Ok(()) => break path,
+                        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                        Err(error) => return Err(format!("cannot reserve worktree: {error}")),
+                    }
+                };
+                if let Err(error) = mutate(repository, &path, true) {
+                    let _ = std::fs::remove_dir(&path);
+                    prune_parents(repository);
+                    return Err(error);
                 }
-            }
-            // Reserve an empty directory atomically. A recycled PID must
-            // never cause failed creation to remove a previous run's checkout.
-            let path = loop {
-                let path = parent.join(unique_name());
-                match std::fs::create_dir(&path) {
-                    Ok(()) => break path,
-                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                    Err(error) => return Err(format!("cannot reserve worktree: {error}")),
-                }
-            };
-            let worktree = Self {
+                Ok(path)
+            })?;
+            Ok(Self {
                 repository,
                 path,
                 active: AtomicBool::new(true),
-            };
-            mutate(&worktree.repository, &worktree.path, true)?;
-            Ok(worktree)
+            })
         })
         .await
         .map_err(|error| format!("worktree creation stopped: {error}"))?
@@ -98,7 +114,7 @@ impl Worktree {
     pub(crate) async fn close(self) -> Result<(), String> {
         tokio::task::spawn_blocking(move || {
             let worktree = self;
-            let result = mutate(&worktree.repository, &worktree.path, false);
+            let result = remove(&worktree.repository, &worktree.path);
             // A failed removal is reported with the retained path. Do not
             // silently retry after reporting that failure to the caller.
             worktree.active.store(false, Ordering::Release);
@@ -122,7 +138,7 @@ impl Drop for Worktree {
         if let Err(error) = std::thread::Builder::new()
             .name("coder-worktree-cleanup".into())
             .spawn(move || {
-                if let Err(error) = mutate(&repository, &path, false) {
+                if let Err(error) = remove(&repository, &path) {
                     eprintln!("worktree cleanup failed: {error}");
                 }
             })
@@ -132,16 +148,52 @@ impl Drop for Worktree {
     }
 }
 
-/// Runs off the caller's async runtime, so cancellation cannot release the
-/// metadata lock while the Git subprocess is still being terminated.
+/// Removes one checkout under the metadata lock, then the checkout parents
+/// when it was the last one.
+fn remove(repository: &Path, path: &Path) -> Result<(), String> {
+    locked(repository, |repository| {
+        let result = mutate(repository, path, false);
+        prune_parents(repository);
+        result
+    })
+}
+
+/// Removes `.coder/worktrees` and then `.coder` when each is empty. A
+/// parent another checkout still uses is not empty, and stays.
+fn prune_parents(repository: &Path) {
+    let mut parent = repository.join(crate::delegate::WORKTREE_DIR);
+    while parent != repository {
+        if std::fs::remove_dir(&parent).is_err() {
+            return;
+        }
+        let Some(next) = parent.parent() else { return };
+        parent = next.to_path_buf();
+    }
+}
+
+/// Runs one metadata transaction while holding the repository's lock. The
+/// lock is taken off the caller's async runtime, so cancellation cannot
+/// release it while a Git subprocess is still being terminated.
+fn locked<T>(
+    repository: &Path,
+    transaction: impl FnOnce(&Path) -> Result<T, String>,
+) -> Result<T, String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("cannot supervise Git: {error}"))?;
+    let common = runtime.block_on(common_directory(repository))?;
+    let _held = acquire(&common, LOCK_WALL)?;
+    transaction(repository)
+}
+
+/// Adds or removes one checkout. Call it with the metadata lock held.
 fn mutate(repository: &Path, path: &Path, create: bool) -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|error| format!("cannot supervise Git: {error}"))?;
     runtime.block_on(async {
-        let common = common_directory(repository).await?;
-        let _held = acquire(&common.join(LOCK_NAME), LOCK_WALL)?;
         let command = if create {
             git(repository)
                 .args(["worktree", "add", "--detach"])
@@ -198,13 +250,10 @@ pub(crate) async fn common_directory(repository: &Path) -> Result<PathBuf, Strin
         .map_err(|error| format!("cannot resolve {}: {error}", path.display()))
 }
 
+/// Takes an exclusive `flock` on a directory that already exists — the
+/// common Git directory — so no lock file is written into the workspace.
 fn acquire(path: &Path, wall: Duration) -> Result<File, String> {
-    let file = File::options()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path)
+    let file = File::open(path)
         .map_err(|error| format!("cannot open worktree lock {}: {error}", path.display()))?;
     let started = Instant::now();
     loop {
@@ -284,9 +333,9 @@ mod tests {
         let linked = Worktree::add(directory.path()).await.unwrap();
         let common = common_directory(directory.path()).await.unwrap();
         assert_eq!(common_directory(linked.path()).await.unwrap(), common);
-        let held = acquire(&common.join(LOCK_NAME), Duration::ZERO).unwrap();
+        let held = acquire(&common, Duration::ZERO).unwrap();
         let linked_common = common_directory(linked.path()).await.unwrap();
-        assert!(acquire(&linked_common.join(LOCK_NAME), Duration::ZERO).is_err());
+        assert!(acquire(&linked_common, Duration::ZERO).is_err());
         drop(held);
         linked.close().await.unwrap();
     }
@@ -314,11 +363,15 @@ mod tests {
             completed += 1;
         }
         assert_eq!(completed, 18);
-        assert_eq!(
-            std::fs::read_dir(directory.path().join(crate::delegate::WORKTREE_DIR))
-                .unwrap()
-                .count(),
-            0
+        // The last checkout out takes the empty parents with it, so a
+        // read-only fan-out leaves the workspace as it found it.
+        assert!(!directory.path().join(".coder").exists());
+        assert!(
+            !directory
+                .path()
+                .join(".git")
+                .join("coder-worktrees.lock")
+                .exists()
         );
         let listed = git(directory.path())
             .args(["worktree", "list", "--porcelain"])
@@ -339,7 +392,7 @@ mod tests {
     #[test]
     fn a_contended_metadata_lock_times_out_and_then_recovers() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join(LOCK_NAME);
+        let path = directory.path().to_path_buf();
         let held = acquire(&path, Duration::ZERO).unwrap();
         let error = acquire(&path, Duration::from_millis(30)).unwrap_err();
         assert!(error.contains("timed out"), "{error}");
@@ -350,7 +403,7 @@ mod tests {
     #[test]
     fn a_different_process_cannot_take_the_metadata_lock() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join(LOCK_NAME);
+        let path = directory.path().to_path_buf();
         let held = acquire(&path, Duration::ZERO).unwrap();
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
