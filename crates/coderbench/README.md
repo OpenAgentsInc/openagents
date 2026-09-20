@@ -15,9 +15,31 @@ coderbench diff devin-fan-out-six trace.jsonl   # judge a trace you have
 
 `run` refuses before it starts Coder when the machine does not hold what
 the task requires, and names the requirement that failed. It exits `0` for
-a clean run, `1` for faults, `2` for a refusal, and `3` when there is no
-trace to judge. [`../../docs/coderbench.md`](../../docs/coderbench.md) has
-the flags and the reasoning.
+a clean run, `1` for faults, `2` for a refusal, `3` when there is no trace
+to judge, and `4` when the evidence a judgment needs is missing.
+[`../../docs/coderbench.md`](../../docs/coderbench.md) has the flags and
+the reasoning.
+
+## A grade answers with three values
+
+`failed` beats `unverifiable` beats `passed`, which is `crates/gym`'s
+`gate::Verdict` and the same type rather than a second word for it. A
+delegation the trace records as wrong is a failure. A delegation that
+recorded no correctness either way is unverifiable: nobody checked it, and
+six silences are not six correct answers.
+
+Missing evidence never passes. The grade reads each call's outcome, the
+answers a decision returned, the order the steps came in, whether the trace
+closed itself and read back whole, the exit code the turn ended with, and
+the checkout as it was before and after the run. A task that forbids writes
+is judged against the workspace, because an absent `wrote` field is a run
+that said nothing rather than a run that wrote nothing.
+
+`tests/negative.rs` holds the runs that must not grade clean, starting with
+the one from audit finding A04
+([#9418](https://github.com/OpenAgentsInc/openagents/issues/9418)): six
+empty ungraded delegations, null decision answers, and the required check
+names, which drew no faults at all from the grader as it stood.
 
 ## What a golden is
 

@@ -209,7 +209,7 @@ pub fn output(mut command: Command, timeout: Duration) -> Result<Said, String> {
     // than reads.
     let directory = std::env::temp_dir().join(format!("coderbench-{}", std::process::id()));
     std::fs::create_dir_all(&directory).map_err(|error| format!("{error}"))?;
-    let stem = format!("{:x}", now_nanos());
+    let stem = format!("{:x}-{}", now_nanos(), next());
     let out = directory.join(format!("{stem}.out"));
     let err = directory.join(format!("{stem}.err"));
     command
@@ -267,6 +267,17 @@ fn now_nanos() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_nanos())
+}
+
+/// A number no other call in this process takes.
+///
+/// The clock is not enough on its own. Two calls from different threads can
+/// read the same nanosecond, and then one writes over the other's output
+/// file and deletes it — which reads as a command that answered with
+/// nothing rather than as two callers sharing a name.
+fn next() -> u64 {
+    static TAKEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    TAKEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 #[cfg(test)]

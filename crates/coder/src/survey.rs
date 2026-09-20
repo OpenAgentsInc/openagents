@@ -267,8 +267,16 @@ mod tests {
         recorder.finish(atif::log::ENDED);
 
         let run = coderbench::observe(&path).expect("the grader reads the trace");
-        assert!(run.checks.iter().any(|name| name == "capability_probe"));
-        assert!(run.checks.iter().any(|name| name == "program_registry"));
+        assert!(
+            run.checks
+                .iter()
+                .any(|check| check.name == "capability_probe")
+        );
+        assert!(
+            run.checks
+                .iter()
+                .any(|check| check.name == "program_registry")
+        );
         assert!(
             run.writes.is_empty(),
             "neither read writes anything the grader would count"

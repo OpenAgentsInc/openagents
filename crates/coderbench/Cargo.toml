@@ -8,6 +8,10 @@ publish = false
 
 [dependencies]
 atif = { path = "../atif" }
+# For `gate::Verdict`. A grade here answers with the same three values a
+# gate there does, and one vocabulary is the point: a second enum spelling
+# `unverifiable` would drift from this one.
+gym = { path = "../gym" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

@@ -217,11 +217,7 @@ fn expand(directory: &str) -> PathBuf {
 }
 
 /// Whether the capability is installed here, and at what version.
-fn capability(
-    slug: &str,
-    repository: &Path,
-    refuses: &BTreeMap<String, Vec<String>>,
-) -> Checked {
+fn capability(slug: &str, repository: &Path, refuses: &BTreeMap<String, Vec<String>>) -> Checked {
     let refused = refuses.get(slug).filter(|what| !what.is_empty());
     let requirement = match refused {
         Some(what) => format!("capability {slug}, which refuses {}", what.join(", ")),
@@ -376,6 +372,59 @@ fn unmodified(repository: &Path) -> Checked {
     }
 }
 
+/// What Git says about the checkout right now, one line per path.
+///
+/// Read once before the run and once after, and the difference is what the
+/// run wrote. That is the independent observation a task forbidding writes
+/// needs: a delegate that wrote a file and did not mention it leaves no
+/// `wrote` field behind, and a grade that reads only the trace would call
+/// that silence proof.
+///
+/// The comparison is what Git tracks and what it would show as untracked,
+/// so a write into an ignored path is outside it. A checkout is the unit
+/// here because it is the thing the task pins and the thing preflight
+/// already requires to be clean.
+///
+/// # Errors
+///
+/// Returns an error when the directory is not a checkout this can read.
+/// Unknown is the answer then, rather than an empty list, which would read
+/// as "nothing changed".
+pub fn worktree(repository: &Path) -> Result<Vec<String>, String> {
+    let status = git(
+        repository,
+        &["status", "--porcelain", "--untracked-files=all"],
+    )?;
+    Ok(status
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+/// The paths that differ between two readings of a checkout.
+///
+/// Both directions count. A run that deleted an untracked file changed the
+/// workspace as surely as one that added a file.
+#[must_use]
+pub fn changed(before: &[String], after: &[String]) -> Vec<String> {
+    let mut paths: Vec<String> = after
+        .iter()
+        .filter(|line| !before.contains(line))
+        .chain(before.iter().filter(|line| !after.contains(line)))
+        .map(|line| named(line))
+        .collect();
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+/// The path a porcelain status line names, without its two status columns.
+fn named(line: &str) -> String {
+    line.get(3..).unwrap_or(line).trim().to_string()
+}
+
 /// The first twelve characters of a commit, which is what a person reads.
 fn short(commit: &str) -> String {
     commit.chars().take(12).collect()
@@ -454,5 +503,23 @@ mod tests {
     fn resolving_finds_what_is_installed() {
         assert!(resolve("sh").is_some());
         assert!(resolve("not-a-binary-anybody-installed").is_none());
+    }
+
+    /// A file that appeared and a file that went away are both changes, and
+    /// a workspace nobody touched reports none.
+    #[test]
+    fn a_workspace_reads_both_directions() {
+        let before = vec!["?? scratch.txt".to_string(), " M docs/one.md".to_string()];
+        let after = vec![" M docs/one.md".to_string(), "?? written.txt".to_string()];
+        assert_eq!(changed(&before, &after), vec!["scratch.txt", "written.txt"]);
+        assert!(changed(&before, &before).is_empty());
+    }
+
+    /// A directory that is not a checkout answers "unknown" rather than
+    /// "nothing changed".
+    #[test]
+    fn a_directory_that_is_not_a_checkout_says_so() {
+        let directory = tempfile::tempdir().unwrap();
+        assert!(worktree(directory.path()).is_err());
     }
 }

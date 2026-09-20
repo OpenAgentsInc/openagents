@@ -15,13 +15,19 @@
 //! commit, or without the executor the task delegates to, produces faults
 //! that are about the machine, and somebody spends an afternoon reading
 //! them as faults in the agent.
+//!
+//! `run` is also the only mode that can hand back a pass. It sees the exit
+//! code, and it reads the checkout before and after, so it can say how the
+//! episode ended and what it wrote. `diff` sees a file. A trace does not
+//! carry either fact, so a hand-judged trace is `unverifiable` at best —
+//! which is the honest answer, not a shortcoming to route around.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use coderbench::drive::{self, Outcome};
 use coderbench::preflight;
-use coderbench::{Observed, Task, load_task, observe};
+use coderbench::{Observed, Task, Verdict, Workspace, load_task, observe};
 
 /// The run took the path the task expects.
 const EXIT_CLEAN: u8 = 0;
@@ -31,6 +37,9 @@ const EXIT_FAULTS: u8 = 1;
 const EXIT_REFUSED: u8 = 2;
 /// There is nothing to judge: no trace, or one that will not read back.
 const EXIT_NO_TRACE: u8 = 3;
+/// The evidence a judgment needs is missing. Not a pass, and not a fault in
+/// the agent.
+const EXIT_UNVERIFIABLE: u8 = 4;
 /// The command line was wrong. The code headless mode uses, for the same
 /// reason: it sits outside the codes a judgment produces.
 const EXIT_USAGE: u8 = 64;
@@ -56,10 +65,11 @@ Options for run:
 <TASK> is a task identifier, or a path to a task.json.
 
 Exit codes:
-  0   The run took the path the task expects.
+  0   The run took the path the task expects, and the evidence shows it.
   1   The run left the path. Every fault is printed.
   2   The machine does not hold what the task requires. Nothing ran.
   3   There is no trace to judge.
+  4   The evidence a judgment needs is missing. Not a pass.
   64  The command line was wrong.";
 
 fn main() {
@@ -234,6 +244,11 @@ fn run(options: &Options) -> u8 {
     println!();
     println!("Running…");
 
+    // What the checkout looks like before the run, so what it looks like
+    // afterwards means something. A task that forbids writes is graded
+    // against this rather than against what the run says about itself.
+    let before = preflight::worktree(&repository);
+
     let ran = match drive::coder(&binary, &repository, &task.request, &trace, timeout) {
         Ok(ran) => ran,
         Err(why) => return complain(&why, EXIT_NO_TRACE),
@@ -254,11 +269,23 @@ fn run(options: &Options) -> u8 {
 
     // A turn that did not finish still recorded what it got to, and those
     // steps are worth judging. Only a missing trace stops the judgment.
-    let run = match observe(&ran.trace) {
+    let mut run = match observe(&ran.trace) {
         Ok(run) => run,
         Err(why) => {
             return complain(&format!("nothing to judge — {why}"), EXIT_NO_TRACE);
         }
+    };
+    // How the turn ended is a grading fact, not a line of commentary. A
+    // run that timed out with the expected names in its partial trace is
+    // not a clean run.
+    run.ending = ran.outcome.into();
+    run.workspace = match (before, preflight::worktree(&repository)) {
+        (Ok(before), Ok(after)) => Some(Workspace {
+            changed: preflight::changed(&before, &after),
+        }),
+        // Neither reading is a list of writes on its own, so one of them
+        // failing leaves the question open rather than answered.
+        _ => None,
     };
     report(&task, &run, &ran.trace)
 }
@@ -279,10 +306,10 @@ fn diff(name: &str, trace: &Path) -> u8 {
 
 /// Prints what the run did, then every way it left the path.
 fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
-    let correct = run
+    let verified = run
         .delegations
         .iter()
-        .filter(|delegation| delegation.correct == Some(true))
+        .filter(|delegation| delegation.verified())
         .count();
     println!();
     println!("What the trace holds:");
@@ -304,30 +331,73 @@ fn report(task: &Task, run: &Observed, trace: &Path) -> u8 {
         if run.checks.is_empty() {
             "none".to_string()
         } else {
-            run.checks.join(", ")
+            run.checks
+                .iter()
+                .map(|check| check.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
         }
     );
     println!(
-        "  delegations    {} started, {correct} correct",
+        "  delegations    {} started, {verified} verified correct",
         run.delegations.len()
     );
-    println!("  writes         {}", run.writes.len());
+    println!(
+        "  writes         {}",
+        match &run.workspace {
+            Some(workspace) if workspace.changed.is_empty() =>
+                "the workspace is unchanged".to_string(),
+            Some(workspace) => format!(
+                "{} changed in the workspace: {}",
+                workspace.changed.len(),
+                workspace.changed.join(", ")
+            ),
+            None => format!(
+                "{} self-reported, and nobody looked at the workspace",
+                run.writes.len()
+            ),
+        }
+    );
+    println!(
+        "  ended          {}{}",
+        run.ending,
+        if run.closed {
+            String::new()
+        } else {
+            ", with no end record".to_string()
+        }
+    );
+    if run.unreadable_lines > 0 {
+        println!("  unreadable     {} lines", run.unreadable_lines);
+    }
 
-    let faults = task.judge(run);
+    let judgment = task.judge(run);
     println!();
-    if faults.is_empty() {
+    if judgment.faults.is_empty() {
         println!("No faults. The run took the path {} expects.", task.id);
         return EXIT_CLEAN;
     }
     println!(
-        "{} fault{}, in the order the path takes:",
-        faults.len(),
-        if faults.len() == 1 { "" } else { "s" }
+        "{}: {} fault{}, in the order the path takes:",
+        judgment.verdict,
+        judgment.faults.len(),
+        if judgment.faults.len() == 1 { "" } else { "s" }
     );
-    for (index, fault) in faults.iter().enumerate() {
-        println!("  {:>2}. {}", index + 1, fault);
+    for (index, fault) in judgment.faults.iter().enumerate() {
+        println!("  {:>2}. [{}] {}", index + 1, fault.verdict(), fault);
     }
-    EXIT_FAULTS
+    if judgment.verdict == Verdict::Unverifiable {
+        println!();
+        println!(
+            "Nothing here says the run left the path. It says the evidence to show it \
+             took the path is missing, which is not a pass."
+        );
+    }
+    match judgment.verdict {
+        Verdict::Passed => EXIT_CLEAN,
+        Verdict::Unverifiable => EXIT_UNVERIFIABLE,
+        Verdict::Failed => EXIT_FAULTS,
+    }
 }
 
 /// A trace path no run has taken, under a directory that is not the

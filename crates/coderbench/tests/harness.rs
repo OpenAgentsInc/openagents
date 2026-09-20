@@ -7,9 +7,14 @@
 //!
 //! Coder stands in as a script here. What is under test is the harness —
 //! whether it refuses before starting anything, whether it finds the trace
-//! it named, and whether the fault list reads in path order — and a real
-//! agent would make every one of those answers slower and none of them
-//! clearer.
+//! it named, whether the fault list reads in path order, and whether a run
+//! that timed out or wrote a file can still exit clean — and a real agent
+//! would make every one of those answers slower and none of them clearer.
+//!
+//! Every run names its own temporary checkout with `--repository`. The
+//! harness reads the checkout before and after to see what the run wrote,
+//! and pointing that at the workspace this test runs in would read whatever
+//! else was happening on the machine.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -33,12 +38,18 @@ fn said(output: &Output) -> String {
 /// A stand-in for Coder: it copies `trace` into the file the harness named
 /// and reports one JSON object, which is what `coder -p --json` does.
 fn fake_coder(directory: &Path, trace: &Path, exit: u8) -> PathBuf {
+    fake_coder_that(directory, trace, exit, "")
+}
+
+/// The same stand-in with one more line of shell after the copy, for a run
+/// that takes too long or writes where it should not.
+fn fake_coder_that(directory: &Path, trace: &Path, exit: u8, then: &str) -> PathBuf {
     let script = directory.join("fake-coder");
     std::fs::write(
         &script,
         format!(
             "#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  case \"$1\" in\n    --trace) named=\"$2\"; \
-             shift 2;;\n    *) shift;;\n  esac\ndone\ncp '{}' \"$named\"\necho \
+             shift 2;;\n    *) shift;;\n  esac\ndone\ncp '{}' \"$named\"\n{then}\necho \
              '{{\"reply\":\"done\",\"outcome\":\"answered\"}}'\nexit {exit}\n",
             trace.display()
         ),
@@ -74,7 +85,8 @@ fn task_with(directory: &Path, requires: &str, id: &str) -> PathBuf {
     "decisions": ["program", "independence"],
     "checks": ["admission_check", "capability_probe", "program_registry"],
     "path": ["capability_probe", "program_registry", "program", "independence",
-             "admission_check", "delegate"]
+             "admission_check", "delegate"],
+    "endings": ["answered"]
   }},
   "timeout_secs": 60
 }}
@@ -115,7 +127,7 @@ fn empty_handed(directory: &Path) -> PathBuf {
 }
 
 /// A checkout with one commit, so the base check has something true to
-/// compare against.
+/// compare against and the workspace reading has a checkout to read.
 fn checkout(directory: &Path) -> String {
     let git = |arguments: &[&str]| {
         let output = Command::new("git")
@@ -140,8 +152,17 @@ fn checkout(directory: &Path) -> String {
     git(&["rev-parse", "HEAD"])
 }
 
-/// A run drives Coder, reads back the trace it named, and says the run
-/// took the path when it did.
+/// A directory holding a fresh checkout, which is what a run needs before
+/// it can say anything about what the run wrote.
+fn repository(directory: &Path) -> PathBuf {
+    let repository = directory.join("checkout");
+    std::fs::create_dir(&repository).unwrap();
+    checkout(&repository);
+    repository
+}
+
+/// A run drives Coder, reads back the trace it named, and says the run took
+/// the path when it did.
 #[test]
 fn a_run_judges_the_trace_it_captured() {
     let directory = tempfile::tempdir().unwrap();
@@ -152,6 +173,8 @@ fn a_run_judges_the_trace_it_captured() {
     let output = coderbench(&[
         "run",
         &task.display().to_string(),
+        "--repository",
+        &repository(directory.path()).display().to_string(),
         "--coder",
         &coder.display().to_string(),
         "--trace",
@@ -161,7 +184,8 @@ fn a_run_judges_the_trace_it_captured() {
     let report = said(&output);
     assert_eq!(output.status.code(), Some(0), "{report}");
     assert!(report.contains("No faults"), "{report}");
-    assert!(report.contains("6 started, 6 correct"), "{report}");
+    assert!(report.contains("6 started, 6 verified correct"), "{report}");
+    assert!(report.contains("the workspace is unchanged"), "{report}");
     assert!(trace.exists(), "the harness reads the file it named");
 }
 
@@ -179,6 +203,8 @@ fn faults_read_in_the_order_the_path_takes() {
     let output = coderbench(&[
         "run",
         &task.display().to_string(),
+        "--repository",
+        &repository(directory.path()).display().to_string(),
         "--coder",
         &coder.display().to_string(),
         "--trace",
@@ -213,9 +239,7 @@ fn faults_read_in_the_order_the_path_takes() {
 #[test]
 fn a_wrong_commit_refuses_before_the_run() {
     let directory = tempfile::tempdir().unwrap();
-    let repository = directory.path().join("checkout");
-    std::fs::create_dir(&repository).unwrap();
-    checkout(&repository);
+    let repository = repository(directory.path());
     let base = "0".repeat(40);
     let task = task_with(
         directory.path(),
@@ -279,20 +303,127 @@ fn the_right_commit_holds_the_requirement() {
     assert!(report.contains("No faults"), "{report}");
 }
 
+/// A run that ran past the task's timeout is not a clean run, however
+/// complete the trace it left behind looks.
+///
+/// This is the case the driver used to print and drop: it said "ran past
+/// the timeout" on one line and handed back the trace grade on the next.
+/// The trace here is the whole golden, so every name the task asks for is
+/// present and the only thing wrong is how the episode ended.
+#[test]
+fn a_timed_out_run_is_not_a_clean_run() {
+    let directory = tempfile::tempdir().unwrap();
+    let task = task_with(directory.path(), r#"{}"#, "slow");
+    let coder = fake_coder_that(directory.path(), &golden(), 0, "sleep 30");
+    let trace = directory.path().join("run.atif.jsonl");
+
+    let output = coderbench(&[
+        "run",
+        &task.display().to_string(),
+        "--repository",
+        &repository(directory.path()).display().to_string(),
+        "--coder",
+        &coder.display().to_string(),
+        "--trace",
+        &trace.display().to_string(),
+        "--timeout",
+        "1",
+    ]);
+
+    let report = said(&output);
+    assert_eq!(output.status.code(), Some(1), "{report}");
+    assert!(
+        report.contains("the episode timed_out; the task allows answered"),
+        "{report}"
+    );
+}
+
+/// A file the run wrote and never mentioned is still a write, because the
+/// workspace is read rather than asked.
+#[test]
+fn a_write_nobody_reported_is_still_a_write() {
+    let directory = tempfile::tempdir().unwrap();
+    let task = task_with(directory.path(), r#"{}"#, "wrote");
+    let coder = fake_coder_that(directory.path(), &golden(), 0, "echo one > souvenir.txt");
+    let trace = directory.path().join("run.atif.jsonl");
+
+    let output = coderbench(&[
+        "run",
+        &task.display().to_string(),
+        "--repository",
+        &repository(directory.path()).display().to_string(),
+        "--coder",
+        &coder.display().to_string(),
+        "--trace",
+        &trace.display().to_string(),
+    ]);
+
+    let report = said(&output);
+    assert_eq!(output.status.code(), Some(1), "{report}");
+    assert!(
+        report.contains("wrote souvenir.txt, expected no writes"),
+        "{report}"
+    );
+}
+
+/// A directory the workspace reading cannot read leaves the write question
+/// open. That is exit 4, not exit 0: nobody showed the run wrote nothing.
+#[test]
+fn a_workspace_nobody_could_read_is_not_a_pass() {
+    let directory = tempfile::tempdir().unwrap();
+    let elsewhere = directory.path().join("not-a-checkout");
+    std::fs::create_dir(&elsewhere).unwrap();
+    let task = task_with(directory.path(), r#"{}"#, "unreadable");
+    let coder = fake_coder(directory.path(), &golden(), 0);
+    let trace = directory.path().join("run.atif.jsonl");
+
+    let output = coderbench(&[
+        "run",
+        &task.display().to_string(),
+        "--repository",
+        &elsewhere.display().to_string(),
+        "--coder",
+        &coder.display().to_string(),
+        "--trace",
+        &trace.display().to_string(),
+    ]);
+
+    let report = said(&output);
+    assert_eq!(output.status.code(), Some(4), "{report}");
+    assert!(report.contains("unverifiable"), "{report}");
+    assert!(
+        report.contains("nothing compared the workspace"),
+        "{report}"
+    );
+}
+
 /// `diff` judges a trace that already exists and runs nothing.
+///
+/// A trace cannot carry the exit code or the workspace, so the best a diff
+/// of a clean trace can answer is `unverifiable`. A trace that took none of
+/// the path still fails, because a fault that was measured beats evidence
+/// that was not.
 #[test]
 fn a_diff_judges_a_trace_that_already_exists() {
     let output = coderbench(&["diff", "devin-fan-out-six", &golden().display().to_string()]);
     let report = said(&output);
-    assert_eq!(output.status.code(), Some(0), "{report}");
-    assert!(report.contains("No faults"), "{report}");
+    assert_eq!(output.status.code(), Some(4), "{report}");
+    assert!(report.contains("unverifiable: 2 faults"), "{report}");
+    assert!(
+        report.contains("nothing compared the workspace"),
+        "{report}"
+    );
+    assert!(
+        report.contains("the trace closed without saying how the episode ended"),
+        "{report}"
+    );
 
     let directory = tempfile::tempdir().unwrap();
     let nothing = empty_handed(directory.path());
     let output = coderbench(&["diff", "devin-fan-out-six", &nothing.display().to_string()]);
     let report = said(&output);
     assert_eq!(output.status.code(), Some(1), "{report}");
-    assert!(report.contains("7 faults"), "{report}");
+    assert!(report.contains("failed: 10 faults"), "{report}");
 }
 
 /// A trace that is not there is not a judgment, and it is not a clean run

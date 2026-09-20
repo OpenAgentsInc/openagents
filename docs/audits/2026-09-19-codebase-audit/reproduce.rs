@@ -120,6 +120,7 @@ async fn main() {
                 id: i.to_string(),
                 output: String::new(),
                 milliseconds: 0,
+                outcome: atif::Outcome::Completed,
                 correct: None,
             })
             .collect(),
@@ -127,15 +128,34 @@ async fn main() {
             .grade
             .decisions
             .iter()
-            .map(|x| (x.clone(), serde_json::Value::Null))
+            .map(|x| {
+                (
+                    x.clone(),
+                    coderbench::Asked {
+                        answers: serde_json::Value::Null,
+                        outcome: atif::Outcome::Completed,
+                    },
+                )
+            })
             .collect(),
-        checks: task.grade.checks.clone(),
+        checks: task
+            .grade
+            .checks
+            .iter()
+            .map(|x| coderbench::Check {
+                name: x.clone(),
+                outcome: atif::Outcome::Completed,
+            })
+            .collect(),
         writes: vec![],
+        ..Default::default()
     };
+    let judgment = task.judge(&run);
     println!(
-        "unverified_delegations_required_correct={} faults={:?}",
+        "unverified_delegations_required_correct={} verdict={} faults={:?}",
         task.grade.delegations_correct,
-        task.judge(&run)
+        judgment.verdict,
+        judgment.faults
     );
 
     let decoded = jev::SystemOneResponse::decode(jev::RawResponse {

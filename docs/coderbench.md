@@ -43,11 +43,68 @@ what the agent said is readable next to what it did.
 
 | Exit code | Meaning |
 | --- | --- |
-| `0` | The run took the path the task expects. |
+| `0` | The run took the path the task expects, and the evidence shows it. |
 | `1` | The run left the path. Every fault is printed. |
 | `2` | The machine does not hold what the task requires. Nothing ran. |
 | `3` | There is no trace to judge. |
+| `4` | The evidence a judgment needs is missing. Not a pass. |
 | `64` | The command line was wrong. |
+
+## A grade answers with three values
+
+`failed` beats `unverifiable` beats `passed`. The vocabulary and the
+precedence are `crates/gym`'s `gate::Verdict`, and this crate uses that type
+rather than a second word for the same idea. Each fault carries its own
+verdict, and the run's verdict is the strongest one in the list.
+
+The split is what the grade is for. These are different states, and only one
+of them is a fault in the agent:
+
+- A delegation the trace records as wrong is **failed**.
+- A delegation that recorded no correctness either way is **unverifiable**.
+  Nobody checked it. Six of those are not six correct answers, and a task
+  that requires six correct answers does not get them from six silences.
+- A trace nobody compared against the workspace is **unverifiable** about
+  writes. An absent `wrote` field is a run that said nothing, not a run that
+  wrote nothing.
+
+Missing evidence never passes. That is the whole of audit finding A04
+([#9418](https://github.com/OpenAgentsInc/openagents/issues/9418)): a
+constructed run with six empty ungraded delegations, null decision answers,
+and the required check names drew no faults at all from a task requiring six
+correct delegations. `crates/coderbench/tests/negative.rs` holds that run and
+the other cases that must not grade clean.
+
+### What the grade reads
+
+| Evidence | Where it comes from | Missing means |
+| --- | --- | --- |
+| Call outcome | each call's `outcome` in the trace | a failed check or delegation is a fault, not a name that was present |
+| Decision answers | the decision call's `answers` | a null answer is `unverifiable`, and `grade.answers` states the predicate the run gates on |
+| Step order | the order calls appear, against `grade.path` | a step that ran before one the path puts first is a fault |
+| Trace integrity | the end record and the unreadable-line count | no end record is **failed**; a torn line is `unverifiable` |
+| Terminal outcome | Coder's exit code, against `grade.endings` | a timed-out or declined run cannot exit clean on a partial trace |
+| Writes | the checkout read before and after the run | nobody looked is `unverifiable` |
+
+`grade.endings` defaults to `answered`. Stating it per task is what keeps a
+run that ran past its timeout from grading clean because the trace it left
+holds the expected names.
+
+### `diff` cannot hand back a pass
+
+A trace does not carry the exit code, and it does not carry the checkout. So
+`coderbench diff` on a clean trace answers `unverifiable` with two faults,
+which is the honest answer rather than a shortcoming to route around:
+
+```text
+unverifiable: 2 faults, in the order the path takes:
+   1. [unverifiable] nothing compared the workspace, so writing nothing is unobserved rather than shown
+   2. [unverifiable] the trace closed without saying how the episode ended; the task allows answered
+```
+
+`coderbench run` sees both. It reads the checkout before it starts Coder and
+again after, and it reads the exit code, so it is the mode that can say a run
+passed.
 
 ### It refuses before it runs anything
 
@@ -117,6 +174,13 @@ half would be worth nothing.
 It did not affect the run: the fan-out gated on `independent`, and admission
 gated on the deterministic bounds check rather than on
 `needs_tool_restriction`, which carried no signal anyway.
+
+It does not affect the grade either, and that is deliberate. The task's
+`grade.answers` names two predicates — the program choice, and `independent`
+at 0.7 or above — because those are the two the run acts on. Grading
+`readonly` here would measure the door rather than the path, and the door is
+`crates/gym`'s subject. A task predicate the run never reads would fail a
+correct path for a wrong answer nothing depended on.
 
 ### Two corrections to this call
 

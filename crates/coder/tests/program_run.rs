@@ -414,6 +414,9 @@ async fn the_recorded_run_is_the_path_the_task_expects() {
     let runtime = runtime(root).await;
     runtime.survey().record(&mut recorder, None);
     let run = runtime.apply(&inputs, Some(&mut recorder)).await;
+    // A session that ran to the end closes itself, and the grade reads
+    // the end record: a trace without one is a session that stopped.
+    recorder.finish(atif::log::ENDED);
     drop(recorder);
 
     assert_eq!(run.stopped, None, "{:?}", run.stopped);
@@ -472,20 +475,30 @@ async fn the_recorded_run_is_the_path_the_task_expects() {
             .join("task.json"),
     )
     .expect("the task manifest loads");
-    let observed = coderbench::observe(&path).expect("the grader reads the trace");
+    let mut observed = coderbench::observe(&path).expect("the grader reads the trace");
     assert_eq!(observed.program.as_deref(), Some("delegate-fan-out"));
     assert_eq!(observed.delegations.len(), 6);
     assert!(observed.writes.is_empty());
 
-    let faults = task.judge(&observed);
+    // The grade wants two facts a trace cannot carry: how the turn ended,
+    // which only an exit code says, and what the workspace looked like
+    // before and after, which only whoever started the run can compare.
+    // This test is that caller — it drove the runtime in process against a
+    // machine it built — so it states them rather than leaving the grade
+    // unverifiable on evidence it has.
+    observed.ending = coderbench::Ending::Answered;
+    observed.workspace = Some(coderbench::Workspace::default());
+
+    let judgment = task.judge(&observed);
     assert!(
-        !faults.iter().any(|fault| matches!(
+        !judgment.faults.iter().any(|fault| matches!(
             fault,
             coderbench::Fault::DecisionMissing { .. } | coderbench::Fault::CheckMissing { .. }
         )),
-        "every decision and check the task names was made: {faults:?}"
+        "every decision and check the task names was made: {:?}",
+        judgment.faults
     );
-    assert!(faults.is_empty(), "{faults:?}");
+    assert!(judgment.passed(), "{:?}", judgment.faults);
 }
 
 /// A step whose bounds this host cannot enforce does not run, and neither
@@ -860,13 +873,14 @@ async fn the_first_program_runs_live() {
             .join("task.json"),
     )
     .unwrap();
-    let faults = task.judge(&observed);
-    println!("faults: {faults:?}");
+    let judgment = task.judge(&observed);
+    println!("{}: {:?}", judgment.verdict, judgment.faults);
     assert!(
-        !faults.iter().any(|fault| matches!(
+        !judgment.faults.iter().any(|fault| matches!(
             fault,
             coderbench::Fault::DecisionMissing { .. } | coderbench::Fault::CheckMissing { .. }
         )),
-        "{faults:?}"
+        "{:?}",
+        judgment.faults
     );
 }

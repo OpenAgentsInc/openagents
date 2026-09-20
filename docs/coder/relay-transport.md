@@ -115,6 +115,12 @@ traces and eighteen relay traces, one fault list between them. A golden
 that passed on one and failed on the other would have found a transport
 bug or an over-specified golden. Neither is there.
 
+That fault list is the grader as it stood on 2026-09-19. Audit finding A04
+([#9418](https://github.com/OpenAgentsInc/openagents/issues/9418)) added
+faults about evidence a trace cannot carry, so the same command on the same
+files now prints more of them and exits `1` for the same reason. What was
+measured here — both transports judged identically — is unchanged.
+
 ## Latency, per transport
 
 Eighteen alternating pairs on a developer Mac that was **not quiet** —

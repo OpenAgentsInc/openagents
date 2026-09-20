@@ -85,6 +85,27 @@ The historical A18 reproduction remains evidence for its pinned snapshot;
 #9427 and the #9413 blockers remain open for the unmet trust and enforcement
 criteria. This update does not claim a full audit of the newly landed runtime.
 
+## Implementation that has landed
+
+**A04 is fixed.** `Task::judge` answers with `gym::gate::Verdict`, so a run is
+`passed`, `unverifiable`, or `failed` rather than clean or faulted.
+`delegations_correct` is enforced against delegations the trace records as
+completed, correct, and holding an answer; an unknown correctness value is a
+named fault and never counts. Observation keeps each call's outcome, the
+answers a decision returned, the order the steps came in, the end record, and
+the unreadable-line count. A task states the terminal outcomes it allows and
+the decision predicates the run gates on, and the driver makes the exit code a
+grading fault rather than a printed line. A task that forbids writes is judged
+against the checkout read before and after the run, so an absent `wrote` field
+is unknown rather than proof.
+
+`crates/coderbench/tests/negative.rs` holds the runs that must not grade clean,
+starting with the constructed run this finding was reproduced with.
+`coderbench diff` on the staged golden now exits `4`: a trace carries neither
+the exit code nor the workspace. The golden's provenance is unchanged, and
+[#9404](https://github.com/OpenAgentsInc/openagents/issues/9404) still owns
+replacing it with a run Coder drove.
+
 ## Recorded dependencies and follow-ups
 
 GitHub records #9413 as blocked by [#9415](https://github.com/OpenAgentsInc/openagents/issues/9415),

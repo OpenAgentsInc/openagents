@@ -77,6 +77,14 @@ An earlier run admitted 15 of 16 first readers; the last run admitted all 16.
 The race count and elapsed milliseconds depend on scheduling. The defect is
 accepting more than one first reader, not a particular count. The harness prints
 observations rather than treating these buggy outcomes as requirements to retain.
+The output above is the final snapshot's. Remediation changes it where a
+finding is fixed, and the harness is updated to keep compiling against the API
+it probes. A04's line now reads
+`unverified_delegations_required_correct=6 verdict=failed faults=[...]`, naming
+the six unchecked delegations, the shortfall against `delegations_correct`, the
+two decisions that answered null, the unread workspace, and the absent end
+record. The [remediation register](remediation.md) records which findings have
+landed.
 
 To reproduce from the repository root on a Unix host with Rust 1.95.0 and the
 dependencies available, create an external temporary package:

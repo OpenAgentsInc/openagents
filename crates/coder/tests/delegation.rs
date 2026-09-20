@@ -158,7 +158,7 @@ async fn six_recorded_delegations_read_back_as_the_golden_does() {
     assert_eq!(
         run.checks
             .iter()
-            .filter(|name| *name == DELEGATE_CALL)
+            .filter(|check| check.name == DELEGATE_CALL)
             .count(),
         6
     );
