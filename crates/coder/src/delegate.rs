@@ -768,6 +768,28 @@ pub struct EnforcedBoundary {
     pub sealed: Vec<PathBuf>,
 }
 
+/// Where a delegation went when it did not run on this machine: the
+/// NIP-CJ job that carried it, and the worker that took it.
+///
+/// A delegation that carries this ran nothing here. Its `binary` is the
+/// relay URL and its `workdir` is the worker's key, because that is where
+/// the work went, and its `boundary` is `None` because the boundary that
+/// held it is the worker's, which this host cannot see and does not
+/// claim.
+#[derive(Clone, Debug)]
+pub struct Relayed {
+    /// The relay the job was published to.
+    pub relay: String,
+    /// The worker's public key, hex, as the request's `p` tag named it.
+    pub worker: String,
+    /// The kind-25900 request event's ID.
+    pub request: String,
+    /// The model the worker named in its result, when it answered.
+    pub model: Option<String>,
+    /// How many kind-27000 feedback events arrived before the result.
+    pub feedback: usize,
+}
+
 /// One delegated session and everything that came back from it.
 #[derive(Clone, Debug)]
 pub struct Delegation {
@@ -775,9 +797,11 @@ pub struct Delegation {
     pub task: Task,
     /// The capability that took it.
     pub capability: String,
-    /// The binary that ran, by absolute path.
+    /// The binary that ran, by absolute path. For a delegation that went
+    /// over a relay, the relay URL.
     pub binary: PathBuf,
-    /// The directory it ran in.
+    /// The directory it ran in. For a delegation that went over a relay,
+    /// the worker's public key.
     pub workdir: PathBuf,
     /// The fan-out width this ran under, which is the bound on concurrency.
     pub concurrent_max: usize,
@@ -803,6 +827,9 @@ pub struct Delegation {
     /// and this names it. `None` when nothing is owed: a read-only task,
     /// or a refusal before anything ran.
     pub retained: Option<PathBuf>,
+    /// The job that carried this delegation to a worker, when it did not
+    /// run here. `None` for a delegation this machine ran itself.
+    pub relayed: Option<Relayed>,
 }
 
 impl Delegation {
@@ -1385,6 +1412,7 @@ impl Delegator {
             elapsed,
             boundary,
             retained,
+            relayed: None,
         }
     }
 }

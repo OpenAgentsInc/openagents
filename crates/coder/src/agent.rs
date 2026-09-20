@@ -15,6 +15,7 @@ use jev::SystemOneRequest;
 use serde_json::Value;
 
 use crate::about::About;
+use crate::capability;
 use crate::classify::{
     Judgment, Route, ShellRoute, judgment_of, questions, route, shell_questions, shell_verdict_of,
     state_of,
@@ -68,6 +69,11 @@ const RETRY_SUFFIX: &str = " The judge read the last round's output as a \
 /// stops running commands. Past this the retry verdict is a refusal, not
 /// another round.
 pub const RETRIES_MAX: usize = 2;
+
+/// Names the capability a program's `delegate` step hands work to, by
+/// slug. Unset, the first capability that is a route on this machine does
+/// the work; `devin-relay` sends it to the worker `CODER_WORKER` names.
+pub const DELEGATE_VAR: &str = "CODER_DELEGATE";
 
 /// The message the model reads after it answered a finished loop with
 /// another plan: the one repair a turn allows before the host answers for
@@ -355,7 +361,7 @@ impl Agent {
         let door = self.classify.clone()?;
         let repository = self.repo.as_ref().map(|repo| repo.root().to_path_buf());
         let survey = self.survey().clone();
-        let runtime = Runtime::using(survey, repository.as_deref()).asking(Some(door));
+        let mut runtime = Runtime::using(survey, repository.as_deref()).asking(Some(door));
         let slug = match runtime.select(&self.task, self.trace.as_mut()).await {
             Ok(Selected::Program(slug)) => slug,
             Ok(Selected::None) => return None,
@@ -368,18 +374,35 @@ impl Agent {
         };
         let program = runtime.survey().programs.get(&slug)?.clone();
         selected(&slug);
-        // Which executor does the work is the survey's answer: the first
-        // capability that is a route here. A machine with none still runs
-        // the program, and the `delegate` step refuses by name rather than
-        // by silence.
+        // A relay capability is probed only now, once a program is going
+        // to run, because the probe is a round trip to a worker and an
+        // ordinary turn should not pay for it.
+        runtime.probe_relays().await;
+        if let Some(trace) = &mut self.trace {
+            for found in &runtime.survey().capabilities {
+                if found.manifest.transport == capability::RELAY {
+                    trace.check(&found.message(), found.call());
+                }
+            }
+        }
+        // Which executor does the work is the operator's choice when
+        // `CODER_DELEGATE` names one, and otherwise the survey's answer:
+        // the first capability that is a route here. A machine with none
+        // still runs the program, and the `delegate` step refuses by name
+        // rather than by silence.
         let survey = runtime.survey();
-        let executor = survey
-            .options()
-            .first()
-            .copied()
-            .or_else(|| survey.capabilities.first())
-            .map(|found| found.capability().to_string())
-            .unwrap_or_default();
+        let executor = env::var(DELEGATE_VAR)
+            .ok()
+            .filter(|slug| !slug.is_empty())
+            .unwrap_or_else(|| {
+                survey
+                    .options()
+                    .first()
+                    .copied()
+                    .or_else(|| survey.capabilities.first())
+                    .map(|found| found.capability().to_string())
+                    .unwrap_or_default()
+            });
         let inputs = Inputs::read(&self.task, &executor);
         Some(runtime.run(&program, &inputs, self.trace.as_mut()).await)
     }

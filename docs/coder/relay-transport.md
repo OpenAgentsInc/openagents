@@ -362,6 +362,61 @@ CODER_RELAY=wss://relay.openagents.com cargo test -p coder --test relay_job
 
 Both passed against the production relay on 2026-09-19.
 
+## Delegations over the relay
+
+The runs above carry one generation per turn. On 2026-09-20 the fan-out
+itself crossed the relay: `coderbench run devin-fan-out-six` with
+`CODER_DELEGATE=devin-relay`, against a local `crates/nostr-relay` on
+`ws://127.0.0.1:7447` and one `coder-worker` with `CODER_EXECUTOR=devin-local`
+(the setup in [`worker-executor.md`](worker-executor.md)). The terminal
+side ran under `env -i` with `PATH=/usr/bin:/bin`, an empty
+`XDG_DATA_HOME`, and no worker secret: no Devin CLI, no capability
+approval, no trusted workspace, no credentials on the driving host.
+
+Result: `6 started, 6 verified`, no faults, 17.8 s wall clock for the
+turn. The worker logged one probe and six jobs admitted at once, answered
+in 9.4–13.7 s each. The same six tasks through the local `devin-local`
+executor on the same host, in the direct run recorded at `198f11445`,
+took 38 s wall clock, so the relay hop is not what the fan-out waits on;
+the executor is.
+
+The relay, at `NOSTR_RELAY_LOG_LEVEL=debug`, logs each ephemeral event it
+admits (kind, ID, author, `e` and `p` tags, and the content's byte
+length; never the content). Fourteen lines for the run, abbreviated:
+
+```text
+25900 03b77e9b… from 82c906a9 p=8f8c559a  132 B   # the probe
+26900 85d68a92… from 8f8c559a e=03b77e9b p=82c906a9  304 B
+25900 1e9359a3… from 82c906a9 p=8f8c559a  388 B   # six requests
+25900 03973dcb… from 82c906a9 p=8f8c559a  388 B
+25900 d6df2b8e… from 82c906a9 p=8f8c559a  432 B
+25900 b05bbfa3… from 82c906a9 p=8f8c559a  388 B
+25900 1d24a8f6… from 82c906a9 p=8f8c559a  388 B
+25900 b9cdcf20… from 82c906a9 p=8f8c559a  432 B
+26900 f1caec40… from 8f8c559a e=1e9359a3 p=82c906a9  220 B   # six results
+26900 67c904cb… from 8f8c559a e=1d24a8f6 p=82c906a9  220 B
+26900 c89873b8… from 8f8c559a e=b9cdcf20 p=82c906a9  220 B
+26900 855e9e50… from 8f8c559a e=d6df2b8e p=82c906a9  260 B
+26900 6cdc3b80… from 8f8c559a e=03973dcb p=82c906a9  220 B
+26900 f5d946c7… from 8f8c559a e=b05bbfa3 p=82c906a9  220 B
+```
+
+`82c906a9` is the Coder identity, `8f8c559a` the worker. Every request is
+tagged to the worker, every result is tagged to its request and to the
+Coder identity, and every event's content is NIP-44 ciphertext: an answer
+of `5` is 220 bytes on the wire. The six request IDs are the six `job`
+lines in the worker's log and the six `relayed.request` values in the
+trace. No kind `27000` events appear because the executor door produces
+its answer in one piece; the trace records `"feedback": 0` for each.
+
+**Worker-side bound.** The same run with the worker started as
+`CODER_WORKER_JOBS=2`: two jobs admitted and answered, four `declined:
+busy` in the worker's log, and in the trace four delegations with
+`"status": "refused"`, `"refusal": "busy"`, and the worker's message
+`this worker is running as many jobs as it admits at once`. CoderBench
+reported `2 verified` and four faults, which is the correct grade for a
+worker that could not take the work.
+
 ## What this does not prove
 
 - **No worker is deployed.** `relay.openagents.com` had nothing listening

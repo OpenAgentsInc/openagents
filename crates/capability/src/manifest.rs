@@ -27,6 +27,14 @@ use crate::{MANIFEST_VERSION, first_line, is_slug, same_binary, version_in};
 /// understand.
 pub const SUBPROCESS: &str = "subprocess";
 
+/// A capability whose adapter is a worker on the other side of a Nostr
+/// relay. Nothing runs on this machine: the host publishes one NIP-CJ job
+/// per task and the worker runs it under its own approval. A `relay`
+/// manifest names no binary, and the probe that finds it is the host's
+/// relay door rather than an argv, so this crate records it `unprobed`
+/// and leaves the question to the host.
+pub const RELAY: &str = "relay";
+
 /// One capability manifest: how to drive one executor.
 ///
 /// `slug` and `name` are the `d` and `name` tags the published
@@ -42,8 +50,11 @@ pub struct Manifest {
     pub name: String,
     #[serde(default)]
     pub summary: String,
-    /// How the host speaks to it: `acp`, `subprocess`, `http`.
+    /// How the host speaks to it: `subprocess` or `relay`.
     pub transport: String,
+    /// What resolves the executor on this machine. Empty for a `relay`
+    /// manifest, which has nothing on this machine to detect.
+    #[serde(default)]
     pub detect: Detect,
     /// Bounds the executor will hold to if given. A claim, not a proof:
     /// an approved manifest says this, and admission records it as a
@@ -91,7 +102,7 @@ pub struct Manifest {
 
 /// What a host runs to decide the executor is present and to read its
 /// version. Each is a fixed argv, never a shell string.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Detect {
     pub binary: String,
     pub version: Vec<String>,
@@ -223,6 +234,18 @@ impl Manifest {
         if self.transport.is_empty() {
             return Err("no transport".to_string());
         }
+        if self.transport == RELAY {
+            if !self.detect.binary.is_empty() || !self.detect.version.is_empty() {
+                return Err("a relay manifest detects nothing on this machine".to_string());
+            }
+            if !self.invoke.is_empty() || !self.invoke_writing.is_empty() {
+                return Err("a relay manifest runs no argv here".to_string());
+            }
+            if self.workspace_probe.is_some() {
+                return Err("a relay manifest probes no workspace here".to_string());
+            }
+            return self.check_claims();
+        }
         if self.detect.binary.is_empty() || self.detect.binary.contains('\0') {
             return Err("detect names no binary".to_string());
         }
@@ -245,6 +268,11 @@ impl Manifest {
             }
             self.check_argv(&self.invoke_writing, "invoke_writing")?;
         }
+        self.check_claims()
+    }
+
+    /// A bound is kept or admitted-ignored, never both.
+    fn check_claims(&self) -> Result<(), String> {
         let claims: BTreeSet<&String> = self.enforces.iter().collect();
         let overlap: Vec<&str> = self
             .cannot_enforce

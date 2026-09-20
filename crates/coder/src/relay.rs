@@ -52,7 +52,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt, stream};
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::{nip19, nip44};
 use secp256k1::{SecretKey, XOnlyPublicKey};
@@ -61,6 +61,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite};
 
+use crate::delegate::{Delegation, Relayed, Status, Task};
 use crate::generate::{Generate, GenerateError, Message, Meta, Role, Usage};
 
 /// The production relay the door defaults to.
@@ -409,6 +410,47 @@ pub async fn connect_within(
     }
 }
 
+/// One request as it goes onto the wire: the signed event, the
+/// subscription its answers arrive on, the key they decrypt under, and how
+/// long to wait for them once the worker has been heard from.
+#[derive(Clone, Copy)]
+struct Posted<'a> {
+    request: &'a Event,
+    subscription: &'a str,
+    conversation: &'a [u8; 32],
+    answer: Duration,
+}
+
+/// What one NIP-CJ job came back with: the result payload and what
+/// arrived before it.
+#[derive(Clone, Debug)]
+pub struct Answer {
+    /// The result's text, whole.
+    pub text: String,
+    /// Token usage, when the worker reported it.
+    pub usage: Option<Usage>,
+    /// The model the worker named, when it named one.
+    pub model: Option<String>,
+    /// The decrypted kind-26900 result payload, for fields this door does
+    /// not read itself — a probe's answer lives here.
+    pub result: Value,
+    /// How many kind-27000 feedback events were bound to the job before
+    /// the result.
+    pub feedback: usize,
+}
+
+/// What a worker says about itself when probed, without running anything.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Probed {
+    /// The door the worker answers through, as it names it.
+    pub door: String,
+    /// The model behind that door.
+    pub model: String,
+    /// Whether the worker runs delegated tasks through an executor door.
+    /// A worker that only generates cannot take a writing task.
+    pub delegates: bool,
+}
+
 /// A `Generate` over the relay: each turn publishes a NIP-CJ job request
 /// and streams the worker's feedback and result back.
 pub struct RelayDoor {
@@ -474,9 +516,116 @@ impl RelayDoor {
         Ok(Self::new(url, worker, identity))
     }
 
+    /// The relay this door publishes to.
+    #[must_use]
+    pub fn relay(&self) -> &str {
+        &self.url
+    }
+
+    /// The worker this door names in every request's `p` tag, hex.
+    #[must_use]
+    pub fn worker(&self) -> &str {
+        &self.worker_hex
+    }
+
     /// The socket, connecting and authenticating when needed.
     async fn connection(&self) -> Result<Socket, GenerateError> {
         connect_within(&self.url, &self.identity, self.connect).await
+    }
+
+    /// Publishes one job carrying `payload` on a socket of its own and
+    /// waits for its answer.
+    ///
+    /// A fan-out runs several of these at once, and each takes its own
+    /// connection rather than the shared one so their frames never
+    /// interleave and a slow job never holds a fast one's socket. The
+    /// payload is what the worker reads; this method adds the version,
+    /// encrypts, signs, and binds the answer. The request's event ID
+    /// comes back beside the answer, because it is the job's name in the
+    /// relay's log and a record of the delegation needs it.
+    ///
+    /// # Errors
+    ///
+    /// The same vocabulary as a turn: [`GenerateError::Relay`] when the
+    /// relay could not be reached or refused the request,
+    /// [`GenerateError::Silent`] when nobody answered,
+    /// [`GenerateError::Refused`] when the worker said no with a code.
+    pub async fn job(
+        &self,
+        payload: Value,
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> (String, Result<Answer, GenerateError>) {
+        self.job_within(payload, self.answer, sink).await
+    }
+
+    /// [`RelayDoor::job`] with its own wait for the answer once the worker
+    /// has been heard from. A delegated task is allowed the bound it was
+    /// given, not the door's default.
+    async fn job_within(
+        &self,
+        mut payload: Value,
+        answer: Duration,
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> (String, Result<Answer, GenerateError>) {
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("v".to_string(), json!(PAYLOAD_VERSION));
+        }
+        let (request, conversation) = match self.request_payload(&payload) {
+            Ok(signed) => signed,
+            Err(error) => return (String::new(), Err(error)),
+        };
+        let mut socket = match self.connection().await {
+            Ok(socket) => socket,
+            Err(error) => return (request.id, Err(error)),
+        };
+        let subscription = format!("job-{}", &request.id[..16]);
+        let mut meta = |_: Meta| {};
+        let answered = self
+            .exchange(
+                &mut socket,
+                &Posted {
+                    request: &request,
+                    subscription: &subscription,
+                    conversation: &conversation,
+                    answer,
+                },
+                sink,
+                &mut meta,
+            )
+            .await;
+        // The socket is this job's alone and closes with it, so a CLOSE
+        // it will not take changes nothing the answer has not said.
+        let _ = send(&mut socket, json!(["CLOSE", subscription])).await;
+        (request.id, answered)
+    }
+
+    /// Asks the worker whether it is there and what answers through it.
+    ///
+    /// A probe costs the worker nothing: it answers with its door's name
+    /// and model and never generates. The three outcomes a capability
+    /// probe needs are the three this returns: `Ok` when a worker
+    /// answered, [`GenerateError::Relay`] when the relay itself could not
+    /// be reached, and anything else when the relay is there and the
+    /// worker is not or would not.
+    ///
+    /// # Errors
+    ///
+    /// As [`RelayDoor::job`].
+    pub async fn probe(&self) -> Result<Probed, GenerateError> {
+        let mut sink = |_: &str| {};
+        let (_, answer) = self.job(json!({"type": "probe"}), &mut sink).await;
+        let answer = answer?;
+        let probe = &answer.result["probe"];
+        if !probe.is_object() {
+            return Err(GenerateError::Stream(
+                "the worker answered the probe without describing itself".into(),
+            ));
+        }
+        Ok(Probed {
+            door: probe["door"].as_str().unwrap_or_default().to_string(),
+            model: probe["model"].as_str().unwrap_or_default().to_string(),
+            delegates: probe["delegates"].as_bool().unwrap_or(false),
+        })
     }
 
     /// Runs one job over `socket`: subscribe, publish, stream the answer,
@@ -501,7 +650,17 @@ impl RelayDoor {
         let (request, conversation) = self.request(instructions, input)?;
         let subscription = format!("job-{}", &request.id[..16]);
         let answered = self
-            .exchange(socket, &request, &subscription, &conversation, sink, meta)
+            .exchange(
+                socket,
+                &Posted {
+                    request: &request,
+                    subscription: &subscription,
+                    conversation: &conversation,
+                    answer: self.answer,
+                },
+                sink,
+                meta,
+            )
             .await;
         if keeps_socket(&answered) {
             // A `CLOSE` the socket will not take means the socket is not
@@ -509,7 +668,7 @@ impl RelayDoor {
             // a stream failure is what evicts it.
             send(socket, json!(["CLOSE", subscription])).await?;
         }
-        answered
+        answered.map(|answer| (answer.text, answer.usage))
     }
 
     /// The signed, encrypted job request for this turn's input, with the
@@ -543,9 +702,15 @@ impl RelayDoor {
             "transcript": transcript,
             "instructions": instructions,
             "client": concat!("coder ", env!("CARGO_PKG_VERSION")),
-        })
-        .to_string();
+        });
+        self.request_payload(&payload)
+    }
 
+    /// `payload`, encrypted to the worker and signed as a kind-25900
+    /// request naming it, with the conversation key its answers decrypt
+    /// under.
+    fn request_payload(&self, payload: &Value) -> Result<(Event, [u8; 32]), GenerateError> {
+        let payload = payload.to_string();
         let conversation = nip44::conversation_key(&self.identity.secret, &self.worker);
         let content = nip44::encrypt(
             &payload,
@@ -567,12 +732,16 @@ impl RelayDoor {
     async fn exchange(
         &self,
         socket: &mut Socket,
-        request: &Event,
-        subscription: &str,
-        conversation: &[u8; 32],
+        posted: &Posted<'_>,
         sink: &mut (dyn FnMut(&str) + Send),
         meta: &mut (dyn FnMut(Meta) + Send),
-    ) -> Result<(String, Option<Usage>), GenerateError> {
+    ) -> Result<Answer, GenerateError> {
+        let Posted {
+            request,
+            subscription,
+            conversation,
+            answer,
+        } = *posted;
         // Subscribe before publishing so no fast feedback is missed.
         send(
             socket,
@@ -596,7 +765,8 @@ impl RelayDoor {
         let mut streamed_bytes = 0usize;
         let mut seen = HashSet::new();
         let mut heard = false;
-        let answer_by = tokio::time::Instant::now() + self.answer;
+        let mut feedback_count = 0usize;
+        let answer_by = tokio::time::Instant::now() + answer;
         let contact_by = tokio::time::Instant::now() + self.contact;
         loop {
             let deadline = if heard { answer_by } else { contact_by };
@@ -608,7 +778,7 @@ impl RelayDoor {
                         reason: "the socket closed before the worker answered".into(),
                     });
                 }
-                Err(_) => return Err(self.ran_out(heard)),
+                Err(_) => return Err(self.ran_out(heard, answer)),
             };
             let message =
                 frame.map_err(|error| GenerateError::Stream(format!("socket: {error}")))?;
@@ -676,6 +846,9 @@ impl RelayDoor {
                     let Some(version) = payload_version(&feedback) else {
                         continue;
                     };
+                    if event.kind == FEEDBACK_KIND {
+                        feedback_count += 1;
+                    }
                     // The `type` must be one the event's kind carries and
                     // the fields it needs must be there: a bound event
                     // with an unknown, mismatched, or malformed payload
@@ -752,10 +925,12 @@ impl RelayDoor {
                             // door used to drop it on the floor. A relay
                             // run's evidence has to be able to say what
                             // answered.
-                            if let Some(model) =
-                                feedback["model"].as_str().filter(|m| !m.is_empty())
-                            {
-                                meta(Meta::Model(model.to_string()));
+                            let model = feedback["model"]
+                                .as_str()
+                                .filter(|m| !m.is_empty())
+                                .map(str::to_string);
+                            if let Some(model) = &model {
+                                meta(Meta::Model(model.clone()));
                             }
                             // The result is the answer, whole. Deltas are
                             // a preview of it, never a substitute: an
@@ -771,7 +946,13 @@ impl RelayDoor {
                                 input_tokens: usage["input"].as_u64().unwrap_or(0),
                                 output_tokens: usage["output"].as_u64().unwrap_or(0),
                             });
-                            return Ok((text.to_string(), usage));
+                            return Ok(Answer {
+                                text: text.to_string(),
+                                usage,
+                                model,
+                                result: feedback,
+                                feedback: feedback_count,
+                            });
                         }
                         _ => {}
                     }
@@ -805,8 +986,8 @@ impl RelayDoor {
 
     /// The failure a wait that ran out produces, in whichever of the two
     /// waits it was.
-    fn ran_out(&self, heard: bool) -> GenerateError {
-        let waited = if heard { self.answer } else { self.contact };
+    fn ran_out(&self, heard: bool, answer: Duration) -> GenerateError {
+        let waited = if heard { answer } else { self.contact };
         let reason = if heard {
             format!(
                 "{} started answering and stopped: no result in {} seconds",
@@ -822,6 +1003,98 @@ impl RelayDoor {
             )
         };
         GenerateError::Silent { heard, reason }
+    }
+}
+
+impl RelayDoor {
+    /// Hands one bounded task to the worker as one NIP-CJ job and reports
+    /// it the way a local delegation is reported.
+    ///
+    /// Nothing runs here. The task's `writes` and its wall bound travel in
+    /// the payload's `delegation` object, and the worker applies them under
+    /// its own approval. The wait is the task's bound plus the contact
+    /// wait, because a worker that is there answers within what the task
+    /// was allowed, and one that never says anything is a silence rather
+    /// than a slow answer.
+    pub async fn delegate(&self, capability: &str, task: Task, width: usize) -> Delegation {
+        let started = std::time::Instant::now();
+        let minutes = task.bounds.wall().as_secs().div_ceil(60).max(1);
+        let payload = json!({
+            "task": task.prompt,
+            "delegation": {
+                "writes": task.writes,
+                "minutes": minutes,
+            },
+            "client": concat!("coder ", env!("CARGO_PKG_VERSION")),
+        });
+        let mut sink = |_: &str| {};
+        let (request, answered) = self
+            .job_within(payload, task.bounds.wall() + self.contact, &mut sink)
+            .await;
+        let mut relayed = Relayed {
+            relay: self.url.clone(),
+            worker: self.worker_hex.clone(),
+            request,
+            model: None,
+            feedback: 0,
+        };
+        let (status, output, detail) = match answered {
+            Ok(answer) => {
+                relayed.model = answer.model.clone();
+                relayed.feedback = answer.feedback;
+                (Status::Answered, answer.text, String::new())
+            }
+            Err(GenerateError::Refused { code, message }) => {
+                (Status::Refused(code), String::new(), message)
+            }
+            Err(GenerateError::Silent {
+                heard: true,
+                reason,
+            }) => (Status::TimedOut, String::new(), reason),
+            Err(error) => (
+                Status::Harness(error.to_string()),
+                String::new(),
+                String::new(),
+            ),
+        };
+        let bytes = (output.len() + detail.len()) as u64;
+        Delegation {
+            task,
+            capability: capability.to_string(),
+            binary: PathBuf::from(&self.url),
+            workdir: PathBuf::from(&self.worker_hex),
+            concurrent_max: width,
+            status,
+            output,
+            detail,
+            bytes,
+            elapsed: started.elapsed(),
+            boundary: None,
+            retained: None,
+            relayed: Some(relayed),
+        }
+    }
+
+    /// Runs `tasks` as jobs, at most `width` in flight, and reports each.
+    ///
+    /// The width is the terminal's promise about how many jobs it opens
+    /// at once. The worker holds its own bound and refuses past it with
+    /// `busy`, which arrives here as a typed refusal rather than a
+    /// failure.
+    pub async fn fan_out(
+        &self,
+        capability: &str,
+        tasks: Vec<Task>,
+        width: usize,
+    ) -> Vec<Delegation> {
+        stream::iter(
+            tasks
+                .into_iter()
+                .map(|task| self.delegate(capability, task, width)),
+        )
+        .buffered(width.max(1))
+        .collect()
+        .await
     }
 }
 
@@ -868,7 +1141,7 @@ impl Generate for RelayDoor {
 /// on a socket that still works. A silence is a wait that ran out with a
 /// subscription that may yet deliver, and a stream failure is the socket
 /// itself; neither socket is trusted again.
-fn keeps_socket(answered: &Result<(String, Option<Usage>), GenerateError>) -> bool {
+fn keeps_socket<T>(answered: &Result<T, GenerateError>) -> bool {
     !matches!(
         answered,
         Err(GenerateError::Silent { .. } | GenerateError::Stream(_))

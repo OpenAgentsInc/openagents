@@ -160,6 +160,25 @@ impl Entry {
 
     fn found(&self, workspace: &Path, trust: &Trust, wall: Duration, ask: bool) -> Found {
         let started = Instant::now();
+        // A relay manifest runs nothing here, so there is nothing for this
+        // host to approve: the worker holds the approval, and the host's
+        // relay door is what probes it. The registry records that it was
+        // declared and leaves the answer to the host.
+        if self.manifest.transport == crate::manifest::RELAY {
+            return Found {
+                manifest: self.manifest.clone(),
+                presence: Presence::Unprobed {
+                    reason: "a relay capability is probed by the host's relay door, not an argv"
+                        .to_string(),
+                },
+                workspace: workspace.to_path_buf(),
+                milliseconds: started.elapsed().as_millis() as u64,
+                proof: Proof::None,
+                source: self.source,
+                digest: self.digest.clone(),
+                path: self.path.clone(),
+            };
+        }
         let (proof, presence) = match trust.decide(self, workspace) {
             Decision::Unapproved(reason) => (Proof::None, Presence::Unprobed { reason }),
             Decision::Approved(proof) if self.manifest.transport != crate::manifest::SUBPROCESS => {

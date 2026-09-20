@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "devin-relay",
+  "name": "Devin CLI, through a coder-worker on the relay",
+  "summary": "Publishes each bounded task as one NIP-CJ job to the worker named by CODER_WORKER; the worker runs it through its own approved Devin CLI.",
+  "transport": "relay",
+  "enforces": ["minutes"],
+  "cannot_enforce": ["tool_set", "role", "budget_cents", "effort", "max_turns", "model"],
+  "sees_repository": false,
+  "concurrent_max": 6,
+  "cost": "operator_account",
+  "isolation": ["worktree", "directory"]
+}

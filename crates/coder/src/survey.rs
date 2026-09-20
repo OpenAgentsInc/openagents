@@ -9,14 +9,19 @@
 //! itself at the moment it starts choosing, and the trace records both
 //! reads before any decision call.
 //!
-//! Both resolve from local files. The relay comes later, and the registry
-//! read already records the query it would send.
+//! Both resolve from local files. A capability whose transport is `relay`
+//! is declared in a local file too, but what it names is a worker on the
+//! far side of a relay, and the registry cannot run an argv to find it.
+//! [`Survey::probe_relays`] asks the relay door instead, after the read,
+//! and records the answer in the same presence vocabulary.
 
 use std::path::{Path, PathBuf};
 
-use crate::capability::{self, Found, Presence, Trust};
+use crate::capability::{self, Found, Presence, RELAY, Trust};
 use crate::delegate::{Executor, Policy};
+use crate::generate::GenerateError;
 use crate::program;
+use crate::relay::RelayDoor;
 use crate::source;
 use crate::trace::Recorder;
 
@@ -97,6 +102,103 @@ impl Survey {
     #[must_use]
     pub fn executor(&self, slug: &str) -> Option<Executor> {
         executor(self.capability(slug)?)
+    }
+
+    /// Probes every declared `relay` capability through the relay door
+    /// the environment names, and records what it found in place.
+    ///
+    /// The registry read leaves a relay capability `unprobed`, because
+    /// nothing on this machine can be run to find a worker. This is the
+    /// probe: one job of type `probe` to the worker `CODER_WORKER` names,
+    /// over `CODER_RELAY`. The states are the ones a capability probe
+    /// records. `present` when a worker that delegates answered;
+    /// `present_unavailable` with the reason when the relay is there and
+    /// the worker is absent, declines, or cannot take a delegated task;
+    /// `absent` when there is no relay to ask, or no worker is configured
+    /// to ask about. A host with no relay capability declared asks nothing.
+    ///
+    /// The door that answered is returned so the caller can delegate
+    /// through it without building a second one.
+    pub async fn probe_relays(&mut self) -> Option<RelayDoor> {
+        if !self
+            .capabilities
+            .iter()
+            .any(|found| found.manifest.transport == RELAY)
+        {
+            return None;
+        }
+        self.probe_relays_through(RelayDoor::from_env()).await
+    }
+
+    /// [`Survey::probe_relays`] with the door already built, or the reason
+    /// it could not be. `Err` is the `absent` state: nothing to ask.
+    pub async fn probe_relays_through(
+        &mut self,
+        door: Result<RelayDoor, String>,
+    ) -> Option<RelayDoor> {
+        let probed = match &door {
+            Ok(door) => Some(door.probe().await),
+            Err(_) => None,
+        };
+        for found in &mut self.capabilities {
+            if found.manifest.transport != RELAY {
+                continue;
+            }
+            let started = std::time::Instant::now();
+            found.presence = match (&door, &probed) {
+                (Err(reason), _) | (Ok(_), Some(Err(GenerateError::Config(reason)))) => {
+                    Presence::Absent {
+                        reason: reason.clone(),
+                        looked_in: Vec::new(),
+                    }
+                }
+                (Ok(door), Some(Err(GenerateError::Relay(reason)))) => Presence::Absent {
+                    reason: format!("{}: {reason}", door.relay()),
+                    looked_in: Vec::new(),
+                },
+                (Ok(door), Some(Ok(probed))) if probed.delegates => Presence::Present {
+                    version: format!("{} {}", probed.door, probed.model),
+                    report: format!(
+                        "worker {} answers through {} ({})",
+                        door.worker(),
+                        probed.door,
+                        probed.model
+                    ),
+                    path: PathBuf::from(door.relay()),
+                },
+                (Ok(door), Some(Ok(probed))) => Presence::Unavailable {
+                    version: format!("{} {}", probed.door, probed.model),
+                    report: format!("worker {} answers through {}", door.worker(), probed.door),
+                    path: PathBuf::from(door.relay()),
+                    refusal: "no_executor".to_string(),
+                    detail: format!(
+                        "{} generates through {} and holds no executor door, so it cannot \
+                         take a delegated task",
+                        door.worker(),
+                        probed.door
+                    ),
+                },
+                (Ok(door), Some(Err(GenerateError::Refused { code, message }))) => {
+                    Presence::Unavailable {
+                        version: String::new(),
+                        report: format!("worker {} declined the probe", door.worker()),
+                        path: PathBuf::from(door.relay()),
+                        refusal: code.clone(),
+                        detail: message.clone(),
+                    }
+                }
+                (Ok(door), Some(Err(error))) => Presence::Unavailable {
+                    version: String::new(),
+                    report: format!("no worker at {} answered", door.worker()),
+                    path: PathBuf::from(door.relay()),
+                    refusal: "no_worker".to_string(),
+                    detail: error.to_string(),
+                },
+                (Ok(_), None) => unreachable!("a door that was built was probed"),
+            };
+            found.milliseconds = started.elapsed().as_millis() as u64;
+        }
+        door.ok()
     }
 
     /// Writes both reads to the session's trace, probes first.

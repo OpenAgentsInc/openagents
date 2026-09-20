@@ -325,6 +325,62 @@ Run them from a checkout the executor trusts. `CODER_DELEGATE_DIR` names the
 repository the delegates run in, which matters because a git worktree under
 `/private/tmp` is one this executor refuses.
 
+## Delegating over the relay
+
+A capability whose manifest says `"transport": "relay"` has no adapter on
+this machine. Its adapter is a `coder-worker` somewhere on the relay, and
+each delegation to it is one [NIP-CJ](../../nips/openagents/NIP-CJ.md) job.
+The checked-in one is [`capabilities/devin-relay.json`](../../capabilities/devin-relay.json).
+
+Select it for a turn with `CODER_DELEGATE=devin-relay`, and name the far
+end with the same two variables the relay door already uses:
+
+```sh
+CODER_RELAY=wss://relay.openagents.com \
+CODER_WORKER=<worker pubkey, hex> \
+CODER_DELEGATE=devin-relay \
+  coder -p "…"
+```
+
+What this host needs: a Nostr identity (`~/.openagents/nostr-secret`,
+created on first use), the relay URL, and the worker's public key. What it
+does not need: a Devin CLI, a `capability-trust` approval, a trusted
+workspace, or the worker's credentials. Those stay on the worker's host,
+where the approval, the filesystem boundary, and `CODER_WORKER_ALLOW`
+decide what runs. A terminal that has none of them still runs the fan-out;
+the measurement in [`relay-transport.md`](relay-transport.md#delegations-over-the-relay)
+was taken from one.
+
+**The probe is a job.** Before the program runs, `Survey::probe_relays`
+sends the worker a `{"v":2,"type":"probe"}` request and records the answer
+as a `capability_probe` check in the trace, the same check a local
+executable probe records:
+
+| The worker… | Presence |
+| --- | --- |
+| answers, and its door delegates (`CODER_EXECUTOR` set) | `present` |
+| answers without an executor, refuses admission, or errors | `present_unavailable`, with the typed cause |
+| cannot be reached, or `CODER_RELAY`/`CODER_WORKER` is unset | `absent` |
+
+A relay capability that is not `present` is not delegated to; the turn
+takes the same refusal path a missing local executor takes.
+
+**One task, one request.** Each task in the fan-out becomes one kind
+`25900` event, NIP-44 encrypted to the worker and tagged `p` with its key,
+on a connection of its own. The worker's kind `27000` feedback and kind
+`26900` result come back encrypted to the Coder identity and tagged `e`
+with the request. `fan_out` bounds the terminal side with the manifest's
+`concurrent_max`; the worker bounds its own side with `CODER_WORKER_JOBS`
+and refuses the overflow with the typed code `busy`, which the trace
+records as `refused: busy` on that delegation and nothing else.
+
+**What the trace records.** A relayed delegation's `delegate` call carries
+`"capability": "devin-relay"`, the status and the answer as any delegation
+does, and under `relayed`: the relay URL, the worker's key, the request
+event ID, the model the worker reported (`devin-local` for the executor
+door), and the count of feedback events. The request ID is the join key
+between the trace, the worker's log, and the relay's `debug` log.
+
 ## What is not built
 
 - **Grading what a delegate changed.** The boundary confines writes and

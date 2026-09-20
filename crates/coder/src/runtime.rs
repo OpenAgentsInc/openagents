@@ -56,9 +56,11 @@ use atif::{Call, Decision, Outcome};
 use jev::{Answer, SystemOneRequest};
 use serde_json::{Map, Value, json};
 
+use crate::capability::{self, Presence};
 use crate::delegate::{Bounds, Delegation, Delegator, Isolation, Task, boundary_supported};
 use crate::program::{Kind, Program, Step};
 use crate::questions::{self, Fill, Set};
+use crate::relay::RelayDoor;
 use crate::source::{self, OnOverflow, Overflow, Selection, Source};
 use crate::survey::Survey;
 use crate::trace::{Recorder, answers_value};
@@ -398,6 +400,7 @@ pub struct Runtime {
     survey: Survey,
     questions: questions::Registry,
     door: Option<jev::Client>,
+    relay: Option<RelayDoor>,
     repository: Option<PathBuf>,
     host: Host,
 }
@@ -426,6 +429,7 @@ impl Runtime {
             survey,
             questions: questions::Registry::open(&questions::search(repository)),
             door: jev::Client::from_env().ok(),
+            relay: None,
             repository: repository.map(Path::to_path_buf),
             host: match repository {
                 Some(_) => Host::with_repository(),
@@ -443,6 +447,7 @@ impl Runtime {
             survey,
             questions,
             door: jev::Client::from_env().ok(),
+            relay: None,
             host,
         }
     }
@@ -467,6 +472,13 @@ impl Runtime {
     #[must_use]
     pub fn survey(&self) -> &Survey {
         &self.survey
+    }
+
+    /// Probes the relay capabilities the survey declared and keeps the
+    /// door that answered, so a `delegate` step naming one can hand its
+    /// tasks over it. See [`Survey::probe_relays`].
+    pub async fn probe_relays(&mut self) {
+        self.relay = self.survey.probe_relays().await;
     }
 
     /// What this host can hold a program to.
@@ -1258,21 +1270,31 @@ impl Runtime {
                 "there is no work to hand over, and a delegation of nothing is not a delegation",
             ));
         }
-        let Some(executor) = self.survey.executor(&inputs.executor) else {
-            let state = self
-                .survey
-                .capability(&inputs.executor)
-                .map_or("undeclared".to_string(), |found| {
-                    found.presence.state().to_string()
-                });
-            return Err(Refused::at(
-                &step.name,
-                "executor_unavailable",
-                format!(
-                    "{} is {state} here, and a route that cannot be taken is not a route",
-                    inputs.executor
-                ),
-            ));
+        let relayed = self
+            .survey
+            .capability(&inputs.executor)
+            .filter(|found| found.manifest.transport == capability::RELAY)
+            .filter(|found| matches!(found.presence, Presence::Present { .. }))
+            .and(self.relay.as_ref());
+        let executor = match (relayed, self.survey.executor(&inputs.executor)) {
+            (Some(_), _) => None,
+            (None, Some(executor)) => Some(executor),
+            (None, None) => {
+                let state = self
+                    .survey
+                    .capability(&inputs.executor)
+                    .map_or("undeclared".to_string(), |found| {
+                        found.presence.state().to_string()
+                    });
+                return Err(Refused::at(
+                    &step.name,
+                    "executor_unavailable",
+                    format!(
+                        "{} is {state} here, and a route that cannot be taken is not a route",
+                        inputs.executor
+                    ),
+                ));
+            }
         };
         // Every one of these was admitted. `isolation` is a shape this
         // host provides, `concurrent_max` is the width, and `minutes` is
@@ -1302,14 +1324,23 @@ impl Runtime {
                 task
             })
             .collect();
-        let delegator = Delegator::new(executor)
-            .in_repository(
-                self.repository
-                    .clone()
-                    .unwrap_or(self.survey.workspace.clone()),
-            )
-            .bounded_to(width);
-        let delegations = delegator.fan_out(bounded).await;
+        // A relay capability runs nothing here: each task becomes one
+        // NIP-CJ job to the worker, which applies its own approval.
+        let delegations = match (relayed, executor) {
+            (Some(door), _) => door.fan_out(&inputs.executor, bounded, width).await,
+            (None, Some(executor)) => {
+                Delegator::new(executor)
+                    .in_repository(
+                        self.repository
+                            .clone()
+                            .unwrap_or(self.survey.workspace.clone()),
+                    )
+                    .bounded_to(width)
+                    .fan_out(bounded)
+                    .await
+            }
+            (None, None) => unreachable!("one of the two routes was resolved above"),
+        };
         if let Some(trace) = trace {
             for delegation in &delegations {
                 trace.delegation(delegation);
@@ -1558,6 +1589,7 @@ mod tests {
             },
             questions: questions::Registry::open(&[]),
             door: None,
+            relay: None,
             repository: None,
             host: Host::without_repository(),
         }

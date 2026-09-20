@@ -358,6 +358,18 @@ impl Recorder {
                 }),
             );
         }
+        if let Some(relayed) = &delegation.relayed {
+            extra.insert(
+                "relayed".to_string(),
+                json!({
+                    "relay": relayed.relay,
+                    "worker": relayed.worker,
+                    "request": relayed.request,
+                    "model": relayed.model,
+                    "feedback": relayed.feedback,
+                }),
+            );
+        }
         if let Some(retained) = &delegation.retained {
             extra.insert(
                 "retained".to_string(),

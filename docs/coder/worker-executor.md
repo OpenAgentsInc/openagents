@@ -85,6 +85,36 @@ is recorded as the service user into the store the environment file
 names. [`deploy/README.md`](../../deploy/README.md) walks through the
 install, the key, the approval, and the smoke test from another machine.
 
+## Serving delegations
+
+The same worker is the adapter behind the `devin-relay` capability
+([`delegate.md`](delegate.md#delegating-over-the-relay)). A terminal with
+`CODER_DELEGATE=devin-relay` sends a probe, then one job per task; the
+worker runs a reading task in a scratch checkout of
+`CODER_EXECUTOR_WORKDIR` and a writing task in a retained worktree under
+the writing argv, both under this host's approval and boundary.
+
+Two settings matter here that a single-turn worker does not care about:
+
+- **`CODER_EXECUTOR_WORKDIR` must be a checkout of the repository the
+  tasks ask about.** The terminal's repository never reaches the worker;
+  a job names paths and expects the worker to have them. In an empty
+  directory the Devin CLI reaches for a shell command, which its
+  non-interactive mode rejects, and exits `0` having printed nothing;
+  the worker reports that as `devin-local exited cleanly and printed
+  nothing`, a typed `internal` refusal, and the terminal records the
+  delegation as failed. Clone the repository there and check out the
+  commit the tasks are pinned to.
+- **`CODER_WORKER_JOBS` bounds admission.** Unset, an executor door takes
+  the manifest's `concurrent_max` (6 for `devin-local`). A job past the
+  bound is refused `busy` before anything runs. Set it to what this host's
+  executor account can carry.
+
+The worker log for a fan-out reads `probed`, then one `delegated: reading
+task, N min` per admitted job, then `answered in N ms` or `declined:
+<code>` for each; the job IDs are the request event IDs the terminal's
+trace records under `relayed.request`.
+
 ## Failures you will meet
 
 - `names no capability this host can see` — the workdir is outside the

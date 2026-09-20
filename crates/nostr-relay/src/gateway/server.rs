@@ -461,6 +461,33 @@ fn print_legacy_import_report(phase: &str, report: &crate::store::LegacyImportRe
     );
 }
 
+/// Logs an admitted ephemeral event at `debug` level: the kind, the ID,
+/// the author, the `e` and `p` tags, and the content's length. The
+/// content itself is never logged; NIP-CJ carries it encrypted.
+fn print_ephemeral_admitted(event: &Event) {
+    let tagged = |name: &str| -> Vec<&str> {
+        event
+            .tags
+            .iter()
+            .filter(|tag| tag.name() == Some(name))
+            .filter_map(|tag| tag.value())
+            .collect()
+    };
+    println!(
+        "{}",
+        serde_json::json!({
+            "level": "debug",
+            "message": "ephemeral event admitted",
+            "kind": event.kind,
+            "id": event.id,
+            "pubkey": event.pubkey,
+            "e": tagged("e"),
+            "p": tagged("p"),
+            "content_bytes": event.content.len(),
+        })
+    );
+}
+
 impl ShutdownHandle {
     pub fn shutdown(&self) {
         let _ = self.sender.send(true);
@@ -1342,20 +1369,23 @@ async fn admit_event(
         Ok(outcome) => {
             if matches!(&outcome, AdmissionOutcome::Ephemeral)
                 && let Some(event) = ephemeral
-                && context
+            {
+                if context.state.config.log_level == "debug" {
+                    print_ephemeral_admitted(&event);
+                }
+                let published = PublishedEvent {
+                    event,
+                    ingest_seq: None,
+                };
+                if context
                     .state
                     .hub
-                    .publish(
-                        PublishedEvent {
-                            event,
-                            ingest_seq: None,
-                        },
-                        admission_now,
-                    )
+                    .publish(published, admission_now)
                     .await
                     .is_err()
-            {
-                fail_process(&context.state.current, &context.state.shutdown);
+                {
+                    fail_process(&context.state.current, &context.state.shutdown);
+                }
             }
             let (accepted, reason) = admission_response(outcome);
             pending.push_back(ok_message(&event_id, accepted, &reason));

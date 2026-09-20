@@ -289,8 +289,13 @@ When `coder -p` reports `worker_absent`:
 3. Read the worker's stderr for `job <id> failed: …`. A worker whose
    door fails upstream publishes nothing, and the terminal can't tell
    that from silence.
-4. Only then read relay code. The relay logs at `info` say little by
-   design; `NOSTR_RELAY_LOG_LEVEL=debug` says more.
+4. Run the relay with `NOSTR_RELAY_LOG_LEVEL=debug`. It then logs one
+   line per admitted ephemeral event: kind, ID, author, `e` and `p`
+   tags, and the content's byte length, never the content. A `25900`
+   with no `26900` tagged `e` to it is a job the worker never answered.
+   Ephemeral kinds are not stored, so the database holds nothing to
+   query afterwards; the log is the only relay-side record.
+5. Only then read relay code.
 
 ## Rules that don't bend
 

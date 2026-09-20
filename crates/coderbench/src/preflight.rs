@@ -22,6 +22,16 @@
 //! This is the harness checking its own preconditions. Coder's own probe
 //! is a step in the run's trace; this stays what it is: the reason the
 //! run was worth starting.
+//!
+//! A `relay` capability is the one requirement this machine cannot answer
+//! for: the executor is a worker on the far side of a relay, and the
+//! approval and the binary are the worker's. What the harness can check is
+//! that the run is told where to ask — `CODER_RELAY` and `CODER_WORKER` —
+//! and the run's own `capability_probe` check is what says whether the
+//! worker answered. `CODER_DELEGATE` names the capability the run will
+//! delegate through in place of the one the task requires, and the
+//! requirement follows it, so a task written for `devin-local` runs
+//! through `devin-relay` on a host with no Devin CLI at all.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -40,6 +50,17 @@ const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// The variable that names a capability registry, which `crates/coder`
 /// reads under the same name. One knob, both readers.
 pub const CAPABILITY_DIR: &str = capability::DIR_ENV;
+
+/// The variable that names the capability a run delegates through, which
+/// `crates/coder` reads under the same name. When set, it replaces the
+/// capability the task requires in the preflight, because the run will
+/// not use the one the task named.
+pub const DELEGATE_VAR: &str = "CODER_DELEGATE";
+
+/// The relay a `relay` capability is asked over, and the worker it asks.
+/// The names `crates/coder` reads.
+pub const RELAY_VAR: &str = "CODER_RELAY";
+pub const WORKER_VAR: &str = "CODER_WORKER";
 
 /// One requirement, and what the machine said about it.
 #[derive(Clone, Debug)]
@@ -75,13 +96,31 @@ pub fn check_with(task: &Task, repository: &Path, trust: &Trust) -> Vec<Checked>
         checked.push(at_base(&task.requires.base, repository));
         checked.push(unmodified(repository));
     }
+    let delegate = std::env::var(DELEGATE_VAR)
+        .ok()
+        .filter(|slug| !slug.is_empty());
     for slug in &task.requires.capabilities {
-        checked.push(capability(
-            slug,
-            repository,
-            &task.requires.capabilities_refuse,
-            trust,
-        ));
+        match &delegate {
+            Some(chosen) if chosen != slug => {
+                let mut substituted = capability(
+                    chosen,
+                    repository,
+                    &task.requires.capabilities_refuse,
+                    trust,
+                );
+                substituted.requirement = format!(
+                    "{} (in place of {slug}, by {DELEGATE_VAR})",
+                    substituted.requirement
+                );
+                checked.push(substituted);
+            }
+            _ => checked.push(capability(
+                slug,
+                repository,
+                &task.requires.capabilities_refuse,
+                trust,
+            )),
+        }
     }
     checked
 }
@@ -145,6 +184,9 @@ fn capability(
             met: false,
         };
     };
+    if entry.manifest.transport == capability::RELAY {
+        return relay_capability(requirement);
+    }
     let found = entry.detect(repository, trust);
     let met = matches!(found.presence, Presence::Present { .. });
     Checked {
@@ -156,6 +198,49 @@ fn capability(
             _ => found.output(),
         },
         met,
+    }
+}
+
+/// Whether a `relay` capability can be asked about at all.
+///
+/// Nothing here can run the executor: the worker holds the binary and the
+/// approval. The requirement is met when the run knows which relay and
+/// which worker to ask; whether the worker answers is the run's own
+/// `capability_probe` check, recorded in the trace where the grade reads
+/// it. A missing variable is named so the operator sets it rather than
+/// reading a run that never reached a worker.
+fn relay_capability(requirement: String) -> Checked {
+    let relay = std::env::var(RELAY_VAR)
+        .ok()
+        .filter(|value| !value.is_empty());
+    let worker = std::env::var(WORKER_VAR)
+        .ok()
+        .filter(|value| !value.is_empty());
+    match (relay, worker) {
+        (Some(relay), Some(worker)) => Checked {
+            requirement,
+            found: format!(
+                "a worker {worker} over {relay}; the run's capability_probe check says whether it answers"
+            ),
+            met: true,
+        },
+        (relay, worker) => {
+            let mut missing = Vec::new();
+            if relay.is_none() {
+                missing.push(RELAY_VAR);
+            }
+            if worker.is_none() {
+                missing.push(WORKER_VAR);
+            }
+            Checked {
+                requirement,
+                found: format!(
+                    "a relay capability with nothing to ask — set {}",
+                    missing.join(" and ")
+                ),
+                met: false,
+            }
+        }
     }
 }
 
