@@ -245,7 +245,12 @@ test and a recording of something else doing what it should do.
 ## Working notes
 
 - **`cargo +1.97.1`.** The default toolchain is older and the workspace needs 1.95 or better.
-- **`cargo clippy --workspace` fails** on `crates/kev` and `crates/lev` under 1.97.1 (`manual_is_multiple_of` and similar). Pre-existing, and part of what [#9429](https://github.com/OpenAgentsInc/openagents/issues/9429) is for. Lint one crate at a time until it lands.
+- **Strict workspace Clippy passes at `763b84a258`.** Verified with Rust 1.97.1,
+  `--workspace --all-targets -- -D warnings`, both with default features and
+  with `--features kev/serve,lev/serve,gym/tui,jev/blocking`. This does not verify
+  Metal, the minimum supported compiler, model-backed tests, or PostgreSQL.
+  [#9429](https://github.com/OpenAgentsInc/openagents/issues/9429) still owns
+  the toolchain pin, package policy, and complete manual verification gate.
 - **`main` is not rustfmt-clean.** `cargo fmt --all` rewrites about 50 files across five crates. Six agents have now reverted that churn to keep a commit scoped. [#9402](https://github.com/OpenAgentsInc/openagents/issues/9402) fixes it and wants a quiet moment.
 - **Credentials:** hosted Jev is `set -a; . ~/work/.secrets/typesafe.env; set +a`, and a local door key is at `~/work/.secrets/coder-local-door.env`. Both are machine-local and gitignored; never print either. `crates/jev`'s `Config` reads the process environment and loads **no** dotenv, so exporting first is required, and a missing key and a missing `model` field in the body produce different errors.
 - **Local doors:** `~/work/kev-artifacts/` holds four kev checkpoints and their bases. `kev-serve` takes about 45 seconds to load on CPU and answers in roughly 2 seconds.
