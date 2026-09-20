@@ -17,8 +17,9 @@ use lev::error::RefusalCode;
 use lev::schema::Compiled;
 
 /// The fake helper. `$FAKE_MODE` picks the fault; `$FAKE_STATE` is a file
-/// whose presence flips `hang-once` from hanging to answering, which is how
-/// the test tells a restarted helper apart from the one that was retired.
+/// whose presence flips `hang-once` and `exit-once` from faulting to
+/// answering, which is how the test tells a restarted helper apart from the
+/// one that was retired.
 const FAKE: &str = r#"#!/bin/sh
 answer() {
     id=$(printf '%s' "$1" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
@@ -49,6 +50,8 @@ while IFS= read -r line; do
             sleep 60 ;;
         wrong-id) printf '{"id":"not-this-one","ok":true,"choice":"yes"}\n' ;;
         exit) echo "fake: leaving" >&2; exit 3 ;;
+        exit-once)
+            if [ -e "$FAKE_STATE" ]; then answer "$line"; else : > "$FAKE_STATE"; echo "fake: leaving" >&2; exit 3; fi ;;
         garbage) printf 'not json\n' ;;
         *) echo "fake: unknown mode $FAKE_MODE" >&2; exit 2 ;;
     esac
@@ -197,6 +200,22 @@ fn faults_retire_a_helper_and_the_lane_recovers() {
         assert_eq!(outcome.choice.as_deref(), Some("yes"));
     }
     assert!(fake.state().exists(), "the first helper recorded its hang");
+
+    // Recovery from a crash: the lane's helper exits mid-batch, the call it
+    // held comes back as that fault with its last words, and the lane's
+    // remaining calls run on the replacement.
+    mode(&fake, "exit-once");
+    let _ = std::fs::remove_file(fake.state());
+    let pool = Pool::start(&path, 1, DEADLINE).expect("a one-lane pool starts");
+    let batch = pool.decide_all(&[call(), call(), call()]);
+    let crashed = batch[0].as_ref().expect_err("the first call hits the exit");
+    assert_eq!(crashed.code, RefusalCode::BridgeError, "{crashed:?}");
+    assert!(crashed.message.contains("fake: leaving"), "{crashed:?}");
+    for outcome in &batch[1..] {
+        let outcome = outcome.as_ref().expect("the replacement answers");
+        assert_eq!(outcome.choice.as_deref(), Some("yes"));
+    }
+    assert!(fake.state().exists(), "the first helper recorded its exit");
 
     #[cfg(feature = "serve")]
     a_door_over_a_hung_helper_stays_responsive(&fake);
