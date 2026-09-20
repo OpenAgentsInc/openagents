@@ -98,6 +98,19 @@ process usually does not have — `~/.local/bin`, `~/.bun/bin`,
 A probe that shells out to a bare name reports the capability absent on a
 machine that has it.
 
+## Probing needs an operator's approval
+
+Reading `capabilities/` never runs an argv. A probe — the version argv,
+then the manifest's `workspace_probe` — runs only after the operator
+approves the exact manifest with `capability-trust approve <slug>`, which
+pins the manifest's digest, the adapter's canonical path and contents,
+and any repository-controlled script an argv names. The store lives
+outside the checkout, and a record copied into one authorizes nothing: a
+manifest cannot approve itself. A manifest nobody approved is `unprobed`,
+and a probe that times out, exits wrong, or answers past the output cap
+is `unknown` — neither state is a route. `crates/capability` owns the
+contract; CoderBench's preflight runs the same one.
+
 ## The manifest says how to drive the executor
 
 Nothing in `delegate.rs` names an executor. `survey::executor` builds an

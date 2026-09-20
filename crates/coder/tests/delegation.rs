@@ -98,7 +98,12 @@ fn repository() -> PathBuf {
 
 /// The live executor, resolved the way a run resolves one: from the
 /// manifest in `capabilities/`, probed against the directory the
-/// delegations will run in.
+/// delegations will run in. The probe runs under the operator's trust,
+/// so the manifest must be approved first:
+///
+/// ```text
+/// cargo run -p capability --bin capability-trust -- approve devin-local --in .
+/// ```
 fn live_executor(repository: &Path) -> Executor {
     let survey = Survey::read(Some(repository), repository);
     let found = survey

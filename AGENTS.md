@@ -74,9 +74,10 @@ uses, and marks which are implemented and which are only specified.
   location, the opt-out, and what a trace holds. `delegate` hands a
   bounded task to an executor and runs a fan-out of them under a stated
   bound; read `docs/coder/delegate.md` before changing it, and do not
-  offer delegation to the model as a tool it may elect. `capability`,
-  `program`, `questions`, and `source` read `capabilities/`, `programs/`,
-  `questions/`, and `sources/`, so what a machine can reach is probed
+  offer delegation to the model as a tool it may elect. `capability`
+  re-exports the shared `crates/capability` contract. These readers load
+  `capabilities/`, `programs/`, `questions/`, and `sources/`, so what a
+  machine can reach is probed
   rather than hardcoded, and `runtime` runs a program's steps from the
   program. The turn reaches it by asking which program a request wants, or
   **none**, which is nearly every turn and leaves the turn unchanged;
@@ -88,6 +89,17 @@ uses, and marks which are implemented and which are only specified.
   job requests from a relay through an Open Responses door.
   `docs/coder/relay-transport.md` is the measured proof that the two ends
   meet, and it holds the per-transport latency and the refusal causes.
+- `crates/capability` — the capability manifest contract `coder` and
+  `coderbench` share. Reading a registry is inert; an executable probe
+  runs only under an approval the operator recorded with the
+  `capability-trust` binary, which pins the manifest's digest and the
+  adapter's canonical path and contents in a store outside any checkout.
+  Probes run bounded through `supervise`, and a probe that cannot answer
+  cleanly is `unknown`, never `present`.
+- `crates/coder-boundary` — a macOS filesystem write boundary and independent
+  Unix workspace snapshots. Unsupported enforcement is refused; incomplete
+  snapshots are unverifiable. Read
+  `docs/coder/verification/2026-09-20-execution-boundary.md` before changing it.
 - `crates/supervise` — the one subprocess supervisor `coder` and
   `coderbench` run other programs through. A job runs in a process group of
   its own, a deadline or a cancelled caller terminates that group and reaps

@@ -15,25 +15,26 @@
 //! agent running against the repository being measured. A benchmark that
 //! left one behind would charge the next task for it.
 //!
-//! Output goes to files rather than pipes here, because this waits rather
-//! than reads and a pipe nobody is reading fills and stops the child. The
-//! disk policy follows from what each file is for: a run's `stdout` and
-//! `stderr` sit beside its trace and are kept as part of the record, and a
-//! probe's files are temporary, read back under [`PROBE_MAX`], and removed
-//! whether the probe answered, failed, or timed out.
+//! A run's `stdout` and `stderr` go to files beside its trace and are kept
+//! as part of the record. A probe's output goes through
+//! [`capability::bounded`] instead — the same capped capture the
+//! supervisor gives every job — so nothing here owns a second, looser
+//! capture.
 
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use supervise::{Ending, blocking};
 
-/// The bytes of a probe's output this reads back. A probe answers with a
-/// version line or a path; anything past this is a program that has
-/// misunderstood the question, and reading all of it into memory to say so
-/// would be the same mistake twice.
-pub const PROBE_MAX: u64 = 64 * 1024;
+/// The bytes of a probe's output the bounded run keeps. A probe answers
+/// with a version line or a path; anything past this is a program that
+/// has misunderstood the question, and the answer is marked truncated
+/// rather than read as what it is not.
+pub const PROBE_MAX: usize = capability::bounded::OUTPUT_MAX;
+
+/// What a short command said — the bounded run's own answer.
+pub use capability::bounded::Said;
 
 /// How the turn ended, as the exit code reports it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,89 +223,22 @@ pub fn coder(
     })
 }
 
-/// What a short command said.
-#[derive(Clone, Debug)]
-pub struct Said {
-    pub code: Option<i32>,
-    pub out: String,
-    pub err: String,
-}
-
 /// Runs a command that is expected to answer quickly and reads its output.
+///
+/// The run is [`capability::bounded::run`]: a supervised job with a capped
+/// capture, on a thread of its own, so it works inside an asynchronous
+/// host and a hung or noisy answer is stopped and marked rather than
+/// read as clean.
 ///
 /// # Errors
 ///
 /// Returns an error when the command will not start, or does not answer
 /// inside `timeout`.
-pub fn output(mut command: Command, timeout: Duration) -> Result<Said, String> {
-    // Output goes to temporary files rather than pipes, because a pipe
-    // nobody is reading fills and stops the child, and this waits rather
-    // than reads. The files are the probe's and nobody else's: `Probe`
-    // removes them on the way out of this function, whichever way that is.
-    let probe = Probe::new()?;
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(create(&probe.out)?))
-        .stderr(Stdio::from(create(&probe.err)?));
-    blocking::own_group(&mut command);
-    let mut child = command.spawn().map_err(|error| format!("{error}"))?;
-    match blocking::wait(&mut child, timeout) {
-        Ending::Exited(code) => Ok(Said {
-            code,
-            out: read_bounded(&probe.out),
-            err: read_bounded(&probe.err),
-        }),
-        Ending::TimedOut => Err(format!("no answer in {timeout:?}")),
-        Ending::Failed(why) => Err(why),
-    }
-}
-
-/// Where one probe's output goes, and what removes it.
-///
-/// In `Drop` rather than at the end of the wait, because a probe that would
-/// not spawn, was refused, or ran past its timeout leaves a file behind
-/// just as surely as one that answered, and a preflight check runs these by
-/// the dozen.
-struct Probe {
-    out: PathBuf,
-    err: PathBuf,
-}
-
-impl Probe {
-    fn new() -> Result<Self, String> {
-        let directory = std::env::temp_dir().join(format!("coderbench-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).map_err(|error| format!("{error}"))?;
-        let stem = format!("{:x}-{}", now_nanos(), next());
-        Ok(Probe {
-            out: directory.join(format!("{stem}.out")),
-            err: directory.join(format!("{stem}.err")),
-        })
-    }
-}
-
-impl Drop for Probe {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.out);
-        let _ = std::fs::remove_file(&self.err);
-    }
-}
-
-/// Reads a probe's file, up to [`PROBE_MAX`] bytes of it, and says so when
-/// there was more.
-fn read_bounded(path: &Path) -> String {
-    let Ok(file) = std::fs::File::open(path) else {
-        return String::new();
-    };
-    let bytes = file.metadata().map(|about| about.len()).unwrap_or_default();
-    let mut kept = Vec::new();
-    if file.take(PROBE_MAX).read_to_end(&mut kept).is_err() {
-        return String::new();
-    }
-    let text = String::from_utf8_lossy(&kept).into_owned();
-    match bytes > PROBE_MAX {
-        false => text,
-        true => format!("{text}\n…truncated, {bytes} bytes in all"),
-    }
+pub fn output(command: Command, timeout: Duration) -> Result<Said, String> {
+    capability::bounded::run(command, timeout).map_err(|stop| match stop {
+        capability::bounded::Stop::TimedOut => format!("no answer in {timeout:?}"),
+        other => other.to_string(),
+    })
 }
 
 /// Opens a file for a child to write to.
@@ -319,25 +253,6 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     name.push(".");
     name.push(suffix);
     PathBuf::from(name)
-}
-
-/// Nanoseconds since the epoch, for a temporary name no concurrent run
-/// takes.
-fn now_nanos() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_nanos())
-}
-
-/// A number no other call in this process takes.
-///
-/// The clock is not enough on its own. Two calls from different threads can
-/// read the same nanosecond, and then one writes over the other's output
-/// file and deletes it — which reads as a command that answered with
-/// nothing rather than as two callers sharing a name.
-fn next() -> u64 {
-    static TAKEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    TAKEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 #[cfg(test)]
@@ -391,7 +306,7 @@ mod tests {
     }
 
     /// A probe that answers with far more than a version line is read back
-    /// under the cap, and says how much there was.
+    /// under the cap, and marked as cut rather than read as clean.
     #[test]
     fn an_oversized_probe_answer_is_bounded() {
         let mut noisy = Command::new("sh");
@@ -399,23 +314,8 @@ mod tests {
         let said = output(noisy, Duration::from_secs(30)).unwrap();
 
         assert_eq!(said.code, Some(0));
-        assert!(said.out.len() as u64 <= PROBE_MAX + 64);
-        assert!(said.out.ends_with("131072 bytes in all"));
-    }
-
-    /// A probe's files go when the probe does, whether it answered or
-    /// failed. The failing paths leave through `?`, so the removal is in
-    /// `Drop` rather than at the end of the function.
-    #[test]
-    fn a_probe_removes_its_files_however_it_ends() {
-        let probe = Probe::new().unwrap();
-        let (out, err) = (probe.out.clone(), probe.err.clone());
-        create(&out).unwrap();
-        create(&err).unwrap();
-        assert!(out.exists() && err.exists());
-
-        drop(probe);
-        assert!(!out.exists() && !err.exists());
+        assert!(said.out.len() <= PROBE_MAX);
+        assert!(said.truncated, "the cap marks the answer it cut");
     }
 
     /// A trace path that is taken is refused before anything runs, because

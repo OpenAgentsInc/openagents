@@ -373,6 +373,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "capability"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "supervise",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "castaway"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -425,6 +438,7 @@ name = "coder"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "capability",
  "coder-terminal",
  "coderbench",
  "crossterm",
@@ -471,6 +485,7 @@ name = "coderbench"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "capability",
  "gym",
  "serde",
  "serde_json",

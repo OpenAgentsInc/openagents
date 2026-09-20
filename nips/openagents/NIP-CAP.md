@@ -172,6 +172,7 @@ There MUST be exactly one `d` tag. The `transport` tag duplicates
   "invoke": ["devin", "-p", "--"],
   "workspace_probe": {
     "argv": ["devin", "-p", "capability probe", "--model", "not-a-model"],
+    "accepts": ["not-a-model"],
     "note": "Reaches the trust check and stops short of starting a session."
   },
   "refuses": [
@@ -195,7 +196,7 @@ There MUST be exactly one `d` tag. The `transport` tag duplicates
 | `cost` | Who pays: `operator_account`, `metered`, `local`. Never a number; prices go stale in a signed event. |
 | `isolation` | Which checkout shapes it accepts. |
 | `invoke` | The argv that hands the executor one task, with the prompt appended as the final argument. A fixed argv, like `detect`. |
-| `workspace_probe` | A fixed argv a host runs **in a candidate working directory** to find out whether the executor will accept it. |
+| `workspace_probe` | A fixed argv a host runs **in a candidate working directory** to find out whether the executor will accept it. `accepts` names output that proves acceptance — for a probe that exits non-zero either way, the word only an accepted workspace reaches. |
 | `refuses` | What the executor declines while installed, each with the text that identifies it. |
 
 `detect` and `invoke` are both fixed argv, and a host replaces the first
@@ -215,16 +216,37 @@ than as advice, and it is why the field is stated positively instead of
 being inferred from the absence of an `enforces` entry: an omission is
 ambiguous and a refusal must not rest on an omission.
 
-## Presence has three states
+## Reading a manifest never runs it
 
-A host that has run `detect` knows one of three things, and the third is the
-one a present-or-absent answer cannot carry.
+A manifest is untrusted input: it names an executable and its arguments,
+and a manifest that reached `exec` on the strength of being read would let
+any repository run any interpreter the host carries. Discovery is inert —
+a host reads, validates, and records manifests and runs nothing. An
+executable probe runs only under a **host-owned approval**: a record the
+operator wrote, outside the repository, naming the exact manifest digest,
+the adapter's canonical path and contents, and every argv word that names
+a file — the word as spelled, the canonical path it resolved to, and the
+bytes it held. The decision re-resolves each word in the directory the
+argv would run in, so a retargeted link or a file dropped under a relative
+name invalidates the approval. Directory placement, search order, and a
+manifest's own claims grant nothing; a record copied into a repository
+cannot authorize itself, and a store inside the manifest's own checkout
+approves nothing wherever the probe would run. Approval authorizes the
+probe to run — it does not verify that the manifest's `enforces` claims
+are honored, which is the host's own enforcement to prove.
+
+## Presence has five states
+
+A host that has run `detect` knows one of five things, and the last four
+are the ones a present-or-absent answer cannot carry.
 
 | State | Meaning |
 | --- | --- |
-| Present | `detect` resolved and the version parsed. |
+| Present | `detect` resolved, the version parsed, and a declared workspace probe accepted. The only state that is a route. |
 | Absent | Nothing to run. **Not an error** — the capability is not an option, which is why an operator without an executor loses nothing. |
 | Present and unavailable | Installed, detected, and refusing this context. |
+| Unprobed | Declared, and no host-owned approval names it, so nothing ran. |
+| Unknown | A probe ran and could not be read — it timed out, exited wrong, answered past the output bound, or exited without a declared word. |
 
 The third state is a fact about a pairing rather than about a machine. The
 reference implementation recorded six of six delegations declined with
@@ -236,17 +258,30 @@ cannot say why a capability the operator installed went missing.
 
 `refuses` names what an executor declines while installed, and
 `workspace_probe` is how a host asks. The host runs the argv in the
-candidate working directory and reads everything it printed, standard error
-included, for a declared `match`. Two rules make that safe to do on every
-look:
+candidate working directory, under a wall clock and an output bound, and
+reads everything it printed, standard error included. The typed contract,
+in order:
+
+- **A declared `match` means present and unavailable.** The executor is
+  there, and this is a directory it will not work.
+- **A declared `accepts` word, or a clean exit, means present.** A probe
+  that exits non-zero by design — one that reaches a trust check and
+  stops short of a session — declares the word that only an accepted
+  workspace reaches, so a silent non-zero exit is not mistaken for either
+  answer.
+- **Anything else means unknown.** A timeout, a failed run, output past
+  the bound, or an exit that names neither a declared refusal nor a
+  declared acceptance proves nothing, and `unknown` is not a route.
+
+Two rules make the asking safe on every look:
 
 - **A workspace probe MUST NOT do the work.** An argv that starts a session
   charges the operator for a question, and a host asks this question
   whenever it considers a directory.
-- **An unmatched probe means present, never unavailable.** A host that
-  cannot produce a refusal reports what `detect` already established. A
-  probe that failed to run proves nothing, and a host that treats its
-  silence as a refusal hides a capability the operator has.
+- **A probe a host cannot read means unknown, never present or
+  unavailable.** A host that treats a failed probe as a refusal hides a
+  capability the operator has, and a host that treats it as present
+  offers a route that may not exist.
 
 Presence still stays on the machine. The state a probe found is local fact
 under [Local presence is not an event](#local-presence-is-not-an-event),

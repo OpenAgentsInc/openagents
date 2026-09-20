@@ -72,7 +72,7 @@ terminate the job.
 | Peak capture memory per job | `2 × stream_max`, plus two 8 KiB read buffers |
 | Shell command, per stream | 16 KiB (`shell::OUTPUT_MAX`) |
 | Delegation, per stream | 64 KiB (`delegate::OUTPUT_MAX`) |
-| CoderBench probe, read back from disk | 64 KiB (`drive::PROBE_MAX`) |
+| Capability probe, per stream | 64 KiB (`capability::bounded::OUTPUT_MAX`) |
 
 Each captured stream reports three things: the text that was kept, how many
 bytes there were in all, and whether the cap cut it. A cut stream carries a
@@ -91,9 +91,11 @@ CoderBench is the exception to capture, on purpose. A run's output goes to
 `<trace>.stdout` and `<trace>.stderr` beside its trace, because those files
 are part of the record a reader opens afterwards, and because CoderBench
 waits rather than reads — a pipe nobody is reading fills and stops the
-child. Those files are kept. A preflight probe's files are temporary: they
-are read back under `PROBE_MAX`, and they are removed whether the probe
-answered, failed, or ran past its timeout.
+child. Those files are kept. A probe — Coder's survey or a CoderBench
+preflight — is not the exception: it runs through `capability::bounded`,
+which is `Job::from_command` under a wall clock and the capped capture, on
+a thread of its own so a synchronous caller inside an asynchronous host
+does not nest runtimes.
 
 CoderBench uses the blocking half of the same crate, so the process-tree
 rules above apply to it unchanged.
@@ -109,7 +111,9 @@ an implementation and tests is the failure this crate exists to remove.
 
 - **It is not a sandbox.** It bounds time and captured output. It does not
   bound what a program reads, writes, or sends, and it does not bound memory
-  or CPU. Trusted probes and enforced admission are separate work.
+  or CPU. A probe's argv additionally runs only under an operator approval —
+  `crates/capability` owns that — and enforced admission for delegated work
+  is separate work.
 - **A process that leaves the group escapes it.** A descendant that calls
   `setsid` is no longer in the group the job owns, and nothing here reaches
   it. The capture waits a bounded time for such a process to close its end

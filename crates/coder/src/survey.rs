@@ -14,7 +14,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::capability::{self, Found, Presence};
+use crate::capability::{self, Found, Presence, Trust};
 use crate::delegate::Executor;
 use crate::program;
 use crate::source;
@@ -39,15 +39,25 @@ pub struct Survey {
 
 impl Survey {
     /// Reads the manifests and programs a host can see, and probes each
-    /// capability against `workspace`.
+    /// capability against `workspace` under the operator's trust.
     ///
     /// `repository` is the checkout the host is running in, whose
     /// `capabilities/`, `programs/`, and `sources/` directories are read
-    /// before the operator's own.
+    /// before the operator's own. The read is inert and the probes are
+    /// gated: a manifest the operator has not approved is recorded
+    /// `unprobed` and its argv never runs. `capability-trust approve`
+    /// is the approval path.
     #[must_use]
     pub fn read(repository: Option<&Path>, workspace: &Path) -> Self {
+        Self::read_with(repository, workspace, &Trust::operator())
+    }
+
+    /// The same read, under a trust the caller chose. A host runs this
+    /// with [`Trust::operator`]; a test runs it with a trust it can see.
+    #[must_use]
+    pub fn read_with(repository: Option<&Path>, workspace: &Path, trust: &Trust) -> Self {
         let capabilities =
-            capability::Registry::open(&capability::search(repository)).probe_all(workspace);
+            capability::Registry::open(&capability::search(repository)).probe_all(workspace, trust);
         let programs = program::Registry::open(&program::search(repository));
         let sources = source::Registry::open(&source::search(repository));
         Survey {
@@ -134,7 +144,10 @@ mod tests {
     #[test]
     fn a_survey_reads_the_repositorys_capabilities_and_programs() {
         let workspace = tempfile::tempdir().unwrap();
-        let survey = Survey::read(Some(&repository()), workspace.path());
+        // An empty trust probes nothing, so the repository's manifest is
+        // declared and unprobed rather than run — the read is inert and
+        // the answer does not depend on what this operator has approved.
+        let survey = Survey::read_with(Some(&repository()), workspace.path(), &Trust::empty());
 
         assert!(
             survey.capability("devin-local").is_some(),
@@ -148,12 +161,56 @@ mod tests {
         );
     }
 
+    /// A checkout cannot supply the approval its own manifest needs. The
+    /// production read is `Survey::read`, which decides under the
+    /// operator's store — a `capability-trust.json` the repository ships,
+    /// even a real record copied in, is repository data and nobody's
+    /// trust. `Trust::everything` is a test's word; no file becomes it.
+    #[test]
+    fn a_repositorys_own_trust_file_approves_nothing() {
+        let outside = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let repository = tempfile::tempdir().unwrap();
+        let capabilities = repository.path().join("capabilities");
+        std::fs::create_dir_all(&capabilities).unwrap();
+        let marker = workspace.path().join("it-ran");
+        std::fs::write(
+            capabilities.join("side-effect.json"),
+            format!(
+                r#"{{"v":1,"slug":"side-effect","name":"A","transport":"subprocess","detect":{{"binary":"sh","version":["sh","-c","touch {}; echo side-effect 1.0.0"]}}}}"#,
+                marker.display()
+            ),
+        )
+        .unwrap();
+
+        // A real record, written by an approval outside the repository —
+        // then copied into it, where it is just a file the checkout ships.
+        let mut approved = Trust::load(&outside.path().join("capability-trust.json")).unwrap();
+        approved
+            .approve(Some(repository.path()), "side-effect", &[])
+            .unwrap();
+        std::fs::copy(
+            outside.path().join("capability-trust.json"),
+            repository.path().join("capability-trust.json"),
+        )
+        .unwrap();
+
+        let survey = Survey::read(Some(repository.path()), workspace.path());
+        let found = survey.capability("side-effect").expect("declared");
+        assert!(
+            matches!(found.presence, Presence::Unprobed { .. }),
+            "the production read consults the operator's store, not the checkout's: {:?}",
+            found.presence
+        );
+        assert!(!marker.exists(), "nothing ran for the unapproved manifest");
+    }
+
     /// A machine with nothing declared surveys cleanly. Absence is not an
     /// error anywhere on this path.
     #[test]
     fn a_machine_with_no_manifests_surveys_to_nothing() {
         let empty = tempfile::tempdir().unwrap();
-        let survey = Survey::read(Some(empty.path()), empty.path());
+        let survey = Survey::read_with(Some(empty.path()), empty.path(), &Trust::empty());
 
         assert!(survey.capabilities.is_empty());
         assert!(survey.options().is_empty());
@@ -172,7 +229,8 @@ mod tests {
         let mut recorder = Recorder::open(dir.path(), "a-model", "stub", "/tmp/repo").unwrap();
         let path = recorder.path().to_path_buf();
 
-        Survey::read(Some(&repository()), workspace.path()).record(&mut recorder, None);
+        Survey::read_with(Some(&repository()), workspace.path(), &Trust::empty())
+            .record(&mut recorder, None);
         recorder.finish(atif::log::ENDED);
 
         let recording = atif::log::read(&path).expect("the trace reads back");
@@ -261,6 +319,7 @@ mod tests {
                 "-c".to_string(),
                 "echo Refusing to run in an untrusted workspace >&2".to_string(),
             ],
+            accepts: Vec::new(),
             note: String::new(),
         });
         let found = refusing.probe(Path::new("/"));
@@ -280,7 +339,8 @@ mod tests {
         let mut recorder = Recorder::open(dir.path(), "a-model", "stub", "/tmp/repo").unwrap();
         let path = recorder.path().to_path_buf();
 
-        Survey::read(Some(&repository()), workspace.path()).record(&mut recorder, None);
+        Survey::read_with(Some(&repository()), workspace.path(), &Trust::empty())
+            .record(&mut recorder, None);
         recorder.finish(atif::log::ENDED);
 
         let run = coderbench::observe(&path).expect("the grader reads the trace");

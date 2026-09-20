@@ -40,9 +40,9 @@ The trace is named rather than searched for, which is what
 a session never writes over another session's record. Standard output and
 standard error land beside it as `<trace>.stdout` and `<trace>.stderr`, so
 what the agent said is readable next to what it did. Those two files are
-part of the run's record and are kept; a preflight probe's output is
-temporary, read back under a 64 KiB cap, and removed whether the probe
-answered, failed, or timed out.
+part of the run's record and are kept; a preflight probe's output is read
+under the same 64 KiB capped capture every supervised job uses, and a
+probe that overruns it is marked truncated rather than read as clean.
 
 A run that passes its timeout takes its whole process tree with it, so an
 agent stopped on one task is not still running against the repository
@@ -182,10 +182,13 @@ that failed:
   file is not the base commit however the commit reads;
 - every capability in `requires.capabilities` is installed, resolved from
   its manifest in the `capabilities/` registry and detected the way
-  [NIP-CAP](../nips/openagents/NIP-CAP.md) says to detect it. The registry
-  is the one `crates/coder` reads, in the same order and under the same
-  `CODER_CAPABILITY_DIR`, with the workspace's own last so a checkout
-  pinned to a commit from before the registry existed still resolves.
+  [NIP-CAP](../nips/openagents/NIP-CAP.md) says to detect it — under the
+  same `capability-trust` approval Coder's survey needs, so a manifest
+  nobody approved is reported `unprobed` with the approval path named
+  rather than run. The registry is the one `crates/coder` reads, in the
+  same order and under the same `CODER_CAPABILITY_DIR`, with the
+  workspace's own last so a checkout pinned to a commit from before the
+  registry existed still resolves.
 
 Every requirement is printed, met or not, because the faults underneath
 mean one thing at the base commit and another thing anywhere else.

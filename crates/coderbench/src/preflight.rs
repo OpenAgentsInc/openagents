@@ -12,12 +12,15 @@
 //!
 //! Presence is local fact, as [NIP-CAP](../../../nips/openagents/NIP-CAP.md)
 //! puts it: a manifest describes how to drive an executor and says nothing
-//! about whether this computer has one. So a manifest is read from disk and
-//! its `detect` argv is run here.
+//! about whether this computer has one. The manifest, the registry, the
+//! approval, and the bounded probe are the shared `capability` crate's —
+//! the same contract `coder::capability` serves, so the two readers
+//! cannot drift. Reading is inert and probing runs only under an
+//! approval the operator recorded; a manifest nobody approved is
+//! unmet with the approval path named, not silently run.
 //!
-//! This is the harness checking its own preconditions, not the capability
-//! probe Coder owes its own runs. When Coder grows one, a run's probe
-//! becomes a step in the trace and this stays what it is: the reason the
+//! This is the harness checking its own preconditions. Coder's own probe
+//! is a step in the run's trace; this stays what it is: the reason the
 //! run was worth starting.
 
 use std::collections::BTreeMap;
@@ -25,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use serde::Deserialize;
+use capability::{Presence, Registry, SourceDir, Trust};
 
 use crate::{Task, capabilities_dir, drive};
 
@@ -36,21 +39,7 @@ const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The variable that names a capability registry, which `crates/coder`
 /// reads under the same name. One knob, both readers.
-pub const CAPABILITY_DIR: &str = "CODER_CAPABILITY_DIR";
-
-/// Directories to look in when `PATH` does not resolve a binary.
-///
-/// The first recording of `devin-fan-out-six` failed six delegations with
-/// `command not found: devin` on a machine that had Devin installed: the
-/// binary was on the operator's interactive `PATH` and not on the one a
-/// spawned subshell inherits. A probe that reported that capability absent
-/// would have been wrong about the machine.
-const ALSO_LOOK_IN: [&str; 4] = [
-    "~/.local/bin",
-    "~/bin",
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-];
+pub const CAPABILITY_DIR: &str = capability::DIR_ENV;
 
 /// One requirement, and what the machine said about it.
 #[derive(Clone, Debug)]
@@ -63,13 +52,21 @@ pub struct Checked {
 }
 
 /// Everything a task requires, in the order a reader wants it: where the
-/// run would happen, then what it would reach.
+/// run would happen, then what it would reach — under the operator's
+/// trust, so a capability probe runs only under a recorded approval.
 ///
 /// Every requirement is reported, met or not, because a run that starts is
 /// a run somebody will read the faults of, and the faults mean one thing
 /// at the base commit and another thing anywhere else.
 #[must_use]
 pub fn check(task: &Task, repository: &Path) -> Vec<Checked> {
+    check_with(task, repository, &Trust::operator())
+}
+
+/// The same check under a trust the caller chose — a test's own store,
+/// or [`Trust::empty`] for a check that must prove it runs nothing.
+#[must_use]
+pub fn check_with(task: &Task, repository: &Path, trust: &Trust) -> Vec<Checked> {
     let mut checked = Vec::new();
     if !task.requires.repository.is_empty() {
         checked.push(same_repository(&task.requires.repository, repository));
@@ -83,6 +80,7 @@ pub fn check(task: &Task, repository: &Path) -> Vec<Checked> {
             slug,
             repository,
             &task.requires.capabilities_refuse,
+            trust,
         ));
     }
     checked
@@ -94,188 +92,70 @@ pub fn unmet(checked: &[Checked]) -> Vec<&Checked> {
     checked.iter().filter(|one| !one.met).collect()
 }
 
-/// A capability manifest, as [NIP-CAP](../../../nips/openagents/NIP-CAP.md)
-/// kind `30180` carries it.
-///
-/// Only `detect` is read. The rest of the body says how to drive an
-/// executor, which is `crates/coder`'s business rather than this crate's:
-/// the harness asks whether the machine has the executor, not what to do
-/// with it.
-#[derive(Clone, Debug, Deserialize)]
-pub struct Manifest {
-    pub detect: Detect,
-}
-
-/// What a host runs to decide an executor is here.
-#[derive(Clone, Debug, Deserialize)]
-pub struct Detect {
-    /// The executable to resolve.
-    pub binary: String,
-    /// The argv that reports the version.
-    ///
-    /// An argv, never a shell string. A manifest is untrusted input, and a
-    /// manifest that could name a shell command would be a way to run one.
-    #[serde(default)]
-    pub version: Vec<String>,
-}
-
-impl Manifest {
-    /// Reads the manifest for a capability slug, from the first registry
-    /// that holds one.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when no registry holds the slug, or the manifest
-    /// does not parse. An unknown slug is an error rather than an absent
-    /// capability: a task asking for something nothing describes is a task
-    /// nobody can say is runnable.
-    pub fn load(slug: &str, repository: Option<&Path>) -> Result<Self, String> {
-        let mut looked = Vec::new();
-        for directory in registries(repository) {
-            let path = directory.join(format!("{slug}.json"));
-            match std::fs::read_to_string(&path) {
-                Ok(text) => {
-                    return serde_json::from_str(&text)
-                        .map_err(|error| format!("{}: {error}", path.display()));
-                }
-                Err(_) => looked.push(directory.display().to_string()),
-            }
-        }
-        Err(format!("no {slug}.json in {}", looked.join(", ")))
-    }
-}
-
 /// Where a manifest is read from, in order.
 ///
-/// The same order `coder::capability::search` takes, with this workspace's
-/// own registry last. A checkout pinned to a commit from before the
-/// registry existed still needs the harness to know what `devin-local` is.
+/// The same order `capability::search` takes, with this workspace's own
+/// registry last. A checkout pinned to a commit from before the registry
+/// existed still needs the harness to know what `devin-local` is. The
+/// bundled registry is repository data, like any checkout's.
 #[must_use]
-pub fn registries(repository: Option<&Path>) -> Vec<PathBuf> {
-    let mut directories = Vec::new();
-    if let Some(named) = std::env::var_os(CAPABILITY_DIR).filter(|named| !named.is_empty()) {
-        directories.push(PathBuf::from(named));
-    }
-    if let Some(repository) = repository {
-        directories.push(repository.join("capabilities"));
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        directories.push(PathBuf::from(home).join(".openagents").join("capabilities"));
-    }
-    directories.push(capabilities_dir());
+pub fn registries(repository: Option<&Path>) -> Vec<SourceDir> {
+    let mut directories = capability::search(repository);
+    directories.push(SourceDir::repository(capabilities_dir()));
     directories
 }
 
-/// Resolves `binary` to a file that can be run, on `PATH` first and then in
-/// the directories an interactive shell usually adds.
+/// Resolves `binary` to a file that can be run, through the same search
+/// `capability` resolves probes with: `CODER_CAPABILITY_PATH`, `PATH`,
+/// then the directories an interactive shell usually adds.
 #[must_use]
 pub fn resolve(binary: &str) -> Option<PathBuf> {
-    let named = Path::new(binary);
-    if named.components().count() > 1 {
-        return runnable(named).then(|| named.to_path_buf());
-    }
-    let path = std::env::var("PATH").unwrap_or_default();
-    let directories = path
-        .split(':')
-        .map(PathBuf::from)
-        .chain(ALSO_LOOK_IN.iter().map(|directory| expand(directory)));
-    for directory in directories {
-        let candidate = directory.join(binary);
-        if runnable(&candidate) {
-            return Some(candidate);
-        }
-    }
-    None
-}
-
-/// Whether a path is a file this user can run.
-fn runnable(path: &Path) -> bool {
-    let Ok(metadata) = std::fs::metadata(path) else {
-        return false;
-    };
-    if !metadata.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    true
-}
-
-/// Expands a leading `~` against the home directory.
-fn expand(directory: &str) -> PathBuf {
-    match directory.strip_prefix("~/") {
-        Some(rest) => match std::env::var("HOME") {
-            Ok(home) => PathBuf::from(home).join(rest),
-            Err(_) => PathBuf::from(directory),
-        },
-        None => PathBuf::from(directory),
-    }
+    capability::resolve(binary, &capability::search_dirs())
 }
 
 /// Whether the capability is installed here, and at what version.
-fn capability(slug: &str, repository: &Path, refuses: &BTreeMap<String, Vec<String>>) -> Checked {
+///
+/// The probe is the shared contract's: the manifest comes from the same
+/// registry order, the argv runs only under an approval the operator
+/// recorded, and the answer is typed — `unprobed` and `unknown` are
+/// unmet with their reasons, not silent passes or silent failures.
+fn capability(
+    slug: &str,
+    repository: &Path,
+    refuses: &BTreeMap<String, Vec<String>>,
+    trust: &Trust,
+) -> Checked {
     let refused = refuses.get(slug).filter(|what| !what.is_empty());
     let requirement = match refused {
         Some(what) => format!("capability {slug}, which refuses {}", what.join(", ")),
         None => format!("capability {slug}"),
     };
-    let manifest = match Manifest::load(slug, Some(repository)) {
-        Ok(manifest) => manifest,
-        Err(error) => {
-            return Checked {
-                requirement,
-                found: format!("nothing describes it — {error}"),
-                met: false,
-            };
-        }
-    };
-    let Some(resolved) = resolve(&manifest.detect.binary) else {
+    let dirs = registries(Some(repository));
+    let registry = Registry::open(&dirs);
+    let Some(entry) = registry.entry(slug) else {
         return Checked {
-            requirement,
-            found: format!("{} is not installed here", manifest.detect.binary),
-            met: false,
-        };
-    };
-    let Some((first, rest)) = manifest.detect.version.split_first() else {
-        return Checked {
-            requirement,
-            found: format!("{}", resolved.display()),
-            met: true,
-        };
-    };
-    // The manifest names the binary and `PATH` may not resolve it, so the
-    // resolved file is what runs. The rest of the argv is the manifest's.
-    let _ = first;
-    let mut command = Command::new(&resolved);
-    command.args(rest);
-    match drive::output(command, DETECT_TIMEOUT) {
-        Ok(reported) if reported.code == Some(0) => Checked {
-            requirement,
-            found: format!("{} at {}", reported.out.trim(), resolved.display()),
-            met: true,
-        },
-        Ok(reported) => Checked {
             requirement,
             found: format!(
-                "{} is installed at {} and {} exited {}",
-                manifest.detect.binary,
-                resolved.display(),
-                manifest.detect.version.join(" "),
-                reported
-                    .code
-                    .map_or_else(|| "on a signal".to_string(), |code| code.to_string())
+                "nothing describes it — no {slug}.json under {}",
+                dirs.iter()
+                    .map(|dir| dir.path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             met: false,
+        };
+    };
+    let found = entry.detect(repository, trust);
+    let met = matches!(found.presence, Presence::Present { .. });
+    Checked {
+        requirement,
+        found: match &found.presence {
+            Presence::Present { report, path, .. } => {
+                format!("{report} at {}", path.display())
+            }
+            _ => found.output(),
         },
-        Err(error) => Checked {
-            requirement,
-            found: format!("{} could not be run — {error}", resolved.display()),
-            met: false,
-        },
+        met,
     }
 }
 
@@ -471,8 +351,10 @@ mod tests {
     /// own.
     #[test]
     fn the_registry_answers_for_devin() {
-        let manifest =
-            Manifest::load("devin-local", None).expect("the registry describes devin-local");
+        let registry = Registry::open(&registries(None));
+        let manifest = registry
+            .get("devin-local")
+            .expect("the registry describes devin-local");
         assert_eq!(manifest.detect.binary, "devin");
         assert_eq!(
             manifest.detect.version.first().map(String::as_str),
@@ -488,6 +370,7 @@ mod tests {
             "nothing-describes-this",
             Path::new("/nowhere"),
             &BTreeMap::new(),
+            &Trust::empty(),
         );
         assert!(!checked.met);
         assert!(
@@ -495,6 +378,77 @@ mod tests {
             "{}",
             checked.found
         );
+    }
+
+    /// A manifest nobody approved is unmet and its argv never runs — the
+    /// approval path is named in the reason, and the marker proves the
+    /// executable stayed inert.
+    #[test]
+    fn an_unapproved_manifest_is_unprobed_and_runs_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_dir = dir.path().join("capabilities");
+        std::fs::create_dir_all(&registry_dir).unwrap();
+        let marker = dir.path().join("ran");
+        std::fs::write(
+            registry_dir.join("side-effect.json"),
+            format!(
+                r#"{{"v":1,"slug":"side-effect","name":"A","transport":"subprocess","detect":{{"binary":"sh","version":["sh","-c","touch {}; echo side-effect 1.0.0"]}}}}"#,
+                marker.display()
+            ),
+        )
+        .unwrap();
+
+        let checked = capability("side-effect", dir.path(), &BTreeMap::new(), &Trust::empty());
+        assert!(!checked.met);
+        assert!(
+            checked.found.contains("capability-trust approve"),
+            "{}",
+            checked.found
+        );
+        assert!(
+            !marker.exists(),
+            "an unapproved manifest's argv must not run"
+        );
+    }
+
+    /// The production check decides under the operator's store: a
+    /// checkout that ships a `capability-trust.json` of its own — even a
+    /// real record copied in — does not approve its own manifest, and
+    /// nothing runs.
+    #[test]
+    fn a_checkout_cannot_approve_its_own_capability() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let registry_dir = dir.path().join("capabilities");
+        std::fs::create_dir_all(&registry_dir).unwrap();
+        let marker = dir.path().join("ran");
+        std::fs::write(
+            registry_dir.join("side-effect.json"),
+            format!(
+                r#"{{"v":1,"slug":"side-effect","name":"A","transport":"subprocess","detect":{{"binary":"sh","version":["sh","-c","touch {}; echo side-effect 1.0.0"]}}}}"#,
+                marker.display()
+            ),
+        )
+        .unwrap();
+
+        let mut approved = Trust::load(&outside.path().join("capability-trust.json")).unwrap();
+        approved
+            .approve(Some(dir.path()), "side-effect", &[])
+            .unwrap();
+        std::fs::copy(
+            outside.path().join("capability-trust.json"),
+            dir.path().join("capability-trust.json"),
+        )
+        .unwrap();
+
+        let checked = capability(
+            "side-effect",
+            dir.path(),
+            &BTreeMap::new(),
+            &Trust::operator(),
+        );
+        assert!(!checked.met, "{}", checked.found);
+        assert!(!marker.exists(), "the checkout's own record ran nothing");
     }
 
     /// Something every machine has resolves, and something nothing has

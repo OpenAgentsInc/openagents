@@ -8,6 +8,9 @@ publish = false
 
 [dependencies]
 atif = { path = "../atif" }
+# The shared manifest/trust/probe contract — preflight runs the same
+# validated manifests and the same host-owned approval Coder does.
+capability = { path = "../capability" }
 # For `gate::Verdict`. A grade here answers with the same three values a
 # gate there does, and one vocabulary is the point: a second enum spelling
 # `unverifiable` would drift from this one.

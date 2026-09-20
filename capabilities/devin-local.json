@@ -17,7 +17,8 @@
   "invoke": ["devin", "-p", "--"],
   "workspace_probe": {
     "argv": ["devin", "-p", "capability probe", "--model", "openagents-capability-probe"],
-    "note": "The model name is deliberately not a model. The executor checks workspace trust before it validates the model, so this argv reaches the trust refusal and otherwise stops at an unknown model, without starting a session or spending anything."
+    "accepts": ["openagents-capability-probe"],
+    "note": "The model name is deliberately not a model. The executor checks workspace trust before it validates the model, so this argv exits non-zero either way: on an untrusted workspace it names the declared refusal, and on an accepted one it stops at an unknown-model error that echoes the fake name — the acceptance word. An exit naming neither is unknown, not a route."
   },
   "refuses": [
     {

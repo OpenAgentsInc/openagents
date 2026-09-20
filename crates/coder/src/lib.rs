@@ -22,8 +22,10 @@
 //! - [`turn`] is one turn of that conversation, start to finish. The
 //!   terminal and `coder --print` both call it, so neither can drift from
 //!   the other.
-//! - [`capability`] probes what this machine can hand work to, in three
-//!   states: present, absent, and present and unavailable.
+//! - [`capability`] is the shared contract for what this machine can hand
+//!   work to: an inert registry, a host-owned approval before any probe
+//!   runs, and a typed answer — present, absent, unavailable, unprobed,
+//!   or unknown.
 //! - [`program`] reads the programs a run can take, each a state machine of
 //!   named steps with per-step bounds.
 //! - [`questions`] holds the wording a `decide` step names and must not
@@ -54,8 +56,8 @@ pub mod trace;
 pub mod turn;
 mod worktree;
 
+pub use crate::capability::{Found, Manifest, Presence};
 pub use agent::{Agent, Classified, Verdict};
-pub use capability::{Found, Manifest, Presence};
 pub use classify::{Action, Judgment, Route, route, state_of};
 pub use delegate::{Bounds, Delegation, Delegator, Executor, Isolation, Task};
 pub use generate::{

@@ -18,6 +18,7 @@ use std::io::Write as _;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
+use coder::capability::Trust;
 use coder::delegate::WORKTREE_DIR;
 use coder::program::Program;
 use coder::questions;
@@ -289,7 +290,7 @@ async fn runtime(root: &Path) -> Runtime {
     )
     .expect("the stub door builds a client");
     Runtime::over(
-        Survey::read(Some(root), root),
+        Survey::read_with(Some(root), root, &Trust::everything()),
         questions::Registry::open(&[root.join("questions")]),
         Host::with_repository(),
     )
@@ -380,7 +381,13 @@ async fn the_first_program_runs_from_its_definition() {
         "the order is the program's, not the code's"
     );
     assert_eq!(run.delegations.len(), 6);
-    assert_eq!(run.correct(), (6, 6), "{}\n{:#?}", run.summary(), run.delegations);
+    assert_eq!(
+        run.correct(),
+        (6, 6),
+        "{}\n{:#?}",
+        run.summary(),
+        run.delegations
+    );
 
     // The bounds came off the program. Six at once, one checkout each,
     // five minutes — no, sixty: the step says sixty.
@@ -1153,7 +1160,7 @@ async fn agent(root: &Path, program: &'static str) -> Agent {
     .expect("the stub door builds a client");
     Agent::new(Some(client), Door::Stub(StubGenerate::default()))
         .with_repo(Repo::discover(root))
-        .with_survey(Survey::read(Some(root), root))
+        .with_survey(Survey::read_with(Some(root), root, &Trust::everything()))
 }
 
 /// The operator's sentence reaches the runtime, through the turn the
