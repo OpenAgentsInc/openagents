@@ -24,7 +24,8 @@ four published checkpoints on 26 evaluation items; on 157 items of
 where to start: what Lev is admitted for, what it is refused for, and the
 ranked list of what would improve it.
 
-[`roadmap.md`](roadmap.md) holds the proposed issue sequence for review.
+[`roadmap.md`](roadmap.md) holds the issue sequence and the state of each
+step.
 
 The name follows the pattern: Jev is the hosted model, Kev is the open
 reconstruction, Lev is the Apple one.
@@ -78,8 +79,8 @@ Expect Lev to be worse than kev at the judgment and better than kev at
 everything around it: availability, cost, privacy, and startup. Which kev
 decides how much worse: Lev and `kev-0.5b` are 0.070 apart on our suite,
 which the suite cannot resolve, while `kev-8b` is 0.096 ahead of Lev. Whether it
-is good enough for any particular workflow is a measurement, and no
-measurement exists yet.
+is good enough for any particular workflow is a measurement;
+[`disposition.md`](disposition.md) holds the ones made so far.
 
 ## The three implementations side by side
 
@@ -92,7 +93,7 @@ measurement exists yet.
 | Cost per request | metered | our hardware | none |
 | Probability source | the model | the model | an estimator plus a fitted calibration map |
 | Shape guarantee | API validation | delimiter hardening, probed | constrained decoding, structural |
-| Status here | `crates/jev`, shipped | `crates/kev`, port in progress | proposed |
+| Status here | `crates/jev`, shipped | `crates/kev`, serving four checkpoints | `crates/lev`, built and measured |
 
 ## Documents here
 
