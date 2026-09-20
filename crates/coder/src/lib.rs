@@ -13,6 +13,9 @@
 //! - [`trace`] writes the conversation down: every turn, every command, and
 //!   every decision call, appended to an ATIF session log on local disk as
 //!   it happens.
+//! - [`turn`] is one turn of that conversation, start to finish. The
+//!   terminal and `coder --print` both call it, so neither can drift from
+//!   the other.
 
 pub mod agent;
 pub mod classify;
@@ -21,6 +24,7 @@ pub mod relay;
 pub mod repo;
 pub mod shell;
 pub mod trace;
+pub mod turn;
 
 pub use agent::{Agent, Classified, Verdict};
 pub use classify::{Action, Judgment, Route, route, state_of};
@@ -31,3 +35,4 @@ pub use relay::{Identity, RelayDoor};
 pub use repo::Repo;
 pub use shell::{Outcome, Proposal, ShellEvent, Status};
 pub use trace::Recorder;
+pub use turn::{Completion, Event, Finished};

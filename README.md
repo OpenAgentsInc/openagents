@@ -76,7 +76,7 @@ tune, and test — not a paragraph you hope a bigger model got right.
 | Crate | What it is |
 | --- | --- |
 | `crates/atif` | The Agent Trajectory Interchange Format: a session as ordered steps, and the append-only log one writes as it runs. |
-| `crates/coder` | The agent: classify-then-generate turns, the shell loop, the relay client, the TUI binary. Every conversation records itself to `~/.openagents/traces/`. |
+| `crates/coder` | The agent: classify-then-generate turns, the shell loop, the relay client, and the binary that runs a turn in a terminal or headlessly with `-p`. Every conversation records itself to `~/.openagents/traces/`. |
 | `crates/coder-terminal` | The amber terminal: composer, editor, spinner, intensity ladder, ratatui rendering. |
 | `crates/jev` | The TypeSafe Jev SDK — typed questions, `Choice`/`Noul`/`Score` answers. |
 | `crates/nostr` | Pure protocol primitives: events, filters, NIP-19/42/44/98, signers. No third-party Nostr crate. |
@@ -94,8 +94,15 @@ live in `docs/coder/`: the service spec, the relay backend plan, and
 ## Run it
 
 ```bash
-cargo run -p coder
+cargo run -p coder                                  # the terminal
+cargo run -p coder -- -p "count the crates"         # one turn, from a script
+cargo run -p coder -- -p --json --trace one.jsonl "count the crates"
 ```
+
+`-p` runs one turn without a terminal, writes the reply to standard
+output, and exits 0 for an answer, 2 for a declined turn, and 1 for one
+that did not finish. `docs/coder/headless.md` has the flags and the JSON
+report.
 
 Keys in the environment decide the door: `TYPESAFE_API_KEY` turns
 classify on; `CODER_DOOR_KEY`/`CODER_DOOR_URL`/`CODER_MODEL` take an

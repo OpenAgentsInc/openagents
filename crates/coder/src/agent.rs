@@ -95,17 +95,39 @@ impl Agent {
     /// anybody asking it to be. A trace that cannot be opened is reported
     /// through [`Agent::trace_error`] and costs the conversation nothing.
     pub fn from_env() -> Self {
+        Self::opening(None)
+    }
+
+    /// An agent from the environment, recording to `path` rather than to
+    /// the directory the environment names.
+    ///
+    /// A caller that names the file can read the trace back without
+    /// watching a directory, which is what a script driving a turn needs.
+    /// Naming a file is a request to record, so it outranks `CODER_TRACE`.
+    pub fn recording_to(path: &Path) -> Self {
+        Self::opening(Some(path))
+    }
+
+    /// The shared opener: the door and the repository from the
+    /// environment, the trace where `path` says or where the environment
+    /// does.
+    fn opening(path: Option<&Path>) -> Self {
         let generate = Door::from_env();
         let repo = Repo::discover(&env::current_dir().unwrap_or_default());
         let where_it_ran = repo
             .as_ref()
             .map(|repo| repo.root().display().to_string())
             .unwrap_or_default();
-        let (trace, trace_error) =
-            match Recorder::start(generate.model(), generate.name(), &where_it_ran) {
-                Ok(recorder) => (recorder, None),
-                Err(error) => (None, Some(error)),
-            };
+        let opened = match path {
+            Some(path) => {
+                Recorder::at(path, generate.model(), generate.name(), &where_it_ran).map(Some)
+            }
+            None => Recorder::start(generate.model(), generate.name(), &where_it_ran),
+        };
+        let (trace, trace_error) = match opened {
+            Ok(recorder) => (recorder, None),
+            Err(error) => (None, Some(error)),
+        };
         Self {
             classify: jev::Client::from_env().ok(),
             generate,

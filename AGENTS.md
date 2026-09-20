@@ -61,9 +61,12 @@ uses, and marks which are implemented and which are only specified.
   rebuild plan lives in `docs/coder/`.
 - `crates/coder` — the agent: `classify` routes each turn through Jev,
   `generate` answers through an Open Responses door, and the `coder`
-  binary draws the conversation in the terminal. Every conversation
-  records itself to `~/.openagents/traces/` as it runs; `docs/coder/traces.md`
-  covers the location, the opt-out, and what a trace holds.
+  binary draws the conversation in the terminal or, with `-p`, runs one
+  turn from a script. Both modes run the same turn, `coder::turn::run`;
+  keep it that way. `docs/coder/headless.md` covers the headless flags and
+  the exit codes. Every conversation records itself to
+  `~/.openagents/traces/` as it runs; `docs/coder/traces.md` covers the
+  location, the opt-out, and what a trace holds.
 - `crates/lev` — the same contract answered by Apple's on-device foundation
   model, through the in-repo Swift helper in `swift/lev-bridge`. Build the
   helper with `./scripts/build-lev-bridge.sh`; the crate builds and tests

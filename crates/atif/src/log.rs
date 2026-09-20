@@ -83,7 +83,28 @@ impl Log {
             use std::os::unix::fs::PermissionsExt;
             let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o700));
         }
-        let path = dir.join(format!("{}.{EXTENSION}", session.id));
+        Self::create_at(&dir.join(format!("{}.{EXTENSION}", session.id)), session)
+    }
+
+    /// Opens a new log for `session` at `path`, creating the parent
+    /// directory when it is missing.
+    ///
+    /// A caller that names the file owns the name, so this does not derive
+    /// one from the session. The file must not already exist, for the same
+    /// reason [`Log::create`] refuses to overwrite one.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying filesystem error when the directory cannot be
+    /// created or the file cannot be written.
+    pub fn create_at(path: &Path, session: &Session) -> io::Result<Self> {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent)?;
+        }
+        let path = path.to_path_buf();
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -345,6 +366,25 @@ mod tests {
             "/tmp/repo",
             "0.1.0",
         )
+    }
+
+    /// A caller that names the file gets that file, missing parent
+    /// directories and all, and still never writes over an existing
+    /// record.
+    #[test]
+    fn a_named_log_lands_where_it_was_told_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runs").join("one.atif.jsonl");
+        let mut log = Log::create_at(&path, &a_session()).unwrap();
+        assert_eq!(log.path(), path);
+        log.append(&Step::said(Source::User, "count the crates"))
+            .unwrap();
+        log.finish(ENDED).unwrap();
+
+        let recording = read(&path).unwrap();
+        assert!(recording.ended());
+        assert_eq!(recording.session.directive, "count the crates");
+        assert!(Log::create_at(&path, &a_session()).is_err());
     }
 
     #[test]

@@ -40,15 +40,22 @@ directory lists your history:
 20260919T142233Z-4f1a9c02.atif.jsonl
 ```
 
-Two settings change that:
+Three settings change that:
 
 | Setting | Effect |
 | --- | --- |
 | `CODER_TRACE_DIR=<path>` | Write traces to `<path>` instead. |
 | `CODER_TRACE=off` | Record nothing. `0`, `no`, and `false` also work. |
+| `--trace <path>` | Write this session to that file. |
 
 With `HOME` unset and no `CODER_TRACE_DIR`, there is nowhere to write and
 recording is off.
+
+`--trace` is the one a script wants: it names the file, so a caller reads
+the trace back without globbing a directory. Naming a file is a request to
+record, so it outranks `CODER_TRACE=off`, and a file that cannot be opened
+ends the run rather than producing an unrecorded session. The flag works
+in both modes — see [`headless.md`](headless.md).
 
 The terminal says which of those it is on the first detail line of a
 session, so you never have to guess. Press `⌥V` or type `/verbose` to see
@@ -169,3 +176,5 @@ seconds, and the repeated-work table.
 - [`docs/gym.md`](../gym.md) — the wider port this is the first piece of.
 - [`docs/coder/shell-loop.md`](shell-loop.md) — the loop whose commands
   and judgments a trace records.
+- [`docs/coder/headless.md`](headless.md) — `coder -p`, which produces a
+  trace from a script rather than from a person at a keyboard.

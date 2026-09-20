@@ -1,5 +1,21 @@
-//! The Coder terminal, live: a conversation where Classify judges each
-//! turn inline and Generate answers through the configured door.
+//! The Coder agent's binary: a terminal to talk in, and `--print` to drive
+//! one turn from a script.
+//!
+//! Both modes run the same turn — [`coder::turn::run`] — so what an
+//! episode records headlessly is what a person sees interactively. The
+//! terminal is below; the headless mode is in `headless.rs` and the flags
+//! that choose between them are in `cli.rs`.
+//!
+//! ```sh
+//! coder                                  # the terminal
+//! coder -p "count the crates"            # one turn, the reply on stdout
+//! coder -p --json --trace out.jsonl "…"  # one turn, one JSON object
+//! ```
+//!
+//! # The terminal
+//!
+//! A conversation where Classify judges each turn inline and Generate
+//! answers through the configured door.
 //!
 //! `Enter` submits, `Alt-Enter`/`Ctrl-J` puts a newline in the draft,
 //! `Up`/`Down` walk wrapped rows then history, `PageUp`/`PageDown` walk the
@@ -15,17 +31,20 @@
 //!
 //! Every conversation records itself to
 //! `~/.openagents/traces/<session>.atif.jsonl` as it runs, one file per
-//! terminal invocation. `CODER_TRACE_DIR` moves that directory and
-//! `CODER_TRACE=off` turns it off; the session's first detail line says
-//! which. See `docs/coder/traces.md`.
-//!
-//! ```sh
-//! cargo run -p coder
-//! ```
+//! terminal invocation. `CODER_TRACE_DIR` moves that directory,
+//! `--trace <PATH>` names the file outright, and `CODER_TRACE=off` turns
+//! recording off; the session's first detail line says which. See
+//! `docs/coder/traces.md`.
+
+mod cli;
+mod headless;
 
 use std::io::{self, stdout};
+use std::path::Path;
+use std::process::ExitCode;
 
-use coder::{Agent, Classified, Meta, Route, ShellEvent, Usage, Verdict};
+use coder::turn::{self, Event as TurnEvent};
+use coder::{Agent, Classified, Route, ShellEvent, Usage, Verdict};
 use coder_terminal::{
     Composer, ComposerAction, Editor, Intensity, Ladder, Marked, Marks, Rendered, frame_for,
     handle_key, markdown, wrap_rows,
@@ -241,7 +260,31 @@ const CURSOR_COLOR_SET: &str = "\x1b]12;#FFB000\x07";
 const CURSOR_COLOR_RESET: &str = "\x1b]112\x07";
 
 #[tokio::main]
-async fn main() -> io::Result<()> {
+async fn main() -> ExitCode {
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    match cli::parse(&arguments) {
+        Ok(cli::Invocation::Help) => {
+            println!("{}", cli::USAGE);
+            ExitCode::SUCCESS
+        }
+        Ok(cli::Invocation::Print(options)) => ExitCode::from(headless::print(options).await),
+        Ok(cli::Invocation::Interactive { trace }) => match interactive(trace.as_deref()).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("coder: {error}");
+                ExitCode::from(headless::EXIT_FAILED)
+            }
+        },
+        Err(why) => {
+            eprintln!("coder: {why}\n\n{}", cli::USAGE);
+            ExitCode::from(cli::EXIT_USAGE)
+        }
+    }
+}
+
+/// The terminal: raw mode, the alternate screen, and the draw loop, with
+/// the terminal's own colors handed back however the loop ends.
+async fn interactive(trace: Option<&Path>) -> io::Result<()> {
     enable_raw_mode()?;
     let mut out = stdout();
     execute!(out, EnterAlternateScreen, SetCursorStyle::BlinkingBlock)?;
@@ -249,7 +292,7 @@ async fn main() -> io::Result<()> {
     out.flush()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
 
-    let result = run(&mut terminal).await;
+    let result = run(&mut terminal, trace).await;
 
     disable_raw_mode()?;
     execute!(
@@ -265,54 +308,36 @@ async fn main() -> io::Result<()> {
     result
 }
 
-/// One turn, on the worker task: classify, report the verdict, reply when
-/// the route says to.
+/// One turn, on the worker task: [`turn::run`] does the turn and this
+/// puts each phase on the draw loop's channel.
+///
+/// The turn itself is not here on purpose. `--print` runs the same one,
+/// and a turn written twice is two turns that drift.
 async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) {
-    agent.push_user(&draft);
-    let classified = agent.classify().await;
-    let _ = work.send(Work::Classified(classified.clone())).await;
-    let route = match classified {
-        Classified::Judged(verdict) => verdict.route,
-        Classified::Skipped(_) => Route::Respond,
-    };
-    let canned = matches!(route, Route::End | Route::Halt(_));
-    let result = match route {
-        Route::Respond | Route::Clarify => {
-            let tx = work.clone();
-            let meta_tx = work.clone();
-            let shell_tx = work.clone();
-            agent
-                .turn(
-                    route == Route::Clarify,
-                    &mut |delta| {
-                        let _ = tx.try_send(Work::Delta(delta.to_string()));
-                    },
-                    &mut |meta| {
-                        let Meta::Judgment(line) = meta;
-                        let _ = meta_tx.try_send(Work::Judgment(line));
-                    },
-                    &mut |event| {
-                        let _ = shell_tx.try_send(Work::Shell(event));
-                    },
-                )
-                .await
-                .map_err(|error| error.to_string())
-        }
-        Route::End => Ok(("goodbye.".to_string(), None)),
-        Route::Halt(_) => Ok((
-            "I don't have a confident next step for that.".to_string(),
-            None,
-        )),
-    };
-    // A canned answer never went through Generate, so nothing has recorded
-    // it. The trace should still say what the user was told.
-    if canned && let Ok((text, _)) = &result {
-        agent.record_reply(text);
-    }
-    let _ = work.send(Work::Finished(result)).await;
+    let sender = work.clone();
+    let finished = turn::run(agent, draft, &mut |event| {
+        let work = match event {
+            TurnEvent::Classified(classified) => Work::Classified(classified),
+            TurnEvent::Judgment(line) => Work::Judgment(line),
+            TurnEvent::Shell(shell) => Work::Shell(shell),
+            TurnEvent::Delta(delta) => Work::Delta(delta),
+        };
+        let _ = sender.try_send(work);
+    })
+    .await;
+    let _ = work
+        .send(Work::Finished(
+            finished.map(|finished| (finished.reply, finished.usage)),
+        ))
+        .await;
 }
 
-async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+/// The draw loop. `trace` is the file the session records to when the
+/// command line named one.
+async fn run(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    trace: Option<&Path>,
+) -> io::Result<()> {
     let ladder = Ladder::from_environment();
     let mut app = App {
         editor: Editor::new(),
@@ -331,7 +356,10 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
     let (tx, mut rx) = mpsc::channel::<Work>(256);
     // The agent moves to its own task for each turn; the channel returns
     // each phase.
-    let mut agent_slot = Some(Agent::from_env());
+    let mut agent_slot = Some(match trace {
+        Some(path) => Agent::recording_to(path),
+        None => Agent::from_env(),
+    });
     let mut turn: Option<tokio::task::JoinHandle<Agent>> = None;
     // The door's model name rides the composer's location rail.
     let model = agent_slot.as_ref().unwrap().model().to_string();

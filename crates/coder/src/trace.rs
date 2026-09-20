@@ -113,16 +113,45 @@ impl Recorder {
     ///
     /// Returns a sentence naming why the log could not be opened.
     pub fn open(dir: &Path, model: &str, door: &str, repository: &str) -> Result<Self, String> {
-        let session = Session::opening(
+        let session = Self::session(model, door, repository);
+        let log = Log::create(dir, &session)
+            .map_err(|error| format!("cannot record to {}: {error}", dir.display()))?;
+        Ok(Self::around(log))
+    }
+
+    /// Opens a recorder at a named file, whatever the environment says.
+    ///
+    /// A caller that names the file is telling the session where to land —
+    /// a script that has to read the trace back should not have to guess a
+    /// session identifier or watch a directory. Naming a file is a request
+    /// to record, so it outranks [`SWITCH_ENV`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why the log could not be opened. An
+    /// existing file is one of those reasons: a session never writes over
+    /// another session's record.
+    pub fn at(path: &Path, model: &str, door: &str, repository: &str) -> Result<Self, String> {
+        let session = Self::session(model, door, repository);
+        let log = Log::create_at(path, &session)
+            .map_err(|error| format!("cannot record to {}: {error}", path.display()))?;
+        Ok(Self::around(log))
+    }
+
+    /// The session header both openers write.
+    fn session(model: &str, door: &str, repository: &str) -> Session {
+        Session::opening(
             &atif::log::session_id(atif::now_ms()),
             model,
             door,
             repository,
             env!("CARGO_PKG_VERSION"),
-        );
-        let log = Log::create(dir, &session)
-            .map_err(|error| format!("cannot record to {}: {error}", dir.display()))?;
-        Ok(Recorder {
+        )
+    }
+
+    /// A recorder over an opened log.
+    fn around(log: Log) -> Self {
+        Recorder {
             log,
             calls: 0,
             instructions: None,
@@ -130,7 +159,7 @@ impl Recorder {
                 .map(|dir| dir.display().to_string())
                 .unwrap_or_default(),
             failure: None,
-        })
+        }
     }
 
     /// The file this session is recording to.
