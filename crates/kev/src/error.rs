@@ -111,6 +111,17 @@ pub enum Error {
         max: usize,
         attention_bytes: usize,
     },
+    /// The delimiter tokens the request's shape alone packs to exceed the
+    /// door's total token budget, before any text is tokenized.
+    #[error(
+        "the request's {questions} questions and {options} options pack to at least {floor} tokens; at most {max} are admitted"
+    )]
+    SequenceFloorTooLong {
+        questions: usize,
+        options: usize,
+        floor: usize,
+        max: usize,
+    },
     /// Every inference slot is taken.
     #[error("busy: {in_flight} forwards in flight, the door's limit")]
     Busy { in_flight: usize },
@@ -152,9 +163,10 @@ impl Error {
                 RefusalCode::TooManyOptions
             }
             Self::TooManyQuestions { .. } => RefusalCode::InvalidRequest,
-            Self::StateTooLong { .. } | Self::BranchTooLong { .. } | Self::TooManyTokens { .. } => {
-                RefusalCode::BranchTooLong
-            }
+            Self::StateTooLong { .. }
+            | Self::BranchTooLong { .. }
+            | Self::TooManyTokens { .. }
+            | Self::SequenceFloorTooLong { .. } => RefusalCode::BranchTooLong,
             Self::Busy { .. } => RefusalCode::Busy,
             Self::UnknownModel { .. } | Self::Artifact(_) => RefusalCode::ModelUnavailable,
             Self::Tokenize(_) | Self::Candle(_) => RefusalCode::InferenceFailure,

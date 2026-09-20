@@ -212,6 +212,7 @@ fn build_rig(concurrency: usize) -> Rig {
                         max_total_options: 20,
                         max_total_tokens: 200,
                         concurrency,
+                        ..Admission::default()
                     },
                 )
                 .expect("a valid serving state"),
@@ -710,6 +711,78 @@ async fn a_full_door_answers_busy_and_recovers() {
     });
 }
 
+#[test]
+fn token_bounds_admit_at_the_limit_and_refuse_past_it() {
+    let admission = Admission::default();
+    assert!(admission.admit_tokens(8192).is_ok());
+    let error = admission
+        .admit_tokens(8193)
+        .expect_err("the token limit applies");
+    assert!(matches!(
+        error,
+        kev::Error::TooManyTokens {
+            tokens: 8193,
+            max: 8192,
+            attention_bytes: 4_ * 8193 * 8193,
+        }
+    ));
+    assert_eq!(error.refusal().status(), 413);
+
+    let admission = Admission {
+        max_total_tokens: 10_000,
+        max_attention_bytes: Admission::attention_bytes(100),
+        ..Admission::default()
+    };
+    assert!(admission.admit_tokens(100).is_ok());
+    assert!(matches!(
+        admission.admit_tokens(101),
+        Err(kev::Error::TooManyTokens { tokens: 101, .. })
+    ));
+    assert_eq!(Admission::attention_bytes(usize::MAX), usize::MAX);
+    assert_eq!(Admission::attention_bytes(0), 0);
+}
+
+#[test]
+fn the_delimiter_floor_is_refused_before_encoding() {
+    assert_eq!(Admission::token_floor(2, 3), 11);
+    let request = serde_json::from_value(json!({
+        "state": "x",
+        "questions": {
+            "which": {
+                "type": "choice",
+                "instructions": "Which?",
+                "criteria": {"a": null, "b": null, "c": null}
+            },
+            "late": {"type": "noul", "instructions": "Late?"}
+        }
+    }))
+    .expect("request shape");
+
+    let admission = Admission {
+        max_total_tokens: 11,
+        ..Admission::default()
+    };
+    assert!(admission.admit_shape(&request).is_ok());
+    let admission = Admission {
+        max_total_tokens: 10,
+        ..Admission::default()
+    };
+    let error = admission
+        .admit_shape(&request)
+        .expect_err("the delimiter floor applies");
+    assert!(matches!(
+        error,
+        kev::Error::SequenceFloorTooLong {
+            questions: 2,
+            options: 3,
+            floor: 11,
+            max: 10,
+        }
+    ));
+    assert_eq!(error.refusal().status(), 413);
+    assert_eq!(error.refusal().label(), "branch_too_long");
+}
+
 /// The public constructor refuses a state the handlers could not serve
 /// rather than letting a request find the hole.
 #[test]
@@ -726,7 +799,7 @@ fn an_invalid_serving_state_is_refused_at_construction() {
     };
     let aliases = || vec!["jev-latest".to_string()];
     let cpu = || "cpu".to_string();
-    let cases: [(&str, Result<ServeState, kev::Error>); 4] = [
+    let cases: [(&str, Result<ServeState, kev::Error>); 5] = [
         (
             "no variants",
             ServeState::new(Vec::new(), 0, aliases(), cpu(), Admission::default()),
@@ -754,6 +827,19 @@ fn an_invalid_serving_state_is_refused_at_construction() {
                 cpu(),
                 Admission {
                     concurrency: 0,
+                    ..Admission::default()
+                },
+            ),
+        ),
+        (
+            "admission bounds",
+            ServeState::new(
+                vec![variant()],
+                0,
+                aliases(),
+                cpu(),
+                Admission {
+                    max_attention_bytes: 0,
                     ..Admission::default()
                 },
             ),

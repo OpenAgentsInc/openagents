@@ -56,17 +56,18 @@ failure.
 The server admits a request in three stages before it spends a forward
 pass on it, and each stage answers with a typed refusal rather than a
 runtime failure or an exhausted process. Before anything is encoded, the
-request's shape is bounded: at most 64 questions and 1,024 options summed
-over them (`invalid_request` and `too_many_options` at 422, each naming
-the bound). After encoding and before the block-causal mask is built, the
-packed sequence is bounded to 8,192 tokens (`branch_too_long` at 413,
-naming the attention bytes that mask would have cost, `4 × tokens²`).
-Between the two, the request takes one of the server's forward slots, two
-by default; when every slot is held the server answers `busy` at 503 at
-once rather than queueing, so a client's cancellation leaves nothing
-waiting behind it. `kev::serve::Admission` holds the four bounds, and
-`ServeState::new` refuses a state that could not honour them — no
-variants, a default index that names none, an alias that is also a
+request's shape is bounded: at most 64 questions, 1,024 options summed
+over them, and the delimiter floor
+`1 + 2·questions + 2·options` against the 8,192-token budget. A floor
+over the budget answers `branch_too_long` at 413. After encoding and
+before the block-causal mask is built, the packed length is bounded to
+8,192 tokens, and its mask bytes `4 × tokens²` are bounded to 256 MiB;
+either refusal answers `branch_too_long` at 413 and names the bytes.
+The forward slot is the final stage: when every slot is held, the server
+answers `busy` at 503 rather than queueing, so a client's cancellation
+leaves nothing waiting behind it. `kev::serve::Admission` holds the five
+bounds, and `ServeState::new` refuses a state that could not honor them —
+no variants, a default index that names none, an alias that is also a
 variant id, or a zero bound — at construction rather than on the first
 request.
 

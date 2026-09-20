@@ -64,10 +64,9 @@ pub struct Variant {
 
 /// What one request may cost before the door evaluates it.
 ///
-/// The bounds are checked in this order, cheapest first: question and
-/// option counts from the request body, then the packed token count from
-/// the encoding, then a forward slot. Everything is refused before the
-/// attention mask — `4 * tokens^2` bytes as `f32` — is allocated.
+/// The bounds are checked in this order, cheapest first: question and option
+/// counts and the delimiter floor from the request body, then the packed token
+/// count and its mask bytes from the encoding, then a forward slot.
 #[derive(Clone, Debug)]
 pub struct Admission {
     /// Questions one request may carry.
@@ -76,18 +75,21 @@ pub struct Admission {
     pub max_total_options: usize,
     /// Packed tokens, state plus every branch, one forward may hold.
     pub max_total_tokens: usize,
+    /// Bytes the `f32` attention mask of one packed sequence may need.
+    pub max_attention_bytes: usize,
     /// Forwards in flight at once across every loaded variant.
     pub concurrency: usize,
 }
 
 impl Default for Admission {
-    /// `max_total_tokens` equals [`INFER_MAX_BRANCH`], so a request that
-    /// fits one branch fits the door; the mask at that length is 256 MiB.
+    /// The token and attention-byte defaults coincide at
+    /// [`INFER_MAX_BRANCH`], whose mask needs 256 MiB.
     fn default() -> Self {
         Self {
             max_questions: 64,
             max_total_options: 1_024,
             max_total_tokens: INFER_MAX_BRANCH,
+            max_attention_bytes: Self::attention_bytes(INFER_MAX_BRANCH),
             concurrency: 2,
         }
     }
@@ -100,8 +102,26 @@ impl Admission {
         tokens.saturating_mul(tokens).saturating_mul(4)
     }
 
+    /// The delimiter-token floor for a request shape, not an estimate.
+    ///
+    /// The floor counts the `<|fim_prefix|>` opener, then
+    /// `<|fim_middle|>` and `<|fim_suffix|>` for each question, and
+    /// `<|box_start|>` and `<|box_end|>` for each option.
+    #[must_use]
+    pub const fn token_floor(questions: usize, options: usize) -> usize {
+        1usize
+            .saturating_add(questions.saturating_mul(2))
+            .saturating_add(options.saturating_mul(2))
+    }
+
     /// Admit a request's shape: its question and option counts.
-    fn admit_shape(&self, request: &SystemOneRequest) -> Result<(), Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::TooManyQuestions`], [`Error::TooManyOptions`],
+    /// [`Error::TooManyTotalOptions`], or [`Error::SequenceFloorTooLong`]
+    /// when the request shape exceeds a configured bound.
+    pub fn admit_shape(&self, request: &SystemOneRequest) -> Result<(), Error> {
         let count = request.questions.len();
         if count > self.max_questions {
             return Err(Error::TooManyQuestions {
@@ -126,16 +146,31 @@ impl Admission {
                 max: self.max_total_options,
             });
         }
+        let floor = Self::token_floor(count, options);
+        if floor > self.max_total_tokens {
+            return Err(Error::SequenceFloorTooLong {
+                questions: count,
+                options,
+                floor,
+                max: self.max_total_tokens,
+            });
+        }
         Ok(())
     }
 
     /// Admit a packed sequence before its mask exists.
-    fn admit_tokens(&self, tokens: usize) -> Result<(), Error> {
-        if tokens > self.max_total_tokens {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::TooManyTokens`] when the packed sequence or its
+    /// attention mask exceeds a configured bound.
+    pub fn admit_tokens(&self, tokens: usize) -> Result<(), Error> {
+        let attention_bytes = Self::attention_bytes(tokens);
+        if tokens > self.max_total_tokens || attention_bytes > self.max_attention_bytes {
             return Err(Error::TooManyTokens {
                 tokens,
                 max: self.max_total_tokens,
-                attention_bytes: Self::attention_bytes(tokens),
+                attention_bytes,
             });
         }
         Ok(())
@@ -205,6 +240,7 @@ impl ServeState {
         if admission.max_questions == 0
             || admission.max_total_options == 0
             || admission.max_total_tokens == 0
+            || admission.max_attention_bytes == 0
             || admission.concurrency == 0
         {
             return Err(Error::Artifact(
