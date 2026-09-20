@@ -276,9 +276,16 @@ truth, caps, and serialized state size. This is a live measurement of those
 16 states. The assertion that all 40 states fit the byte budget is a
 separate check and does not establish that Lev answered all 40.
 
-No adapted release participates: `docs/lev/disposition.md` and the three
-adapted manifests admit no families. The base server uses eight seeded
-samples per question, seed block zero, and four helpers. Its manifest is
+This section measures the base release only. The initial publication
+incorrectly said that all adapted manifests admit no families, following
+stale disposition prose. `lev-adapted-v1.json` already references an admitted
+routing map; the band and permutation manifests admit no families. The
+choice adapter still needs the same eleven-rung sweep, and #9398 remains
+open until that evidence is recorded. These base rows do not establish
+coverage for the choice adapter.
+
+The base server uses eight seeded samples per question, seed block zero,
+and four helpers. Its manifest is
 `lev-base@1`; its published runtime signature is `9799725`. No calibration
 directory is loaded, so the answers are sampling frequencies. The manifest's
 routing admission does not make these four workload families calibrated.
