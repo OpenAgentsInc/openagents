@@ -146,11 +146,12 @@ The 2026-09-20 verification passed 58 CoderBench tests and the 22 offline
 Coder program-runtime tests under Rust 1.97.1. The runtime integration test
 records delegations without expected answers or correctness flags, then
 checks their outputs against independent fixture expectations. Strict Clippy
-passed for CoderBench and the supervisor with its default features enabled.
-The standalone CoderBench build still reports pre-existing unused-helper
-warnings in the supervisor's blocking-only configuration; #9429 tracks the
-workspace verification baseline. These checks verify grading behavior; they
-do not replace the pending observed golden.
+passed for CoderBench. The supervisor now gates asynchronous capture helpers
+and integration tests on its `job` feature, so the blocking-only build used
+by CoderBench also passes without unused-helper warnings. Both supervisor
+feature configurations pass their applicable tests. #9429 still tracks the
+remaining workspace verification baseline. These checks verify grading
+behavior; they do not replace the pending observed golden.
 
 ### `diff` cannot hand back a pass
 

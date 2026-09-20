@@ -16,7 +16,7 @@
 //! made the next job time out as well, which is how one loose process
 //! becomes a stalled fan-out.
 //!
-//! So a [`Job`] ends when its cleanup ends. On Unix the direct child is
+//! So a `Job` ends when its cleanup ends. On Unix the direct child is
 //! spawned into a process group of its own, the deadline signals the
 //! *group*, and the supervisor reaps the direct child before it returns:
 //!
@@ -31,7 +31,7 @@
 //! on a pipe a grandchild is still holding open.
 //!
 //! **Cancellation is the same mechanism as a deadline.** The work runs in a
-//! task of its own, and the future [`Job::run`] hands back holds the only
+//! task of its own, and the future `Job::run` hands back holds the only
 //! live end of a channel. Dropping that future — an aborted turn, a
 //! `select!` branch that lost — closes the channel, and the supervisor
 //! terminates the tree and reaps it exactly as a deadline does. A caller
@@ -52,6 +52,13 @@
 //! the end. A [`Captured`] stream reports how many bytes it saw, whether it
 //! was cut, and — this matters for a job that failed — what it managed to
 //! print before it did.
+//!
+//! # Features
+//!
+//! The default `job` feature provides asynchronous `Job` execution and
+//! capture. Disable default features for the blocking API alone. Tests
+//! that exercise `Job` require that feature; blocking tests run in either
+//! configuration.
 //!
 //! # Platform support
 //!
@@ -215,6 +222,7 @@ impl Ended {
 }
 
 /// One stream being read, held to its cap as it arrives.
+#[cfg(any(feature = "job", test))]
 #[derive(Debug, Default)]
 struct Sink {
     held: Vec<u8>,
@@ -222,6 +230,7 @@ struct Sink {
     max: usize,
 }
 
+#[cfg(any(feature = "job", test))]
 impl Sink {
     fn new(max: usize) -> Self {
         Sink {
@@ -257,6 +266,7 @@ impl Sink {
 /// of a multi-byte character. Dropping the incomplete tail loses at most
 /// three bytes and keeps a replacement character out of text nobody
 /// truncated on purpose.
+#[cfg(any(feature = "job", test))]
 fn whole(bytes: &[u8]) -> &[u8] {
     match std::str::from_utf8(bytes) {
         Ok(_) => bytes,

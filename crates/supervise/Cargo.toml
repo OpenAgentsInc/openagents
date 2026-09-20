@@ -20,5 +20,17 @@ default = ["job"]
 # takes the blocking half instead, which needs no asynchronous runtime.
 job = ["dep:tokio"]
 
+[[test]]
+name = "capture"
+required-features = ["job"]
+
+[[test]]
+name = "resource"
+required-features = ["job"]
+
+[[test]]
+name = "tree"
+required-features = ["job"]
+
 [lints]
 workspace = true
