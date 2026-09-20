@@ -294,6 +294,38 @@ async fn a_request_delivered_twice_is_answered_once() {
     .await;
 }
 
+/// `--check` reads the configuration and exits without connecting: 0
+/// for a worker that may be deployed, 78 for an open worker on a relay
+/// that is not loopback.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn check_refuses_an_open_worker_on_a_shared_relay() {
+    bounded(async {
+        let customer = format!("{}", identity(CLIENT).pubkey());
+        for (url, allow, status) in [
+            ("ws://127.0.0.1:9", None, 0),
+            ("wss://relay.example.invalid", None, 78),
+            ("wss://relay.example.invalid", Some(customer.as_str()), 0),
+        ] {
+            let variables: Vec<(&str, &str)> = allow
+                .map(|keys| ("CODER_WORKER_ALLOW", keys))
+                .into_iter()
+                .collect();
+            let mut worker = Worker::start(url, &["--check"], &variables);
+            let exit = worker.child.wait().await.unwrap();
+            let log = worker.log_until("relay").await;
+            assert!(log.contains(url), "{log}");
+            assert_eq!(exit.code(), Some(status), "{url} {allow:?}");
+            if status == 78 {
+                let line = worker.log_until("CODER_WORKER_ALLOW is unset").await;
+                assert!(line.starts_with("coder-worker: "), "{line}");
+            } else {
+                worker.log_until("safe to deploy").await;
+            }
+        }
+    })
+    .await;
+}
+
 /// A job that fails before it runs gives its slot back. With one slot,
 /// a request that does not decrypt, one from long ago, and one naming a
 /// version this worker does not serve are each refused typed, and the

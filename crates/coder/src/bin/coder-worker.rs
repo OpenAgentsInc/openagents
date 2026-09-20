@@ -165,10 +165,14 @@ const SEEN_REQUESTS: usize = 4096;
 const USAGE: &str = "\
 coder-worker — answer NIP-CJ job requests from a relay.
 
-Usage: coder-worker [--once] [--decline <CODE>]
+Usage: coder-worker [--once] [--decline <CODE>] [--check]
 
   --once             Answer one job, then exit.
   --decline <CODE>   Refuse every job with this NIP-CJ error code.
+  --check            Read the configuration, print what the worker would
+                     run as, and exit: 0 when it is safe to deploy, 78
+                     when it is not. An open worker (CODER_WORKER_ALLOW
+                     unset) on a relay that is not loopback is not.
   -h, --help         Print this text.
 
 CODER_WORKER_SECRET names the worker identity, 64 hex or an nsec.
@@ -183,6 +187,7 @@ this worker runs, and outranks CODER_MODEL.";
 /// What the command line asked for.
 struct Options {
     once: bool,
+    check: bool,
     decline: Option<String>,
     /// Customers this worker answers; `None` admits everyone.
     allow: Option<Vec<String>>,
@@ -231,11 +236,13 @@ fn hex(bytes: &[u8]) -> String {
 
 fn options() -> Result<Options, String> {
     let mut once = false;
+    let mut check = false;
     let mut decline = None;
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--once" => once = true,
+            "--check" => check = true,
             "--decline" => {
                 decline = Some(
                     arguments
@@ -252,9 +259,52 @@ fn options() -> Result<Options, String> {
     }
     Ok(Options {
         once,
+        check,
         decline,
         allow: allowed_from_env()?,
     })
+}
+
+/// The exit status for a configuration that must not be deployed.
+const EX_CONFIG: u8 = 78;
+
+/// Whether `url` names a relay on this machine.
+///
+/// A worker with no allowlist on a loopback relay answers only what this
+/// machine publishes; the same worker on any other relay answers whoever
+/// finds its key. `deploy/README.md` says never to run one, and this is
+/// what `--check` reads to refuse it.
+fn is_loopback(url: &str) -> bool {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let authority = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    let host = if let Some(bracketed) = authority.strip_prefix('[') {
+        bracketed
+            .split_once(']')
+            .map_or(bracketed, |(host, _)| host)
+    } else {
+        authority
+            .rsplit_once(':')
+            .map_or(authority, |(host, _)| host)
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+}
+
+/// Whether this configuration may be deployed.
+fn deployable(allow: Option<&[String]>, url: &str) -> Result<(), String> {
+    if allow.is_none() && !is_loopback(url) {
+        return Err(format!(
+            "{ALLOW_VAR} is unset and {url} is not a loopback relay: an open worker on a \
+             shared relay answers whoever finds its key. Set {ALLOW_VAR} to the customer \
+             pubkeys this worker serves."
+        ));
+    }
+    Ok(())
 }
 
 #[tokio::main]
@@ -268,6 +318,10 @@ async fn main() -> ExitCode {
     };
     match serve(&options).await {
         Ok(()) => ExitCode::SUCCESS,
+        Err(why) if options.check => {
+            eprintln!("coder-worker: {why}");
+            ExitCode::from(EX_CONFIG)
+        }
         Err(why) => {
             eprintln!("coder-worker: {why}");
             ExitCode::FAILURE
@@ -327,6 +381,11 @@ async fn serve(options: &Options) -> Result<(), String> {
     match &options.allow {
         Some(keys) => eprintln!("admits  {} customer(s)", keys.len()),
         None => eprintln!("admits  every customer ({ALLOW_VAR} unset)"),
+    }
+    if options.check {
+        deployable(options.allow.as_deref(), &url)?;
+        eprintln!("the configuration is safe to deploy");
+        return Ok(());
     }
 
     let (outgoing, frames) = mpsc::unbounded_channel::<Value>();
@@ -1027,6 +1086,33 @@ mod tests {
         let door =
             coder::relay::RelayDoor::new(url, public, client).connecting(Duration::from_secs(3600));
         (Door::Relay(Box::new(door)), listener)
+    }
+
+    #[test]
+    fn only_an_open_worker_off_loopback_is_refused_deployment() {
+        for url in [
+            "ws://127.0.0.1:7777",
+            "ws://localhost:7777/",
+            "ws://LOCALHOST",
+            "ws://[::1]:7777",
+            "wss://user@127.0.0.1/path?x=1",
+            "127.0.0.1:7777",
+        ] {
+            assert!(is_loopback(url), "{url}");
+            assert!(deployable(None, url).is_ok(), "{url}");
+        }
+        for url in [
+            "wss://relay.openagents.com",
+            "ws://10.0.0.5:7777",
+            "ws://[2001:db8::1]:7777",
+            "ws://127.0.0.1.example.com",
+            "wss://relay.example/127.0.0.1",
+        ] {
+            assert!(!is_loopback(url), "{url}");
+            let why = deployable(None, url).unwrap_err();
+            assert!(why.contains(ALLOW_VAR) && why.contains(url), "{why}");
+            assert!(deployable(Some(&["ab".to_string()]), url).is_ok(), "{url}");
+        }
     }
 
     /// Content the worker cannot read is answered with a typed
