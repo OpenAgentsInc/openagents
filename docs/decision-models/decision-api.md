@@ -170,12 +170,14 @@ the fact digests to a different receipt, and a row inserted or removed in
 the middle breaks the link to its successor. What it does not prove, on
 its own, is that the file is whole or old — a writer holding the file can
 recompute an entire chain, and a shortened file is a valid prefix. A
-public claim needs an independently retained commitment — the chain head,
-row count, and expected selection held or published separately from the
-store — which is issue openagents#9479. And a chain that verifies is still
-only as complete as the rows it carries: items lost to timeouts and dead
-doors leave no row, so a report that reads as a finished benchmark must
-show expected coverage beside recorded outcomes — issue openagents#9478.
+public claim is anchored by an independently retained commitment — the
+chain head, row count, and declared selection, digested and held
+separately from the store — which `gym report --commitment` writes and
+`gym verify --commitment` checks a later copy against. And a chain that
+verifies is still only as complete as the rows it carries: items lost to
+timeouts and dead doors leave no row, so a report that reads as a
+finished benchmark shows expected coverage beside recorded outcomes and
+marks an incomplete run incomplete.
 
 The published claims carry their ceilings beside them — annotator
 agreement on our own suites, published agreement or label basis on
@@ -213,9 +215,9 @@ The differentiator worth building first is the record, not the endpoint:
 - **A receipt-chained record.** `gym eval` rows carry the suite, question,
   and gate digests and the door's artifact identity. The chain detects
   edits and reordering inside the store it walks; the stronger guarantee —
-  that this is the store, whole — needs the independently retained
-  commitment above, and the report needs the coverage section above before
-  it reads as a completed evaluation.
+  that this is the store, whole — is the independently retained
+  commitment, and the report's declared selection is what makes a
+  completed evaluation distinguishable from a partial one.
 - **Ceilings beside scores.** A second-reading or published-agreement
   ceiling prints beside the accuracy, as every record in this repository
   already does, because a score without its ceiling is a claim.
@@ -241,10 +243,11 @@ The differentiator worth building first is the record, not the endpoint:
 - **Multi-tenancy.** Doors are single-process; a dedicated endpoint is a
   process per caller, which is honest but does not scale. The NIP-CJ lane
   is the designed answer and is unbuilt for this purpose.
-- **Evidence anchors.** The receipt chain verifies internally; an
-  independently retained report commitment, and the coverage accounting
-  that makes a report a completed evaluation, are open work (#9478,
-  #9479).
+- **Evidence anchors beyond the commitment.** The receipt chain verifies
+  internally and the report commitment catches a rewritten or shortened
+  store, but the commitment's authenticity rides on the channel that
+  carried it — a signed or relayed commitment is open work (#9471), and
+  no document attests remote weights.
 - **The training path and its admission contract.** Per-tenant adapter
   training is retained tooling, not a service, and the explicit
   candidate-admission comparison is designed but unbuilt (#9472, #9473).
@@ -287,18 +290,16 @@ billing, and no new serving code.
 
 ### Evidence strengthening
 
-4. **Report completeness** (openagents#9478). `gym report` must show what
-   was expected beside what was recorded — per door and family: expected,
-   attempted, answered, refused, missing — and refuse to let an incomplete
-   run read as a completed benchmark. Done when a store missing the last
-   item and a store missing a middle item both render as incomplete, and a
-   full run still renders clean.
-5. **Report commitments** (openagents#9479). A versioned commitment —
-   chain head, row count, expected selection, suite/question/gate and
-   artifact/execution identities — that a caller retains independently of
-   the store, so a recomputed chain or a dropped tail is detectable. Done
-   when `gym verify` checks a store against a retained commitment and both
-   tamper shapes fail.
+4. **Report completeness** (openagents#9478, landed). `gym report` shows
+   what was expected beside what was recorded — per door and family:
+   expected, attempted, answered, refused, missing — and an incomplete
+   run cannot read as a completed benchmark.
+5. **Report commitments** (openagents#9479, landed). A versioned
+   commitment — chain head, row count, declared selection,
+   suite/question/gate/provenance digests, and each door's run identities
+   with their coverage — digested into a file a caller retains
+   independently of the store. `gym verify --commitment` checks a store
+   against it; a recomputed chain and a dropped tail both fail.
 
 ### Phase 1 — the serving foundations, shared
 
@@ -383,8 +384,9 @@ Measured: the latency figures, each from the named record. Exists: the
 contract, both serving binaries, the adapter format, artifact identity,
 the gym's suites, gates, digests, ledger, and store, and the relay's auth,
 capability, and job lanes. Landed for this product: caller-suite intake,
-the measured report, the Rust suite builder. Filed and open: the caller
-pilot, report completeness and commitments, the four serving foundations,
+the measured report, the Rust suite builder, report completeness, and
+report commitments. Filed and open: the caller pilot, the four serving
+foundations,
 the gateway and its docs, the relay lane, the admission contract and
 training pipeline, and the public snapshot — in the order above, per
 openagents#9481. Deferred by the operator and not restarted here: the

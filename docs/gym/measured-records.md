@@ -47,7 +47,8 @@ The flow is three commands, each one verifiable on its own:
        --record results/caller-acme-v1.jsonl
    ```
 
-3. Render the record, declaring what the run was meant to ask:
+3. Render the record, declaring what the run was meant to ask and writing
+   the commitment the caller keeps:
 
    ```text
    cargo run -p gym --bin gym -- report \
@@ -55,6 +56,7 @@ The flow is three commands, each one verifiable on its own:
        --suite caller-acme-v1.json \
        --partition development \
        --expect kev-0.6b \
+       --commitment results/caller-acme-v1.commitment.json \
        --out docs/gym/measurements/2026-09-21-caller-acme-v1.md
    ```
 
@@ -85,6 +87,15 @@ The flow is three commands, each one verifiable on its own:
    read as a completed evaluation, and a benchmark or promotion claim
    needs complete coverage.
 
+   `--commitment` writes the anchor a caller keeps: the chain head, the
+   row count, the declared selection expanded to its `(partition, item)`
+   pairs, the suite, question-set, gate, and provenance digests, and each
+   door's run identities with their coverage — all under one
+   self-verifying digest. It needs `--suite`, because a commitment over
+   an undeclared selection anchors nothing. The caller holds the file
+   apart from the store; it is what makes the checks in the next section
+   able to see a rewritten or shortened store.
+
 ## What the record does not know
 
 A row the harness never wrote is not in the store. An item lost to a
@@ -107,19 +118,26 @@ The record is a view over the store; the store is the evidence:
   chain and names where it breaks — an edited row digests to a different
   receipt than the one it carries, and an inserted or removed row breaks
   the `previous_receipt` link.
+- `gym verify --store … --commitment results/caller-acme-v1.commitment.json`
+  then checks the store against the commitment the caller kept: a store
+  shorter than the committed row count, a prefix whose head is not the
+  committed one, a recomputed chain over different rows, and a door whose
+  run identities or coverage moved are each named as a divergence. Rows
+  appended after the commitment are not a fault — the chain is meant to
+  grow — and `verify` reports how far past the committed horizon the
+  store now runs.
 - Every store-reading command (`report`, `compare`, `fit`, `regress`)
   walks the same chain before it reads, so the check is not optional.
 - Each row pins the suite digest and the question-set digest, so the
   items and the wording are the ones the record names, and the gate
   digest names the rule that judged them (`docs/gym/gate-digests.md`).
 
-The chain proves the store is internally consistent. It does not prove
-the file is whole — a shortened file is a valid prefix — and it does not
-prove this is the only store that ever existed. Completeness comes from
-the declared selection the report binds to, and permanence comes from a
-commitment held apart from the store. The execution receipts and the
-report commitment that anchor those are the open work the issue list
-names.
+The chain proves the store is internally consistent, and the commitment
+proves the store's committed prefix is the one the record was taken over.
+Neither proves the commitment itself is authentic — that is the channel
+the caller carried it over — and neither proves which weights executed
+remotely; no document can attest that. The execution receipts that close
+the remaining gap are the open work the issue list names.
 
 A caller's labels remain the caller's evidence: `label_source` names them,
 `label_rule` says how the labels were produced, and the record prints both
