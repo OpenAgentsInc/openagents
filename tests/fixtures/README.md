@@ -32,6 +32,12 @@ OpenAgents-lane fixtures are not part of this repository.
   publishing, and HTTP-authentication boundaries. The live Postgres gateway
   contract checks the associated storage, access-control, signing, sweep,
   management, media metadata/server-list, and wire behavior.
+- `nip50/search-equivalence.json` was written for OpenAgents from the pinned
+  NIP-50 text and the relay search contract in
+  `docs/protocol/nip-expansion.md`. It is the one oracle both
+  `crates/nostr/tests/search_equivalence.rs` and the relay's
+  `store_postgres` suite read, so the Rust matcher and the replay SQL are
+  judged on the same pairs; `docs/nostr/crypto-primitives.md` describes it.
 - `nip19/keys.json` carries the `npub` and `nsec` vectors from the pinned
   NIP-19 text plus refusal cases written for Immortal: mixed case, a wrong
   checksum, a prefix swap, and wrong lengths.
