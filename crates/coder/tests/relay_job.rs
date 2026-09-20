@@ -2,8 +2,11 @@
 //! real relay. Set `CODER_RELAY` (for example `ws://127.0.0.1:8080`),
 //! `CODER_WORKER_SECRET`, and `CODER_SECRET_KEY` to run; unset skips.
 
-use coder::generate::{Generate, Message, Meta, Role};
+use std::time::{Duration, Instant};
+
+use coder::generate::{Door, Generate, Message, Meta, Role};
 use coder::relay::{Identity, RelayDoor};
+use coder::{Agent, Recorder};
 use futures_util::{SinkExt, StreamExt};
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::nip44;
@@ -83,14 +86,16 @@ async fn authenticated_socket(url: &str, key_byte: u8) -> Socket {
     socket
 }
 
-/// The mock worker: auths as key byte 0xAA, answers the first job request
-/// with a judgment, two partials, and a result.
-async fn mock_worker(url: String) {
-    let worker_secret = SecretKey::from_byte_array([0xaa; 32]).unwrap();
-    let mut socket = authenticated_socket(&url, 0xaa).await;
+/// The mock worker: auths as `key`, answers the first job request tagged to
+/// it with a judgment, two partials, and a result. Each test gives it a key
+/// of its own, so two running at once on one relay do not take each other's
+/// jobs.
+async fn mock_worker(url: String, key: u8, task: &str) {
+    let worker_secret = SecretKey::from_byte_array([key; 32]).unwrap();
+    let mut socket = authenticated_socket(&url, key).await;
     send(
         &mut socket,
-        json!(["REQ", "jobs", {"kinds": [REQUEST_KIND], "#p": [xonly(0xaa).to_string()]}]),
+        json!(["REQ", "jobs", {"kinds": [REQUEST_KIND], "#p": [xonly(key).to_string()]}]),
     )
     .await;
 
@@ -108,7 +113,7 @@ async fn mock_worker(url: String) {
         serde_json::from_str::<Value>(&nip44::decrypt(&request.content, &conversation).unwrap())
             .unwrap()
     };
-    assert_eq!(payload["task"], "say hi in one word");
+    assert_eq!(payload["task"], task);
 
     let customer_bytes: [u8; 32] = hex::decode(&request.pubkey).try_into().unwrap();
     let customer = XOnlyPublicKey::from_byte_array(customer_bytes).unwrap();
@@ -120,7 +125,7 @@ async fn mock_worker(url: String) {
             secp256k1::rand::random::<[u8; 32]>(),
         )
         .unwrap();
-        signer(0xaa).sign(
+        signer(key).sign(
             unix_now(),
             kind,
             vec![
@@ -146,7 +151,13 @@ async fn mock_worker(url: String) {
         ),
         publish(
             RESULT_KIND,
-            json!({"v":1,"type":"result","text":"hello there","usage":{"input":10,"output":2}}),
+            json!({
+                "v": 1,
+                "type": "result",
+                "text": "hello there",
+                "usage": {"input": 10, "output": 2},
+                "model": "test/worker-model",
+            }),
         ),
     ] {
         send(&mut socket, json!(["EVENT", event])).await;
@@ -179,8 +190,8 @@ async fn a_job_turn_streams_feedback_and_a_result() {
     };
     unsafe { std::env::set_var("CODER_SECRET_KEY", hex_secret(0x0b)) };
 
-    tokio::spawn(mock_worker(url.clone()));
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    tokio::spawn(mock_worker(url.clone(), 0xaa, "say hi in one word"));
+    tokio::time::sleep(Duration::from_millis(300)).await;
 
     let door = RelayDoor::new(url, xonly(0xaa), Identity::load().unwrap());
     let input = vec![Message {
@@ -189,14 +200,15 @@ async fn a_job_turn_streams_feedback_and_a_result() {
     }];
     let mut seen = String::new();
     let mut judgment = String::new();
+    let mut model = String::new();
     let (text, usage) = door
         .generate(
             "be terse",
             &input,
             &mut |delta| seen.push_str(delta),
-            &mut |meta| {
-                let Meta::Judgment(line) = meta;
-                judgment = line;
+            &mut |meta| match meta {
+                Meta::Judgment(line) => judgment = line,
+                Meta::Model(name) => model = name,
             },
         )
         .await
@@ -206,6 +218,122 @@ async fn a_job_turn_streams_feedback_and_a_result() {
     assert_eq!(seen, "hello there");
     assert_eq!(text, "hello there");
     assert_eq!(usage.unwrap().input_tokens, 10);
+    // The worker names the model it answered through, and the door hands
+    // it on. Without this the run's evidence cannot say what produced it.
+    assert_eq!(model, "test/worker-model");
+}
+
+/// A worker that reads a job and then goes quiet: it authenticates,
+/// subscribes, and answers with one judgment feedback and nothing else.
+async fn stalling_worker(url: String) {
+    let mut socket = authenticated_socket(&url, 0xad).await;
+    send(
+        &mut socket,
+        json!(["REQ", "stall", {"kinds": [REQUEST_KIND], "#p": [xonly(0xad).to_string()]}]),
+    )
+    .await;
+
+    let request = loop {
+        let frame = read_json(&mut socket).await;
+        if frame[0] == "EVENT" {
+            break serde_json::from_value::<Event>(frame[2].clone()).unwrap();
+        }
+    };
+    let worker_secret = SecretKey::from_byte_array([0xad; 32]).unwrap();
+    let customer_bytes: [u8; 32] = hex::decode(&request.pubkey).try_into().unwrap();
+    let customer = XOnlyPublicKey::from_byte_array(customer_bytes).unwrap();
+    let conversation = nip44::conversation_key(&worker_secret, &customer);
+    let ciphertext = nip44::encrypt(
+        &json!({"v":1,"type":"judgment","verdict":"respond","line":"respond 1.00"}).to_string(),
+        &conversation,
+        secp256k1::rand::random::<[u8; 32]>(),
+    )
+    .unwrap();
+    let event = signer(0xad).sign(
+        unix_now(),
+        FEEDBACK_KIND,
+        vec![
+            Tag::new(vec!["e".into(), request.id.clone()]),
+            Tag::new(vec!["p".into(), request.pubkey.clone()]),
+        ],
+        ciphertext,
+    );
+    send(&mut socket, json!(["EVENT", event])).await;
+    // And then nothing, for longer than the answer wait under test.
+    tokio::time::sleep(Duration::from_secs(30)).await;
+}
+
+/// A worker that is not there fails in the short wait, and says so.
+///
+/// Nobody subscribes for key `0xac`, so the request is published, fanned
+/// out to nothing, and left. The contact wait is what bounds that, not the
+/// answer wait: an absent worker used to cost the whole 180 seconds and
+/// then report a silence that could not say whether anyone had been
+/// listening.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_absent_worker_fails_in_the_contact_wait() {
+    let Ok(url) = std::env::var("CODER_RELAY") else {
+        eprintln!("skipped: set CODER_RELAY (and the secret envs) to run");
+        return;
+    };
+    unsafe { std::env::set_var("CODER_SECRET_KEY", hex_secret(0x0d)) };
+
+    let door = RelayDoor::new(url, xonly(0xac), Identity::load().unwrap())
+        .waiting(Duration::from_secs(2), Duration::from_secs(60));
+    let input = vec![Message {
+        role: Role::User,
+        text: "say hi in one word".to_string(),
+    }];
+    let started = Instant::now();
+    let error = door
+        .generate("be terse", &input, &mut |_| {}, &mut |_| {})
+        .await
+        .expect_err("nobody is listening");
+    let waited = started.elapsed();
+
+    assert_eq!(error.cause(), "worker_absent");
+    assert_eq!(error.refusal(), None);
+    assert!(error.to_string().contains("no worker answered"), "{error}");
+    // The short wait, not the long one.
+    assert!(waited < Duration::from_secs(30), "waited {waited:?}");
+}
+
+/// A worker that answers and then stops is not an absent one.
+///
+/// The judgment feedback proves somebody read the job, so the wait becomes
+/// the answer wait and the failure says the worker stalled. This is the
+/// whole of what an ephemeral protocol lets a client tell apart without a
+/// prompt acknowledgement, and it is the part worth having: a slow worker
+/// and a missing one are different problems.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_worker_that_starts_and_stops_is_not_an_absent_one() {
+    let Ok(url) = std::env::var("CODER_RELAY") else {
+        eprintln!("skipped: set CODER_RELAY (and the secret envs) to run");
+        return;
+    };
+    unsafe { std::env::set_var("CODER_SECRET_KEY", hex_secret(0x0e)) };
+
+    tokio::spawn(stalling_worker(url.clone()));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let door = RelayDoor::new(url, xonly(0xad), Identity::load().unwrap())
+        .waiting(Duration::from_secs(2), Duration::from_secs(6));
+    let input = vec![Message {
+        role: Role::User,
+        text: "say hi in one word".to_string(),
+    }];
+    let started = Instant::now();
+    let error = door
+        .generate("be terse", &input, &mut |_| {}, &mut |_| {})
+        .await
+        .expect_err("the worker never finished");
+    let waited = started.elapsed();
+
+    assert_eq!(error.cause(), "worker_stalled");
+    assert_eq!(error.refusal(), None);
+    assert!(error.to_string().contains("stopped mid-answer"), "{error}");
+    // Hearing from the worker moved the door off the contact wait.
+    assert!(waited > Duration::from_secs(3), "waited {waited:?}");
 }
 
 /// A worker that declines: auths as key byte 0xAB and answers the first
@@ -287,4 +415,57 @@ async fn a_declining_worker_refuses_with_a_code() {
         error.to_string(),
         "the worker declined (quota_exhausted): free allowance used"
     );
+}
+
+/// A relay run's trace names the model the worker used.
+///
+/// The session header cannot: it is written when the session opens, and a
+/// relay door does not know what will answer until something does. So it
+/// records `unknown` and the answer step carries the model the NIP-CJ
+/// result named. A trace that said `relay` there named a model that does
+/// not exist, and `gym compare` refuses a comparison when door identity
+/// moves — which it cannot do for an identity it cannot read.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_relay_trace_names_the_model_the_worker_used() {
+    let Ok(url) = std::env::var("CODER_RELAY") else {
+        eprintln!("skipped: set CODER_RELAY (and the secret envs) to run");
+        return;
+    };
+    unsafe { std::env::set_var("CODER_SECRET_KEY", hex_secret(0x0f)) };
+
+    tokio::spawn(mock_worker(url.clone(), 0xae, "say hi in one word"));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let door = Door::Relay(Box::new(RelayDoor::new(
+        url,
+        xonly(0xae),
+        Identity::load().unwrap(),
+    )));
+    let traces = tempfile::tempdir().unwrap();
+    let recorder = Recorder::open(traces.path(), door.model(), door.name(), "/tmp/repo").unwrap();
+    let path = recorder.path().to_path_buf();
+    let mut agent = Agent::new(None, door).with_trace(Some(recorder));
+
+    agent.push_user("say hi in one word");
+    let (reply, _) = agent
+        .turn(false, &mut |_| {}, &mut |_| {}, &mut |_| {})
+        .await
+        .expect("the worker answered");
+    agent.finish_trace();
+    assert_eq!(reply, "hello there");
+
+    let recording = atif::log::read(&path).expect("the trace reads back");
+    // The header says which transport, and says it does not know the model.
+    assert_eq!(recording.session.door, "relay");
+    assert_eq!(recording.session.model, "unknown");
+
+    let document = recording.document();
+    let answer = document["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|step| step["source"] == "agent")
+        .expect("an answer step");
+    assert_eq!(answer["message"], "hello there");
+    assert_eq!(answer["model_name"], "test/worker-model");
 }

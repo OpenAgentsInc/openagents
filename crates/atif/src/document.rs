@@ -128,6 +128,16 @@ pub struct Step {
     /// What the model said it was thinking, when it says so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<String>,
+    /// The model that produced this step, when it is not the one the
+    /// session opened with.
+    ///
+    /// A session header names the model the door serves, which a door that
+    /// forwards to somewhere else does not know until something answers.
+    /// The step knows: it is written after the answer. A session that
+    /// reaches two models therefore records two, and a reader takes the
+    /// step's word over the session's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     /// The call this step made, when it made one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call: Option<Call>,
@@ -162,6 +172,7 @@ impl Step {
             source,
             message: message.to_string(),
             reasoning: None,
+            model: None,
             call: None,
             tokens: None,
             milliseconds: None,
@@ -185,6 +196,14 @@ impl Step {
             call: Some(call),
             ..Step::said(Source::Agent, "")
         }
+    }
+
+    /// The model that produced this step, when the session header cannot
+    /// name it.
+    #[must_use]
+    pub fn by(mut self, model: &str) -> Self {
+        self.model = Some(model.to_string());
+        self
     }
 
     /// How long the step took.
@@ -214,7 +233,10 @@ impl Step {
         step.insert("source".to_string(), json!(self.source.word()));
         step.insert("message".to_string(), json!(self.message));
         if self.source == Source::Agent {
-            step.insert("model_name".to_string(), json!(model));
+            step.insert(
+                "model_name".to_string(),
+                json!(self.model.as_deref().unwrap_or(model)),
+            );
         }
         if let Some(reasoning) = &self.reasoning {
             step.insert("reasoning_content".to_string(), json!(reasoning));
@@ -273,7 +295,9 @@ impl Step {
 pub struct Session {
     /// Unique per session, and the stem of the file the session writes to.
     pub id: String,
-    /// The model the Generate door serves.
+    /// The model the Generate door serves, as the session knows it at the
+    /// start. A door that forwards to a worker does not know it then, and
+    /// says so; the answer steps carry what answered.
     pub model: String,
     /// Which Generate door the session's turns went through.
     pub door: String,

@@ -214,9 +214,25 @@ impl Recorder {
         self.write(Step::said(Source::System, text).noting("kind", json!(INSTRUCTIONS_KIND)));
     }
 
-    /// What the model answered, and what the turn cost.
-    pub fn answer(&mut self, text: &str, usage: Option<Usage>, milliseconds: u64) {
+    /// What the model answered, what the turn cost, and — when the door
+    /// only learns it from the answer — which model produced it.
+    ///
+    /// A door that forwards the turn to a worker cannot name the model at
+    /// session start, because the session header is written before anything
+    /// has answered. The step is written after, so it can. A session that
+    /// reached two workers therefore records two models rather than one
+    /// wrong one.
+    pub fn answer(
+        &mut self,
+        text: &str,
+        usage: Option<Usage>,
+        milliseconds: u64,
+        model: Option<&str>,
+    ) {
         let mut step = Step::said(Source::Agent, text).taking(milliseconds);
+        if let Some(model) = model {
+            step = step.by(model);
+        }
         if let Some(usage) = usage {
             step.spent(atif::Usage {
                 prompt: usage.input_tokens,
@@ -477,6 +493,7 @@ mod tests {
                 output_tokens: 9,
             }),
             120,
+            None,
         );
 
         // Nothing has closed the log, and it already reads.
@@ -555,7 +572,7 @@ mod tests {
         let mut recorder = Recorder::open(dir.path(), "a-model", "stub", "/tmp/repo").unwrap();
         recorder.user("hello");
         recorder.failure = Some("the disk is full".to_string());
-        recorder.answer("hi", None, 1);
+        recorder.answer("hi", None, 1, None);
         let path = recorder.path().to_path_buf();
         assert_eq!(recorder.failure(), Some("the disk is full"));
         drop(recorder);

@@ -21,9 +21,15 @@
 //! A turn that does not finish says which of three things happened, as a
 //! field rather than as prose: [`GenerateError::Relay`] when nothing
 //! reached a worker, [`GenerateError::Silent`] when the relay took the job
-//! and no worker answered, and [`GenerateError::Refused`] when a worker
+//! and no answer came back, and [`GenerateError::Refused`] when a worker
 //! answered by declining. `docs/coder/relay-transport.md` measures all
 //! three.
+//!
+//! Silence is two waits, not one. [`CONTACT_TIMEOUT`] bounds the wait for
+//! the first sign that a worker is there at all, and [`ANSWER_TIMEOUT`]
+//! bounds the wait for the answer once one is. A single bound covering
+//! both made an absent worker cost the whole long wait and then report a
+//! failure that could not say whether anyone had been listening.
 
 use std::env;
 use std::fs;
@@ -54,8 +60,25 @@ pub const RESULT_KIND: u16 = 26_900;
 pub const FEEDBACK_KIND: u16 = 27_000;
 const AUTH_KIND: u16 = 22_242;
 
-/// How long one turn waits for the worker before failing.
-const TURN_TIMEOUT: Duration = Duration::from_secs(180);
+/// How long a turn waits for the first sign that a worker is there.
+///
+/// NIP-CJ's kinds are ephemeral: an unanswered request leaves nothing on
+/// the relay to ask about, so a client cannot prove a worker is missing.
+/// What it can do is stop waiting for one sooner than it waits for a
+/// model. Any event from the worker's key `e`-tagged to the request is the
+/// sign — a judgment, a partial, a refusal, or the result itself — because
+/// all of them prove something read the job.
+///
+/// The window is wide enough that a worker whose own door is retrying an
+/// empty stream still gets counted as present, and short enough that an
+/// absent one fails while someone is still watching.
+pub const CONTACT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long a turn waits for the answer once a worker has been heard from.
+///
+/// This is the model's wait, and it is the long one. Before the two were
+/// split, it was also the absent worker's wait.
+pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// An authenticated relay connection. Both ends of NIP-CJ hold one.
 pub type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -250,6 +273,8 @@ pub struct RelayDoor {
     worker: XOnlyPublicKey,
     worker_hex: String,
     identity: Identity,
+    contact: Duration,
+    answer: Duration,
     socket: Mutex<Option<Socket>>,
 }
 
@@ -261,19 +286,39 @@ impl RelayDoor {
             worker,
             worker_hex: worker.to_string(),
             identity,
+            contact: CONTACT_TIMEOUT,
+            answer: ANSWER_TIMEOUT,
             socket: Mutex::new(None),
         }
     }
 
+    /// The same door with different waits, so a test can exercise the
+    /// split between them without spending the real ones.
+    #[must_use]
+    pub fn waiting(mut self, contact: Duration, answer: Duration) -> Self {
+        self.contact = contact;
+        self.answer = answer;
+        self
+    }
+
     /// A door from the environment: `CODER_WORKER` selects the worker
-    /// (`npub` or hex), `CODER_RELAY` selects the relay. `None` without a
-    /// configured worker or a loadable identity.
-    pub fn from_env() -> Option<Self> {
-        let worker = env::var("CODER_WORKER").ok().filter(|w| !w.is_empty())?;
-        let worker = parse_pubkey(&worker)?;
+    /// (`npub` or hex), `CODER_RELAY` selects the relay.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why the door could not be built. A worker
+    /// that does not parse used to read as no worker at all, which put the
+    /// turn on the stub door and said nothing about the typo.
+    pub fn from_env() -> Result<Self, String> {
+        let worker = env::var("CODER_WORKER")
+            .ok()
+            .filter(|worker| !worker.is_empty())
+            .ok_or_else(|| "CODER_WORKER is not set".to_string())?;
+        let worker = parse_pubkey(&worker)
+            .ok_or_else(|| "CODER_WORKER must be an npub or 64 lowercase hex".to_string())?;
         let url = env::var("CODER_RELAY").unwrap_or_else(|_| DEFAULT_RELAY_URL.to_string());
-        let identity = Identity::load().ok()?;
-        Some(Self::new(url, worker, identity))
+        let identity = Identity::load()?;
+        Ok(Self::new(url, worker, identity))
     }
 
     /// The socket, connecting and authenticating when needed.
@@ -346,8 +391,26 @@ impl RelayDoor {
         // One read loop for the publish `OK` and the worker's feedback:
         // a fast worker can answer before the OK lands, so the frames must
         // interleave rather than arrive in separate phases.
+        //
+        // The deadline the loop reads against changes the moment a worker
+        // is heard from: until then it is the short one, and the failure
+        // it produces says nobody was there.
         let mut partials = String::new();
-        while let Some(frame) = socket.next().await {
+        let mut heard = false;
+        let answer_by = tokio::time::Instant::now() + self.answer;
+        let contact_by = tokio::time::Instant::now() + self.contact;
+        loop {
+            let deadline = if heard { answer_by } else { contact_by };
+            let frame = match tokio::time::timeout_at(deadline, socket.next()).await {
+                Ok(Some(frame)) => frame,
+                Ok(None) => {
+                    return Err(GenerateError::Silent {
+                        heard,
+                        reason: "the socket closed before the worker answered".into(),
+                    });
+                }
+                Err(_) => return Err(self.ran_out(heard)),
+            };
             let message =
                 frame.map_err(|error| GenerateError::Stream(format!("socket: {error}")))?;
             let tungstenite::Message::Text(text) = message else {
@@ -372,6 +435,10 @@ impl RelayDoor {
                     if event.pubkey != self.worker_hex || event.validate_crypto().is_err() {
                         continue;
                     }
+                    // A signed event from the worker, tagged to this
+                    // request: somebody is there. Whatever it says, the
+                    // wait is no longer the short one.
+                    heard = true;
                     let Ok(plaintext) = nip44::decrypt(&event.content, &conversation) else {
                         continue;
                     };
@@ -402,6 +469,12 @@ impl RelayDoor {
                             message: message.to_string(),
                         });
                     } else if event.kind == RESULT_KIND {
+                        // The worker names the model it used, and the door
+                        // used to drop it on the floor. A relay run's
+                        // evidence has to be able to say what answered.
+                        if let Some(model) = feedback["model"].as_str().filter(|m| !m.is_empty()) {
+                            meta(Meta::Model(model.to_string()));
+                        }
                         let text = feedback["text"].as_str().unwrap_or_default().to_string();
                         let text = if text.is_empty() { partials } else { text };
                         if text.is_empty() {
@@ -419,9 +492,27 @@ impl RelayDoor {
                 _ => {}
             }
         }
-        Err(GenerateError::Silent(
-            "the socket closed before the worker answered".into(),
-        ))
+    }
+
+    /// The failure a wait that ran out produces, in whichever of the two
+    /// waits it was.
+    fn ran_out(&self, heard: bool) -> GenerateError {
+        let waited = if heard { self.answer } else { self.contact };
+        let reason = if heard {
+            format!(
+                "{} started answering and stopped: no result in {} seconds",
+                self.worker_hex,
+                waited.as_secs()
+            )
+        } else {
+            format!(
+                "nothing came back from {} in {} seconds: either no worker is listening, \
+                 or one is and said nothing while it worked",
+                self.worker_hex,
+                waited.as_secs()
+            )
+        };
+        GenerateError::Silent { heard, reason }
     }
 }
 
@@ -440,22 +531,18 @@ impl Generate for RelayDoor {
             *guard = Some(self.connection().await?);
         }
         let socket = guard.as_mut().expect("a socket was just stored");
-        match tokio::time::timeout(
-            TURN_TIMEOUT,
-            self.turn(socket, instructions, input, sink, meta),
-        )
-        .await
-        {
-            Ok(result) => result,
-            Err(_) => {
-                *guard = None;
-                Err(GenerateError::Silent(format!(
-                    "nothing came back from {} in {} seconds",
-                    self.worker_hex,
-                    TURN_TIMEOUT.as_secs()
-                )))
-            }
+        let answered = self.turn(socket, instructions, input, sink, meta).await;
+        // A wait that ran out or a socket that broke leaves a connection
+        // nobody can trust: the subscription is still open and a late
+        // answer would arrive in the middle of the next turn. A refusal
+        // leaves the socket healthy, and the next turn reuses it.
+        if matches!(
+            answered,
+            Err(GenerateError::Silent { .. } | GenerateError::Stream(_))
+        ) {
+            *guard = None;
         }
+        answered
     }
 }
 

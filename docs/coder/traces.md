@@ -67,7 +67,7 @@ it.
 | --- | --- |
 | `user` | You submit a draft. |
 | `system` | The instructions a generation was given, recorded when they change rather than once a turn; and any note about what the host could not do, such as a missing `TYPESAFE_API_KEY`. |
-| `agent` | Every reply the model produced, with the turn's token counts and wall time. A plan is a reply, and it is recorded verbatim. |
+| `agent` | Every reply the model produced, with the turn's token counts, wall time, and the model that produced it. A plan is a reply, and it is recorded verbatim. |
 | `agent` with a `shell` call | Every command, its working directory, its whole output, its exit status, and how long it took. |
 | `agent` with a decision call | Every `classify` and every `shell_judge`: which door answered, the state and questions that went out, the typed answers that came back, the digest of that state, and the route the table made of it. |
 
@@ -76,6 +76,18 @@ A decision call carries `schema: openagents.decision-call.v1` in its
 run on a machine separates them on one field. That is the point of using
 ATIF rather than a format written here: a Jev, Kev, or Lev call is not a
 foreign object in it.
+
+### The step names the model, when the session header cannot
+
+A session header carries the model the door serves, and it is written when
+the session opens. A door that forwards the turn to a worker somewhere
+else does not know the model then — the worker picks it and names it in
+the answer — so the header records `unknown` and each answer step carries
+`model_name` for what actually produced it. A session that reached two
+workers records two models rather than one wrong one.
+
+Own-key doors are unchanged: the header names the model and the steps
+inherit it.
 
 ## Three decisions worth stating
 

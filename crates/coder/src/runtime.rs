@@ -1172,7 +1172,12 @@ impl Runtime {
     /// The sentence a run ends on.
     fn report(&self, run: &Run, started: Instant, trace: Option<&mut Recorder>) {
         let Some(trace) = trace else { return };
-        trace.answer(&run.summary(), None, started.elapsed().as_millis() as u64);
+        trace.answer(
+            &run.summary(),
+            None,
+            started.elapsed().as_millis() as u64,
+            None,
+        );
     }
 }
 

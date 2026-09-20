@@ -98,7 +98,14 @@ impl Agent {
     /// The session's trace opens here, so a conversation is recorded without
     /// anybody asking it to be. A trace that cannot be opened is reported
     /// through [`Agent::trace_error`] and costs the conversation nothing.
-    pub fn from_env() -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the environment does not name one door. A
+    /// door is not a thing to degrade over: a session that quietly picked
+    /// between two configured doors would record which one it picked as if
+    /// that had been asked for.
+    pub fn from_env() -> Result<Self, String> {
         Self::opening(None)
     }
 
@@ -108,15 +115,19 @@ impl Agent {
     /// A caller that names the file can read the trace back without
     /// watching a directory, which is what a script driving a turn needs.
     /// Naming a file is a request to record, so it outranks `CODER_TRACE`.
-    pub fn recording_to(path: &Path) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the environment does not name one door.
+    pub fn recording_to(path: &Path) -> Result<Self, String> {
         Self::opening(Some(path))
     }
 
     /// The shared opener: the door and the repository from the
     /// environment, the trace where `path` says or where the environment
     /// does.
-    fn opening(path: Option<&Path>) -> Self {
-        let generate = Door::from_env();
+    fn opening(path: Option<&Path>) -> Result<Self, String> {
+        let generate = Door::from_env()?;
         let repo = Repo::discover(&env::current_dir().unwrap_or_default());
         let where_it_ran = repo
             .as_ref()
@@ -132,7 +143,7 @@ impl Agent {
             Ok(recorder) => (recorder, None),
             Err(error) => (None, Some(error)),
         };
-        Self {
+        Ok(Self {
             classify: jev::Client::from_env().ok(),
             generate,
             transcript: Vec::new(),
@@ -141,7 +152,7 @@ impl Agent {
             trace,
             trace_error,
             survey: None,
-        }
+        })
     }
 
     /// An agent over explicit parts, for tests.
@@ -233,13 +244,18 @@ impl Agent {
     /// canned answers an `End` or a `Halt` route gives.
     pub fn record_reply(&mut self, text: &str) {
         if let Some(trace) = &mut self.trace {
-            trace.answer(text, None, 0);
+            trace.answer(text, None, 0, None);
         }
     }
 
-    /// The model the door serves, for the token rail.
+    /// The model the door serves, which the trace's session header holds.
     pub fn model(&self) -> &str {
         self.generate.model()
+    }
+
+    /// What the composer's location rail shows for this door.
+    pub fn label(&self) -> &str {
+        self.generate.label()
     }
 
     /// Whether a classifier is configured.
@@ -348,13 +364,19 @@ impl Agent {
             trace.instructions(&instructions);
         }
         let started = Instant::now();
+        let answered = Answered::default();
         let (text, usage) = self
             .generate
-            .generate(&instructions, &self.transcript, sink, meta)
+            .generate(
+                &instructions,
+                &self.transcript,
+                sink,
+                &mut answered.watching(meta),
+            )
             .await?;
         let milliseconds = started.elapsed().as_millis() as u64;
         if let Some(trace) = &mut self.trace {
-            trace.answer(&text, usage, milliseconds);
+            trace.answer(&text, usage, milliseconds, answered.model().as_deref());
         }
         self.transcript.push(Message {
             role: Role::Assistant,
@@ -383,13 +405,19 @@ impl Agent {
                 trace.instructions(&instructions);
             }
             let started = Instant::now();
+            let answered = Answered::default();
             let (text, usage) = self
                 .generate
-                .generate(&instructions, &self.transcript, sink, meta)
+                .generate(
+                    &instructions,
+                    &self.transcript,
+                    sink,
+                    &mut answered.watching(meta),
+                )
                 .await?;
             let milliseconds = started.elapsed().as_millis() as u64;
             if let Some(trace) = &mut self.trace {
-                trace.answer(&text, usage, milliseconds);
+                trace.answer(&text, usage, milliseconds, answered.model().as_deref());
             }
             if let Some(usage) = usage {
                 let entry = total.get_or_insert(Usage {
@@ -507,6 +535,38 @@ impl Agent {
                 ShellRoute::Pass
             }
         }
+    }
+}
+
+/// The model that answered one generation, as the door reported it.
+///
+/// A door that forwards a turn somewhere else names its model in the
+/// answer rather than in its configuration, and it says so through
+/// [`Meta::Model`] as the answer lands. This keeps that name on its way
+/// past, so the answer step records what produced it, and passes every
+/// sideband item through to the caller unchanged.
+#[derive(Default)]
+struct Answered(std::sync::Mutex<Option<String>>);
+
+impl Answered {
+    /// The caller's sideband sink, watched for a model name.
+    fn watching<'a>(
+        &'a self,
+        meta: &'a mut (dyn FnMut(Meta) + Send),
+    ) -> impl FnMut(Meta) + Send + 'a {
+        move |item| {
+            if let Meta::Model(name) = &item
+                && let Ok(mut named) = self.0.lock()
+            {
+                *named = Some(name.clone());
+            }
+            meta(item);
+        }
+    }
+
+    /// The model, when the door named one.
+    fn model(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|named| named.clone())
     }
 }
 

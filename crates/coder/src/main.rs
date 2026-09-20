@@ -358,13 +358,18 @@ async fn run(
     let (tx, mut rx) = mpsc::channel::<Work>(256);
     // The agent moves to its own task for each turn; the channel returns
     // each phase.
-    let mut agent_slot = Some(match trace {
+    // An environment that names two doors ends the session here. Picking
+    // one of them quietly would put the wrong door in the trace and in
+    // whatever the session was run to measure.
+    let opened = match trace {
         Some(path) => Agent::recording_to(path),
         None => Agent::from_env(),
-    });
+    };
+    let mut agent_slot = Some(opened.map_err(io::Error::other)?);
     let mut turn: Option<tokio::task::JoinHandle<Agent>> = None;
-    // The door's model name rides the composer's location rail.
-    let model = agent_slot.as_ref().unwrap().model().to_string();
+    // The door's model name rides the composer's location rail, or the
+    // door's own name when the model is not known until a worker answers.
+    let model = agent_slot.as_ref().unwrap().label().to_string();
     // Where this conversation is being written down, so nobody has to guess.
     if let Some(agent) = agent_slot.as_ref() {
         match (agent.trace_path(), agent.trace_error()) {

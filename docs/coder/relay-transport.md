@@ -51,18 +51,36 @@ runs apart:
 {"record":"session","session":{"model":"google/gemini-3.8-flash","door":"live", …}}
 
 // the relay run
-{"record":"session","session":{"model":"relay","door":"relay", …}}
+{"record":"session","session":{"model":"unknown","door":"relay", …}}
 ```
 
 A run whose evidence cannot say how it was routed cannot be compared
 against one routed differently, so this field is load-bearing rather than
 decorative.
 
-One gap: on the relay run `model` reads `relay` rather than the model the
-worker actually used. The NIP-CJ result carries a `model` field and the
-worker fills it in; the door drops it, and the session header is written
-before any worker has answered anyway. The relay trace therefore says how
-the turn was routed but not what answered at the far end.
+## The step names what answered
+
+The original measurement left a gap here: the relay session header read
+`model: relay`, which named a model that does not exist. The header is
+written when the session opens and no worker has answered yet, so it
+cannot name one. [#9437](https://github.com/OpenAgentsInc/openagents/issues/9437)
+moved the model to the step, where it is known:
+
+```jsonc
+// the relay run's answer step
+{"record":"step","step":{"source":"Agent","model":"google/gemini-3.8-flash", …}}
+```
+
+The worker already names the model in its NIP-CJ result; the door used to
+drop it. Now it hands the name to the turn as sideband, the answer step
+records it, and the rendered document's `model_name` takes the step's word
+over the session's. A session that reached two workers records two models
+rather than one wrong one. The header says `unknown`, which is what the
+session knows at the moment it is written.
+
+This matters because every comparison in this repository rests on knowing
+which door answered. `docs/gym/regression.md` refuses a comparison when
+door identity moves, and it cannot refuse what it cannot read.
 
 ## Judged against the same golden
 
@@ -128,33 +146,86 @@ production relay from this machine. That is the honest price, and it is
 close enough to the median difference between the two transports to say
 the two measurements agree.
 
-## The three refusal causes
+### Re-measured after the fixes
 
-A relay that is unreachable, a worker that is absent, and a worker that
-declined are three different states. `gym::eval::classify` draws the line
-that matters: a typed refusal is an answer, a failure with no code is the
-harness. `coder -p --json` reports `cause` and `refusal` as fields, so a
-harness reads them rather than matching on prose.
+Six alternating pairs on 2026-09-20, same prompt, same relay, same
+gateway and model, on a machine that was again not quiet:
+
+| Transport | Generate p50 | Generate min–max | Wall p50 | Output tokens p50 |
+| --- | --- | --- | --- | --- |
+| Direct (`door: live`) | 3228 ms | 2656–4329 ms | 4117 ms | 266 |
+| Relay (`door: relay`) | 3575 ms | 2506–4067 ms | 4514 ms | 263 |
+
+| Relay round trip | p50 | min | max | n |
+| --- | --- | --- | --- | --- |
+| Client-observed minus worker-observed | 470 ms | 441 ms | 514 ms | 6 |
+
+470 ms against the earlier 471 ms. The two runs are a day apart with
+different code on the client, so the agreement is worth more than either
+number: splitting the waits and carrying the model back did not move the
+price of the transport.
+
+All six relay answer steps name `google/gemini-3.8-flash`, which is what
+the worker was answering through. Before the fix all six would have read
+`relay`. `coderbench diff devin-fan-out-six` read all twelve traces the
+same way it read the first thirty-six: one fault list, word for word,
+across both transports.
+
+## The refusal causes
+
+A relay that is unreachable, a worker that is absent, a worker that
+started and stopped, and a worker that declined are four different states.
+`gym::eval::classify` draws the line that matters: a typed refusal is an
+answer, a failure with no code is the harness. `coder -p --json` reports
+`cause` and `refusal` as fields, so a harness reads them rather than
+matching on prose.
+
+Measured against the production relay on 2026-09-20:
 
 | State | `cause` | `refusal` | Exit | How long | What `error` says |
 | --- | --- | --- | --- | --- | --- |
-| The relay is not there | `relay_unreachable` | `null` | `1` | 0.9 s | `relay: connect: IO error: Connection refused (os error 61)` |
-| No worker is listening | `worker_silent` | `null` | `1` | 181 s | `no worker answered: nothing came back from <pubkey> in 180 seconds` |
-| A worker declined | `worker_declined` | `quota_exhausted` | `1` | 1.7 s | `the worker declined (quota_exhausted): …` |
+| The relay is not there | `relay_unreachable` | `null` | `1` | 0.7 s | `relay: connect: IO error: Connection refused (os error 61)` |
+| No worker is listening | `worker_absent` | `null` | `1` | 31 s | `no worker answered: nothing came back from <pubkey> in 30 seconds: either no worker is listening, or one is and said nothing while it worked` |
+| A worker started and stopped | `worker_stalled` | `null` | `1` | up to 180 s | `the worker stopped mid-answer: <pubkey> started answering and stopped` |
+| A worker declined | `worker_declined` | `quota_exhausted` | `1` | 1.3 s | `the worker declined (quota_exhausted): …` |
+| The environment names two doors | `config` | `null` | `1` | under 0.1 s | `the environment names two doors: CODER_DOOR_KEY asks for an own-key door and CODER_WORKER asks for the relay. Unset one of them.` |
 
-All three exit `1`, because in all three the turn did not finish and there
-is no reply to show. What separates them is the field, not the code, and
-the trace records it too: a failed turn writes a `System` step saying
+All of them exit `1`, because in all of them the turn did not finish and
+there is no reply to show. What separates them is the field, not the code,
+and the trace records it too: a failed turn writes a `System` step saying
 `the turn did not finish (<cause>): <reason>` before the log closes, so a
-reader holding only the trace still learns why.
+reader holding only the trace still learns why. The `config` row is the
+exception, and deliberately: a run that cannot say which door it used
+writes no trace at all rather than one claiming a door.
 
-The `worker_silent` row is the expensive one. An absent worker costs the
-full 180-second `TURN_TIMEOUT` before the client gives up, and the client
-cannot tell an absent worker from a slow one, because NIP-CJ's kinds are
-ephemeral and an unanswered request leaves nothing behind to ask about. A
-worker that published a `status: queued` feedback event promptly would let
-the terminal fail in seconds instead of minutes; nothing in the protocol
-requires one to.
+### Silence is two waits, not one
+
+The first measurement's absent worker cost 181 seconds, because one
+`TURN_TIMEOUT` covered both the wait for a worker and the wait for a
+model. [#9436](https://github.com/OpenAgentsInc/openagents/issues/9436)
+split them. `CONTACT_TIMEOUT` is 30 seconds and bounds the wait for the
+first sign that a worker is there at all; `ANSWER_TIMEOUT` is 180 seconds
+and bounds the wait for the answer once one is.
+
+Any signed event from the worker's key, `e`-tagged to the request, is the
+sign: a judgment, a partial, a refusal, or the result. All of them prove
+something read the job, so the moment one arrives the door moves to the
+long wait and a failure after that reads `worker_stalled` rather than
+`worker_absent`.
+
+An absent worker is still an inference and the sentence says so. NIP-CJ's
+kinds are ephemeral, so an unanswered request leaves nothing on the relay
+to ask about and a client cannot prove nobody is listening — a worker that
+picked the job up and stayed quiet for 30 seconds reads as absent. A
+`status: queued` feedback event would settle it, and that is a NIP-CJ
+revision rather than a client change: a worker that lies about being ready
+is a worse failure than one that says nothing. The 30 seconds is wide
+enough that a worker whose own door is retrying an empty stream is still
+counted as present.
+
+`worker_stalled` is exercised by `crates/coder/tests/relay_job.rs`, which
+runs a mock worker that sends one judgment and then nothing against a real
+relay, with both waits shortened so the test costs seconds.
 
 ## What the relay could not see
 
@@ -187,8 +258,9 @@ cargo run -p coder --bin coder-worker
 ```
 
 Then run the turn twice, once each way. `CODER_DOOR_KEY` has to be unset
-for the relay leg: `Door::from_env` prefers an own-key door and would
-ignore `CODER_WORKER` otherwise.
+for the relay leg, and the run now says so rather than quietly routing
+past it: an environment naming both a door key and a worker is refused
+before the turn starts.
 
 ```sh
 # direct
@@ -203,7 +275,7 @@ env -u CODER_DOOR_KEY -u CODER_AI_GATEWAY_KEY \
 `--trace` refuses a path that already exists, so give each run its own
 file. To watch a refusal instead of an answer, start the worker with
 `--decline quota_exhausted`; to watch an absent one, stop the worker and
-wait three minutes.
+wait half a minute.
 
 The NIP-CJ wire contract also has tests that run against a real relay
 rather than a mock socket, skipped when `CODER_RELAY` is unset:

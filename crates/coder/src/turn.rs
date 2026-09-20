@@ -154,7 +154,12 @@ pub async fn run(
                         }
                     },
                     &mut |meta| {
-                        let Meta::Judgment(line) = meta;
+                        // The model a forwarding door names is for the
+                        // trace, not the terminal: the answer is already
+                        // on the screen by the time it lands.
+                        let Meta::Judgment(line) = meta else {
+                            return;
+                        };
                         if let Ok(mut sink) = sink.lock() {
                             sink(Event::Judgment(line));
                         }

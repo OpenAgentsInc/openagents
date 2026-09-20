@@ -41,9 +41,16 @@ pub const EXIT_DECLINED: u8 = 2;
 /// Runs one turn and reports it. The returned code is the process's.
 pub async fn print(options: Print) -> u8 {
     let named = options.trace.is_some();
-    let mut agent = match &options.trace {
+    let opened = match &options.trace {
         Some(path) => Agent::recording_to(path),
         None => Agent::from_env(),
+    };
+    // A door the environment asks for two ways is a measurement of the
+    // wrong thing, so it ends the run before a trace is opened rather than
+    // after one has recorded which door it picked.
+    let mut agent = match opened {
+        Ok(agent) => agent,
+        Err(why) => return fail(&options, None, &Failure::host("config", why)),
     };
     // A caller that named a file is going to read it back, so a trace that
     // could not be opened ends the run rather than producing an

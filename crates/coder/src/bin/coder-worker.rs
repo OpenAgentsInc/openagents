@@ -125,7 +125,7 @@ async fn serve(options: &Options) -> Result<(), String> {
         .map_err(|_| "CODER_WORKER_SECRET is not set".to_string())?;
     let identity = Identity::from_text(&secret, "CODER_WORKER_SECRET")?;
     let url = env::var("CODER_RELAY").unwrap_or_else(|_| DEFAULT_RELAY_URL.to_string());
-    let door = Door::from_env();
+    let door = Door::from_env()?;
 
     eprintln!("worker  {}", identity.pubkey());
     eprintln!("relay   {url}");

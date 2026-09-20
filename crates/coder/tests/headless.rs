@@ -207,3 +207,41 @@ fn help_says_what_the_flags_are() {
         assert!(said.contains(flag), "{said}");
     }
 }
+
+/// An environment that names two doors ends the run rather than picking
+/// one of them.
+///
+/// `CODER_DOOR_KEY` asks for an own-key door and `CODER_WORKER` asks for
+/// the relay. Preferring either silently is how someone measuring the
+/// relay with a key still in their shell measures the other transport and
+/// gets a plausible number. Nothing is recorded, because a trace of this
+/// run would have to claim a door.
+#[test]
+fn two_configured_doors_end_the_run_rather_than_measuring_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut command = Command::new(env!("CARGO_BIN_EXE_coder"));
+    for name in CREDENTIALS {
+        command.env_remove(name);
+    }
+    let output = command
+        .env_remove("CODER_TRACE")
+        .env("CODER_TRACE_DIR", dir.path())
+        .env("CODER_DOOR_KEY", "a-key")
+        .env("CODER_WORKER", "0".repeat(64))
+        .args(["-p", "--json", "hello"])
+        .output()
+        .expect("the binary runs");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let report: Value = serde_json::from_slice(&output.stdout).expect("one JSON object");
+    assert_eq!(report["outcome"], "failed");
+    assert_eq!(report["cause"], "config");
+    assert!(report["trace"].is_null());
+    let error = report["error"].as_str().unwrap();
+    assert!(error.contains("CODER_DOOR_KEY"), "{error}");
+    assert!(error.contains("CODER_WORKER"), "{error}");
+    assert!(
+        atif::log::list(dir.path()).unwrap().is_empty(),
+        "a run that cannot name its door records nothing"
+    );
+}

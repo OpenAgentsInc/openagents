@@ -58,6 +58,14 @@ pub enum Meta {
     /// A classification verdict the worker computed, as a display-ready
     /// line (the NIP-CJ `judgment` feedback payload's `line` field).
     Judgment(String),
+    /// The model that produced the answer, as the far end names it (the
+    /// NIP-CJ result payload's `model` field).
+    ///
+    /// A door that forwards a turn somewhere else does not know which
+    /// model will take it, so the session header cannot say. The answer
+    /// can, and this is how it says so: the door emits the name as the
+    /// result lands and the trace puts it on that step.
+    Model(String),
 }
 
 /// What generation can fail with.
@@ -83,9 +91,19 @@ pub enum GenerateError {
     /// NIP-42 challenge went unanswered, or the relay rejected the
     /// request event.
     Relay(String),
-    /// The relay took the job and no worker answered before the deadline.
-    /// The worker is absent, or too slow to tell apart from absent.
-    Silent(String),
+    /// The relay took the job and no answer came back.
+    ///
+    /// `heard` is what separates a worker that is not there from one that
+    /// is slow, as far as an ephemeral protocol lets a client separate
+    /// them: `false` means nothing at all came back from the worker's key,
+    /// and `true` means something did and then the answer never finished.
+    Silent {
+        /// Whether anything came back from the worker before the wait ran
+        /// out.
+        heard: bool,
+        /// What the wait was, in a sentence.
+        reason: String,
+    },
     /// A worker answered with a typed refusal: NIP-CJ `status: error`
     /// feedback carrying a machine-readable code. The job reached a
     /// worker, and the worker said no.
@@ -103,6 +121,13 @@ impl GenerateError {
     /// `worker_declined` is an answer in `gym::eval::classify`'s sense: the
     /// job reached a worker and the worker refused it with a code. Every
     /// other word is the harness.
+    ///
+    /// `worker_absent` and `worker_stalled` are both silence, and they are
+    /// two words because they are two problems: nothing was listening, or
+    /// something was listening and did not finish. The first is a
+    /// judgment call — an ephemeral protocol gives a client no way to
+    /// prove a worker is missing — and it is the judgment the short wait
+    /// in [`crate::relay`] makes.
     #[must_use]
     pub fn cause(&self) -> &'static str {
         match self {
@@ -110,7 +135,8 @@ impl GenerateError {
             GenerateError::Transport(_) | GenerateError::Status(..) => "door",
             GenerateError::Stream(_) => "stream",
             GenerateError::Relay(_) => "relay_unreachable",
-            GenerateError::Silent(_) => "worker_silent",
+            GenerateError::Silent { heard: false, .. } => "worker_absent",
+            GenerateError::Silent { heard: true, .. } => "worker_stalled",
             GenerateError::Refused { .. } => "worker_declined",
         }
     }
@@ -137,7 +163,18 @@ impl fmt::Display for GenerateError {
             GenerateError::Status(status, body) => write!(f, "door answered {status}: {body}"),
             GenerateError::Stream(why) => write!(f, "stream: {why}"),
             GenerateError::Relay(why) => write!(f, "relay: {why}"),
-            GenerateError::Silent(why) => write!(f, "no worker answered: {why}"),
+            GenerateError::Silent {
+                heard: false,
+                reason,
+            } => {
+                write!(f, "no worker answered: {reason}")
+            }
+            GenerateError::Silent {
+                heard: true,
+                reason,
+            } => {
+                write!(f, "the worker stopped mid-answer: {reason}")
+            }
             GenerateError::Refused { code, message } => {
                 write!(f, "the worker declined ({code}): {message}")
             }
@@ -422,25 +459,66 @@ pub enum Door {
     Stub(StubGenerate),
 }
 
+/// What a session header says for a door that cannot name its model until
+/// something answers. The answer steps carry the model that did.
+pub const UNKNOWN_MODEL: &str = "unknown";
+
+/// The two variables that ask for an own-key door, in the order
+/// [`ResponsesDoor::from_env`] reads them.
+const KEY_VARS: [&str; 2] = ["CODER_DOOR_KEY", "CODER_AI_GATEWAY_KEY"];
+
+/// The variable that asks for the relay door.
+const WORKER_VAR: &str = "CODER_WORKER";
+
 impl Door {
-    /// The configured door: own-key when a key is present, the relay
-    /// when `CODER_WORKER` names a worker, stub otherwise.
-    pub fn from_env() -> Self {
-        if let Some(door) = ResponsesDoor::from_env() {
-            return Door::Live(door);
+    /// The configured door: own-key when a key is present, the relay when
+    /// `CODER_WORKER` names a worker, stub when neither is set.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the environment asks for two doors at once,
+    /// and when the door it asks for cannot be built. Both used to be
+    /// silent: a key and a worker together took the key, and an unparseable
+    /// worker fell through to the stub. Either precedence is defensible and
+    /// the silence is not — someone measuring the relay with a key still
+    /// set measures the other transport and gets a plausible number.
+    pub fn from_env() -> Result<Self, String> {
+        let key = KEY_VARS
+            .into_iter()
+            .find(|name| env::var(name).is_ok_and(|value| !value.is_empty()));
+        let worker = env::var(WORKER_VAR).is_ok_and(|value| !value.is_empty());
+        match asked_for(key, worker)? {
+            Asked::Own => ResponsesDoor::from_env()
+                .map(Door::Live)
+                .ok_or_else(|| "the door key is set and empty".to_string()),
+            Asked::Relay => {
+                crate::relay::RelayDoor::from_env().map(|door| Door::Relay(Box::new(door)))
+            }
+            Asked::Stub => Ok(Door::Stub(StubGenerate::default())),
         }
-        if let Some(door) = crate::relay::RelayDoor::from_env() {
-            return Door::Relay(Box::new(door));
-        }
-        Door::Stub(StubGenerate::default())
     }
 
-    /// The model name the door serves, for the token rail.
+    /// The model name the door serves, which a trace's session header
+    /// records.
+    ///
+    /// A relay door answers [`UNKNOWN_MODEL`]: the worker picks the model
+    /// and names it in the NIP-CJ result, so the session header cannot
+    /// know it and each answer step carries what answered. Recording the
+    /// word `relay` there instead claimed a model by that name.
     pub fn model(&self) -> &str {
         match self {
             Door::Live(door) => &door.model,
-            Door::Relay(_) => "relay",
+            Door::Relay(_) => UNKNOWN_MODEL,
             Door::Stub(_) => "stub",
+        }
+    }
+
+    /// What the composer's location rail shows: the model when the door
+    /// knows one before answering, the door's own name when it does not.
+    pub fn label(&self) -> &str {
+        match self {
+            Door::Relay(_) => self.name(),
+            _ => self.model(),
         }
     }
 
@@ -469,6 +547,40 @@ impl Generate for Door {
             Door::Relay(door) => door.generate(instructions, input, sink, meta).await,
             Door::Stub(stub) => stub.generate(instructions, input, sink, meta).await,
         }
+    }
+}
+
+/// Which door the environment asks for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Asked {
+    /// An own-key Open Responses endpoint.
+    Own,
+    /// The relay, and whichever worker answers on it.
+    Relay,
+    /// Neither, so the canned answer.
+    Stub,
+}
+
+/// The door a key variable and a worker variable ask for between them,
+/// split out from [`Door::from_env`] so it is decided without reading the
+/// process environment. `key` names the key variable that is set, when one
+/// is.
+///
+/// # Errors
+///
+/// Returns a sentence when both are set. Refusing is better than choosing,
+/// because the thing the person needs to see is that they asked for two
+/// things, and a door that quietly picks one answers the question they did
+/// not ask.
+fn asked_for(key: Option<&str>, worker: bool) -> Result<Asked, String> {
+    match (key, worker) {
+        (Some(key), true) => Err(format!(
+            "the environment names two doors: {key} asks for an own-key door \
+             and {WORKER_VAR} asks for the relay. Unset one of them."
+        )),
+        (Some(_), false) => Ok(Asked::Own),
+        (None, true) => Ok(Asked::Relay),
+        (None, false) => Ok(Asked::Stub),
     }
 }
 
@@ -522,23 +634,43 @@ mod tests {
         assert!(usage.is_none());
     }
 
-    /// Three relay failures, three causes. A typed refusal carries its
-    /// code as a field; the two that never reached a worker carry none.
+    /// Four relay failures, four causes. A typed refusal carries its code
+    /// as a field; the three that never got an answer carry none.
     #[test]
-    fn the_three_relay_failures_file_under_three_causes() {
+    fn the_relay_failures_file_under_four_causes() {
         let unreachable = GenerateError::Relay("connect: refused".to_string());
-        let silent = GenerateError::Silent("nothing came back in 180 seconds".to_string());
+        let absent = GenerateError::Silent {
+            heard: false,
+            reason: "nothing came back in 30 seconds".to_string(),
+        };
+        let stalled = GenerateError::Silent {
+            heard: true,
+            reason: "no result in 180 seconds".to_string(),
+        };
         let declined = GenerateError::Refused {
             code: "quota_exhausted".to_string(),
             message: "free allowance used".to_string(),
         };
 
         assert_eq!(unreachable.cause(), "relay_unreachable");
-        assert_eq!(silent.cause(), "worker_silent");
         assert_eq!(declined.cause(), "worker_declined");
 
+        // Silence is two states, and a harness reads which on the field
+        // rather than on the sentence.
+        assert_eq!(absent.cause(), "worker_absent");
+        assert_eq!(stalled.cause(), "worker_stalled");
+        assert_eq!(
+            absent.to_string(),
+            "no worker answered: nothing came back in 30 seconds"
+        );
+        assert_eq!(
+            stalled.to_string(),
+            "the worker stopped mid-answer: no result in 180 seconds"
+        );
+
         assert_eq!(unreachable.refusal(), None);
-        assert_eq!(silent.refusal(), None);
+        assert_eq!(absent.refusal(), None);
+        assert_eq!(stalled.refusal(), None);
         assert_eq!(declined.refusal(), Some("quota_exhausted"));
 
         assert_eq!(
@@ -550,6 +682,35 @@ mod tests {
             GenerateError::Stream("the relay went away".to_string()).cause(),
             "stream"
         );
+    }
+
+    /// An environment that asks for two doors is refused, and the refusal
+    /// names both variables. Silently preferring one is how a relay
+    /// measurement comes to be a measurement of the other transport.
+    #[test]
+    fn two_configured_doors_are_a_refusal_rather_than_a_choice() {
+        let both = asked_for(Some("CODER_DOOR_KEY"), true).expect_err("two doors");
+        assert!(both.contains("CODER_DOOR_KEY"), "{both}");
+        assert!(both.contains("CODER_WORKER"), "{both}");
+
+        assert_eq!(asked_for(Some("CODER_DOOR_KEY"), false), Ok(Asked::Own));
+        assert_eq!(
+            asked_for(Some("CODER_AI_GATEWAY_KEY"), false),
+            Ok(Asked::Own)
+        );
+        assert_eq!(asked_for(None, true), Ok(Asked::Relay));
+        assert_eq!(asked_for(None, false), Ok(Asked::Stub));
+    }
+
+    /// A relay door cannot name its model before a worker answers, and
+    /// says so rather than naming the transport as if it were a model.
+    #[test]
+    fn a_door_that_cannot_name_its_model_says_unknown() {
+        let live = Door::Live(ResponsesDoor::new("https://door.example", "a/model", "k"));
+        assert_eq!(live.model(), "a/model");
+        assert_eq!(live.label(), "a/model");
+        assert_eq!(Door::Stub(StubGenerate::default()).model(), "stub");
+        assert_eq!(UNKNOWN_MODEL, "unknown");
     }
 
     #[test]

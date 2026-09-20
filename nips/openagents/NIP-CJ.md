@@ -130,9 +130,13 @@ The terminal event of the job: the finished answer and its accounting.
 }
 ```
 
-`usage` is optional; when absent the terminal shows no token count. A job
-ends on the first result or `status: error` the terminal accepts; later
-events for the same `e` tag are ignored.
+`usage` is optional; when absent the terminal shows no token count.
+`model` is optional too, and a worker that can name the model it used
+should: the terminal's own session record cannot name it, because the
+terminal does not choose it, so the name the worker sends is the only
+evidence of what answered. A job ends on the first result or
+`status: error` the terminal accepts; later events for the same `e` tag
+are ignored.
 
 ## Flow
 

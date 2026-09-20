@@ -70,12 +70,19 @@ its wording.
 | `cause` | What happened |
 | --- | --- |
 | `relay_unreachable` | The relay would not take the job: the socket never opened, the NIP-42 challenge went unanswered, or the relay rejected the request event. Nothing reached a worker. |
-| `worker_silent` | The relay took the job and no worker answered before the deadline. The worker is absent, or too slow to tell apart from absent. |
+| `worker_absent` | The relay took the job and nothing at all came back from the worker within the contact wait, 30 seconds. Either nobody is listening on that key, or somebody is and said nothing while it worked. |
+| `worker_stalled` | Something came back from the worker — a judgment, a partial, a status — and then the answer never finished within the answer wait, 180 seconds. |
 | `worker_declined` | A worker answered with a typed refusal. `refusal` carries the NIP-CJ code, such as `quota_exhausted`. |
 | `door` | An own-key door answered with an error status, or the HTTP call failed. |
 | `stream` | The door's stream broke or carried an error event. |
-| `config` | The door's URL, key, or model is missing or wrong. |
+| `config` | The environment does not name one door: it names two, or it names one that cannot be built. The run ends before the turn. |
 | `trace` | A named trace could not be opened, so the run ended before the turn. |
+
+`worker_absent` and `worker_stalled` are both silence, and they are two
+words because they are two problems. NIP-CJ's kinds are ephemeral, so a
+client cannot prove a worker is missing — nothing is left on the relay to
+ask about. What it can do is wait for a sign of life on a much shorter
+clock than it waits for a model, and say which wait ran out.
 
 `refusal` is non-null only for `worker_declined`, and it is read as a
 field rather than searched for in the message. That is the line
