@@ -164,7 +164,12 @@ The flow, in the order the sockets speak it:
    expects: the kind is `26900` or `27000`, the signer is the configured
    worker, an `e` tag names this request, and a `p` tag names this
    terminal. The subscription label is a routing hint, never identity.
-5. The job ends on the first result or `status: error`.
+5. The job ends on the first result or `status: error`. The terminal
+   then sends `CLOSE` for the job's subscription and keeps the socket
+   for the next turn. A relay `CLOSED` on that subscription ends the job
+   as a relay error with the relay's reason. A socket that broke, or a
+   wait that ran out with a subscription that might still deliver, is
+   dropped, and the next turn opens a fresh one.
 
 Versions: a `v: 2` request gets `v: 2` feedback with sequenced partials;
 `v: 1` partials prove liveness but are never rendered; a request with no
@@ -176,14 +181,18 @@ within the contact deadline, the turn fails with cause `worker_absent`
 ("no worker answered"). If a worker was heard but no result arrives
 within the answer deadline, the cause names the worker as silent. A
 relay `OK … false` on the request fails the turn with the relay's reason.
-A worker that fails upstream and publishes nothing looks identical to an
-absent worker from the terminal — check the worker's stderr before
-blaming the relay.
+Opening a socket, handshake and AUTH together, is bounded by
+`CONNECT_TIMEOUT`. A worker that fails upstream and publishes nothing
+looks identical to an absent worker from the terminal — check the
+worker's stderr before blaming the relay.
 
 Environment, terminal side: `CODER_WORKER` (worker `npub` or hex pubkey)
 and `CODER_RELAY` (`ws://` or `wss://` URL). The identity is
 `CODER_SECRET_KEY` or `CODER_NSEC`, or, when neither is set, the key at
-`~/.openagents/nostr-secret`, created on first use with mode `0600`. A
+`~/.openagents/nostr-secret`, created on first use with mode `0600`. Only
+a missing file is a first use: an unreadable one is an error, so a
+permissions accident cannot silently mint a new `npub`. Creation is
+exclusive and atomic, and concurrent first runs agree on one key. A
 fresh keypair is a valid anonymous account; never print, log, or commit
 the secret.
 

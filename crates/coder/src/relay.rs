@@ -48,7 +48,8 @@
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::{SinkExt, StreamExt};
@@ -94,6 +95,12 @@ pub const CONTACT_TIMEOUT: Duration = Duration::from_secs(30);
 /// This is the model's wait, and it is the long one. Before the two were
 /// split, it was also the absent worker's wait.
 pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// How long opening a socket may take, TCP and TLS handshake and the
+/// NIP-42 exchange together. A relay that accepts the connection and then
+/// says nothing would otherwise hold the turn for as long as the operating
+/// system lets a half-open socket live.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// The payload revision this implementation speaks: `2` adds the signed
 /// `seq` that orders partial deltas. Revision `1` is the same protocol
@@ -199,41 +206,97 @@ impl Identity {
         }
 
         let home = env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
-        let dir = PathBuf::from(home).join(".openagents");
-        let path = dir.join("nostr-secret");
-        match fs::read_to_string(&path) {
-            Ok(text) => {
-                let bytes = parse_hex(text.trim())
-                    .ok_or_else(|| format!("{} is not 64 lowercase hex", path.display()))?;
-                let secret = SecretKey::from_byte_array(bytes)
-                    .map_err(|_| format!("{} is not a valid secret key", path.display()))?;
-                Self::from_secret(secret)
+        Self::load_from(&PathBuf::from(home).join(".openagents").join("nostr-secret"))
+    }
+
+    /// The identity kept at `path`, generated and installed on first run.
+    ///
+    /// Only a file that is not there is a first run. Any other failure to
+    /// read it — permissions, a directory in its place, an I/O fault —
+    /// is reported, because generating a new key over an unreadable old
+    /// one would silently change the `npub` the worker's ledger knows.
+    ///
+    /// Installation is atomic: the key is written to a sibling file that
+    /// is created exclusively with mode `0600`, so no moment exists where
+    /// the file is readable to others or half written, and then linked
+    /// into place, which fails rather than replacing a file that appeared
+    /// in the meantime. When another process wins that
+    /// race, its key is the identity and this one's is discarded.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why no identity could be loaded.
+    pub fn load_from(path: &Path) -> Result<Self, String> {
+        match fs::read_to_string(path) {
+            Ok(text) => Self::from_file_text(&text, path),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                Self::install(path)?;
+                let text = fs::read_to_string(path)
+                    .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+                Self::from_file_text(&text, path)
             }
-            Err(_) => {
-                fs::create_dir_all(&dir)
-                    .map_err(|error| format!("cannot create {}: {error}", dir.display()))?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
-                }
-                let secret = SecretKey::new(&mut secp256k1::rand::rng());
-                let hex: String = secret
-                    .secret_bytes()
-                    .iter()
-                    .map(|byte| format!("{byte:02x}"))
-                    .collect();
-                fs::write(&path, format!("{hex}\n"))
-                    .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
-                        .map_err(|error| format!("cannot protect {}: {error}", path.display()))?;
-                }
-                Self::from_secret(secret)
+            Err(error) => Err(format!("cannot read {}: {error}", path.display())),
+        }
+    }
+
+    fn from_file_text(text: &str, path: &Path) -> Result<Self, String> {
+        let bytes = parse_hex(text.trim())
+            .ok_or_else(|| format!("{} is not 64 lowercase hex", path.display()))?;
+        let secret = SecretKey::from_byte_array(bytes)
+            .map_err(|_| format!("{} is not a valid secret key", path.display()))?;
+        Self::from_secret(secret)
+    }
+
+    /// Generates a key and installs it at `path` unless one is there
+    /// first. Returns `Ok` either way; the caller reads the winner.
+    fn install(path: &Path) -> Result<(), String> {
+        let dir = path
+            .parent()
+            .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+        if !dir.is_dir() {
+            fs::create_dir_all(dir)
+                .map_err(|error| format!("cannot create {}: {error}", dir.display()))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o700));
             }
         }
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("{} has no file name", path.display()))?;
+        let staged = dir.join(format!(
+            ".{name}.{}.{:016x}",
+            std::process::id(),
+            secp256k1::rand::random::<u64>()
+        ));
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let written = (|| -> io::Result<()> {
+            let mut file = options.open(&staged)?;
+            let secret = SecretKey::new(&mut secp256k1::rand::rng());
+            let hex: String = secret
+                .secret_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            file.write_all(format!("{hex}\n").as_bytes())?;
+            file.sync_all()?;
+            drop(file);
+            match fs::hard_link(&staged, path) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+                Err(error) => Err(error),
+            }
+        })();
+        let _ = fs::remove_file(&staged);
+        written.map_err(|error| format!("cannot install {}: {error}", path.display()))
     }
 
     /// The identity's x-only public key, hex.
@@ -267,10 +330,31 @@ impl Identity {
 /// authentication did instead. Nothing reached a worker, so nothing here
 /// is a refusal.
 pub async fn connect(url: &str, identity: &Identity) -> Result<Socket, GenerateError> {
-    let (mut socket, _) = connect_async(url)
+    connect_within(url, identity, CONNECT_TIMEOUT).await
+}
+
+/// [`connect`] with the whole of opening the socket, handshake and
+/// authentication together, bounded by `within`.
+///
+/// # Errors
+///
+/// As [`connect`], plus a [`GenerateError::Relay`] naming the bound when
+/// the relay accepted the connection and then did not finish it.
+pub async fn connect_within(
+    url: &str,
+    identity: &Identity,
+    within: Duration,
+) -> Result<Socket, GenerateError> {
+    let deadline = tokio::time::Instant::now() + within;
+    let (mut socket, _) = tokio::time::timeout_at(deadline, connect_async(url))
         .await
+        .map_err(|_| {
+            GenerateError::Relay(format!(
+                "connect: no WebSocket handshake in {} seconds",
+                within.as_secs()
+            ))
+        })?
         .map_err(|error| GenerateError::Relay(format!("connect: {error}")))?;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     loop {
         let frame = match tokio::time::timeout_at(deadline, socket.next()).await {
             Ok(Some(Ok(message))) => message,
@@ -335,6 +419,7 @@ pub struct RelayDoor {
     identity: Identity,
     contact: Duration,
     answer: Duration,
+    connect: Duration,
     socket: Mutex<Option<Socket>>,
 }
 
@@ -348,6 +433,7 @@ impl RelayDoor {
             identity,
             contact: CONTACT_TIMEOUT,
             answer: ANSWER_TIMEOUT,
+            connect: CONNECT_TIMEOUT,
             socket: Mutex::new(None),
         }
     }
@@ -358,6 +444,13 @@ impl RelayDoor {
     pub fn waiting(mut self, contact: Duration, answer: Duration) -> Self {
         self.contact = contact;
         self.answer = answer;
+        self
+    }
+
+    /// The same door with a different bound on opening a socket.
+    #[must_use]
+    pub fn connecting(mut self, connect: Duration) -> Self {
+        self.connect = connect;
         self
     }
 
@@ -383,10 +476,20 @@ impl RelayDoor {
 
     /// The socket, connecting and authenticating when needed.
     async fn connection(&self) -> Result<Socket, GenerateError> {
-        connect(&self.url, &self.identity).await
+        connect_within(&self.url, &self.identity, self.connect).await
     }
 
-    /// Runs one job over `socket`: subscribe, publish, stream the answer.
+    /// Runs one job over `socket`: subscribe, publish, stream the answer,
+    /// and close the subscription on every path that keeps the socket.
+    ///
+    /// A subscription left open outlives its job: the next turn's frames
+    /// would interleave with a late answer to this one, and a relay that
+    /// caps subscriptions per connection would eventually refuse the
+    /// `REQ` outright. So the `CLOSE` is sent whether the job ended in a
+    /// result, a typed refusal, or a relay error. The paths that skip it
+    /// are the ones where the socket is evicted anyway: a broken or
+    /// closed socket, and a wait that ran out, where a late answer could
+    /// still arrive and the next turn must not be the one to read it.
     async fn turn(
         &self,
         socket: &mut Socket,
@@ -395,6 +498,27 @@ impl RelayDoor {
         sink: &mut (dyn FnMut(&str) + Send),
         meta: &mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
+        let (request, conversation) = self.request(instructions, input)?;
+        let subscription = format!("job-{}", &request.id[..16]);
+        let answered = self
+            .exchange(socket, &request, &subscription, &conversation, sink, meta)
+            .await;
+        if keeps_socket(&answered) {
+            // A `CLOSE` the socket will not take means the socket is not
+            // one the next turn can use either; refiling the outcome as
+            // a stream failure is what evicts it.
+            send(socket, json!(["CLOSE", subscription])).await?;
+        }
+        answered
+    }
+
+    /// The signed, encrypted job request for this turn's input, with the
+    /// conversation key its answers decrypt under.
+    fn request(
+        &self,
+        instructions: &str,
+        input: &[Message],
+    ) -> Result<(Event, [u8; 32]), GenerateError> {
         let task = input
             .iter()
             .rev()
@@ -435,9 +559,21 @@ impl RelayDoor {
             vec![Tag::new(vec!["p".into(), self.worker_hex.clone()])],
             content,
         );
+        Ok((request, conversation))
+    }
 
+    /// Subscribes, publishes `request`, and reads until the answer, a
+    /// refusal, or a wait runs out.
+    async fn exchange(
+        &self,
+        socket: &mut Socket,
+        request: &Event,
+        subscription: &str,
+        conversation: &[u8; 32],
+        sink: &mut (dyn FnMut(&str) + Send),
+        meta: &mut (dyn FnMut(Meta) + Send),
+    ) -> Result<(String, Option<Usage>), GenerateError> {
         // Subscribe before publishing so no fast feedback is missed.
-        let subscription = format!("job-{}", &request.id[..16]);
         send(
             socket,
             json!(["REQ", subscription, {
@@ -491,6 +627,17 @@ impl RelayDoor {
                         "the relay refused the job request: {reason}"
                     )));
                 }
+                // The relay ending the subscription ends the job: nothing
+                // more can arrive under it, and a request already
+                // published is unanswerable rather than pending. The
+                // socket itself is fine, and the reason is the relay's
+                // to give, so this is a relay error and not a silence.
+                "CLOSED" if value[1].as_str() == Some(subscription) => {
+                    let reason = value[2].as_str().unwrap_or("no reason given");
+                    return Err(GenerateError::Relay(format!(
+                        "the relay closed the job subscription: {reason}"
+                    )));
+                }
                 // The subscription label is the relay's routing hint, not
                 // the job's identity: a relay can relabel any event under
                 // it. What binds an answer to this turn is inside the
@@ -518,7 +665,7 @@ impl RelayDoor {
                             "the worker sent more than {MAX_ANSWER_EVENTS} events for one job"
                         )));
                     }
-                    let Ok(plaintext) = nip44::decrypt(&event.content, &conversation) else {
+                    let Ok(plaintext) = nip44::decrypt(&event.content, conversation) else {
                         continue;
                     };
                     let Ok(feedback) = serde_json::from_str::<Value>(&plaintext) else {
@@ -697,15 +844,27 @@ impl Generate for RelayDoor {
         // A wait that ran out or a socket that broke leaves a connection
         // nobody can trust: the subscription is still open and a late
         // answer would arrive in the middle of the next turn. A refusal
-        // leaves the socket healthy, and the next turn reuses it.
-        if matches!(
-            answered,
-            Err(GenerateError::Silent { .. } | GenerateError::Stream(_))
-        ) {
+        // leaves the socket healthy, its subscription closed, and the
+        // next turn reuses it.
+        if !keeps_socket(&answered) {
             *guard = None;
         }
         answered
     }
+}
+
+/// Whether the socket a turn ran over is one the next turn can reuse.
+///
+/// A result and a typed refusal both mean the exchange completed in
+/// order. A relay error is the relay declining a frame or a subscription
+/// on a socket that still works. A silence is a wait that ran out with a
+/// subscription that may yet deliver, and a stream failure is the socket
+/// itself; neither socket is trusted again.
+fn keeps_socket(answered: &Result<(String, Option<Usage>), GenerateError>) -> bool {
+    !matches!(
+        answered,
+        Err(GenerateError::Silent { .. } | GenerateError::Stream(_))
+    )
 }
 
 /// Refiles a socket failure raised while the connection was being opened.
@@ -821,6 +980,99 @@ mod tests {
         let identity = Identity::from_secret(secret).unwrap();
         let (public, _) = secret.public_key(&Secp256k1::new()).x_only_public_key();
         assert_eq!(identity.pubkey(), public.to_string());
+    }
+
+    #[test]
+    fn a_first_run_installs_a_private_identity_and_a_second_run_reads_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deeper").join("nostr-secret");
+        let first = Identity::load_from(&path).unwrap();
+        let second = Identity::load_from(&path).unwrap();
+        assert_eq!(first.pubkey(), second.pubkey());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "{mode:o}");
+        }
+        // The staging file is gone, whichever way installation went.
+        let names: Vec<_> = fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("nostr-secret")]);
+    }
+
+    #[test]
+    fn concurrent_first_runs_agree_on_one_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nostr-secret");
+        let handles: Vec<_> = (0..16)
+            .map(|_| {
+                let path = path.clone();
+                std::thread::spawn(move || Identity::load_from(&path).unwrap().pubkey().to_string())
+            })
+            .collect();
+        let pubkeys: HashSet<String> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        assert_eq!(pubkeys.len(), 1, "{pubkeys:?}");
+        let on_disk = Identity::load_from(&path).unwrap();
+        assert!(pubkeys.contains(on_disk.pubkey()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_identity_is_an_error_not_a_first_run() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc_geteuid() } == 0 {
+            // Root reads anything; the case cannot be staged.
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nostr-secret");
+        let before = Identity::load_from(&path).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let error = Identity::load_from(&path).err().expect("an error");
+        assert!(error.contains("cannot read"), "{error}");
+        assert!(!error.contains(before.pubkey()));
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(
+            Identity::load_from(&path).unwrap().pubkey(),
+            before.pubkey()
+        );
+    }
+
+    #[test]
+    fn a_directory_in_the_identitys_place_is_an_error_not_a_first_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nostr-secret");
+        fs::create_dir(&path).unwrap();
+        let error = Identity::load_from(&path).err().expect("an error");
+        assert!(error.contains("cannot read"), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_directory_that_cannot_take_the_file_fails_the_install_and_leaves_nothing() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc_geteuid() } == 0 {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o500)).unwrap();
+        let path = dir.path().join("nostr-secret");
+        let error = Identity::load_from(&path).err().expect("an error");
+        assert!(error.contains("cannot install"), "{error}");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    #[cfg(unix)]
+    unsafe extern "C" {
+        #[link_name = "geteuid"]
+        fn libc_geteuid() -> u32;
     }
 
     #[test]
