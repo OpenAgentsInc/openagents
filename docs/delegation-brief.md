@@ -29,10 +29,29 @@ the burndown that goal exists for.
 | Capability probe | Three states. A present executor can still refuse a directory. |
 | Program runtime | Runs `delegate-fan-out` from its definition. Zero faults against the golden. |
 | Relay transport | Proven against production, 470 ms round trip. A worker exists. |
-| CoderBench | Runs an episode, refuses when the machine is wrong, judges the trace. |
+| CoderBench | Runs an episode, refuses when the machine is wrong, judges the trace three-valued. |
 | Execution boundary | The host decides whether a turn may run commands. |
 
 ## What to do next, in order
+
+### 0. Know what a grade now means
+
+[#9418](https://github.com/OpenAgentsInc/openagents/issues/9418) made the
+grade three-valued, reusing `gym::gate::Verdict` rather than inventing a
+second vocabulary. Two consequences will surprise you:
+
+- **`coderbench diff` can no longer return a pass.** A trace carries neither
+  the run's exit code nor the workspace, so a diff reports what it cannot
+  see. Only `coderbench run` observes both. A diff of the staged golden
+  exits `4` naming exactly what is missing, and that is correct behaviour
+  rather than a regression.
+- **Missing evidence is `unverifiable`, not a pass.** A delegation counts
+  only if the trace says it completed, says it was correct, and holds an
+  answer. `correct: None` is a fault.
+
+`coderbench` now depends on `gym` for that type, which pulls `jev`, `tokio`,
+and `reqwest` into its build graph. One vocabulary was judged worth the
+weight; moving `Verdict` somewhere lighter is a reasonable future change.
 
 ### 1. Finish the blockers that are in flight
 
@@ -152,7 +171,7 @@ test and a recording of something else doing what it should do.
 - **Hosted Jev:** `set -a; . ~/work/.secrets/typesafe.env; set +a`. `crates/jev`'s `Config` reads the process environment and loads **no** dotenv, so exporting first is required; a missing key and a missing `model` field in the body produce different errors. Never print the key anywhere.
 - **Local doors:** `~/work/kev-artifacts/` holds four kev checkpoints and their bases. `kev-serve` takes about 45 seconds to load on CPU and answers in roughly 2 seconds.
 - **Devin:** at `~/.local/bin/devin`, **not on a spawned subshell's `PATH`**. It also refuses a workspace it does not trust, including a git worktree under `/private/tmp` — which is where agent worktrees live, so live delegation from one is refused.
-- **A flake to watch:** `program_run::the_recorded_run_is_the_path_the_task_expects` failed once under a parallel multi-crate run and passed alone and on three repeats. A flaky test in the runtime an unattended burndown depends on is worth chasing rather than waiting out.
+- **Two flakes, and they look like one problem.** `program_run::the_recorded_run_is_the_path_the_task_expects` and `delegate::tests::the_fan_out_is_concurrent_under_its_bound` have each failed once **under overlapping `cargo test` processes** and passed alone on repeats. Neither was touched by the change that saw it. Two concurrency flakes in the crates an unattended burndown depends on is a pattern worth chasing rather than waiting out — especially since #9418's new tests found a real instance of exactly that shape: two concurrent `drive::output` calls could read the same nanosecond, share a temp filename, and delete each other's file, which reads as a command that answered with nothing.
 
 ## The audit
 
