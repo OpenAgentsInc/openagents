@@ -209,13 +209,13 @@ ones come first. Nothing later depends on a public endpoint existing.
 
 ### Phase 0 — measurement as a service (no new infrastructure)
 
-1. **Caller-suite intake.** A builder in the `build_external_*.py` pattern
+1. **Caller-suite intake** (openagents#9464). A builder in the `build_external_*.py` pattern
    that takes a caller's labelled data (JSONL of `state` + label + family)
    and emits a digested gym suite: `label_source` naming the caller,
    calibration and development partitions open, locked spent once. Done when
    a caller's file round-trips through `Suite::load` and the digest is
    reproducible.
-2. **The measured report.** `gym eval` of a caller's suite against named
+2. **The measured report** (openagents#9465). `gym eval` of a caller's suite against named
    doors, packaged as a retained store plus a rendered record — the shape of
    `docs/gym/measurements/` — that a caller can verify: digest the suite,
    walk the receipt chain, read the gate. Done when one real caller suite
@@ -228,59 +228,59 @@ depends on.
 
 ### Phase 1 — a serving surface worth paying for
 
-3. **Per-key authentication on `kev-serve`.** A bearer or NIP-42-style key
+3. **Per-key authentication on `kev-serve`** (openagents#9466). A bearer or NIP-42-style key
    checked before inference; anonymous calls get the shared lane's limits.
    Done when two keys on one door have independent rate budgets.
-4. **The tenant quota ledger.** Per-key accounting of attempted and
+4. **The tenant quota ledger** (openagents#9467). Per-key accounting of attempted and
    completed questions, worst-case reservation before the call and
    settlement after, one writer and a lock file — the discipline the result
    store and the locked ledger already keep. Unattempted work reports
    `unattempted`, never wrong. Done when a killed mid-request process leaves
    the ledger consistent.
-5. **The gateway binary.** A thin front — key check, quota check, forward to
+5. **The gateway binary** (openagents#9468). A thin front — key check, quota check, forward to
    a door by name, record the usage row — so tenants share one host and
    doors stay single-process. Done when a caller can hit one URL with two
    keys and reach two different doors.
 
 ### Phase 2 — the relay lane
 
-6. **A decision job kind.** A NIP-CJ job carrying a `/v1/systemone` request,
+6. **A decision job kind** (openagents#9469). A NIP-CJ job carrying a `/v1/systemone` request,
    answered by a worker that fronts `kev-serve`. Done when a job submitted
    through the relay returns a typed answer with the answering door's
    artifact identity attached.
-7. **The capability manifest.** A `kind:30180` manifest describing the
+7. **The capability manifest** (openagents#9470). A `kind:30180` manifest describing the
    decision API — lanes, doors, limits — so a host discovers it the way this
    repository's own `capabilities/` registry is read. Done when a fresh
    client finds the service from the relay alone.
-8. **Receipts on the lane.** The job result carries the suite/question/gate
+8. **Receipts on the lane** (openagents#9471). The job result carries the suite/question/gate
    digests the row would carry, so a relay-mediated answer is as checkable
    as a direct one. Done when a relay result and a direct result are
    indistinguishable in the store.
 
 ### Phase 3 — trained endpoints
 
-9. **The per-tenant training pipeline.** Caller's labelled suite in,
+9. **The per-tenant training pipeline** (openagents#9472). Caller's labelled suite in,
    candidate adapter + pointer head out, artifact-locked and digest-published
    — retained tooling today, a service path here. Done when a caller's suite
    produces a candidate artifact whose identity `GET /v1/models` reports.
-10. **The promotion gate.** `gym regress` of candidate against base on the
+10. **The promotion gate** (openagents#9473). `gym regress` of candidate against base on the
     caller's development partition, promotion only on a win beyond the floor.
     The locked partition is spent once, on the admitted artifact, through the
     ledger. Done when a losing candidate is refused with the record to show
     why.
-11. **The tenant adapter registry.** A manifest per tenant binding key →
+11. **The tenant adapter registry** (openagents#9474). A manifest per tenant binding key →
     artifact digest → door name, so "my endpoint" is a checkable identity
     rather than a URL. Done when swapping the artifact under a tenant's name
     changes the recorded identity and is refused by `gym regress`.
 
 ### Phase 4 — the public surface, last
 
-12. **The status and benchmark page.** Rendered from a store snapshot the way
+12. **The status and benchmark page** (openagents#9475). Rendered from a store snapshot the way
     `gym-snapshot` renders the Terminal Gym — honest numbers, digests,
     ceilings, refusal counts, and the suite each number came from. Last
     because a public claim should not exist before the machinery that keeps
     it honest does.
-13. **Caller-facing docs, a CLI, and an agent skill.** An OpenAPI document
+13. **Caller-facing docs, a CLI, and an agent skill** (openagents#9476). An OpenAPI document
     for the two endpoints, a `classify`-shaped CLI over `crates/jev`, and a
     discoverable skill document. Last because it freezes the surface, and
     the surface should be the thing the earlier phases proved.
