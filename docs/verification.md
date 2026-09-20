@@ -73,7 +73,10 @@ The disposable PostgreSQL acceptance script also passed with a separate
 and binary deployment checks. The long-running soak and Metal checks were not
 run for this package-policy change.
 
-Formatting remains outstanding under #9402; the pinned `cargo fmt --all
---check` reports differences. This means the full manual gate does not yet
-pass. The script is the entry point, not a substitute for completed results.
-#9429 also retains the broader README/router and historical-plan review.
+On 2026-09-20 at `fc385a13a` and the Jev fix after it, the whole gate passed
+on a Linux host (Ubuntu, x86-64, Rust 1.97.1): formatting, both strict
+Clippy runs, both test runs, the Rust 1.95.0 and 1.94.0 checks, the
+dependency policy, and the PostgreSQL acceptance script including the
+release-load proof. Debian and Ubuntu install the PostgreSQL server binaries
+under `/usr/lib/postgresql/<version>/bin`, which is not on PATH by default;
+prepend it before running the gate. Soak and Metal were not run.
