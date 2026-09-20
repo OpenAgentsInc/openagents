@@ -1,0 +1,2243 @@
+{
+ "$comment": "The question text of `external-jevbench-v1`, verbatim from JevBench at the commit the suite's provenance pins. The keys are item ids, not families: every item carries its own option set, so there is no per-family wording to share. `QuestionSet::ask` reads an item id before it reads a family.",
+ "schema": "openagents.gym.question_set.v1",
+ "id": "external-jevbench-v1",
+ "suite": "external-jevbench-v1",
+ "questions": {
+  "easy-intent-00": {
+   "criteria": {
+    "billing_question": "Asks about a charge, invoice or payment",
+    "cancel_order": "Wants to cancel an order",
+    "change_address": "Wants to change the delivery address",
+    "report_damage": "Received an item that is broken or damaged",
+    "track_order": "Wants to know where an order is or when it arrives"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-01": {
+   "criteria": {
+    "billing_question": "Asks about a charge, invoice or payment",
+    "cancel_order": "Wants to cancel an order",
+    "change_address": "Wants to change the delivery address",
+    "report_damage": "Received an item that is broken or damaged",
+    "track_order": "Wants to know where an order is or when it arrives"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-02": {
+   "criteria": {
+    "billing_question": "Asks about a charge, invoice or payment",
+    "cancel_order": "Wants to cancel an order",
+    "change_address": "Wants to change the delivery address",
+    "report_damage": "Received an item that is broken or damaged",
+    "track_order": "Wants to know where an order is or when it arrives"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-03": {
+   "criteria": {
+    "billing_question": "Asks about a charge, invoice or payment",
+    "cancel_order": "Wants to cancel an order",
+    "change_address": "Wants to change the delivery address",
+    "report_damage": "Received an item that is broken or damaged",
+    "track_order": "Wants to know where an order is or when it arrives"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-04": {
+   "criteria": {
+    "billing_question": "Asks about a charge, invoice or payment",
+    "cancel_order": "Wants to cancel an order",
+    "change_address": "Wants to change the delivery address",
+    "report_damage": "Received an item that is broken or damaged",
+    "track_order": "Wants to know where an order is or when it arrives"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-05": {
+   "criteria": {
+    "billing_question": "Asks about a charge, invoice or payment",
+    "cancel_order": "Wants to cancel an order",
+    "change_address": "Wants to change the delivery address",
+    "report_damage": "Received an item that is broken or damaged",
+    "track_order": "Wants to know where an order is or when it arrives"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-06": {
+   "criteria": {
+    "play_music": "Play a song, album, artist or playlist",
+    "send_message": "Send a text message to someone",
+    "set_alarm": "Set an alarm or wake-up time",
+    "turn_off_lights": "Switch lights off",
+    "weather": "Ask about the weather or forecast"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-07": {
+   "criteria": {
+    "play_music": "Play a song, album, artist or playlist",
+    "send_message": "Send a text message to someone",
+    "set_alarm": "Set an alarm or wake-up time",
+    "turn_off_lights": "Switch lights off",
+    "weather": "Ask about the weather or forecast"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-08": {
+   "criteria": {
+    "play_music": "Play a song, album, artist or playlist",
+    "send_message": "Send a text message to someone",
+    "set_alarm": "Set an alarm or wake-up time",
+    "turn_off_lights": "Switch lights off",
+    "weather": "Ask about the weather or forecast"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-09": {
+   "criteria": {
+    "play_music": "Play a song, album, artist or playlist",
+    "send_message": "Send a text message to someone",
+    "set_alarm": "Set an alarm or wake-up time",
+    "turn_off_lights": "Switch lights off",
+    "weather": "Ask about the weather or forecast"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-10": {
+   "criteria": {
+    "play_music": "Play a song, album, artist or playlist",
+    "send_message": "Send a text message to someone",
+    "set_alarm": "Set an alarm or wake-up time",
+    "turn_off_lights": "Switch lights off",
+    "weather": "Ask about the weather or forecast"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-intent-11": {
+   "criteria": {
+    "play_music": "Play a song, album, artist or playlist",
+    "send_message": "Send a text message to someone",
+    "set_alarm": "Set an alarm or wake-up time",
+    "turn_off_lights": "Switch lights off",
+    "weather": "Ask about the weather or forecast"
+   },
+   "instructions": "Which intent does the user's message express?",
+   "type": "choice"
+  },
+  "easy-fact-00": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Has the order been shipped? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-01": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Has the order been shipped? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-02": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Is the invoice paid? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-03": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Is the invoice paid? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-04": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Is the guest allergic to peanuts? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-05": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Is the guest allergic to peanuts? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-06": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Is meeting room B booked from 14:00 to 15:00? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-07": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Is meeting room C booked this afternoon? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-08": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Is two-factor authentication enabled? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-09": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Is two-factor authentication enabled? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-10": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Did the user agree to subscribe to the newsletter? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-fact-11": {
+   "criteria": {
+    "false": "The text states that this is not so",
+    "true": "The text states that this is so"
+   },
+   "instructions": "Did the user agree to subscribe to the newsletter? Answer strictly from the facts stated in the text.",
+   "type": "noul"
+  },
+  "easy-extraction-00": {
+   "criteria": {
+    "bank_transfer": "Bank transfer / wire",
+    "cash": "Cash",
+    "credit_card": "Paid or wants to pay by credit card",
+    "paypal": "PayPal"
+   },
+   "instructions": "Which payment method does the customer name?",
+   "type": "choice"
+  },
+  "easy-extraction-01": {
+   "criteria": {
+    "bank_transfer": "Bank transfer / wire",
+    "cash": "Cash",
+    "credit_card": "Paid or wants to pay by credit card",
+    "paypal": "PayPal"
+   },
+   "instructions": "Which payment method does the customer name?",
+   "type": "choice"
+  },
+  "easy-extraction-02": {
+   "criteria": {
+    "bank_transfer": "Bank transfer / wire",
+    "cash": "Cash",
+    "credit_card": "Paid or wants to pay by credit card",
+    "paypal": "PayPal"
+   },
+   "instructions": "Which payment method does the customer name?",
+   "type": "choice"
+  },
+  "easy-extraction-03": {
+   "criteria": {
+    "high": "High priority",
+    "low": "Low priority",
+    "medium": "Medium priority",
+    "urgent": "Urgent / critical"
+   },
+   "instructions": "Which priority does the ticket state?",
+   "type": "choice"
+  },
+  "easy-extraction-04": {
+   "criteria": {
+    "high": "High priority",
+    "low": "Low priority",
+    "medium": "Medium priority",
+    "urgent": "Urgent / critical"
+   },
+   "instructions": "Which priority does the ticket state?",
+   "type": "choice"
+  },
+  "easy-extraction-05": {
+   "criteria": {
+    "high": "High priority",
+    "low": "Low priority",
+    "medium": "Medium priority",
+    "urgent": "Urgent / critical"
+   },
+   "instructions": "Which priority does the ticket state?",
+   "type": "choice"
+  },
+  "easy-extraction-06": {
+   "criteria": {
+    "L": "Large",
+    "M": "Medium",
+    "S": "Small",
+    "XL": "Extra large"
+   },
+   "instructions": "Which shirt size does the customer ask for?",
+   "type": "choice"
+  },
+  "easy-extraction-07": {
+   "criteria": {
+    "L": "Large",
+    "M": "Medium",
+    "S": "Small",
+    "XL": "Extra large"
+   },
+   "instructions": "Which shirt size does the customer ask for?",
+   "type": "choice"
+  },
+  "easy-extraction-08": {
+   "criteria": {
+    "friday": "Friday",
+    "monday": "Monday",
+    "thursday": "Thursday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday"
+   },
+   "instructions": "Which day does the person propose for the meeting?",
+   "type": "choice"
+  },
+  "easy-extraction-09": {
+   "criteria": {
+    "friday": "Friday",
+    "monday": "Monday",
+    "thursday": "Thursday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday"
+   },
+   "instructions": "Which day does the person propose for the meeting?",
+   "type": "choice"
+  },
+  "easy-extraction-10": {
+   "criteria": {
+    "friday": "Friday",
+    "monday": "Monday",
+    "thursday": "Thursday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday"
+   },
+   "instructions": "Which day does the person propose for the meeting?",
+   "type": "choice"
+  },
+  "easy-extraction-11": {
+   "criteria": {
+    "bank_transfer": "Bank transfer / wire",
+    "cash": "Cash",
+    "credit_card": "Paid or wants to pay by credit card",
+    "paypal": "PayPal"
+   },
+   "instructions": "Which payment method does the customer name?",
+   "type": "choice"
+  },
+  "easy-tool_selection-00": {
+   "criteria": {
+    "convert_currency": "Convert an amount from one currency to another",
+    "create_calendar_event": "Put an appointment or meeting into the calendar",
+    "get_weather": "Current weather or forecast for a place",
+    "send_email": "Send an email to a recipient",
+    "translate_text": "Translate text into another language"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-01": {
+   "criteria": {
+    "convert_currency": "Convert an amount from one currency to another",
+    "create_calendar_event": "Put an appointment or meeting into the calendar",
+    "get_weather": "Current weather or forecast for a place",
+    "send_email": "Send an email to a recipient",
+    "translate_text": "Translate text into another language"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-02": {
+   "criteria": {
+    "convert_currency": "Convert an amount from one currency to another",
+    "create_calendar_event": "Put an appointment or meeting into the calendar",
+    "get_weather": "Current weather or forecast for a place",
+    "send_email": "Send an email to a recipient",
+    "translate_text": "Translate text into another language"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-03": {
+   "criteria": {
+    "convert_currency": "Convert an amount from one currency to another",
+    "create_calendar_event": "Put an appointment or meeting into the calendar",
+    "get_weather": "Current weather or forecast for a place",
+    "send_email": "Send an email to a recipient",
+    "translate_text": "Translate text into another language"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-04": {
+   "criteria": {
+    "convert_currency": "Convert an amount from one currency to another",
+    "create_calendar_event": "Put an appointment or meeting into the calendar",
+    "get_weather": "Current weather or forecast for a place",
+    "send_email": "Send an email to a recipient",
+    "translate_text": "Translate text into another language"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-05": {
+   "criteria": {
+    "convert_currency": "Convert an amount from one currency to another",
+    "create_calendar_event": "Put an appointment or meeting into the calendar",
+    "get_weather": "Current weather or forecast for a place",
+    "send_email": "Send an email to a recipient",
+    "translate_text": "Translate text into another language"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-06": {
+   "criteria": {
+    "book_restaurant": "Reserve a table at a restaurant",
+    "call_taxi": "Order a taxi to a location",
+    "get_stock_price": "Look up the current price of a stock",
+    "search_flights": "Find flights between two cities",
+    "set_reminder": "Remind the user of something at a given time"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-07": {
+   "criteria": {
+    "book_restaurant": "Reserve a table at a restaurant",
+    "call_taxi": "Order a taxi to a location",
+    "get_stock_price": "Look up the current price of a stock",
+    "search_flights": "Find flights between two cities",
+    "set_reminder": "Remind the user of something at a given time"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-08": {
+   "criteria": {
+    "book_restaurant": "Reserve a table at a restaurant",
+    "call_taxi": "Order a taxi to a location",
+    "get_stock_price": "Look up the current price of a stock",
+    "search_flights": "Find flights between two cities",
+    "set_reminder": "Remind the user of something at a given time"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-09": {
+   "criteria": {
+    "book_restaurant": "Reserve a table at a restaurant",
+    "call_taxi": "Order a taxi to a location",
+    "get_stock_price": "Look up the current price of a stock",
+    "search_flights": "Find flights between two cities",
+    "set_reminder": "Remind the user of something at a given time"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-10": {
+   "criteria": {
+    "book_restaurant": "Reserve a table at a restaurant",
+    "call_taxi": "Order a taxi to a location",
+    "get_stock_price": "Look up the current price of a stock",
+    "search_flights": "Find flights between two cities",
+    "set_reminder": "Remind the user of something at a given time"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "easy-tool_selection-11": {
+   "criteria": {
+    "book_restaurant": "Reserve a table at a restaurant",
+    "call_taxi": "Order a taxi to a location",
+    "get_stock_price": "Look up the current price of a stock",
+    "search_flights": "Find flights between two cities",
+    "set_reminder": "Remind the user of something at a given time"
+   },
+   "instructions": "Which single tool should be called to handle this request?",
+   "type": "choice"
+  },
+  "original-policy-01-0": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-01-1": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-02-0": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-02-1": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-03-0": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-03-1": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-04-0": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-04-1": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-05-0": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-05-1": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-06-0": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-policy-06-1": {
+   "criteria": {
+    "false": "A condition is missing or a prohibition applies.",
+    "true": "Every required condition is established and no prohibition applies."
+   },
+   "instructions": "Under the stated policy, is the requested action permitted? Treat unproved required conditions as not satisfied.",
+   "type": "noul"
+  },
+  "original-intent-01-0": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-01-1": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-02-0": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-02-1": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-03-0": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-03-1": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-04-0": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-04-1": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-05-0": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-05-1": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-06-0": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-intent-06-1": {
+   "criteria": {
+    "cancel": "End an existing subscription",
+    "change_address": "Modify a delivery address",
+    "other": "None of these actions is requested",
+    "refund": "Return money already charged",
+    "status": "Learn delivery progress"
+   },
+   "instructions": "Select the primary requested action. A mention without a request does not establish intent.",
+   "type": "choice"
+  },
+  "original-ordinal-01-0": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-01-1": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-02-0": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-02-1": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-03-0": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-03-1": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-04-0": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-04-1": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-05-0": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-05-1": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-06-0": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-ordinal-06-1": {
+   "criteria": [
+    "No function impaired; cosmetic only",
+    "One user or a nonessential function impaired, with a workaround",
+    "Many users blocked from a core function, no data loss",
+    "Confirmed irreversible data loss or physical harm"
+   ],
+   "instructions": "Rate incident impact using only reported facts. Use the highest fully supported level.",
+   "type": "score"
+  },
+  "original-extraction-01-0": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-01-1": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-02-0": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-02-1": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-03-0": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-03-1": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-04-0": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-04-1": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-05-0": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-05-1": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-06-0": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-extraction-06-1": {
+   "criteria": {
+    "courier": "Courier delivery",
+    "pickup": "Customer pickup",
+    "post": "Postal service",
+    "unknown": "No final confirmed method"
+   },
+   "instructions": "Extract the final confirmed delivery method. Ignore cancelled plans and hypothetical alternatives. Choose unknown if no final method is confirmed.",
+   "type": "choice"
+  },
+  "original-adequacy-01-0": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-01-1": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-02-0": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-02-1": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-03-0": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-03-1": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-04-0": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-04-1": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-05-0": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-05-1": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-06-0": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-adequacy-06-1": {
+   "criteria": {
+    "false": "Wrong, incomplete, unsupported or violates a constraint",
+    "true": "Correct, complete, and follows all explicit constraints"
+   },
+   "instructions": "Does the response fully satisfy the request, using the supplied reference when present?",
+   "type": "noul"
+  },
+  "original-routing-01-0": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-01-1": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-02-0": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-02-1": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-03-0": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-03-1": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-04-0": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-04-1": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-05-0": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-05-1": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-06-0": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "original-routing-06-1": {
+   "criteria": {
+    "coding": "Self-contained code writing or explanation without repository operations",
+    "coding_agent": "Inspect/edit repository files or run tests",
+    "document": "Answer from a supplied document",
+    "general": "None of the specialist categories",
+    "math": "Self-contained calculation or proof",
+    "tools": "Carry out an external service action"
+   },
+   "instructions": "Choose the specialist needed for the request. File edits with test execution use coding_agent, even if code-related.",
+   "type": "choice"
+  },
+  "hard-opus-a-long_policy-01": {
+   "criteria": {
+    "deny_repeated_seepage": "The building water damage is excluded as repeated seepage or leakage (Exclusion 4.3) with no exception applying.",
+    "deny_vacancy_exclusion": "The building water damage is excluded because the dwelling was vacant for more than 60 consecutive days before the loss (Exclusion 4.7).",
+    "pay_full_estimate_less_deductible": "The loss is covered without any sublimit; the full estimate is paid after deducting the $1,000 deductible.",
+    "pay_subject_to_10000_sublimit": "The loss is covered but payment is capped by the concealed-water sublimit of $10,000.",
+    "pay_subject_to_15000_sublimit": "The loss is covered but payment is capped by the concealed-water sublimit of $15,000."
+   },
+   "instructions": "Acting as the coverage reviewer, decide how the building water-damage portion of claim HX-2026-118804 must be settled under the policy form and the endorsements attached to the current term.",
+   "type": "choice"
+  },
+  "hard-opus-a-long_policy-04": {
+   "criteria": {
+    "budget_holder": "Level 1 is the highest level reached (TCV up to EUR 10,000).",
+    "cfo": "Level 4 is the highest level reached (above EUR 150,000 up to EUR 500,000).",
+    "department_head": "Level 2 is the highest level reached (above EUR 10,000 up to EUR 50,000).",
+    "executive_committee": "Level 5 is the highest level reached (above EUR 500,000).",
+    "vp_and_finance_director": "Level 3 is the highest level reached (above EUR 50,000 up to EUR 150,000)."
+   },
+   "instructions": "Determine the required approval level for purchase request PR-2026-4471 under policy GP-01 as amended.",
+   "type": "choice"
+  },
+  "hard-opus-a-long_policy-08": {
+   "criteria": {
+    "full_repair_no_charge": "The defect is within standard coverage: Parts and Labour are free.",
+    "not_covered": "No warranty coverage applies; the customer pays for Parts and Labour.",
+    "parts_covered_labour_charged": "The defect is within extended parts coverage: the pump is supplied free, but Labour is charged at the flat rate.",
+    "pro_rata_replacement_credit": "The machine is to be replaced by a pro-rated replacement credit under 3.4."
+   },
+   "instructions": "Determine the warranty outcome for the pump failure in service order SO-26-118374 under WB-HOME-22 and the service bulletins.",
+   "type": "choice"
+  },
+  "hard-opus-a-long_policy-09": {
+   "criteria": {
+    "license_exception_lvs": "A licence would otherwise be needed, but licence exception LVS validly covers this shipment.",
+    "license_required": "An individual licence must be obtained before shipment; no exception is available.",
+    "no_license_required": "The shipment may proceed without any licence and without using a licence exception.",
+    "shipment_prohibited": "The shipment is prohibited outright (embargo) and cannot be licensed under the SGR."
+   },
+   "instructions": "As the trade compliance reviewer, determine the correct export determination for order SO-MR-26-0931 under the SGR as in force on the requested ship date.",
+   "type": "choice"
+  },
+  "hard-opus-a-long_policy-11": {
+   "criteria": {
+    "false": "The dispute is invalid (e.g. late or pre-conditions unmet) or the merchant supplied compelling evidence, so the credit is reversed.",
+    "true": "The dispute was validly raised and the merchant's representment does not contain compelling evidence under the rules, so the cardholder keeps the credit."
+   },
+   "instructions": "At the representment review stage, should dispute DP-26-0703318 be decided in the cardholder's favour under the Paxnet rules?",
+   "type": "noul"
+  },
+  "hard-opus-a-long_policy-13": {
+   "criteria": {
+    "false": "The claim is excluded (e.g. Pre-existing Condition without waiver) or otherwise not covered.",
+    "true": "The cancellation is for a covered reason and no exclusion applies, so it is covered."
+   },
+   "instructions": "Is claim TC-2026-58114 covered under Section 2 (Trip Cancellation) of the policy as endorsed, i.e. should the forfeited trip cost be reimbursed?",
+   "type": "noul"
+  },
+  "hard-opus-a-long_policy-17": {
+   "criteria": {
+    "database_oncall": "Page the Data Platform on-call.",
+    "no_page_ticket_only": "Do not page anyone; create a next-business-day ticket (suppressed or allowlisted).",
+    "platform_oncall": "Page the Core Platform on-call (default).",
+    "security_incident_response": "Page the Security Incident Response Team on-call.",
+    "vendor_support": "Open a vendor priority case and a platform ticket, no page."
+   },
+   "instructions": "Applying RB-ALERT-7 revision 5, where must the router send alert ALR-5591?",
+   "type": "choice"
+  },
+  "hard-opus-a-long_policy-19": {
+   "criteria": {
+    "false": "At least one eligibility condition in clause 3.1 (as amended) is not met.",
+    "true": "All eligibility conditions in clause 3.1 (as amended) are met."
+   },
+   "instructions": "Under PR-5 as amended by PR-5/A1, is application PRA-2026-02917 eligible for a Payment Relief Plan?",
+   "type": "noul"
+  },
+  "hard-opus-a-probability-03": {
+   "criteria": {
+    "false": "None of the sampled units is defective.",
+    "true": "At least one of the sampled units is defective."
+   },
+   "instructions": "Will the inspection sample contain at least one defective unit (so that lot PSU-2609-07 is rejected)? Give probabilities that reflect the evidence in the state.",
+   "type": "noul"
+  },
+  "hard-opus-a-probability-04": {
+   "criteria": {
+    "early": "Delivered before the promised day.",
+    "late": "Delivered after the promised day.",
+    "on_time": "Delivered on the promised day."
+   },
+   "instructions": "What will the delivery outcome of shipment SH-2026-3391 be? Give probabilities that reflect the evidence in the state.",
+   "type": "choice"
+  },
+  "hard-opus-a-probability-07": {
+   "criteria": {
+    "escalated": "Escalated to engineering.",
+    "reopened": "Closed and then reopened by the customer.",
+    "resolved_first_contact": "Resolved on first contact."
+   },
+   "instructions": "What will the outcome of ticket T-58741 be? Give probabilities that reflect the evidence in the state.",
+   "type": "choice"
+  },
+  "hard-opus-a-probability-08": {
+   "criteria": {
+    "false": "The passenger makes the connection.",
+    "true": "The passenger misses the connection."
+   },
+   "instructions": "Will passenger N. Abernathy miss the connection to SK 2019? Give probabilities that reflect the evidence in the state.",
+   "type": "noul"
+  },
+  "hard-opus-a-temporal_numeric-03": {
+   "criteria": {
+    "false": "The claim was reported after the warranty period ended.",
+    "true": "The claim was reported before the end of the warranty period (in Rotterdam time)."
+   },
+   "instructions": "Was claim CL-28-00471 reported within the extended warranty period of certificate EW-5540981?",
+   "type": "noul"
+  },
+  "hard-opus-a-temporal_numeric-06": {
+   "criteria": {
+    "false": "Its gross weight, computed as LR-7 prescribes, exceeds 2,500 kg.",
+    "true": "Its gross weight, computed as LR-7 prescribes, is at most 2,500 kg."
+   },
+   "instructions": "Does ULD PMC 44817 KX comply with load rule LR-7 for position 22P?",
+   "type": "noul"
+  },
+  "hard-opus-a-temporal_numeric-07": {
+   "criteria": {
+    "sep_24": "At the end of 24 September.",
+    "sep_25": "At the end of 25 September.",
+    "sep_26": "At the end of 26 September.",
+    "sep_27": "At the end of 27 September.",
+    "sep_28": "At the end of 28 September."
+   },
+   "instructions": "On which day does alert rule A1 fire?",
+   "type": "choice"
+  },
+  "hard-opus-a-temporal_numeric-09": {
+   "criteria": {
+    "false": "It was taken fewer than 11 or more than 13 hours of real elapsed time after the previous dose.",
+    "true": "It was taken 11 to 13 hours of real elapsed time after the previous dose."
+   },
+   "instructions": "Was the dose taken on board (01:30 Madrid time on 4 September) on schedule according to the dosing rule?",
+   "type": "noul"
+  },
+  "hard-opus-a-temporal_numeric-12": {
+   "criteria": [
+    "No violations",
+    "Exactly one violation",
+    "Exactly two violations",
+    "Three or more violations"
+   ],
+   "instructions": "How many WT-2 daily-rest violations does this roster contain? (0 = none, 1 = one, 2 = two, 3 = three or more.)",
+   "type": "score"
+  },
+  "hard-opus-b-ambiguous-02": {
+   "criteria": {
+    "cannot_determine": "The evidence genuinely conflicts and nothing in it resolves which reading is correct.",
+    "false_positive": "The evidence establishes the alert is wrong and the disk is not above threshold.",
+    "real_incident": "The evidence establishes the data volume really is above threshold."
+   },
+   "instructions": "Using only the information above, classify the pg-disk-high alert on db-03.",
+   "type": "choice"
+  },
+  "hard-opus-b-ambiguous-03": {
+   "criteria": {
+    "insufficient_information": "The latest possible knowledge date cannot be bounded from the client's account.",
+    "time_barred": "Even using the latest knowledge date consistent with the client's account, filing on the planned date is more than 3 years later.",
+    "within_limitation": "Filing on the planned date is within 3 years of the (latest possible) knowledge date."
+   },
+   "instructions": "Under screening rule SR-3, how should this claim be classified?",
+   "type": "choice"
+  },
+  "hard-opus-b-ambiguous-07": {
+   "criteria": {
+    "insufficient_information": "The attendee count or total cannot be determined from the report and linked records.",
+    "over_limit": "The amount per attendee exceeds the limit.",
+    "within_policy": "The amount per attendee is at or under the limit."
+   },
+   "instructions": "Under EP-3, how should line 1 of ER-26-0913 be classified?",
+   "type": "choice"
+  },
+  "hard-opus-b-ambiguous-09": {
+   "criteria": {
+    "compromised": "An interactive sign-in fails the rubric tests with no benign explanation in the record.",
+    "inconclusive": "Data needed to apply the rubric tests is missing.",
+    "legitimate": "The interactive sign-ins pass all rubric tests."
+   },
+   "instructions": "Apply rubric SOC-R4 to alert IT-5530. How should it be classified?",
+   "type": "choice"
+  },
+  "hard-opus-b-ambiguous-10": {
+   "criteria": {
+    "ask_user_which_alex": "Ask the user which Alex they mean before sending.",
+    "send_to_alex_moreno": "Send the PDF to Alex Moreno.",
+    "send_to_alexandra_lind": "Send the PDF to Alexandra Lind."
+   },
+   "instructions": "Following the agent policy, what should the agent do with the user's request?",
+   "type": "choice"
+  },
+  "hard-opus-b-ambiguous-11": {
+   "criteria": {
+    "cannot_determine": "The correct grade depends on something not yet decided, so it cannot be fixed now.",
+    "grade_correct": "The recorded B is the correct certified grade under the outline.",
+    "grade_should_be_higher": "Under the outline the correct grade is higher than B."
+   },
+   "instructions": "What is the correct outcome of Priya's grade appeal at this moment?",
+   "type": "choice"
+  },
+  "hard-opus-b-ambiguous-13": {
+   "criteria": {
+    "cannot_determine": "FA-2 gives no valid basis for the allocation yet; the recorded ratio is missing.",
+    "charge_data_team": "Charge the full untagged amount to the Data team.",
+    "charge_platform_team": "Charge the full untagged amount to the Platform team.",
+    "split_50_50": "Split the untagged amount equally, based on a valid recorded ratio."
+   },
+   "instructions": "Under FA-2, how must the USD 14,200 of untagged August cost in sandbox-shared be allocated?",
+   "type": "choice"
+  },
+  "hard-opus-b-multi_hop-03": {
+   "criteria": {
+    "tier1_team_lead": "Route to Tier 1 (team lead).",
+    "tier2_department_head": "Route to Tier 2 (department head).",
+    "tier3_cfo": "Route to Tier 3 (CFO).",
+    "tier4_board": "Route to Tier 4 (Board Finance Committee)."
+   },
+   "instructions": "Following Chapter 9, which approval tier must invoice NS-2026-131 be routed to?",
+   "type": "choice"
+  },
+  "hard-opus-b-multi_hop-04": {
+   "criteria": {
+    "ana": "Page Ana.",
+    "bjorn": "Page Bjorn.",
+    "chen": "Page Chen.",
+    "dmitri": "Page Dmitri.",
+    "esra": "Page Esra.",
+    "no_page_ticket_only": "The alert must not page anyone; only a ticket is created."
+   },
+   "instructions": "Following the handbook, who must be paged for this alert (or should no one be paged)?",
+   "type": "choice"
+  },
+  "hard-opus-b-multi_hop-05": {
+   "criteria": [
+    "Level 0 — no award",
+    "Level 1 — EUR 500",
+    "Level 2 — EUR 1,200",
+    "Level 3 — EUR 2,000",
+    "Level 4 — EUR 3,000"
+   ],
+   "instructions": "Apply the bursary regulations to application HB-26-0417. What award level (0–4) should Mara receive?",
+   "type": "score"
+  },
+  "hard-opus-b-multi_hop-07": {
+   "criteria": {
+    "credit_10_percent": "10 % of the monthly fee.",
+    "credit_20_percent": "20 % of the monthly fee.",
+    "credit_25_percent": "25 % of the monthly fee.",
+    "credit_50_percent": "50 % of the monthly fee.",
+    "credit_full_month": "100 % of the monthly fee.",
+    "no_credit": "0 % credit."
+   },
+   "instructions": "Following CG-31, which outage credit must be applied for account WL-4471902 for the billing period 2026-08-20 to 2026-09-19?",
+   "type": "choice"
+  },
+  "hard-opus-b-multi_hop-08": {
+   "criteria": {
+    "false": "At least one condition of the applicable agreement is not met (or the applicable rules provide no top-up).",
+    "true": "Every condition of the agreement applicable to her legal entity on 2026-10-05 is met."
+   },
+   "instructions": "Following HR-KB-212, is Sophie Marquardt eligible for the parental-leave salary top-up for leave starting 2026-10-05?",
+   "type": "noul"
+  },
+  "hard-opus-b-probability-01": {
+   "criteria": {
+    "customer_wins": "The card network decides for the cardholder.",
+    "customer_withdraws": "The cardholder withdraws the dispute before a decision.",
+    "merchant_wins": "The card network decides for the merchant (chargeback reversed)."
+   },
+   "instructions": "Forecast the outcome of dispute CB-4190. Give probabilities for each outcome that reflect the evidence under forecasting rule FS-2.",
+   "type": "choice"
+  },
+  "hard-opus-b-probability-02": {
+   "criteria": {
+    "bad_push": "A bad config/code push.",
+    "database_hardware": "A database host or hardware fault.",
+    "upstream_provider": "Slowness at the upstream payment provider."
+   },
+   "instructions": "What is the most likely root cause of the new LAT-CHK alert? Give probabilities for each cause that reflect the reference data and the guidance.",
+   "type": "choice"
+  },
+  "hard-opus-b-probability-03": {
+   "criteria": {
+    "false": "The invoice will be paid on or before its due date.",
+    "true": "The invoice will be paid after its due date."
+   },
+   "instructions": "Will invoice INV-26511 be paid after its due date? Give probabilities that reflect the evidence under rule CC-4.",
+   "type": "noul"
+  },
+  "hard-opus-b-probability-04": {
+   "criteria": {
+    "attended": "The patient attends the appointment.",
+    "late_cancellation": "The patient cancels less than 24 h before the appointment.",
+    "no_show": "The patient does not attend and does not cancel."
+   },
+   "instructions": "Estimate the outcome of appointment EP-50221 on 2026-09-21 09:40. Give probabilities for each outcome that reflect the statistics under the scheduling-aid rule.",
+   "type": "choice"
+  },
+  "hard-opus-b-probability-06": {
+   "criteria": {
+    "modified": "The removal stays but the strike is downgraded to a warning.",
+    "overturned": "The content is restored.",
+    "upheld": "The removal stays."
+   },
+   "instructions": "Forecast the outcome of pending appeal AP-7390. Give probabilities for each outcome that reflect the evidence under rule AQ-3.",
+   "type": "choice"
+  },
+  "hard-opus-b-tradeoff-01": {
+   "criteria": {
+    "escalate_to_engineering": "R3 is the highest-ranked applicable rule: a reproducible functional defect from a Business/Enterprise org.",
+    "escalate_to_security": "R1 applies: data from a different organization is exposed to this customer.",
+    "page_oncall": "R2 applies: an active outage for the Enterprise organization.",
+    "process_refund": "R4 is the highest-ranked applicable rule: route the credit/refund request to billing now.",
+    "send_kb_article": "Only R5 applies."
+   },
+   "instructions": "Apply policy SP-4 to ticket #88213 and choose the single action the support agent must take now.",
+   "type": "choice"
+  },
+  "hard-opus-b-tradeoff-03": {
+   "criteria": {
+    "order_a": "Order A (insulin replenishment) gets the slot.",
+    "order_b": "Order B (frozen scallops under penalty contract) gets the slot.",
+    "order_c": "Order C (biopsy sample kit) gets the slot.",
+    "order_d": "Order D (practice vaccines) gets the slot."
+   },
+   "instructions": "Which order must receive the last reefer slot on the 17:00 linehaul today under the dispatch rules?",
+   "type": "choice"
+  },
+  "hard-opus-b-tradeoff-06": {
+   "criteria": {
+    "false": "At least one control in 7.1 or 7.2 is not satisfied, so the payment must be held.",
+    "true": "All controls in 7.1 and 7.2 are satisfied, so under 7.3 the payment is released."
+   },
+   "instructions": "Under §7 of the control manual, must payment PF-0919-03 be released today?",
+   "type": "noul"
+  },
+  "hard-opus-b-tradeoff-07": {
+   "criteria": {
+    "out_of_scope": "The affected asset is operated by a third party.",
+    "p0_fix_24h": "Active exploitation in production, or CVSS ≥ 9.0 and reachable in production without authentication.",
+    "p1_fix_7d": "CVSS ≥ 7.0, reachable in production, but P0 conditions not met.",
+    "p2_fix_30d": "The vulnerable path is not reachable in production right now.",
+    "p3_backlog": "Informational or hardening only."
+   },
+   "instructions": "Apply the triage ladder to BB-2026-0412. Which priority must be assigned?",
+   "type": "choice"
+  },
+  "hard-opus-b-tradeoff-08": {
+   "criteria": {
+    "false": "Reaching the requested deadline needs Dean of Students approval (or is not allowed at all).",
+    "true": "The requested new deadline is reachable using only the instructor's discretion plus the automatic accommodation extension."
+   },
+   "instructions": "Can Dr. Reyes give Jordan the full extension to Sat 2026-09-26 23:59 on her own authority, without Dean of Students approval?",
+   "type": "noul"
+  },
+  "hard-opus-b-tradeoff-12": {
+   "criteria": {
+    "deny_refund": "Refuse the refund.",
+    "escalate_to_fraud_team": "Refer the case to the fraud team.",
+    "offer_store_credit": "Offer store credit / a voucher instead of money.",
+    "refund_now": "Pay the money refund now and open a post-refund review.",
+    "wait_for_inspection": "Keep the refund on hold until the warehouse inspection is done."
+   },
+   "instructions": "What must the agent do on case RC-77104 today under the handbook?",
+   "type": "choice"
+  },
+  "hard-opus-c-long_policy-02": {
+   "criteria": {
+    "erase_all": "Erase all personal data about the Customer now; no record needs to be retained or restricted.",
+    "erase_but_retain_transaction_records": "Erase the Customer's personal data but retain, in restricted form, one or more Transaction Records whose retention period is still running.",
+    "erase_marketing_only": "Erase only Marketing Data; everything else is kept.",
+    "reject_unverified_request": "Take no action beyond asking for verification, because the request is not a Verified Request.",
+    "restrict_all_pending_legal_hold": "Erase nothing; restrict all of the Customer's data because an active Legal Hold covers the Customer ID."
+   },
+   "instructions": "How must Privacy Operations handle erasure request DSR-2026-0892 for Customer ID C-2231907 under CDH-4 as amended?",
+   "type": "choice"
+  },
+  "hard-opus-c-long_policy-03": {
+   "criteria": {
+    "eur_0": "No compensation is payable.",
+    "eur_150": "Compensation of EUR 150 is payable.",
+    "eur_200": "Compensation of EUR 200 is payable.",
+    "eur_300": "Compensation of EUR 300 is payable.",
+    "eur_400": "Compensation of EUR 400 is payable.",
+    "eur_600": "Compensation of EUR 600 is payable."
+   },
+   "instructions": "What fixed compensation does Aurelle Air owe Elena Saarinen (PNR 7QK4ZD) under the PSC?",
+   "type": "choice"
+  },
+  "hard-opus-c-long_policy-04": {
+   "criteria": {
+    "false": "The appeal is inadmissible (out of time, no admissible ground, or another bar in Sections 2-5).",
+    "true": "The appeal meets the time limit and at least one ground is admissible, and no other admissibility bar applies."
+   },
+   "instructions": "Is appeal APL-2027-0038 admissible at screening (at least in part) under the AAR as amended?",
+   "type": "noul"
+  },
+  "hard-opus-c-long_policy-05": {
+   "criteria": [
+    "Compliant: Named Users do not exceed Licences held on the Measurement Date",
+    "Shortfall of 1 to 5 Licences",
+    "Shortfall of 6 to 15 Licences",
+    "Shortfall of more than 15 Licences"
+   ],
+   "instructions": "Under the ELA as amended, what is Kestrel's licence position for the 31 August 2026 Measurement Date? Output the level index.",
+   "type": "score"
+  },
+  "hard-opus-c-long_policy-08": {
+   "criteria": [
+    "SEV-4 (lowest)",
+    "SEV-3",
+    "SEV-2",
+    "SEV-1 (highest)"
+   ],
+   "instructions": "What final severity must the post-incident review assign to INC-2026-0908-114 under ISR v5.0 as amended by CN-5.1? Output the level index (0 = SEV-4 ... 3 = SEV-1).",
+   "type": "score"
+  },
+  "hard-opus-c-long_policy-10": {
+   "criteria": {
+    "credit_minus_restocking_fee": "Accept the return and credit the invoiced net value less the 15 % restocking fee.",
+    "full_credit": "Accept the return and credit the full invoiced net value without a restocking fee.",
+    "reject_return": "Reject the return; no credit, repair or replacement.",
+    "repair_or_replace_only": "No credit; the units are to be repaired or replaced."
+   },
+   "instructions": "What decision must the returns desk issue on RQ-26-09-3318 under CRP-5 as amended?",
+   "type": "choice"
+  },
+  "hard-opus-c-long_policy-11": {
+   "criteria": {
+    "false": "At least one eligibility condition is not met.",
+    "true": "All eligibility conditions in SAB-2 3.1 (as amended) and 3.2 are met."
+   },
+   "instructions": "Is employee TA-10388 eligible for the requested sabbatical starting 1 February 2027 under SAB-2 as amended?",
+   "type": "noul"
+  },
+  "hard-opus-c-probability-03": {
+   "criteria": {
+    "halvorsen_polymer": "The cartridge was supplied by Halvorsen Polymer AS.",
+    "kuznets_technik": "The cartridge was supplied by Kuznets Technik GmbH.",
+    "ortega_seal_works": "The cartridge was supplied by Ortega Seal Works S.L."
+   },
+   "instructions": "Which supplier made the failed SC-K7 cartridge in FF-26-0412? Give probabilities that reflect the evidence in the state.",
+   "type": "choice"
+  },
+  "hard-opus-c-temporal_numeric-02": {
+   "criteria": {
+    "false": "At least one of 4.1, 4.2 or 4.3 is breached.",
+    "true": "Every rest period is at least 11 h, no shift exceeds 10 h, and the rota week totals at most 48 h, all measured as actual elapsed time."
+   },
+   "instructions": "Does Priya Anand's week-13 rota, exactly as shown, comply with all of WTS-4 sections 4.1, 4.2 and 4.3?",
+   "type": "noul"
+  },
+  "hard-opus-c-temporal_numeric-03": {
+   "criteria": {
+    "eur_617_00": "Refund of EUR 617.00.",
+    "eur_688_00": "Refund of EUR 688.00.",
+    "eur_692_00": "Refund of EUR 692.00.",
+    "eur_693_90": "Refund of EUR 693.90.",
+    "eur_812_00": "Refund of EUR 812.00."
+   },
+   "instructions": "What refund does Vantorre Landscaping receive under section 14 of the Terms of Service?",
+   "type": "choice"
+  },
+  "hard-opus-c-temporal_numeric-04": {
+   "criteria": {
+    "usd_2222_50": "Interest for Interest Period 9 of USD 2,222.50.",
+    "usd_2303_01": "Interest for Interest Period 9 of USD 2,303.01.",
+    "usd_2303_33": "Interest for Interest Period 9 of USD 2,303.33.",
+    "usd_2335_00": "Interest for Interest Period 9 of USD 2,335.00.",
+    "usd_2340_00": "Interest for Interest Period 9 of USD 2,340.00."
+   },
+   "instructions": "What is the interest payable for Interest Period 9 of loan TL-88-2291?",
+   "type": "choice"
+  },
+  "hard-opus-c-temporal_numeric-06": {
+   "criteria": {
+    "none_declined": "None of the listed purchases was declined.",
+    "sep_15_office_chair": "The 15 Sep office chair (USD 620.00) is the first declined purchase.",
+    "sep_16_taxi": "The 16 Sep London taxi is the first declined purchase.",
+    "sep_17_parking": "The 17 Sep parking (USD 18.00) is the first declined purchase.",
+    "sep_18_book_set": "The 18 Sep book set (USD 240.00) is the first declined purchase.",
+    "sep_21_client_dinner": "The 21 Sep client dinner (USD 310.00) is the first declined purchase."
+   },
+   "instructions": "Under schedule B, which listed purchase on card 4471 was the first one declined?",
+   "type": "choice"
+  },
+  "hard-opus-c-temporal_numeric-08": {
+   "criteria": {
+    "eur_497_40": "Reimbursable lodging amount EUR 497.40.",
+    "eur_498_81": "Reimbursable lodging amount EUR 498.81.",
+    "eur_506_06": "Reimbursable lodging amount EUR 506.06.",
+    "eur_513_69": "Reimbursable lodging amount EUR 513.69.",
+    "eur_532_01": "Reimbursable lodging amount EUR 532.01."
+   },
+   "instructions": "What is the reimbursable lodging amount for the Tokyo hotel under TP-9?",
+   "type": "choice"
+  },
+  "hard-opus-c-temporal_numeric-12": {
+   "criteria": {
+    "covered": "The claim is within warranty.",
+    "expired_24_month_term": "The claim is outside warranty because the 24-month period (with any §2 extension) has ended.",
+    "expired_30_month_cap": "The 24-month period (with extension) is still running, but the claim falls after the §6 30-month manufacture limit."
+   },
+   "instructions": "How must warranty claim WD-26-30417 be classified under WS-2024?",
+   "type": "choice"
+  },
+  "hard-sol-a-adversarial-01": {
+   "criteria": {
+    "deny_inactive_user": "The requester is not active.",
+    "deny_missing_approval": "A required manager approval is absent.",
+    "grant_access": "All required trusted authorization facts are present.",
+    "grant_owner_exception": "Trusted team membership triggers the owner exception."
+   },
+   "instructions": "Choose the access decision.",
+   "type": "choice"
+  },
+  "hard-sol-a-adversarial-06": {
+   "criteria": {
+    "false": "The condition is not established by trusted facts under the stated rule.",
+    "true": "The condition is established by trusted facts under the stated rule."
+   },
+   "instructions": "Does the trusted evidence establish a disclosed paid promotion?",
+   "type": "noul"
+  },
+  "hard-sol-a-adversarial-07": {
+   "criteria": {
+    "delete_now": "The retention period has ended or the item is not a signed contract.",
+    "needs_signature_review": "Trusted signature status is unavailable.",
+    "retain_indefinitely": "No disposal date applies.",
+    "retain_until_2031": "Keep through the seven-year period ending in 2031."
+   },
+   "instructions": "Choose the record action.",
+   "type": "choice"
+  },
+  "hard-sol-a-adversarial-08": {
+   "criteria": {
+    "false": "Trusted evidence does not satisfy the stated decision condition.",
+    "true": "Trusted evidence satisfies the stated decision condition."
+   },
+   "instructions": "Should the applicant advance under this rule?",
+   "type": "noul"
+  },
+  "hard-sol-a-adversarial-09": {
+   "criteria": [
+    "Informational only.",
+    "Routine degradation.",
+    "Major multi-customer degradation.",
+    "Complete outage."
+   ],
+   "instructions": "Assign service priority from trusted evidence.",
+   "type": "score"
+  },
+  "hard-sol-a-adversarial-11": {
+   "criteria": {
+    "ethics_review": "Trusted records establish human participants.",
+    "major_grants": "Requested amount exceeds $50,000.",
+    "manual_hold": "Trusted form fields conflict with a signed correction.",
+    "standard_research": "Research at or below $50,000 with no trusted participant flag."
+   },
+   "instructions": "Select the review route.",
+   "type": "choice"
+  },
+  "hard-sol-a-multi_hop-01": {
+   "criteria": {
+    "accept_s2_dusk": "Requested S2 dusk is eligible.",
+    "reject_cutoff": "The qualifying cutoff was missed.",
+    "reject_tier": "S2 is barred by customer tier.",
+    "reroute_s3": "Request is ineligible but must be moved to S3."
+   },
+   "instructions": "Apply the supplied records and choose the operative outcome.",
+   "type": "choice"
+  },
+  "hard-sol-a-multi_hop-02": {
+   "criteria": {
+    "executive_bridge": "Severity S1 routing.",
+    "heron_q2": "Severity S3 owned by Heron/Q2.",
+    "insufficient_information": "Required mapping or timing is absent.",
+    "security_primary": "Severity S2 routing."
+   },
+   "instructions": "Apply the supplied records and choose the operative outcome.",
+   "type": "choice"
+  },
+  "hard-sol-a-multi_hop-05": {
+   "criteria": {
+    "pay_manager_approved": "Existing manager approval meets the applicable threshold.",
+    "reject_category": "Vendor category is ineligible.",
+    "require_director": "Director approval is additionally required.",
+    "require_finance_board": "Finance-board review is required."
+   },
+   "instructions": "Apply the supplied records and choose the operative outcome.",
+   "type": "choice"
+  },
+  "hard-sol-a-multi_hop-07": {
+   "criteria": {
+    "admit": "All adjusted requirements are met.",
+    "deny_prerequisite": "Applicable prerequisite or recency fails.",
+    "deny_score": "Applicable score threshold is missed.",
+    "manual_equivalency": "No supplied mapping resolves the prerequisite."
+   },
+   "instructions": "Trace the applicable mappings and select the single operative result.",
+   "type": "choice"
+  },
+  "hard-sol-a-multi_hop-08": {
+   "criteria": {
+    "central_engineering": "Adjusted downtime is at least 30 minutes.",
+    "insufficient_log": "A necessary fact is absent.",
+    "local_maintenance": "Adjusted downtime is under 30 minutes.",
+    "safety_shutdown": "Bypass did not restore safe operation."
+   },
+   "instructions": "Trace the applicable mappings and select the single operative result.",
+   "type": "choice"
+  },
+  "hard-sol-a-multi_hop-09": {
+   "criteria": {
+    "confirm_l3": "Requested L3 is within adjusted capacity.",
+    "reject_capacity": "No applicable capacity covers attendance.",
+    "require_steward": "Allowance could apply but no qualifying steward is assigned.",
+    "switch_l4": "L3 fails but policy mandates L4."
+   },
+   "instructions": "Trace the applicable mappings and select the single operative result.",
+   "type": "choice"
+  },
+  "hard-sol-a-multi_hop-10": {
+   "criteria": {
+    "approve_45_days": "Exception permits the requested fields and duration.",
+    "deny_sensitive": "Requester class cannot access this tier.",
+    "needs_field_review": "At least one field lacks classification.",
+    "reduce_to_30_days": "Only default duration applies."
+   },
+   "instructions": "Trace the applicable mappings and select the single operative result.",
+   "type": "choice"
+  },
+  "hard-sol-a-multi_hop-12": {
+   "criteria": {
+    "covered_recurrence": "The 60-day recurrence extension applies.",
+    "expired": "Only the 30-day period applies.",
+    "needs_authentication": "Coverage might apply but contact is unauthenticated.",
+    "wrong_issue_class": "The extension is for another issue class."
+   },
+   "instructions": "Trace the applicable mappings and select the single operative result.",
+   "type": "choice"
+  },
+  "hard-sol-a-trap-02": {
+   "criteria": {
+    "false": "The stated condition is not satisfied under the operative facts.",
+    "true": "The stated condition is satisfied under the operative facts."
+   },
+   "instructions": "Is this return eligible for the instant unopened-item refund?",
+   "type": "noul"
+  },
+  "hard-sol-a-trap-04": {
+   "criteria": {
+    "false": "The stated condition is not satisfied under the operative facts.",
+    "true": "The stated condition is satisfied under the operative facts."
+   },
+   "instructions": "Did Jo endorse shipping the proposal immediately?",
+   "type": "noul"
+  },
+  "hard-sol-a-trap-05": {
+   "criteria": [
+    "No operative exception.",
+    "Requested but unauthorized exception.",
+    "Authorized, unused exception.",
+    "Authorized exception already used."
+   ],
+   "instructions": "Assign the current fulfillment-exception level.",
+   "type": "score"
+  },
+  "hard-sol-a-trap-06": {
+   "criteria": {
+    "await_internal_metrics": "Neither close nor keep open until another telemetry window.",
+    "close_agent_verified": "Close because agent-side telemetry alone meets the stated closure rule.",
+    "close_confirmed": "Close because the customer confirmed actual resolution.",
+    "keep_open_unresolved": "Keep open because customer reports the issue persists."
+   },
+   "instructions": "Choose the correct ticket disposition.",
+   "type": "choice"
+  },
+  "hard-sol-a-trap-08": {
+   "criteria": {
+    "canceled": "The trip did not arrive.",
+    "indeterminate": "No authoritative actual time can be selected.",
+    "late": "Authoritative actual arrival is after 18:00.",
+    "on_time": "Authoritative actual arrival is at or before 18:00."
+   },
+   "instructions": "What final punctuality status applies?",
+   "type": "choice"
+  },
+  "hard-sol-a-trap-10": {
+   "criteria": {
+    "blocked_failed_test": "Blocked because the required timeout test failed.",
+    "blocked_second_review": "Blocked because a behavioral change lacks a second approval.",
+    "ready_one_review": "Ready because only one review is required.",
+    "ready_two_reviews": "Ready because two valid approvals exist."
+   },
+   "instructions": "Choose P-7's release readiness.",
+   "type": "choice"
+  },
+  "hard-sol-a-trap-13": {
+   "criteria": {
+    "false": "The condition in the question is not established by the operative facts.",
+    "true": "The condition in the question is established by the operative facts."
+   },
+   "instructions": "Did the author request deletion of chapter 6?",
+   "type": "noul"
+  },
+  "hard-sol-a-trap-15": {
+   "criteria": {
+    "false": "The condition in the question is not established by the operative facts.",
+    "true": "The condition in the question is established by the operative facts."
+   },
+   "instructions": "Is the absence excused under the guardian-notice rule?",
+   "type": "noul"
+  },
+  "hard-sol-b-judge_hard-01": {
+   "criteria": {
+    "false": "The response has any substantive error or misses any explicit requirement.",
+    "true": "The response fully and correctly satisfies every explicit request, including method, edge cases, units, formatting, and retained facts."
+   },
+   "instructions": "Does the response fully and correctly satisfy the request?",
+   "type": "noul"
+  },
+  "hard-sol-b-judge_hard-02": {
+   "criteria": {
+    "false": "The response has any substantive error or misses any explicit requirement.",
+    "true": "The response fully and correctly satisfies every explicit request, including method, edge cases, units, formatting, and retained facts."
+   },
+   "instructions": "Does the response fully and correctly satisfy the request?",
+   "type": "noul"
+  },
+  "hard-sol-b-judge_hard-05": {
+   "criteria": {
+    "false": "The response has any substantive error or misses any explicit requirement.",
+    "true": "The response fully and correctly satisfies every explicit request, including method, edge cases, units, formatting, and retained facts."
+   },
+   "instructions": "Does the response fully and correctly satisfy the request?",
+   "type": "noul"
+  },
+  "hard-sol-b-judge_hard-08": {
+   "criteria": {
+    "false": "The response has any substantive error or misses any explicit requirement.",
+    "true": "The response fully and correctly satisfies every explicit request, including method, edge cases, units, formatting, and retained facts."
+   },
+   "instructions": "Does the response fully and correctly satisfy the request?",
+   "type": "noul"
+  },
+  "hard-sol-b-judge_hard-10": {
+   "criteria": {
+    "false": "The response has any substantive error or misses any explicit requirement.",
+    "true": "The response fully and correctly satisfies every explicit request, including method, edge cases, units, formatting, and retained facts."
+   },
+   "instructions": "Does the response fully and correctly satisfy the request?",
+   "type": "noul"
+  },
+  "hard-sol-b-judge_hard-14": {
+   "criteria": {
+    "false": "The response has any substantive error or misses any explicit requirement.",
+    "true": "The response fully and correctly satisfies every explicit request, including method, edge cases, units, formatting, and retained facts."
+   },
+   "instructions": "Does the response fully and correctly satisfy the request?",
+   "type": "noul"
+  },
+  "hard-sol-b-judge_hard-15": {
+   "criteria": {
+    "false": "The response has any substantive error or misses any explicit requirement.",
+    "true": "The response fully and correctly satisfies every explicit request, including method, edge cases, units, formatting, and retained facts."
+   },
+   "instructions": "Does the response fully and correctly satisfy the request?",
+   "type": "noul"
+  },
+  "hard-sol-b-judge_hard-18": {
+   "criteria": {
+    "false": "The response has any substantive error or misses any explicit requirement.",
+    "true": "The response fully and correctly satisfies every explicit request, including method, edge cases, units, formatting, and retained facts."
+   },
+   "instructions": "Does the response fully and correctly satisfy the request?",
+   "type": "noul"
+  },
+  "hard-sol-b-long_policy-01": {
+   "criteria": {
+    "approve_all": "The case results in approve all under all controlling provisions.",
+    "approve_lodging_only": "The case results in approve lodging only under all controlling provisions.",
+    "approve_meals_only": "The case results in approve meals only under all controlling provisions.",
+    "reject_entire_claim": "The case results in reject entire claim under all controlling provisions."
+   },
+   "instructions": "Apply the controlling document and select the single authorized outcome for the case file.",
+   "type": "choice"
+  },
+  "hard-sol-b-long_policy-02": {
+   "criteria": {
+    "analytics_owner_only": "The case results in analytics owner only under all controlling provisions.",
+    "deny_current_export": "The case results in deny current export under all controlling provisions.",
+    "privacy_and_security": "The case results in privacy and security under all controlling provisions.",
+    "privacy_only": "The case results in privacy only under all controlling provisions."
+   },
+   "instructions": "Apply the controlling document and select the single authorized outcome for the case file.",
+   "type": "choice"
+  },
+  "hard-sol-b-long_policy-05": {
+   "criteria": {
+    "delete_everything": "The case results in delete everything under all controlling provisions.",
+    "delete_nothing": "The case results in delete nothing under all controlling provisions.",
+    "delete_only_profile": "The case results in delete only profile under all controlling provisions.",
+    "delete_profile_omar_april_and_table": "The case results in delete profile omar april and table under all controlling provisions."
+   },
+   "instructions": "Apply the controlling document and select the single authorized outcome for the case file.",
+   "type": "choice"
+  },
+  "hard-sol-b-long_policy-06": {
+   "criteria": {
+    "east_ward": "The case results in east ward under all controlling provisions.",
+    "harbor_neighbors": "The case results in harbor neighbors under all controlling provisions.",
+    "no_award": "The case results in no award under all controlling provisions.",
+    "river_arts": "The case results in river arts under all controlling provisions."
+   },
+   "instructions": "Apply the controlling document and select the single authorized outcome for the case file.",
+   "type": "choice"
+  },
+  "hard-sol-b-routing_hard-01": {
+   "criteria": {
+    "data_pipeline": "Handles CSV ingestion, database exports, and scheduled transformations.",
+    "desktop_support": "Handles Excel installation, licensing, add-ins, and OS file associations.",
+    "finance_review": "Checks accounting assumptions and financial model correctness.",
+    "office_file_repair": "Inspects and repairs XLSX ZIP/XML relationships, content types, styles, and corrupted workbook packages while preserving recoverable content.",
+    "spreadsheet_formula": "Handles formula logic, pivots, cell values, and ordinary workbook calculations when the file opens normally."
+   },
+   "instructions": "Select the single best primary handler for this request.",
+   "type": "choice"
+  },
+  "hard-sol-b-routing_hard-02": {
+   "criteria": {
+    "customer_support": "Explains pending authorizations and drafts customer-facing replies.",
+    "fraud_review": "Investigates stolen credentials and suspicious merchant activity.",
+    "ledger_reconciliation": "Reconciles provider transactions against internal settled ledger entries and corrects duplicate internal postings.",
+    "mobile_app": "Investigates UI actions, client retries, and app crash reports.",
+    "payment_disputes": "Handles chargebacks, bank disputes, and multiple distinct captured charges."
+   },
+   "instructions": "Select the single best primary handler for this request.",
+   "type": "choice"
+  },
+  "hard-sol-b-routing_hard-03": {
+   "criteria": {
+    "api_platform": "Handles application routing after requests reach the correct endpoint.",
+    "authoritative_dns": "Changes public zone records and delegation at the authoritative provider.",
+    "endpoint_devices": "Handles per-device hosts files and local resolver configuration.",
+    "network_dns": "Troubleshoots enterprise recursive resolvers, split-horizon/conditional zones, and resolver caches.",
+    "tls_certificates": "Handles certificate issuance, hostname coverage, and TLS chains."
+   },
+   "instructions": "Select the single best primary handler for this request.",
+   "type": "choice"
+  },
+  "hard-sol-b-routing_hard-07": {
+   "criteria": {
+    "ci_infrastructure": "Handles general runner availability and build queue failures.",
+    "code_signing": "Handles signing identities, entitlements, signature validity, and certificate chains.",
+    "endpoint_security": "Configures corporate device allowlists and malware controls.",
+    "macos_runtime": "Handles crashes and behavioral defects after launch.",
+    "release_notarization": "Handles notarization submission, status, stapling, and Gatekeeper distribution acceptance."
+   },
+   "instructions": "Select the single best primary handler for this request.",
+   "type": "choice"
+  },
+  "hard-sol-b-routing_hard-09": {
+   "criteria": {
+    "git_client": "Handles local Git configuration, credentials cache, and command behavior.",
+    "identity_login": "Handles inability to authenticate to the corporate identity provider.",
+    "repository_admin": "Handles branch protection, hooks, repository settings, and archival.",
+    "source_access": "Handles repository visibility, team membership, Git host authorization, and transfer-related permissions.",
+    "vpn_network": "Handles tunnel establishment, routes, DNS, and reachability to internal networks."
+   },
+   "instructions": "Select the single best primary handler for this request.",
+   "type": "choice"
+  },
+  "hard-sol-b-temporal_numeric-01": {
+   "criteria": {
+    "before_open": "The event occurred before the window opened.",
+    "late_by_2h_or_more": "The event was at least two hours late.",
+    "late_by_under_2h": "The event occurred after closing but less than two hours late.",
+    "within_window": "The event occurred from opening through the exact closing instant."
+   },
+   "instructions": "Apply all stated timing, unit, inclusion, correction, and threshold rules; select the exact band.",
+   "type": "choice"
+  },
+  "hard-sol-b-temporal_numeric-02": {
+   "criteria": {
+    "at_least_100gb_below": "Final use is at least 100 decimal GB below the allowance.",
+    "exactly_equal": "Final use equals the allowance exactly.",
+    "over_limit": "Final use is strictly above the allowance.",
+    "under_100gb_below": "Final use is below the allowance by less than 100 decimal GB."
+   },
+   "instructions": "Apply all stated timing, unit, inclusion, correction, and threshold rules; select the exact band.",
+   "type": "choice"
+  },
+  "hard-sol-b-temporal_numeric-03": {
+   "criteria": {
+    "12_credits": "The correctly calculated outcome is 12 credits.",
+    "15_credits": "The correctly calculated outcome is 15 credits.",
+    "6_credits": "The correctly calculated outcome is 6 credits.",
+    "9_credits": "The correctly calculated outcome is 9 credits."
+   },
+   "instructions": "Apply all stated timing, unit, inclusion, correction, and threshold rules; select the exact band.",
+   "type": "choice"
+  },
+  "hard-sol-b-temporal_numeric-04": {
+   "criteria": {
+    "clear_fail": "The correctly calculated outcome is clear fail.",
+    "narrow_fail": "The correctly calculated outcome is narrow fail.",
+    "pass": "The correctly calculated outcome is pass."
+   },
+   "instructions": "Apply all stated timing, unit, inclusion, correction, and threshold rules; select the exact band.",
+   "type": "choice"
+  },
+  "hard-sol-c-judge_hard-03": {
+   "criteria": {
+    "false": "The response contains any substantive error or misses an explicit constraint.",
+    "true": "The response is fully correct and satisfies every explicit constraint."
+   },
+   "instructions": "Does the response fully and correctly satisfy every explicit requirement in the request? Judge the derivation, code, result, and formatting, not merely whether the final number looks plausible.",
+   "type": "noul"
+  },
+  "hard-sol-c-judge_hard-05": {
+   "criteria": {
+    "false": "The response contains any substantive error or misses an explicit constraint.",
+    "true": "The response is fully correct and satisfies every explicit constraint."
+   },
+   "instructions": "Does the response fully and correctly satisfy every explicit requirement in the request? Judge the derivation, code, result, and formatting, not merely whether the final number looks plausible.",
+   "type": "noul"
+  },
+  "hard-sol-c-judge_hard-07": {
+   "criteria": {
+    "false": "The response contains any substantive error or misses an explicit constraint.",
+    "true": "The response is fully correct and satisfies every explicit constraint."
+   },
+   "instructions": "Does the response fully and correctly satisfy every explicit requirement in the request? Judge the derivation, code, result, and formatting, not merely whether the final number looks plausible.",
+   "type": "noul"
+  },
+  "hard-sol-c-judge_hard-08": {
+   "criteria": {
+    "false": "The response contains any substantive error or misses an explicit constraint.",
+    "true": "The response is fully correct and satisfies every explicit constraint."
+   },
+   "instructions": "Does the response fully and correctly satisfy every explicit requirement in the request? Judge the derivation, code, result, and formatting, not merely whether the final number looks plausible.",
+   "type": "noul"
+  },
+  "hard-sol-c-judge_hard-09": {
+   "criteria": {
+    "false": "The response contains any substantive error or misses an explicit constraint.",
+    "true": "The response is fully correct and satisfies every explicit constraint."
+   },
+   "instructions": "Does the response fully and correctly satisfy every explicit requirement in the request? Judge the derivation, code, result, and formatting, not merely whether the final number looks plausible.",
+   "type": "noul"
+  },
+  "hard-sol-c-judge_hard-10": {
+   "criteria": {
+    "false": "The response contains any substantive error or misses an explicit constraint.",
+    "true": "The response is fully correct and satisfies every explicit constraint."
+   },
+   "instructions": "Does the response fully and correctly satisfy every explicit requirement in the request? Judge the derivation, code, result, and formatting, not merely whether the final number looks plausible.",
+   "type": "noul"
+  },
+  "hard-sol-c-judge_hard-11": {
+   "criteria": {
+    "false": "The response contains any substantive error or misses an explicit constraint.",
+    "true": "The response is fully correct and satisfies every explicit constraint."
+   },
+   "instructions": "Does the response fully and correctly satisfy every explicit requirement in the request? Judge the derivation, code, result, and formatting, not merely whether the final number looks plausible.",
+   "type": "noul"
+  },
+  "hard-sol-c-judge_hard-13": {
+   "criteria": {
+    "false": "The response contains any substantive error or misses an explicit constraint.",
+    "true": "The response is fully correct and satisfies every explicit constraint."
+   },
+   "instructions": "Does the response fully and correctly satisfy every explicit requirement in the request? Judge the derivation, code, result, and formatting, not merely whether the final number looks plausible.",
+   "type": "noul"
+  },
+  "hard-sol-c-judge_hard-15": {
+   "criteria": {
+    "false": "The response contains any substantive error or misses an explicit constraint.",
+    "true": "The response is fully correct and satisfies every explicit constraint."
+   },
+   "instructions": "Does the response fully and correctly satisfy every explicit requirement in the request? Judge the derivation, code, result, and formatting, not merely whether the final number looks plausible.",
+   "type": "noul"
+  },
+  "hard-sol-c-multi_hop-07": {
+   "criteria": {
+    "partial_release": "Partial release is the final disposition.",
+    "programme_review": "Programme review is the final disposition.",
+    "reject_draw": "Reject draw is the final disposition.",
+    "release_draw": "Release draw is the final disposition."
+   },
+   "instructions": "Trace the exact identifiers and controlling current material in the grant finance documents. What is the required outcome for DRAW-904?",
+   "type": "choice"
+  },
+  "hard-sol-c-multi_hop-09": {
+   "criteria": {
+    "bus_substitution": "Bus substitution is the final disposition.",
+    "call_fen_cross": "Call fen cross is the final disposition.",
+    "pass_fen_cross": "Pass fen cross is the final disposition.",
+    "terminate_oakmere": "Terminate oakmere is the final disposition."
+   },
+   "instructions": "Trace the exact identifiers and controlling current material in the railway documents. What is the required outcome for MV-184?",
+   "type": "choice"
+  },
+  "hard-sol-c-multi_hop-11": {
+   "criteria": {
+    "adjuster_referral": "Adjuster referral is the final disposition.",
+    "coverage_confirmed": "Coverage confirmed is the final disposition.",
+    "coverage_excluded": "Coverage excluded is the final disposition.",
+    "documentation_needed": "Documentation needed is the final disposition."
+   },
+   "instructions": "Trace the exact identifiers and controlling current material in the insurance claims documents. What is the required outcome for CLM-6081?",
+   "type": "choice"
+  },
+  "hard-sol-c-multi_hop-12": {
+   "criteria": {
+    "conservation_hold": "Conservation hold is the final disposition.",
+    "deny_request": "Deny request is the final disposition.",
+    "digital_copy_only": "Digital copy only is the final disposition.",
+    "supervised_delivery": "Supervised delivery is the final disposition."
+   },
+   "instructions": "Trace the exact identifiers and controlling current material in the library archives documents. What is the required outcome for REQ-A193?",
+   "type": "choice"
+  },
+  "hard-sol-c-multi_hop-13": {
+   "criteria": {
+    "engineering_review": "Engineering review is the final disposition.",
+    "normal_release": "Normal release is the final disposition.",
+    "rework": "Rework is the final disposition.",
+    "scrap_lot": "Scrap lot is the final disposition."
+   },
+   "instructions": "Trace the exact identifiers and controlling current material in the manufacturing documents. What is the required outcome for LOT-3056?",
+   "type": "choice"
+  }
+ }
+}

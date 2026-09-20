@@ -2,8 +2,10 @@
 //! carrying its own digest.
 //!
 //! An item is a state and a label. A *question set* is how that state gets
-//! asked about: one question per family, in the shape the door reads. They
-//! are two things and they vary independently, so they have two digests.
+//! asked about: one question per family, in the shape the door reads — or,
+//! for a suite whose items share no wording, one question per item, keyed by
+//! item id. They are two things and they vary independently, so they have
+//! two digests.
 //!
 //! # Why this is a third digest and not a fourth field
 //!
@@ -52,10 +54,11 @@
 //!
 //! An item carries `id`, `family`, `kind`, `state`, `truth`, and `partition`.
 //! The question text goes in a file in `crates/gym/questions/`, once per
-//! family, and the suite manifest names it in its `questions` field. The
-//! older shape, where every item carries its own copy of its family's
-//! question, still loads: `support-v2-three-way` is written that way, its
-//! digest is `54fbf4137c…`, and nothing here moves it.
+//! family — or once per item, keyed by item id, when every item carries its
+//! own option set — and the suite manifest names it in its `questions`
+//! field. The older shape, where every item carries its own copy of its
+//! family's question, still loads: `support-v2-three-way` is written that
+//! way, its digest is `54fbf4137c…`, and nothing here moves it.
 //!
 //! What a suite may not do is mix the two. A per-item override of a
 //! set-provided question is exactly the per-item question data this module
@@ -122,10 +125,11 @@ pub enum QuestionError {
         /// Where it was looked for.
         dir: PathBuf,
     },
-    /// The set has no question for a family the suite holds.
+    /// The set has no question for an item the suite holds, under the item's
+    /// own id or its family's.
     #[error(
-        "question set {id} has no question for the {family} family, so item {item} cannot be \
-         asked; a set that covers part of a suite scores a door on a denominator nobody named"
+        "question set {id} has no question for item {item} or its {family} family, so the item \
+         cannot be asked; a set that covers part of a suite scores a door on a denominator nobody named"
     )]
     NotCovered {
         /// The set that was asked.
@@ -155,10 +159,16 @@ pub enum QuestionError {
     },
 }
 
-/// One question per family, with its own digest.
+/// One question per family — or per item — with its own digest.
 ///
 /// As committed to `crates/gym/questions/`, or as derived from a suite whose
 /// items carry their question text inline.
+///
+/// A key is normally a family name: the suite's items share a wording, so
+/// one question serves all of them. A suite whose items each carry their own
+/// option set has no shared wording to name, and its set keys the questions
+/// by item id instead; [`QuestionSet::ask`] reads an item id before it reads
+/// a family. `external-jevbench-v1` is written that way.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QuestionSet {
@@ -370,7 +380,8 @@ impl QuestionSet {
         format!("{:x}", hasher.finalize())
     }
 
-    /// The families this set covers, in sorted order.
+    /// The keys this set answers, in sorted order — family names, or item
+    /// ids for a set written per item.
     #[must_use]
     pub fn families(&self) -> Vec<&str> {
         self.questions.keys().map(String::as_str).collect()
@@ -382,13 +393,18 @@ impl QuestionSet {
     /// written with its questions inline or written against a set, never
     /// both, and this is what makes a reword of the set a reword of the run.
     ///
+    /// The item's own id is read before its family, so a set that keys its
+    /// questions per item answers every item, and a per-item entry in a
+    /// family-keyed set overrides that one item's wording.
+    ///
     /// # Errors
     ///
     /// Returns [`QuestionError::NotCovered`] when the set holds no question
-    /// for the item's family.
+    /// for the item under either key.
     pub fn ask(&self, item: &Item) -> Result<&Value, QuestionError> {
         self.questions
-            .get(&item.family)
+            .get(&item.id)
+            .or_else(|| self.questions.get(&item.family))
             .ok_or_else(|| QuestionError::NotCovered {
                 id: self.id.clone(),
                 family: item.family.clone(),
@@ -396,13 +412,10 @@ impl QuestionSet {
             })
     }
 
-    /// Whether this set covers every family a suite holds.
+    /// Whether this set covers every item a suite holds.
     #[must_use]
     pub fn covers(&self, suite: &Suite) -> bool {
-        suite
-            .families()
-            .iter()
-            .all(|family| self.questions.contains_key(family))
+        suite.items.iter().all(|item| self.ask(item).is_ok())
     }
 }
 
@@ -454,7 +467,7 @@ pub fn load_all() -> Result<Vec<QuestionSet>, QuestionError> {
 /// # Errors
 ///
 /// Returns the errors [`load`] and [`QuestionSet::authored`] return, and
-/// [`QuestionError::NotCovered`] when the resolved set misses a family the
+/// [`QuestionError::NotCovered`] when the resolved set misses an item the
 /// suite holds.
 pub fn resolve(suite: &Suite, named: Option<&str>) -> Result<QuestionSet, QuestionError> {
     let id = named.or(suite.questions.as_deref());
