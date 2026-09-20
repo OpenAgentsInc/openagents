@@ -49,6 +49,7 @@ No answer becomes context for another.
 | Whether a Score's ordering means anything, door by door | [`2026-09-19-score-ordinality.md`](2026-09-19-score-ordinality.md) |
 | What the one production caller's real workload does to all of this | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) |
 | What the newest production question costs, and what it buys | [`2026-09-19-program-selection.md`](2026-09-19-program-selection.md) |
+| Whether a model should be able to say it does not know, and how that would be scored | [`abstention.md`](abstention.md) |
 
 ## The rule this directory keeps
 
@@ -88,3 +89,9 @@ that compares them lives here, so it does not have to be written three times.
 
 [`research/`](research/) holds leads that have not been settled — things worth
 looking into, each with what would have to be true for it to matter.
+
+[`abstention.md`](abstention.md) is a design with a recommendation and no
+implementation: abstention as an additive `abstain` outcome on the answer,
+emitted by the door from an input-conditioned signal and scored under a cost
+matrix the workload supplies through the gate's budget. It names the
+measurement that would settle it before anything is built (openagents#9383).
