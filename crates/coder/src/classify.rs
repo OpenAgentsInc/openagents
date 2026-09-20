@@ -195,11 +195,26 @@ pub fn judgment_of(response: &SystemOneResponse) -> Judgment {
 ///
 /// The `none` option is the escape hatch — the choice distribution sums
 /// to one, so when nothing listed fits, `none` is meant to win. There is
-/// no separate confidence gate: the argmax choice rules, and a turn the
-/// judge genuinely has no read on routes through `none`.
+/// no separate confidence gate: the argmax choice rules, and that rule is
+/// measured. On `coder-turns-v1` the incumbent door's two wrong `action`
+/// answers came at 0.72 and 0.48 while its right ones ran from 0.52 up, so
+/// no floor separates them and a floor that caught both would have halted
+/// more than half the turns that routed correctly.
+///
+/// **`none` answers, it does not halt**, and that is a correction. It used
+/// to route to `Halt`, which replies that there is no confident next step
+/// and generates nothing. Two things measured on real turns say that is
+/// wrong. `none` is never the truth: 40 turns harvested from recorded
+/// sessions, and every one of them had a next step the agent took. And a
+/// door that misreads the state answers `none` freely — `kev-8b` chose it
+/// on 14 of 16 real turns, which under the old table halted seven turns in
+/// eight. A judge with no read is the same situation as a judge that could
+/// not be reached, and [`crate::agent::Classified::Skipped`] already
+/// answers that by generating unrouted. The judgment is kept whole either
+/// way, so the terminal still shows that `none` won.
 ///
 /// - `action` missing or naming nothing listed → `Halt`
-/// - `action` is `none` → `Halt`
+/// - `action` is `none` → `Respond`, unrouted
 /// - `end_conversation` → `End`
 /// - `clarify` → `Clarify`
 /// - otherwise → `Respond`
@@ -214,7 +229,7 @@ pub fn route(judgment: &Judgment) -> Route {
         ));
     };
     match action {
-        Action::None => Route::Halt("no listed step fit".to_string()),
+        Action::None => Route::Respond,
         Action::End => Route::End,
         Action::Clarify => Route::Clarify,
         Action::Respond => Route::Respond,
@@ -367,8 +382,11 @@ mod tests {
     }
 
     #[test]
-    fn none_and_unknown_actions_halt() {
-        assert!(matches!(route(&judgment("none", 0.99)), Route::Halt(_)));
+    fn an_unreadable_answer_halts_and_none_answers() {
+        // `none` is the judge saying it has no read, which is the same
+        // situation as a judge that could not be reached. An answer that
+        // names nothing listed is a door that broke its own contract.
+        assert_eq!(route(&judgment("none", 0.99)), Route::Respond);
         assert!(matches!(route(&judgment("fly", 0.99)), Route::Halt(_)));
         assert!(matches!(
             route(&Judgment {
@@ -385,7 +403,7 @@ mod tests {
     fn the_choice_rules_at_any_confidence() {
         assert_eq!(route(&judgment("respond", 0.2)), Route::Respond);
         assert_eq!(route(&judgment("clarify", 0.1)), Route::Clarify);
-        assert!(matches!(route(&judgment("none", 0.3)), Route::Halt(_)));
+        assert_eq!(route(&judgment("none", 0.3)), Route::Respond);
     }
 
     #[test]
