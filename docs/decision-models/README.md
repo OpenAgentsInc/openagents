@@ -47,6 +47,7 @@ No answer becomes context for another.
 | What Lev is admitted and refused for | [`lev/disposition.md`](lev/disposition.md) |
 | How any of these numbers were produced | [`lev/measurements/`](lev/measurements/) |
 | Whether a Score's ordering means anything, door by door | [`2026-09-19-score-ordinality.md`](2026-09-19-score-ordinality.md) |
+| What the one production caller's real workload does to all of this | [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) |
 
 ## The rule this directory keeps
 
@@ -71,6 +72,7 @@ that compares them lives here, so it does not have to be written three times.
 | --- | --- |
 | [`2026-09-19-score-ordinality.md`](2026-09-19-score-ordinality.md) | Whether a Score's `Σ i · p_i` is a position, on eight doors: monotonicity under an authored ramp, adjacent-versus-distant confusion, and bimodality. Jev and Lev hold; `kev-0.5b` does not. |
 | [`2026-09-19-frozen-embedding-baseline.md`](2026-09-19-frozen-embedding-baseline.md) | What frozen sentence embeddings plus logistic regression do against the doors we trained: it beats Lev and Kev on the one family it can serve, loses to hosted Jev, and refuses half the suite. |
+| [`2026-09-19-coder-turns.md`](2026-09-19-coder-turns.md) | `crates/coder`'s own question set, scored on real turns from recorded sessions rather than on authored support-desk items: what the workload looks like, what each question is worth against a constant, which door can afford ten-kilobyte states, and the four thresholds checked. |
 
 ## Other implementations
 
