@@ -21,7 +21,7 @@ use std::sync::Arc;
 use candle_core::{DType, Device};
 use kev::decision::DecisionModel;
 use kev::lora::LoraConfig;
-use kev::serve::{ServeState, Variant, router};
+use kev::serve::{Admission, ServeState, Variant, router};
 
 struct Args {
     adapter_dir: Option<PathBuf>,
@@ -263,12 +263,19 @@ async fn main() -> ExitCode {
         variants.len(),
         variants[default].model_id
     );
-    let state = Arc::new(ServeState {
+    let state = match ServeState::new(
         variants,
         default,
-        aliases: vec!["jev-latest".to_string()],
-        device: args.device,
-    });
+        vec!["jev-latest".to_string()],
+        args.device,
+        Admission::default(),
+    ) {
+        Ok(state) => Arc::new(state),
+        Err(e) => {
+            eprintln!("kev-serve: {e}");
+            return ExitCode::from(2);
+        }
+    };
     let addr: SocketAddr = match format!("{}:{}", args.host, args.port).parse() {
         Ok(addr) => addr,
         Err(e) => {

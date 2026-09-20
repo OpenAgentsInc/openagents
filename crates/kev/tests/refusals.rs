@@ -22,7 +22,7 @@ use candle_core::Device;
 use gym::eval::{Disposition, observations};
 use gym::row::RefusalCode;
 use kev::decision::DecisionModel;
-use kev::serve::{ServeState, Variant, router};
+use kev::serve::{Admission, ServeState, Variant, router};
 use serde_json::{Value, json};
 
 const HIDDEN: usize = 16;
@@ -176,7 +176,12 @@ struct Rig {
 
 fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
-    RIG.get_or_init(|| {
+    RIG.get_or_init(|| build_rig(4))
+}
+
+/// A rig of its own, with `concurrency` forward slots.
+fn build_rig(concurrency: usize) -> Rig {
+    {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut variants = Vec::new();
         // `kev-broken` loads an embedding table smaller than any id the
@@ -196,19 +201,31 @@ fn rig() -> &'static Rig {
         }
         Rig {
             _dir: dir,
-            state: Arc::new(ServeState {
-                variants,
-                default: 0,
-                aliases: vec!["jev-latest".to_string()],
-                device: "cpu".to_string(),
-            }),
+            state: Arc::new(
+                ServeState::new(
+                    variants,
+                    0,
+                    vec!["jev-latest".to_string()],
+                    "cpu".to_string(),
+                    Admission {
+                        max_questions: 3,
+                        max_total_options: 20,
+                        max_total_tokens: 200,
+                        concurrency,
+                    },
+                )
+                .expect("a valid serving state"),
+            ),
         }
-    })
+    }
 }
 
 /// Bind the router on an ephemeral port; returns its base URL.
 async fn serve() -> String {
-    let state = rig().state.clone();
+    serve_state(rig().state.clone()).await
+}
+
+async fn serve_state(state: Arc<ServeState>) -> String {
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
         .await
         .expect("bind");
@@ -348,9 +365,76 @@ async fn door_refusals_classify_through_jev_and_gym() {
     blocking(move || {
         let client = client(&url);
 
-        // Model selection: the named variant is not loaded.
+        // Model selection: the named variant is not loaded, and the refusal
+        // names every id and alias the door does honor.
         let error = refused_error(client.system_one(request("Was it late?").model("kev-nope")));
         expect_refusal(&error, 503, "model_unavailable");
+        let jev::Error::Api(api) = &error else {
+            unreachable!("checked above")
+        };
+        let detail = api.body.as_ref().and_then(|b| b.as_json()).expect("json")["detail"]
+            .as_str()
+            .expect("detail")
+            .to_string();
+        assert!(detail.contains("jev-latest"), "{detail}");
+        assert!(detail.contains("kev-test"), "{detail}");
+
+        // An unmodified jev client sends `jev-latest`, the alias the
+        // listing advertises; the default variant answers it.
+        let unmodified =
+            jev::BlockingClient::new(jev::Config::new().api_key("kev-test").base_url(&url))
+                .expect("client");
+        let answered = unmodified
+            .system_one(request("Was it late?"))
+            .expect("the advertised alias resolves");
+        assert_eq!(answered.model, "kev-test");
+        let explicit = client
+            .system_one(request("Was it late?").model("kev-test"))
+            .expect("the explicit id resolves");
+        assert_eq!(explicit.model, "kev-test");
+
+        // Admission, before any encoding: more questions than one pass
+        // admits, and more options summed over the request than it admits,
+        // each a typed refusal that names the bound.
+        let mut questions = jev::Questions::new();
+        for i in 0..4 {
+            questions = questions.with(format!("q{i}"), jev::Noul::new("Was it late?"));
+        }
+        let error =
+            refused_error(client.system_one(
+                jev::SystemOneRequest::new("A short state.", questions).retry(no_retry()),
+            ));
+        expect_refusal(&error, 422, "invalid_request");
+        assert!(error.to_string().contains("at most 3"), "{error}");
+        let mut choice = jev::Choice::new("Which?", indexmap::IndexMap::new());
+        for i in 0..21 {
+            choice = choice.option(format!("option-{i}"), "one of many");
+        }
+        let error = refused_error(
+            client.system_one(
+                jev::SystemOneRequest::new(
+                    "A short state.",
+                    jev::Questions::new().with("which", choice),
+                )
+                .retry(no_retry()),
+            ),
+        );
+        expect_refusal(&error, 422, "too_many_options");
+        assert!(error.to_string().contains("at most 20"), "{error}");
+
+        // Admission after encoding, before the mask: a packed sequence over
+        // the total token budget, though every branch fits its own.
+        let error = refused_error(
+            client.system_one(
+                jev::SystemOneRequest::new(
+                    "word ".repeat(400),
+                    jev::Questions::new().with("verdict", jev::Noul::new("Was it late?")),
+                )
+                .retry(no_retry()),
+            ),
+        );
+        expect_refusal(&error, 413, "branch_too_long");
+        assert!(error.to_string().contains("attention mask"), "{error}");
 
         // Capacity: a state over the serving budget on an otherwise valid
         // request — a door-owned refusal, not a malformed body.
@@ -599,4 +683,88 @@ async fn incomplete_response_body_stays_harness() {
         assert!(run().row(&item(), None, &disposition, None).is_none());
     });
     server.await.expect("server task");
+}
+
+/// With every forward slot taken, the door answers `busy` at once instead
+/// of queueing; the slot's release lets the next request through.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_full_door_answers_busy_and_recovers() {
+    let rig = build_rig(1);
+    let state = rig.state.clone();
+    let url = serve_state(state.clone()).await;
+    let held = state
+        .slots
+        .clone()
+        .try_acquire_owned()
+        .expect("the one slot");
+    let refused = blocking({
+        let url = url.clone();
+        move || refused_error(client(&url).system_one(request("Was it late?")))
+    });
+    expect_refusal(&refused, 503, "busy");
+    drop(held);
+    blocking(move || {
+        client(&url)
+            .system_one(request("Was it late?"))
+            .expect("the freed slot admits the next request");
+    });
+}
+
+/// The public constructor refuses a state the handlers could not serve
+/// rather than letting a request find the hole.
+#[test]
+fn an_invalid_serving_state_is_refused_at_construction() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (base, adapter) = write_variant(dir.path(), "kev-test", 64);
+    let variant = || Variant {
+        model: DecisionModel::load(&base, &adapter, Device::Cpu).expect("load"),
+        model_id: "kev-test".to_string(),
+        run: "kev-test".to_string(),
+        base: "test-base".to_string(),
+        base_revision: "test-revision".to_string(),
+        lora: 1,
+    };
+    let aliases = || vec!["jev-latest".to_string()];
+    let cpu = || "cpu".to_string();
+    let cases: [(&str, Result<ServeState, kev::Error>); 4] = [
+        (
+            "no variants",
+            ServeState::new(Vec::new(), 0, aliases(), cpu(), Admission::default()),
+        ),
+        (
+            "default variant index 1",
+            ServeState::new(vec![variant()], 1, aliases(), cpu(), Admission::default()),
+        ),
+        (
+            "alias `kev-test`",
+            ServeState::new(
+                vec![variant()],
+                0,
+                vec!["kev-test".to_string()],
+                cpu(),
+                Admission::default(),
+            ),
+        ),
+        (
+            "admission bounds",
+            ServeState::new(
+                vec![variant()],
+                0,
+                aliases(),
+                cpu(),
+                Admission {
+                    concurrency: 0,
+                    ..Admission::default()
+                },
+            ),
+        ),
+    ];
+    for (needle, result) in cases {
+        let error = result.err().expect(needle);
+        assert!(error.to_string().contains(needle), "{needle}: {error}");
+    }
+    assert!(
+        ServeState::new(vec![variant()], 0, aliases(), cpu(), Admission::default()).is_ok(),
+        "a well-formed state constructs"
+    );
 }

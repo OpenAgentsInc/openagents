@@ -51,8 +51,30 @@ System One doors share: `{"detail": …, "error": {"code", "message",
 (`inference_failure`). `detail` keeps the FastAPI reference's shape;
 `error.code` is the stable label `gym::eval::classify` reads, so a declined
 item stays in the denominator as a refusal rather than reading as a harness
-failure. Kev serves no `busy` code: a request that reaches the model is
-evaluated, and the server sheds no load of its own.
+failure.
+
+The server admits a request in three stages before it spends a forward
+pass on it, and each stage answers with a typed refusal rather than a
+runtime failure or an exhausted process. Before anything is encoded, the
+request's shape is bounded: at most 64 questions and 1,024 options summed
+over them (`invalid_request` and `too_many_options` at 422, each naming
+the bound). After encoding and before the block-causal mask is built, the
+packed sequence is bounded to 8,192 tokens (`branch_too_long` at 413,
+naming the attention bytes that mask would have cost, `4 × tokens²`).
+Between the two, the request takes one of the server's forward slots, two
+by default; when every slot is held the server answers `busy` at 503 at
+once rather than queueing, so a client's cancellation leaves nothing
+waiting behind it. `kev::serve::Admission` holds the four bounds, and
+`ServeState::new` refuses a state that could not honour them — no
+variants, a default index that names none, an alias that is also a
+variant id, or a zero bound — at construction rather than on the first
+request.
+
+Kev serves on Linux and macOS, on CPU by default. Metal (`--device metal`)
+requires macOS and the `metal` feature; CUDA is not built. Tests that need
+the real `kev-0.5b` artifacts skip when `KEV_ARTIFACT_DIR` and
+`KEV_BASE_DIR` are absent; the refusal and admission tests run everywhere
+against a synthetic variant.
 
 One caveat travels with `score`. On `kev-0.5b` the weighted mean it returns
 is not a usable position on the rubric, and a caller should read the level

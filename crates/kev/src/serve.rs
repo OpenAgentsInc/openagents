@@ -16,6 +16,8 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -27,9 +29,9 @@ use indexmap::IndexMap;
 use serde_json::{Value, json};
 use tokenizers::Tokenizer;
 
-use crate::api::{Answer, Record, SystemOneRequest, to_answers, to_record};
+use crate::api::{Answer, Question, Record, SystemOneRequest, to_answers, to_record};
 use crate::decision::DecisionModel;
-use crate::error::{Error, RefusalCode};
+use crate::error::{Error, MAX_OPTIONS, RefusalCode};
 
 /// The state budget serving admits; the reference serves with the training
 /// bounds relaxed to the branch ceiling.
@@ -60,6 +62,97 @@ pub struct Variant {
     pub lora: usize,
 }
 
+/// What one request may cost before the door evaluates it.
+///
+/// The bounds are checked in this order, cheapest first: question and
+/// option counts from the request body, then the packed token count from
+/// the encoding, then a forward slot. Everything is refused before the
+/// attention mask — `4 * tokens^2` bytes as `f32` — is allocated.
+#[derive(Clone, Debug)]
+pub struct Admission {
+    /// Questions one request may carry.
+    pub max_questions: usize,
+    /// Options summed over every question in one request.
+    pub max_total_options: usize,
+    /// Packed tokens, state plus every branch, one forward may hold.
+    pub max_total_tokens: usize,
+    /// Forwards in flight at once across every loaded variant.
+    pub concurrency: usize,
+}
+
+impl Default for Admission {
+    /// `max_total_tokens` equals [`INFER_MAX_BRANCH`], so a request that
+    /// fits one branch fits the door; the mask at that length is 256 MiB.
+    fn default() -> Self {
+        Self {
+            max_questions: 64,
+            max_total_options: 1_024,
+            max_total_tokens: INFER_MAX_BRANCH,
+            concurrency: 2,
+        }
+    }
+}
+
+impl Admission {
+    /// The `f32` attention mask one packed sequence needs.
+    #[must_use]
+    pub const fn attention_bytes(tokens: usize) -> usize {
+        tokens.saturating_mul(tokens).saturating_mul(4)
+    }
+
+    /// Admit a request's shape: its question and option counts.
+    fn admit_shape(&self, request: &SystemOneRequest) -> Result<(), Error> {
+        let count = request.questions.len();
+        if count > self.max_questions {
+            return Err(Error::TooManyQuestions {
+                count,
+                max: self.max_questions,
+            });
+        }
+        let mut options = 0usize;
+        for (id, question) in &request.questions {
+            let count = option_count(question);
+            if count > MAX_OPTIONS {
+                return Err(Error::TooManyOptions {
+                    id: id.clone(),
+                    count,
+                });
+            }
+            options += count;
+        }
+        if options > self.max_total_options {
+            return Err(Error::TooManyTotalOptions {
+                count: options,
+                max: self.max_total_options,
+            });
+        }
+        Ok(())
+    }
+
+    /// Admit a packed sequence before its mask exists.
+    fn admit_tokens(&self, tokens: usize) -> Result<(), Error> {
+        if tokens > self.max_total_tokens {
+            return Err(Error::TooManyTokens {
+                tokens,
+                max: self.max_total_tokens,
+                attention_bytes: Self::attention_bytes(tokens),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// How many options a question carries: a `choice` question's criteria
+/// keys, a `score` question's levels, and none for a `noul`. A shape the
+/// contract rejects is refused by [`to_record`] afterwards.
+fn option_count(question: &Question) -> usize {
+    match question {
+        Question::Choice { criteria, .. } => criteria.len(),
+        Question::Score { criteria, .. } => criteria.len(),
+        Question::Noul { .. } | Question::Other => 0,
+    }
+}
+
 /// Everything one running server knows beyond the weights.
 pub struct ServeState {
     /// Every loaded variant; requests pick one by `model` id.
@@ -70,21 +163,102 @@ pub struct ServeState {
     pub aliases: Vec<String>,
     /// The device name `/api/info` reports.
     pub device: String,
+    /// The bounds one request is admitted against.
+    pub admission: Admission,
+    /// The forward slots `admission.concurrency` counts.
+    pub slots: Arc<Semaphore>,
 }
 
 impl ServeState {
+    /// A server over `variants`, with `default` naming the one aliases and an
+    /// absent `model` field resolve to.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Artifact`] when `variants` is empty, `default` names no
+    /// variant, an alias collides with a variant id, or `admission` holds a
+    /// zero bound.
+    pub fn new(
+        variants: Vec<Variant>,
+        default: usize,
+        aliases: Vec<String>,
+        device: String,
+        admission: Admission,
+    ) -> Result<Self, Error> {
+        if variants.is_empty() {
+            return Err(Error::Artifact("no variants loaded".to_string()));
+        }
+        if default >= variants.len() {
+            return Err(Error::Artifact(format!(
+                "default variant index {default} names none of {} loaded variants",
+                variants.len()
+            )));
+        }
+        if let Some(alias) = aliases
+            .iter()
+            .find(|alias| variants.iter().any(|v| &v.model_id == *alias))
+        {
+            return Err(Error::Artifact(format!(
+                "alias `{alias}` is also a variant id"
+            )));
+        }
+        if admission.max_questions == 0
+            || admission.max_total_options == 0
+            || admission.max_total_tokens == 0
+            || admission.concurrency == 0
+        {
+            return Err(Error::Artifact(
+                "admission bounds must be at least one".to_string(),
+            ));
+        }
+        let slots = Arc::new(Semaphore::new(admission.concurrency));
+        Ok(Self {
+            variants,
+            default,
+            aliases,
+            device,
+            admission,
+            slots,
+        })
+    }
+
+    /// One forward slot, or [`Error::Busy`] when every slot is taken. The
+    /// permit rides with the blocking task, so a caller that stops waiting
+    /// releases it when the forward it started ends, not before.
+    fn slot(&self) -> Result<OwnedSemaphorePermit, Error> {
+        self.slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Error::Busy {
+                in_flight: self.admission.concurrency,
+            })
+    }
+
     /// Resolve a request's `model` field to a loaded variant: an exact id,
-    /// `kev-latest` for the default, or an absent field.
+    /// `kev-latest`, any alias the listing advertises, or an absent field.
+    /// The aliases the listing publishes and the aliases this resolves are
+    /// one list, so a client that keeps its default model reaches the door.
     fn select(&self, model: &str) -> Result<&Variant, Error> {
-        if model == "kev-latest" || model.is_empty() {
-            return Ok(&self.variants[self.default]);
+        if model == "kev-latest" || model.is_empty() || self.aliases.iter().any(|a| a == model) {
+            return self.variants.get(self.default).ok_or_else(|| {
+                Error::Artifact(format!(
+                    "default variant index {} is not loaded",
+                    self.default
+                ))
+            });
         }
         self.variants
             .iter()
             .find(|v| v.model_id == model)
             .ok_or_else(|| Error::UnknownModel {
                 model: model.to_string(),
-                known: self.variants.iter().map(|v| v.model_id.clone()).collect(),
+                known: self
+                    .variants
+                    .iter()
+                    .map(|v| v.model_id.clone())
+                    .chain(std::iter::once("kev-latest".to_string()))
+                    .chain(self.aliases.iter().cloned())
+                    .collect(),
             })
     }
 
@@ -185,10 +359,18 @@ async fn systemone(
     let body = received(body)?;
     let request: SystemOneRequest =
         serde_json::from_slice(&body).map_err(|e| invalid(format!("request body: {e}")))?;
-    let out = tokio::task::spawn_blocking(move || evaluate(&state, &request))
-        .await
-        .map_err(panicked)?
+    state
+        .admission
+        .admit_shape(&request)
         .map_err(|e| refused(&e))?;
+    let permit = state.slot().map_err(|e| refused(&e))?;
+    let out = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        evaluate(&state, &request)
+    })
+    .await
+    .map_err(panicked)?
+    .map_err(|e| refused(&e))?;
     Ok(Json(out))
 }
 
@@ -201,11 +383,19 @@ async fn systemone_separate(
     let body = received(body)?;
     let request: SystemOneRequest =
         serde_json::from_slice(&body).map_err(|e| invalid(format!("request body: {e}")))?;
-    tokio::task::spawn_blocking(move || evaluate_separate(&state, &request))
-        .await
-        .map_err(panicked)?
-        .map_err(|e| refused(&e))
-        .map(Json)
+    state
+        .admission
+        .admit_shape(&request)
+        .map_err(|e| refused(&e))?;
+    let permit = state.slot().map_err(|e| refused(&e))?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        evaluate_separate(&state, &request)
+    })
+    .await
+    .map_err(panicked)?
+    .map_err(|e| refused(&e))
+    .map(Json)
 }
 
 /// `GET /v1/models`: every loaded variant, with kev's own artifact fields
@@ -264,12 +454,15 @@ async fn predict(
     let model_field = body["model"].as_str().unwrap_or("kev-latest").to_string();
     let record: Record =
         serde_json::from_value(body.clone()).map_err(|e| invalid(format!("request body: {e}")))?;
+    let permit = state.slot().map_err(|e| refused(&e))?;
     tokio::task::spawn_blocking(move || {
+        let _permit = permit;
         let variant = state.select(&model_field)?;
         let enc = variant
             .model
             .encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
         let tokens = enc.ids.len();
+        state.admission.admit_tokens(tokens)?;
         let state_tokens = enc.seg.iter().filter(|s| **s == 0).count();
         let start = Instant::now();
         let probs = variant.model.probs(&enc)?;
@@ -295,6 +488,7 @@ fn evaluate(state: &ServeState, request: &SystemOneRequest) -> Result<Value, Err
         .model
         .encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
     let tokens = enc.ids.len();
+    state.admission.admit_tokens(tokens)?;
     let start = Instant::now();
     let probs = variant.model.probs(&enc)?;
     let latency = start.elapsed().as_secs_f64() * 1000.0;
@@ -321,6 +515,7 @@ fn evaluate_separate(state: &ServeState, request: &SystemOneRequest) -> Result<V
         let enc = variant
             .model
             .encode(&record, INFER_MAX_STATE, INFER_MAX_BRANCH)?;
+        state.admission.admit_tokens(enc.ids.len())?;
         tokens += enc.ids.len();
         let start = Instant::now();
         let probs = variant.model.probs(&enc)?;

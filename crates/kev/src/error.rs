@@ -9,9 +9,9 @@ pub const MAX_OPTIONS: usize = 255;
 /// The labels are the vocabulary `gym::row::RefusalCode` records and
 /// `gym::eval::classify` reads, and the statuses match the ones `crates/lev`
 /// answers the same classes with, so a reader of either door meets one
-/// contract. Kev never sheds load — a request that reaches the door is
-/// evaluated or refused for a reason the request or the deployment carries —
-/// so it never answers `busy`.
+/// contract. Kev admits a bounded number of forwards at once; a request that
+/// arrives when every slot is taken answers `busy` at once rather than
+/// queueing without limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RefusalCode {
     /// The request fails contract validation, before any call.
@@ -29,6 +29,8 @@ pub enum RefusalCode {
     /// The door's own runtime failed on a request it accepted: the
     /// tokenizer, the tensor runtime, or the weights it loaded.
     InferenceFailure,
+    /// Every inference slot is taken; the request was not evaluated.
+    Busy,
 }
 
 impl RefusalCode {
@@ -42,6 +44,7 @@ impl RefusalCode {
             Self::BranchTooLong => "branch_too_long",
             Self::PayloadTooLarge => "payload_too_large",
             Self::InferenceFailure => "inference_failure",
+            Self::Busy => "busy",
         }
     }
 
@@ -56,7 +59,7 @@ impl RefusalCode {
         match self {
             Self::InvalidRequest | Self::TooManyOptions => 422,
             Self::BranchTooLong | Self::PayloadTooLarge => 413,
-            Self::ModelUnavailable => 503,
+            Self::ModelUnavailable | Self::Busy => 503,
             Self::InferenceFailure => 500,
         }
     }
@@ -92,8 +95,27 @@ pub enum Error {
     /// A question branch plus the state exceeds the token budget.
     #[error("branch too long: {tokens} > {max}")]
     BranchTooLong { tokens: usize, max: usize },
+    /// The request carries more questions than the door admits in one pass.
+    #[error("{count} questions; at most {max} are admitted in one request")]
+    TooManyQuestions { count: usize, max: usize },
+    /// The request's options, summed over every question, exceed the bound.
+    #[error("{count} options across all questions; at most {max} are admitted")]
+    TooManyTotalOptions { count: usize, max: usize },
+    /// The packed sequence exceeds the door's total token budget; the
+    /// attention mask it would need is quadratic in that length.
+    #[error(
+        "packed sequence of {tokens} tokens exceeds {max}; its attention mask would need about {attention_bytes} bytes"
+    )]
+    TooManyTokens {
+        tokens: usize,
+        max: usize,
+        attention_bytes: usize,
+    },
+    /// Every inference slot is taken.
+    #[error("busy: {in_flight} forwards in flight, the door's limit")]
+    Busy { in_flight: usize },
     /// The `model` field names no loaded variant.
-    #[error("unknown model `{model}`; loaded: {}", known.join(", "))]
+    #[error("unknown model `{model}`; known: {}", known.join(", "))]
     UnknownModel { model: String, known: Vec<String> },
     /// The tokenizer failed to load or to encode.
     #[error("tokenizer: {0}")]
@@ -126,8 +148,14 @@ impl Error {
             | Self::MissingScoreCriteria { .. }
             | Self::TooFewLevels { .. }
             | Self::Json(_) => RefusalCode::InvalidRequest,
-            Self::TooManyOptions { .. } => RefusalCode::TooManyOptions,
-            Self::StateTooLong { .. } | Self::BranchTooLong { .. } => RefusalCode::BranchTooLong,
+            Self::TooManyOptions { .. } | Self::TooManyTotalOptions { .. } => {
+                RefusalCode::TooManyOptions
+            }
+            Self::TooManyQuestions { .. } => RefusalCode::InvalidRequest,
+            Self::StateTooLong { .. } | Self::BranchTooLong { .. } | Self::TooManyTokens { .. } => {
+                RefusalCode::BranchTooLong
+            }
+            Self::Busy { .. } => RefusalCode::Busy,
             Self::UnknownModel { .. } | Self::Artifact(_) => RefusalCode::ModelUnavailable,
             Self::Tokenize(_) | Self::Candle(_) => RefusalCode::InferenceFailure,
         }
