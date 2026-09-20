@@ -118,6 +118,14 @@ Weights ship as a LoRA adapter (`adapter_model.safetensors`), a pointer head
 (`head.pt`), tokenizer files, and evaluation/provenance records — the base
 model downloads separately under its own license.
 
+`./scripts/fetch-kev-artifacts.sh [<variant>...]` downloads an adapter and
+its base, converts `head.pt` to the `head.safetensors` and `head_meta.json`
+the port reads, and checks every adapter file against the fixture manifest's
+pinned digests. It writes to `KEV_ARTIFACTS`, by default `../kev-artifacts`
+beside the checkout, and needs no token for these public checkpoints. The
+script prints the `cargo test -p kev --features serve --release` invocation
+that runs the weights-gated conformance tests against what it fetched.
+
 | Checkpoint | Base | In-domain dev / locked test | Out-of-domain dev / locked test | Port status |
 | --- | --- | --- | --- | --- |
 | `jaredpalmer/kev-0.5b` | Qwen2.5-0.5B | 0.712 / – | 0.575 / – | served, conformant (4.1e-6) |
