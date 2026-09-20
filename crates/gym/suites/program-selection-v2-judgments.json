@@ -1,0 +1,250 @@
+{
+  "created": "2026-09-20",
+  "label_source": "author",
+  "independent_review": false,
+  "disputes": [
+    {
+      "items": [
+        "turn/1d845d65#23"
+      ],
+      "judgment": "none",
+      "reason": "A tentative single implementation delegation is not one repository question or a parallel task list."
+    },
+    {
+      "items": [
+        "turn/1d845d65#26",
+        "turn/1d845d65#27",
+        "authored/ordinary-question",
+        "authored/about-the-program",
+        "authored-v2/dev-none-overlap"
+      ],
+      "judgment": "none",
+      "reason": "The answer-question summary overlaps ordinary repository questions. Labels require explicit execution by a delegate; wording is deliberately unchanged."
+    },
+    {
+      "items": [
+        "turn/9b37638d#8"
+      ],
+      "judgment": "none",
+      "reason": "Completing issues is not an explicit request for the persisted checkout work-list program, and this request discourages starting delegates."
+    }
+  ],
+  "authored": [
+    {
+      "id": "cal-burn-explicit",
+      "partition": "calibration",
+      "truth": "burn-down",
+      "request": "Run burn-down on this checkout's .coder/work-list.json; give each item its own delegated session and worktree."
+    },
+    {
+      "id": "cal-burn-worktrees",
+      "partition": "calibration",
+      "truth": "burn-down",
+      "request": "Execute the saved work list here, one delegate per entry, and keep the resulting worktrees for review."
+    },
+    {
+      "id": "cal-burn-list",
+      "partition": "calibration",
+      "truth": "burn-down",
+      "request": "Start the program that works through this checkout's work-list file using separate delegated sessions."
+    },
+    {
+      "id": "cal-fan-files",
+      "partition": "calibration",
+      "truth": "delegate-fan-out",
+      "request": "In parallel, delegate these two tasks: inspect crates/jev error handling; inspect crates/kev request validation."
+    },
+    {
+      "id": "cal-fan-docs",
+      "partition": "calibration",
+      "truth": "delegate-fan-out",
+      "request": "Launch separate sessions for updating the README and checking the examples; run them at the same time."
+    },
+    {
+      "id": "cal-fan-tests",
+      "partition": "calibration",
+      "truth": "delegate-fan-out",
+      "request": "Give each of these tasks to its own executor concurrently: test the parser, test the encoder, test the client."
+    },
+    {
+      "id": "cal-answer-config",
+      "partition": "calibration",
+      "truth": "answer-question",
+      "request": "Have one delegate read the repository and answer which Rust toolchain is pinned."
+    },
+    {
+      "id": "cal-answer-model",
+      "partition": "calibration",
+      "truth": "answer-question",
+      "request": "Hand a single repository question to an executor: where is the default Kev model chosen?"
+    },
+    {
+      "id": "cal-answer-bound",
+      "partition": "calibration",
+      "truth": "answer-question",
+      "request": "Ask one delegated session to find the request token limit in this repository and report it."
+    },
+    {
+      "id": "cal-none-burn",
+      "partition": "calibration",
+      "truth": "none",
+      "request": "Explain what burn-down does and where its work-list file is stored."
+    },
+    {
+      "id": "cal-none-negation",
+      "partition": "calibration",
+      "truth": "none",
+      "request": "Do not start delegate-fan-out. Just describe the tasks it would receive."
+    },
+    {
+      "id": "cal-none-question",
+      "partition": "calibration",
+      "truth": "none",
+      "request": "Which Rust toolchain does this repository pin?"
+    },
+    {
+      "id": "dev-burn-handoff",
+      "partition": "development",
+      "truth": "burn-down",
+      "request": "Take the entries already saved in .coder/work-list.json through the delegated work-list program, keeping each checkout for review."
+    },
+    {
+      "id": "dev-burn-named",
+      "partition": "development",
+      "truth": "burn-down",
+      "request": "Start burn-down for the current checkout now."
+    },
+    {
+      "id": "dev-burn-each",
+      "partition": "development",
+      "truth": "burn-down",
+      "request": "For every item in this checkout's persisted work list, run a delegate in its own worktree. Keep all the worktrees afterwards."
+    },
+    {
+      "id": "dev-fan-two",
+      "partition": "development",
+      "truth": "delegate-fan-out",
+      "request": "Fan out two sessions now: one reviews the decoder, the other reviews the HTTP client."
+    },
+    {
+      "id": "dev-fan-list",
+      "partition": "development",
+      "truth": "delegate-fan-out",
+      "request": "Delegate in parallel:\n- check the example commands\n- inspect the refusal tests\n- review the model cards"
+    },
+    {
+      "id": "dev-fan-questions",
+      "partition": "development",
+      "truth": "delegate-fan-out",
+      "request": "Have two executors answer these repository questions simultaneously: where are manifests loaded, and where are traces written?"
+    },
+    {
+      "id": "dev-answer-one",
+      "partition": "development",
+      "truth": "answer-question",
+      "request": "Delegate just this question: which crate writes the append-only result store?"
+    },
+    {
+      "id": "dev-answer-doc",
+      "partition": "development",
+      "truth": "answer-question",
+      "request": "Have an executor inspect docs/verification.md and tell me whether Metal checks run by default."
+    },
+    {
+      "id": "dev-answer-count",
+      "partition": "development",
+      "truth": "answer-question",
+      "request": "Use one delegated session to answer how many program manifests this checkout contains."
+    },
+    {
+      "id": "dev-none-overlap",
+      "partition": "development",
+      "truth": "none",
+      "request": "Read the repository and tell me where program manifests are loaded."
+    },
+    {
+      "id": "dev-none-mention",
+      "partition": "development",
+      "truth": "none",
+      "request": "Rename the section explaining answer-question; do the edit yourself."
+    },
+    {
+      "id": "dev-none-list",
+      "partition": "development",
+      "truth": "none",
+      "request": "Show me .coder/work-list.json and explain its entries. Do not execute the list."
+    },
+    {
+      "id": "locked-burn-queue",
+      "partition": "locked",
+      "truth": "burn-down",
+      "request": "Execute our saved checkout work list through burn-down, with a delegated worktree for each entry."
+    },
+    {
+      "id": "locked-burn-review",
+      "partition": "locked",
+      "truth": "burn-down",
+      "request": "Run the persisted .coder work list using one executor per item, preserving every workspace for my review."
+    },
+    {
+      "id": "locked-burn-short",
+      "partition": "locked",
+      "truth": "burn-down",
+      "request": "Please run this checkout's burn-down program."
+    },
+    {
+      "id": "locked-fan-build",
+      "partition": "locked",
+      "truth": "delegate-fan-out",
+      "request": "Start two delegates concurrently: one examines the build script, one examines the release notes."
+    },
+    {
+      "id": "locked-fan-checks",
+      "partition": "locked",
+      "truth": "delegate-fan-out",
+      "request": "Hand these checks to separate sessions at once: inspect timeout handling; inspect cancellation handling."
+    },
+    {
+      "id": "locked-fan-crates",
+      "partition": "locked",
+      "truth": "delegate-fan-out",
+      "request": "Delegate a documentation audit for crates/jev and a separate test audit for crates/gym in parallel."
+    },
+    {
+      "id": "locked-answer-port",
+      "partition": "locked",
+      "truth": "answer-question",
+      "request": "Ask one executor to inspect this repository and report the default HTTP listening port."
+    },
+    {
+      "id": "locked-answer-manual",
+      "partition": "locked",
+      "truth": "answer-question",
+      "request": "Use a delegate to answer this one question from the repository: which script runs the manual gate?"
+    },
+    {
+      "id": "locked-answer-source",
+      "partition": "locked",
+      "truth": "answer-question",
+      "request": "Have one delegated session find and explain the source of the default inference dtype."
+    },
+    {
+      "id": "locked-none-dry",
+      "partition": "locked",
+      "truth": "none",
+      "request": "Describe a hypothetical burn-down run without starting anything."
+    },
+    {
+      "id": "locked-none-ordinary",
+      "partition": "locked",
+      "truth": "none",
+      "request": "Where does the server choose its listening address?"
+    },
+    {
+      "id": "locked-none-document",
+      "partition": "locked",
+      "truth": "none",
+      "request": "Document the difference between answer-question and delegate-fan-out; make the change yourself."
+    }
+  ]
+}

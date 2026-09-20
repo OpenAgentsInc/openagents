@@ -4,11 +4,11 @@
     "This set supersedes program-selection-v1: it adds the `burn-down` option the repository gained on 2026-09-20, and nothing else changed. A new option is a new question, so it carries a new id rather than an edit to v1, whose measurement stays about v1. Two of the repository's five programs are missing on purpose. `run-suite` names a check this host does not run and `review-changes` names a question set it has no wording for, so neither is a route and neither is offered.",
     "This file is generated, not written. `cargo test -p coder --test suite_questions -- --ignored --nocapture print_wire_selection` prints it, and `the_selection_question_is_the_production_text` fails when the repository and this file drift, so a reword is a new question set with a new id rather than an edit to this one.",
     "`none` is an option on the question rather than a floor a caller applies to the confidence afterwards. Almost every turn answers it, and a question that can only name programs has to name one.",
-    "Not yet scored. Until a run on program-selection-v1's items records this set, the 2026-09-19 numbers describe the three-option question, not this one."
+    "Paired with the separately frozen program-selection-v2 suite. Historical v1 rows keep their three-option question and original suite. Calibration, development, and new locked partitions are assigned before this four-option baseline is scored."
   ],
   "schema": "openagents.gym.question_set.v1",
   "id": "program-selection-v2",
-  "suite": "program-selection-v1",
+  "suite": "program-selection-v2",
   "questions": {
     "program": {
       "type": "choice",
