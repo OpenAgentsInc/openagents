@@ -1,0 +1,1813 @@
+{
+  "condition": "No other model measurement client or Cargo build detected during this run; normal desktop services remain.",
+  "before": {
+    "utc": "2026-09-20T21:18:14.353236+00:00",
+    "processes": [
+      {
+        "pid": 1,
+        "ppid": 0,
+        "cpu": 28.9,
+        "rss_kib": 28528,
+        "name": "launchd"
+      },
+      {
+        "pid": 379,
+        "ppid": 1,
+        "cpu": 6.4,
+        "rss_kib": 19264,
+        "name": "contextstored"
+      },
+      {
+        "pid": 392,
+        "ppid": 1,
+        "cpu": 95.0,
+        "rss_kib": 59584,
+        "name": "dasd"
+      },
+      {
+        "pid": 406,
+        "ppid": 1,
+        "cpu": 7.6,
+        "rss_kib": 5408,
+        "name": "notifyd"
+      },
+      {
+        "pid": 18410,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 3920,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 26904,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 21008,
+        "name": "filevaultd"
+      },
+      {
+        "pid": 30146,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 2032,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 36951,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 4768,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 39903,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 3136,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 44956,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 120592,
+        "name": "TGOnDeviceInferenceProviderService"
+      },
+      {
+        "pid": 57049,
+        "ppid": 1,
+        "cpu": 13.3,
+        "rss_kib": 199328,
+        "name": "WindowServer"
+      },
+      {
+        "pid": 57483,
+        "ppid": 1,
+        "cpu": 10.2,
+        "rss_kib": 48928,
+        "name": "imagent"
+      },
+      {
+        "pid": 57758,
+        "ppid": 57424,
+        "cpu": 23.5,
+        "rss_kib": 170736,
+        "name": "Codex (Service)"
+      },
+      {
+        "pid": 60726,
+        "ppid": 57424,
+        "cpu": 8.7,
+        "rss_kib": 718096,
+        "name": "Codex (Renderer)"
+      },
+      {
+        "pid": 64343,
+        "ppid": 1,
+        "cpu": 8.9,
+        "rss_kib": 31344,
+        "name": "PerfPowerServices"
+      },
+      {
+        "pid": 89623,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 143776,
+        "name": "TGOnDeviceInferenceProviderService"
+      },
+      {
+        "pid": 94134,
+        "ppid": 1,
+        "cpu": 17.8,
+        "rss_kib": 351920,
+        "name": "droid"
+      },
+      {
+        "pid": 94146,
+        "ppid": 61308,
+        "cpu": 74.7,
+        "rss_kib": 6944,
+        "name": "top"
+      }
+    ]
+  },
+  "samples": [
+    {
+      "utc": "2026-09-20T21:18:32.046651+00:00",
+      "processes": [
+        {
+          "pid": 1,
+          "ppid": 0,
+          "cpu": 18.7,
+          "rss_kib": 28544,
+          "name": "launchd"
+        },
+        {
+          "pid": 379,
+          "ppid": 1,
+          "cpu": 6.1,
+          "rss_kib": 19312,
+          "name": "contextstored"
+        },
+        {
+          "pid": 392,
+          "ppid": 1,
+          "cpu": 95.3,
+          "rss_kib": 59584,
+          "name": "dasd"
+        },
+        {
+          "pid": 406,
+          "ppid": 1,
+          "cpu": 7.5,
+          "rss_kib": 5408,
+          "name": "notifyd"
+        },
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 9.7,
+          "rss_kib": 199280,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57483,
+          "ppid": 1,
+          "cpu": 10.0,
+          "rss_kib": 48928,
+          "name": "imagent"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 17.6,
+          "rss_kib": 170800,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 60726,
+          "ppid": 57424,
+          "cpu": 5.0,
+          "rss_kib": 718096,
+          "name": "Codex (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 3.7,
+          "rss_kib": 961296,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:18:37.106717+00:00",
+      "processes": [
+        {
+          "pid": 1,
+          "ppid": 0,
+          "cpu": 19.6,
+          "rss_kib": 28512,
+          "name": "launchd"
+        },
+        {
+          "pid": 379,
+          "ppid": 1,
+          "cpu": 6.1,
+          "rss_kib": 19264,
+          "name": "contextstored"
+        },
+        {
+          "pid": 392,
+          "ppid": 1,
+          "cpu": 92.8,
+          "rss_kib": 59584,
+          "name": "dasd"
+        },
+        {
+          "pid": 406,
+          "ppid": 1,
+          "cpu": 7.3,
+          "rss_kib": 5408,
+          "name": "notifyd"
+        },
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 12.4,
+          "rss_kib": 199280,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57483,
+          "ppid": 1,
+          "cpu": 10.3,
+          "rss_kib": 48928,
+          "name": "imagent"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 6.1,
+          "rss_kib": 170912,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 5.0,
+          "rss_kib": 999920,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:18:42.164650+00:00",
+      "processes": [
+        {
+          "pid": 1,
+          "ppid": 0,
+          "cpu": 19.8,
+          "rss_kib": 28512,
+          "name": "launchd"
+        },
+        {
+          "pid": 379,
+          "ppid": 1,
+          "cpu": 6.1,
+          "rss_kib": 19328,
+          "name": "contextstored"
+        },
+        {
+          "pid": 392,
+          "ppid": 1,
+          "cpu": 92.7,
+          "rss_kib": 59584,
+          "name": "dasd"
+        },
+        {
+          "pid": 406,
+          "ppid": 1,
+          "cpu": 7.2,
+          "rss_kib": 5408,
+          "name": "notifyd"
+        },
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 14.9,
+          "rss_kib": 199280,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57483,
+          "ppid": 1,
+          "cpu": 10.4,
+          "rss_kib": 48928,
+          "name": "imagent"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 7.8,
+          "rss_kib": 170864,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 4.7,
+          "rss_kib": 1000832,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:18:47.232233+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 19.7,
+          "rss_kib": 199328,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 11.7,
+          "rss_kib": 170912,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 3.6,
+          "rss_kib": 1006512,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:18:52.298654+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 14.3,
+          "rss_kib": 199312,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 8.2,
+          "rss_kib": 170912,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 0.6,
+          "rss_kib": 1006800,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:18:57.358648+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 16.7,
+          "rss_kib": 199312,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 10.4,
+          "rss_kib": 170912,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 0.6,
+          "rss_kib": 1007056,
+          "name": "kev-serve-eager-baseline"
+        },
+        {
+          "pid": 96012,
+          "ppid": 1,
+          "cpu": 39.9,
+          "rss_kib": 382656,
+          "name": "droid"
+        },
+        {
+          "pid": 96022,
+          "ppid": 96012,
+          "cpu": 11.2,
+          "rss_kib": 4448,
+          "name": "zsh"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:02.417920+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 15.0,
+          "rss_kib": 199280,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 10.2,
+          "rss_kib": 170912,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 60726,
+          "ppid": 57424,
+          "cpu": 7.3,
+          "rss_kib": 698128,
+          "name": "Codex (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 2.4,
+          "rss_kib": 1008880,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:07.485564+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 21.3,
+          "rss_kib": 199280,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 16.5,
+          "rss_kib": 170528,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 60693,
+          "ppid": 57424,
+          "cpu": 8.3,
+          "rss_kib": 315648,
+          "name": "codex"
+        },
+        {
+          "pid": 60726,
+          "ppid": 57424,
+          "cpu": 57.5,
+          "rss_kib": 699456,
+          "name": "Codex (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 3.9,
+          "rss_kib": 1009136,
+          "name": "kev-serve-eager-baseline"
+        },
+        {
+          "pid": 96483,
+          "ppid": 1,
+          "cpu": 25.7,
+          "rss_kib": 350240,
+          "name": "droid"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:12.552169+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 14.8,
+          "rss_kib": 199408,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 8.2,
+          "rss_kib": 170992,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 60726,
+          "ppid": 57424,
+          "cpu": 28.8,
+          "rss_kib": 707696,
+          "name": "Codex (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 1.3,
+          "rss_kib": 1010720,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:17.613100+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 8.4,
+          "rss_kib": 201584,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57484,
+          "ppid": 57399,
+          "cpu": 5.5,
+          "rss_kib": 229920,
+          "name": "Google Chrome Helper"
+        },
+        {
+          "pid": 75092,
+          "ppid": 57399,
+          "cpu": 5.8,
+          "rss_kib": 533840,
+          "name": "Google Chrome Helper (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 1.6,
+          "rss_kib": 1014432,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:22.674873+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 8.1,
+          "rss_kib": 202000,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57399,
+          "ppid": 1,
+          "cpu": 6.6,
+          "rss_kib": 416752,
+          "name": "Google Chrome"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 0.2,
+          "rss_kib": 1014784,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:27.737774+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 28.3,
+          "rss_kib": 203024,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57424,
+          "ppid": 1,
+          "cpu": 37.2,
+          "rss_kib": 666608,
+          "name": "ChatGPT"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 16.9,
+          "rss_kib": 181696,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 60693,
+          "ppid": 57424,
+          "cpu": 8.0,
+          "rss_kib": 316128,
+          "name": "codex"
+        },
+        {
+          "pid": 60726,
+          "ppid": 57424,
+          "cpu": 109.5,
+          "rss_kib": 812416,
+          "name": "Codex (Renderer)"
+        },
+        {
+          "pid": 61308,
+          "ppid": 1,
+          "cpu": 6.8,
+          "rss_kib": 422352,
+          "name": "com.macpaw.CleanMyMac5.HealthMonitor"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 0.9,
+          "rss_kib": 1014992,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:32.801642+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 15.8,
+          "rss_kib": 203504,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57424,
+          "ppid": 1,
+          "cpu": 9.9,
+          "rss_kib": 680352,
+          "name": "ChatGPT"
+        },
+        {
+          "pid": 57758,
+          "ppid": 57424,
+          "cpu": 13.3,
+          "rss_kib": 181472,
+          "name": "Codex (Service)"
+        },
+        {
+          "pid": 60726,
+          "ppid": 57424,
+          "cpu": 5.2,
+          "rss_kib": 827984,
+          "name": "Codex (Renderer)"
+        },
+        {
+          "pid": 61042,
+          "ppid": 57424,
+          "cpu": 5.1,
+          "rss_kib": 425552,
+          "name": "Codex (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 0.8,
+          "rss_kib": 1015168,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:37.869144+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 28.8,
+          "rss_kib": 204304,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57399,
+          "ppid": 1,
+          "cpu": 12.0,
+          "rss_kib": 423776,
+          "name": "Google Chrome"
+        },
+        {
+          "pid": 57484,
+          "ppid": 57399,
+          "cpu": 18.0,
+          "rss_kib": 234272,
+          "name": "Google Chrome Helper"
+        },
+        {
+          "pid": 57490,
+          "ppid": 57399,
+          "cpu": 7.6,
+          "rss_kib": 136112,
+          "name": "Google Chrome Helper"
+        },
+        {
+          "pid": 75092,
+          "ppid": 57399,
+          "cpu": 84.6,
+          "rss_kib": 700864,
+          "name": "Google Chrome Helper (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 0.3,
+          "rss_kib": 1015424,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:42.934958+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 60726,
+          "ppid": 57424,
+          "cpu": 21.9,
+          "rss_kib": 745984,
+          "name": "Codex (Renderer)"
+        },
+        {
+          "pid": 75092,
+          "ppid": 57399,
+          "cpu": 6.3,
+          "rss_kib": 716736,
+          "name": "Google Chrome Helper (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 3.1,
+          "rss_kib": 1017824,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:47.994719+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 0.5,
+          "rss_kib": 1018032,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:53.054375+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 10.8,
+          "rss_kib": 204432,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57484,
+          "ppid": 57399,
+          "cpu": 11.6,
+          "rss_kib": 219952,
+          "name": "Google Chrome Helper"
+        },
+        {
+          "pid": 75092,
+          "ppid": 57399,
+          "cpu": 9.4,
+          "rss_kib": 703472,
+          "name": "Google Chrome Helper (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 2.9,
+          "rss_kib": 1018192,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    },
+    {
+      "utc": "2026-09-20T21:19:58.115720+00:00",
+      "processes": [
+        {
+          "pid": 18410,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3920,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 26904,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 21008,
+          "name": "filevaultd"
+        },
+        {
+          "pid": 30146,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 2032,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 36951,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 4768,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 39903,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 3136,
+          "name": "lev-serve"
+        },
+        {
+          "pid": 44956,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 120592,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 57049,
+          "ppid": 1,
+          "cpu": 12.6,
+          "rss_kib": 204464,
+          "name": "WindowServer"
+        },
+        {
+          "pid": 57399,
+          "ppid": 1,
+          "cpu": 6.0,
+          "rss_kib": 425776,
+          "name": "Google Chrome"
+        },
+        {
+          "pid": 57484,
+          "ppid": 57399,
+          "cpu": 13.7,
+          "rss_kib": 232704,
+          "name": "Google Chrome Helper"
+        },
+        {
+          "pid": 75092,
+          "ppid": 57399,
+          "cpu": 12.4,
+          "rss_kib": 716912,
+          "name": "Google Chrome Helper (Renderer)"
+        },
+        {
+          "pid": 89623,
+          "ppid": 1,
+          "cpu": 0.0,
+          "rss_kib": 143776,
+          "name": "TGOnDeviceInferenceProviderService"
+        },
+        {
+          "pid": 94153,
+          "ppid": 94151,
+          "cpu": 1.5,
+          "rss_kib": 1018384,
+          "name": "kev-serve-eager-baseline"
+        }
+      ]
+    }
+  ],
+  "after": {
+    "utc": "2026-09-20T21:20:03.150217+00:00",
+    "processes": [
+      {
+        "pid": 18410,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 3920,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 26904,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 21008,
+        "name": "filevaultd"
+      },
+      {
+        "pid": 30146,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 2032,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 36951,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 4768,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 39903,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 3136,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 44956,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 120592,
+        "name": "TGOnDeviceInferenceProviderService"
+      },
+      {
+        "pid": 57049,
+        "ppid": 1,
+        "cpu": 6.6,
+        "rss_kib": 204480,
+        "name": "WindowServer"
+      },
+      {
+        "pid": 57399,
+        "ppid": 1,
+        "cpu": 6.7,
+        "rss_kib": 429008,
+        "name": "Google Chrome"
+      },
+      {
+        "pid": 89623,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 143776,
+        "name": "TGOnDeviceInferenceProviderService"
+      },
+      {
+        "pid": 94153,
+        "ppid": 94151,
+        "cpu": 0.0,
+        "rss_kib": 1016032,
+        "name": "kev-serve-eager-baseline"
+      },
+      {
+        "pid": 99290,
+        "ppid": 57399,
+        "cpu": 21.6,
+        "rss_kib": 364080,
+        "name": "Google Chrome Helper (Renderer)"
+      }
+    ]
+  }
+}

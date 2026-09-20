@@ -90,4 +90,3 @@ test models_publish_the_base_model_signature ... ok
 test refusals_are_typed ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.91s
-

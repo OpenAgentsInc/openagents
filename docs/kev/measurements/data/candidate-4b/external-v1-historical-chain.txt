@@ -11,4 +11,3 @@ A refused item stays in the door's denominator and out of its numerator, so a do
 ## Judged by `decision-v1`, digest `gate:dff5d2023b6116a80ceeeef14707bdc2bd02fedbcfaf61be42b0d0cd653b20b1`
 
 Only `kev-4b-historical-1a0cb0a@513427d93be79763142511747cdc7aedb935f0f0a46194d5dcbe3e5b4e9ba354 asked as external-v1-authored` has rows in this store, so there is nothing to compare it against yet.
-

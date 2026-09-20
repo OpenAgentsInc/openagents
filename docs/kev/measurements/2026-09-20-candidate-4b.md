@@ -256,15 +256,49 @@ by their observed correctness. `report-kev-candidate.py` rejects duplicate
 or locked rows and mismatched suite, question, partition, or model identity.
 It preserves unanswered items in the full denominator.
 
-## Serving measurements in progress
+## Quiet-host serving measurements
 
-The first HTTP timing sweep completed 20 measured requests and three
-warm-up requests per shape, but another task began Lev measurements during
-the sweep. Its eight cases are retained as `http-eager-contended.json` and
-are not quiet-host acceptance evidence. A quiet repeat is pending.
+The fresh eager server ran on the same 128 GiB M5 Max, on AC power, with
+Metal bf16, an fp32 head, and the bounds above. The process monitor detected
+no other model measurement client or Cargo build during this run. Normal
+desktop services remained; the retained host snapshots state that condition.
+The run spans 21:18–21:20 UTC on 2026-09-20. Build and host identities are in
+`serving-build.json`.
 
-The full candidate process, including loading, all workload calls, and that
-sweep, reached 9.13 GiB maximum RSS and 24.43 GiB peak macOS footprint.
-Those are process peaks on this 128 GiB host, not a 32 GiB host proof or
-per-request working-memory measurements. The configured forward reserve
-remained 3,424 MiB and concurrency one throughout.
+Each case has three warm-up requests followed by 20 measured serial requests
+on one persistent HTTP connection. Percentiles use nearest rank. All 184
+requests succeeded. The short document has 26 state tokens; the long one
+has 578. New states append a changing ticket reference, adding nine tokens.
+Each question has three options. Reported input tokens exclude padding;
+this baseline uses none. No state cache is present.
+
+| State | Questions | State reuse | Packed tokens | HTTP p50 / p95 (ms) | Model p50 / p95 (ms) |
+| --- | ---: | --- | ---: | ---: | ---: |
+| Short | 1 | repeated | 55 | 83.5 / 84.7 | 83.1 / 84.3 |
+| Short | 1 | new | 64 | 86.8 / 87.6 | 86.3 / 87.2 |
+| Short | 5 | repeated | 171 | 192.9 / 219.0 | 192.2 / 218.4 |
+| Short | 5 | new | 180 | 204.6 / 206.2 | 203.9 / 205.6 |
+| Long | 1 | repeated | 607 | 635.1 / 682.4 | 634.3 / 681.5 |
+| Long | 1 | new | 616 | 752.1 / 779.3 | 751.2 / 778.5 |
+| Long | 5 | repeated | 723 | 952.4 / 1018.2 | 951.4 / 1017.1 |
+| Long | 5 | new | 732 | 925.2 / 985.8 | 924.1 / 984.8 |
+
+Model time covers mask construction, forward inference, and pointer readout;
+HTTP time additionally includes the local transport and server request path.
+All three warm-up timings and raw responses are retained in
+`http-eager-quiet.json`. This is a small, ordered shape sweep, not a tail
+latency guarantee or a matched request-shape comparison with upstream's
+published benchmark. New and repeated states differ in length; their
+timing differences do not measure a cache speedup.
+
+The fresh process reached **9.13 GiB maximum RSS** and **22.34 GiB peak macOS
+footprint**, including loading and these requests. The full earlier quality
+process reached 24.43 GiB footprint while serving larger Coder requests.
+Neither is a 32 GiB host proof or a per-request working-memory measurement.
+The reserved forward estimate is 3,424 MiB, admitting one variant forward
+under the 4,096 MiB budget; the host-wide cap is two.
+
+The first timing sweep overlapped another task's Lev measurements. Its
+`http-eager-contended.json` remains explicitly excluded from quiet-host
+acceptance. A separate startup attempt aborted when the monitor detected
+a build, before any timing requests were sent.
