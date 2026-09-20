@@ -685,7 +685,7 @@ fn resident_bytes(pid: u32) -> TestResult<u64> {
             .nth(1)
             .ok_or("VmRSS value is absent")?
             .parse::<u64>()?;
-        return Ok(kibibytes.saturating_mul(1_024));
+        Ok(kibibytes.saturating_mul(1_024))
     }
     #[cfg(not(target_os = "linux"))]
     {

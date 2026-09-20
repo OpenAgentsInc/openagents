@@ -537,11 +537,18 @@ fn kind_of(st: &libc::stat) -> Kind {
 }
 
 /// Device and inode from an `fstatat` result, for rename pairing.
+///
+/// `st_dev` is `i32` on macOS and `u64` on Linux, so the cast widens on one
+/// platform and is an identity on the other.
+#[allow(clippy::unnecessary_cast)]
 fn id_of(st: &libc::stat) -> Option<Id> {
     Some((st.st_dev as u64, st.st_ino))
 }
 
 /// Permission bits from an `fstatat` result.
+///
+/// `st_mode` is `u16` on macOS and `u32` on Linux.
+#[allow(clippy::unnecessary_cast)]
 fn mode_of(st: &libc::stat) -> Option<u32> {
     Some(st.st_mode as u32 & 0o7777)
 }

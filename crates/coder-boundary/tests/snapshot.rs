@@ -92,10 +92,25 @@ fn a_content_change_to_an_already_dirty_file_is_seen() {
 #[test]
 fn a_rewrite_with_identical_content_is_seen() {
     let dir = TempDir::new().unwrap();
+    let file = dir.path().join("touched.rs");
     write(dir.path(), "touched.rs", "same bytes");
     let before = Snapshot::observe(dir.path());
-    std::thread::sleep(std::time::Duration::from_millis(2));
-    write(dir.path(), "touched.rs", "same bytes");
+    // The kernel's file-time clock is coarser than the wall clock on some
+    // platforms (Linux ticks at a few milliseconds), so wait until the
+    // rewrite lands on a later timestamp rather than for a fixed interval.
+    let stamped = std::fs::metadata(&file).unwrap().modified().unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        write(dir.path(), "touched.rs", "same bytes");
+        if std::fs::metadata(&file).unwrap().modified().unwrap() != stamped {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "file time never advanced"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
     let after = Snapshot::observe(dir.path());
     assert_eq!(
         changes(&compare(&before, &after)),
