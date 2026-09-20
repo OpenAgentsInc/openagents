@@ -40,6 +40,14 @@ because it stopped waiting; the machine does not keep the process.
 finish. Delegation uses it for the checkout guard: cancelling the caller cannot
 remove a checkout while the supervisor is still terminating its writer.
 
+`Job::from_command` takes ownership of a prepared `std::process::Command`.
+This preserves a boundary wrapper's arguments, working directory, and
+complete environment policy, including `env_clear`. Supervision replaces
+standard input with null, captures both output streams, and establishes its
+own process group. The job owns the command and is no longer `Clone`.
+The prepared-command regression checks directory and environment preservation;
+all 25 supervisor tests and its doctest pass under Rust 1.97.1.
+
 A job that exits on its own is the same contract read the other way.
 Whatever is still in the group is a descendant that outlived the job it
 belongs to, so the group is killed there too — without a grace period, since

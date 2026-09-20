@@ -35,11 +35,9 @@ const CHUNK: usize = 8 * 1024;
 /// assert_eq!(ended.stdout.text.trim(), "hello");
 /// # }
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Job {
-    program: OsString,
-    args: Vec<OsString>,
-    workdir: Option<PathBuf>,
+    command: std::process::Command,
     limits: Limits,
 }
 
@@ -49,10 +47,19 @@ impl Job {
     /// otherwise.
     #[must_use]
     pub fn new(program: impl Into<OsString>) -> Self {
+        Self::from_command(std::process::Command::new(program.into()))
+    }
+
+    /// Supervises a prepared command, preserving its arguments, working
+    /// directory, and environment policy, including `env_clear`.
+    ///
+    /// The supervisor replaces standard input with null, captures both
+    /// output streams, and creates its own process group. A filesystem
+    /// boundary can prepare its wrapper before handing ownership here.
+    #[must_use]
+    pub fn from_command(command: std::process::Command) -> Self {
         Job {
-            program: program.into(),
-            args: Vec::new(),
-            workdir: None,
+            command,
             limits: Limits::within(Duration::from_secs(15)),
         }
     }
@@ -60,7 +67,7 @@ impl Job {
     /// Adds one argument.
     #[must_use]
     pub fn arg(mut self, arg: impl Into<OsString>) -> Self {
-        self.args.push(arg.into());
+        self.command.arg(arg.into());
         self
     }
 
@@ -71,14 +78,14 @@ impl Job {
         I: IntoIterator<Item = A>,
         A: Into<OsString>,
     {
-        self.args.extend(args.into_iter().map(Into::into));
+        self.command.args(args.into_iter().map(Into::into));
         self
     }
 
     /// Runs the job somewhere other than this process's working directory.
     #[must_use]
     pub fn in_directory(mut self, workdir: impl Into<PathBuf>) -> Self {
-        self.workdir = Some(workdir.into());
+        self.command.current_dir(workdir.into());
         self
     }
 
@@ -131,9 +138,8 @@ impl Job {
 /// Spawns the job, drains it, ends it, and reaps it.
 async fn supervise(job: Job, dropped: oneshot::Receiver<()>) -> Ended {
     let started = Instant::now();
-    let mut command = Command::new(&job.program);
+    let mut command = Command::from(job.command);
     command
-        .args(&job.args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -142,9 +148,6 @@ async fn supervise(job: Job, dropped: oneshot::Receiver<()>) -> Ended {
         // runtime itself goes away mid-cleanup.
         .process_group(0)
         .kill_on_drop(true);
-    if let Some(workdir) = &job.workdir {
-        command.current_dir(workdir);
-    }
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {

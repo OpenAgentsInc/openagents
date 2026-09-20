@@ -53,3 +53,25 @@ async fn a_cancelled_caller_does_not_release_a_live_jobs_resource() {
         Some(libc::ESRCH)
     );
 }
+
+#[tokio::test]
+async fn a_prepared_command_keeps_its_directory_and_environment_policy() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut command = std::process::Command::new("/bin/sh");
+    command.env_clear().env("BOUNDARY_MARKER", "kept");
+    command.current_dir(directory.path()).args([
+        "-c",
+        "test -z \"${HOME+x}\" && test \"$BOUNDARY_MARKER\" = kept && pwd",
+    ]);
+    let ended = Job::from_command(command)
+        .bounded(Limits::within(Duration::from_secs(5)))
+        .run()
+        .await;
+    assert_eq!(ended.ending, supervise::Ending::Exited(Some(0)));
+    assert_eq!(
+        std::path::Path::new(ended.stdout.text.trim())
+            .canonicalize()
+            .unwrap(),
+        directory.path().canonicalize().unwrap(),
+    );
+}
