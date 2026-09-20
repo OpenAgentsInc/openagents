@@ -190,8 +190,15 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
       )
   )
   AND (
-      $11::text IS NULL
-      OR e.search_vector @@ plainto_tsquery('simple'::regconfig, $11)
+      $11::text[] IS NULL
+      OR (
+          e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM unnest($11::text[]) term
+              WHERE position(term IN lower(e.content COLLATE "C")) = 0
+          )
+      )
   )
   AND NOT EXISTS (
       SELECT 1
@@ -206,11 +213,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
             )
       )
   )
-ORDER BY
-    CASE WHEN $11::text IS NOT NULL
-         THEN ts_rank(e.search_vector, plainto_tsquery('simple'::regconfig, $11))
-    END DESC NULLS LAST,
-    e.created_at DESC, e.id ASC
+ORDER BY e.created_at DESC, e.id ASC
 LIMIT $8
 "#;
 
@@ -283,8 +286,15 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
       )
   )
   AND (
-      $9::text IS NULL
-      OR e.search_vector @@ plainto_tsquery('simple'::regconfig, $9)
+      $9::text[] IS NULL
+      OR (
+          e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM unnest($9::text[]) term
+              WHERE position(term IN lower(e.content COLLATE "C")) = 0
+          )
+      )
   )
 ORDER BY e.id
 LIMIT $10

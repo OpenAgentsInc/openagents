@@ -1403,10 +1403,7 @@ impl Store {
         let tags_json = serde_json::to_string(&tag_map)
             .map_err(|error| StoreError::Serialization(error.to_string()))?;
         let read_pubkeys = read_pubkeys.map(<[String]>::to_vec);
-        let search = filter
-            .search
-            .as_ref()
-            .map(|search| search_terms(search).join(" "));
+        let search = filter.search.as_deref().map(search_terms);
         let params: &[&(dyn ToSql + Sync)] = &[
             &ids,
             &authors,
@@ -1481,10 +1478,7 @@ impl Store {
                 .collect::<BTreeMap<_, _>>();
             let tags_json = serde_json::to_string(&tag_map)
                 .map_err(|error| StoreError::Serialization(error.to_string()))?;
-            let search = filter
-                .search
-                .as_ref()
-                .map(|search| search_terms(search).join(" "));
+            let search = filter.search.as_deref().map(search_terms);
             let params: &[&(dyn ToSql + Sync)] = &[
                 &filter_ids,
                 &authors,

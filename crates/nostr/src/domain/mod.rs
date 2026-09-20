@@ -36,7 +36,9 @@ pub use expanded::{
     GroupAction, GroupMetadata, HttpAuth, HttpAuthClaim, RelaySigner, parse_http_authorization,
     parse_http_authorization_claim, parse_http_authorization_hash,
 };
-pub use filter::{Filter, matches_any, search_terms};
+pub use filter::{
+    Filter, SEARCH_EXCLUDED_KINDS, matches_any, search_excludes_kind, search_matches, search_terms,
+};
 pub use replacement::{
     EventClass, ReplacementAddress, ReplacementDecision, compare_replacement,
     compare_replacement_order,

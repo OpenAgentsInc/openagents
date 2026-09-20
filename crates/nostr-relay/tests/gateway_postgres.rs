@@ -1470,6 +1470,109 @@ fn search_and_count_contract(address_one: SocketAddr, address_two: SocketAddr) {
         read_json(&mut reader),
         json!(["COUNT", "count-search", {"count": 1}])
     );
+
+    // Differential fixture: the same corpus published before and after the
+    // subscription yields the same members through replay and live
+    // delivery. The contract is ASCII-case-insensitive substring matching
+    // with gift wraps excluded, so `cat` finds `catwalk` and `Cat,` in both
+    // paths, and neither finds `chát`, `ÇAT`, or wrapped ciphertext.
+    let corpus: [(u16, &str); 8] = [
+        (1, "cat"),
+        (1, "catwalk"),
+        (1, "Cat, sat."),
+        (1, "concatenate"),
+        (1, "dog"),
+        (1, "chát"),
+        (1, "ÇAT"),
+        (1_059, "cat"),
+    ];
+    let expected = ["cat", "catwalk", "Cat, sat.", "concatenate"];
+    // Each corpus wraps to its own recipient, within the per-recipient
+    // gift-wrap rate; the live wrap is addressed to the reader itself.
+    let corpus_event = |secret_byte: u8, recipient: u8, kind: u16, content: &str| {
+        let tags = if kind == 1_059 {
+            vec![Tag::new(vec!["p".into(), pubkey(recipient)])]
+        } else {
+            Vec::new()
+        };
+        signed_event(secret_byte, now(), kind, tags, content)
+    };
+    let mut before = Vec::new();
+    for (kind, content) in corpus {
+        let event = corpus_event(21, 23, kind, content);
+        send_json(&mut publisher, json!(["EVENT", event]));
+        let response = read_json(&mut publisher);
+        assert_eq!(response[2], true, "{response}");
+        before.push(event);
+    }
+    send_json(&mut reader, json!(["REQ", "cat", {"search": "cat"}]));
+    let mut replayed = Vec::new();
+    loop {
+        let message = read_json(&mut reader);
+        if message == json!(["EOSE", "cat"]) {
+            break;
+        }
+        assert_eq!(message[0], "EVENT");
+        assert_eq!(message[1], "cat");
+        let event: Event = serde_json::from_value(message[2].clone()).unwrap();
+        assert!(
+            before.iter().any(|published| published.id == event.id),
+            "replayed a foreign event: {}",
+            event.content
+        );
+        replayed.push(event.content);
+    }
+    replayed.sort();
+    let mut expected_sorted = expected.map(str::to_owned).to_vec();
+    expected_sorted.sort();
+    assert_eq!(replayed, expected_sorted);
+
+    let mut live_publisher = connect_client(address_one);
+    let challenge = expect_auth_challenge(&mut live_publisher);
+    authenticate(&mut live_publisher, 22, &challenge);
+    let mut after = Vec::new();
+    for (kind, content) in corpus {
+        let event = corpus_event(22, 20, kind, content);
+        send_json(&mut live_publisher, json!(["EVENT", event]));
+        let response = read_json(&mut live_publisher);
+        assert_eq!(response[2], true, "{response}");
+        after.push(event);
+    }
+    let sentinel = corpus_event(22, 20, 1, "cat sentinel");
+    send_json(&mut live_publisher, json!(["EVENT", sentinel.clone()]));
+    assert_eq!(read_json(&mut live_publisher)[2], true);
+    let mut delivered = Vec::new();
+    loop {
+        let message = read_json(&mut reader);
+        assert_eq!(message[0], "EVENT");
+        assert_eq!(message[1], "cat");
+        let event: Event = serde_json::from_value(message[2].clone()).unwrap();
+        if event.id == sentinel.id {
+            break;
+        }
+        assert!(
+            after.iter().any(|published| published.id == event.id),
+            "delivered a foreign event: {}",
+            event.content
+        );
+        delivered.push(event.content);
+    }
+    delivered.sort();
+    assert_eq!(delivered, replayed);
+    send_json(&mut reader, json!(["CLOSE", "cat"]));
+
+    send_json(&mut reader, json!(["REQ", "accent", {"search": "chát"}]));
+    let mut accented = Vec::new();
+    loop {
+        let message = read_json(&mut reader);
+        if message == json!(["EOSE", "accent"]) {
+            break;
+        }
+        let event: Event = serde_json::from_value(message[2].clone()).unwrap();
+        accented.push(event.content);
+    }
+    assert_eq!(accented, vec!["chát".to_owned(), "chát".to_owned()]);
+    live_publisher.close(None).unwrap();
     reader.close(None).unwrap();
     publisher.close(None).unwrap();
 }

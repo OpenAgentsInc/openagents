@@ -91,9 +91,15 @@ is not required for these operations.
   the configured query-cost bound; a request too expensive to prove exactly
   is closed rather than approximated. Gift-wrap privacy applies to COUNT.
 - NIP-50 `search` is limited to 256 characters and must contain at least one
-  non-extension word. Postgres uses the existing `simple` full-text vector and
-  ranks matching rows. Unknown `key:value` extensions are ignored. Search
-  shares the ordinary result and query-cost limits.
+  non-extension word. Unknown `key:value` extensions are ignored. One
+  contract serves replay and live delivery: every remaining term must occur
+  as a substring of the content, ASCII letters fold case in both the terms
+  and the content, and non-ASCII text matches exactly, so `cat` finds
+  `catwalk` and `Cat,` but not `chát`. Gift-wrap and access-gated kinds
+  (`SEARCH_EXCLUDED_KINDS` in `crates/nostr`) never match in either path.
+  Results are ordered by `created_at` like any other query, not ranked. The
+  matching is independent of the database collation. Search shares the
+  ordinary result and query-cost limits.
 
 ## Relay lists and watched drafts
 

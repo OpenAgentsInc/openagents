@@ -733,9 +733,7 @@ async fn query_history(
         return Err(StoreError::QueryCancelled);
     }
     let high_water = store.latest_ingest_seq().await?;
-    let search_order = filters.iter().any(|filter| filter.search.is_some());
     let mut events = HashMap::new();
-    let mut order = Vec::new();
     let per_filter = max_results.div_ceil(filters.len().max(1));
     for filter in filters {
         let rows = store
@@ -749,30 +747,17 @@ async fn query_history(
             )
             .await?;
         for stored in rows {
-            let id = stored.event.id.clone();
-            if let std::collections::hash_map::Entry::Vacant(entry) = events.entry(id.clone()) {
-                order.push(id);
-                entry.insert(stored);
-            }
+            events.entry(stored.event.id.clone()).or_insert(stored);
         }
     }
-    let mut events = if search_order {
-        order
-            .into_iter()
-            .filter_map(|id| events.remove(&id))
-            .collect::<Vec<_>>()
-    } else {
-        events.into_values().collect::<Vec<_>>()
-    };
-    if !search_order {
-        events.sort_by(|left, right| {
-            right
-                .event
-                .created_at
-                .cmp(&left.event.created_at)
-                .then_with(|| left.event.id.cmp(&right.event.id))
-        });
-    }
+    let mut events = events.into_values().collect::<Vec<_>>();
+    events.sort_by(|left, right| {
+        right
+            .event
+            .created_at
+            .cmp(&left.event.created_at)
+            .then_with(|| left.event.id.cmp(&right.event.id))
+    });
     events.truncate(max_results);
     Ok(HistoryResult { high_water, events })
 }

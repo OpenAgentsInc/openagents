@@ -81,11 +81,10 @@ impl Filter {
                     event_key == key && values.iter().any(|v| v == event_value)
                 })
             })
-            && self.search.as_ref().is_none_or(|search| {
-                let content = event.content.to_lowercase();
-                let terms = search_terms(search);
-                !terms.is_empty() && terms.iter().all(|term| content.contains(term))
-            })
+            && self
+                .search
+                .as_ref()
+                .is_none_or(|search| search_matches(search, event.kind, &event.content))
     }
 }
 
@@ -217,10 +216,70 @@ impl Serialize for Filter {
 
 /// NIP-50 extension tokens are ignored; remaining words are matched using
 /// Postgres' simple text-search configuration by the store.
+/// Event kinds whose content never enters search, live or historical:
+/// gift-wrap ciphertext and access-gated Block records. This list is the
+/// one the relay's `search_vector` migration and query predicates use.
+pub const SEARCH_EXCLUDED_KINDS: [u16; 9] =
+    [1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200];
+
+pub fn search_excludes_kind(kind: u16) -> bool {
+    SEARCH_EXCLUDED_KINDS.contains(&kind)
+}
+
+/// The NIP-50 search contract this relay implements, for both replay and
+/// live delivery: every whitespace-separated term that is not a
+/// `key:value` extension must occur as a substring of the content. Letters
+/// `A`–`Z` fold to lowercase in the terms and the content; non-ASCII text
+/// matches exactly. Kinds in [`SEARCH_EXCLUDED_KINDS`] never match.
+pub fn search_matches(search: &str, kind: u16, content: &str) -> bool {
+    if search_excludes_kind(kind) {
+        return false;
+    }
+    let terms = search_terms(search);
+    if terms.is_empty() {
+        return false;
+    }
+    let content = content.to_ascii_lowercase();
+    terms.iter().all(|term| content.contains(term))
+}
+
+/// The search terms a NIP-50 `search` string names, ASCII-lowercased, with
+/// `key:value` extensions removed.
 pub fn search_terms(search: &str) -> Vec<String> {
     search
         .split_whitespace()
         .filter(|term| !term.contains(':'))
-        .map(str::to_lowercase)
+        .map(str::to_ascii_lowercase)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{search_matches, search_terms};
+
+    #[test]
+    fn search_is_ascii_case_insensitive_substring_matching() {
+        assert!(search_matches("cat", 1, "cat"));
+        assert!(search_matches("cat", 1, "catwalk"));
+        assert!(search_matches("cat", 1, "Cat, sat."));
+        assert!(search_matches("CAT walk", 1, "the catwalk"));
+        assert!(!search_matches("cat", 1, "dog"));
+        assert!(!search_matches("cat", 1, "chát"));
+        assert!(!search_matches("cat", 1, "ÇAT"));
+        assert!(search_matches("chát", 1, "un chát"));
+        assert!(!search_matches("chát", 1, "CHÁT"));
+    }
+
+    #[test]
+    fn search_never_reads_excluded_kinds() {
+        assert!(!search_matches("cat", 1_059, "cat"));
+        assert!(!search_matches("cat", 30_078, "cat"));
+        assert!(search_matches("cat", 30_023, "cat"));
+    }
+
+    #[test]
+    fn search_terms_drop_extensions() {
+        assert_eq!(search_terms("Cat  nsfw:false Dog"), vec!["cat", "dog"]);
+        assert!(search_terms("nsfw:false").is_empty());
+    }
 }
