@@ -307,10 +307,12 @@ These four land together because they are one contract: a tenant identity,
 the artifact it may reach, the receipt a call produces, and the quota the
 call settles against.
 
-6. **The tenant-artifact registry** (openagents#9474). A versioned binding
-   from stable tenant identity to allowed doors, artifact digests, and
-   execution configuration. Done when a swapped artifact under a known
-   name is detected and refused until the registry is updated.
+6. **The tenant-artifact registry** (openagents#9474, landed in
+   `crates/tenancy`). A versioned, self-digested manifest binds tenant
+   identity and credential references to allowed doors, artifact digests,
+   and execution configuration; authorization returns an admission
+   snapshot that survives updates, and a swapped artifact under a known
+   name is refused until a registry update authorizes it.
 7. **The execution receipt** (openagents#9471). A versioned receipt
    binding request and attempt identity, tenant reference, requested and
    actual artifact/execution identities, outcome, and timing — for every
@@ -385,8 +387,9 @@ contract, both serving binaries, the adapter format, artifact identity,
 the gym's suites, gates, digests, ledger, and store, and the relay's auth,
 capability, and job lanes. Landed for this product: caller-suite intake,
 the measured report, the Rust suite builder, report completeness, and
-report commitments. Filed and open: the caller pilot, the four serving
-foundations,
+report commitments. Filed and open: the caller pilot, the serving
+foundations (the tenant-artifact registry landed; execution receipts,
+per-key authentication, and the quota ledger are open),
 the gateway and its docs, the relay lane, the admission contract and
 training pipeline, and the public snapshot — in the order above, per
 openagents#9481. Deferred by the operator and not restarted here: the

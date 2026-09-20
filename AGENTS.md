@@ -60,6 +60,12 @@ uses, and marks which are implemented and which are only specified.
   and the terminal that reads them. It scores whatever answers
   `POST /v1/systemone` and knows nothing else about the door. Read
   `docs/gym/` before changing a schema or a gate.
+- `crates/tenancy` — the tenant-to-artifact registry: a versioned,
+  self-digested manifest binding a tenant identity to the door names it may
+  reach, each bound to an artifact digest and its execution configuration.
+  Authorization returns an admission snapshot — an update cannot relabel a
+  call in flight — and every revision stays archived under its digest so an
+  earlier answer can always be explained.
 - `crates/jev` — the Rust SDK for TypeSafe's System One API.
 - `crates/kev` — the Rust port of the kev decision model: packed prefill,
   block-causal question isolation, pointer readout, and `kev-serve`, a

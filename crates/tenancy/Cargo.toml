@@ -1,0 +1,18 @@
+[package]
+name = "tenancy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The tenant-to-artifact registry: a versioned binding from tenant identity to the doors, artifact digests, and execution configuration a request may be served under."
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
