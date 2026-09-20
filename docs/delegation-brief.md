@@ -26,7 +26,7 @@ the burndown that goal exists for.
 | ATIF traces | Every session records itself. Decision calls are first-class. |
 | Headless turns | `coder -p`, and both modes share one turn so they cannot drift. |
 | Delegation | Six parallel Devin sessions, 6 of 6 correct, 4.2x over sequential. |
-| Capability probe | Three states. A present executor can still refuse a directory. |
+| Capability probe | Shared host-approved probes distinguish present, absent, unavailable, unprobed, and unknown. |
 | Program runtime | Runs `delegate-fan-out` from its definition. Zero faults against the golden. |
 | Relay transport | Proven against production, 470 ms round trip. A worker exists. |
 | CoderBench | Runs an episode, refuses when the machine is wrong, judges the trace three-valued. |
@@ -61,16 +61,23 @@ second vocabulary. Two consequences will surprise you:
 and `reqwest` into its build graph. One vocabulary was judged worth the
 weight; moving `Verdict` somewhere lighter is a reasonable future change.
 
-### 1. Nothing is in flight
+### 1. Reconcile the remaining prerequisites
 
-Every blocker listed on #9404 has landed. The path runs end to end from a
-sentence. What remains is below, in order.
+The sentence-driven path has run, but #9427 remains a prerequisite to unattended
+work. Shared capability trust landed in `4010baadbc`; the filesystem boundary
+and independent snapshots landed as a component in `b14cfedb83`. Runtime and
+CoderBench integration, actual adapter verification, and the observed graded
+golden remain required. Check current issue and worktree state before starting
+another implementation of these pieces.
 
 ### 2. [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427), held on purpose
 
-Read-only is declared and not enforced. It was held because it rewrites
-`crates/coder/src/delegate.rs`, which #9416 was rewriting at the same time.
-**#9416 has landed and that file is free — this is the next thing to start.**
+Read-only is still not enforced by the integrated delegation path at
+`4010baadbc`. The earlier conflict with #9416 is resolved. Wire the landed
+boundary into delegation, keep its resources alive through process cleanup,
+retain writing worktrees for review, and make CoderBench observe workspace
+changes independently. Manifest approval permits a probe; it does not establish
+that the executor enforces its declared bounds.
 
 Note `shell::run` gained a `Permit` parameter from #9415 and the bounded
 form is now `run_within(proposal, permit, wall)`.
@@ -266,7 +273,13 @@ test and a recording of something else doing what it should do.
 `1843fa6c18` and reproduced failures through public APIs **while the
 applicable test suites passed**. Its 25 findings are filed as #9415–#9433.
 
-A01 to A04 are fixed. A09's UTF-8 half is fixed for the direct door as a
+A01 to A04 are fixed. A05 remains open: a follow-up wire round trip preserves
+Choice's raw selection but changes Noul and Score selections while mapped
+metrics retain the original outcome. See the
+[reproduction](audits/2026-09-19-codebase-audit/verification.md#a05-the-fixed-selection-does-not-survive-every-wire-shape).
+Historical metric re-derivation alone cannot close that contract gap.
+
+A09's UTF-8 half is fixed for the direct door as a
 side effect of bounding it — the old loop ran `String::from_utf8_lossy` per
 byte chunk, so a character split across a chunk boundary became replacement
 characters in the answer **and in every trace of it**. The rest of A09–A11

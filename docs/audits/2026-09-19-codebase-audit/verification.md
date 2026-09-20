@@ -195,6 +195,43 @@ newly selected choice are different quantities and must be identified. Changes
 to semantics or adopted values require updated gate provenance and digests;
 unchanged values need an explicit derivation check, not an automatic withdrawal.
 
+### A05: the fixed selection does not survive every wire shape
+
+A follow-up at `4010baadbc` on 2026-09-20 found that the fixed-selection
+implementation covers Choice but leaves Noul and Score inconsistent across
+calibration and serving. The retained [wire probe](calibration-wire.rs) calls
+`Map::apply_distribution`, `lev::estimator::answer`, JSON serialization,
+`jev::SystemOneResponse::decode`, and `gym::eval::read_answer`. It compares the
+served answer with a known target and the corresponding mapped observation.
+It invokes no model and needs no credentials.
+
+A map fitted on one incorrect observation at `0.8` gives the selected option
+`0.25`. The probe reports:
+
+```text
+kind=choice raw_selected=yes mapped_metric_correct=false wire_selected=yes wire_correct=false
+kind=noul raw_selected=yes mapped_metric_correct=false wire_selected=no wire_correct=true
+kind=score raw_selected=0 mapped_metric_correct=false wire_selected=1 wire_correct=true
+```
+
+Choice carries an explicit selected option. Noul carries only the probability
+of yes, which the evaluator thresholds again. Score carries a distribution,
+which the evaluator takes an argmax over again. Passing the original selection
+to `lev::estimator::answer` therefore does not preserve it for those two shapes.
+The existing fixed-selection serving regression exercises Choice only.
+
+These synthetic cases establish a remaining contract defect, not a change to
+historical measurement rows. #9419 must resolve it across serving and metrics;
+reproducing historical numbers alone is insufficient to close the issue. The
+[issue evidence](https://github.com/OpenAgentsInc/openagents/issues/9419#issuecomment-5748060751)
+also records the broader passing suites that did not detect it.
+
+To run this narrower probe, use the temporary-package procedure above with
+`calibration-wire.rs` as `src/main.rs` and add `lev` to the path dependency list.
+Run it with Rust `1.97.1` and a Cargo target directory dedicated to the source
+checkout. The probe prints what happened rather than asserting that these
+incorrect outcomes must remain.
+
 ### A07 and the Kev comparison rows
 
 A direct comparison of `crates/gym/results/support-v2-three-way.jsonl` with the
