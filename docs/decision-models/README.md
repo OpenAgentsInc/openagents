@@ -141,9 +141,9 @@ emitted by the door from an input-conditioned signal and scored under a cost
 matrix the workload supplies through the gate's budget. It names the
 measurement that would settle it before anything is built (openagents#9383).
 
-[`decision-api.md`](decision-api.md) is a product spec with no
-implementation yet: an open decision API over `POST /v1/systemone` — every
-classification shape on one endpoint, private, dedicated, and trained lanes —
-mapped onto the serving binaries, the relay lanes, and the gym's measurement
-plane that already exist, with the billing, multi-tenant, and training-path
-pieces named as missing and the build ordered into fileable issues.
+[`decision-api.md`](decision-api.md) specifies the complete Decision API
+product: native judgments, batch classification, review policies, durable
+jobs, agent tools, accounts, billing, customer interfaces, and portable
+deployment. It separates existing serving and measurement tools from planned
+service features, maps each workstream to its issue, and defines the evidence
+required for trained endpoints, image decisions, and confidential inference.

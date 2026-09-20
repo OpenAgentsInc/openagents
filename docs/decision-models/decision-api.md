@@ -1,396 +1,667 @@
-# An open decision API
+# OpenAgents Decision API
 
-This document specifies a product this repository could host: an API where a
-caller sends a state and a set of typed questions and gets back typed answers
-with probabilities. It is a design, not an implementation. Every claim about
-what exists is named beside the code or record that backs it; what does not
-exist is named as missing, and the ordered work list at the end is written to
-be filed as issues.
+The Decision API turns application state into typed judgments that code can
+use: probabilities, choices, rubric scores, and compositions of those
+primitives. The product includes the inference service, batch execution,
+agent tools, customer accounts, commercial controls, and the evidence needed
+to evaluate a decision on a caller's own workload.
 
-Working name: the OpenAgents Decision API. "Classifier" undersells it —
-classification is a `Choice`; the contract also prices confidence (`Noul`)
-and ranks positions on a rubric (`Score`), so every classification shape a
-caller has lands on the same endpoint.
+This document specifies the target product. It does not announce a hosted
+service or make proposed features available. The serving binaries and
+measurement tools exist; most service and customer features remain open
+work. The [delivery plan](#delivery-plan-and-issue-ownership) identifies an
+owner for every workstream. Product tracker: [#9481](https://github.com/OpenAgentsInc/openagents/issues/9481).
 
-## Why the contract is the product
+Product implementations follow [the repository contract](../../AGENTS.md):
+Rust, with the existing Swift bridge exception for Apple's model. Web
+interfaces, gateways, workers, CLI tools, and MCP servers follow that rule.
+Client packaging must resolve the language boundary before adding another
+product language. Verification runs manually or on non-GitHub infrastructure
+under [the verification guide](../verification.md).
 
-A hosted language model can classify anything. The reason to make a network
-call to a decision model instead is the same reason `crates/coder` makes one:
-reading the input is the expensive part, and the answer has to come back as a
-number over a fixed option set, not prose to be re-parsed. State in, typed
-judgments out, no text generated, no answer leaking into the next question.
+## Existing foundation and evidence
 
-The wire contract is `POST /v1/systemone`, and `crates/jev` is the client.
-Everything below serves that contract or scores it; the API is one contract
-with several doors behind it, which is what this repository already runs.
-
-## The wire surface
-
-Two endpoints, both already served by `kev-serve` and `lev-serve`:
-
-```text
-POST /v1/systemone
-GET  /v1/models
-```
-
-A request carries a `state` and a map of named `questions`. A question is
-`type`, `instructions`, and `criteria` — the exact option set, supplied per
-request. A response carries `model`, `answers` keyed by question name, and
-`usage`. Every answer is typed:
-
-| Type | Asks | Answer |
-| --- | --- | --- |
-| `noul` | Is this true? | `noul`, a probability of yes |
-| `choice` | Which of these options? | `choice`, `confidence`, `probabilities` |
-| `score` | Which level on this ordered rubric? | `score`, `confidence`, `legend`, `probabilities` |
-
-`GET /v1/models` returns model cards carrying `artifact_identity` and
-`execution` (`docs/gym/model-identity.md`). A card is the serving process's
-authenticated claim about what it loaded — enough to detect a substitution
-and to attribute a result — but not remote attestation of which weights
-actually executed. That distinction holds everywhere this document says
-"verify".
-
-### Every classification shape on one API
-
-The caller supplies the option set at request time and the door's readout is
-a pointer over it, so no retraining is needed for a new label set — and every
-classification task a caller has is a composition of the three primitives:
-
-| The caller wants | The question is |
+| Capability | Current evidence and limit |
 | --- | --- |
-| Single-label classification | One `choice` over the labels |
-| Multi-label tagging | One `noul` per label, all in one request |
-| Binary flags and filters | One `noul` |
-| Severity, priority, tiering | One `score` over an ordered rubric |
-| Confidence-gated automation | Any of the above, read the `probabilities`; the `abstain` design in [`abstention.md`](abstention.md) adds the door-side "do not act on this" signal |
-| Routing across many dimensions | One question per dimension, batched in one call |
+| Native typed decisions | `crates/jev` implements the client contract; `kev-serve` and `lev-serve` serve `POST /v1/systemone` and `GET /v1/models`. |
+| Local serving | [Kev](../kev/README.md) runs the open model locally; [Lev](../lev/README.md) reaches Apple's on-device runtime through the Swift helper. Neither binary establishes the hosted tenant service. |
+| Artifact and execution identity | [Model identity](../gym/model-identity.md) records the serving process's claim about loaded artifacts and configuration. Authentication can make that claim attributable; the card alone is not remote execution attestation. |
+| Caller-owned evaluation | [Measured records](../gym/measured-records.md) covers `gym build`, evaluation, reports, and receipt-chain verification. Intake, reports, and Rust intake are landed: [#9464](https://github.com/OpenAgentsInc/openagents/issues/9464), [#9465](https://github.com/OpenAgentsInc/openagents/issues/9465), and [#9477](https://github.com/OpenAgentsInc/openagents/issues/9477). |
+| Report coverage and commitments | [Measured records](../gym/measured-records.md) now includes expected coverage, `gym report --commitment`, and `gym verify --commitment`; [#9478](https://github.com/OpenAgentsInc/openagents/issues/9478) and [#9479](https://github.com/OpenAgentsInc/openagents/issues/9479) are landed. Authenticity still depends on the independently trusted channel that carries the commitment. |
+| Relay infrastructure | Authentication, capability manifests, and Coder jobs exist. A versioned decision job, shared authorization/accounting, and decision-worker admission remain open: [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469) and [#9470](https://github.com/OpenAgentsInc/openagents/issues/9470). |
+| Training ingredients | Adapter formats, artifact locks, retained training tooling, and Gym exist. Tenant training and cross-artifact admission remain open: [#9472](https://github.com/OpenAgentsInc/openagents/issues/9472) and [#9473](https://github.com/OpenAgentsInc/openagents/issues/9473). |
 
-Batching is the request itself: a request's question map carries many
-questions over one state, and `kev`'s packed prefill with block-causal
-question isolation exists to keep that cheap (`docs/kev/architecture.md`).
-Many states is many requests, or a bulk lane with a per-tenant queue — see
-"lanes" below.
+Latency evidence applies to its recorded workload and host. Hosted Jev's
+quiet internet p50 is about 100 ms
+([record](../gym/measurements/2026-09-20-hosted-jev-quiet-latency.md));
+local CPU Kev's is about 280–350 ms
+([record](../gym/measurements/2026-09-20-kev-quiet-latency.md)).
+A candidate 4B door ranges from about 84–952 ms across request shapes
+([record](../kev/measurements/2026-09-20-candidate-4b.md)). These are not
+service-level commitments, bulk-throughput measurements, or evidence for a
+different model.
 
-### Failure semantics
+## Native decision contract
 
-The three-way distinction the gym already enforces is the API's error model:
+The native API remains `POST /v1/systemone`. A request carries `state`
+and named `questions`. Each question defines its `type`, `instructions`,
+and `criteria`. A response carries model identity, named typed answers,
+and usage. Preserve existing client compatibility when adding service
+metadata, receipts, or version negotiation.
 
-- **Answered** — a typed answer came back.
-- **Refused** — the door declined, with a code. Lev's guardrail refusals are
-  the example; a refusal is a result about the door, recorded, and never
-  silently swapped for another door's answer.
-- **Unavailable** — a transport or capacity failure (`429`, `503` with
-  `Retry-After`). Overload never silently switches the model or the lane.
-
-A caller that paid for `kev-0.6b` at a stated `artifact_identity` gets that
-artifact's answer or a refusal — never a smaller door's answer wearing the
-same status code.
-
-## The product properties, mapped
-
-### Private inference
-
-The doors are already private in the strongest sense: `kev-serve` and
-`lev-serve` run on the caller's own hardware, and the open weights pin their
-content digests. For a hosted deployment the claim becomes narrower and more
-honest: single-tenant processes, a stated retention policy, and a
-`GET /v1/models` card that lets the caller verify which weights answered.
-"Your text never reaches a shared provider" is free when the provider is the
-caller; when it is us, the honest version is "your text reaches one process,
-its identity is published, and retention is stated."
-
-### Faster inference
-
-No tokens are generated, so latency is a forward pass. Measured, not
-asserted — and a latency number is meaningless without its workload,
-checkpoint, and host. Hosted Jev answers in a p50 of ~100 ms over the
-public internet
-([`../gym/measurements/2026-09-20-hosted-jev-quiet-latency.md`](../gym/measurements/2026-09-20-hosted-jev-quiet-latency.md));
-a local `kev` door on a quiet CPU host answers in a p50 of ~280 to 350 ms
-([`../gym/measurements/2026-09-20-kev-quiet-latency.md`](../gym/measurements/2026-09-20-kev-quiet-latency.md));
-a candidate 4B door's quiet-host p50 ranged from ~84 to ~952 ms across
-request shapes
-([`../kev/measurements/2026-09-20-candidate-4b.md`](../kev/measurements/2026-09-20-candidate-4b.md)).
-"Fast" is a property of a named configuration on a named workload, never
-of the API in general.
-
-### Dedicated endpoints
-
-A dedicated endpoint is a name bound to a published identity, not a routing
-alias: the card's `artifact_identity` and `execution` fields say exactly what
-is loaded, and a change produces a different recorded identity. Dedicated
-capacity is a named door — one process, pinned weights, a tenant key — and
-at scale a NIP-CJ job lane through the relay, the pattern `coder-worker`
-already uses to answer job requests.
-
-### Trained endpoints
-
-The trainable unit is small and already versioned: a LoRA adapter plus a
-pointer head, the shape `docs/kev/README.md` describes. A trained endpoint is
-an adapter fitted to one caller's labelled decisions, served as its own door,
-with its artifact digest published the moment it exists. The caller can check
-it is being served what was trained — as a claim bound to the result, per the
-identity caveat above.
-
-Admission is an explicit comparison, not the regression guard: `gym regress`
-deliberately refuses a changed artifact identity, and a base model plus a
-trained adapter is exactly that. Promotion is a declared candidate-versus-base
-run — identities frozen up front, improvement required on the named metric,
-mandatory guards on family errors, calibration, refusals, and deployment
-budgets, and an `unverifiable` outcome never activates anything
-(`docs/gym/regression.md` stays what it is: the same-identity guard for
-regressions). An adapter that does not beat the base door on the caller's own
-development partition does not ship. The ingredients exist: the adapter
-format, the artifact lock and digest machinery
-(`scripts/fetch-kev-artifacts.py`, `docs/kev/artifacts.md`), and the
-measurement plane. The missing pieces are training as a service and the
-admission record, both specified in the work list below.
-
-### A self-serve API
-
-The relay stack is the self-serve shape already: NIP-42 authenticates a
-caller by key, a `kind:30180` capability manifest in `capabilities/`
-describes what is being offered, and a `kind:30182` program or a NIP-CJ job
-request is the unit of work. No account, no call booking — publish a
-manifest, hold a key, call the door. Quotas and paid tiers do not exist
-today; what exists is authentication, discovery, and a job lane. A quota
-ledger is usage accounting, not payment collection — pricing, invoicing,
-and paid-service terms are unspecified until a concrete commercial path
-exists, and nothing here should read as a billing design.
-
-### Better, and measured the way it is read here
-
-This is where an open version can be stronger than a leaderboard — and
-where its claims have to be stated precisely. Every number a door earns
-here comes from `crates/gym`: a suite pinned by digest, a question set
-pinned by digest, a gate pinned by digest, and a receipt-chained result
-store. What the chain proves is internal consistency: a row edited after
-the fact digests to a different receipt, and a row inserted or removed in
-the middle breaks the link to its successor. What it does not prove, on
-its own, is that the file is whole or old — a writer holding the file can
-recompute an entire chain, and a shortened file is a valid prefix. A
-public claim is anchored by an independently retained commitment — the
-chain head, row count, and declared selection, digested and held
-separately from the store — which `gym report --commitment` writes and
-`gym verify --commitment` checks a later copy against. And a chain that
-verifies is still only as complete as the rows it carries: items lost to
-timeouts and dead doors leave no row, so a report that reads as a
-finished benchmark shows expected coverage beside recorded outcomes and
-marks an incomplete run incomplete.
-
-The published claims carry their ceilings beside them — annotator
-agreement on our own suites, published agreement or label basis on
-`external-v1` and `external-jevbench-v1` — and the refusal policy is in
-the record, not in the marketing. An accuracy is honest here because the
-suite is digested, the locked partition is spent once through a ledger,
-and the comparison refuses to run unless the instrument is held fixed.
-
-## The lanes
-
-Four lanes, one contract:
-
-| Lane | What it is | Who it is for |
+| Primitive | Meaning | Output |
 | --- | --- | --- |
-| **Shared** | The stock doors — hosted Jev, the pinned `kev` variants — behind per-key quotas. Free tier is the same doors at a tighter quota, not a worse model. | Evaluation, low volume, latency-insensitive callers |
-| **Dedicated** | A named door on named capacity — one process, one artifact identity, one tenant key. | Latency-sensitive paths, callers who need the queue to be theirs |
-| **Trained** | A dedicated door plus a per-tenant adapter fitted to the caller's labelled suite, admitted through the explicit candidate comparison before it serves. | Callers whose labels are theirs and whose accuracy is measured on their own items |
-| **On-device** | `lev-serve` wherever the caller's Apple silicon is. Not a lane we host; it is the API's escape hatch to full privacy. | Callers whose text cannot leave the device |
+| `Noul` | Probability that a proposition holds | `noul`, from 0 to 1; no separate confidence |
+| `Choice` | One alternative from a supplied set | Selected choice, confidence, and categorical probabilities |
+| `Score` | Position on an ordered, described rubric | Probability-weighted score, confidence, legend, and probabilities |
 
-A trained lane that cannot beat its base door on the caller's own
-development partition is refused admission and the record says so. The
-admission is the explicit candidate-versus-base comparison described under
-"Trained endpoints" — a declared, digested decision record, not the
-same-identity `gym regress` guard, which stays in its own job of catching
-unexpected change in an unchanged door.
+Independent questions over one state belong in one request. They cannot
+read each other's answers. A second request is appropriate when an earlier
+answer determines new evidence or options. Structured state and mixed
+question types remain first-class; the text facade does not replace them.
 
-## Measurement as part of the API
+Typed output guarantees a shape, not truth. Choice and Score confidence
+describe distribution concentration, not permission to act or an
+end-to-end correctness probability. A Noul near 0.5 expresses uncertainty
+about the proposition, not medium severity. Known rules, calculations,
+permissions, and execution stay in code.
 
-The differentiator worth building first is the record, not the endpoint:
+### Outcomes and identity
 
-- **A caller's own suite, pinned.** `gym build` turns a caller's labelled
-  JSONL into a digested three-partition suite: `label_source` naming them,
-  calibration and development partitions open, a locked partition spent
-  once. `docs/gym/measured-records.md` is the flow.
-- **A receipt-chained record.** `gym eval` rows carry the suite, question,
-  and gate digests and the door's artifact identity. The chain detects
-  edits and reordering inside the store it walks; the stronger guarantee —
-  that this is the store, whole — is the independently retained
-  commitment, and the report's declared selection is what makes a
-  completed evaluation distinguishable from a partial one.
-- **Ceilings beside scores.** A second-reading or published-agreement
-  ceiling prints beside the accuracy, as every record in this repository
-  already does, because a score without its ceiling is a claim.
-- **Refusals in the record.** A declined item stays in the denominator. An
-  API whose accuracy can only be read on answered items is reporting the
-  optimistic number, and the gates here do not allow it.
-- **Execution receipts, separate from evaluation records.** An ordinary
-  inference call has no suite or gate; its receipt carries request and
-  attempt identity, the tenant reference, the requested and actual
-  artifact identities, the outcome, and timing. That receipt is an
-  attributable claim, shared verbatim between the HTTP and relay paths —
-  not an evaluation record, and not remote attestation.
+Every surface preserves answered, model-refused, and unavailable outcomes.
+Batch and accounting records also distinguish unattempted work and unknown
+completion. A missing answer is neither a wrong answer nor a successful
+zero-cost call. Partial outcomes must not disappear from aggregate results.
 
-## What is missing, honestly
+Strict model selection returns the requested artifact or an explicit
+failure. Capacity pressure never silently changes the model, checkpoint,
+execution profile, or lane. Review and fallback are separate, opt-in
+policies whose additional identities remain visible.
 
-- **Keys, quotas, and everything past them.** Nothing authenticates a
-  tenant, reserves capacity, or meters calls. The honest properties are
-  already in the idiom — a budget ledger, worst-case reservation before
-  spend, unattempted work reported rather than scored — but none of it is
-  written for tenants, and a quota ledger is not a billing system. Pricing
-  and payment collection are unspecified until a concrete commercial path
-  exists.
-- **Multi-tenancy.** Doors are single-process; a dedicated endpoint is a
-  process per caller, which is honest but does not scale. The NIP-CJ lane
-  is the designed answer and is unbuilt for this purpose.
-- **Evidence anchors beyond the commitment.** The receipt chain verifies
-  internally and the report commitment catches a rewritten or shortened
-  store, but the commitment's authenticity rides on the channel that
-  carried it — a signed or relayed commitment is open work (#9471), and
-  no document attests remote weights.
-- **The training path and its admission contract.** Per-tenant adapter
-  training is retained tooling, not a service, and the explicit
-  candidate-admission comparison is designed but unbuilt (#9472, #9473).
-- **A public surface.** No hosted endpoint, no key issuance, no status
-  page, no usage dashboard. The repository proves the measurement and
-  serving halves; the front half is the part that does not exist.
+The versioned execution receipt binds logical request and attempt IDs,
+tenant reference, request/result digests, requested and actual
+artifact/execution identity, policy identity, outcomes, timing, and
+usage/accounting references. Batch receipts also identify items and
+dimensions; reviewer and fallback attempts retain their own records.
 
-## The work, in order
+Bind identity to the operation that produced the result. A later
+`GET /v1/models` lookup cannot establish which version answered an earlier
+request. Keep transport, queue, forwarding, inference, and review timing
+distinguishable across HTTP and relay execution.
 
-The corrected sequence, tracked in openagents#9481. Phase 0 is landed; the
-evidence issues come before the service foundations because everything
-after them quotes reports.
+Ordinary inference requires no Gym suite or gate. Evaluation references
+appear only when a declared evaluation supplies them. Authenticated runtime
+receipts are attributable serving claims; benchmark commitments and remote
+execution attestation are separate guarantees. Owner: [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471).
 
-### Phase 0 — measurement as a service (landed)
+## Classification and batch contract
 
-1. **Caller-suite intake** (openagents#9464, landed; ported to `gym build`
-   in openagents#9477). A caller's labelled data (JSONL of `family`,
-   `kind`, `state`, `truth`, and `question`) becomes a digested gym suite
-   and question set: `label_source` naming the caller, a `label_rule` per
-   item, a `--agreement` ceiling per family, and paraphrase groups held in
-   one partition. A caller's file round-trips through `Suite::load` and
-   the digest is reproducible.
-2. **The measured report** (openagents#9465, landed). `gym report` renders
-   a store of rows as a standalone record — digests, chain head, per-door
-   and per-family tables, refusals counted, ceilings beside scores — and
-   `gym verify` walks the receipt chain. `docs/gym/measured-records.md`
-   is the caller-facing flow.
+Add `POST /v1/classify` as a convenience facade over the native primitives.
+A caller supplies input text or input records, stable IDs, labels or named
+dimensions, optional instructions, model selection, capacity selection, and
+a decision policy. Label sets are supplied at request time.
 
-Phase 0 is the product's smallest shippable unit: "we measured your labels
-against these doors and here is the receipt chain" needs no accounts, no
-billing, and no new serving code.
+| Workflow | Contract |
+| --- | --- |
+| Single-label classification | One Choice per input, with the complete label distribution |
+| Multi-label tagging | One independent Noul per label; return all scores and the selected labels |
+| Multidimensional classification | Named dimensions with their own criteria, outputs, confidence, and outcomes |
+| Binary filtering | One Noul per input; return scores and a caller-selected subset |
+| Ranking and rubric assessment | Comparable per-item Scores with explicit rubric definitions |
+| Counts and uncertainty review | Aggregate returned outcomes or select uncertain items without requiring an agent to read the entire corpus |
 
-### The caller pilot
+Multi-label probabilities need not sum to one. Specify threshold, top-N,
+ties, exclusions, and no-match behavior in the versioned policy. Do not
+assign a universal confidence threshold. Preserve raw scores so callers can
+change a filter without rerunning inference when the evidence and question
+meanings are unchanged.
 
-3. **A caller pilot** (openagents#9480). One real caller's labelled data
-   through the Phase 0 flow, with permission to use it, before the API
-   builds further. Done when a caller's measured record exists and they
-   have verified its chain themselves. This is the product's demand test,
-   not a gate on the Rust work below.
+The initial facade design targets 1–1,000 inputs, 2–100 labels, up to 20
+dimensions, and a ceiling of 1,000 item-dimension decisions per synchronous
+call where the backend supports them. These are schema design targets,
+not present capacity or speed claims. Multi-label work counts input-label
+judgments, not merely input rows. Native binary decisions remain valid.
 
-### Evidence strengthening
+The selected backend can impose tighter limits on text bytes/characters,
+tokens, labels, label length, instructions, questions, and total context.
+Discovery and preflight validation publish those limits. State, instructions,
+and options must all fit; reject oversize atomic work without silent
+truncation. Do not advertise the facade maximum for a backend that cannot
+serve it.
 
-4. **Report completeness** (openagents#9478, landed). `gym report` shows
-   what was expected beside what was recorded — per door and family:
-   expected, attempted, answered, refused, missing — and an incomplete
-   run cannot read as a completed benchmark.
-5. **Report commitments** (openagents#9479, landed). A versioned
-   commitment — chain head, row count, declared selection,
-   suite/question/gate/provenance digests, and each door's run identities
-   with their coverage — digested into a file a caller retains
-   independently of the store. `gym verify --commitment` checks a store
-   against it; a recomputed chain and a dropped tail both fail.
+Validate the request envelope before dispatch. Preserve input order and IDs,
+including when workers finish out of order. Each item/dimension reports its
+outcome, actual model, raw scores, selected output, review status, usage,
+and timing. Return explicit mixed outcomes after partial execution. Define
+empty inputs, duplicate IDs, Unicode, invalid labels, and malformed
+dimensions in shared contract fixtures. Owner: [#9482](https://github.com/OpenAgentsInc/openagents/issues/9482).
 
-### Phase 1 — the serving foundations, shared
+## Batch execution and durable jobs
 
-These four land together because they are one contract: a tenant identity,
-the artifact it may reach, the receipt a call produces, and the quota the
-call settles against.
+A bulk payload and efficient inference batching are different capabilities.
+The scheduler packs compatible work by context and resource budget, uses
+bounded backend concurrency, and reconstructs results without crossing
+item, question, or tenant boundaries. Publish which adapters batch work
+natively and which use bounded independent calls.
 
-6. **The tenant-artifact registry** (openagents#9474). A versioned binding
-   from stable tenant identity to allowed doors, artifact digests, and
-   execution configuration. Done when a swapped artifact under a known
-   name is detected and refused until the registry is updated.
-7. **The execution receipt** (openagents#9471). A versioned receipt
-   binding request and attempt identity, tenant reference, requested and
-   actual artifact/execution identities, outcome, and timing — for every
-   call, not just evaluations. Done when a direct call produces the same
-   receipt shape a relay call will.
-8. **Per-key authentication** (openagents#9466). Keys checked before
-   inference, bound to tenant identity through the registry; anonymous
-   access explicit and bounded to the shared lane. Done when revoked,
-   rotated, and cross-tenant keys all refuse before any inference runs.
-9. **The quota ledger** (openagents#9467). Durable reservation before
-   dispatch, retry-safe settlement, terminal states, and recovery — a
-   usage ledger, not billing. Done when a crash before dispatch, during
-   inference, after answer, or after settlement each leaves the ledger
-   consistent.
+Interactive and bulk capacity have separate queue and admission policies.
+Bound pending work, active requests, tokens/options/questions, estimated
+memory, deadlines, and per-tenant resource use. Dedicated capacity belongs
+to its assigned tenant. Cancellation, cold starts, backend death, and
+saturation produce explicit outcomes; retryable pressure carries
+`Retry-After`. Split only at declared item/question boundaries.
 
-### Phase 2 — the HTTP service and its docs
+Measure completed decisions per second, total request latency, per-item
+latency, queue time, cold/warm behavior, cost, and expected coverage. Compare
+serial and packed execution on pinned workloads. Amortized milliseconds
+per decision are not the time a caller waits for a batch.
+Scheduler owner: [#9483](https://github.com/OpenAgentsInc/openagents/issues/9483).
 
-10. **The gateway** (openagents#9468). A thin front — key check, quota
-    check, forward to a door by name, emit the execution receipt — so
-    tenants share one host and doors stay single-process. Done when a
-    caller hits one URL with two keys and reaches two different doors.
-11. **Caller-facing docs, CLI, and skill** (openagents#9476). The OpenAPI
-    document, the `classify`-shaped CLI over `crates/jev`, and the skill —
-    shipped with the gateway, not after it, because the first real caller
-    needs them to call at all.
+For work that outlives a request, add a durable job API:
 
-### Phase 3 — the relay lane
+- Persist the accepted manifest before acknowledging submission. Bind
+  idempotency to tenant and request content.
+- Expose job status, progress, cancellation, and paginated or streamed result
+  export with stable job, item, request, and attempt IDs.
+- Preserve expected, attempted, answered, refused, unavailable, unattempted,
+  and unknown counts through queued, running, cancelling, and terminal
+  states. A terminal job can still have incomplete successful coverage.
+- Recover after gateway or worker restart without losing accepted inputs or
+  double-settling usage. Do not claim exactly-once inference when completion
+  is ambiguous.
+- Define result retention, deletion, cursor expiry, and download
+  authorization. Exports preserve order/IDs, outcomes, identities,
+  policies, and receipts.
+- Deliver results through polling and opt-in signed webhooks. Bound retries,
+  make duplicate delivery harmless, rotate signing secrets, and validate
+  destinations.
 
-12. **A decision job kind** (openagents#9469). A NIP-CJ job carrying a
-    `/v1/systemone` request, answered by a worker that fronts `kev-serve`,
-    emitting the same execution receipt as the HTTP path.
-13. **The capability manifest** (openagents#9470). A `kind:30180`
-    manifest describing lanes, doors, and limits, so a host discovers the
-    service the way `capabilities/` is read — discovery is not
-    authorization; the key check still decides.
+A relay event or an in-memory queue is not durable job storage.
+Job owner: [#9484](https://github.com/OpenAgentsInc/openagents/issues/9484).
 
-### Phase 4 — trained endpoints
+## Review, abstention, and fallback
 
-14. **The admission contract** (openagents#9473). The explicit
-    candidate-versus-base comparison described above — frozen identities,
-    named metric, required guards, a digested admission record, and a
-    losing or unverifiable candidate never activates. Lands before
-    training so a produced candidate has somewhere honest to go.
-15. **The training pipeline** (openagents#9472). Caller's labelled data
-    in — on a training partition held apart from calibration, development,
-    and locked — candidate adapter out, artifact-locked and digest-
-    published, admitted only through the contract above.
+A caller can choose direct decisions, uncertainty-targeted review, or a
+declared multi-pass workflow. The policy names the primary model, reviewer,
+trigger, allowed fallbacks, maximum reviewed items, and attempt, latency,
+and spend budgets. Version and digest that policy.
 
-### Phase 5 — the public surface, last
+Preserve the original output and the review result separately. Return the
+selected final output, review reason and outcome, identities, usage, and
+timing. If a reviewer changes a label, it does not inherit the original
+model's probability. A reviewer without a valid scored distribution returns
+a null or unavailable score. Validate its output against the allowed labels
+or typed schema.
 
-16. **The status and benchmark page** (openagents#9475). Rendered from a
-    committed store snapshot — completeness per #9478, commitment per
-    #9479, refusals and missing work with denominators, latency with its
-    host and shape named. Last because a public claim should not exist
-    before the machinery that keeps it honest does.
+Choose triggers using the caller's development data and consequences.
+Confirm quality on held-out data. Report confident errors, review coverage,
+reviewer errors, calibration, risk-coverage curves, and total cost/latency;
+review is not assumed to improve every task. The
+[abstention design](abstention.md) remains a distinct proposed door-side
+signal and must not be presented as already implemented.
 
-### What this ordering buys
+Fallback is opt-in and names permitted causes and destinations. A transport
+failure, capacity failure, and semantic refusal are different causes.
+Fallback must not bypass an applicable refusal rule or expand data
+disclosure without authorization. Return the complete attempt chain.
+Reviewer failure or exhausted budget remains visible even if the caller
+elects to use the original answer. Owner: [#9485](https://github.com/OpenAgentsInc/openagents/issues/9485).
 
-Phase 0 already produces the revenue-shaped evidence — a caller paying
-for a measured record — with no multi-tenant machinery at all. The pilot
-proves demand before the service exists. The evidence issues land before
-the service because a gateway that emits claims nobody can check is worse
-than none. The four foundations land together because auth without
-artifact binding, or quotas without a receipt, are halves of four
-different contracts. Relay, training, and publicity follow in order of
-dependency, not excitement.
+## Models, capacity, and deployment
 
-## What this document is
+Model selection, capacity, and decision policy are independent axes.
+Changing a processing lane must not silently select a different checkpoint.
+Reject unsupported combinations instead of accepting options with no effect.
 
-Measured: the latency figures, each from the named record. Exists: the
-contract, both serving binaries, the adapter format, artifact identity,
-the gym's suites, gates, digests, ledger, and store, and the relay's auth,
-capability, and job lanes. Landed for this product: caller-suite intake,
-the measured report, the Rust suite builder, report completeness, and
-report commitments. Filed and open: the caller pilot, the four serving
-foundations,
-the gateway and its docs, the relay lane, the admission contract and
-training pipeline, and the public snapshot — in the order above, per
-openagents#9481. Deferred by the operator and not restarted here: the
-remaining deployment-latency measurements in openagents#9382 and
-openagents#9393, and the serving-verification closure in openagents#9426.
-Nothing in this document asserts a product claim that is not backed by a
-file or a record named beside it.
+| Deployment | Intended behavior |
+| --- | --- |
+| Shared hosted | Stock authorized models under per-tenant quotas and shared admission; a free allowance changes limits, not model identity |
+| Dedicated hosted | Named tenant capacity, pinned artifacts, explicit queue and isolation guarantees |
+| Trained | An admitted tenant artifact bound to shared or dedicated capacity under an explicit isolation policy |
+| Self-hosted | The same contract operated on caller-controlled hardware, including Kev |
+| On-device | Lev through the supported Apple runtime and Swift bridge; input remains local when the complete workflow is local |
+
+A model card describes primitives, modality, languages, context limits,
+label/question limits, batch support, probability semantics, artifact and
+execution identity, supported capacity, and availability. The tenant registry
+authorizes access to those capabilities. Atomic updates and rollback retain
+the binding under which an in-flight request was admitted. Owner:
+[#9474](https://github.com/OpenAgentsInc/openagents/issues/9474).
+
+Add a Rust Laya integration alongside the existing doors, with licensed,
+digested artifacts and explicit tokenizer/runtime configuration. The
+[existing Laya review](others/2026-09-19-laya.md) is reference material, not
+evidence that an integration exists. English and multilingual checkpoints
+must remain identifiable. Any automatic language routing is versioned and
+evaluated on mixed-language and routing-error cases.
+
+Each new backend needs conformance, quality, calibration, coverage,
+cold/warm latency, throughput, memory, and cost evidence on declared
+workloads. Upstream confidence claims and another model's benchmark cannot
+stand in for local validation. Owner: [#9486](https://github.com/OpenAgentsInc/openagents/issues/9486).
+
+## HTTP behavior and compatibility
+
+The gateway admits every route through the same authentication,
+authorization, quota, identity, and receipt path. It bounds bodies, tokens,
+options, questions, queue depth, active forwards, and per-tenant resources.
+Cancellation and restart must not leave unbounded work running.
+Owner: [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468).
+
+Keep the existing native routes and add the classification and job routes
+through versioned contracts. Specify any root POST, batch, or GET
+compatibility aliases before exposing them. GET quick examples use public
+sample input; private input uses POST because URLs can enter browser,
+proxy, and access-log history. An alias cannot bypass admission.
+
+Define stable typed errors for invalid input, authentication, authorization,
+quota/spend exhaustion, missing accounts, unsupported models, capacity,
+backend failure, and idempotency conflicts. Return request/version
+identifiers, applicable rate-limit metadata, and retry guidance. Daily
+quota exhaustion is different from temporary capacity pressure.
+
+Publish public versus credentialed CORS rules, content types, health and
+readiness behavior, and an additive-versioning policy. The release-policy
+target is at least six months of notice for supported public API breaking
+changes, with documented security exceptions; ratify that policy before
+launch. Keep changelogs and migration instructions beside the contract.
+
+A deterministic free simulator provides examples and failure cases without
+inference or billing. Live test mode is separately labeled, authorized, and
+metered. Do not call a live production alias a free sandbox.
+
+## MCP and agent integration
+
+Provide Rust Streamable HTTP MCP servers backed by the same schemas and
+admission path as REST.
+
+| Surface | Tools |
+| --- | --- |
+| Inference | `classify_texts`, `classify_dimensions`, `classify_multi_label`, `count_labels`, and `review_uncertain` |
+| Native decisions | A typed-decision tool exposing Noul, Choice, Score, and structured state |
+| Documentation | `list_docs`, `read_doc`, `search_docs`, and `get_examples` |
+
+Return structured content plus concise text. Aggregates and filtered
+uncertain items should keep unnecessary input out of the agent context.
+Preserve identity, policy, partial outcomes, idempotency, cost, and errors.
+Tool annotations must describe actual effects: an inference tool can
+consume money or quota even when it changes no external content.
+
+Public docs and authorized inference have different access rules.
+Authenticate with supported scoped credentials; advertise OAuth metadata
+only when that flow is implemented and verified. Test protocol negotiation,
+reconnection, tool errors, quota exhaustion, and supported client
+configurations. Owner: [#9487](https://github.com/OpenAgentsInc/openagents/issues/9487).
+
+## CLI and language clients
+
+Ship the Rust CLI and usable caller documentation with the first HTTP
+service. The CLI supports positional input, standard input, line-oriented
+text, JSON, and NDJSON; selected fields; stable IDs; labels and dimensions;
+multi-label output; counts; uncertainty filtering; and model/capacity/review
+selection.
+
+Define ordered streaming output, bounded batch/concurrency settings,
+progress on standard error, quiet machine-readable output, cancellation,
+broken-pipe behavior, and stable exit codes for mixed results and
+client/configuration failures. Retries honor `Retry-After`, are bounded,
+and do not loop indefinitely on an exhausted daily allowance. Invalid rows
+remain visible. Credentials come from protected configuration or the
+environment and stay out of output and process arguments.
+
+Explain the build/evaluate/report/verify flow and the meaning of every
+primitive. Include one refusal, one retryable failure, one partial batch,
+and one review with no valid score. Rust CLI and docs owner:
+[#9476](https://github.com/OpenAgentsInc/openagents/issues/9476).
+
+Extend the Rust client and provide runnable curl, Python, Go, and JavaScript
+HTTP examples. Supported Python and Go SDK distributions are part of the
+target product, with a tracked architecture decision: use a Rust-owned
+core/binding or obtain an explicit product-language policy exception before
+adding another implementation language. Examples alone do not satisfy SDK
+delivery. Do not introduce a TypeScript product implementation.
+
+Publish package support/version matrices, installation and update guidance,
+checksummed CLI binaries, release provenance, typed errors, timeout and
+cancellation behavior, and shared conformance fixtures. Actual package
+publication follows the manual release process. Owner: [#9489](https://github.com/OpenAgentsInc/openagents/issues/9489).
+
+## Machine-readable discovery
+
+A stable public origin exposes browsable docs and agent-readable discovery:
+
+- OpenAPI 3.1, `/api`, `llms.txt`, `agents.md`, and `auth.md`.
+- A public skill document and a well-known agent-skills index.
+- MCP server cards, an agent card, and an API catalog for supported
+  protocols.
+- A docs API with list/read/search/examples, stable IDs, pagination, and
+  bounded responses.
+- HTML, plain-text, Markdown, and JSON representations where appropriate,
+  with correct content negotiation, canonical URLs, sitemap, and robots
+  metadata.
+- Declarative Codex and Claude-compatible skill/plugin manifests, manual
+  installation instructions, and supported client versions.
+
+Generate or validate overlapping metadata against the deployed schema.
+A proposed feature does not appear as available merely because this
+specification describes it. Discovery includes authentication, limits,
+tool costs, retention, and uncertainty guidance.
+
+Public discovery complements authenticated NIP-CAP discovery; neither
+authorizes execution. Owners: [#9488](https://github.com/OpenAgentsInc/openagents/issues/9488) for the public surface and
+[#9470](https://github.com/OpenAgentsInc/openagents/issues/9470) for relay capabilities.
+
+## Accounts, workspaces, and credentials
+
+Provide sign-up/sign-in, account recovery, session expiry/logout, and
+onboarding from account creation to a first successful call. Anonymous
+access is an explicit, bounded, operator-funded free tier with abuse
+controls, not an authentication bypass to private models.
+
+Separate users, workspaces, credentials, and billing accounts. Support
+personal and organization workspaces, membership, workspace switching,
+expiring invitations, seat limits, ownership transfer, last-owner
+protection, and an owner/admin/member permission matrix. Removing a member
+must revoke their access, including existing sessions and applicable keys.
+
+Support default and named keys with scoped models/actions, creation,
+copying, pause, rotation, and revocation. Prefer one-time secret display;
+any reveal feature needs an explicitly protected design. Persist credential
+references for attribution without exposing secrets. Keys do not own a
+workspace's usage, credit grant, or history, so rotating a key resets none
+of them.
+
+Account APIs and browser sessions enforce tenant isolation and session
+protections. Retain access history and redact secrets. Authentication before
+inference remains [#9466](https://github.com/OpenAgentsInc/openagents/issues/9466); customer account/workspace lifecycle is
+[#9490](https://github.com/OpenAgentsInc/openagents/issues/9490).
+
+## Pricing and monetary accounting
+
+Quota accounting controls resource admission. It does not collect payment
+or establish a price. Preserve [#9467](https://github.com/OpenAgentsInc/openagents/issues/9467)'s durable reservation,
+idempotency, crash recovery, and unknown-completion semantics.
+
+Add a distinct monetary ledger using fixed-point units and versioned price
+schedules. Define billable resources for each model, capacity, and review
+policy, including input, cached input, output, reasoning, or compute units
+where the backend exposes them. Do not invent token counts for an opaque
+provider or equate one question with constant compute.
+
+Record grants, credits, holds, charges, releases, adjustments, and refunds
+with idempotent sources and audit references. Reserve authorized worst-case
+spend before dispatch and settle known usage. Unknown completion and cost
+remain unresolved until reconciled; they do not become zero.
+
+Enforce hard workspace spend limits and explicit opt-in top-ups. State the
+billing treatment of refusals, retries, cancellation, reviewer/fallback
+attempts, and failures. Distinguish customer retail charge, provider-reported
+cost, and allocated GPU/local hosting cost. Free retail usage may still
+consume operator funds. Expose exact available, reserved, and settled
+balances. Owner: [#9491](https://github.com/OpenAgentsInc/openagents/issues/9491).
+
+## Plans, payments, and entitlements
+
+Define versioned free and paid plans, period allowances, model/features,
+seat limits, and subscription transitions. Choose actual launch prices and
+currencies through a separate commercial decision supported by measured
+costs. This specification supplies the billing architecture, not a price
+list or authorization to spend.
+
+Provide checkout, invoices/receipts, a customer billing portal, renewal,
+upgrade/downgrade, cancellation, payment failure, refund, and dispute
+handling. Browser return URLs never grant money or entitlement. Verify
+server-side payment events, tolerate duplicates and out-of-order delivery,
+and reconcile lost events against provider state.
+
+Grant sign-up credit once under a stated eligibility policy and a paid
+period's allowance once per eligible period. Define credit expiry,
+proration, refunds, and seat changes explicitly. Attach grants and purchases
+to stable workspace/billing identity. Purchase terms, support/refund
+procedures, and actual price configuration must exist before checkout is
+enabled. Owner: [#9492](https://github.com/OpenAgentsInc/openagents/issues/9492).
+
+## Usage APIs and dashboard
+
+Provide authenticated APIs for exact balances and outstanding reservations,
+usage summaries, time series, breakdowns, recent activity, keys, workspace
+membership, and entitlements. Filter and paginate by time, key,
+agent/source, model, capacity, policy/tier, outcome, and workspace.
+
+Keep exact ledger totals separate from sampled or aggregated operational
+statistics. State lag, timezone, rounding, retention, and unknown data.
+Attribute primary, reviewer, and fallback costs separately. Quota headroom
+does not imply available GPU capacity.
+
+Build a responsive, accessible dashboard for onboarding, key management,
+workspace/members, plan/billing access, hours/days usage charts, activity,
+and receipt inspection. Include export and deletion controls consistent
+with retention and required financial records. Raw input and answers are
+private by default. Verify mobile layouts, role-based views, totals,
+delayed settlement, and key rotation. Owner: [#9493](https://github.com/OpenAgentsInc/openagents/issues/9493).
+
+## Playground and interactive demo
+
+Provide a playground for pasted inputs, bounded file/dataset uploads,
+labels, dimensions, native judgments, and model/capacity/review selection.
+Show the actual request, raw scores, selected outputs, partial failures,
+original and reviewed results, model identity, usage, time, and receipt.
+Support export and copying equivalent CLI/API requests.
+
+Keep deterministic simulated examples separate from live inference.
+Label synthetic inputs and simulated results. A bounded chat demo can use
+the documented tools, showing actual calls/results with caps on turns,
+tool steps, and spend. It must not invent outcomes.
+
+If the demo searches or fetches external content, disclose that behavior
+and the data destination before use. Bound network access and treat fetched
+content as data. Specify session/input retention, deletion, upload limits,
+cancellation, quota feedback, and accessible mobile behavior. Owner:
+[#9494](https://github.com/OpenAgentsInc/openagents/issues/9494).
+
+## Skill directory and recipes
+
+Publish a versioned directory of reusable decision skills with browse,
+search, categories/tags, authors, ranking, raw Markdown, stable version
+links, and explicit installation instructions. Accept bounded `SKILL.md`
+submissions with content digests, authorship, license/rights, and publication
+consent. Detect duplicate and superseded versions.
+
+Review submissions through static validation, decision-model checks, and
+bounded reasoning review. Submitted instructions remain inert. Record each
+review stage's model/policy version, score, rationale, cost, and failure
+state. Define admission, rejection explanations, corrections/appeals,
+moderation, withdrawal, and takedown. A model's review is not a security
+guarantee. Do not publish rejected private content.
+
+Separate assessed quality from measured task performance. Attach pinned
+recipe suites and reports when available, and label missing empirical
+evidence. Owner: [#9495](https://github.com/OpenAgentsInc/openagents/issues/9495).
+
+The initial recipe library covers these workflows:
+
+| Area | Recipes |
+| --- | --- |
+| Filtering and retrieval | Bulk filtering, news/headline feeds, retrieval reranking, and citation checks |
+| Support and trust | Ticket triage, content moderation, listing abuse, and prompt-injection screening |
+| Operations | Log classification, security alert triage, and semantic linting |
+| Agent composition | Model/skill routing and bounded computer-action selection |
+| Business and knowledge | Lead qualification, resume/job competency assistance, knowledge relations, and specification conformance |
+| Personal workflows | Document intake, file sorting, and voice-command transcript classification |
+
+Every recipe supplies input schema, question definitions, composition code,
+expected outputs, source/license, version, bounded cost, uncertainty
+behavior, and runnable examples for supported surfaces. Document limits:
+transcript classification is not speech recognition; selecting supplied
+candidates is not unconstrained generation.
+
+Keep execution permissions in host code. Include dry-run and undo for file
+actions and human review for consequential decisions. Measure representative
+cases, refusals, and coverage; choose thresholds on development data.
+Do not add GitHub workflows for recipes or semantic linting. Owner:
+[#9496](https://github.com/OpenAgentsInc/openagents/issues/9496).
+
+## Agent feedback
+
+Publish a structured feedback policy and API for observations,
+expected/actual behavior, environment/version, reproduction evidence, and
+bounded attachments. Return a receipt and status lookup with an explicit
+triage lifecycle, duplicate handling, ownership, and human-readable updates.
+
+Apply authentication, abuse limits, idempotency, redaction, retention, and
+tenant visibility. Forward private content only with explicit consent.
+Automated categorization cannot silently discard reports. A feedback
+receipt is distinct from an inference receipt and a report commitment.
+Owner: [#9497](https://github.com/OpenAgentsInc/openagents/issues/9497).
+
+## Measurement and trained endpoints
+
+Preserve measurement as a product, available before hosting. A real caller
+can bring permitted labeled data, build a digested suite, evaluate named
+doors, and verify the resulting record. The pilot in [#9480](https://github.com/OpenAgentsInc/openagents/issues/9480) tests
+that offering against the caller's current workflow, including quality,
+coverage, latency, cost, and whether the evidence is useful.
+
+Reports pin suite, questions, gate, partitions, model artifacts, and
+execution settings. Publish label provenance and agreement ceilings.
+Count refusals and missing work with their denominators. The report now
+compares declared expected coverage with recorded outcomes and marks
+incomplete runs. Preserve that publication guard as new doors, policies,
+and modalities arrive. Landed: [#9478](https://github.com/OpenAgentsInc/openagents/issues/9478).
+
+`gym report --commitment` now writes a digested commitment to the chain
+head, row count, declared selection, suite/question/gate/provenance digests,
+and each door's run identities and coverage. `gym verify --commitment`
+checks the recorded prefix against the caller's retained copy, detecting a
+rewritten chain or dropped tail while allowing later appended rows.
+
+A chain that verifies internally does not establish that it is the original
+whole store. The retained commitment strengthens that claim only when its
+own authenticity comes from a separately trusted channel. Signed or relayed
+publication remains work under [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) and [#9475](https://github.com/OpenAgentsInc/openagents/issues/9475); neither a commitment nor its signature attests
+remote execution. Local commitment support is landed in [#9479](https://github.com/OpenAgentsInc/openagents/issues/9479).
+
+Training uses caller-permitted data with training examples held apart from
+calibration, development, and locked confirmation. Retain provenance,
+licenses, leakage controls, recipe/trial budgets, all attempted candidates,
+and artifact locks. Deletion and retention include uploaded data and
+produced adapters. Owner: [#9472](https://github.com/OpenAgentsInc/openagents/issues/9472).
+
+Candidate admission is an explicit cross-artifact comparison.
+`gym regress` remains the same-identity regression guard. Freeze candidate
+and base identities, metrics, required improvement, per-family errors,
+calibration, coverage/refusal policy, transfer checks, and deployment
+budgets before comparison. Choose on development data, then perform the
+declared one-shot locked confirmation before activation.
+
+Losing, tied where improvement is required, incomplete, or unverifiable
+candidates do not activate. Do not reuse a historical workload's noise floor
+as a universal acceptance threshold. Store the admission record and bind
+activation/rollback through the registry. Owner: [#9473](https://github.com/OpenAgentsInc/openagents/issues/9473).
+
+Public benchmark/status snapshots use committed evidence with coverage,
+identities, conditions, freshness, label basis, privacy controls, and cost
+provenance. Separate p50/p95 request latency, queueing, and amortized
+throughput. Publish repeatability/determinism only for a tested execution
+profile. Owner: [#9475](https://github.com/OpenAgentsInc/openagents/issues/9475).
+
+## Operations, privacy, and portability
+
+Provide versioned packages and configuration for tested shared, dedicated,
+self-hosted, and on-device deployments. Document model/host prerequisites,
+artifact fetching, TLS/trusted-network boundaries, secrets, health/readiness,
+backup/restore, upgrades, and rollback. Verify a fresh install through a
+bounded real call and recovery, not just a successful build.
+
+State per-lane retention for raw state, answers, diagnostics, usage,
+receipts, uploads, and trained artifacts. Raw payload logging is off by
+default. Publish provider/subprocessor disclosure, operator access,
+encryption boundaries, deletion/export behavior, and support/security
+contacts. A shared host cannot inherit a dedicated tenant's isolation claim;
+a dedicated host is still able to read inputs unless a separate mechanism
+prevents it.
+
+Local privacy means the whole workflow stays local; a remote reviewer,
+telemetry path, or external fetch changes that boundary. Public incident
+status and commercial policies reflect actual operation. Offer product
+updates only through verified opt-in subscriptions with preferences and
+unsubscribe. Keep support consent separate from marketing consent.
+
+Release readiness includes schema/client conformance, tenant isolation,
+quota and monetary reconciliation, recovery, accessible customer flows,
+privacy behavior, and honest discovery. Use bounded synthetic/fake-provider
+tests where they establish behavior; run real model/payment sandbox checks
+only under explicit test budgets. Owner: [#9498](https://github.com/OpenAgentsInc/openagents/issues/9498).
+
+## Image-capable decisions
+
+Images are a separate planned capability, not an implied feature of the
+existing text endpoints. Define a versioned state representation with
+content hashes, media types, count/size/resolution limits, and text-image
+composition. Specify upload and any remote-fetch boundaries,
+orientation/decoding/downsampling, and which representation the model saw.
+
+Select an actually image-capable backend with provenance, license,
+hardware/cost, artifact identity, supported primitives, and calibration
+limits. Build permitted evaluation data, separate development and locked
+partitions, and measure quality, refusals, coverage, latency, throughput,
+and memory before admission.
+
+Carry image handling through receipts, retention, batches, review, and
+client/tool contracts. Keep availability experimental until capability
+and evidence pass. Owner: [#9499](https://github.com/OpenAgentsInc/openagents/issues/9499).
+
+## Confidential hosted inference
+
+Investigate protecting input from the host operator under an explicit
+threat model. Define adversaries, protected data, metadata leakage, trust
+roots, key ownership/revocation, side-channel assumptions, and availability.
+
+Compare local execution, dedicated hosting, confidential-computing
+attestation, and cryptographic inference. TLS and single-tenant processes
+alone do not provide host-blind inference. A proof of concept must bind
+model/configuration, handle keys and upgrades, and measure latency,
+throughput, cost, supported models, and any claimed answer equivalence.
+
+Require independent protocol/security review before making a public
+confidentiality or remote-execution-attestation claim. Publish a feasibility
+decision, including rejection if requirements cannot be met. Existing
+receipts and hash chains do not imply this guarantee. Owner:
+[#9500](https://github.com/OpenAgentsInc/openagents/issues/9500).
+
+## Delivery plan and issue ownership
+
+The expanded product is a set of dependent releases, not one gateway
+launch. Keep useful narrow releases available while later work proceeds.
+
+| Stage | Issues and completion boundary |
+| --- | --- |
+| Landed measurement tools | [#9464](https://github.com/OpenAgentsInc/openagents/issues/9464), [#9465](https://github.com/OpenAgentsInc/openagents/issues/9465), [#9477](https://github.com/OpenAgentsInc/openagents/issues/9477): caller intake, reports, and Rust suite builder; keep closed |
+| Caller validation | [#9480](https://github.com/OpenAgentsInc/openagents/issues/9480): permitted workload and independently usable measured record; does not block independent Rust foundation work |
+| Landed evidence controls | [#9478](https://github.com/OpenAgentsInc/openagents/issues/9478), [#9479](https://github.com/OpenAgentsInc/openagents/issues/9479): report coverage and independently retained commitments; keep closed and preserve their guarantees in service publication |
+| Shared serving foundation | [#9466](https://github.com/OpenAgentsInc/openagents/issues/9466), [#9467](https://github.com/OpenAgentsInc/openagents/issues/9467), [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471), [#9474](https://github.com/OpenAgentsInc/openagents/issues/9474): agree on tenant, request/attempt, identity, outcome, and reservation contracts |
+| First usable HTTP service | [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468), [#9476](https://github.com/OpenAgentsInc/openagents/issues/9476): bounded gateway and usable native docs/CLI |
+| Classification and scale | [#9482](https://github.com/OpenAgentsInc/openagents/issues/9482), [#9483](https://github.com/OpenAgentsInc/openagents/issues/9483), [#9484](https://github.com/OpenAgentsInc/openagents/issues/9484): facade, efficient scheduling, then durable jobs |
+| Decision policies and backends | [#9485](https://github.com/OpenAgentsInc/openagents/issues/9485), [#9486](https://github.com/OpenAgentsInc/openagents/issues/9486): measured review/fallback and capability-aware additional models; neither is required for strict native inference |
+| Agent and client distribution | [#9487](https://github.com/OpenAgentsInc/openagents/issues/9487), [#9488](https://github.com/OpenAgentsInc/openagents/issues/9488), [#9489](https://github.com/OpenAgentsInc/openagents/issues/9489): MCP, discovery/plugins, client packaging and SDK policy decision |
+| Customer access | [#9490](https://github.com/OpenAgentsInc/openagents/issues/9490): accounts/workspaces/keys on the foundation authentication and quota contracts |
+| Commercial service | [#9491](https://github.com/OpenAgentsInc/openagents/issues/9491) then [#9492](https://github.com/OpenAgentsInc/openagents/issues/9492): exact money accounting, then verified payments/plans; no paid launch before both |
+| Customer visibility | [#9493](https://github.com/OpenAgentsInc/openagents/issues/9493): usage APIs and dashboard using the account, receipt, quota, and money sources of truth |
+| Interactive adoption | [#9494](https://github.com/OpenAgentsInc/openagents/issues/9494): playground and bounded chat using implemented tools and explicit live budgets |
+| Reusable workflows | [#9495](https://github.com/OpenAgentsInc/openagents/issues/9495), [#9496](https://github.com/OpenAgentsInc/openagents/issues/9496): skill directory and verified recipes, released incrementally |
+| Feedback and operation | [#9497](https://github.com/OpenAgentsInc/openagents/issues/9497), [#9498](https://github.com/OpenAgentsInc/openagents/issues/9498): trackable feedback, portable deployment, privacy/support/version policies, and operating verification |
+| Relay distribution | [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469), [#9470](https://github.com/OpenAgentsInc/openagents/issues/9470): versioned decision jobs and authenticated capability discovery sharing the foundation contracts |
+| Trained endpoints | [#9473](https://github.com/OpenAgentsInc/openagents/issues/9473) defines admission; [#9472](https://github.com/OpenAgentsInc/openagents/issues/9472) produces candidates; [#9473](https://github.com/OpenAgentsInc/openagents/issues/9473)/[#9474](https://github.com/OpenAgentsInc/openagents/issues/9474) confirm and activate; relay is not a prerequisite |
+| Public evidence | [#9475](https://github.com/OpenAgentsInc/openagents/issues/9475): publish supported snapshots after coverage/commitments; do not defer basic caller documentation until this stage |
+| Experimental extensions | [#9499](https://github.com/OpenAgentsInc/openagents/issues/9499), [#9500](https://github.com/OpenAgentsInc/openagents/issues/9500): image decisions and confidential inference require separate feasibility and admission evidence |
+
+Track overall delivery in [#9481](https://github.com/OpenAgentsInc/openagents/issues/9481). Close feature issues only when
+their acceptance evidence exists; writing this specification completes none
+of the unbuilt service features.
+
+The remaining deployment comparisons in [#9382](https://github.com/OpenAgentsInc/openagents/issues/9382) and
+[#9393](https://github.com/OpenAgentsInc/openagents/issues/9393), and serving-verification closure in [#9426](https://github.com/OpenAgentsInc/openagents/issues/9426),
+remain open and deferred by the operator. This update does not restart
+those runs. Attention optimization, caching, and Coder-specific fine-tuning
+in [#9459](https://github.com/OpenAgentsInc/openagents/issues/9459), [#9460](https://github.com/OpenAgentsInc/openagents/issues/9460), and [#9461](https://github.com/OpenAgentsInc/openagents/issues/9461) remain
+measurement-led decisions, not blanket prerequisites for the first service.
