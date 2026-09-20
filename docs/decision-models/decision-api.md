@@ -92,7 +92,9 @@ distinguishable across HTTP and relay execution.
 Ordinary inference requires no Gym suite or gate. Evaluation references
 appear only when a declared evaluation supplies them. Authenticated runtime
 receipts are attributable serving claims; benchmark commitments and remote
-execution attestation are separate guarantees. Owner: [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471).
+execution attestation are separate guarantees. Owner: [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471);
+the versioned receipt type is landed in `crates/receipts`, and the HTTP and
+relay paths adopt it with [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468) and [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469).
 
 ## Classification and batch contract
 
