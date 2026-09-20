@@ -66,6 +66,12 @@ uses, and marks which are implemented and which are only specified.
   Authorization returns an admission snapshot — an update cannot relabel a
   call in flight — and every revision stays archived under its digest so an
   earlier answer can always be explained.
+- `crates/receipts` — versioned receipts a decision call leaves behind.
+  `receipts::execution` is the shared HTTP/relay shape: request and attempt
+  identity, tenant and registry references, requested and served artifact
+  identities, a typed outcome, timing, and digests of the request and
+  result rather than their content. An attributable claim, never remote
+  attestation.
 - `crates/jev` — the Rust SDK for TypeSafe's System One API.
 - `crates/kev` — the Rust port of the kev decision model: packed prefill,
   block-causal question isolation, pointer readout, and `kev-serve`, a
