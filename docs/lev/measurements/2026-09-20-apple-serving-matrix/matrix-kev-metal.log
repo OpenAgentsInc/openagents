@@ -1,0 +1,133 @@
+   Compiling kev v0.1.0 (/Users/christopherdavid/work/openagents/crates/kev)
+   Compiling gym v0.1.0 (/Users/christopherdavid/work/openagents/crates/gym)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.30s
+     Running unittests src/lib.rs (/tmp/openagents-supervision/root-target/debug/deps/kev-fad106adcd9658b2)
+
+running 6 tests
+test serve::host_memory_tests::meminfo_reads_mem_available ... ok
+test serve::host_memory_tests::vm_stat_reads_free_and_inactive_pages ... ok
+test artifacts::tests::missing_optional_metadata_is_part_of_identity ... ok
+test lora::tests::the_original_base_and_delta_are_added_before_rounding ... ok
+test artifacts::tests::identity_uses_loaded_bytes_and_logical_names ... ok
+test model::loading_tests::adapted_loading_preserves_source_precision_until_the_merge ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/kev_serve.rs (/tmp/openagents-supervision/root-target/debug/deps/kev_serve-a397ec43dc038c20)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/api.rs (/tmp/openagents-supervision/root-target/debug/deps/api-870a2f82081639f1)
+
+running 5 tests
+test a_score_reports_the_weighted_mean_while_a_reader_argmaxes ... ok
+test validation_refuses_bad_requests ... ok
+test sanitize_rewrites_delimiter_spans ... ok
+test every_corpus_request_reproduces_its_record ... ok
+test every_golden_answer_set_reproduces ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/conformance.rs (/tmp/openagents-supervision/root-target/debug/deps/conformance-d5997faa49bc0fe7)
+
+running 6 tests
+kev-0.5b: isolation state_in_sibling: 0.0556 (reference 0.0556)
+test forgery_cannot_add_options has been running for over 60 seconds
+test golden_probabilities_reproduce has been running for over 60 seconds
+test isolation_probe_holds has been running for over 60 seconds
+test option_isolation_flag_matches_reference has been running for over 60 seconds
+test packed_matches_separate has been running for over 60 seconds
+test permutation_probe_reproduces has been running for over 60 seconds
+kev-0.5b: isolation absent: 0.0556 (reference 0.0556)
+kev-0.5b: isolation state_in_state: 0.9965 (reference 0.9965)
+kev-0.5b: packed-vs-separate delta 7.153e-7 (reference 2.205e-6)
+kev-0.5b: permutation argmaxes: ["returns", "returns", "returns", "returns"]
+kev-0.5b: max probs delta 3.636e-6 (noul_only)
+kev-0.6b: isolation state_in_sibling: 0.0030 (reference 0.0030)
+kev-0.6b: isolation absent: 0.0030 (reference 0.0030)
+kev-0.6b: isolation state_in_state: 0.9816 (reference 0.9816)
+kev-0.6b: permutation argmaxes: ["returns", "returns", "returns", "returns"]
+kev-0.6b: packed-vs-separate delta 2.146e-6 (reference 1.013e-6)
+kev-0.6b: max probs delta 2.623e-6 (forgery)
+kev-4b: isolation state_in_sibling: 0.0473 (reference 0.0473)
+kev-4b: isolation absent: 0.0473 (reference 0.0473)
+kev-4b: isolation state_in_state: 0.6345 (reference 0.6345)
+kev-4b: packed-vs-separate delta 2.980e-6 (reference 1.311e-6)
+kev-4b: permutation argmaxes: ["returns", "returns", "returns", "returns"]
+kev-4b: max probs delta 7.749e-6 (unicode)
+test option_isolation_flag_matches_reference ... ok
+test forgery_cannot_add_options ... ok
+kev-8b: isolation state_in_sibling: 0.0615 (reference 0.0615)
+kev-8b: isolation absent: 0.0615 (reference 0.0615)
+kev-8b: isolation state_in_state: 0.8510 (reference 0.8510)
+test isolation_probe_holds ... ok
+kev-8b: packed-vs-separate delta 6.855e-7 (reference 1.252e-6)
+test packed_matches_separate ... ok
+kev-8b: permutation argmaxes: ["returns", "returns", "returns", "returns"]
+test permutation_probe_reproduces ... ok
+kev-8b: max probs delta 2.265e-6 (structured)
+test golden_probabilities_reproduce ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1003.41s
+
+     Running tests/encode.rs (/tmp/openagents-supervision/root-target/debug/deps/encode-98ede27457a92120)
+
+running 5 tests
+test mask_isolates_sibling_questions ... ok
+test option_isolation_mask_keeps_spans_apart ... ok
+test tokenizer_cases_reproduce ... ok
+test sanitized_text_never_yields_delimiter_ids ... ok
+test every_fixture_encoding_reproduces ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.39s
+
+     Running tests/refusals.rs (/tmp/openagents-supervision/root-target/debug/deps/refusals-697d806dc530777b)
+
+running 18 tests
+test token_bounds_admit_at_the_limit_and_refuse_past_it ... ok
+test a_detail_only_body_is_not_a_refusal ... ok
+test the_delimiter_floor_is_refused_before_encoding ... ok
+test transport_failures_stay_harness ... ok
+test incomplete_response_body_stays_harness ... ok
+test an_error_body_without_a_code_stays_harness ... ok
+test every_advertised_alias_resolves ... ok
+test each_variant_is_bounded_by_its_own_forward_cost ... ok
+test replaced_adapter_identity_round_trips_through_jev_and_gym ... ok
+test raw_refusals_classify_too ... ok
+test an_invalid_serving_state_is_refused_at_construction ... ok
+test a_valid_request_round_trips ... ok
+test a_burst_against_a_full_door_leaves_no_queue ... ok
+test a_full_door_answers_busy_and_recovers ... ok
+test a_spent_memory_budget_refuses_with_free_slots ... ok
+test a_saturated_variant_refuses_alone ... ok
+test door_refusals_classify_through_jev_and_gym ... ok
+test oversized_http_body_is_a_typed_refusal ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/serve.rs (/tmp/openagents-supervision/root-target/debug/deps/serve-1ad511ff62c0a829)
+
+running 4 tests
+test models_publish_the_base_model_signature ... ok
+test refusals_are_typed ... ok
+test models_lists_kev ... ok
+test jev_client_round_trips_all_types has been running for over 60 seconds
+
+thread '<unnamed>' (31908697) panicked at crates/kev/tests/serve.rs:116:57:
+system_one: Timeout { timeout: 10s }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'jev_client_round_trips_all_types' (31902010) panicked at crates/kev/tests/serve.rs:83:34:
+client thread: Any { .. }
+test jev_client_round_trips_all_types ... FAILED
+
+failures:
+
+failures:
+    jev_client_round_trips_all_types
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 79.88s
+
+error: test failed, to rerun pass `-p kev --test serve`
