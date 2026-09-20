@@ -21,6 +21,19 @@ use supervise::{Job, Limits};
 const GIT_WALL: Duration = Duration::from_secs(30);
 const LOCK_WALL: Duration = Duration::from_secs(30);
 
+/// The scratch Git directory seeded inside every checkout, relative to it.
+///
+/// The common Git directory is sealed against a delegate, so a delegate
+/// that commits does so here. The directory starts with one commit of the
+/// checkout's tree, so the delegate's own commit diffs against the base
+/// rather than holding every file, and a reviewer's
+/// `git log -1 --stat` names only what the item changed.
+pub const SCRATCH_GIT_DIR: &str = ".coder-git";
+
+/// How long seeding the scratch directory may take: one `add -A` of the
+/// whole checkout and one commit.
+const SEED_WALL: Duration = Duration::from_secs(120);
+
 /// A detached checkout owned by one delegation.
 #[derive(Debug)]
 pub struct Worktree {
@@ -79,11 +92,14 @@ impl Worktree {
                 }
                 Ok(path)
             })?;
-            Ok(Self {
+            let checkout = Self {
                 repository,
                 path,
                 active: AtomicBool::new(true),
-            })
+            };
+            // Outside the metadata lock: the seed touches nothing shared.
+            seed_scratch(&checkout.path)?;
+            Ok(checkout)
         })
         .await
         .map_err(|error| format!("worktree creation stopped: {error}"))?
@@ -218,6 +234,82 @@ fn mutate(repository: &Path, path: &Path, create: bool) -> Result<(), String> {
     })
 }
 
+/// Seeds the scratch Git directory in a fresh checkout: an empty
+/// repository at [`SCRATCH_GIT_DIR`] whose one commit holds the
+/// checkout's tree, with `.git` and the scratch directory itself
+/// excluded so a delegate's `git add -A` never stages either.
+fn seed_scratch(checkout: &Path) -> Result<(), String> {
+    let git_dir = checkout.join(SCRATCH_GIT_DIR);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("cannot supervise Git: {error}"))?;
+    let base = runtime.block_on(async {
+        let ended = git(checkout).args(["rev-parse", "HEAD"]).run().await;
+        if !ended.ending.success() {
+            return Err(format!(
+                "cannot read the checkout's commit: {}: {}",
+                ended.ending,
+                ended.stderr.marked().trim()
+            ));
+        }
+        Ok(ended.stdout.text.trim().to_string())
+    })?;
+    let scratch = |args: &[&str]| {
+        let mut job = Job::new("git")
+            .arg("--git-dir")
+            .arg(&git_dir)
+            .arg("--work-tree")
+            .arg(checkout)
+            .bounded(Limits::within(SEED_WALL).keeping(64 * 1024));
+        for arg in args {
+            job = job.arg(arg);
+        }
+        job
+    };
+    runtime.block_on(async {
+        for args in [
+            &["init", "--quiet"][..],
+            &["config", "user.name", "coder"],
+            &["config", "user.email", "coder@openagents.com"],
+        ] {
+            let ended = scratch(args).run().await;
+            if !ended.ending.success() {
+                return Err(format!(
+                    "cannot seed scratch Git directory: git {}: {}: {}",
+                    args.join(" "),
+                    ended.ending,
+                    ended.stderr.marked().trim()
+                ));
+            }
+        }
+        let exclude = git_dir.join("info");
+        std::fs::create_dir_all(&exclude)
+            .map_err(|error| format!("cannot write scratch exclude: {error}"))?;
+        std::fs::write(
+            exclude.join("exclude"),
+            format!("{SCRATCH_GIT_DIR}\n.git\n"),
+        )
+        .map_err(|error| format!("cannot write scratch exclude: {error}"))?;
+        let message = format!("Base {base}");
+        for args in [
+            &["add", "-A"][..],
+            &["commit", "--quiet", "--allow-empty", "-m", &message],
+        ] {
+            let ended = scratch(args).run().await;
+            if !ended.ending.success() {
+                return Err(format!(
+                    "cannot seed scratch Git directory: git {}: {}: {}",
+                    args[0],
+                    ended.ending,
+                    ended.stderr.marked().trim()
+                ));
+            }
+        }
+        Ok(())
+    })
+}
+
 fn git(repository: &Path) -> Job {
     Job::new("git")
         .arg("-C")
@@ -325,6 +417,69 @@ mod tests {
         let error = Worktree::add(repository.path()).await.unwrap_err();
         assert!(error.contains("symlink"), "{error}");
         assert!(!outside.path().join("worktrees").exists());
+    }
+
+    /// A fresh checkout carries a scratch Git directory whose one commit
+    /// is the checkout's tree, so a delegate's commit there holds only
+    /// what the delegate changed.
+    #[tokio::test]
+    async fn a_checkout_is_seeded_with_a_scratch_git_directory_at_its_base() {
+        let directory = repository().await;
+        std::fs::write(directory.path().join("a.txt"), "a\n").unwrap();
+        std::fs::write(directory.path().join("b.txt"), "b\n").unwrap();
+        for args in [
+            vec!["add", "a.txt", "b.txt"],
+            vec![
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "--quiet",
+                "-m",
+                "two files",
+            ],
+        ] {
+            let result = git(directory.path()).args(args).run().await;
+            assert!(result.ending.success(), "{}", result.stderr.text);
+        }
+        let checkout = Worktree::add(directory.path()).await.unwrap();
+        let scratch = |args: &[&str]| {
+            Job::new("git")
+                .arg("--git-dir")
+                .arg(checkout.path().join(SCRATCH_GIT_DIR))
+                .arg("--work-tree")
+                .arg(checkout.path())
+                .args(args.iter().copied())
+                .bounded(Limits::within(GIT_WALL).keeping(64 * 1024))
+                .run()
+        };
+
+        let clean = scratch(&["status", "--porcelain"]).await;
+        assert!(clean.ending.success(), "{}", clean.stderr.text);
+        assert_eq!(clean.stdout.text, "", "the seed commit covers the tree");
+        let base = scratch(&["log", "--format=%s"]).await;
+        assert_eq!(base.stdout.text.lines().count(), 1);
+        assert!(
+            base.stdout.text.starts_with("Base "),
+            "{}",
+            base.stdout.text
+        );
+
+        std::fs::write(checkout.path().join("b.txt"), "changed\n").unwrap();
+        for args in [&["add", "-A"][..], &["commit", "--quiet", "-m", "the item"]] {
+            let result = scratch(args).await;
+            assert!(result.ending.success(), "{}", result.stderr.text);
+        }
+        let stat = scratch(&["show", "--stat", "--format=", "HEAD"]).await;
+        assert!(stat.stdout.text.contains("b.txt"), "{}", stat.stdout.text);
+        assert!(!stat.stdout.text.contains("a.txt"), "{}", stat.stdout.text);
+        assert!(
+            !stat.stdout.text.contains(".git"),
+            "neither Git directory is staged: {}",
+            stat.stdout.text
+        );
+        checkout.close().await.unwrap();
     }
 
     #[tokio::test]
