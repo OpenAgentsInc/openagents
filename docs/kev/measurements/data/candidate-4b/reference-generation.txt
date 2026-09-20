@@ -1,0 +1,13 @@
+Loading checkpoint shards:   0%|          | 0/3 [00:00<?, ?it/s]Loading checkpoint shards:  33%|███▎      | 1/3 [00:00<00:00,  2.09it/s]Loading checkpoint shards:  67%|██████▋   | 2/3 [00:01<00:00,  1.98it/s]Loading checkpoint shards: 100%|██████████| 3/3 [00:01<00:00,  2.96it/s]
+special ids: {'<|fim_prefix|>': 151659, '<|fim_middle|>': 151660, '<|box_start|>': 151648, '<|box_end|>': 151649, '<|fim_suffix|>': 151661}
+corpus support: 101 tokens, 3 questions
+corpus noul_only: 34 tokens, 1 questions
+corpus structured: 125 tokens, 3 questions
+corpus choice_single: 18 tokens, 1 questions
+corpus score5: 49 tokens, 1 questions
+corpus forgery: 71 tokens, 1 questions
+corpus unicode: 43 tokens, 1 questions
+packed vs separate max delta: 4.17e-07
+isolation p(ZEBRA-7741): {'state_in_sibling': 0.02187066525220871, 'absent': 0.02187066525220871, 'state_in_state': 0.9166266918182373}
+permutation argmax: ['returns', 'returns', 'returns', 'returns']
+wrote fixtures to crates/kev/fixtures/variants/kev-4b-c4bfa11 and artifacts to /tmp/kev-pin-review/candidate-fixture-artifacts

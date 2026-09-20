@@ -1,0 +1,14 @@
+# One contract, 1 implementation
+
+Read from `crates/gym/results/support-v2-three-way-kev-update-historical.jsonl`: 157 rows over 1 side. The chain verified, so no row was removed and none was inserted.
+
+| Side | Identity | Accuracy | ECE | Brier | NLL | Confident errors | Scored | Refused | Median latency |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| kev-4b-historical-1a0cb0a@513427d93be79763142511747cdc7aedb935f0f0a46194d5dcbe3e5b4e9ba354 asked as support-v2-three-way-v1 | base `906bfd4b`, checkpoint `sha256:2559d7a66cd0f4077d7f47b5460eedaf8211a43b917588638cc2da1f459628f9`, execution `{"attention": "eager-block-causal-v1", "backend": "metal", "dtype": "bf16", "head_dtype": "f32", "lora_merge": "fp32-before-cast-v1", "max_branch": "8192", "max_state": "8192", "option_isolation": "false"}` | 0.75 | 0.080 | 0.148 | 0.594 | 5 | 157 | 0 | 106 ms |
+
+A refused item stays in the door's denominator and out of its numerator, so a door that declines the hard questions does not score better for declining them.
+
+## Judged by `decision-v1`, digest `gate:dff5d2023b6116a80ceeeef14707bdc2bd02fedbcfaf61be42b0d0cd653b20b1`
+
+Only `kev-4b-historical-1a0cb0a@513427d93be79763142511747cdc7aedb935f0f0a46194d5dcbe3e5b4e9ba354 asked as support-v2-three-way-v1` has rows in this store, so there is nothing to compare it against yet.
+

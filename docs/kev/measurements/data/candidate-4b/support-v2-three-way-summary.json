@@ -1,0 +1,1505 @@
+{
+  "suite": "support-v2-three-way",
+  "suite_digest": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+  "question_digest": "9745b1d9a0f3828888762a33ab36dc1b5093708b79febdd1ec7af2d7571ce0ec",
+  "identities": {
+    "candidate": {
+      "artifact_signature": "sha256:5622bbba5cae1d35c4572ea382f76cbc4c4c63ef18452c916d80cf9e25a08991",
+      "base_model_signature": "906bfd4b4dc7f14ee4320094d8b41684abff8539",
+      "execution": {
+        "attention": "eager-block-causal-v1",
+        "backend": "metal",
+        "dtype": "bf16",
+        "head_dtype": "f32",
+        "lora_merge": "fp32-before-cast-v1",
+        "max_branch": "8192",
+        "max_state": "8192",
+        "option_isolation": "false"
+      },
+      "model": "kev-4b-c4bfa11",
+      "verified": true
+    },
+    "historical": {
+      "artifact_signature": "sha256:2559d7a66cd0f4077d7f47b5460eedaf8211a43b917588638cc2da1f459628f9",
+      "base_model_signature": "906bfd4b4dc7f14ee4320094d8b41684abff8539",
+      "execution": {
+        "attention": "eager-block-causal-v1",
+        "backend": "metal",
+        "dtype": "bf16",
+        "head_dtype": "f32",
+        "lora_merge": "fp32-before-cast-v1",
+        "max_branch": "8192",
+        "max_state": "8192",
+        "option_isolation": "false"
+      },
+      "model": "kev-4b-historical-1a0cb0a",
+      "verified": true
+    },
+    "jev": {
+      "model": "jev-latest",
+      "verified": false
+    }
+  },
+  "bootstrap_seed": 9458,
+  "bootstrap_draws": 10000,
+  "locked_scored": 0,
+  "groups": {
+    "routing/calibration": {
+      "models": {
+        "candidate": {
+          "expected": 40,
+          "answered": 40,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 32,
+          "accuracy": 0.8,
+          "wilson_95": [
+            0.652426936536005,
+            0.895000102745623
+          ],
+          "ece_answered": 0.0985,
+          "top_probability_brier": 0.13526000000000002,
+          "confident_errors": 1,
+          "constant_correct": {
+            "billing": 14,
+            "sales": 14,
+            "technical": 12
+          }
+        },
+        "historical": {
+          "expected": 40,
+          "answered": 40,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 27,
+          "accuracy": 0.675,
+          "wilson_95": [
+            0.5201774618987768,
+            0.799154977682173
+          ],
+          "ece_answered": 0.21049999999999996,
+          "top_probability_brier": 0.18556499999999998,
+          "confident_errors": 2,
+          "constant_correct": {
+            "billing": 14,
+            "sales": 14,
+            "technical": 12
+          }
+        },
+        "jev": {
+          "expected": 40,
+          "answered": 40,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 38,
+          "accuracy": 0.95,
+          "wilson_95": [
+            0.8349612263085903,
+            0.9861793326138516
+          ],
+          "ece_answered": 0.03949999999999999,
+          "top_probability_brier": 0.02522,
+          "confident_errors": 0,
+          "constant_correct": {
+            "billing": 14,
+            "sales": 14,
+            "technical": 12
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 5,
+          "reference_only_correct": 0,
+          "accuracy_difference": 0.125,
+          "paired_item_bootstrap_95": [
+            0.025,
+            0.225
+          ],
+          "mcnemar_exact_two_sided": 0.0625
+        },
+        "jev": {
+          "candidate_only_correct": 1,
+          "reference_only_correct": 7,
+          "accuracy_difference": -0.15,
+          "paired_item_bootstrap_95": [
+            -0.275,
+            -0.025
+          ],
+          "mcnemar_exact_two_sided": 0.0703125
+        }
+      }
+    },
+    "routing/development": {
+      "models": {
+        "candidate": {
+          "expected": 40,
+          "answered": 40,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 33,
+          "accuracy": 0.825,
+          "wilson_95": [
+            0.6805000966821229,
+            0.9125458625396408
+          ],
+          "ece_answered": 0.12375000000000003,
+          "top_probability_brier": 0.0932025,
+          "confident_errors": 1,
+          "constant_correct": {
+            "billing": 15,
+            "sales": 12,
+            "technical": 13
+          }
+        },
+        "historical": {
+          "expected": 40,
+          "answered": 40,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 30,
+          "accuracy": 0.75,
+          "wilson_95": [
+            0.5980603857923197,
+            0.858128813609037
+          ],
+          "ece_answered": 0.121,
+          "top_probability_brier": 0.14170500000000003,
+          "confident_errors": 2,
+          "constant_correct": {
+            "billing": 15,
+            "sales": 12,
+            "technical": 13
+          }
+        },
+        "jev": {
+          "expected": 40,
+          "answered": 40,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 36,
+          "accuracy": 0.9,
+          "wilson_95": [
+            0.7694822477247771,
+            0.9604204713173936
+          ],
+          "ece_answered": 0.07450000000000001,
+          "top_probability_brier": 0.05234,
+          "confident_errors": 0,
+          "constant_correct": {
+            "billing": 15,
+            "sales": 12,
+            "technical": 13
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 5,
+          "reference_only_correct": 2,
+          "accuracy_difference": 0.075,
+          "paired_item_bootstrap_95": [
+            -0.05,
+            0.2
+          ],
+          "mcnemar_exact_two_sided": 0.453125
+        },
+        "jev": {
+          "candidate_only_correct": 0,
+          "reference_only_correct": 3,
+          "accuracy_difference": -0.075,
+          "paired_item_bootstrap_95": [
+            -0.175,
+            0.0
+          ],
+          "mcnemar_exact_two_sided": 0.25
+        }
+      }
+    },
+    "routing/all": {
+      "models": {
+        "candidate": {
+          "expected": 80,
+          "answered": 80,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 65,
+          "accuracy": 0.8125,
+          "wilson_95": [
+            0.7134167737100688,
+            0.8829468953302267
+          ],
+          "ece_answered": 0.07962500000000002,
+          "top_probability_brier": 0.11423125000000003,
+          "confident_errors": 2,
+          "constant_correct": {
+            "billing": 29,
+            "sales": 26,
+            "technical": 25
+          }
+        },
+        "historical": {
+          "expected": 80,
+          "answered": 80,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 57,
+          "accuracy": 0.7125,
+          "wilson_95": [
+            0.6053965378701002,
+            0.8001307570773007
+          ],
+          "ece_answered": 0.16275,
+          "top_probability_brier": 0.16363500000000003,
+          "confident_errors": 4,
+          "constant_correct": {
+            "billing": 29,
+            "sales": 26,
+            "technical": 25
+          }
+        },
+        "jev": {
+          "expected": 80,
+          "answered": 80,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 74,
+          "accuracy": 0.925,
+          "wilson_95": [
+            0.8458798391878072,
+            0.9651747507069949
+          ],
+          "ece_answered": 0.04925,
+          "top_probability_brier": 0.038779999999999995,
+          "confident_errors": 0,
+          "constant_correct": {
+            "billing": 29,
+            "sales": 26,
+            "technical": 25
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 10,
+          "reference_only_correct": 2,
+          "accuracy_difference": 0.1,
+          "paired_item_bootstrap_95": [
+            0.025,
+            0.1875
+          ],
+          "mcnemar_exact_two_sided": 0.03857421875
+        },
+        "jev": {
+          "candidate_only_correct": 1,
+          "reference_only_correct": 10,
+          "accuracy_difference": -0.1125,
+          "paired_item_bootstrap_95": [
+            -0.1875,
+            -0.0375
+          ],
+          "mcnemar_exact_two_sided": 0.01171875
+        }
+      }
+    },
+    "severity/calibration": {
+      "models": {
+        "candidate": {
+          "expected": 15,
+          "answered": 15,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 14,
+          "accuracy": 0.9333333333333333,
+          "wilson_95": [
+            0.7018347012621998,
+            0.9881331045067315
+          ],
+          "ece_answered": 0.21266666666666667,
+          "top_probability_brier": 0.11432666666666667,
+          "confident_errors": 0,
+          "constant_correct": {
+            "0": 6,
+            "1": 4,
+            "2": 5
+          }
+        },
+        "historical": {
+          "expected": 15,
+          "answered": 15,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 12,
+          "accuracy": 0.8,
+          "wilson_95": [
+            0.5481455128483065,
+            0.9295245065301844
+          ],
+          "ece_answered": 0.2,
+          "top_probability_brier": 0.06521333333333332,
+          "confident_errors": 0,
+          "constant_correct": {
+            "0": 6,
+            "1": 4,
+            "2": 5
+          }
+        },
+        "jev": {
+          "expected": 15,
+          "answered": 15,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 14,
+          "accuracy": 0.9333333333333333,
+          "wilson_95": [
+            0.7018347012621998,
+            0.9881331045067315
+          ],
+          "ece_answered": 0.11066666666666668,
+          "top_probability_brier": 0.049600000000000005,
+          "confident_errors": 0,
+          "constant_correct": {
+            "0": 6,
+            "1": 4,
+            "2": 5
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 2,
+          "reference_only_correct": 0,
+          "accuracy_difference": 0.13333333333333333,
+          "paired_item_bootstrap_95": [
+            0.0,
+            0.3333333333333333
+          ],
+          "mcnemar_exact_two_sided": 0.5
+        },
+        "jev": {
+          "candidate_only_correct": 1,
+          "reference_only_correct": 1,
+          "accuracy_difference": 0.0,
+          "paired_item_bootstrap_95": [
+            -0.2,
+            0.2
+          ],
+          "mcnemar_exact_two_sided": 1
+        }
+      }
+    },
+    "severity/development": {
+      "models": {
+        "candidate": {
+          "expected": 14,
+          "answered": 14,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 11,
+          "accuracy": 0.7857142857142857,
+          "wilson_95": [
+            0.524107694133997,
+            0.9242861328730683
+          ],
+          "ece_answered": 0.15714285714285717,
+          "top_probability_brier": 0.15387142857142858,
+          "confident_errors": 0,
+          "constant_correct": {
+            "0": 4,
+            "1": 6,
+            "2": 4
+          }
+        },
+        "historical": {
+          "expected": 14,
+          "answered": 14,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 11,
+          "accuracy": 0.7857142857142857,
+          "wilson_95": [
+            0.524107694133997,
+            0.9242861328730683
+          ],
+          "ece_answered": 0.10142857142857145,
+          "top_probability_brier": 0.13044285714285714,
+          "confident_errors": 0,
+          "constant_correct": {
+            "0": 4,
+            "1": 6,
+            "2": 4
+          }
+        },
+        "jev": {
+          "expected": 14,
+          "answered": 14,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 13,
+          "accuracy": 0.9285714285714286,
+          "wilson_95": [
+            0.6853129557584889,
+            0.9872777847521093
+          ],
+          "ece_answered": 0.09285714285714285,
+          "top_probability_brier": 0.03534285714285714,
+          "confident_errors": 0,
+          "constant_correct": {
+            "0": 4,
+            "1": 6,
+            "2": 4
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 1,
+          "reference_only_correct": 1,
+          "accuracy_difference": 0.0,
+          "paired_item_bootstrap_95": [
+            -0.21428571428571427,
+            0.21428571428571427
+          ],
+          "mcnemar_exact_two_sided": 1
+        },
+        "jev": {
+          "candidate_only_correct": 1,
+          "reference_only_correct": 3,
+          "accuracy_difference": -0.14285714285714285,
+          "paired_item_bootstrap_95": [
+            -0.42857142857142855,
+            0.14285714285714285
+          ],
+          "mcnemar_exact_two_sided": 0.625
+        }
+      }
+    },
+    "severity/all": {
+      "models": {
+        "candidate": {
+          "expected": 29,
+          "answered": 29,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 25,
+          "accuracy": 0.8620689655172413,
+          "wilson_95": [
+            0.6944100627964798,
+            0.9450256003588804
+          ],
+          "ece_answered": 0.14448275862068966,
+          "top_probability_brier": 0.13341724137931035,
+          "confident_errors": 0,
+          "constant_correct": {
+            "0": 10,
+            "1": 10,
+            "2": 9
+          }
+        },
+        "historical": {
+          "expected": 29,
+          "answered": 29,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 23,
+          "accuracy": 0.7931034482758621,
+          "wilson_95": [
+            0.6160990959613211,
+            0.9015392980215897
+          ],
+          "ece_answered": 0.13448275862068965,
+          "top_probability_brier": 0.09670344827586208,
+          "confident_errors": 0,
+          "constant_correct": {
+            "0": 10,
+            "1": 10,
+            "2": 9
+          }
+        },
+        "jev": {
+          "expected": 29,
+          "answered": 29,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 27,
+          "accuracy": 0.9310344827586207,
+          "wilson_95": [
+            0.7803541984972431,
+            0.9808787338305667
+          ],
+          "ece_answered": 0.1020689655172414,
+          "top_probability_brier": 0.04271724137931036,
+          "confident_errors": 0,
+          "constant_correct": {
+            "0": 10,
+            "1": 10,
+            "2": 9
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 3,
+          "reference_only_correct": 1,
+          "accuracy_difference": 0.06896551724137931,
+          "paired_item_bootstrap_95": [
+            -0.06896551724137931,
+            0.20689655172413793
+          ],
+          "mcnemar_exact_two_sided": 0.625
+        },
+        "jev": {
+          "candidate_only_correct": 2,
+          "reference_only_correct": 4,
+          "accuracy_difference": -0.06896551724137931,
+          "paired_item_bootstrap_95": [
+            -0.2413793103448276,
+            0.10344827586206896
+          ],
+          "mcnemar_exact_two_sided": 0.6875
+        }
+      }
+    },
+    "urgency/calibration": {
+      "models": {
+        "candidate": {
+          "expected": 24,
+          "answered": 24,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 19,
+          "accuracy": 0.7916666666666666,
+          "wilson_95": [
+            0.5952954674681133,
+            0.9075517464714814
+          ],
+          "ece_answered": 0.07708333333333332,
+          "top_probability_brier": 0.13525416666666668,
+          "confident_errors": 1,
+          "constant_correct": {
+            "no": 12,
+            "yes": 12
+          }
+        },
+        "historical": {
+          "expected": 24,
+          "answered": 24,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 17,
+          "accuracy": 0.7083333333333334,
+          "wilson_95": [
+            0.5083230633550337,
+            0.8508535180303913
+          ],
+          "ece_answered": 0.11499999999999999,
+          "top_probability_brier": 0.19181666666666666,
+          "confident_errors": 1,
+          "constant_correct": {
+            "no": 12,
+            "yes": 12
+          }
+        },
+        "jev": {
+          "expected": 24,
+          "answered": 24,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 22,
+          "accuracy": 0.9166666666666666,
+          "wilson_95": [
+            0.741511978067893,
+            0.9768411847029567
+          ],
+          "ece_answered": 0.19416666666666668,
+          "top_probability_brier": 0.07763333333333333,
+          "confident_errors": 0,
+          "constant_correct": {
+            "no": 12,
+            "yes": 12
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 4,
+          "reference_only_correct": 2,
+          "accuracy_difference": 0.08333333333333333,
+          "paired_item_bootstrap_95": [
+            -0.125,
+            0.2916666666666667
+          ],
+          "mcnemar_exact_two_sided": 0.6875
+        },
+        "jev": {
+          "candidate_only_correct": 0,
+          "reference_only_correct": 3,
+          "accuracy_difference": -0.125,
+          "paired_item_bootstrap_95": [
+            -0.25,
+            0.0
+          ],
+          "mcnemar_exact_two_sided": 0.25
+        }
+      }
+    },
+    "urgency/development": {
+      "models": {
+        "candidate": {
+          "expected": 24,
+          "answered": 24,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 22,
+          "accuracy": 0.9166666666666666,
+          "wilson_95": [
+            0.741511978067893,
+            0.9768411847029567
+          ],
+          "ece_answered": 0.09916666666666667,
+          "top_probability_brier": 0.08467499999999999,
+          "confident_errors": 0,
+          "constant_correct": {
+            "no": 12,
+            "yes": 12
+          }
+        },
+        "historical": {
+          "expected": 24,
+          "answered": 24,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 20,
+          "accuracy": 0.8333333333333334,
+          "wilson_95": [
+            0.6414692935030095,
+            0.9332132367136705
+          ],
+          "ece_answered": 0.08750000000000001,
+          "top_probability_brier": 0.11451666666666667,
+          "confident_errors": 0,
+          "constant_correct": {
+            "no": 12,
+            "yes": 12
+          }
+        },
+        "jev": {
+          "expected": 24,
+          "answered": 24,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 24,
+          "accuracy": 1.0,
+          "wilson_95": [
+            0.8620237953250198,
+            1.0
+          ],
+          "ece_answered": 0.2058333333333333,
+          "top_probability_brier": 0.06086666666666666,
+          "confident_errors": 0,
+          "constant_correct": {
+            "no": 12,
+            "yes": 12
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 3,
+          "reference_only_correct": 1,
+          "accuracy_difference": 0.08333333333333333,
+          "paired_item_bootstrap_95": [
+            -0.08333333333333333,
+            0.25
+          ],
+          "mcnemar_exact_two_sided": 0.625
+        },
+        "jev": {
+          "candidate_only_correct": 0,
+          "reference_only_correct": 2,
+          "accuracy_difference": -0.08333333333333333,
+          "paired_item_bootstrap_95": [
+            -0.20833333333333334,
+            0.0
+          ],
+          "mcnemar_exact_two_sided": 0.5
+        }
+      }
+    },
+    "urgency/all": {
+      "models": {
+        "candidate": {
+          "expected": 48,
+          "answered": 48,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 41,
+          "accuracy": 0.8541666666666666,
+          "wilson_95": [
+            0.7283282347525372,
+            0.9275175067339628
+          ],
+          "ece_answered": 0.03104166666666665,
+          "top_probability_brier": 0.10996458333333332,
+          "confident_errors": 1,
+          "constant_correct": {
+            "no": 24,
+            "yes": 24
+          }
+        },
+        "historical": {
+          "expected": 48,
+          "answered": 48,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 37,
+          "accuracy": 0.7708333333333334,
+          "wilson_95": [
+            0.6346073590999655,
+            0.8669217373308877
+          ],
+          "ece_answered": 0.08458333333333333,
+          "top_probability_brier": 0.15316666666666667,
+          "confident_errors": 1,
+          "constant_correct": {
+            "no": 24,
+            "yes": 24
+          }
+        },
+        "jev": {
+          "expected": 48,
+          "answered": 48,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 46,
+          "accuracy": 0.9583333333333334,
+          "wilson_95": [
+            0.8602434412954456,
+            0.9884981065106133
+          ],
+          "ece_answered": 0.17124999999999999,
+          "top_probability_brier": 0.06925000000000002,
+          "confident_errors": 0,
+          "constant_correct": {
+            "no": 24,
+            "yes": 24
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 7,
+          "reference_only_correct": 3,
+          "accuracy_difference": 0.08333333333333333,
+          "paired_item_bootstrap_95": [
+            -0.041666666666666664,
+            0.20833333333333334
+          ],
+          "mcnemar_exact_two_sided": 0.34375
+        },
+        "jev": {
+          "candidate_only_correct": 0,
+          "reference_only_correct": 5,
+          "accuracy_difference": -0.10416666666666667,
+          "paired_item_bootstrap_95": [
+            -0.20833333333333334,
+            -0.020833333333333332
+          ],
+          "mcnemar_exact_two_sided": 0.0625
+        }
+      }
+    }
+  },
+  "errors": {
+    "candidate": [
+      {
+        "item": "routing/013",
+        "family": "routing",
+        "split": "development",
+        "truth": "billing",
+        "selected": "sales",
+        "confidence": 0.49,
+        "refusal": null
+      },
+      {
+        "item": "routing/046",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.77,
+        "refusal": null
+      },
+      {
+        "item": "routing/052",
+        "family": "routing",
+        "split": "development",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.68,
+        "refusal": null
+      },
+      {
+        "item": "routing/060",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "sales",
+        "confidence": 0.61,
+        "refusal": null
+      },
+      {
+        "item": "routing/061",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "sales",
+        "confidence": 0.66,
+        "refusal": null
+      },
+      {
+        "item": "routing/065",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.92,
+        "refusal": null
+      },
+      {
+        "item": "routing/067",
+        "family": "routing",
+        "split": "development",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.95,
+        "refusal": null
+      },
+      {
+        "item": "routing/072",
+        "family": "routing",
+        "split": "development",
+        "truth": "billing",
+        "selected": "sales",
+        "confidence": 0.54,
+        "refusal": null
+      },
+      {
+        "item": "routing/075",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.89,
+        "refusal": null
+      },
+      {
+        "item": "routing/080",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "technical",
+        "selected": "sales",
+        "confidence": 0.88,
+        "refusal": null
+      },
+      {
+        "item": "routing/082",
+        "family": "routing",
+        "split": "development",
+        "truth": "technical",
+        "selected": "billing",
+        "confidence": 0.79,
+        "refusal": null
+      },
+      {
+        "item": "routing/083",
+        "family": "routing",
+        "split": "development",
+        "truth": "billing",
+        "selected": "sales",
+        "confidence": 0.48,
+        "refusal": null
+      },
+      {
+        "item": "routing/085",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.51,
+        "refusal": null
+      },
+      {
+        "item": "routing/086",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.88,
+        "refusal": null
+      },
+      {
+        "item": "routing/087",
+        "family": "routing",
+        "split": "development",
+        "truth": "technical",
+        "selected": "billing",
+        "confidence": 0.71,
+        "refusal": null
+      },
+      {
+        "item": "urgency/022",
+        "family": "urgency",
+        "split": "development",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.82,
+        "refusal": null
+      },
+      {
+        "item": "urgency/027",
+        "family": "urgency",
+        "split": "development",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.79,
+        "refusal": null
+      },
+      {
+        "item": "urgency/040",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.91,
+        "refusal": null
+      },
+      {
+        "item": "urgency/041",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.84,
+        "refusal": null
+      },
+      {
+        "item": "urgency/046",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.54,
+        "refusal": null
+      },
+      {
+        "item": "urgency/050",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.64,
+        "refusal": null
+      },
+      {
+        "item": "urgency/056",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.73,
+        "refusal": null
+      },
+      {
+        "item": "severity/016",
+        "family": "severity",
+        "split": "calibration",
+        "truth": "1",
+        "selected": "2",
+        "confidence": 0.63,
+        "refusal": null
+      },
+      {
+        "item": "severity/018",
+        "family": "severity",
+        "split": "development",
+        "truth": "1",
+        "selected": "2",
+        "confidence": 0.44,
+        "refusal": null
+      },
+      {
+        "item": "severity/022",
+        "family": "severity",
+        "split": "development",
+        "truth": "1",
+        "selected": "2",
+        "confidence": 0.45,
+        "refusal": null
+      },
+      {
+        "item": "severity/023",
+        "family": "severity",
+        "split": "development",
+        "truth": "1",
+        "selected": "2",
+        "confidence": 0.75,
+        "refusal": null
+      }
+    ],
+    "historical": [
+      {
+        "item": "routing/011",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "sales",
+        "confidence": 0.62,
+        "refusal": null
+      },
+      {
+        "item": "routing/013",
+        "family": "routing",
+        "split": "development",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.44,
+        "refusal": null
+      },
+      {
+        "item": "routing/046",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.85,
+        "refusal": null
+      },
+      {
+        "item": "routing/048",
+        "family": "routing",
+        "split": "development",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.71,
+        "refusal": null
+      },
+      {
+        "item": "routing/051",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.63,
+        "refusal": null
+      },
+      {
+        "item": "routing/052",
+        "family": "routing",
+        "split": "development",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.68,
+        "refusal": null
+      },
+      {
+        "item": "routing/053",
+        "family": "routing",
+        "split": "development",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.83,
+        "refusal": null
+      },
+      {
+        "item": "routing/060",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.48,
+        "refusal": null
+      },
+      {
+        "item": "routing/061",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "sales",
+        "confidence": 0.7,
+        "refusal": null
+      },
+      {
+        "item": "routing/065",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.97,
+        "refusal": null
+      },
+      {
+        "item": "routing/066",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.8,
+        "refusal": null
+      },
+      {
+        "item": "routing/067",
+        "family": "routing",
+        "split": "development",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 1.0,
+        "refusal": null
+      },
+      {
+        "item": "routing/068",
+        "family": "routing",
+        "split": "development",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.56,
+        "refusal": null
+      },
+      {
+        "item": "routing/072",
+        "family": "routing",
+        "split": "development",
+        "truth": "billing",
+        "selected": "sales",
+        "confidence": 0.58,
+        "refusal": null
+      },
+      {
+        "item": "routing/075",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.92,
+        "refusal": null
+      },
+      {
+        "item": "routing/076",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.5,
+        "refusal": null
+      },
+      {
+        "item": "routing/077",
+        "family": "routing",
+        "split": "development",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.63,
+        "refusal": null
+      },
+      {
+        "item": "routing/078",
+        "family": "routing",
+        "split": "development",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.93,
+        "refusal": null
+      },
+      {
+        "item": "routing/080",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "technical",
+        "selected": "sales",
+        "confidence": 0.59,
+        "refusal": null
+      },
+      {
+        "item": "routing/081",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.84,
+        "refusal": null
+      },
+      {
+        "item": "routing/082",
+        "family": "routing",
+        "split": "development",
+        "truth": "technical",
+        "selected": "billing",
+        "confidence": 0.54,
+        "refusal": null
+      },
+      {
+        "item": "routing/085",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.78,
+        "refusal": null
+      },
+      {
+        "item": "routing/086",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.85,
+        "refusal": null
+      },
+      {
+        "item": "urgency/006",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.79,
+        "refusal": null
+      },
+      {
+        "item": "urgency/007",
+        "family": "urgency",
+        "split": "development",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.83,
+        "refusal": null
+      },
+      {
+        "item": "urgency/022",
+        "family": "urgency",
+        "split": "development",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.6,
+        "refusal": null
+      },
+      {
+        "item": "urgency/040",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.55,
+        "refusal": null
+      },
+      {
+        "item": "urgency/041",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.59,
+        "refusal": null
+      },
+      {
+        "item": "urgency/042",
+        "family": "urgency",
+        "split": "development",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.54,
+        "refusal": null
+      },
+      {
+        "item": "urgency/045",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.79,
+        "refusal": null
+      },
+      {
+        "item": "urgency/050",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.91,
+        "refusal": null
+      },
+      {
+        "item": "urgency/051",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.51,
+        "refusal": null
+      },
+      {
+        "item": "urgency/055",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.62,
+        "refusal": null
+      },
+      {
+        "item": "urgency/058",
+        "family": "urgency",
+        "split": "development",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.71,
+        "refusal": null
+      },
+      {
+        "item": "severity/015",
+        "family": "severity",
+        "split": "calibration",
+        "truth": "1",
+        "selected": "0",
+        "confidence": 0.53,
+        "refusal": null
+      },
+      {
+        "item": "severity/016",
+        "family": "severity",
+        "split": "calibration",
+        "truth": "1",
+        "selected": "0",
+        "confidence": 0.41,
+        "refusal": null
+      },
+      {
+        "item": "severity/017",
+        "family": "severity",
+        "split": "development",
+        "truth": "1",
+        "selected": "0",
+        "confidence": 0.5,
+        "refusal": null
+      },
+      {
+        "item": "severity/022",
+        "family": "severity",
+        "split": "development",
+        "truth": "1",
+        "selected": "0",
+        "confidence": 0.41,
+        "refusal": null
+      },
+      {
+        "item": "severity/023",
+        "family": "severity",
+        "split": "development",
+        "truth": "1",
+        "selected": "2",
+        "confidence": 0.48,
+        "refusal": null
+      },
+      {
+        "item": "severity/025",
+        "family": "severity",
+        "split": "calibration",
+        "truth": "2",
+        "selected": "1",
+        "confidence": 0.45,
+        "refusal": null
+      }
+    ],
+    "jev": [
+      {
+        "item": "routing/052",
+        "family": "routing",
+        "split": "development",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.68,
+        "refusal": null
+      },
+      {
+        "item": "routing/067",
+        "family": "routing",
+        "split": "development",
+        "truth": "billing",
+        "selected": "technical",
+        "confidence": 0.64,
+        "refusal": null
+      },
+      {
+        "item": "routing/075",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.49,
+        "refusal": null
+      },
+      {
+        "item": "routing/081",
+        "family": "routing",
+        "split": "calibration",
+        "truth": "sales",
+        "selected": "technical",
+        "confidence": 0.61,
+        "refusal": null
+      },
+      {
+        "item": "routing/082",
+        "family": "routing",
+        "split": "development",
+        "truth": "technical",
+        "selected": "billing",
+        "confidence": 0.63,
+        "refusal": null
+      },
+      {
+        "item": "routing/087",
+        "family": "routing",
+        "split": "development",
+        "truth": "technical",
+        "selected": "billing",
+        "confidence": 0.7,
+        "refusal": null
+      },
+      {
+        "item": "urgency/041",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "no",
+        "selected": "yes",
+        "confidence": 0.56,
+        "refusal": null
+      },
+      {
+        "item": "urgency/050",
+        "family": "urgency",
+        "split": "calibration",
+        "truth": "yes",
+        "selected": "no",
+        "confidence": 0.5700000000000001,
+        "refusal": null
+      },
+      {
+        "item": "severity/012",
+        "family": "severity",
+        "split": "development",
+        "truth": "1",
+        "selected": "2",
+        "confidence": 0.64,
+        "refusal": null
+      },
+      {
+        "item": "severity/015",
+        "family": "severity",
+        "split": "calibration",
+        "truth": "1",
+        "selected": "0",
+        "confidence": 0.62,
+        "refusal": null
+      }
+    ]
+  }
+}

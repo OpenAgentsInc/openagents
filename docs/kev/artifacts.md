@@ -101,3 +101,18 @@ A complete 0.5B bundle was recovered into an empty root, including its base
 weights. A second run made no downloads and printed the same lock digest.
 The three Qwen3 variants also passed verification in their existing
 directories, including all base shards.
+
+## Reviewed replacement 4B
+
+The separately named `kev-4b-c4bfa11` lock and fixtures pin the replacement
+4B at `c4bfa11b0dc07691884f2d97f1c4c4c05c92e416`. Fetch it explicitly:
+
+```sh
+./scripts/fetch-kev-artifacts.sh --root /path/to/candidate-artifacts \
+  --lock crates/kev/fixtures/variants/kev-4b-c4bfa11/artifact-lock.json
+```
+
+Use a candidate root separate from a production bundle: bundle serving
+scans every model directory under its root. Acquisition is not admission.
+The [evaluation record](measurements/2026-09-20-candidate-4b.md) states the
+per-family results and why this does not change Coder's default.

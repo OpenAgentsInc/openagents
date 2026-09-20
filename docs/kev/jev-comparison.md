@@ -14,6 +14,7 @@ The Kev rows describe the historical adapters pinned by the fixture
 manifests. They do not measure the replacement Qwen3 weights now on the
 Hub. See the [2026-09-20 review](2026-09-20-upstream-review.md) and
 [current upstream results](model-cards.md#current-upstream-checkpoints-reviewed-2026-09-20).
+The [replacement 4B workload comparison](measurements/2026-09-20-candidate-4b.md) records fresh, content-identified measurements separately from these historical examples.
 
 ## Per-variant results
 

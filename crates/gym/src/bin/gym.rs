@@ -171,7 +171,7 @@ gym regress  compare a door with its own last recorded run
   --baseline name     the side `compare` measures the others against
   --against path      the store `regress` measures the rows in `--store`
                       against; the same store by default
-  --items path        narrow a view to the item ids listed in this file
+  --items path        narrow eval or a recorded view to these item ids
   --from path         a store `merge` folds into `--store`; repeatable
   --blocks n          how many passes `latency` makes; 8 by default
   --timeout seconds   how long one call to a `--door` may take; the client's
@@ -282,6 +282,25 @@ fn read_item_ids(path: &str) -> Result<std::collections::BTreeSet<String>, Strin
         return Err(format!("{path} names no item ids"));
     }
     Ok(ids)
+}
+
+/// Resume an interrupted measurement without widening its allowed partitions.
+fn narrow_eval_items(
+    items: &mut Vec<&Item>,
+    wanted: &std::collections::BTreeSet<String>,
+) -> Result<(), String> {
+    if wanted.is_empty() {
+        return Err("the eval subset names no items".to_string());
+    }
+    for id in wanted {
+        if !items.iter().any(|item| &item.id == id) {
+            return Err(format!(
+                "item {id} is outside the selected open partitions and family"
+            ));
+        }
+    }
+    items.retain(|item| wanted.contains(&item.id));
+    Ok(())
 }
 
 /// The items a run asks: the wanted partitions, narrowed to one family when
@@ -479,7 +498,10 @@ async fn eval_command(options: Options) -> Result<(), String> {
     let gate = load_gate(&options, &suite)?;
     let questions = load_questions(&options, &suite)?;
     let wanted = partitions(&options)?;
-    let items = items_of(&suite, &wanted, options.family.as_deref())?;
+    let mut items = items_of(&suite, &wanted, options.family.as_deref())?;
+    if let Some(path) = options.items.as_deref() {
+        narrow_eval_items(&mut items, &read_item_ids(path)?)?;
+    }
     let doors = open_doors(&options)?;
     let store = options.record.as_deref().map(Store::at);
 
@@ -2478,6 +2500,37 @@ mod tests {
             .execution
             .insert("dtype".to_string(), "bf16".to_string());
         assert_ne!(Side::of(&before).label(), Side::of(&after).label());
+    }
+
+    #[test]
+    fn eval_subsets_preserve_order_and_reject_locked_or_unknown_items() {
+        let suite = load_suite(&Options::default()).unwrap();
+        let allowed = items_of(&suite, &[Partition::Calibration], None).unwrap();
+        let wanted = [allowed[2].id.clone(), allowed[0].id.clone()]
+            .into_iter()
+            .collect();
+        let mut selected = allowed.clone();
+        narrow_eval_items(&mut selected, &wanted).unwrap();
+        assert_eq!(
+            selected.iter().map(|item| &item.id).collect::<Vec<_>>(),
+            vec![&allowed[0].id, &allowed[2].id]
+        );
+        for forbidden in [
+            "absent".to_string(),
+            suite
+                .items
+                .iter()
+                .find(|item| item.partition == Partition::Locked)
+                .unwrap()
+                .id
+                .clone(),
+        ] {
+            assert!(
+                narrow_eval_items(&mut allowed.clone(), &[forbidden].into_iter().collect())
+                    .is_err()
+            );
+        }
+        assert!(narrow_eval_items(&mut allowed.clone(), &Default::default()).is_err());
     }
 
     /// A file of item ids reads back without its provenance.

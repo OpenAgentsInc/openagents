@@ -1,0 +1,193 @@
+{
+  "suite_digest": "378b57c423ebef319e94bfc47e43ab6e8460740230d60d078c9e4e573d596026",
+  "question_digest": "7a8485ca6904e9d8658d969da6f6ad3d663e19bd9c7516eb2db6256fef97b9ba",
+  "door_identity": {
+    "artifact_signature": "sha256:5622bbba5cae1d35c4572ea382f76cbc4c4c63ef18452c916d80cf9e25a08991",
+    "base_model_signature": "906bfd4b4dc7f14ee4320094d8b41684abff8539",
+    "execution": {
+      "attention": "eager-block-causal-v1",
+      "backend": "metal",
+      "dtype": "bf16",
+      "head_dtype": "f32",
+      "lora_merge": "fp32-before-cast-v1",
+      "max_branch": "8192",
+      "max_state": "8192",
+      "option_isolation": "false"
+    },
+    "model": "kev-4b-c4bfa11",
+    "verified": true
+  },
+  "locked_scored": 0,
+  "groups": {
+    "real": {
+      "expected": 32,
+      "answered": 32,
+      "refused": 0,
+      "harness_missing": 0,
+      "correct": 31,
+      "negative": 31,
+      "positive": 1,
+      "spurious": 0,
+      "missed": 1,
+      "wrong_program": 0,
+      "confident_errors": 0,
+      "accuracy_answered": 0.96875,
+      "top_probability_brier": 0.017296874999999996,
+      "constants": {
+        "none": 31,
+        "answer-question": 0,
+        "burn-down": 0,
+        "delegate-fan-out": 1
+      }
+    },
+    "authored": {
+      "expected": 36,
+      "answered": 36,
+      "refused": 0,
+      "harness_missing": 0,
+      "correct": 22,
+      "negative": 10,
+      "positive": 26,
+      "spurious": 2,
+      "missed": 11,
+      "wrong_program": 1,
+      "confident_errors": 5,
+      "accuracy_answered": 0.6111111111111112,
+      "top_probability_brier": 0.2735222222222222,
+      "constants": {
+        "none": 10,
+        "answer-question": 9,
+        "burn-down": 6,
+        "delegate-fan-out": 11
+      }
+    },
+    "all": {
+      "expected": 68,
+      "answered": 68,
+      "refused": 0,
+      "harness_missing": 0,
+      "correct": 53,
+      "negative": 41,
+      "positive": 27,
+      "spurious": 2,
+      "missed": 12,
+      "wrong_program": 1,
+      "confident_errors": 5,
+      "accuracy_answered": 0.7794117647058824,
+      "top_probability_brier": 0.1529455882352941,
+      "constants": {
+        "none": 41,
+        "answer-question": 9,
+        "burn-down": 6,
+        "delegate-fan-out": 12
+      }
+    }
+  },
+  "errors": [
+    {
+      "item": "turn/1d845d65#16",
+      "truth": "delegate-fan-out",
+      "selected": "none",
+      "confidence": 0.58,
+      "kind": "missed"
+    },
+    {
+      "item": "authored/fan-out-six-questions",
+      "truth": "delegate-fan-out",
+      "selected": "none",
+      "confidence": 0.39,
+      "kind": "missed"
+    },
+    {
+      "item": "authored/fan-out-listed-work",
+      "truth": "delegate-fan-out",
+      "selected": "burn-down",
+      "confidence": 0.64,
+      "kind": "wrong_program"
+    },
+    {
+      "item": "authored/fan-out-per-crate",
+      "truth": "delegate-fan-out",
+      "selected": "none",
+      "confidence": 0.74,
+      "kind": "missed"
+    },
+    {
+      "item": "authored/answer-one-file",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.91,
+      "kind": "missed"
+    },
+    {
+      "item": "authored/answer-one-question",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.82,
+      "kind": "missed"
+    },
+    {
+      "item": "authored/answer-rounds-max",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.96,
+      "kind": "missed"
+    },
+    {
+      "item": "authored/about-the-program",
+      "truth": "none",
+      "selected": "delegate-fan-out",
+      "confidence": 0.73,
+      "kind": "spurious"
+    },
+    {
+      "item": "authored-v2/cal-answer-config",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.86,
+      "kind": "missed"
+    },
+    {
+      "item": "authored-v2/cal-answer-model",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.63,
+      "kind": "missed"
+    },
+    {
+      "item": "authored-v2/cal-answer-bound",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.83,
+      "kind": "missed"
+    },
+    {
+      "item": "authored-v2/dev-answer-one",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.92,
+      "kind": "missed"
+    },
+    {
+      "item": "authored-v2/dev-answer-doc",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.9,
+      "kind": "missed"
+    },
+    {
+      "item": "authored-v2/dev-answer-count",
+      "truth": "answer-question",
+      "selected": "none",
+      "confidence": 0.95,
+      "kind": "missed"
+    },
+    {
+      "item": "authored-v2/dev-none-overlap",
+      "truth": "none",
+      "selected": "answer-question",
+      "confidence": 0.59,
+      "kind": "spurious"
+    }
+  ]
+}

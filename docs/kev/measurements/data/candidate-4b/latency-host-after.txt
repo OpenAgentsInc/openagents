@@ -1,0 +1,33 @@
+Sun Sep 20 20:43:08 UTC 2026
+15:43  up 2 days, 16:31, 7 users, load averages: 5.69 5.27 5.46
+PID %CPU RSS COMMAND (active processes and model servers)
+1 21.0 28512 launchd
+340 1.9 76864 logd
+379 6.6 19248 contextstored
+392 93.4 59104 dasd
+406 6.7 5456 notifyd
+420 1.5 32784 runningboardd
+547 3.4 48624 modelmanagerd
+554 1.1 25952 modelcatalogd
+1215 2.8 113344 IMDPersistenceAgent
+2687 0.0 155040 kev-serve
+18410 0.0 3920 lev-serve
+30146 0.0 2032 lev-serve
+36951 0.0 4768 lev-serve
+39903 0.0 3136 lev-serve
+44956 2.2 235872 TGOnDeviceInferenceProviderService
+54272 1.0 33136 WowVoiceProxy
+57049 46.0 196208 WindowServer
+57405 5.1 323432 Battle.net
+57483 10.7 49936 imagent
+57758 6.6 167856 Codex (Service)
+60726 2.7 658624 Codex (Renderer)
+64343 11.1 31792 PerfPowerServices
+65893 94.8 31792 FPCKService
+73415 0.0 137312 lev-serve
+73454 0.0 24992 lev-bridge
+73458 0.1 25200 lev-bridge
+73462 0.0 24832 lev-bridge
+73473 0.5 24624 lev-bridge
+75092 1.3 346944 Google Chrome Helper (Renderer)
+89623 3.9 484688 TGOnDeviceInferenceProviderService

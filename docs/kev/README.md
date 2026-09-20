@@ -11,7 +11,10 @@ conformance fixtures pinning each checkpoint to the Python reference.
 Upstream has since replaced all three Qwen3 adapters under the same Hub
 names. Those new contents are not covered by the old measurements. Start
 with the [2026-09-20 release review](2026-09-20-upstream-review.md) for the
-artifact changes, serving gaps, and recommended 4B evaluation.
+artifact changes and serving gaps. The
+[replacement 4B evaluation](measurements/2026-09-20-candidate-4b.md) now
+records real-weight conformance and 461 open workload items per door. Shell
+outcomes improve; action and program selection do not support replacement.
 [`port-roadmap.md`](port-roadmap.md) holds the issue sequence and the
 conformance measurements, [`jev-comparison.md`](jev-comparison.md) holds
 the per-variant side-by-side against hosted Jev,

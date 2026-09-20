@@ -1,0 +1,93 @@
+    Finished `release` profile [optimized] target(s) in 0.24s
+     Running unittests src/lib.rs (target/release/deps/kev-cb98c454e127ae42)
+
+running 6 tests
+test artifacts::tests::identity_uses_loaded_bytes_and_logical_names ... ok
+test artifacts::tests::missing_optional_metadata_is_part_of_identity ... ok
+test lora::tests::the_original_base_and_delta_are_added_before_rounding ... ok
+test model::loading_tests::adapted_loading_preserves_source_precision_until_the_merge ... ok
+test serve::host_memory_tests::meminfo_reads_mem_available ... ok
+test serve::host_memory_tests::vm_stat_reads_free_and_inactive_pages ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/kev_serve.rs (target/release/deps/kev_serve-03acd8c416997298)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/api.rs (target/release/deps/api-e21116cd12b45adf)
+
+running 5 tests
+test a_score_reports_the_weighted_mean_while_a_reader_argmaxes ... ok
+test every_corpus_request_reproduces_its_record ... ok
+test every_golden_answer_set_reproduces ... ok
+test sanitize_rewrites_delimiter_spans ... ok
+test validation_refuses_bad_requests ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/conformance.rs (target/release/deps/conformance-842f21925412fdf1)
+
+running 6 tests
+test forgery_cannot_add_options ... ok
+test golden_probabilities_reproduce ... kev-4b-c4bfa11: max probs delta 5.335e-6 (unicode)
+ok
+test isolation_probe_holds ... kev-4b-c4bfa11: isolation state_in_sibling: 0.0219 (reference 0.0219)
+kev-4b-c4bfa11: isolation absent: 0.0219 (reference 0.0219)
+kev-4b-c4bfa11: isolation state_in_state: 0.9166 (reference 0.9166)
+ok
+test option_isolation_flag_matches_reference ... ok
+test packed_matches_separate ... kev-4b-c4bfa11: packed-vs-separate delta 1.431e-6 (reference 4.172e-7)
+ok
+test permutation_probe_reproduces ... kev-4b-c4bfa11: permutation argmaxes: ["returns", "returns", "returns", "returns"]
+ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 69.72s
+
+     Running tests/encode.rs (target/release/deps/encode-cc00eaec87348660)
+
+running 5 tests
+test every_fixture_encoding_reproduces ... ok
+test mask_isolates_sibling_questions ... ok
+test option_isolation_mask_keeps_spans_apart ... ok
+test sanitized_text_never_yields_delimiter_ids ... ok
+test tokenizer_cases_reproduce ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running tests/refusals.rs (target/release/deps/refusals-203d1498ba53d9df)
+
+running 18 tests
+test a_burst_against_a_full_door_leaves_no_queue ... ok
+test a_detail_only_body_is_not_a_refusal ... ok
+test a_full_door_answers_busy_and_recovers ... ok
+test a_saturated_variant_refuses_alone ... ok
+test a_spent_memory_budget_refuses_with_free_slots ... ok
+test a_valid_request_round_trips ... ok
+test an_error_body_without_a_code_stays_harness ... ok
+test an_invalid_serving_state_is_refused_at_construction ... ok
+test door_refusals_classify_through_jev_and_gym ... ok
+test each_variant_is_bounded_by_its_own_forward_cost ... ok
+test every_advertised_alias_resolves ... ok
+test incomplete_response_body_stays_harness ... ok
+test oversized_http_body_is_a_typed_refusal ... ok
+test raw_refusals_classify_too ... ok
+test replaced_adapter_identity_round_trips_through_jev_and_gym ... ok
+test the_delimiter_floor_is_refused_before_encoding ... ok
+test token_bounds_admit_at_the_limit_and_refuse_past_it ... ok
+test transport_failures_stay_harness ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/serve.rs (target/release/deps/serve-fe082deac900666a)
+
+running 4 tests
+test jev_client_round_trips_all_types ... ok
+test models_lists_kev ... ok
+test models_publish_the_base_model_signature ... ok
+test refusals_are_typed ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.91s
+

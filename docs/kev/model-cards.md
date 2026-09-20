@@ -14,7 +14,10 @@ position](#do-not-read-this-checkpoints-score-as-a-position) does.
 
 The Hub names are mutable. The following revisions contain newer Qwen3
 adapters than the ones pinned by our fixtures. These are upstream results;
-none of the new adapters has an OpenAgents measurement in this review.
+the table does not use OpenAgents scores. The
+[separate 4B evaluation](measurements/2026-09-20-candidate-4b.md) measures
+`c4bfa11` on current Coder, support, and external-label suites with historical
+4B and hosted Jev controls.
 
 | Checkpoint and immutable Hub revision | In-domain dev / locked test | Out-of-domain dev / locked test | Brier, OOD dev | Confident errors, OOD dev |
 | --- | --- | --- | --- | --- |

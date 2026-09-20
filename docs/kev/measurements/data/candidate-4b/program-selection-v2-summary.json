@@ -1,0 +1,656 @@
+{
+  "suite": "program-selection-v2",
+  "suite_digest": "378b57c423ebef319e94bfc47e43ab6e8460740230d60d078c9e4e573d596026",
+  "question_digest": "7a8485ca6904e9d8658d969da6f6ad3d663e19bd9c7516eb2db6256fef97b9ba",
+  "identities": {
+    "candidate": {
+      "artifact_signature": "sha256:5622bbba5cae1d35c4572ea382f76cbc4c4c63ef18452c916d80cf9e25a08991",
+      "base_model_signature": "906bfd4b4dc7f14ee4320094d8b41684abff8539",
+      "execution": {
+        "attention": "eager-block-causal-v1",
+        "backend": "metal",
+        "dtype": "bf16",
+        "head_dtype": "f32",
+        "lora_merge": "fp32-before-cast-v1",
+        "max_branch": "8192",
+        "max_state": "8192",
+        "option_isolation": "false"
+      },
+      "model": "kev-4b-c4bfa11",
+      "verified": true
+    },
+    "historical": {
+      "artifact_signature": "sha256:2559d7a66cd0f4077d7f47b5460eedaf8211a43b917588638cc2da1f459628f9",
+      "base_model_signature": "906bfd4b4dc7f14ee4320094d8b41684abff8539",
+      "execution": {
+        "attention": "eager-block-causal-v1",
+        "backend": "metal",
+        "dtype": "bf16",
+        "head_dtype": "f32",
+        "lora_merge": "fp32-before-cast-v1",
+        "max_branch": "8192",
+        "max_state": "8192",
+        "option_isolation": "false"
+      },
+      "model": "kev-4b-historical-1a0cb0a",
+      "verified": true
+    },
+    "jev": {
+      "model": "jev-latest",
+      "verified": false
+    }
+  },
+  "bootstrap_seed": 9458,
+  "bootstrap_draws": 10000,
+  "locked_scored": 0,
+  "groups": {
+    "program/calibration": {
+      "models": {
+        "candidate": {
+          "expected": 28,
+          "answered": 28,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 25,
+          "accuracy": 0.8928571428571429,
+          "wilson_95": [
+            0.7280414845132785,
+            0.9628816331707
+          ],
+          "ece_answered": 0.09785714285714286,
+          "top_probability_brier": 0.07530714285714284,
+          "confident_errors": 0,
+          "constant_correct": {
+            "answer-question": 3,
+            "burn-down": 3,
+            "delegate-fan-out": 3,
+            "none": 19
+          }
+        },
+        "historical": {
+          "expected": 28,
+          "answered": 28,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 23,
+          "accuracy": 0.8214285714285714,
+          "wilson_95": [
+            0.6440857521065705,
+            0.9212149805439572
+          ],
+          "ece_answered": 0.11250000000000003,
+          "top_probability_brier": 0.07468928571428571,
+          "confident_errors": 0,
+          "constant_correct": {
+            "answer-question": 3,
+            "burn-down": 3,
+            "delegate-fan-out": 3,
+            "none": 19
+          }
+        },
+        "jev": {
+          "expected": 28,
+          "answered": 28,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 24,
+          "accuracy": 0.8571428571428571,
+          "wilson_95": [
+            0.685101978364747,
+            0.9430099468025059
+          ],
+          "ece_answered": 0.09499999999999999,
+          "top_probability_brier": 0.08314999999999999,
+          "confident_errors": 0,
+          "constant_correct": {
+            "answer-question": 3,
+            "burn-down": 3,
+            "delegate-fan-out": 3,
+            "none": 19
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 2,
+          "reference_only_correct": 0,
+          "accuracy_difference": 0.07142857142857142,
+          "paired_item_bootstrap_95": [
+            0.0,
+            0.17857142857142858
+          ],
+          "mcnemar_exact_two_sided": 0.5
+        },
+        "jev": {
+          "candidate_only_correct": 3,
+          "reference_only_correct": 2,
+          "accuracy_difference": 0.03571428571428571,
+          "paired_item_bootstrap_95": [
+            -0.10714285714285714,
+            0.17857142857142858
+          ],
+          "mcnemar_exact_two_sided": 1
+        }
+      }
+    },
+    "program/development": {
+      "models": {
+        "candidate": {
+          "expected": 40,
+          "answered": 40,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 28,
+          "accuracy": 0.7,
+          "wilson_95": [
+            0.5456998118185507,
+            0.8192515477025347
+          ],
+          "ece_answered": 0.19075,
+          "top_probability_brier": 0.20729249999999996,
+          "confident_errors": 5,
+          "constant_correct": {
+            "answer-question": 6,
+            "burn-down": 3,
+            "delegate-fan-out": 9,
+            "none": 22
+          }
+        },
+        "historical": {
+          "expected": 40,
+          "answered": 40,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 30,
+          "accuracy": 0.75,
+          "wilson_95": [
+            0.5980603857923197,
+            0.858128813609037
+          ],
+          "ece_answered": 0.10425,
+          "top_probability_brier": 0.12891749999999996,
+          "confident_errors": 0,
+          "constant_correct": {
+            "answer-question": 6,
+            "burn-down": 3,
+            "delegate-fan-out": 9,
+            "none": 22
+          }
+        },
+        "jev": {
+          "expected": 40,
+          "answered": 40,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 37,
+          "accuracy": 0.925,
+          "wilson_95": [
+            0.8013576647568946,
+            0.9741639742254119
+          ],
+          "ece_answered": 0.10725,
+          "top_probability_brier": 0.07574750000000001,
+          "confident_errors": 0,
+          "constant_correct": {
+            "answer-question": 6,
+            "burn-down": 3,
+            "delegate-fan-out": 9,
+            "none": 22
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 0,
+          "reference_only_correct": 2,
+          "accuracy_difference": -0.05,
+          "paired_item_bootstrap_95": [
+            -0.125,
+            0.0
+          ],
+          "mcnemar_exact_two_sided": 0.5
+        },
+        "jev": {
+          "candidate_only_correct": 0,
+          "reference_only_correct": 9,
+          "accuracy_difference": -0.225,
+          "paired_item_bootstrap_95": [
+            -0.35,
+            -0.1
+          ],
+          "mcnemar_exact_two_sided": 0.00390625
+        }
+      }
+    },
+    "program/all": {
+      "models": {
+        "candidate": {
+          "expected": 68,
+          "answered": 68,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 53,
+          "accuracy": 0.7794117647058824,
+          "wilson_95": [
+            0.6674326122885067,
+            0.861509876126748
+          ],
+          "ece_answered": 0.11779411764705883,
+          "top_probability_brier": 0.1529455882352941,
+          "confident_errors": 5,
+          "constant_correct": {
+            "answer-question": 9,
+            "burn-down": 6,
+            "delegate-fan-out": 12,
+            "none": 41
+          }
+        },
+        "historical": {
+          "expected": 68,
+          "answered": 68,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 53,
+          "accuracy": 0.7794117647058824,
+          "wilson_95": [
+            0.6674326122885067,
+            0.861509876126748
+          ],
+          "ece_answered": 0.08558823529411765,
+          "top_probability_brier": 0.10658823529411762,
+          "confident_errors": 0,
+          "constant_correct": {
+            "answer-question": 9,
+            "burn-down": 6,
+            "delegate-fan-out": 12,
+            "none": 41
+          }
+        },
+        "jev": {
+          "expected": 68,
+          "answered": 68,
+          "refused": 0,
+          "harness_missing": 0,
+          "correct": 61,
+          "accuracy": 0.8970588235294118,
+          "wilson_95": [
+            0.8024208869063437,
+            0.9492342282100709
+          ],
+          "ece_answered": 0.07867647058823529,
+          "top_probability_brier": 0.07879558823529409,
+          "confident_errors": 0,
+          "constant_correct": {
+            "answer-question": 9,
+            "burn-down": 6,
+            "delegate-fan-out": 12,
+            "none": 41
+          }
+        }
+      },
+      "paired": {
+        "historical": {
+          "candidate_only_correct": 2,
+          "reference_only_correct": 2,
+          "accuracy_difference": 0.0,
+          "paired_item_bootstrap_95": [
+            -0.058823529411764705,
+            0.058823529411764705
+          ],
+          "mcnemar_exact_two_sided": 1
+        },
+        "jev": {
+          "candidate_only_correct": 3,
+          "reference_only_correct": 11,
+          "accuracy_difference": -0.11764705882352941,
+          "paired_item_bootstrap_95": [
+            -0.22058823529411764,
+            -0.014705882352941176
+          ],
+          "mcnemar_exact_two_sided": 0.057373046875
+        }
+      }
+    }
+  },
+  "errors": {
+    "candidate": [
+      {
+        "item": "turn/1d845d65#16",
+        "family": "program",
+        "split": "development",
+        "truth": "delegate-fan-out",
+        "selected": "none",
+        "confidence": 0.58,
+        "refusal": null
+      },
+      {
+        "item": "authored/fan-out-six-questions",
+        "family": "program",
+        "split": "development",
+        "truth": "delegate-fan-out",
+        "selected": "none",
+        "confidence": 0.39,
+        "refusal": null
+      },
+      {
+        "item": "authored/fan-out-listed-work",
+        "family": "program",
+        "split": "development",
+        "truth": "delegate-fan-out",
+        "selected": "burn-down",
+        "confidence": 0.64,
+        "refusal": null
+      },
+      {
+        "item": "authored/fan-out-per-crate",
+        "family": "program",
+        "split": "development",
+        "truth": "delegate-fan-out",
+        "selected": "none",
+        "confidence": 0.74,
+        "refusal": null
+      },
+      {
+        "item": "authored/answer-one-file",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.91,
+        "refusal": null
+      },
+      {
+        "item": "authored/answer-one-question",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.82,
+        "refusal": null
+      },
+      {
+        "item": "authored/answer-rounds-max",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.96,
+        "refusal": null
+      },
+      {
+        "item": "authored/about-the-program",
+        "family": "program",
+        "split": "development",
+        "truth": "none",
+        "selected": "delegate-fan-out",
+        "confidence": 0.73,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/cal-answer-config",
+        "family": "program",
+        "split": "calibration",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.86,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/cal-answer-model",
+        "family": "program",
+        "split": "calibration",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.63,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/cal-answer-bound",
+        "family": "program",
+        "split": "calibration",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.83,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/dev-answer-one",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.92,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/dev-answer-doc",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.9,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/dev-answer-count",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.95,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/dev-none-overlap",
+        "family": "program",
+        "split": "development",
+        "truth": "none",
+        "selected": "answer-question",
+        "confidence": 0.59,
+        "refusal": null
+      }
+    ],
+    "historical": [
+      {
+        "item": "turn/1d845d65#16",
+        "family": "program",
+        "split": "development",
+        "truth": "delegate-fan-out",
+        "selected": "none",
+        "confidence": 0.47,
+        "refusal": null
+      },
+      {
+        "item": "turn/1d845d65#27",
+        "family": "program",
+        "split": "calibration",
+        "truth": "none",
+        "selected": "answer-question",
+        "confidence": 0.56,
+        "refusal": null
+      },
+      {
+        "item": "authored/fan-out-six-questions",
+        "family": "program",
+        "split": "development",
+        "truth": "delegate-fan-out",
+        "selected": "answer-question",
+        "confidence": 0.7,
+        "refusal": null
+      },
+      {
+        "item": "authored/fan-out-listed-work",
+        "family": "program",
+        "split": "development",
+        "truth": "delegate-fan-out",
+        "selected": "burn-down",
+        "confidence": 0.59,
+        "refusal": null
+      },
+      {
+        "item": "authored/fan-out-per-crate",
+        "family": "program",
+        "split": "development",
+        "truth": "delegate-fan-out",
+        "selected": "none",
+        "confidence": 0.71,
+        "refusal": null
+      },
+      {
+        "item": "authored/answer-one-file",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.53,
+        "refusal": null
+      },
+      {
+        "item": "authored/answer-rounds-max",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.82,
+        "refusal": null
+      },
+      {
+        "item": "authored/about-the-program",
+        "family": "program",
+        "split": "development",
+        "truth": "none",
+        "selected": "delegate-fan-out",
+        "confidence": 0.51,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/cal-answer-config",
+        "family": "program",
+        "split": "calibration",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.51,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/cal-answer-model",
+        "family": "program",
+        "split": "calibration",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.58,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/cal-answer-bound",
+        "family": "program",
+        "split": "calibration",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.61,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/cal-none-question",
+        "family": "program",
+        "split": "calibration",
+        "truth": "none",
+        "selected": "answer-question",
+        "confidence": 0.6,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/dev-answer-one",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.65,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/dev-answer-doc",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "none",
+        "confidence": 0.56,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/dev-none-overlap",
+        "family": "program",
+        "split": "development",
+        "truth": "none",
+        "selected": "answer-question",
+        "confidence": 0.73,
+        "refusal": null
+      }
+    ],
+    "jev": [
+      {
+        "item": "turn/1d845d65#26",
+        "family": "program",
+        "split": "calibration",
+        "truth": "none",
+        "selected": "answer-question",
+        "confidence": 0.56,
+        "refusal": null
+      },
+      {
+        "item": "turn/1d845d65#27",
+        "family": "program",
+        "split": "calibration",
+        "truth": "none",
+        "selected": "answer-question",
+        "confidence": 0.59,
+        "refusal": null
+      },
+      {
+        "item": "authored/answer-rounds-max",
+        "family": "program",
+        "split": "development",
+        "truth": "answer-question",
+        "selected": "delegate-fan-out",
+        "confidence": 0.49,
+        "refusal": null
+      },
+      {
+        "item": "authored/about-the-program",
+        "family": "program",
+        "split": "development",
+        "truth": "none",
+        "selected": "answer-question",
+        "confidence": 0.51,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/cal-answer-bound",
+        "family": "program",
+        "split": "calibration",
+        "truth": "answer-question",
+        "selected": "delegate-fan-out",
+        "confidence": 0.71,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/cal-none-question",
+        "family": "program",
+        "split": "calibration",
+        "truth": "none",
+        "selected": "answer-question",
+        "confidence": 0.77,
+        "refusal": null
+      },
+      {
+        "item": "authored-v2/dev-none-overlap",
+        "family": "program",
+        "split": "development",
+        "truth": "none",
+        "selected": "answer-question",
+        "confidence": 0.8,
+        "refusal": null
+      }
+    ]
+  }
+}

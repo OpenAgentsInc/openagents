@@ -13,7 +13,11 @@ names. This completed port sequence does not establish conformance for
 those replacements or include upstream's newer serving optimizations.
 The [2026-09-20 integration review](2026-09-20-upstream-review.md) identifies
 the next work: pin artifact revisions, evaluate the new 4B, align bf16
-merging, and measure attention and state-cache improvements.
+merging, and measure attention and state-cache improvements. Artifact
+pinning, identity, and merging are complete; the
+[new 4B evaluation](measurements/2026-09-20-candidate-4b.md) records the
+current workload baseline and conformance separately from this original
+port sequence.
 
 The deprecated `psionic` repository informed earlier drafts of this plan.
 Nothing is ported from there — the port pulls from the kev reference only.

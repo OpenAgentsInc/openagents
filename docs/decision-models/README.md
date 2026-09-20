@@ -39,7 +39,7 @@ Select a model explicitly when comparing variants and record its artifact
 identity. The [2026-09-20 Kev review](../kev/2026-09-20-upstream-review.md)
 finds that the current upstream 0.6B, 4B, and 8B weights differ from the
 ones pinned here, and recommends evaluating the new 4B on Coder's current
-questions before changing the default.
+questions before changing the default. That [evaluation](../kev/measurements/2026-09-20-candidate-4b.md) now finds a promising shell-outcome candidate, input coverage failures for action, and failed program-selection acceptance. The default remains unchanged.
 
 ## Where to start
 
