@@ -1,0 +1,84 @@
+# Running `coder-worker` on a local executor
+
+`coder-worker` answers NIP-CJ jobs through a door. Besides the Open
+Responses door (`CODER_DOOR_KEY`), it can answer through an approved local
+executor: a capability under `capabilities/` that the operator approved with
+`capability-trust`. Set `CODER_EXECUTOR=<slug>` and leave `CODER_DOOR_KEY`
+unset; setting both is refused.
+
+The executor door builds one bounded `delegate::Task` per job and runs it
+through `Delegator`, so every job runs under the same capability approval
+and filesystem boundary as a `coder` fan-out. There is no unrestricted
+fallback: a host with no boundary backend, an unapproved capability, or a
+grant that overlaps a protected path refuses the job with a typed status
+error, which the terminal reports as `the worker declined (...)`.
+
+## Variables
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `CODER_EXECUTOR` | Capability slug, for example `devin-local`. | unset (door not used) |
+| `CODER_EXECUTOR_WORKDIR` | Directory the executor runs in. | current directory |
+| `CODER_EXECUTOR_MINUTES` | Bound for one job, in whole minutes. | `10` |
+| `CODER_CAPABILITY_DIR` | Where manifests are read from when the workdir is not inside this checkout. | `capabilities/` of the enclosing repository |
+
+## Layout the boundary accepts
+
+The work directory is protected: the delegate reads it but cannot write it.
+The approval's `--writable` path is the adapter's state and must not overlap
+the work directory or any ancestor of the adapter's canonical path. Use
+three separate directories:
+
+- the checkout that holds the manifest (for example `~/repos/openagents`);
+- the work directory the executor runs in (for example `~/worker-exec`);
+- the writable state directory (for example `~/worker-jobs`).
+
+## Devin CLI example
+
+The Devin CLI keeps its logs, session database, trusted-workspace list, and
+credentials under `$XDG_DATA_HOME/devin` (default `~/.local/share/devin`).
+That tree also holds the pinned adapter binary, so it cannot be granted
+writable. Point the CLI at a data directory inside the writable grant
+instead, copy only the files it needs to start, and trust the work
+directory once interactively.
+
+```sh
+mkdir -p ~/worker-exec ~/worker-jobs/xdg/devin/cli
+cp ~/.local/share/devin/credentials.toml ~/worker-jobs/xdg/devin/
+cp ~/.local/share/devin/cli/{installation_id,trusted_workspaces.json} \
+  ~/worker-jobs/xdg/devin/cli/
+chmod 600 ~/worker-jobs/xdg/devin/credentials.toml
+(cd ~/worker-exec && devin)   # answer "Yes, trust", then quit
+
+./target/debug/capability-trust approve devin-local \
+  --in ~/repos/openagents --writable ~/worker-jobs
+
+cd ~/worker-exec
+XDG_DATA_HOME=$HOME/worker-jobs/xdg \
+CODER_CAPABILITY_DIR=$HOME/repos/openagents/capabilities \
+CODER_EXECUTOR=devin-local \
+CODER_EXECUTOR_WORKDIR=$HOME/worker-exec \
+CODER_EXECUTOR_MINUTES=5 \
+CODER_RELAY=ws://127.0.0.1:7447 \
+CODER_WORKER_SECRET="$(cat ~/.openagents/worker-secret)" \
+  ~/repos/openagents/target/debug/coder-worker
+```
+
+The worker prints `door executor (devin-local)`. Drive it from the terminal
+with `CODER_WORKER=<worker pubkey>` and `CODER_RELAY`; the trace's `Agent`
+step records `"model": "devin-local"`.
+
+Measured on 2026-09-20, Linux host with the `bwrap` backend and a local
+Postgres relay: `coder -p "Reply with exactly the word pong"` returned
+`pong` in 7.4 s wall clock; the worker logged `answered in 7358 ms`.
+
+## Failures you will meet
+
+- `names no capability this host can see` — the workdir is outside the
+  checkout and `CODER_CAPABILITY_DIR` is unset.
+- `present and unavailable here: untrusted_workspace` — the CLI refuses the
+  work directory; trust it interactively.
+- `writable path X overlaps protected path X` — the writable grant is the
+  work directory; separate them.
+- `exited 101 ... Read-only file system` — the executor writes state
+  outside the grant; relocate its state directory into the grant.

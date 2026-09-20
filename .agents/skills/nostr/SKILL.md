@@ -189,7 +189,10 @@ the secret.
 
 Environment, worker side (`crates/coder/src/bin/coder-worker.rs`):
 `CODER_WORKER_SECRET` (64 hex or `nsec`), `CODER_RELAY`, and the door:
-`CODER_DOOR_KEY` with `CODER_DOOR_URL` and `CODER_WORKER_MODEL`. The
+`CODER_DOOR_KEY` with `CODER_DOOR_URL` and `CODER_WORKER_MODEL` for an
+Open Responses door, or `CODER_EXECUTOR=<capability slug>` for a local
+approved executor such as `devin-local` (see
+`docs/coder/worker-executor.md`). Setting both is refused. The
 worker prints its pubkey on start; that value is what the terminal's
 `CODER_WORKER` names. `--once` answers one job and exits; `--decline
 <CODE>` refuses every job with a typed status error, for measuring the

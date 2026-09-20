@@ -840,6 +840,9 @@ pub enum Door {
     Live(ResponsesDoor),
     /// A Nostr relay running the NIP-CJ job protocol.
     Relay(Box<crate::relay::RelayDoor>),
+    /// An approved local executor, such as the Devin CLI, run through
+    /// `delegate` under its boundary.
+    Executor(Box<crate::executor_door::ExecutorDoor>),
     /// The canned answer.
     Stub(StubGenerate),
 }
@@ -872,13 +875,18 @@ impl Door {
             .into_iter()
             .find(|name| env::var(name).is_ok_and(|value| !value.is_empty()));
         let worker = env::var(WORKER_VAR).is_ok_and(|value| !value.is_empty());
-        match asked_for(key, worker)? {
+        let executor =
+            env::var(crate::executor_door::EXECUTOR_VAR).is_ok_and(|value| !value.is_empty());
+        match asked_for(key, worker, executor)? {
             Asked::Own => ResponsesDoor::from_env()
                 .map(Door::Live)
                 .ok_or_else(|| "the door key is set and empty".to_string()),
             Asked::Relay => {
                 crate::relay::RelayDoor::from_env().map(|door| Door::Relay(Box::new(door)))
             }
+            Asked::Executor => crate::executor_door::ExecutorDoor::from_env()?
+                .map(|door| Door::Executor(Box::new(door)))
+                .ok_or_else(|| "the executor slug is set and empty".to_string()),
             Asked::Stub => Ok(Door::Stub(StubGenerate::default())),
         }
     }
@@ -906,6 +914,11 @@ impl Door {
                 "{model} is named for a door that does not pick its model: \
                  the relay carries the turn to a worker and the worker picks."
             )),
+            Door::Executor(door) => Err(format!(
+                "{model} is named for a door that does not pick its model: \
+                 {} runs the turn and picks its own.",
+                door.slug()
+            )),
             Door::Stub(_) => Err(format!(
                 "{model} is named and no door key is set, so the stub door \
                  would answer instead. Set {} or {}.",
@@ -925,6 +938,7 @@ impl Door {
         match self {
             Door::Live(door) => &door.model,
             Door::Relay(_) => UNKNOWN_MODEL,
+            Door::Executor(door) => door.slug(),
             Door::Stub(_) => "stub",
         }
     }
@@ -945,6 +959,7 @@ impl Door {
         match self {
             Door::Live(_) => "live",
             Door::Relay(_) => "relay",
+            Door::Executor(_) => "executor",
             Door::Stub(_) => "stub",
         }
     }
@@ -961,6 +976,7 @@ impl Generate for Door {
         match self {
             Door::Live(door) => door.generate(instructions, input, sink, meta).await,
             Door::Relay(door) => door.generate(instructions, input, sink, meta).await,
+            Door::Executor(door) => door.generate(instructions, input, sink, meta).await,
             Door::Stub(stub) => stub.generate(instructions, input, sink, meta).await,
         }
     }
@@ -973,7 +989,9 @@ enum Asked {
     Own,
     /// The relay, and whichever worker answers on it.
     Relay,
-    /// Neither, so the canned answer.
+    /// An approved local executor.
+    Executor,
+    /// None of them, so the canned answer.
     Stub,
 }
 
@@ -988,16 +1006,33 @@ enum Asked {
 /// because the thing the person needs to see is that they asked for two
 /// things, and a door that quietly picks one answers the question they did
 /// not ask.
-fn asked_for(key: Option<&str>, worker: bool) -> Result<Asked, String> {
-    match (key, worker) {
-        (Some(key), true) => Err(format!(
-            "the environment names two doors: {key} asks for an own-key door \
-             and {WORKER_VAR} asks for the relay. Unset one of them."
-        )),
-        (Some(_), false) => Ok(Asked::Own),
-        (None, true) => Ok(Asked::Relay),
-        (None, false) => Ok(Asked::Stub),
+fn asked_for(key: Option<&str>, worker: bool, executor: bool) -> Result<Asked, String> {
+    let mut named = Vec::new();
+    if let Some(key) = key {
+        named.push(format!("{key} asks for an own-key door"));
     }
+    if worker {
+        named.push(format!("{WORKER_VAR} asks for the relay"));
+    }
+    if executor {
+        named.push(format!(
+            "{} asks for a local executor",
+            crate::executor_door::EXECUTOR_VAR
+        ));
+    }
+    if named.len() > 1 {
+        return Err(format!(
+            "the environment names {} doors: {}. Unset all but one.",
+            named.len(),
+            named.join(", ")
+        ));
+    }
+    Ok(match (key, worker, executor) {
+        (Some(_), _, _) => Asked::Own,
+        (None, true, _) => Asked::Relay,
+        (None, false, true) => Asked::Executor,
+        (None, false, false) => Asked::Stub,
+    })
 }
 
 fn clip(text: &str, limit: usize) -> String {
@@ -1105,17 +1140,23 @@ mod tests {
     /// measurement comes to be a measurement of the other transport.
     #[test]
     fn two_configured_doors_are_a_refusal_rather_than_a_choice() {
-        let both = asked_for(Some("CODER_DOOR_KEY"), true).expect_err("two doors");
+        let both = asked_for(Some("CODER_DOOR_KEY"), true, false).expect_err("two doors");
         assert!(both.contains("CODER_DOOR_KEY"), "{both}");
         assert!(both.contains("CODER_WORKER"), "{both}");
+        let with_executor = asked_for(None, true, true).expect_err("two doors");
+        assert!(with_executor.contains("CODER_EXECUTOR"), "{with_executor}");
 
-        assert_eq!(asked_for(Some("CODER_DOOR_KEY"), false), Ok(Asked::Own));
         assert_eq!(
-            asked_for(Some("CODER_AI_GATEWAY_KEY"), false),
+            asked_for(Some("CODER_DOOR_KEY"), false, false),
             Ok(Asked::Own)
         );
-        assert_eq!(asked_for(None, true), Ok(Asked::Relay));
-        assert_eq!(asked_for(None, false), Ok(Asked::Stub));
+        assert_eq!(
+            asked_for(Some("CODER_AI_GATEWAY_KEY"), false, false),
+            Ok(Asked::Own)
+        );
+        assert_eq!(asked_for(None, true, false), Ok(Asked::Relay));
+        assert_eq!(asked_for(None, false, true), Ok(Asked::Executor));
+        assert_eq!(asked_for(None, false, false), Ok(Asked::Stub));
     }
 
     /// A relay door cannot name its model before a worker answers, and
