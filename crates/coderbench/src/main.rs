@@ -63,6 +63,16 @@ Options for run:
                           not exist: a session never writes over another
                           session's record.
       --timeout <SECS>    Override the task's own timeout.
+
+Options for tune:
+      --against <PATH>    A baseline trace or a directory of them. Repeat
+                          the flag to add more.
+      --trace <PATH>      A recorded candidate trace or a directory of them.
+                          Repeat the flag to add more. Nothing runs live.
+      --runs <N>          How many live runs to make. Default: 8.
+      --out <DIR>         Where live traces land. Default: a new directory
+                          under ~/.openagents/coderbench/.
+      --repository, --coder, --timeout as for run.
   -h, --help              Show this text.
 
 <TASK> is a task identifier, or a path to a task.json.

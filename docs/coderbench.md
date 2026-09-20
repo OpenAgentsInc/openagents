@@ -113,31 +113,46 @@ coderbench tune <TASK> [--against <TRACE|DIR>]... [--trace <TRACE|DIR>]... \
 
 | Flag | Effect |
 | --- | --- |
-| `--against <TRACE|DIR>` | Adds baseline traces. Repeat the flag for more files or directories. |
-| `--trace <TRACE|DIR>` | Adds recorded candidate traces. Repeat the flag. Nothing runs live. |
+| `--against <PATH>` | Adds baseline traces: a file or a directory of `.atif.jsonl` files. Repeat the flag for more. |
+| `--trace <PATH>` | Adds recorded candidate traces: a file or a directory. Repeat the flag for more. Nothing runs live. |
 | `--runs N` | Runs the candidate `N` times when `--trace` is absent. The default is `8`. |
 | `--repository <DIR>` | The checkout for live runs. |
 | `--coder <PATH>` | The `coder` binary for live runs. |
 | `--timeout <SECS>` | The timeout for each live run. |
 | `--out <DIR>` | The directory for live traces. |
 
-The command reports the noise floor before it reports a comparison. It
-measures the episode's fault count, steps, seconds, and verified delegations
-across the series. A *persistent* fault appears in every run. An
-*intermittent* fault appears in some runs, so its frequency is part of the
-report. Delegation call IDs change between runs, so the report keys
-delegation faults by their one-based slot.
+The command reports the noise floor before it reports a comparison: the
+mean, sample standard deviation, and range of the episode's fault count,
+steps, seconds, and verified delegations across each series, with the
+baseline first. Each metric's move is then stated as inside or outside the
+baseline's own spread, using `gym`'s two-sigma detectable difference for the
+two sample sizes. A move inside the spread is noise, whatever its sign. A
+move outside the spread is a description, not a verdict.
 
-The verdict comes from `decision-v1` over the series' pass rate. Eight runs on
-either side are below the gate's ten-item floor, so that comparison is
-`unverifiable` by design. The standard error needs at least five passes and
-five non-passes on each side. `coderbench tune` does not write a threshold of
-its own.
+A *persistent* fault appears in every run of a series. An *intermittent*
+fault appears in some runs, so the report states how many. A fault seen in
+one run of eight is a flake to attribute, not a regression. Delegation call
+IDs change between runs, so the report keys delegation faults by their
+one-based slot. A series of one run has no spread and makes every fault
+persistent, so it grades `unverifiable`. With `--against`, the comparison
+also names the persistent faults the candidate fixed, introduced, and left.
+
+The verdict is the `decision-v1` gate from `crates/gym/gates/` over the pass
+rate, a run counting as an item. Eight runs a side are under that gate's
+ten-item floor, so an eight-run comparison is `unverifiable` by design and
+the report names the criterion that decided it. The standard-error criterion
+also needs at least five passes and five non-passes on each side. `passed`
+means the candidate's pass rate clears the baseline's by two standard errors,
+`failed` means it fell, and `coderbench tune` writes no threshold of its
+own. Without `--against`, the exit code follows whether the candidate series
+has any persistent fault.
 
 Recorded-trace series can compare path faults and trace measurements, but
 they cannot observe the exit code or workspace writes. A live series records
-both facts for every run. No live series has been recorded yet; the first one
-goes here with its command.
+both facts for every run, and it refuses before the first run, with exit code
+`2`, on a machine that does not hold what the task requires, the same way
+`run` does. No live series has been recorded yet; the first one goes here
+with its command.
 
 ### Observe workspace contents independently
 
