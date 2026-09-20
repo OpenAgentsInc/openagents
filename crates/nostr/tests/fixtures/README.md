@@ -34,6 +34,9 @@ The official NIP-44 v2 test vectors.
 
 ## `regressions/`
 
-Minimized inputs that a property test found. Each file names the test that
-produced it and the commit that fixed the behavior. The directory is empty
-when no property test has failed; the `.gitkeep` holds the path.
+Minimized inputs that a property test found. `tests/properties.rs` writes
+its failure seeds to `properties.proptest-regressions` here, so a failing
+seed reruns first on the next `cargo test -p nostr`. Keep a seed file only
+when it records a defect in the crate; a defect in a test strategy is fixed
+in the test and its seed removed. The directory is empty when no property
+test has found a defect; the `.gitkeep` holds the path.
