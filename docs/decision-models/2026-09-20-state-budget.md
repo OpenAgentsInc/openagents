@@ -134,9 +134,11 @@ cargo test -p coder --test state_caps sweep -- --ignored --nocapture
 Each rung keeps the caps of the rung above it; `commands 3` is output 256
 and three commands, `turns 8` is that and eight turns, and so on. Jev
 refused nothing at any rung. The rows are in
-[`crates/gym/results/coder-turns-v1-state-budget.jsonl`](../../crates/gym/results/coder-turns-v1-state-budget.jsonl),
-704 of them, one per item per rung, with the caps, the state's size, the
-option chosen, and the truth.
+[`2026-09-20-state-budget.jsonl`](2026-09-20-state-budget.jsonl), 704 of
+them, one per item per rung, with the caps, the state's size, the option
+chosen, and the truth. They sit beside this record rather than in
+`crates/gym/results/` because their schema is this sweep's, not a Gym
+row's, and that store admits only the schemas it knows.
 
 ### Where accuracy starts to fall
 

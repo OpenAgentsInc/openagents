@@ -18,7 +18,7 @@
 //! ```
 //!
 //! `STATE_SWEEP_ROWS` names the JSON Lines file the rows go to; by default
-//! `crates/gym/results/coder-turns-v1-state-budget.jsonl`.
+//! `docs/decision-models/2026-09-20-state-budget.jsonl`, beside the record.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -303,7 +303,7 @@ fn sweep() {
     let rows_path = std::env::var("STATE_SWEEP_ROWS").map_or_else(
         |_| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../gym/results/coder-turns-v1-state-budget.jsonl")
+                .join("../../docs/decision-models/2026-09-20-state-budget.jsonl")
         },
         PathBuf::from,
     );
