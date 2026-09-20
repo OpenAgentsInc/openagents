@@ -69,8 +69,16 @@ partition was not read.
 
 `gym compare --store crates/gym/results/support-v2-three-way.jsonl --baseline
 baseline-bge --partition development` re-verified the receipt chain over the
-1177 rows now in the store and printed the door alongside the seven already
+1177 rows then in the store and printed the door alongside the seven already
 recorded. Median latency was 25 ms per item, on a CPU.
+
+The store's own test, `crates/gym/tests/rederived_floors.rs`, requires every
+door in a results file to cover both open partitions, so the same door was
+then run with `--partition calibration` and 79 more rows appended: 40
+routing items at accuracy 1.00, ECE 0.035, and 39 typed refusals. Those
+rows are labelled `calibration` and are fitted-on numbers — the head saw
+every one of those items — so nothing in this record reads them as held out.
+The store holds 1256 rows and the chain verifies.
 
 ## Against the doors on record
 

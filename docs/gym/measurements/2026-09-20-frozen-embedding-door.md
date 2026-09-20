@@ -35,7 +35,11 @@ urgency items refused, each one a recorded row with `refusal` set and
 `answered = false`; zero harness failures. A transport error or a malformed
 body would have gone into the third count and left no row. The store grew
 from 1099 to 1177 rows, and `gym compare --store ... --baseline baseline-bge
---partition development` re-verified the chain afterwards.
+--partition development` re-verified the chain afterwards. A second run with
+`--partition calibration` appended 79 more rows (40 scored, 39 refused, 0
+lost), because `crates/gym/tests/rederived_floors.rs` requires every door in
+a results file to cover both open partitions; those rows are fitted-on and
+labelled as such. The store holds 1256 rows.
 
 ## What the harness got right, and one thing to look at
 
