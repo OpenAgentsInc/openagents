@@ -1,0 +1,61 @@
+{
+  "$comment": [
+    "The question text crates/coder/src/classify.rs sends, lifted out of the crate and given a name a row can pin. classify::questions() asks action, needs_code, risk and progress about one turn; classify::shell_questions() asks outcome, useful and damage about one round of shell commands. The round's `outcome` is `shell_outcome` here, because `outcome` alone reads as a column of a result row rather than as a question.",
+    "This file is generated, not written. `cargo test -p coder --test suite_questions -- --ignored --nocapture` prints it, and the test beside it fails when the crate and this file drift, so a reword in classify.rs is a new question set with a new id rather than an edit to this one.",
+    "Four of the seven gate nothing. classify::route reads `action` alone; ShellVerdict::route reads the round's choice and `damage`. `needs_code`, `risk`, `progress` and `useful` are asked on every turn, displayed, and consumed by no decision."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "coder-turns-v1",
+  "suite": "coder-turns-v1",
+  "questions": {
+    "action": {
+      "criteria": {
+        "clarify": "Ask one short clarifying question — the request is ambiguous and a wrong answer wastes the turn",
+        "end_conversation": "The user is done: a goodbye, a thanks, or an explicit quit",
+        "none": "No listed step fits: the state does not support a next action",
+        "respond": "Answer the user's message directly — the intent is clear and no code is needed yet"
+      },
+      "instructions": "Based on the conversation so far, what is the single next best step?",
+      "type": "choice"
+    },
+    "damage": {
+      "instructions": "Does any output suggest the commands harmed the user's files, state, or secrets?",
+      "type": "noul"
+    },
+    "needs_code": {
+      "instructions": "Does the user's request need code written, or files in a repository inspected or changed?",
+      "type": "noul"
+    },
+    "progress": {
+      "criteria": [
+        "0: just started",
+        "1: underway, intent understood",
+        "2: resolved or resolving now"
+      ],
+      "instructions": "How close is the conversation to a resolved end?",
+      "type": "score"
+    },
+    "risk": {
+      "criteria": [
+        "0: answer in prose; nothing changes",
+        "1: reads files or runs a reversible command",
+        "2: writes files or could break a build"
+      ],
+      "instructions": "How much can the chosen next step damage?",
+      "type": "score"
+    },
+    "shell_outcome": {
+      "criteria": {
+        "pass": "Hand the outputs to the model — they answer the task or move it forward",
+        "retry": "A command failed or missed the point — the model should correct the approach and try again",
+        "stop": "Stop running commands — the outputs show damage, a stuck loop, or nothing left to learn"
+      },
+      "instructions": "These shell commands ran for the user's task. What should the agent do next?",
+      "type": "choice"
+    },
+    "useful": {
+      "instructions": "Do the outputs help answer the user's request?",
+      "type": "noul"
+    }
+  }
+}
