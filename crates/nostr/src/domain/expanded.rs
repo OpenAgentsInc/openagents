@@ -73,6 +73,34 @@ pub fn parse_http_authorization_hash(
     payload_hash: Option<&str>,
     now: u64,
 ) -> Result<HttpAuth, DomainError> {
+    let claim = parse_http_authorization_claim(header, method, absolute_url, now)?;
+    if claim.payload_hash.as_deref() != payload_hash {
+        return Err(DomainError::InvalidEvent(if payload_hash.is_some() {
+            "HTTP authorization payload tag does not match".into()
+        } else {
+            "HTTP authorization payload tag is not allowed without a payload".into()
+        }));
+    }
+    Ok(claim.auth)
+}
+
+/// A NIP-98 authorization verified against everything but the body: the
+/// signature, kind, timestamp, URL, and method. `payload_hash` is what the
+/// event claims the body's SHA-256 is, for the caller to hold the body to
+/// once it has read it. A server uses this to refuse a request before it
+/// accepts a single body byte.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpAuthClaim {
+    pub auth: HttpAuth,
+    pub payload_hash: Option<String>,
+}
+
+pub fn parse_http_authorization_claim(
+    header: &str,
+    method: &str,
+    absolute_url: &str,
+    now: u64,
+) -> Result<HttpAuthClaim, DomainError> {
     let encoded = header.strip_prefix("Nostr ").ok_or_else(|| {
         DomainError::InvalidEvent("HTTP authorization scheme must be Nostr".into())
     })?;
@@ -93,16 +121,26 @@ pub fn parse_http_authorization_hash(
     }
     require_single_tag(&event, "u", absolute_url)?;
     require_single_tag(&event, "method", method)?;
-    if let Some(payload_hash) = payload_hash {
-        require_single_tag(&event, "payload", payload_hash)?;
-    } else if event.tag_values("payload").next().is_some() {
-        return Err(DomainError::InvalidEvent(
-            "HTTP authorization payload tag is not allowed without a payload".into(),
-        ));
-    }
-    Ok(HttpAuth {
-        event_id: event.id,
-        pubkey: event.pubkey,
+    let payloads = event.tag_values("payload").collect::<Vec<_>>();
+    let payload_hash = match payloads.as_slice() {
+        [] => None,
+        [hash]
+            if hash.len() == 64 && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) =>
+        {
+            Some((*hash).to_owned())
+        }
+        _ => {
+            return Err(DomainError::InvalidEvent(
+                "HTTP authorization payload tag must be one lowercase SHA-256".into(),
+            ));
+        }
+    };
+    Ok(HttpAuthClaim {
+        auth: HttpAuth {
+            event_id: event.id,
+            pubkey: event.pubkey,
+        },
+        payload_hash,
     })
 }
 

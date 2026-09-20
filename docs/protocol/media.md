@@ -12,11 +12,15 @@ new NIP source lane.
 
 Setting `NOSTR_RELAY_MEDIA_ROOT` enables:
 
-- `PUT /upload`: streams the exact request body to a private temporary file,
-  hashes it with SHA-256, verifies optional `X-SHA-256`, verifies NIP-98
-  authorization over the exact payload hash, commits ownership/quota/replay
-  state, atomically installs the content-addressed file, marks it ready, and
-  only then returns `200` or `201`;
+- `PUT /upload`: verifies the NIP-98 authorization (signature, kind, time,
+  URL, method, and one `payload` digest) before reading any of the body,
+  checks optional `X-SHA-256` against that digest, commits
+  ownership/quota/replay state, then streams the exact request body to a
+  private temporary file while hashing it. A body whose SHA-256 is not the
+  authorized digest, or that never arrives whole, is refused and the
+  reservation and temporary file are released. A whole body is atomically
+  installed as the content-addressed file, marked ready, and only then
+  answered with `200` or `201`;
 - `GET /<sha256>[.<ext>]`: public immutable retrieval with MIME type,
   content length, ETag, SHA-256, CORS, and one bounded byte range;
 - `HEAD /<sha256>[.<ext>]`: the same metadata without a body; and

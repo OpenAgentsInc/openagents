@@ -19,7 +19,7 @@ use tokio::{
 };
 
 use crate::{
-    domain::parse_http_authorization_hash,
+    domain::{parse_http_authorization_claim, parse_http_authorization_hash},
     store::{MediaDeleteOutcome, MediaRecord, StoreError},
 };
 
@@ -131,6 +131,29 @@ pub async fn serve_media(
     }
 }
 
+/// A registration made before the body arrived. Releasing it undoes the
+/// uploader's new ownership and an unpublished blob row nobody else owns,
+/// so a body that never came or came wrong holds no quota.
+struct Reservation<'a> {
+    db: &'a DbPool,
+    pubkey: &'a str,
+    sha256: &'a str,
+    owned_before: bool,
+}
+
+impl Reservation<'_> {
+    async fn release(&self) {
+        let _ = self
+            .db
+            .abandon_media(
+                self.pubkey.to_owned(),
+                self.sha256.to_owned(),
+                self.owned_before,
+            )
+            .await;
+    }
+}
+
 async fn serve_upload(
     mut stream: TcpStream,
     head: &HttpHead,
@@ -175,70 +198,40 @@ async fn serve_upload(
             .await;
         }
     };
-    let expected_sha256 = match head.header("x-sha-256") {
-        Some(value) if is_lower_hex_64(value) => Some(value.to_owned()),
-        Some(_) => {
-            return media_error(&mut stream, 400, "Bad Request", "invalid X-SHA-256").await;
-        }
-        None => None,
-    };
-    let (temporary_path, mut file) = match storage.temporary_file().await {
-        Ok(temporary) => temporary,
-        Err(_) => {
-            return media_error(
-                &mut stream,
-                503,
-                "Service Unavailable",
-                "media storage unavailable",
-            )
-            .await;
-        }
-    };
-    let sha256 = match timeout(
-        MEDIA_UPLOAD_TIMEOUT,
-        stream_upload(&mut stream, &mut file, length),
-    )
-    .await
-    {
-        Ok(Ok(sha256)) => sha256,
-        Ok(Err(_)) | Err(_) => {
-            let _ = fs::remove_file(&temporary_path).await;
-            return media_error(&mut stream, 400, "Bad Request", "incomplete upload body").await;
-        }
-    };
-    if expected_sha256
-        .as_ref()
-        .is_some_and(|expected| expected != &sha256)
-    {
-        let _ = fs::remove_file(&temporary_path).await;
-        return media_error(&mut stream, 400, "Bad Request", "X-SHA-256 does not match").await;
-    }
+    // Nothing of the body is read until the request has earned it: the
+    // NIP-98 authorization must verify, name this URL and method, claim the
+    // body's digest, and fit the uploader's rate and quota. The claimed
+    // digest is what the body is held to once it has been read.
     let Some(authorization) = head.header("authorization") else {
-        let _ = fs::remove_file(&temporary_path).await;
         return unauthorized(&mut stream).await;
     };
     let absolute_url = config.absolute_http_url(&head.path)?;
-    let auth = match parse_http_authorization_hash(
-        authorization,
-        "PUT",
-        &absolute_url,
-        Some(&sha256),
-        unix_now(),
-    ) {
-        Ok(auth) => auth,
-        Err(_) => {
-            let _ = fs::remove_file(&temporary_path).await;
-            return unauthorized(&mut stream).await;
-        }
+    let claim =
+        match parse_http_authorization_claim(authorization, "PUT", &absolute_url, unix_now()) {
+            Ok(claim) => claim,
+            Err(_) => return unauthorized(&mut stream).await,
+        };
+    let Some(sha256) = claim.payload_hash else {
+        return unauthorized(&mut stream).await;
     };
+    let auth = claim.auth;
+    match head.header("x-sha-256") {
+        Some(value) if value == sha256 => {}
+        Some(value) if is_lower_hex_64(value) => {
+            return media_error(&mut stream, 400, "Bad Request", "X-SHA-256 does not match").await;
+        }
+        Some(_) => {
+            return media_error(&mut stream, 400, "Bad Request", "invalid X-SHA-256").await;
+        }
+        None => {}
+    }
     if !rate.media_from_pubkey(&auth.pubkey) {
-        let _ = fs::remove_file(&temporary_path).await;
         return media_error(&mut stream, 429, "Too Many Requests", "media rate exceeded").await;
     }
     let outcome = match db
         .register_media(
             auth.event_id,
-            auth.pubkey,
+            auth.pubkey.clone(),
             sha256.clone(),
             length,
             media_type,
@@ -249,7 +242,6 @@ async fn serve_upload(
     {
         Ok(outcome) => outcome,
         Err(StoreError::Media(message)) if message.contains("quota") => {
-            let _ = fs::remove_file(&temporary_path).await;
             return media_error(
                 &mut stream,
                 413,
@@ -259,11 +251,9 @@ async fn serve_upload(
             .await;
         }
         Err(StoreError::Media(_)) => {
-            let _ = fs::remove_file(&temporary_path).await;
             return media_error(&mut stream, 409, "Conflict", "authorization already used").await;
         }
         Err(_) => {
-            let _ = fs::remove_file(&temporary_path).await;
             return media_error(
                 &mut stream,
                 503,
@@ -273,6 +263,49 @@ async fn serve_upload(
             .await;
         }
     };
+    let reservation = Reservation {
+        db,
+        pubkey: &auth.pubkey,
+        sha256: &sha256,
+        owned_before: outcome.owned_before,
+    };
+    let (temporary_path, mut file) = match storage.temporary_file().await {
+        Ok(temporary) => temporary,
+        Err(_) => {
+            reservation.release().await;
+            return media_error(
+                &mut stream,
+                503,
+                "Service Unavailable",
+                "media storage unavailable",
+            )
+            .await;
+        }
+    };
+    let received = match timeout(
+        MEDIA_UPLOAD_TIMEOUT,
+        stream_upload(&mut stream, &mut file, length),
+    )
+    .await
+    {
+        Ok(Ok(received)) => received,
+        Ok(Err(_)) | Err(_) => {
+            let _ = fs::remove_file(&temporary_path).await;
+            reservation.release().await;
+            return media_error(&mut stream, 400, "Bad Request", "incomplete upload body").await;
+        }
+    };
+    if received != sha256 {
+        let _ = fs::remove_file(&temporary_path).await;
+        reservation.release().await;
+        return media_error(
+            &mut stream,
+            400,
+            "Bad Request",
+            "body does not match the authorized payload digest",
+        )
+        .await;
+    }
     let blob_path = storage.blob_path(&outcome.record);
     if fs::create_dir_all(blob_path.parent().unwrap_or(Path::new(".")))
         .await
@@ -280,6 +313,7 @@ async fn serve_upload(
         || fs::rename(&temporary_path, &blob_path).await.is_err()
     {
         let _ = fs::remove_file(&temporary_path).await;
+        reservation.release().await;
         return media_error(
             &mut stream,
             503,

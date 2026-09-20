@@ -126,6 +126,12 @@ enum DbRequest {
         sha256: String,
         response: oneshot::Sender<Result<(), StoreError>>,
     },
+    MediaAbandon {
+        authorization_pubkey: String,
+        sha256: String,
+        owned_before: bool,
+        response: oneshot::Sender<Result<(), StoreError>>,
+    },
     CatchUp {
         after: i64,
         through: i64,
@@ -420,6 +426,22 @@ impl DbPool {
         result.await.map_err(|_| StoreError::ConnectionClosed)?
     }
 
+    pub async fn abandon_media(
+        &self,
+        authorization_pubkey: String,
+        sha256: String,
+        owned_before: bool,
+    ) -> Result<(), StoreError> {
+        let (response, result) = oneshot::channel();
+        self.send(DbRequest::MediaAbandon {
+            authorization_pubkey,
+            sha256,
+            owned_before,
+            response,
+        })?;
+        result.await.map_err(|_| StoreError::ConnectionClosed)?
+    }
+
     pub async fn catch_up(
         &self,
         after: i64,
@@ -655,6 +677,19 @@ async fn handle_request(
         }
         DbRequest::MediaFinalize { sha256, response } => {
             let result = store.finalize_media(&sha256).await;
+            let fatal = result.as_ref().is_err_and(is_fatal);
+            let _ = response.send(result);
+            fatal
+        }
+        DbRequest::MediaAbandon {
+            authorization_pubkey,
+            sha256,
+            owned_before,
+            response,
+        } => {
+            let result = store
+                .abandon_media(&authorization_pubkey, &sha256, owned_before)
+                .await;
             let fatal = result.as_ref().is_err_and(is_fatal);
             let _ = response.send(result);
             fatal

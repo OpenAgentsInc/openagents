@@ -224,7 +224,10 @@ pub struct MediaRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaUploadOutcome {
     pub record: MediaRecord,
+    /// The blob row is new; no upload of these bytes was registered before.
     pub created: bool,
+    /// The uploader already owned these bytes before this registration.
+    pub owned_before: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1597,7 +1600,55 @@ impl Store {
                 .await?,
         )?;
         transaction.commit().await?;
-        Ok(MediaUploadOutcome { record, created })
+        Ok(MediaUploadOutcome {
+            record,
+            created,
+            owned_before: already_owned,
+        })
+    }
+
+    /// Release a registration whose body never arrived whole. The uploader's
+    /// new ownership goes; a blob row that is still unpublished and has no
+    /// owner left goes with it. Ownership the uploader held before the
+    /// registration, and any published blob, stay.
+    pub async fn abandon_media(
+        &mut self,
+        authorization_pubkey: &str,
+        sha256: &str,
+        owned_before: bool,
+    ) -> Result<(), StoreError> {
+        self.ensure_current()?;
+        if owned_before {
+            return Ok(());
+        }
+        let statements = self.statements.clone();
+        let transaction = self.client.transaction().await?;
+        transaction
+            .query_one(&statements.advisory_lock, &[&format!("media:{sha256}")])
+            .await?;
+        transaction
+            .query_one(
+                &statements.advisory_lock,
+                &[&format!("media-owner:{authorization_pubkey}")],
+            )
+            .await?;
+        transaction
+            .query_opt(
+                &statements.delete_media_owner,
+                &[&sha256, &authorization_pubkey],
+            )
+            .await?;
+        let has_owner = transaction
+            .query_one(&statements.media_has_owner, &[&sha256])
+            .await?
+            .get::<_, bool>(0);
+        if !has_owner {
+            transaction
+                .query_opt(&statements.delete_unpublished_media_blob, &[&sha256])
+                .await?;
+        }
+        transaction.commit().await?;
+        Ok(())
     }
 
     pub async fn finalize_media(&self, sha256: &str) -> Result<(), StoreError> {

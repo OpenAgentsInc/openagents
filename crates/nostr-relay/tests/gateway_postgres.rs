@@ -4,7 +4,7 @@
 use std::{
     io::{ErrorKind, Read, Write},
     net::{SocketAddr, TcpStream as StdTcpStream},
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -52,10 +52,11 @@ async fn m3_gateway_contract_against_postgres() {
     let server_two = tokio::spawn(gateway_two.run());
 
     assert_nip11_http(address_one).await;
+    let media_root_for_contract = media_root.clone();
     let expired_id = tokio::task::spawn_blocking(move || {
         websocket_contract(address_one, address_two);
         management_contract(address_one);
-        media_contract(address_one);
+        media_contract(address_one, &media_root_for_contract);
         expanded_protocol_contract(address_one, address_two)
     })
     .await
@@ -305,7 +306,7 @@ async fn assert_nip11_http(address: SocketAddr) {
     );
 }
 
-fn media_contract(address: SocketAddr) {
+fn media_contract(address: SocketAddr, media_root: &Path) {
     let payload = b"fixture blossom payload";
     let sha256 = hex(&Sha256::digest(payload));
     let upload_auth = signed_event(
@@ -398,6 +399,119 @@ fn media_contract(address: SocketAddr) {
         &[],
     );
     assert!(quota_missing.starts_with(b"HTTP/1.1 404 Not Found\r\n"));
+
+    // A request with no authorization is refused before its body is read:
+    // no temporary file appears and the body's bytes are never stored.
+    let stray_payload = b"nobody signed for this";
+    let stray_hash = hex(&Sha256::digest(stray_payload));
+    let temporary_files = || {
+        std::fs::read_dir(media_root.join(".tmp"))
+            .map(|entries| entries.count())
+            .unwrap_or(0)
+    };
+    let temporary_before = temporary_files();
+    let unsigned = raw_http(
+        address,
+        &format!(
+            "PUT /upload HTTP/1.1\r\nHost: relay.test\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            stray_payload.len()
+        ),
+        stray_payload,
+    );
+    assert!(unsigned.starts_with(b"HTTP/1.1 401 Unauthorized\r\n"));
+    assert_eq!(temporary_files(), temporary_before);
+    let stray_missing = raw_http(
+        address,
+        &format!("GET /{stray_hash} HTTP/1.1\r\nHost: relay.test\r\nConnection: close\r\n\r\n"),
+        &[],
+    );
+    assert!(stray_missing.starts_with(b"HTTP/1.1 404 Not Found\r\n"));
+
+    // An authorized upload whose body is not what it claimed is refused,
+    // and the quota it reserved is given back: a second upload of the same
+    // size by the same pubkey fits where two reservations would not.
+    let large_payload = vec![b'x'; 900];
+    let large_hash = hex(&Sha256::digest(&large_payload));
+    let wrong_body = vec![b'y'; 900];
+    let mismatch_auth = signed_event(
+        75,
+        now(),
+        27_235,
+        vec![
+            Tag::new(vec!["u".into(), "http://relay.test/upload".into()]),
+            Tag::new(vec!["method".into(), "PUT".into()]),
+            Tag::new(vec!["payload".into(), large_hash.clone()]),
+        ],
+        "mismatch",
+    );
+    let mismatch_authorization = base64(&serde_json::to_vec(&mismatch_auth).unwrap());
+    let mismatch = raw_http(
+        address,
+        &format!(
+            "PUT /upload HTTP/1.1\r\nHost: relay.test\r\nContent-Type: application/octet-stream\r\nAuthorization: Nostr {mismatch_authorization}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            wrong_body.len()
+        ),
+        &wrong_body,
+    );
+    assert!(mismatch.starts_with(b"HTTP/1.1 400 Bad Request\r\n"));
+    assert_eq!(temporary_files(), temporary_before);
+    let mismatch_missing = raw_http(
+        address,
+        &format!("GET /{large_hash} HTTP/1.1\r\nHost: relay.test\r\nConnection: close\r\n\r\n"),
+        &[],
+    );
+    assert!(mismatch_missing.starts_with(b"HTTP/1.1 404 Not Found\r\n"));
+    let other_large = vec![b'z'; 900];
+    let other_large_hash = hex(&Sha256::digest(&other_large));
+    let released_auth = signed_event(
+        75,
+        now(),
+        27_235,
+        vec![
+            Tag::new(vec!["u".into(), "http://relay.test/upload".into()]),
+            Tag::new(vec!["method".into(), "PUT".into()]),
+            Tag::new(vec!["payload".into(), other_large_hash.clone()]),
+        ],
+        "released",
+    );
+    let released_authorization = base64(&serde_json::to_vec(&released_auth).unwrap());
+    let released = raw_http(
+        address,
+        &format!(
+            "PUT /upload HTTP/1.1\r\nHost: relay.test\r\nContent-Type: application/octet-stream\r\nAuthorization: Nostr {released_authorization}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            other_large.len()
+        ),
+        &other_large,
+    );
+    assert!(
+        released.starts_with(b"HTTP/1.1 201 Created\r\n"),
+        "{}",
+        String::from_utf8_lossy(&released)
+    );
+    let other_large_path = format!("/{other_large_hash}");
+    let other_large_delete_auth = signed_event(
+        75,
+        now(),
+        27_235,
+        vec![
+            Tag::new(vec![
+                "u".into(),
+                format!("http://relay.test{other_large_path}"),
+            ]),
+            Tag::new(vec!["method".into(), "DELETE".into()]),
+        ],
+        "released",
+    );
+    let other_large_delete_authorization =
+        base64(&serde_json::to_vec(&other_large_delete_auth).unwrap());
+    let other_large_delete = raw_http(
+        address,
+        &format!(
+            "DELETE {other_large_path} HTTP/1.1\r\nHost: relay.test\r\nAuthorization: Nostr {other_large_delete_authorization}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ),
+        &[],
+    );
+    assert!(other_large_delete.starts_with(b"HTTP/1.1 200 OK\r\n"));
 
     let head = raw_http(
         address,

@@ -408,6 +408,8 @@ DELETE FROM media_owner WHERE sha256 = $1 AND pubkey = $2 RETURNING sha256
 "#;
 const MEDIA_HAS_OWNER_SQL: &str = "SELECT EXISTS (SELECT 1 FROM media_owner WHERE sha256 = $1)";
 const DELETE_MEDIA_BLOB_SQL: &str = "DELETE FROM media_blob WHERE sha256 = $1 RETURNING sha256";
+const DELETE_UNPUBLISHED_MEDIA_BLOB_SQL: &str =
+    "DELETE FROM media_blob WHERE sha256 = $1 AND ready = FALSE RETURNING sha256";
 const ACCEPT_BLOCK_COMMAND_SQL: &str = r#"
 INSERT INTO block_command (event_id, pubkey, kind)
 VALUES ($1, $2, $3)
@@ -517,6 +519,7 @@ pub(crate) struct Statements {
     pub delete_media_owner: Statement,
     pub media_has_owner: Statement,
     pub delete_media_blob: Statement,
+    pub delete_unpublished_media_blob: Statement,
     pub accept_block_command: Statement,
     pub workspace_icon: Statement,
     pub set_workspace_icon: Statement,
@@ -597,6 +600,9 @@ impl Statements {
             delete_media_owner: client.prepare(DELETE_MEDIA_OWNER_SQL).await?,
             media_has_owner: client.prepare(MEDIA_HAS_OWNER_SQL).await?,
             delete_media_blob: client.prepare(DELETE_MEDIA_BLOB_SQL).await?,
+            delete_unpublished_media_blob: client
+                .prepare(DELETE_UNPUBLISHED_MEDIA_BLOB_SQL)
+                .await?,
             accept_block_command: client.prepare(ACCEPT_BLOCK_COMMAND_SQL).await?,
             workspace_icon: client.prepare(WORKSPACE_ICON_SQL).await?,
             set_workspace_icon: client.prepare(SET_WORKSPACE_ICON_SQL).await?,
