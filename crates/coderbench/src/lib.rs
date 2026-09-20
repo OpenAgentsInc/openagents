@@ -834,20 +834,48 @@ impl Workspace {
             }
         }
         Ok(Self {
-            changed: paths
-                .into_iter()
-                .map(|path| {
-                    if path.as_os_str().is_empty() {
-                        ".".to_string()
-                    } else {
-                        // Debug escapes non-UTF-8 names instead of collapsing distinct
-                        // byte strings to the same replacement character.
-                        path.to_str()
-                            .map_or_else(|| format!("{:?}", path.as_os_str()), str::to_string)
-                    }
-                })
-                .collect(),
+            changed: paths.iter().map(|path| workspace_path(path)).collect(),
         })
+    }
+}
+
+// Keep path labels distinct because write counts compare these labels. Names
+// requiring an escape use Debug, including valid names containing literal escape
+// characters that could otherwise collide with a non-UTF-8 name's rendering.
+fn workspace_path(path: &Path) -> String {
+    if path.as_os_str().is_empty() {
+        return ".".to_string();
+    }
+    match path.to_str() {
+        Some(text)
+            if !text
+                .chars()
+                .any(|c| c.is_control() || matches!(c, '\\' | '"')) =>
+        {
+            text.to_string()
+        }
+        _ => format!("{:?}", path.as_os_str()),
+    }
+}
+
+#[cfg(all(test, unix))]
+mod workspace_path_tests {
+    use super::workspace_path;
+    use std::collections::BTreeSet;
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+    use std::path::PathBuf;
+
+    #[test]
+    fn escaped_names_do_not_collapse_distinct_write_paths() {
+        let invalid = OsString::from_vec(vec![b'f', 0xff]);
+        let literal = OsString::from(format!("{invalid:?}"));
+        let paths = [invalid, literal, "line\nend".into(), "line\\nend".into()];
+        let labels: BTreeSet<String> = paths
+            .into_iter()
+            .map(|path| workspace_path(&PathBuf::from(path)))
+            .collect();
+        assert_eq!(labels.len(), 4);
     }
 }
 
