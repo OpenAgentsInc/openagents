@@ -709,7 +709,7 @@ impl Runtime {
     /// shorter option set is the same answer the capability probe gives
     /// for an executor that is not here. `run-suite` names a check this
     /// host does not run and `review-changes` names a question set it has
-    /// no wording for, so a machine carrying all four programs offers two.
+    /// no wording for, so a machine carrying all five programs offers three.
     #[must_use]
     pub fn selectable(&self) -> Vec<(String, String)> {
         self.survey

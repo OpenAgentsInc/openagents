@@ -160,7 +160,7 @@ mod tests {
             survey.capability("devin-local").is_some(),
             "the repository declares devin-local"
         );
-        assert_eq!(survey.programs.programs().len(), 4);
+        assert_eq!(survey.programs.programs().len(), 5);
         assert!(survey.programs.get("delegate-fan-out").is_some());
         assert!(
             survey.sources.get("work-list").is_some(),

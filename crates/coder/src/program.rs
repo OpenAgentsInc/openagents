@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn the_registry_lists_the_four_programs_the_golden_names() {
+    fn the_registry_lists_the_five_programs_the_repository_carries() {
         let registry = repository_programs();
         assert!(registry.refused().is_empty(), "{:?}", registry.refused());
         let mut slugs = registry.slugs();
@@ -495,6 +495,7 @@ mod tests {
             slugs,
             [
                 "answer-question",
+                "burn-down",
                 "delegate-fan-out",
                 "review-changes",
                 "run-suite"
@@ -539,7 +540,7 @@ mod tests {
             call.extra["programs"]["delegate-fan-out"]["steps"],
             json!(["select", "independence", "admit", "fan_out", "accept"])
         );
-        assert!(call.output.starts_with("4 programs: "));
+        assert!(call.output.starts_with("5 programs: "));
     }
 
     #[test]

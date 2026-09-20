@@ -97,7 +97,7 @@ carries both, and `crates/coder` reads them:
 | Directory | What it holds |
 | --- | --- |
 | `capabilities/` | One `kind:30180` manifest per file. `devin-local` is the first. |
-| `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `review-changes`, `answer-question`, `run-suite`. |
+| `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `burn-down`, `review-changes`, `answer-question`, `run-suite`. |
 | `questions/` | One question set per file, addressed by identifier: `openagents.program.v1`, `openagents.independence.v1`, `openagents.completion.v1`. |
 | `sources/` | One task source per file. `work-list` is the first; `request` is built in. |
 
@@ -503,9 +503,14 @@ that was there before. Three rules hold the path together:
 - **The option set is the programs this host would admit.** `Runtime::admit`
   already refuses a program whose bounds or steps this host cannot keep, so
   offering one as an option would put a choice on the question whose only
-  outcome is a refusal. On this repository that leaves `delegate-fan-out`
-  and `answer-question`; `run-suite` names a check this host does not run
-  and `review-changes` names a question set it has no wording for.
+  outcome is a refusal. On this repository that leaves `delegate-fan-out`,
+  `burn-down`, and `answer-question`; `run-suite` names a check this host
+  does not run and `review-changes` names a question set it has no wording
+  for. `burn-down` is `delegate-fan-out` with the `work-list` source in
+  place of `request`, `isolation: worktree`, and thirty minutes per item:
+  the program the backlog runs through, where the work is written to
+  `.coder/work-list.json` by inspection and every delegate's worktree is
+  kept for review.
 - **The work the request carries is the list the sentence writes out.** One
   task per bulleted or numbered line, in the order written. That is what the
   `request` source reads, and a `query` step naming a file source reads a
