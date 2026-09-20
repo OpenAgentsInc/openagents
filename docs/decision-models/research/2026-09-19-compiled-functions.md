@@ -149,9 +149,15 @@ That is a cheap, testable hypothesis about our own on-device adapter, and it
 bears directly on
 [#9383](https://github.com/OpenAgentsInc/openagents/issues/9383): it is
 evidence that abstention wants to be *an option the model can name* rather
-than a threshold the caller applies afterwards. It is also the same failure
-mode we measured — our own adapter got more confidently wrong as it got more
-accurate.
+than a threshold the caller applies afterwards.
+
+We took our own adapter to be a second instance of the same failure mode and
+have withdrawn that. It rested on confident errors rising from one to nine,
+and [#9376](https://github.com/OpenAgentsInc/openagents/issues/9376) has
+since measured the count's block spread on an **unchanged** door: 6, 6, 10,
+4, 4, 10, 6, 4, a standard deviation of 2.49. The rise never cleared it. The
+external finding stands on its own evidence; ours no longer corroborates
+it.
 
 **Ordered rubrics want named buckets, not numbers.** Their Attempt 1 → 3
 sequence is free evidence for a question we will face if Score is ever served
