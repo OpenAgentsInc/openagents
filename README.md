@@ -90,7 +90,13 @@ tune, and test — not a paragraph you hope a bigger model got right.
 | `crates/atif` | The Agent Trajectory Interchange Format: a session as ordered steps, and the append-only log one writes as it runs. |
 | `crates/coder` | The agent: classify-then-generate turns, the shell loop, the relay client, and the binary that runs a turn in a terminal or headlessly with `-p`. Every conversation records itself to `~/.openagents/traces/`. `coder-worker`, the second binary, answers NIP-CJ jobs from the other side of the relay. |
 | `crates/coder-terminal` | The amber terminal: composer, editor, spinner, intensity ladder, ratatui rendering. |
+| `crates/coder-boundary` | The filesystem write boundary a delegated executor runs under (macOS sandbox or Linux bubblewrap) and independent workspace snapshots. Unsupported enforcement is refused. |
+| `crates/coderbench` | The benchmark harness: runs a Coder task against a pinned repository, observes the trace and the workspace, and grades against a golden. |
+| `crates/capability` | The NIP-CAP capability manifest contract and the `capability-trust` approval store that lets a probe or executor run. |
 | `crates/jev` | The TypeSafe Jev SDK — typed questions, `Choice`/`Noul`/`Score` answers. |
+| `crates/kev` | The Rust port of the kev decision model and `kev-serve`, a TypeSafe-compatible `POST /v1/systemone` door. |
+| `crates/lev` | The same door answered by Apple's on-device foundation model through the `swift/lev-bridge` helper. |
+| `crates/gym` | Measurement for decision models: pinned suites, receipt-chained results, digested acceptance gates, and the terminal that reads them. |
 | `crates/supervise` | One subprocess supervisor: a job owns its process tree until cleanup finishes, and its output is bounded while it is read. Unix only, and it says so. |
 | `crates/nostr` | Pure protocol primitives: events, filters, NIP-19/42/44/98, signers. No third-party Nostr crate. |
 | `crates/nostr-relay` | The `nostr-relay` binary: WebSocket gateway + Postgres store. Deployed at `wss://relay.openagents.com`. |
