@@ -110,15 +110,41 @@ computer, in parallel.
 | Every task is read-only and writes no file | **0.17** | **no** |
 | At least one task needs a tool restriction | 0.53 | no signal |
 
-The door got the hard question right and the easy one wrong. The state says
-"Every task is read-only" in as many words, and the answer came back at
-0.17. Three recordings put it at 0.16, 0.17, and 0.17, so this is
-reproducible rather than a stray sample. This is recorded rather than smoothed over, because a golden that
-showed only the flattering half would be worth nothing.
+The door got the hard question right and the easy one wrong. This is recorded
+rather than smoothed over, because a golden that showed only the flattering
+half would be worth nothing.
 
 It did not affect the run: the fan-out gated on `independent`, and admission
 gated on the deterministic bounds check rather than on
 `needs_tool_restriction`, which carried no signal anyway.
+
+### Two corrections to this call
+
+Both from
+[`decision-models/2026-09-19-restatement-and-polarity.md`](decision-models/2026-09-19-restatement-and-polarity.md),
+which measured it.
+
+**This call does not replay.** `kev-serve` is deterministic, and the program
+call above reproduces exactly. Posting the `state` and `questions` this
+golden records to the same door returns `readonly` at **0.76**, not 0.17, on
+**72** input tokens against the 166 the golden records. The state that
+produced 0.17 carried about 94 more tokens — the six delegation paths, which
+the recorded `arguments` leave out. Those arguments were reconstructed by the
+staging script rather than captured, and they carry no `model` field either,
+which the API requires. Part of what "observed" has to mean for
+[#9412](https://github.com/OpenAgentsInc/openagents/issues/9412) is capturing
+the request body verbatim.
+
+**The three recordings are one call, not three samples.** They differ only in
+the one delegation path that two renames moved, and the input-token count
+moves with it — 165, 165, 166. A deterministic door asked the same question
+three times gives one number three times, so the 0.01 spread measures the
+path string, not the door.
+
+What survives: the door answered wrongly a question its state answered, and a
+192-item panel over four doors puts that failure on the kev checkpoints
+rather than on the question. Hosted Jev answers all 128 open items of that
+panel correctly.
 
 ## Can a local door do the program lookup?
 

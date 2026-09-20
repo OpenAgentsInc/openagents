@@ -1,0 +1,2316 @@
+{
+ "schema": "openagents.gym.suite.v1",
+ "name": "restatement-v1",
+ "created": "2026-09-19",
+ "description": "Twenty-four delegation plans, each stating three facts \u2014 six tasks or not, different files or not, writing or not \u2014 crossed with eight question texts about those same facts. Seven of the eight are restatements, whose answer the state asserts; the eighth is the independence inference delegate-fan-out gates on. The panel separates polarity, conjunction, and restatement in general as explanations for openagents#9414. Labels are read off the state by the rule each item carries.",
+ "tier": "scored",
+ "gate": "probability-v1",
+ "questions": "restatement-v1",
+ "items": [
+  {
+   "id": "count_six/c1r1",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c1r2",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one reads a different file and answers a question about it. No task writes anything."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c1r3",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task opens a different file, and every task is read-only."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c2r1",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each editing a different file and saving the change."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c2r2",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one rewrites a different file to add a missing doc comment."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c2r3",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task edits a different file, and every task writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c3r1",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, all pointed at one file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c3r2",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all reading the same file and summarizing a different section of it. None of them write."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c3r3",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task reads the same file, and no task changes it."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c4r1",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each appending a line to one shared file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c4r2",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all editing the same file."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c4r3",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task writes to the same file."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c5r1",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Four read-only tasks, each reading a different file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c5r2",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one reads a different file and reports what it found. Nothing is written."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c5r3",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each reads a different file, and neither writes."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c6r1",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Nine tasks, each editing a different file and saving the change."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c6r2",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one rewrites a different file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c6r3",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each edits a different file, and both write."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c7r1",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Ten read-only tasks, all pointed at one file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c7r2",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all reading the same file. None of them write."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c7r3",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both read the same file, and neither changes it."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c8r1",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Five tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c8r2",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "count_six/c8r3",
+   "family": "count_six",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both write to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the plan has six tasks."
+  },
+  {
+   "id": "distinct_files/c1r1",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c1r2",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one reads a different file and answers a question about it. No task writes anything."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c1r3",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task opens a different file, and every task is read-only."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c2r1",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each editing a different file and saving the change."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c2r2",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one rewrites a different file to add a missing doc comment."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c2r3",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task edits a different file, and every task writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c3r1",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, all pointed at one file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c3r2",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all reading the same file and summarizing a different section of it. None of them write."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c3r3",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task reads the same file, and no task changes it."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c4r1",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c4r2",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c4r3",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task writes to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c5r1",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Four read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c5r2",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one reads a different file and reports what it found. Nothing is written."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c5r3",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each reads a different file, and neither writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c6r1",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Nine tasks, each editing a different file and saving the change."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c6r2",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one rewrites a different file."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c6r3",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each edits a different file, and both write."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c7r1",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Ten read-only tasks, all pointed at one file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c7r2",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all reading the same file. None of them write."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c7r3",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both read the same file, and neither changes it."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c8r1",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Five tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c8r2",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "distinct_files/c8r3",
+   "family": "distinct_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both write to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says the tasks work on different files."
+  },
+  {
+   "id": "count_and_files/c1r1",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c1r2",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one reads a different file and answers a question about it. No task writes anything."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c1r3",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task opens a different file, and every task is read-only."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c2r1",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each editing a different file and saving the change."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c2r2",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one rewrites a different file to add a missing doc comment."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c2r3",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task edits a different file, and every task writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c3r1",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, all pointed at one file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c3r2",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all reading the same file and summarizing a different section of it. None of them write."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c3r3",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task reads the same file, and no task changes it."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c4r1",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c4r2",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c4r3",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task writes to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c5r1",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Four read-only tasks, each reading a different file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c5r2",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one reads a different file and reports what it found. Nothing is written."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c5r3",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each reads a different file, and neither writes."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c6r1",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Nine tasks, each editing a different file and saving the change."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c6r2",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one rewrites a different file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c6r3",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each edits a different file, and both write."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c7r1",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Ten read-only tasks, all pointed at one file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c7r2",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all reading the same file. None of them write."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c7r3",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both read the same file, and neither changes it."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c8r1",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Five tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c8r2",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "count_and_files/c8r3",
+   "family": "count_and_files",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both write to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says both six tasks and different files."
+  },
+  {
+   "id": "readonly_simple/c1r1",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c1r2",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one reads a different file and answers a question about it. No task writes anything."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c1r3",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task opens a different file, and every task is read-only."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c2r1",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each editing a different file and saving the change."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c2r2",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one rewrites a different file to add a missing doc comment."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c2r3",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task edits a different file, and every task writes."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c3r1",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, all pointed at one file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c3r2",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all reading the same file and summarizing a different section of it. None of them write."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c3r3",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task reads the same file, and no task changes it."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c4r1",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c4r2",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c4r3",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task writes to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c5r1",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Four read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c5r2",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one reads a different file and reports what it found. Nothing is written."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c5r3",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each reads a different file, and neither writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c6r1",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Nine tasks, each editing a different file and saving the change."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c6r2",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one rewrites a different file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c6r3",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each edits a different file, and both write."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c7r1",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Ten read-only tasks, all pointed at one file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c7r2",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all reading the same file. None of them write."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c7r3",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both read the same file, and neither changes it."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c8r1",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Five tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c8r2",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_simple/c8r3",
+   "family": "readonly_simple",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both write to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "readonly_conjunction/c1r1",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c1r2",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one reads a different file and answers a question about it. No task writes anything."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c1r3",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task opens a different file, and every task is read-only."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c2r1",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each editing a different file and saving the change."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c2r2",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one rewrites a different file to add a missing doc comment."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c2r3",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task edits a different file, and every task writes."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c3r1",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, all pointed at one file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c3r2",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all reading the same file and summarizing a different section of it. None of them write."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c3r3",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task reads the same file, and no task changes it."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c4r1",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c4r2",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c4r3",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task writes to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c5r1",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Four read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c5r2",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one reads a different file and reports what it found. Nothing is written."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c5r3",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each reads a different file, and neither writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c6r1",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Nine tasks, each editing a different file and saving the change."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c6r2",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one rewrites a different file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c6r3",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each edits a different file, and both write."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c7r1",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Ten read-only tasks, all pointed at one file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c7r2",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all reading the same file. None of them write."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c7r3",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both read the same file, and neither changes it."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c8r1",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Five tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c8r2",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "readonly_conjunction/c8r3",
+   "family": "readonly_conjunction",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both write to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes; the two halves of the question are one fact."
+  },
+  {
+   "id": "writes_none/c1r1",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c1r2",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one reads a different file and answers a question about it. No task writes anything."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c1r3",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task opens a different file, and every task is read-only."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c2r1",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each editing a different file and saving the change."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c2r2",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one rewrites a different file to add a missing doc comment."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c2r3",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task edits a different file, and every task writes."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c3r1",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, all pointed at one file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c3r2",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all reading the same file and summarizing a different section of it. None of them write."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c3r3",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task reads the same file, and no task changes it."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c4r1",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c4r2",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c4r3",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task writes to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c5r1",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Four read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c5r2",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one reads a different file and reports what it found. Nothing is written."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c5r3",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each reads a different file, and neither writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c6r1",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Nine tasks, each editing a different file and saving the change."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c6r2",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one rewrites a different file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c6r3",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each edits a different file, and both write."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c7r1",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Ten read-only tasks, all pointed at one file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c7r2",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all reading the same file. None of them write."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c7r3",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both read the same file, and neither changes it."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c8r1",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Five tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c8r2",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_none/c8r3",
+   "family": "writes_none",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both write to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says no task writes."
+  },
+  {
+   "id": "writes_some/c1r1",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, each reading a different file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c1r2",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one reads a different file and answers a question about it. No task writes anything."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c1r3",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task opens a different file, and every task is read-only."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c2r1",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each editing a different file and saving the change."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c2r2",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one rewrites a different file to add a missing doc comment."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c2r3",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task edits a different file, and every task writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c3r1",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, all pointed at one file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c3r2",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all reading the same file and summarizing a different section of it. None of them write."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c3r3",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task reads the same file, and no task changes it."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c4r1",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each appending a line to one shared file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c4r2",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all editing the same file."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c4r3",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task writes to the same file."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c5r1",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Four read-only tasks, each reading a different file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c5r2",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one reads a different file and reports what it found. Nothing is written."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c5r3",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each reads a different file, and neither writes."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c6r1",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Nine tasks, each editing a different file and saving the change."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c6r2",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one rewrites a different file."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c6r3",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each edits a different file, and both write."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c7r1",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Ten read-only tasks, all pointed at one file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c7r2",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all reading the same file. None of them write."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c7r3",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both read the same file, and neither changes it."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c8r1",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Five tasks, each appending a line to one shared file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c8r2",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all editing the same file."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "writes_some/c8r3",
+   "family": "writes_some",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both write to the same file."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "True when the state says at least one task writes."
+  },
+  {
+   "id": "independent/c1r1",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c1r2",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one reads a different file and answers a question about it. No task writes anything."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c1r3",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task opens a different file, and every task is read-only."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c2r1",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each editing a different file and saving the change."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c2r2",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks. Each one rewrites a different file to add a missing doc comment."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c2r3",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task edits a different file, and every task writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c3r1",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Six read-only tasks, all pointed at one file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c3r2",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all reading the same file and summarizing a different section of it. None of them write."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c3r3",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task reads the same file, and no task changes it."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c4r1",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c4r2",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Six tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c4r3",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs six tasks. Every task writes to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c5r1",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Four read-only tasks, each reading a different file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c5r2",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one reads a different file and reports what it found. Nothing is written."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c5r3",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each reads a different file, and neither writes."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c6r1",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Nine tasks, each editing a different file and saving the change."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c6r2",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks. Each one rewrites a different file."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c6r3",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Each edits a different file, and both write."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c7r1",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Ten read-only tasks, all pointed at one file."
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c7r2",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all reading the same file. None of them write."
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c7r3",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both read the same file, and neither changes it."
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c8r1",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Five tasks, each appending a line to one shared file."
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c8r2",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "Three tasks, all editing the same file."
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  },
+  {
+   "id": "independent/c8r3",
+   "family": "independent",
+   "kind": "noul",
+   "state": {
+    "plan": "The plan runs two tasks. Both write to the same file."
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "Two tasks collide when they touch the same file and at least one writes, so this is false only when the state says the tasks share a file and at least one writes."
+  }
+ ],
+ "digest": "6babbe78a2853f7f43a85c0624e4d3c5e3506cbefdb7eb9f81e6482192021b4f"
+}

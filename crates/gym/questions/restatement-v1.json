@@ -1,0 +1,45 @@
+{
+ "$comment": [
+  "The eight question texts of the restatement-v1 panel, which openagents#9414 exists to separate. Seven ask a door to repeat a fact its state asserts; the eighth asks the inference delegate-fan-out gates on.",
+  "readonly_conjunction is the recorded text from crates/coderbench/goldens/devin-fan-out-six.evidence.json, word for word. It is here to be measured, not improved: the issue's first constraint is that the question is not reworded until it passes, so a reword would be a second question set with its own id, its own floor, and its own held-out split.",
+  "independent drops the word 'six' from the recorded text, because the panel's states name two, three, four, five, six, nine, and ten tasks and the recorded wording presumes six. That is the one departure from a recorded text in this file, and a run reports the six-task states apart so the gated wording's own domain stays readable.",
+  "No question carries criteria, because the recorded call carried none. Adding them would measure a different question."
+ ],
+ "schema": "openagents.gym.question_set.v1",
+ "id": "restatement-v1",
+ "suite": "restatement-v1",
+ "questions": {
+  "count_six": {
+   "type": "noul",
+   "instructions": "The plan has six tasks."
+  },
+  "distinct_files": {
+   "type": "noul",
+   "instructions": "Every task works on a different file."
+  },
+  "count_and_files": {
+   "type": "noul",
+   "instructions": "The plan has six tasks and every task works on a different file."
+  },
+  "readonly_simple": {
+   "type": "noul",
+   "instructions": "Every task is read-only."
+  },
+  "readonly_conjunction": {
+   "type": "noul",
+   "instructions": "Every task is read-only and writes no file."
+  },
+  "writes_none": {
+   "type": "noul",
+   "instructions": "No task writes a file."
+  },
+  "writes_some": {
+   "type": "noul",
+   "instructions": "At least one task writes a file."
+  },
+  "independent": {
+   "type": "noul",
+   "instructions": "The tasks can run in parallel without colliding."
+  }
+ }
+}
