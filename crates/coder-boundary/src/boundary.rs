@@ -4,9 +4,19 @@
 //! of its own, is a promise the host has to keep. This module keeps it on
 //! macOS by wrapping the command in `sandbox-exec` with a profile that
 //! denies `file-write*` everywhere and then permits exactly the paths the
-//! caller named. On a platform with no backend, [`Spec::build`] refuses —
-//! there is no path from here to an unrestricted [`Command`], because a
-//! boundary that quietly stopped bounding is worse than no boundary.
+//! caller named, and on Linux by wrapping it in `bwrap` (bubblewrap) with
+//! a mount namespace that binds the whole filesystem read-only and then
+//! binds exactly those paths writable. On a platform with no backend,
+//! [`Spec::build`] refuses — there is no path from here to an unrestricted
+//! [`Command`], because a boundary that quietly stopped bounding is worse
+//! than no boundary.
+//!
+//! The two backends enforce the same policy by different means. Seatbelt
+//! evaluates rules in order, so a deny followed by an allow beneath it is
+//! an exception; a mount namespace stacks binds in order, so a read-only
+//! root followed by a writable bind beneath it is the same exception. Both
+//! cover the whole process tree, and neither confines reads, network, or
+//! time — see the crate root.
 //!
 //! # The two policies
 //!
@@ -49,8 +59,8 @@
 //! ```
 //!
 //! A caller that speaks to `supervise::Job` rather than to a `Command`
-//! builds the job over [`SANDBOX_EXEC`], `-f`, and
-//! [`Boundary::profile_file`], and holds [`Boundary::hold`] the same way.
+//! builds the job over [`Boundary::backend`] and [`Boundary::arguments`],
+//! and holds [`Boundary::hold`] the same way.
 
 use std::ffi::OsStr;
 use std::fmt;
@@ -60,8 +70,22 @@ use std::process::Command;
 
 use tempfile::{NamedTempFile, TempDir};
 
-/// The enforced backend: macOS `sandbox-exec`, at the path Apple ships it.
+/// The macOS backend: `sandbox-exec`, at the path Apple ships it.
 pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
+
+/// The Linux backend: bubblewrap, at the path distributions install it.
+/// It needs unprivileged user namespaces; a host that has the binary but
+/// not the namespaces is [`Error::Inoperable`], not a boundary.
+pub const BUBBLEWRAP: &str = "/usr/bin/bwrap";
+
+/// The backend this platform enforces with, or `None` where there is none.
+pub const BACKEND: Option<&str> = if cfg!(target_os = "macos") {
+    Some(SANDBOX_EXEC)
+} else if cfg!(target_os = "linux") {
+    Some(BUBBLEWRAP)
+} else {
+    None
+};
 
 /// Why a boundary could not be built or a command could not be wrapped.
 ///
@@ -73,6 +97,9 @@ pub enum Error {
     Unsupported(&'static str),
     /// The backend this platform uses is not at its path.
     Unavailable(PathBuf),
+    /// The backend is present but cannot confine anything on this host —
+    /// on Linux, unprivileged user namespaces are disabled.
+    Inoperable { backend: PathBuf, error: String },
     /// A path that had to be absolute was not: the program, the backend,
     /// or one of the configured paths.
     Relative(PathBuf),
@@ -103,6 +130,11 @@ impl fmt::Display for Error {
             Error::Unavailable(path) => {
                 write!(f, "no sandbox backend at {}", path.display())
             }
+            Error::Inoperable { backend, error } => write!(
+                f,
+                "the sandbox backend at {} cannot confine a command on this host: {error}",
+                backend.display()
+            ),
             Error::Relative(path) => {
                 write!(f, "{} is not an absolute path", path.display())
             }
@@ -151,7 +183,7 @@ impl Spec {
             protected: Vec::new(),
             sealed: Vec::new(),
             scratch_under: None,
-            backend: PathBuf::from(SANDBOX_EXEC),
+            backend: PathBuf::from(BACKEND.unwrap_or(SANDBOX_EXEC)),
         }
     }
 
@@ -274,7 +306,7 @@ impl Spec {
         // backend, every answer above still describes the spec that was
         // asked for. What never happens here is the fallback — there is
         // no construction of a bare command.
-        if !cfg!(target_os = "macos") {
+        if BACKEND.is_none() {
             return Err(Error::Unsupported(std::env::consts::OS));
         }
         if !self.backend.is_absolute() {
@@ -282,6 +314,9 @@ impl Spec {
         }
         if !self.backend.is_file() {
             return Err(Error::Unavailable(self.backend));
+        }
+        if cfg!(target_os = "linux") {
+            operable(&self.backend)?;
         }
 
         let mut file = NamedTempFile::new().map_err(Error::Io)?;
@@ -334,7 +369,8 @@ impl Boundary {
         Spec::new(Some(checkout.into()))
     }
 
-    /// The command, wrapped: `sandbox-exec -f <profile> <program> <argv>`.
+    /// The command, wrapped: on macOS `sandbox-exec -f <profile> <program>
+    /// <argv>`, on Linux `bwrap <binds> -- <program> <argv>`.
     ///
     /// The program must be absolute; a name resolved through the child's
     /// `PATH` is a search the boundary never approved. The result is a
@@ -352,23 +388,62 @@ impl Boundary {
             return Err(Error::Relative(program.to_path_buf()));
         }
         let mut command = Command::new(&self.backend);
-        command
-            .arg("-f")
-            .arg(self.file.path())
-            .arg(program)
-            .args(arguments);
+        command.args(self.arguments()).arg(program).args(arguments);
         Ok(command)
     }
 
-    /// The profile file the wrapped command reads, for a caller that
-    /// builds its own supervised argv over [`SANDBOX_EXEC`] and `-f`.
-    /// The path is valid only while the boundary is held.
+    /// The backend the wrapped command runs under, by absolute path.
+    #[must_use]
+    pub fn backend(&self) -> &Path {
+        &self.backend
+    }
+
+    /// The backend's arguments, which come before the program: `-f
+    /// <profile>` for `sandbox-exec`; the read-only root, the device
+    /// tree, the writable binds, and `--` for `bwrap`. For a caller that
+    /// builds its own supervised argv over [`Boundary::backend`]. Valid
+    /// only while the boundary is held.
+    #[must_use]
+    pub fn arguments(&self) -> Vec<std::ffi::OsString> {
+        if cfg!(target_os = "linux") {
+            let mut args: Vec<std::ffi::OsString> = [
+                "--die-with-parent",
+                "--ro-bind",
+                "/",
+                "/",
+                "--dev",
+                "/dev",
+                "--proc",
+                "/proc",
+            ]
+            .into_iter()
+            .map(Into::into)
+            .collect();
+            // Every bind stacks over the read-only root in order, so a
+            // writable path beneath a protected one is the exception and
+            // the protected tree around it stays read-only.
+            for path in self.checkout.iter().chain(&self.writable) {
+                args.push("--bind".into());
+                args.push(path.into());
+                args.push(path.into());
+            }
+            args.push("--".into());
+            args
+        } else {
+            vec!["-f".into(), self.file.path().into()]
+        }
+    }
+
+    /// The profile file, for a caller that builds its own supervised
+    /// argv. The path is valid only while the boundary is held.
     #[must_use]
     pub fn profile_file(&self) -> &Path {
         self.file.path()
     }
 
-    /// The profile text, as written to the file.
+    /// The policy, spelled as a Seatbelt profile. On macOS this is the
+    /// text the backend reads; on Linux it is the record of what the
+    /// binds in [`Boundary::arguments`] enforce.
     #[must_use]
     pub fn profile(&self) -> &str {
         &self.profile
@@ -445,6 +520,32 @@ impl Held {
     pub fn scratch(&self) -> Option<&Path> {
         self.scratch.as_ref().map(TempDir::path)
     }
+}
+
+/// Whether the Linux backend can confine anything here, checked once per
+/// process. A `bwrap` binary on a host with user namespaces disabled
+/// fails at spawn rather than running unbounded, but a spec built over it
+/// would be a promise; asking `bwrap` to run `/bin/true` inside a
+/// read-only root settles the question before any boundary exists.
+fn operable(backend: &Path) -> Result<(), Error> {
+    use std::sync::OnceLock;
+    static PROBE: OnceLock<Result<(), String>> = OnceLock::new();
+    let probe = PROBE.get_or_init(|| {
+        let output = Command::new(backend)
+            .args(["--ro-bind", "/", "/", "--dev", "/dev", "--", "/bin/true"])
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|error| error.to_string())?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        }
+    });
+    probe.clone().map_err(|error| Error::Inoperable {
+        backend: backend.to_path_buf(),
+        error,
+    })
 }
 
 /// Resolves a path that must exist to its canonical form.
@@ -576,12 +677,12 @@ mod tests {
 
     /// The backend path is fixed, and this module's own tests reach the
     /// field directly — there is no public setter, so no caller can
-    /// point a "boundary" at a program that is not `sandbox-exec`.
+    /// point a "boundary" at a program that is not the platform's backend.
     #[test]
     fn a_missing_backend_is_a_refusal() {
         let dir = tempfile::tempdir().unwrap();
         let mut spec = Boundary::readonly().protecting(dir.path());
-        spec.backend = PathBuf::from("/nonexistent/sandbox-exec");
+        spec.backend = PathBuf::from("/nonexistent/backend");
         let error = spec.build().unwrap_err();
         assert!(
             matches!(error, Error::Unavailable(_) | Error::Unsupported(_)),

@@ -717,7 +717,8 @@ impl std::fmt::Display for Status {
 /// has no boundary to report, and no command ever runs without one.
 #[derive(Clone, Debug)]
 pub struct EnforcedBoundary {
-    /// The backend the command ran under — `sandbox-exec` on macOS.
+    /// The backend the command ran under — `sandbox-exec` on macOS,
+    /// `bwrap` on Linux.
     pub backend: PathBuf,
     /// The isolated checkout a writing delegation could write, when it
     /// had one — the profile's one exception to the protected set.
@@ -1067,7 +1068,7 @@ impl Delegator {
             false => None,
         };
         let enforced = EnforcedBoundary {
-            backend: PathBuf::from(coder_boundary::SANDBOX_EXEC),
+            backend: boundary.backend().to_path_buf(),
             checkout: boundary.checkout().map(Path::to_path_buf),
             writable: boundary.writable().to_vec(),
             protected: boundary.protected().to_vec(),
@@ -1258,8 +1259,9 @@ impl Delegator {
 
     /// The boundary and the command wrapped in it, ready to supervise.
     ///
-    /// The command is `sandbox-exec -f <profile> <binary> <argv>`, run in
-    /// the delegation's directory — the declared argv and the caller's
+    /// The command is the backend, its arguments, then `<binary> <argv>`
+    /// — `sandbox-exec -f <profile>` on macOS, `bwrap <binds> --` on
+    /// Linux — run in the delegation's directory — the declared argv and the caller's
     /// environment, preserved. The boundary's owned scratch is exported
     /// as `TMPDIR` only: where an adapter keeps its state is the
     /// approval's word, granted as writable adapter state by the policy,

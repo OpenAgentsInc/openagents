@@ -1,5 +1,5 @@
-//! What a boundary refuses at build time, and — on macOS, where the
-//! backend exists — what the built boundary enforces in a spawned,
+//! What a boundary refuses at build time, and — on macOS and Linux, where
+//! a backend exists — what the built boundary enforces in a spawned,
 //! supervised child.
 
 use coder_boundary::{Boundary, Error};
@@ -93,15 +93,15 @@ fn a_writable_path_is_resolved_not_aliased() {
     let state = real.path().join("state");
     std::fs::create_dir(&state).unwrap();
     let built = Boundary::readonly().writable(alias.join("state")).build();
-    // On macOS with the backend present this builds, and the writable
-    // path it records is the real directory, not the alias. Elsewhere
-    // the same resolution happened and the platform refused instead.
+    // With a backend present this builds, and the writable path it
+    // records is the real directory, not the alias. Elsewhere the same
+    // resolution happened and the platform refused instead.
     match built {
         Ok(boundary) => assert_eq!(
             boundary.writable(),
             [state.canonicalize().unwrap()].as_slice()
         ),
-        Err(Error::Unsupported(_)) | Err(Error::Unavailable(_)) => {}
+        Err(Error::Unsupported(_) | Error::Unavailable(_) | Error::Inoperable { .. }) => {}
         Err(error) => panic!("unexpected refusal: {error}"),
     }
 }
@@ -223,7 +223,7 @@ fn a_path_with_a_control_character_has_no_safe_spelling() {
     assert!(matches!(error, Error::Unsafe(_)), "{error}");
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 #[test]
 fn a_platform_without_a_backend_refuses() {
     let dir = TempDir::new().unwrap();
@@ -235,8 +235,8 @@ fn a_platform_without_a_backend_refuses() {
 }
 
 /// The enforced half. These tests run the wrapped command under the
-/// supervisor's blocking half, on the one platform with a backend.
-#[cfg(target_os = "macos")]
+/// supervisor's blocking half, on the platforms with a backend.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod enforced {
     use std::ffi::OsString;
     use std::io::Read as _;
@@ -244,16 +244,17 @@ mod enforced {
     use std::process::Stdio;
     use std::time::Duration;
 
-    use coder_boundary::SANDBOX_EXEC;
+    use coder_boundary::BACKEND;
     use supervise::Ending;
     use supervise::blocking::{own_group, wait};
 
     use super::*;
 
-    /// Whether this machine has the backend. A machine without it cannot
-    /// run these cases, which is not the same as the cases failing.
+    /// Whether this machine has a working backend. A machine without it
+    /// cannot run these cases, which is not the same as the cases failing.
     fn backend() -> bool {
-        Path::new(SANDBOX_EXEC).is_file()
+        BACKEND.is_some_and(|path| Path::new(path).is_file())
+            && Boundary::readonly().build().is_ok()
     }
 
     /// Runs `/bin/sh -c <script> sh <args>` under the boundary,
@@ -332,7 +333,12 @@ mod enforced {
             dir.path(),
         );
 
-        assert_eq!(ending, Ending::Exited(Some(1)));
+        // A failed redirect exits 1 in bash and 2 in dash; either way the
+        // child did not exit 0.
+        assert!(
+            matches!(ending, Ending::Exited(Some(code)) if code != 0),
+            "{ending:?}"
+        );
         assert!(
             !marker.exists(),
             "a child of the wrapped command wrote through the boundary"
@@ -413,6 +419,17 @@ mod enforced {
             "the hostile spelling reached the profile unescaped: {}",
             boundary.profile()
         );
+        if cfg!(target_os = "linux") {
+            // The Linux backend takes the path as one argument, so the
+            // spelling must arrive unchanged rather than escaped.
+            assert!(
+                boundary
+                    .arguments()
+                    .iter()
+                    .any(|arg| arg == scratch.as_os_str()),
+                "the scratch is not among the binds"
+            );
+        }
 
         let allowed = scratch.join("marker");
         let denied = parent.path().join("marker");

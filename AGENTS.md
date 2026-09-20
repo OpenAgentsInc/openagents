@@ -103,7 +103,8 @@ uses, and marks which are implemented and which are only specified.
   adapter's canonical path and contents in a store outside any checkout.
   Probes run bounded through `supervise`, and a probe that cannot answer
   cleanly is `unknown`, never `present`.
-- `crates/coder-boundary` — a macOS filesystem write boundary and independent
+- `crates/coder-boundary` — a filesystem write boundary (`sandbox-exec` on
+  macOS, `bwrap` on Linux) and independent
   Unix workspace snapshots. Unsupported enforcement is refused; incomplete
   snapshots are unverifiable. Read
   `docs/coder/verification/2026-09-20-execution-boundary.md` before changing it.
