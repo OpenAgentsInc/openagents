@@ -40,7 +40,12 @@ credentials under `$XDG_DATA_HOME/devin` (default `~/.local/share/devin`).
 That tree also holds the pinned adapter binary, so it cannot be granted
 writable. Point the CLI at a data directory inside the writable grant
 instead, copy only the files it needs to start, and trust the work
-directory once interactively.
+directory once interactively. That one step covers delegations that run
+in the work directory itself. A delegation that runs in a worktree of its
+own needs no step: Coder enters the worktree in the trusted-workspace
+list under the `XDG_DATA_HOME` the worker runs with, for the length of
+the run and for that path only. Read
+[The worktree is trusted for the run, and no wider](delegate.md#the-worktree-is-trusted-for-the-run-and-no-wider).
 
 ```sh
 mkdir -p ~/worker-exec ~/worker-jobs/xdg/devin/cli
@@ -143,7 +148,9 @@ trace records under `relayed.request`.
 - `names no capability this host can see` — the workdir is outside the
   checkout and `CODER_CAPABILITY_DIR` is unset.
 - `present and unavailable here: untrusted_workspace` — the CLI refuses the
-  work directory; trust it interactively.
+  work directory; trust it interactively. A worktree delegation is trusted
+  by Coder, so this refusal from one means the worker's `XDG_DATA_HOME`
+  and the CLI's disagree about which list to read.
 - `writable path X overlaps protected path X` — the writable grant is the
   work directory; separate them.
 - `exited 101 ... Read-only file system` — the executor writes state
@@ -154,13 +161,18 @@ trace records under `relayed.request`.
 Two refusals come from the host environment rather than the job:
 
 - **`Refusing to run in an untrusted workspace`.** The Devin CLI keeps its
-  trusted-workspace list under `$XDG_DATA_HOME/devin`, so this setup leaves
-  two trust stores: the worker's, under `$HOME/worker-jobs/xdg`, and the
-  default `~/.local/share/devin`. A `coder -p` or `coderbench run` started
-  from a shell without `XDG_DATA_HOME` consults the default store, where
-  the checkout is untrusted, and the workspace probe answers
-  `present_unavailable`. Run the driving command with the same
-  `XDG_DATA_HOME` the worker uses, or trust the checkout in both stores.
+  trusted-workspace list at `$XDG_DATA_HOME/devin/cli/trusted_workspaces.json`,
+  so this setup leaves two trust stores: the worker's, under
+  `$HOME/worker-jobs/xdg`, and the default `~/.local/share/devin`. For a
+  delegation in its own worktree, Coder enters the worktree in the store
+  under the `XDG_DATA_HOME` the delegating process inherits, and withdraws
+  it when the run ends, so the split does not reach the delegate. The
+  split still reaches the workspace probe and a delegation in the shared
+  work directory: a `coder -p` or `coderbench run` started from a shell
+  without `XDG_DATA_HOME` consults the default store, where the checkout
+  is untrusted, and the probe answers `present_unavailable`. Run the
+  driving command with the same `XDG_DATA_HOME` the worker uses, or trust
+  the checkout in both stores.
 - **Preflight reports `origin is <rewritten URL>`.** A global
   `url.<base>.insteadOf` entry rewrites the URL that
   `git remote get-url origin` returns. CoderBench preflight reads the

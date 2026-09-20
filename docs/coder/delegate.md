@@ -276,6 +276,42 @@ delegations from a worktree under `/private/tmp` came back with `Refusing
 to run in an untrusted workspace`. A worktree inside a checkout the
 operator already trusts is accepted.
 
+### The worktree is trusted for the run, and no wider
+
+The Devin CLI keeps one trusted-workspace list per data directory, at
+`$XDG_DATA_HOME/devin/cli/trusted_workspaces.json`. A worker that runs
+under its own `XDG_DATA_HOME` and an operator who trusted the checkout
+under the default `~/.local/share` hold two lists that disagree, and the
+first burn-down episode met that split as `untrusted_workspace` from a
+worktree the boundary already confined the delegate to
+([#9413](https://github.com/OpenAgentsInc/openagents/issues/9413)).
+
+A worktree Coder made a moment ago is a directory no list can already
+trust and no operator can be asked about, so the `Delegator` answers the
+question itself for a `devin-local` delegation in a checkout of its own:
+
+- It enters the worktree's canonical path in the list under the
+  `XDG_DATA_HOME` the executor inherits, falling back to
+  `$HOME/.local/share`, after the boundary is built and before the
+  executor spawns. The entry is that path and nothing above it. The
+  repository, `.coder/worktrees`, and the shared directory are never
+  entered — a delegation in the shared directory runs where the operator
+  chose, and that directory is the operator's to trust.
+- It withdraws the entry when the run ends, whether the delegation
+  answered, failed, or timed out, and a withdrawal that fails is reported
+  as `Harness`. A retained worktree is the reviewer's to read and fetch
+  from, not to run the executor in. A caller that walks away
+  mid-delegation leaves the entry behind with the worktree; the path it
+  names is a checkout under `.coder/worktrees`, and nothing wider.
+- A list it cannot read or write is the harness, not the executor: the
+  delegation reports `Harness`, because the refusal the delegate would
+  have given was this host's doing.
+
+Other keys in the file are kept as they are, and writers take a lock
+beside it, so six delegations starting together each see the other five.
+The `Delegator::trusting_under` builder points a test or a worker at a
+different data directory.
+
 Worktrees separate edits; the filesystem boundary is what prohibits
 writes. A recorded call still says `wrote: null` rather than claiming a
 check nobody runs — what a delegate actually changed is the workspace

@@ -897,6 +897,11 @@ pub struct Delegator {
     /// writable path a read-only task's boundary permits. The system
     /// temporary directory, unless a caller says otherwise.
     scratch_under: PathBuf,
+    /// The Devin CLI's trusted-workspace list a worktree delegation is
+    /// entered in for the length of its run: the one under the
+    /// `XDG_DATA_HOME` the executor inherits. `None` when the environment
+    /// names no data directory, and the executor is left to its own store.
+    trust: Option<TrustStore>,
 }
 
 impl Delegator {
@@ -910,7 +915,19 @@ impl Delegator {
             repository: None,
             concurrent_max: CONCURRENT_MAX,
             scratch_under: std::env::temp_dir(),
+            trust: TrustStore::from_environment(
+                std::env::var_os("XDG_DATA_HOME").as_deref(),
+                std::env::var_os("HOME").as_deref(),
+            ),
         }
+    }
+
+    /// Enters worktree delegations in the trusted-workspace list under
+    /// `data_home` rather than the one the environment selects.
+    #[must_use]
+    pub fn trusting_under(mut self, data_home: impl Into<PathBuf>) -> Self {
+        self.trust = Some(TrustStore::under(&data_home.into()));
+        self
     }
 
     /// Runs the delegations somewhere other than this process's working
@@ -1126,6 +1143,24 @@ impl Delegator {
             true => checkout.retain(),
             false => None,
         };
+
+        // The boundary now confines the delegate to a worktree this host
+        // made, so the Devin CLI's trust question has one answer: that
+        // worktree, in the store the executor's own `XDG_DATA_HOME`
+        // selects, and nothing wider. A trust that cannot be recorded is
+        // the harness, not the executor: the delegate would decline a
+        // directory nobody trusted, and the run would be graded on a
+        // refusal this host caused.
+        let trusted = match self.trust(&checkout).await {
+            Ok(trusted) => trusted,
+            Err(why) => {
+                let mut reported = Reported::of(Status::Harness(why.clone())).detailing(why);
+                if let Err(error) = checkout.close().await {
+                    reported.detail = format!("{}\n{error}", reported.detail);
+                }
+                return self.ended(task, reported, started.elapsed(), workdir, None, None);
+            }
+        };
         let enforced = EnforcedBoundary {
             backend: boundary.backend().to_path_buf(),
             checkout: boundary.checkout().map(Path::to_path_buf),
@@ -1146,6 +1181,13 @@ impl Delegator {
             .bounded(Limits::within(task.bounds.wall()).keeping(OUTPUT_MAX))
             .run_holding((boundary.hold(), checkout.hold()))
             .await;
+        // The trust lasts as long as the executor runs in the worktree. A
+        // retained checkout is the reviewer's to read, and the reviewer
+        // fetches from it rather than running the executor in it.
+        let withdrawn = match (&self.trust, trusted) {
+            (Some(store), Some(path)) => store.withdraw(&path).await,
+            _ => Ok(()),
+        };
         let said = Reported {
             status: Status::Answered,
             output: ended.stdout.marked(),
@@ -1197,6 +1239,17 @@ impl Delegator {
                     detail: format!("{}\n{error}", reported.detail),
                     ..reported
                 },
+            },
+        };
+        // A trust that outlives its run is wider than the worktree in
+        // time, and the answer the delegate gave says nothing about it:
+        // the delegation is the harness's until the entry is gone.
+        let reported = match withdrawn {
+            Ok(()) => reported,
+            Err(error) => Reported {
+                status: Status::Harness(error.clone()),
+                detail: format!("{}\n{error}", reported.detail),
+                ..reported
             },
         };
         self.ended(
@@ -1368,6 +1421,25 @@ impl Delegator {
         }
     }
 
+    /// Enters the delegation's own worktree in the Devin CLI's trusted
+    /// workspaces, and returns the path it entered.
+    ///
+    /// `None` when there is nothing to enter: the delegation runs in the
+    /// shared directory, which is the operator's to trust; the executor is
+    /// not the Devin CLI, whose store this is; or the environment names no
+    /// data directory. The entry is the worktree's canonical path and no
+    /// ancestor of it — the boundary confines the delegate to that
+    /// directory, and the trust says the same thing in the CLI's words.
+    async fn trust(&self, checkout: &Checkout) -> Result<Option<PathBuf>, String> {
+        let (Some(store), Checkout::Own(worktree)) = (&self.trust, checkout) else {
+            return Ok(None);
+        };
+        if self.executor.capability != DEVIN_LOCAL {
+            return Ok(None);
+        }
+        store.trust(worktree.path()).await.map(Some)
+    }
+
     /// Hands every task to the executor at once, no more than
     /// [`Delegator::concurrent_max`] of them running at a time.
     ///
@@ -1455,6 +1527,225 @@ impl Reported {
     fn detailing(mut self, detail: String) -> Self {
         self.detail = detail;
         self
+    }
+}
+
+/// The file the Devin CLI keeps its trusted workspaces in, under its data
+/// directory.
+const TRUSTED_WORKSPACES: &str = "devin/cli/trusted_workspaces.json";
+
+/// The key that file lists the trusted paths under.
+const TRUSTED_PATHS: &str = "trusted_paths";
+
+/// The default data directory, under `HOME`, when `XDG_DATA_HOME` is unset.
+const DATA_HOME_DEFAULT: &str = ".local/share";
+
+/// How long a writer waits for the store's lock.
+const TRUST_LOCK_WALL: Duration = Duration::from_secs(10);
+
+/// The Devin CLI's trusted-workspace list, in the data directory the
+/// executor's environment selects.
+///
+/// The CLI declines to run in a directory nobody trusted, and its trust
+/// store is per `XDG_DATA_HOME`: a worker running under one data
+/// directory and an operator who trusted the checkout under another have
+/// two stores that disagree. A delegation's worktree is a directory this
+/// host made a moment ago, so no store can already trust it and no
+/// operator can be asked to. The host enters it itself — the worktree's
+/// canonical path, nothing above it — in the store the executor will read,
+/// which is the one under the `XDG_DATA_HOME` the executor inherits, and
+/// withdraws it when the run ends.
+///
+/// Other keys the file carries are kept as they are; only the list is
+/// changed. Writers take a lock beside the file, so six delegations
+/// starting at once each see the entries of the five others.
+#[derive(Clone, Debug)]
+struct TrustStore {
+    path: PathBuf,
+}
+
+impl TrustStore {
+    /// The store under one data directory.
+    fn under(data_home: &Path) -> Self {
+        TrustStore {
+            path: data_home.join(TRUSTED_WORKSPACES),
+        }
+    }
+
+    /// The store the executor's environment selects: `XDG_DATA_HOME` when
+    /// it is set and absolute, as the XDG base directory specification
+    /// reads it, and `HOME/.local/share` otherwise. `None` when neither
+    /// is set, because a store nobody can name is not one to write.
+    fn from_environment(data_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<Self> {
+        let data_home = data_home
+            .map(Path::new)
+            .filter(|path| path.is_absolute())
+            .map(Path::to_path_buf)
+            .or_else(|| {
+                home.map(Path::new)
+                    .filter(|path| path.is_absolute())
+                    .map(|home| home.join(DATA_HOME_DEFAULT))
+            })?;
+        Some(Self::under(&data_home))
+    }
+
+    /// The file the entries live in.
+    #[cfg(test)]
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Enters one worktree, and returns the canonical path it entered.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the worktree cannot be resolved or the
+    /// store cannot be read or written.
+    async fn trust(&self, worktree: &Path) -> Result<PathBuf, String> {
+        let canonical = worktree.canonicalize().map_err(|error| {
+            format!(
+                "cannot resolve the worktree to trust {}: {error}",
+                worktree.display()
+            )
+        })?;
+        let entry = canonical
+            .to_str()
+            .ok_or_else(|| format!("worktree path is not UTF-8: {}", canonical.display()))?
+            .to_string();
+        self.edit(move |paths| {
+            if !paths.iter().any(|path| path.as_str() == Some(&entry)) {
+                paths.push(Value::String(entry));
+            }
+        })
+        .await?;
+        Ok(canonical)
+    }
+
+    /// Removes one entry, as [`TrustStore::trust`] returned it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the store cannot be read or written.
+    async fn withdraw(&self, canonical: &Path) -> Result<(), String> {
+        let entry = canonical.to_string_lossy().into_owned();
+        self.edit(move |paths| paths.retain(|path| path.as_str() != Some(&entry)))
+            .await
+    }
+
+    /// The paths the store trusts now.
+    #[cfg(test)]
+    async fn trusted(&self) -> Result<Vec<String>, String> {
+        let path = self.path.clone();
+        tokio::task::spawn_blocking(move || {
+            let document = read_store(&path)?;
+            Ok(document
+                .get(TRUSTED_PATHS)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect())
+        })
+        .await
+        .map_err(|error| format!("trust store read stopped: {error}"))?
+    }
+
+    /// One read-modify-write of the list, under the store's lock.
+    async fn edit(
+        &self,
+        change: impl FnOnce(&mut Vec<Value>) + Send + 'static,
+    ) -> Result<(), String> {
+        let path = self.path.clone();
+        tokio::task::spawn_blocking(move || {
+            let parent = path
+                .parent()
+                .ok_or_else(|| format!("trust store {} has no directory", path.display()))?;
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "cannot create trust store directory {}: {error}",
+                    parent.display()
+                )
+            })?;
+            let lock = path.with_extension("json.lock");
+            let _held = lock_store(&lock)?;
+            let mut document = read_store(&path)?;
+            let paths = match document.get_mut(TRUSTED_PATHS) {
+                Some(Value::Array(paths)) => paths,
+                Some(other) => {
+                    return Err(format!(
+                        "trust store {} lists {TRUSTED_PATHS} as {other}, not as a list",
+                        path.display()
+                    ));
+                }
+                None => {
+                    document.insert(TRUSTED_PATHS.to_string(), Value::Array(Vec::new()));
+                    match document.get_mut(TRUSTED_PATHS) {
+                        Some(Value::Array(paths)) => paths,
+                        _ => unreachable!("the list was inserted a line ago"),
+                    }
+                }
+            };
+            change(paths);
+            let text = serde_json::to_string_pretty(&Value::Object(document))
+                .map_err(|error| format!("cannot write trust store: {error}"))?;
+            let staged = path.with_extension("json.tmp");
+            std::fs::write(&staged, text).map_err(|error| {
+                format!("cannot write trust store {}: {error}", staged.display())
+            })?;
+            std::fs::rename(&staged, &path)
+                .map_err(|error| format!("cannot replace trust store {}: {error}", path.display()))
+        })
+        .await
+        .map_err(|error| format!("trust store edit stopped: {error}"))?
+    }
+}
+
+/// Reads the store as an object, or an empty one when there is no file.
+fn read_store(path: &Path) -> Result<serde_json::Map<String, Value>, String> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(serde_json::Map::new());
+        }
+        Err(error) => {
+            return Err(format!(
+                "cannot read trust store {}: {error}",
+                path.display()
+            ));
+        }
+    };
+    match serde_json::from_str::<Value>(&text) {
+        Ok(Value::Object(document)) => Ok(document),
+        Ok(other) => Err(format!(
+            "trust store {} is {other}, not an object",
+            path.display()
+        )),
+        Err(error) => Err(format!(
+            "cannot parse trust store {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+/// Takes the store's lock, waiting up to [`TRUST_LOCK_WALL`] for it.
+fn lock_store(lock: &Path) -> Result<std::fs::File, String> {
+    let file = std::fs::File::create(lock)
+        .map_err(|error| format!("cannot open trust store lock {}: {error}", lock.display()))?;
+    let started = Instant::now();
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(file),
+            Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < TRUST_LOCK_WALL => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(format!("trust store lock timed out: {}", lock.display()));
+            }
+            Err(std::fs::TryLockError::Error(error)) => {
+                return Err(format!("cannot lock trust store: {error}"));
+            }
+        }
     }
 }
 
@@ -2944,6 +3235,178 @@ mod tests {
             delegation.output.contains("tmp=ok"),
             "the private scratch is writable: {}",
             delegation.output
+        );
+    }
+
+    /// The trust store is the one the executor will read: under
+    /// `XDG_DATA_HOME` when it is set and absolute, under `HOME` otherwise,
+    /// and nowhere when neither names a directory.
+    #[test]
+    fn the_trust_store_follows_the_executor_data_home() {
+        let store = TrustStore::from_environment(
+            Some(OsStr::new("/srv/worker/xdg")),
+            Some(OsStr::new("/home/op")),
+        )
+        .unwrap();
+        assert_eq!(
+            store.path(),
+            Path::new("/srv/worker/xdg/devin/cli/trusted_workspaces.json")
+        );
+        let defaulted = TrustStore::from_environment(
+            Some(OsStr::new("relative")),
+            Some(OsStr::new("/home/op")),
+        )
+        .unwrap();
+        assert_eq!(
+            defaulted.path(),
+            Path::new("/home/op/.local/share/devin/cli/trusted_workspaces.json"),
+            "a relative XDG_DATA_HOME is ignored, as the specification says"
+        );
+        assert!(TrustStore::from_environment(None, None).is_none());
+    }
+
+    /// A worktree is entered by its canonical path and no wider, beside
+    /// whatever the store already held, and withdrawn without a trace.
+    #[tokio::test]
+    async fn a_worktree_is_trusted_exactly_and_then_withdrawn() {
+        let Some(repository) = scratch_repository() else {
+            return;
+        };
+        let data_home = tempfile::tempdir().unwrap();
+        let store = TrustStore::under(data_home.path());
+        std::fs::create_dir_all(store.path().parent().unwrap()).unwrap();
+        std::fs::write(
+            store.path(),
+            r#"{"trusted_paths":["/home/op/elsewhere"],"kept":true}"#,
+        )
+        .unwrap();
+        let worktree = Worktree::add(repository.path()).await.unwrap();
+        let canonical = worktree.path().canonicalize().unwrap();
+        let repository_root = repository.path().canonicalize().unwrap();
+
+        let entered = store.trust(worktree.path()).await.unwrap();
+        store.trust(worktree.path()).await.unwrap();
+        assert_eq!(entered, canonical);
+        let trusted = store.trusted().await.unwrap();
+        assert_eq!(
+            trusted,
+            vec![
+                "/home/op/elsewhere".to_string(),
+                canonical.to_str().unwrap().to_string()
+            ],
+            "the worktree is entered once, after what was there"
+        );
+        for entry in &trusted {
+            let entry = Path::new(entry);
+            assert!(
+                entry == canonical || !repository_root.starts_with(entry),
+                "no entry is the repository or an ancestor of it: {}",
+                entry.display()
+            );
+        }
+        let document: Value =
+            serde_json::from_str(&std::fs::read_to_string(store.path()).unwrap()).unwrap();
+        assert_eq!(document["kept"], json!(true), "other keys are kept");
+
+        store.withdraw(&entered).await.unwrap();
+        assert_eq!(
+            store.trusted().await.unwrap(),
+            vec!["/home/op/elsewhere".to_string()]
+        );
+        worktree.close().await.unwrap();
+    }
+
+    /// A store that does not exist yet is made, so a worker whose data
+    /// directory the CLI has not written to is not a worker that cannot
+    /// delegate.
+    #[tokio::test]
+    async fn a_missing_trust_store_is_created() {
+        let Some(repository) = scratch_repository() else {
+            return;
+        };
+        let data_home = tempfile::tempdir().unwrap();
+        let store = TrustStore::under(data_home.path().join("fresh").as_path());
+        let worktree = Worktree::add(repository.path()).await.unwrap();
+        let entered = store.trust(worktree.path()).await.unwrap();
+        assert_eq!(
+            store.trusted().await.unwrap(),
+            vec![entered.to_str().unwrap().to_string()]
+        );
+        worktree.close().await.unwrap();
+    }
+
+    /// Only a Devin CLI delegation in a worktree of its own is entered:
+    /// the shared directory is the operator's to trust, and another
+    /// executor's trust is not this store's.
+    #[tokio::test]
+    async fn only_a_devin_worktree_delegation_is_trusted() {
+        let Some(repository) = scratch_repository() else {
+            return;
+        };
+        let data_home = tempfile::tempdir().unwrap();
+        let binary = stub(repository.path(), "stub", "true");
+        let worktree = Arc::new(Worktree::add(repository.path()).await.unwrap());
+        let own = Checkout::Own(Arc::clone(&worktree));
+
+        let other = Delegator::new(executor(&binary))
+            .in_repository(repository.path())
+            .trusting_under(data_home.path());
+        assert_eq!(other.trust(&own).await.unwrap(), None);
+
+        let devin = Delegator::new(Executor::new(DEVIN_LOCAL, &binary, Vec::new()))
+            .in_repository(repository.path())
+            .trusting_under(data_home.path());
+        assert_eq!(devin.trust(&Checkout::Shared).await.unwrap(), None);
+        assert_eq!(
+            devin.trust(&own).await.unwrap(),
+            Some(worktree.path().canonicalize().unwrap())
+        );
+        drop(own);
+        Arc::try_unwrap(worktree).unwrap().close().await.unwrap();
+    }
+
+    /// End to end: the delegate finds its worktree in the store while it
+    /// runs, and the entry is gone when the delegation reports.
+    #[tokio::test]
+    async fn a_devin_worktree_delegation_is_trusted_for_its_run() {
+        if !boundary_supported() {
+            return;
+        }
+        let Some(repository) = scratch_repository() else {
+            return;
+        };
+        let data_home = tempfile::tempdir().unwrap();
+        let store = TrustStore::under(data_home.path());
+        let binary = stub(
+            repository.path(),
+            "stub",
+            &format!("cat {}", store.path().display()),
+        );
+        let delegator = Delegator::new(Executor::new(DEVIN_LOCAL, &binary, Vec::new()))
+            .in_repository(repository.path())
+            .trusting_under(data_home.path());
+        let mut task = Task::reading("what is trusted", "a.rs");
+        task.isolation = Isolation::Worktree;
+        let delegation = delegator.run(task).await;
+        assert_eq!(delegation.status, Status::Answered, "{delegation:?}");
+        assert!(
+            delegation
+                .output
+                .contains(delegation.workdir.to_str().unwrap()),
+            "the delegate saw its own worktree trusted: {}",
+            delegation.output
+        );
+        assert!(
+            !delegation
+                .output
+                .contains(repository.path().canonicalize().unwrap().to_str().unwrap()),
+            "the repository itself was not trusted: {}",
+            delegation.output
+        );
+        assert_eq!(
+            store.trusted().await.unwrap(),
+            Vec::<String>::new(),
+            "the trust ended with the run"
         );
     }
 
