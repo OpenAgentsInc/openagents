@@ -294,6 +294,46 @@ async fn a_request_delivered_twice_is_answered_once() {
     .await;
 }
 
+/// A job that fails before it runs gives its slot back. With one slot,
+/// a request that does not decrypt, one from long ago, and one naming a
+/// version this worker does not serve are each refused typed, and the
+/// valid request after them is answered rather than refused `busy`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_job_that_fails_before_running_frees_its_slot() {
+    bounded(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let _worker = Worker::start(&url, &[], &[("CODER_WORKER_JOBS", "1")]);
+        let (mut socket, _) = subscribe(&listener).await;
+
+        let mut unreadable = request(&json!({"v": 2, "task": "ping"}));
+        unreadable.content = "not ciphertext".to_string();
+        let unreadable = identity(CLIENT).signer().sign(
+            unreadable.created_at,
+            unreadable.kind,
+            unreadable.tags.clone(),
+            unreadable.content,
+        );
+        let old = request_at(&json!({"v": 2, "task": "ping"}), unix_now() - 3600);
+        let unversioned = request(&json!({"v": 9, "task": "ping"}));
+        for (failing, code) in [
+            (&unreadable, "malformed"),
+            (&old, "stale"),
+            (&unversioned, "unsupported_version"),
+        ] {
+            deliver(&mut socket, failing).await;
+            let refused = answer(&published(&mut socket).await, failing);
+            assert_eq!(refused["code"], code, "{refused}");
+        }
+
+        let job = request(&json!({"v": 2, "task": "ping"}));
+        deliver(&mut socket, &job).await;
+        let result = answer(&published(&mut socket).await, &job);
+        assert_eq!(result["type"], "result", "{result}");
+    })
+    .await;
+}
+
 /// A relay that hangs up, and then is not there for a while, is a fault
 /// the service outlives: the worker connects again with backoff,
 /// subscribes again with the same filter, and answers the next job as if

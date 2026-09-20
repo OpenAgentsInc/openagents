@@ -120,6 +120,29 @@ const RECONNECT_CEILING: Duration = Duration::from_secs(60);
 /// someone either way.
 const DELEGATION_GRACE: Duration = Duration::from_secs(30);
 
+/// How long a job with no stated minutes may run before it is refused
+/// `timed_out`.
+///
+/// A model door answers in seconds and its own transport has bounds;
+/// this is the bound behind those, so a door that hangs cannot hold a
+/// slot for the rest of the worker's life and leave every later job
+/// refused `busy`.
+const UNDELEGATED_BOUND: Duration = Duration::from_secs(10 * 60);
+
+/// How long the worker waits for a job before answering for it.
+#[derive(Clone, Copy)]
+struct Waits {
+    /// Past a delegation's stated minutes.
+    grace: Duration,
+    /// For a job that states no minutes.
+    undelegated: Duration,
+}
+
+const WAITS: Waits = Waits {
+    grace: DELEGATION_GRACE,
+    undelegated: UNDELEGATED_BOUND,
+};
+
 /// How far in the past a request's `created_at` may be before it is
 /// refused `stale`.
 ///
@@ -484,7 +507,7 @@ impl Worker<'_> {
                         allow: self.options.allow.clone(),
                         publish: self.outgoing.clone(),
                         permit,
-                        grace: DELEGATION_GRACE,
+                        waits: WAITS,
                     };
                     self.tasks.spawn(async move { job.answer(&request).await });
                 }
@@ -541,9 +564,8 @@ struct Job {
     /// A slot under the concurrency bound, or `None` when every slot was
     /// taken at admission and the job is refused `busy`.
     permit: Option<OwnedSemaphorePermit>,
-    /// How long past a delegation's stated minutes to wait before
-    /// refusing it `timed_out`.
-    grace: Duration,
+    /// How long to wait for the job before refusing it `timed_out`.
+    waits: Waits,
 }
 
 impl Job {
@@ -730,29 +752,32 @@ impl Job {
         // plus a grace for the executor's own report, then stops waiting
         // and says so. Dropping the run ends the executor's process group,
         // and the customer holds a typed answer rather than a silence it
-        // cannot tell from a worker that went away.
-        let answered = match minutes {
-            Some(minutes) => {
-                let bound = Duration::from_secs(minutes.saturating_mul(60)) + self.grace;
-                match tokio::time::timeout(bound, answering).await {
-                    Ok(answered) => answered,
-                    Err(_) => {
-                        eprintln!(
-                            "job {label} timed out after {} ms",
-                            started.elapsed().as_millis()
-                        );
-                        return refuse(
-                            version,
-                            "timed_out",
-                            format!(
-                                "the job ran past its {minutes} minute bound and this worker \
-                                 stopped waiting for it"
-                            ),
-                        );
-                    }
-                }
-            }
-            None => answering.await,
+        // cannot tell from a worker that went away. A job that states no
+        // minutes is held to the worker's own bound, so the slot it holds
+        // comes back whatever the door does.
+        let (bound, stated) = match minutes {
+            Some(minutes) => (
+                Duration::from_secs(minutes.saturating_mul(60)) + self.waits.grace,
+                format!("its {minutes} minute bound"),
+            ),
+            None => (
+                self.waits.undelegated,
+                format!(
+                    "this worker's {} minute bound",
+                    self.waits.undelegated.as_secs() / 60
+                ),
+            ),
+        };
+        let Ok(answered) = tokio::time::timeout(bound, answering).await else {
+            eprintln!(
+                "job {label} timed out after {} ms",
+                started.elapsed().as_millis()
+            );
+            return refuse(
+                version,
+                "timed_out",
+                format!("the job ran past {stated} and this worker stopped waiting for it"),
+            );
         };
 
         match answered {
@@ -969,9 +994,17 @@ mod tests {
                 allow,
                 publish,
                 permit,
-                grace: Duration::from_millis(200),
+                waits: Waits {
+                    grace: Duration::from_millis(200),
+                    undelegated: Duration::from_millis(200),
+                },
             };
             job.answer(&request).await.unwrap();
+            assert_eq!(
+                slots.available_permits(),
+                1,
+                "the job's slot is free once it has answered"
+            );
             let value = frames.recv().await.unwrap();
             let event: Event = serde_json::from_value(value[1].clone()).unwrap();
             event.validate_crypto().unwrap();
@@ -1080,25 +1113,30 @@ mod tests {
     }
 
     /// A delegation whose run outlasts its stated minutes plus the grace
-    /// is refused `timed_out` rather than left unanswered.
+    /// is refused `timed_out` rather than left unanswered, and so is a
+    /// job with no minutes that outlasts the worker's own bound.
     #[tokio::test]
-    async fn a_delegation_that_outruns_its_minutes_is_refused_timed_out() {
-        let (door, _listener) = silent_door();
-        let refused = response_through(
-            door,
-            json!({"v":2,"task":"hello","delegation":{"writes":false,"minutes":0}}),
-            None,
-            None,
-            true,
-        )
-        .await;
-        assert_eq!(refused["type"], "status");
-        assert_eq!(refused["status"], "error");
-        assert_eq!(refused["code"], "timed_out");
-        assert!(
-            refused["message"].as_str().unwrap().contains("0 minute"),
-            "{refused}"
-        );
+    async fn a_job_that_outruns_its_bound_is_refused_timed_out() {
+        for (payload, stated) in [
+            (
+                json!({"v":2,"task":"hello","delegation":{"writes":false,"minutes":0}}),
+                "its 0 minute bound",
+            ),
+            (
+                json!({"v":2,"task":"hello"}),
+                "this worker's 0 minute bound",
+            ),
+        ] {
+            let (door, _listener) = silent_door();
+            let refused = response_through(door, payload, None, None, true).await;
+            assert_eq!(refused["type"], "status");
+            assert_eq!(refused["status"], "error");
+            assert_eq!(refused["code"], "timed_out");
+            assert!(
+                refused["message"].as_str().unwrap().contains(stated),
+                "{refused}"
+            );
+        }
     }
 
     #[tokio::test]
