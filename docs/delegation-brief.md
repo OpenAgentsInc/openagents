@@ -31,6 +31,7 @@ the burndown that goal exists for.
 | Relay transport | Proven against production, 470 ms round trip. A worker exists. |
 | CoderBench | Runs an episode, refuses when the machine is wrong, judges the trace three-valued. |
 | Execution boundary | The host decides whether a turn may run commands. |
+| Doors | Two gateway lanes, bounded streams, and model ids in exactly one file. |
 
 ## What to do next, in order
 
@@ -167,8 +168,9 @@ test and a recording of something else doing what it should do.
 ## Working notes
 
 - **`cargo +1.97.1`.** The default toolchain is older and the workspace needs 1.95 or better.
+- **`cargo clippy --workspace` fails** on `crates/kev` and `crates/lev` under 1.97.1 (`manual_is_multiple_of` and similar). Pre-existing, and part of what [#9429](https://github.com/OpenAgentsInc/openagents/issues/9429) is for. Lint one crate at a time until it lands.
 - **`main` is not rustfmt-clean.** `cargo fmt --all` rewrites about 50 files across five crates. Six agents have now reverted that churn to keep a commit scoped. [#9402](https://github.com/OpenAgentsInc/openagents/issues/9402) fixes it and wants a quiet moment.
-- **Hosted Jev:** `set -a; . ~/work/.secrets/typesafe.env; set +a`. `crates/jev`'s `Config` reads the process environment and loads **no** dotenv, so exporting first is required; a missing key and a missing `model` field in the body produce different errors. Never print the key anywhere.
+- **Credentials:** hosted Jev is `set -a; . ~/work/.secrets/typesafe.env; set +a`, and a local door key is at `~/work/.secrets/coder-local-door.env`. Both are machine-local and gitignored; never print either. `crates/jev`'s `Config` reads the process environment and loads **no** dotenv, so exporting first is required, and a missing key and a missing `model` field in the body produce different errors.
 - **Local doors:** `~/work/kev-artifacts/` holds four kev checkpoints and their bases. `kev-serve` takes about 45 seconds to load on CPU and answers in roughly 2 seconds.
 - **Devin:** at `~/.local/bin/devin`, **not on a spawned subshell's `PATH`**. It also refuses a workspace it does not trust, including a git worktree under `/private/tmp` — which is where agent worktrees live, so live delegation from one is refused.
 - **Two flakes, and they look like one problem.** `program_run::the_recorded_run_is_the_path_the_task_expects` and `delegate::tests::the_fan_out_is_concurrent_under_its_bound` have each failed once **under overlapping `cargo test` processes** and passed alone on repeats. Neither was touched by the change that saw it. Two concurrency flakes in the crates an unattended burndown depends on is a pattern worth chasing rather than waiting out — especially since #9418's new tests found a real instance of exactly that shape: two concurrent `drive::output` calls could read the same nanosecond, share a temp filename, and delete each other's file, which reads as a command that answered with nothing.
@@ -179,7 +181,11 @@ test and a recording of something else doing what it should do.
 `1843fa6c18` and reproduced failures through public APIs **while the
 applicable test suites passed**. Its 25 findings are filed as #9415–#9433.
 
-A01 is fixed. A02–A04 were in flight when this was written. The rest are
+A01 and A04 are fixed. A09's UTF-8 half is fixed for the direct door as a
+side effect of bounding it — the old loop ran `String::from_utf8_lossy` per
+byte chunk, so a character split across a chunk boundary became replacement
+characters in the answer **and in every trace of it**. The rest of A09–A11
+is still #9423. A02 and A03 were in flight when this was written. The rest are
 intended as burndown fodder — they are the first real workload for the system
 this brief describes.
 
