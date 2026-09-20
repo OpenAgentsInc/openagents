@@ -71,6 +71,7 @@ fn fake_coder_that(directory: &Path, trace: &Path, exit: u8, then: &str) -> Path
 /// harness.
 fn task_with(directory: &Path, requires: &str, id: &str) -> PathBuf {
     let path = directory.join(format!("{id}.json"));
+    let expects = serde_json::to_string(&common::task().grade.expects).unwrap();
     std::fs::write(
         &path,
         format!(
@@ -85,6 +86,7 @@ fn task_with(directory: &Path, requires: &str, id: &str) -> PathBuf {
     "program": "delegate-fan-out",
     "delegations": 6,
     "delegations_correct": 6,
+    "expects": {expects},
     "writes_expected": 0,
     "decisions": ["program", "independence"],
     "checks": ["admission_check", "capability_probe", "program_registry"],
@@ -188,7 +190,10 @@ fn a_run_judges_the_trace_it_captured() {
     let report = said(&output);
     assert_eq!(output.status.code(), Some(0), "{report}");
     assert!(report.contains("No faults"), "{report}");
-    assert!(report.contains("6 started, 6 verified correct"), "{report}");
+    assert!(
+        report.contains("6 started, 6 verified against the task's expected answers"),
+        "{report}"
+    );
     assert!(report.contains("the workspace is unchanged"), "{report}");
     assert!(trace.exists(), "the harness reads the file it named");
 }
@@ -457,13 +462,12 @@ fn a_workspace_removed_during_the_run_is_not_a_pass() {
 /// whatever it asserted about itself.
 #[test]
 fn a_diff_judges_a_trace_that_already_exists() {
-    // The staged golden asked the six questions another way, so against the
-    // manifest's own answers it is measured rather than unverifiable.
+    // The observed trace matches the questions, but an offline diff cannot
+    // establish the live driver's exit or independent workspace observation.
     let output = coderbench(&["diff", "devin-fan-out-six", &golden().display().to_string()]);
     let report = said(&output);
-    assert_eq!(output.status.code(), Some(1), "{report}");
-    assert!(report.contains("failed: 9 faults"), "{report}");
-    assert!(report.contains("expected How many"), "{report}");
+    assert_eq!(output.status.code(), Some(4), "{report}");
+    assert!(report.contains("unverifiable: 2 faults"), "{report}");
 
     // A trace holding the calls a sentence-driven run is expected to make
     // is missing the two things only a driver sees, which is

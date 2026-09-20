@@ -25,7 +25,7 @@ the burndown that goal exists for.
 | --- | --- |
 | ATIF traces | Every session records itself. Decision calls are first-class. |
 | Headless turns | `coder -p`, and both modes share one turn so they cannot drift. |
-| Delegation | Six parallel Devin sessions, 6 of 6 correct, 4.2x over sequential. |
+| Delegation | Six real Devin sessions through Coder; 6 of 6 independently checked answers in a 48.4-second episode. |
 | Capability probe | Shared host-approved probes distinguish present, absent, unavailable, unprobed, and unknown. |
 | Program runtime | Runs `delegate-fan-out` from its definition. Zero faults against the golden. |
 | Relay transport | Proven against production, 470 ms round trip. A worker exists. |
@@ -46,10 +46,9 @@ second vocabulary. Two consequences will surprise you:
 
 - **`coderbench diff` can no longer return a pass.** A trace carries neither
   the run's exit code nor the workspace, so a diff reports what it cannot
-  see. Only `coderbench run` observes both. A diff of the staged golden now
-  exits `1` — its delegation prompts are the staging script's wording, not
-  the request's, so the manifest's expectations measure it wrong rather
-  than unverifiable. Step 3 explains.
+  see. Only `coderbench run` observes both. A diff of the observed golden
+  exits `4`: its questions and answers match, but a file cannot establish
+  the live process exit or the independent workspace observation.
 - **Missing evidence is `unverifiable`, not a pass.** A delegation counts
   only if the trace says it completed, says it was correct, and holds an
   answer — unless the manifest pins the answers itself (`grade.expects`),
@@ -68,8 +67,8 @@ work. Shared capability trust landed in `4010baadbc`; the filesystem boundary
 and independent snapshots landed as a component in `b14cfedb83`. CoderBench
 now observes filesystem snapshots independently (`54d33bec05`, with distinct
 escaped path labels in `1aca30819a`). Runtime integration landed in `693e9d10ee`, with filesystem enforcement,
-dispatch-time approval revalidation, and retained writing worktrees. Actual
-adapter verification and the observed graded golden remain required. Check current issue and worktree state before starting
+dispatch-time approval revalidation, and retained writing worktrees. The actual adapter and observed graded golden are now verified by the
+[2026-09-20 live run](coder/measurements/2026-09-20-observed-fanout.md). Check current issue and worktree state before starting
 another implementation of these pieces.
 
 ### 2. [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427), held on purpose
@@ -77,58 +76,34 @@ another implementation of these pieces.
 The integrated path at `693e9d10ee` enforces filesystem writes through the
 host boundary, holds resources through process cleanup, and retains writing
 worktrees for review. Local process tests cover protected writes, cancellation,
-changed approvals, and writable aliases of approval metadata. Verify the actual
-Devin adapter and the integrated run against CoderBench's independent workspace
-observation before closing this issue. Manifest approval permits a probe; it
+changed approvals, and writable aliases of approval metadata. The actual Devin adapter passed the integrated six-session episode under this
+boundary, and CoderBench independently observed an unchanged workspace. Manifest approval permits a probe; it
 does not establish that the executor enforces its declared bounds.
 
 Note `shell::run` gained a `Permit` parameter from #9415 and the bounded
 form is now `run_within(proposal, permit, wall)`.
 
-### 3. Make a delegation's answer checkable, then re-record the golden
+### 3. The observed golden now passes
 
-The path already runs: four `coderbench run devin-fan-out-six` episodes
-driven through `coder -p` selected `delegate-fan-out` at 0.96, ran six real
-Devin delegations that all answered correctly, and landed **no
-`DecisionMissing` and no `CheckMissing`** — the line #9409 left open.
+CoderBench drove Coder from the operator's sentence at `34df6bc026` on
+2026-09-20. All six Devin answers matched the manifest's expectations, the
+workspace was unchanged under independent filesystem observation, the turn
+exited successfully, and the live grade reported no faults in 48.4 seconds.
+The golden is now `observed` with orchestrator `coder`; its bytes were copied
+from the live log without editing the prompts or answers. The old staged trace
+was replaced. Read [the run record](coder/measurements/2026-09-20-observed-fanout.md)
+for the captured grade, hash, environment, and limits.
 
-**The grade is `unverifiable`, and correctly so.** #9418 requires a checked
-answer per delegation, and a task read out of a sentence carries no expected
-answer. The six answers were right and nothing in the run establishes it.
+The manifest owns the answer check. `grade.expects` pins each prompt and answer
+in request order; exact prompts and edge-trimmed, case-sensitive answers must
+match. Self-asserted correctness and model completion judgments do not establish
+these answers. Tests retain the distinction between a live run and an offline
+trace: `diff` is still unverifiable because it cannot observe the exit or the
+workspace. The driver does not yet serialize raw snapshot sidecars.
 
-The first candidate won and is implemented: the manifest owns the answers.
-`grade.expects` pins one `{prompt, answer}` entry per delegation in request
-order, and the grader checks each recorded call positionally — the prompt
-must match exactly, the output must match after edge-trimming with case
-intact, and a self-asserted `correct` flag is a claim rather than the check.
-A malformed `expects` (blank or repeated prompts, blank answers, counts that
-disagree with `delegations`/`delegations_correct`) cannot pass: `Task::load`
-refuses it and `judge` faults it. Tasks without `expects` keep the
-trace-reported rule. The rejected alternative — letting the `accept`
-decision be the evidence — stays rejected for this task; it inherits
-whatever that door's judgment is worth rather than checking anything.
-
-The staged golden predates the request carrying the questions, so its
-delegation prompts are the staging script's wording and it now grades
-**failed** under the manifest's expectations — measured, not unverifiable.
-That is expected and is the re-recording's job to fix, not the grader's.
-The tests that exercise the expectation path use an authored fixture — the
-golden rewritten to the calls a sentence-driven run is expected to make —
-not a recording.
-
-The golden still needs to be observed **and** graded rather than observed
-and unverifiable, which is the next step.
-
-### 3b. Re-record the golden as observed
-
-`crates/coderbench/goldens/devin-fan-out-six.atif.jsonl` is **staged**: every
-call in it is real and a shell script drove them, not Coder. Once #9434 and
-#9441 land, run the episode from an operator's sentence, and **replace** the
-staged file rather than keeping both. Its sidecar becomes `observed` with
-orchestrator `coder`, and the test asserting it is staged fails — that test
-is written to fail, and updating it is part of the change.
-
-This is #9404's definition of done.
+This completes the local observed-golden step. It does not complete #9404's
+relay requirement or prove write-task conflict recovery. #9435 still owns the
+relay/worker proof. The first burndown remains constrained as follows.
 
 ### 4. The first burndown, and not the one the issue describes
 

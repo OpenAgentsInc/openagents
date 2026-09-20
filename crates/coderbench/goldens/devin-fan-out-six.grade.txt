@@ -1,0 +1,31 @@
+devin-fan-out-six — Delegate six instances of Devin, one for each of these six read-only questions.
+- How many `pub struct` declarations are in crates/atif/src/document.rs? Answer with the value and nothing else.
+- What are the three wire labels returned by Partition::as_str in crates/gym/src/suite.rs? Answer as a comma-separated list in declaration order and nothing else.
+- What are the variant names of the Estimator enum in crates/lev/src/estimator.rs? Answer as a comma-separated list in declaration order and nothing else.
+- How many distinct kev checkpoints are named in docs/kev/model-cards.md? Answer with the value and nothing else.
+- Which single Nostr event kind number does nips/openagents/NIP-PRG.md define? Answer with the value and nothing else.
+- What is the value of the ROUNDS_MAX constant in crates/coder/src/shell.rs? Answer with the value and nothing else.
+
+
+  ok    repository https://github.com/OpenAgentsInc/openagents.git https://github.com/OpenAgentsInc/openagents.git
+  ok    repository at 34df6bc026aa                   34df6bc026aa
+  ok    no uncommitted changes                       the working copy is clean
+  ok    capability devin-local, which refuses untrusted_workspace devin 3000.10.31 (b98cc431) at /Users/christopherdavid/.local/bin/devin
+
+  coder      /tmp/openagents-supervision/root-target/debug/coder
+  trace      /tmp/openagents-supervision/live-proof-runs/first.atif.jsonl
+  timeout    300 s
+
+Running…
+  answered in 48.4 s. Reply in /tmp/openagents-supervision/live-proof-runs/first.atif.jsonl.stdout, progress in /tmp/openagents-supervision/live-proof-runs/first.atif.jsonl.stderr.
+
+What the trace holds:
+  trace          /tmp/openagents-supervision/live-proof-runs/first.atif.jsonl
+  program        delegate-fan-out
+  decisions      accept, independence, program
+  checks         capability_probe, program_registry, task_select, admission_check, delegate, delegate, delegate, delegate, delegate, delegate
+  delegations    6 started, 6 verified against the task's expected answers
+  writes         the workspace is unchanged
+  ended          answered
+
+No faults. The run took the path devin-fan-out-six expects.

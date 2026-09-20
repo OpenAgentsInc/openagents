@@ -8,7 +8,7 @@
 
 mod common;
 
-use coderbench::{Fault, Observed, Task, Verdict, Workspace, goldens_dir, observe};
+use coderbench::{Fault, Observed, Task, Verdict, goldens_dir, observe};
 
 use common::{authored_run, authored_text, task};
 
@@ -16,22 +16,18 @@ fn golden() -> Observed {
     observe(&goldens_dir().join("devin-fan-out-six.atif.jsonl")).expect("golden observes")
 }
 
-/// The golden with the two facts a trace cannot carry supplied: the exit
-/// code the driver saw, and a reading of the checkout before and after.
-fn as_run(mut run: Observed) -> Observed {
-    run.ending = coderbench::Ending::Answered;
-    run.workspace = Some(Workspace::default());
-    run
-}
-
 #[test]
 fn the_golden_reads_back_as_atif() {
     let path = goldens_dir().join("devin-fan-out-six.atif.jsonl");
     let recording = atif::log::read(&path).expect("golden parses as an ATIF log");
-    assert_eq!(recording.session.id, "devin-fan-out-six");
+    let meta: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(goldens_dir().join("devin-fan-out-six.meta.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(recording.session.id, meta["session_id"].as_str().unwrap());
     assert_eq!(
         recording.steps.len(),
-        13,
+        15,
         "every step of the path is recorded"
     );
     assert_eq!(recording.unreadable_lines, 0, "the golden is whole");
@@ -72,32 +68,22 @@ fn a_trace_alone_is_unverifiable() {
     );
 }
 
-/// The staged golden predates the request carrying the questions: its
-/// delegation prompts are the staging script's wording rather than the
-/// request's list items, so under the manifest's own answers the recorded
-/// run is measured and short rather than verified. The path is still what
-/// it recorded — only the delegation answers do not establish themselves.
+/// The observed trace carries the manifest's exact questions and answers.
+/// The live driver's separate report establishes its successful exit and
+/// unchanged workspace; reading the trace alone cannot re-observe either.
 #[test]
-fn the_staged_recording_is_not_the_task_the_manifest_states() {
+fn the_observed_recording_matches_the_manifest_answers() {
     let run = golden();
+    let task = task();
     assert_eq!(run.program.as_deref(), Some("delegate-fan-out"));
     assert_eq!(run.delegations.len(), 6);
-    assert!(
-        run.delegations.iter().all(coderbench::Delegation::verified),
-        "every delegate completed, answered, and was checked — as the staging script recorded it"
-    );
+    for (delegation, expected) in run.delegations.iter().zip(&task.grade.expects) {
+        assert!(delegation.verified_against(expected), "{}", delegation.id);
+    }
     assert!(run.writes.is_empty(), "no delegate reported writing");
-
-    let judgment = task().judge(&as_run(run));
-    assert_eq!(judgment.verdict, Verdict::Failed);
-    assert!(
-        judgment.faults.iter().all(|fault| matches!(
-            fault,
-            Fault::DelegationMisattributed { .. } | Fault::DelegationsCorrect { .. }
-        )),
-        "the only faults are the staged prompts not being the task's: {:?}",
-        judgment.faults
-    );
+    let judgment = task.judge(&run);
+    assert_eq!(judgment.verdict, Verdict::Unverifiable);
+    assert_eq!(judgment.faults.len(), 2, "{:?}", judgment.faults);
 }
 
 /// The authored fixture, judged end to end: the calls ask the request's
@@ -106,8 +92,7 @@ fn the_staged_recording_is_not_the_task_the_manifest_states() {
 /// the check, not the claim.
 ///
 /// This proves the grader against the shape a sentence-driven run is
-/// expected to record; it is not that run. The observed recording lands
-/// after openagents#9427.
+/// expected to record; the fixture's synthetic driver facts are not live evidence.
 #[test]
 fn the_authored_run_passes_on_the_manifests_check() {
     let run = authored_run();
@@ -181,12 +166,12 @@ fn the_golden_says_what_it_rests_on() {
     );
     assert_eq!(
         meta.provenance,
-        Provenance::Staged,
-        "Coder has not produced this path yet; see openagents#9412"
+        Provenance::Observed,
+        "Coder produced the retained episode"
     );
-    assert_ne!(
+    assert_eq!(
         meta.orchestrator, "coder",
-        "a staged golden did not have Coder driving it, and must not claim to"
+        "the observed golden was driven by Coder"
     );
 }
 

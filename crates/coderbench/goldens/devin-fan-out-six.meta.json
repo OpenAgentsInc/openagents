@@ -1,9 +1,11 @@
 {
   "schema": "openagents.coderbench.golden.v1",
   "task": "devin-fan-out-six",
-  "provenance": "staged",
-  "orchestrator": "shell script driven by Claude Opus 5",
-  "repository_commit": "752eab3ad8c28382166a5431b314832281eb92f1",
+  "provenance": "observed",
+  "orchestrator": "coder",
+  "repository_commit": "34df6bc026aa68947979f172614a2ae533e4ed77",
   "recorded": "2026-09-20",
-  "note": "Every call in this trace is real: six Devin sessions ran, two decision calls hit a live kev-4b door, and the delegates answered correctly. Coder orchestrated none of it. This golden is a specification of the path Coder should take, written in the format Coder already emits. It becomes observed when a real Coder run reproduces it, at which point this file should be replaced rather than kept beside the new one. Tracked by openagents#9412."
+  "session_id": "20260920T074515Z-9a4668b0",
+  "trace_sha256": "be816833193205cb511af43326f8aa7972d94aaf81ce6c1708566edb8d23c0db",
+  "note": "Unmodified ATIF log from a live coderbench run driving coder -p. Six Devin delegations matched the independently pinned task answers, and the live driver observed an unchanged workspace and a successful exit. The captured grade and evidence sidecars describe that run. An offline trace diff still cannot establish exit status or workspace state."
 }

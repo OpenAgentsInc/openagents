@@ -124,7 +124,7 @@ a session, and a session cannot say who was driving it.
 
 | Task | What it tests |
 | --- | --- |
-| `devin-fan-out-six` | The delegation path: probe, program lookup, program selection, independence, admission, six parallel delegations, summary. **Staged** on 2026-09-20 — every call real, orchestrated by a shell script rather than by Coder. It becomes observed when a real run reproduces it ([#9412](https://github.com/OpenAgentsInc/openagents/issues/9412)). |
+| `devin-fan-out-six` | The delegation path: probe, program lookup, program selection, independence, admission, six parallel delegations, summary. **Observed** on 2026-09-20: Coder drove six real Devin sessions, and the live driver verified all six answers, an unchanged workspace, and a successful exit. See [the run record](../../docs/coder/measurements/2026-09-20-observed-fanout.md). |
 
 Read [`../../docs/coderbench.md`](../../docs/coderbench.md) for what the
 first recording found.

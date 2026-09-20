@@ -5,17 +5,18 @@ episode: the whole path from the operator's sentence to the final summary,
 recorded as one ATIF trace.
 
 The first task is `devin-fan-out-six`, the delegation
-[`programs.md`](programs.md) specifies. It ran on 2026-09-20, three times. The golden is **staged**, not observed:
-`crates/coderbench/goldens/devin-fan-out-six.atif.jsonl`, at commit
-`752eab3ad8`.
+[`programs.md`](programs.md) specifies. Its golden is now **observed**:
+Coder drove six real Devin sessions on 2026-09-20 at `34df6bc026`, and
+CoderBench verified all six answers, an unchanged workspace, and a successful
+exit in 48.4 seconds. Read [the observed run record](coder/measurements/2026-09-20-observed-fanout.md)
+for the trace, captured grade, provenance, and limits.
 
-Every call in it is real — six Devin sessions ran, two decision calls hit a
-live door, the delegates answered correctly. **Coder orchestrated none of
-it.** A shell script did. So this is a specification of the path Coder
-should take, written in the format Coder already emits, and no run of
-`coder` has yet produced it. It becomes `observed` when one does, and the
-staged file is replaced rather than kept beside it
-([#9412](https://github.com/OpenAgentsInc/openagents/issues/9412)).
+The original shell-driven recording was staged. It has been replaced, not
+relabeled. Historical measurements below describe those earlier runs; their
+[original evidence](coder/measurements/2026-09-20-staged-fanout-evidence.json)
+is retained separately from the current golden. An offline `diff` of the
+observed trace remains unverifiable because it cannot observe the live exit
+or workspace snapshots.
 
 ## Running one
 
@@ -168,7 +169,7 @@ and integration tests on its `job` feature, so the blocking-only build used
 by CoderBench also passes without unused-helper warnings. Both supervisor
 feature configurations pass their applicable tests. #9429 still tracks the
 remaining workspace verification baseline. These checks verify grading
-behavior; they do not replace the pending observed golden.
+behavior. The later observed golden is described at the top of this page.
 
 ### `diff` cannot hand back a pass
 
@@ -318,7 +319,7 @@ that kev-4b is better than kev-0.5b at this task. What it does establish is
 that neither needs the hosted door to be tried, and that the failure modes
 differ in a way worth measuring properly on a real suite.
 
-The panel is in `crates/coderbench/goldens/devin-fan-out-six.evidence.json`.
+The panel is in [`2026-09-20-staged-fanout-evidence.json`](coder/measurements/2026-09-20-staged-fanout-evidence.json).
 
 ## Two things the run found that nobody was testing for
 
@@ -426,10 +427,10 @@ against the sources the questions name, and the grader checks the recorded
 calls against them positionally (see "A task can own the expected answers").
 The alternative — letting the `accept` step's decision be the evidence —
 was considered and set aside for this task, because it inherits the door's
-judgment rather than checking anything. What remains for the golden is a
-fresh observed recording: the staged one's delegation prompts are the
-staging script's wording rather than the request's list items, so it now
-grades `failed` on the manifest's expectations — measured, not unverifiable.
+judgment rather than checking anything. At that point the staged golden
+failed because its prompts differed from the manifest's. The later observed
+run uses the request's exact questions and passes the live grade; its record
+is linked at the top of this page.
 
 One smaller thing changed with this run: the task's sentence now carries its
 six questions. The `select` step names the `request` source, and the request

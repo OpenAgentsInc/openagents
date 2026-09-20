@@ -15,8 +15,7 @@
 //! answers use [`common::authored_text`], an authored fixture: the golden
 //! rewritten to carry the request's list items as prompts and no
 //! self-asserted correctness, so the manifest's `expects` are the only
-//! check. It is not a recording — the run it stands in for happens after
-//! openagents#9427.
+//! check. These edited variants are fixtures, not additional recordings.
 
 mod common;
 
@@ -171,8 +170,8 @@ fn a_named_check_that_failed_is_a_fault() {
     let text: String = authored_text()
         .lines()
         .map(|line| {
-            if line.contains(r#""name": "capability_probe""#) {
-                line.replacen(r#""outcome": "Completed""#, r#""outcome": "Failed""#, 1)
+            if line.contains(r#""name":"capability_probe""#) {
+                line.replacen(r#""outcome":"Completed""#, r#""outcome":"Failed""#, 1)
             } else {
                 line.to_string()
             }
@@ -256,11 +255,11 @@ fn reordered_steps_are_a_fault() {
     let mut lines: Vec<String> = authored_text().lines().map(str::to_string).collect();
     let probe = lines
         .iter()
-        .position(|line| line.contains(r#""name": "capability_probe""#))
+        .position(|line| line.contains(r#""name":"capability_probe""#))
         .unwrap();
     let admit = lines
         .iter()
-        .position(|line| line.contains(r#""name": "admission_check""#))
+        .position(|line| line.contains(r#""name":"admission_check""#))
         .unwrap();
     lines.swap(probe, admit);
     let judgment = task().judge(&observed(directory.path(), "reordered", &lines.join("\n")));
@@ -283,7 +282,18 @@ fn reordered_steps_are_a_fault() {
 #[test]
 fn a_decision_that_went_the_wrong_way_is_a_fault() {
     let directory = tempfile::tempdir().unwrap();
-    let text = authored_text().replace("0.93", "0.53");
+    let text = authored_text()
+        .lines()
+        .map(|line| {
+            let mut record: Value = serde_json::from_str(line).unwrap();
+            if record.pointer("/step/call/name").and_then(Value::as_str) == Some("independence") {
+                record["step"]["call"]["extra"]["answers"]["independent"]["noul"] =
+                    serde_json::json!(0.53);
+            }
+            serde_json::to_string(&record).unwrap()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     let judgment = task().judge(&observed(directory.path(), "unsure", &text));
     assert_eq!(judgment.verdict, Verdict::Failed);
     assert_eq!(

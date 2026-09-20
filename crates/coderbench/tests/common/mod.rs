@@ -2,12 +2,9 @@
 //! authored trace in the shape a sentence-driven run is expected to
 //! record.
 //!
-//! The authored trace is a fixture, not a recording: it is the staged
-//! golden with each delegation call rewritten to carry the request's own
-//! list items as prompts and no self-asserted correctness, so the
-//! manifest's `expects` are the only check a judge can apply. A genuine
-//! recording of Coder running the task's sentence replaces it after
-//! openagents#9427 lands and the golden is re-recorded as observed.
+//! Authored variants derive from the observed golden for regression tests.
+//! They can change prompts or correctness claims and supply synthetic driver
+//! facts. They test the grader; they are not additional observed episodes.
 
 use coderbench::{Observed, Task, goldens_dir, observe, tasks_dir};
 use serde_json::{Value, json};
@@ -19,24 +16,16 @@ pub fn task() -> Task {
         .expect("task manifest loads")
 }
 
-/// The staged golden, as text for rewriting one thing at a time.
+/// The observed golden, as text for authoring independent test variants.
 #[allow(dead_code)]
 pub fn golden_text() -> String {
     std::fs::read_to_string(goldens_dir().join("devin-fan-out-six.atif.jsonl"))
         .expect("the golden reads")
 }
 
-/// An authored trace holding the calls a sentence-driven run is expected
-/// to make: the staged golden with each delegation call rewritten to the
-/// request's own list item as its prompt, and the call asserting no
-/// correctness of its own — the manifest's `expects` are the only check.
-///
-/// The staged golden predates the request carrying the questions: its
-/// prompts are the staging script's wording rather than the request's
-/// list items, and its `expected` and `correct` fields are that script's
-/// own claims. Neither is evidence the grade reads. This fixture is what
-/// the manifest's answers are tested against until a real recording
-/// exists — it proves the grader, not the run.
+/// An authored trace with the manifest's prompts and no self-asserted
+/// correctness. The manifest's expectations are the only answer check.
+/// Rewriting this in memory does not change the retained recording.
 #[allow(dead_code)]
 pub fn authored_text() -> String {
     let task = task();
