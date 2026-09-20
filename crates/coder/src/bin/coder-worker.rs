@@ -37,6 +37,15 @@
 //! exercised by turning something off: an absent worker and a refusing
 //! worker differ precisely in that the refusing one answers.
 //!
+//! `CODER_WORKER_ALLOW` names the customers this worker answers, as a
+//! comma-separated list of `npub` or hex public keys. A request names a
+//! worker with a `p` tag and public keys are not secret, so a worker that
+//! spends a door key on whoever finds it has no spend control at all. A
+//! request from anyone else is refused with the typed code `not_admitted`
+//! rather than dropped, because a silent refusal looks like an outage to
+//! the terminal. Unset, the worker answers every request, which is right
+//! for a local relay and wrong for a public one.
+//!
 //! Read [`docs/coder/relay-transport.md`] for the proof this binary was
 //! written to make possible.
 
@@ -49,7 +58,7 @@ use coder::generate::{
 };
 use coder::relay::{
     DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, PAYLOAD_VERSION, REQUEST_KIND, RESULT_KIND, Socket,
-    connect, partial_payload, payload_version, send,
+    connect, parse_pubkey, partial_payload, payload_version, send,
 };
 use futures_util::StreamExt;
 use nostr::domain::{Event, Tag};
@@ -76,15 +85,54 @@ Usage: coder-worker [--once] [--decline <CODE>]
   -h, --help         Print this text.
 
 CODER_WORKER_SECRET names the worker identity, 64 hex or an nsec.
-CODER_RELAY picks the relay. The door the worker answers through comes
-from the environment exactly as it does for the agent, except for the
-lane: CODER_WORKER_MODEL names the model or lane this worker runs, and
-outranks CODER_MODEL.";
+CODER_RELAY picks the relay. CODER_WORKER_ALLOW, when set, lists the
+customer pubkeys (npub or hex, comma-separated) this worker answers; any
+other request is refused with code not_admitted. The door the worker
+answers through comes from the environment exactly as it does for the
+agent, except for the lane: CODER_WORKER_MODEL names the model or lane
+this worker runs, and outranks CODER_MODEL.";
 
 /// What the command line asked for.
 struct Options {
     once: bool,
     decline: Option<String>,
+    /// Customers this worker answers; `None` admits everyone.
+    allow: Option<Vec<String>>,
+}
+
+/// The environment variable that lists admitted customers.
+const ALLOW_VAR: &str = "CODER_WORKER_ALLOW";
+
+/// Reads `CODER_WORKER_ALLOW` into hex pubkeys, or `None` when unset.
+///
+/// An entry that does not parse is an error, not an admitted nobody: a
+/// typo in the one list that controls spend must stop the worker.
+fn allowed_from_env() -> Result<Option<Vec<String>>, String> {
+    let Ok(text) = env::var(ALLOW_VAR) else {
+        return Ok(None);
+    };
+    allowed(&text).map(Some)
+}
+
+fn allowed(text: &str) -> Result<Vec<String>, String> {
+    let mut keys = Vec::new();
+    for entry in text
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+    {
+        let key = parse_pubkey(entry)
+            .ok_or_else(|| format!("{ALLOW_VAR}: {entry} is not an npub or 64 hex"))?;
+        keys.push(hex(&key.serialize()));
+    }
+    if keys.is_empty() {
+        return Err(format!("{ALLOW_VAR} is set but names no pubkey"));
+    }
+    Ok(keys)
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn options() -> Result<Options, String> {
@@ -108,7 +156,11 @@ fn options() -> Result<Options, String> {
             other => return Err(format!("unknown argument {other}")),
         }
     }
-    Ok(Options { once, decline })
+    Ok(Options {
+        once,
+        decline,
+        allow: allowed_from_env()?,
+    })
 }
 
 #[tokio::main]
@@ -165,6 +217,10 @@ async fn serve(options: &Options) -> Result<(), String> {
     if let Some(code) = &options.decline {
         eprintln!("declining every job with {code}");
     }
+    match &options.allow {
+        Some(keys) => eprintln!("admits  {} customer(s)", keys.len()),
+        None => eprintln!("admits  every customer ({ALLOW_VAR} unset)"),
+    }
 
     let mut socket = connect(&url, &identity)
         .await
@@ -185,8 +241,26 @@ async fn serve(options: &Options) -> Result<(), String> {
         let Ok(value) = serde_json::from_str::<Value>(&text) else {
             continue;
         };
-        if value[0].as_str() != Some("EVENT") || value[1].as_str() != Some("jobs") {
+        if value[1].as_str() != Some("jobs") {
             continue;
+        }
+        // The relay buffers live events until the history query behind a
+        // REQ finishes, and a CLOSED subscription receives nothing at all.
+        // Both are the worker's business to report, because from the
+        // terminal each looks like a worker that is not there.
+        match value[0].as_str() {
+            Some("EOSE") => {
+                eprintln!("subscribed; jobs arrive live from here");
+                continue;
+            }
+            Some("CLOSED") => {
+                return Err(format!(
+                    "the relay closed the jobs subscription: {}",
+                    value[2].as_str().unwrap_or_default()
+                ));
+            }
+            Some("EVENT") => {}
+            _ => continue,
         }
         let Ok(request) = serde_json::from_value::<Event>(value[2].clone()) else {
             continue;
@@ -262,6 +336,26 @@ async fn answer(
         eprintln!("job {} declined: unsupported_version", &request.id[..16]);
         return Ok(());
     };
+
+    if let Some(keys) = &options.allow
+        && !keys.contains(&request.pubkey)
+    {
+        let event = publish(
+            FEEDBACK_KIND,
+            json!({
+                "v": version,
+                "type": "status",
+                "status": "error",
+                "code": "not_admitted",
+                "message": "this worker does not answer requests from your pubkey",
+            }),
+        )?;
+        send(socket, json!(["EVENT", event]))
+            .await
+            .map_err(|error| error.to_string())?;
+        eprintln!("job {} declined: not_admitted", &request.id[..16]);
+        return Ok(());
+    }
 
     if let Some(code) = &options.decline {
         let event = publish(
@@ -440,6 +534,14 @@ mod tests {
     // Exercise the worker's response path over a local socket. The stub
     // door needs no credentials and never makes a model request.
     async fn response(payload: Value, decline: Option<&str>) -> Value {
+        response_admitting(payload, decline, None).await
+    }
+
+    async fn response_admitting(
+        payload: Value,
+        decline: Option<&str>,
+        allow: Option<Vec<String>>,
+    ) -> Value {
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             let worker =
                 Identity::from_secret(SecretKey::from_byte_array([41; 32]).unwrap()).unwrap();
@@ -471,6 +573,7 @@ mod tests {
             let options = Options {
                 once: true,
                 decline: decline.map(str::to_owned),
+                allow,
             };
             answer(
                 &mut socket,
@@ -505,6 +608,37 @@ mod tests {
             assert_eq!(refused["v"], version);
             assert_eq!(refused["code"], "quota_exhausted");
         }
+    }
+
+    #[tokio::test]
+    async fn a_customer_off_the_allowlist_is_refused_with_a_typed_code() {
+        let client = Identity::from_secret(SecretKey::from_byte_array([42; 32]).unwrap()).unwrap();
+        let stranger =
+            Identity::from_secret(SecretKey::from_byte_array([44; 32]).unwrap()).unwrap();
+        let payload = json!({"v":2,"task":"hello"});
+        let admitted = response_admitting(
+            payload.clone(),
+            None,
+            Some(vec![client.pubkey().to_string()]),
+        )
+        .await;
+        assert_eq!(admitted["type"], "result");
+        let refused =
+            response_admitting(payload, None, Some(vec![stranger.pubkey().to_string()])).await;
+        assert_eq!(refused["type"], "status");
+        assert_eq!(refused["code"], "not_admitted");
+        assert!(refused.get("text").is_none());
+    }
+
+    #[test]
+    fn the_allowlist_reads_npub_and_hex_and_refuses_typos() {
+        let client = Identity::from_secret(SecretKey::from_byte_array([42; 32]).unwrap()).unwrap();
+        let public = XOnlyPublicKey::from_byte_array(parse_hex(client.pubkey()).unwrap()).unwrap();
+        let npub = nostr::nip19::encode_npub(&public.serialize());
+        let keys = allowed(&format!(" {npub}, {}", client.pubkey())).unwrap();
+        assert_eq!(keys, vec![client.pubkey().to_string(); 2]);
+        assert!(allowed("").is_err());
+        assert!(allowed("not-a-key").is_err());
     }
 
     #[tokio::test]

@@ -109,8 +109,11 @@ The decrypted content is a JSON object with a `type` discriminator:
   carries the full answer regardless of what the stream dropped.
 - `status` — coarse state or a terminal error. `error` ends the job;
   `code` is a machine-readable reason (`quota_exhausted`,
-  `rate_limited`, `offline`, `unsupported_version`, `internal`),
-  `message` is display text.
+  `rate_limited`, `offline`, `not_admitted`, `unsupported_version`,
+  `internal`), `message` is display text. `not_admitted` means the worker
+  does not answer requests from the customer's pubkey; it is sent rather
+  than withheld so that a customer can tell a refusing worker from an
+  absent one.
 
 ## Job result — kind `26900`
 

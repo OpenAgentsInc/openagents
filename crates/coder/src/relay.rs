@@ -717,7 +717,8 @@ fn as_relay(error: GenerateError) -> GenerateError {
     }
 }
 
-fn parse_pubkey(text: &str) -> Option<XOnlyPublicKey> {
+/// Reads a public key written as an `npub` or 64 lowercase hex characters.
+pub fn parse_pubkey(text: &str) -> Option<XOnlyPublicKey> {
     let text = text.trim();
     if let Ok(bytes) = nip19::decode_npub(text) {
         return XOnlyPublicKey::from_byte_array(bytes).ok();

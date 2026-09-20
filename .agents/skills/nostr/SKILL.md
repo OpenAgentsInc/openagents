@@ -196,7 +196,11 @@ approved executor such as `devin-local` (see
 worker prints its pubkey on start; that value is what the terminal's
 `CODER_WORKER` names. `--once` answers one job and exits; `--decline
 <CODE>` refuses every job with a typed status error, for measuring the
-refusal path. The worker's key and the terminal's key must differ.
+refusal path. `CODER_WORKER_ALLOW` (comma-separated `npub` or hex keys)
+limits which customers the worker answers; anyone else gets a typed
+`not_admitted` status, never silence. Unset admits everyone, which is
+right only on a local relay. The worker's key and the terminal's key must
+differ.
 
 `docs/coder/relay-transport.md` is the measured proof that both ends
 meet, with per-transport latency and refusal causes.
