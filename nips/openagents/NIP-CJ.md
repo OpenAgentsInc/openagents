@@ -46,7 +46,7 @@ object:
 
 ```jsonc
 {
-  "v": 1,
+  "v": 2,
   "task": "the user's draft text",
   "transcript": [
     { "role": "user", "content": "earlier turn" },
@@ -57,7 +57,7 @@ object:
 }
 ```
 
-- `v` is the payload version; this document defines `1`.
+- `v` is the payload version; see Versions below.
 - `transcript` is the bounded conversation so far, oldest first. The
   terminal bounds it; the worker bounds it again.
 - `instructions` is the system prompt for the turn; it may be absent.
@@ -84,14 +84,14 @@ to the customer. Any number may precede the result.
 The decrypted content is a JSON object with a `type` discriminator:
 
 ```jsonc
-{ "v": 1, "type": "judgment", "verdict": "respond",
+{ "v": 2, "type": "judgment", "verdict": "respond",
   "line": "respond 1.00 · conf 1.00 · risk 0.0 · prog 0.8 · code 0.03" }
 
-{ "v": 1, "type": "partial", "delta": "The borrow checker" }
+{ "v": 2, "type": "partial", "seq": 0, "delta": "The borrow checker" }
 
-{ "v": 1, "type": "status", "status": "queued" }
+{ "v": 2, "type": "status", "status": "queued" }
 
-{ "v": 1, "type": "status", "status": "error",
+{ "v": 2, "type": "status", "status": "error",
   "code": "quota_exhausted", "message": "free allowance used" }
 ```
 
@@ -99,10 +99,18 @@ The decrypted content is a JSON object with a `type` discriminator:
   turn. `verdict` is one of `respond`, `clarify`, `end_conversation`,
   `unrouted`. `line` is a display-ready one-line summary; terminals render
   it verbatim.
-- `partial` — one streaming text delta of the answer, in order.
+- `partial` — one streaming text delta of the answer. Under version 2 it
+  carries `seq`: the count of partial events the worker published before
+  this one in the same job, starting at `0`. A terminal displays a delta
+  only when `seq` equals the count it has already accepted, and the first
+  delta that is not next — early, late, or repeated — ends the stream:
+  nothing is buffered and nothing after it is rendered. A repeated delivery
+  of the same event ID is ignored before checking the sequence. The result
+  carries the full answer regardless of what the stream dropped.
 - `status` — coarse state or a terminal error. `error` ends the job;
   `code` is a machine-readable reason (`quota_exhausted`,
-  `rate_limited`, `offline`, `internal`), `message` is display text.
+  `rate_limited`, `offline`, `unsupported_version`, `internal`),
+  `message` is display text.
 
 ## Job result — kind `26900`
 
@@ -122,7 +130,7 @@ The terminal event of the job: the finished answer and its accounting.
 
 ```jsonc
 {
-  "v": 1,
+  "v": 2,
   "type": "result",
   "text": "the complete answer",
   "usage": { "input": 554, "output": 61 },
@@ -137,6 +145,42 @@ terminal does not choose it, so the name the worker sends is the only
 evidence of what answered. A job ends on the first result or
 `status: error` the terminal accepts; later events for the same `e` tag
 are ignored.
+
+A result must carry nonempty `text`. Partial feedback is a preview and cannot
+replace a missing final answer.
+
+## Binding
+
+The relay is transport, not authority. The subscription label a relay
+delivers an event under is an unsigned routing hint, so it never
+identifies the job. Before reading a payload the terminal checks what the
+signature covers: the kind is `26900` or `27000`, the signer is the
+worker's key, an `e` tag names the request this turn published, and a
+`p` tag names the terminal's own key. A correctly signed answer to an
+older job — relabeled onto the current subscription — fails the `e` tag
+check, and an answer meant for another customer fails the `p` tag check.
+Delivered event ids are deduplicated after those checks, so a forged
+event cannot claim a genuine event's id and suppress it.
+
+## Versions
+
+`v` names the protocol revision a payload conforms to. This document
+defines `2`; revision `1` differs only in that `partial` feedback carried
+no `seq`, so its order is the relay's word rather than the worker's.
+
+- A terminal accepts `v: 1` and `v: 2` worker payloads and rejects the
+  field's absence and every other value.
+- A worker answers at the version the request named: a `v: 1` request
+  gets `v: 1` feedback, whose partials carry no `seq` because the
+  terminal cannot check one. A request whose `v` is absent or names
+  anything else is declined with `status: error`, code
+  `unsupported_version`, rather than generated against a schema the
+  worker cannot read.
+- Under `1`, partial deltas are a liveness signal: they prove the worker
+  answered but are never rendered as text, because nothing signed their
+  order. A `v: 1` result still completes the job.
+- Under `2`, a `partial` without an integer `seq` and a string `delta` is
+  malformed and establishes nothing.
 
 ## Flow
 

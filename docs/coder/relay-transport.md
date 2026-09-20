@@ -233,6 +233,69 @@ counted as present.
 runs a mock worker that sends one judgment and then nothing against a real
 relay, with both waits shortened so the test costs seconds.
 
+## The label is not the job
+
+The relay delivers each answer as `["EVENT", <subscription>, <event>]`,
+and the subscription is the relay's own unsigned word. A relay that held
+an old result — correctly signed by the worker, correctly encrypted to
+this customer, `e`-tagged to a request this same keypair published an
+hour ago — could deliver it under the current subscription, and a client
+that trusted the label would render stale text. Audit finding A08 was
+exactly that.
+
+So the door binds the job on what the signature covers, not on the label.
+Before a payload is read, the event must be kind `26900` or `27000`,
+signed by the worker's key, `e`-tagged to the request this turn
+published, and `p`-tagged to this identity. Only then is the event id
+deduplicated — checking first would let a forged event claim a genuine
+event's id and suppress it. The label itself is never consulted: a
+correctly bound answer lands under any label, and nothing bound
+elsewhere lands under the right one.
+
+The decrypted payload then has to name a version this NIP defines — `1`
+or `2` — and a `type` the event's kind actually carries. A `26900` event
+claiming `status: error` is not a refusal, and a payload with no
+meaningful type is not contact: `heard` moves to the long wait only once
+a well-formed payload of a known type has arrived.
+
+Ordering is versioned. Version `2` partials carry `seq`, a signed count
+of the deltas before them; the door displays a delta only when it is the
+next one, and the first `seq` that is not — early, late, or repeated —
+closes the stream without buffering. Version `1` partials have no signed
+order, so they are a liveness signal and never text; a version `1`
+result still completes the job with the answer it carries whole. The
+worker answers at the version the request named and declines anything
+else with `unsupported_version`, so the ordering promise exists exactly
+where the terminal can check it.
+
+Two bounds keep a hostile stream finite rather than merely timed: a job
+reads at most 1024 deduplicated events and renders at most 256 KiB of
+deltas, and past either the turn is refused as a stream error. Deltas
+are a preview, never the payload: the result is the answer whole, and a
+result with no text fails as an empty answer rather than being completed
+by whatever the stream happened to show before a gap.
+
+Termination is otherwise unchanged: the first accepted result or
+`status: error` ends the job, and later events for the same `e` tag are
+ignored.
+
+`crates/coder/tests/relay_binding.rs` exercises all of it against a
+loopback relay that lies: a relabeled old result, an answer for another
+job or another customer, missing `e` and `p` tags, a forged event
+claiming a genuine result's id, duplicated and reordered partials,
+unsequenced and legacy deltas, malformed payloads, wrong kinds, wrong
+versions, event and byte floods, and the honest answer and refusal that
+must still work. It needs no `CODER_RELAY` and skips nothing.
+
+The 2026-09-20 local verification passed all 25 adversarial relay tests,
+five relay unit tests, and two worker socket tests. The worker tests exercise
+version negotiation and configured refusals through `answer` with a stub
+door; they make no model request. The full Coder suite and strict Clippy
+check also passed under Rust 1.97.1. The environment-gated `relay_job`
+tests returned early without `CODER_RELAY`; this verification establishes
+local protocol behavior, not a deployed version-2 measurement. Deployment
+and its remote measurement remain tracked by #9435.
+
 ## What the relay could not see
 
 This is the reason the transport is worth having rather than an

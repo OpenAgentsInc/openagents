@@ -48,7 +48,8 @@ use coder::generate::{
     Door, Generate, GenerateError, Lane, Message, Role, WORKER_MODEL_VAR, model_from_env,
 };
 use coder::relay::{
-    DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, REQUEST_KIND, RESULT_KIND, Socket, connect, send,
+    DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, PAYLOAD_VERSION, REQUEST_KIND, RESULT_KIND, Socket,
+    connect, partial_payload, payload_version, send,
 };
 use futures_util::StreamExt;
 use nostr::domain::{Event, Tag};
@@ -239,11 +240,34 @@ async fn answer(
         ))
     };
 
+    // The worker answers at the version the request named, so a
+    // version-1 terminal gets version-1 feedback — partials with no
+    // `seq`, since it cannot check one — and a request that names
+    // anything else is declined rather than generated against a schema
+    // this worker cannot read.
+    let Some(version) = payload_version(&payload) else {
+        let event = publish(
+            FEEDBACK_KIND,
+            json!({
+                "v": PAYLOAD_VERSION,
+                "type": "status",
+                "status": "error",
+                "code": "unsupported_version",
+                "message": "the job request names a payload version this worker does not serve",
+            }),
+        )?;
+        send(socket, json!(["EVENT", event]))
+            .await
+            .map_err(|error| error.to_string())?;
+        eprintln!("job {} declined: unsupported_version", &request.id[..16]);
+        return Ok(());
+    };
+
     if let Some(code) = &options.decline {
         let event = publish(
             FEEDBACK_KIND,
             json!({
-                "v": 1,
+                "v": version,
                 "type": "status",
                 "status": "error",
                 "code": code,
@@ -278,6 +302,7 @@ async fn answer(
     tokio::pin!(generating);
 
     let mut buffer = String::new();
+    let mut partial_seq = 0u64;
     let mut draining = true;
     let answered: Result<_, GenerateError> = loop {
         tokio::select! {
@@ -285,10 +310,15 @@ async fn answer(
                 Some(delta) => {
                     buffer.push_str(&delta);
                     if buffer.len() >= PARTIAL_BYTES {
+                        // `seq` is the signed ordering the terminal
+                        // checks deltas against; arrival order proves
+                        // nothing. A version-1 answer makes no such
+                        // promise and carries none.
                         let event = publish(
                             FEEDBACK_KIND,
-                            json!({ "v": 1, "type": "partial", "delta": buffer }),
+                            partial_payload(version, partial_seq, &buffer),
                         )?;
+                        partial_seq += 1;
                         send(socket, json!(["EVENT", event]))
                             .await
                             .map_err(|error| error.to_string())?;
@@ -308,7 +338,7 @@ async fn answer(
             let event = publish(
                 RESULT_KIND,
                 json!({
-                    "v": 1,
+                    "v": version,
                     "type": "result",
                     "text": text,
                     "usage": usage.map(|usage| json!({
@@ -335,7 +365,7 @@ async fn answer(
             let event = publish(
                 FEEDBACK_KIND,
                 json!({
-                    "v": 1,
+                    "v": version,
                     "type": "status",
                     "status": "error",
                     "code": "internal",
@@ -396,4 +426,96 @@ fn unix_now() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use coder::generate::StubGenerate;
+    use secp256k1::SecretKey;
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+    use tungstenite::protocol::Role as SocketRole;
+
+    // Exercise the worker's response path over a local socket. The stub
+    // door needs no credentials and never makes a model request.
+    async fn response(payload: Value, decline: Option<&str>) -> Value {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let worker =
+                Identity::from_secret(SecretKey::from_byte_array([41; 32]).unwrap()).unwrap();
+            let client =
+                Identity::from_secret(SecretKey::from_byte_array([42; 32]).unwrap()).unwrap();
+            let public =
+                XOnlyPublicKey::from_byte_array(parse_hex(client.pubkey()).unwrap()).unwrap();
+            let conversation = nip44::conversation_key(worker.secret(), &public);
+            let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
+            let request = client.signer().sign(
+                unix_now(),
+                REQUEST_KIND,
+                vec![Tag::new(vec!["p".into(), worker.pubkey().to_string()])],
+                content,
+            );
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let connected = TcpStream::connect(listener.local_addr().unwrap())
+                .await
+                .unwrap();
+            let (accepted, _) = listener.accept().await.unwrap();
+            let mut socket = WebSocketStream::from_raw_socket(
+                MaybeTlsStream::Plain(connected),
+                SocketRole::Client,
+                None,
+            )
+            .await;
+            let mut peer =
+                WebSocketStream::from_raw_socket(accepted, SocketRole::Server, None).await;
+            let options = Options {
+                once: true,
+                decline: decline.map(str::to_owned),
+            };
+            answer(
+                &mut socket,
+                &worker,
+                &Door::Stub(StubGenerate::default()),
+                &options,
+                &request,
+            )
+            .await
+            .unwrap();
+            let frame = peer.next().await.unwrap().unwrap();
+            let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+            let event: Event = serde_json::from_value(value[1].clone()).unwrap();
+            event.validate_crypto().unwrap();
+            assert!(event.tag_values("e").any(|id| id == request.id));
+            assert!(event.tag_values("p").any(|key| key == client.pubkey()));
+            serde_json::from_str(&nip44::decrypt(&event.content, &conversation).unwrap()).unwrap()
+        })
+        .await
+        .expect("the local worker response must finish")
+    }
+
+    #[tokio::test]
+    async fn the_worker_preserves_supported_request_versions() {
+        for version in [1, 2] {
+            let result = response(json!({"v":version,"task":"hello"}), None).await;
+            assert_eq!(result["v"], version);
+            assert_eq!(result["type"], "result");
+            assert!(!result["text"].as_str().unwrap().is_empty());
+            let refused =
+                response(json!({"v":version,"task":"hello"}), Some("quota_exhausted")).await;
+            assert_eq!(refused["v"], version);
+            assert_eq!(refused["code"], "quota_exhausted");
+        }
+    }
+
+    #[tokio::test]
+    async fn unsupported_requests_refuse_before_generation_or_configured_decline() {
+        for payload in [json!({"task":"hello"}), json!({"v":99,"task":"hello"})] {
+            for decline in [None, Some("quota_exhausted")] {
+                let result = response(payload.clone(), decline).await;
+                assert_eq!(result["type"], "status");
+                assert_eq!(result["code"], "unsupported_version");
+                assert!(result.get("text").is_none());
+            }
+        }
+    }
 }

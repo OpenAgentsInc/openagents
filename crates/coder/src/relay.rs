@@ -25,12 +25,27 @@
 //! answered by declining. `docs/coder/relay-transport.md` measures all
 //! three.
 //!
+//! The relay is transport, not authority. Its subscription labels are
+//! unsigned routing hints, so an answer is bound to a job by what the
+//! signature covers — the worker's key, this request's `e` tag, this
+//! identity's `p` tag, and an allowed kind — never by the label it
+//! arrived under. `tests/relay_binding.rs` runs a loopback relay that
+//! relabels, replays, and duplicates signed events to prove it.
+//!
+//! Payload version 2 adds a signed `seq` to partial deltas; the door
+//! streams a delta only when it is the next one, and the first `seq`
+//! that is not — early, late, or repeated — closes the stream without
+//! buffering. Version-1 partials carry no sequence, so they prove the
+//! worker is alive but do not stream text; a version-1 result still
+//! completes the job.
+//!
 //! Silence is two waits, not one. [`CONTACT_TIMEOUT`] bounds the wait for
 //! the first sign that a worker is there at all, and [`ANSWER_TIMEOUT`]
 //! bounds the wait for the answer once one is. A single bound covering
 //! both made an absent worker cost the whole long wait and then report a
 //! failure that could not say whether anyone had been listening.
 
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -79,6 +94,51 @@ pub const CONTACT_TIMEOUT: Duration = Duration::from_secs(30);
 /// This is the model's wait, and it is the long one. Before the two were
 /// split, it was also the absent worker's wait.
 pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// The payload revision this implementation speaks: `2` adds the signed
+/// `seq` that orders partial deltas. Revision `1` is the same protocol
+/// without it. [`payload_version`] is the acceptance rule both ends use.
+pub const PAYLOAD_VERSION: u64 = 2;
+
+/// The payload revision a message declares, when it is one this NIP
+/// defines. The field is required: a missing `v`, a string, or any other
+/// value is not this protocol's text. A worker answers at the version the
+/// request named, so a version-1 request gets version-1 feedback —
+/// partials without `seq` — and a request naming anything else is not a
+/// job it takes.
+#[must_use]
+pub fn payload_version(payload: &Value) -> Option<u64> {
+    match payload["v"].as_u64() {
+        Some(version) if version == 1 || version == PAYLOAD_VERSION => Some(version),
+        _ => None,
+    }
+}
+
+/// The feedback payload a worker publishes for one delta, at the
+/// negotiated version: `seq` appears only where the version defines it,
+/// so a version-1 answer makes no ordering promise it cannot keep.
+#[must_use]
+pub fn partial_payload(version: u64, seq: u64, delta: &str) -> Value {
+    let mut payload = json!({"v": version, "type": "partial", "delta": delta});
+    if version >= 2 {
+        payload["seq"] = json!(seq);
+    }
+    payload
+}
+
+/// The most worker events one job reads before the turn is refused.
+/// Bound events are deduplicated by id, and an ephemeral kind with a
+/// deadline is not a memory bound: a relay that fans out an unbounded
+/// stream of valid-looking events would otherwise grow the set for the
+/// whole wait. A thousand events is far past any honest answer — a
+/// judgment, a few hundred deltas, a status, a result — so past it the
+/// stream is a flood, and floods are errors.
+const MAX_ANSWER_EVENTS: usize = 1_024;
+
+/// The most streamed delta bytes one job renders before the turn is
+/// refused. Partials are a progress signal — the result carries the
+/// answer whole — so a preview this large is already past useful.
+const MAX_STREAM_BYTES: usize = 256 * 1_024;
 
 /// An authenticated relay connection. Both ends of NIP-CJ hold one.
 pub type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -354,7 +414,7 @@ impl RelayDoor {
             })
             .collect();
         let payload = json!({
-            "v": 1,
+            "v": PAYLOAD_VERSION,
             "task": task,
             "transcript": transcript,
             "instructions": instructions,
@@ -395,7 +455,10 @@ impl RelayDoor {
         // The deadline the loop reads against changes the moment a worker
         // is heard from: until then it is the short one, and the failure
         // it produces says nobody was there.
-        let mut partials = String::new();
+        let mut next_partial = 0u64;
+        let mut partials_open = true;
+        let mut streamed_bytes = 0usize;
+        let mut seen = HashSet::new();
         let mut heard = false;
         let answer_by = tokio::time::Instant::now() + self.answer;
         let contact_by = tokio::time::Instant::now() + self.contact;
@@ -428,70 +491,169 @@ impl RelayDoor {
                         "the relay refused the job request: {reason}"
                     )));
                 }
-                "EVENT" if value[1].as_str() == Some(subscription.as_str()) => {
+                // The subscription label is the relay's routing hint, not
+                // the job's identity: a relay can relabel any event under
+                // it. What binds an answer to this turn is inside the
+                // signature — the kind, the worker's key, this request's
+                // `e` tag, and this identity's `p` tag — so those are what
+                // get checked before the payload is read.
+                "EVENT" => {
                     let Ok(event) = serde_json::from_value::<Event>(value[2].clone()) else {
                         continue;
                     };
-                    if event.pubkey != self.worker_hex || event.validate_crypto().is_err() {
+                    if !self.binds(&event, &request.id) {
                         continue;
                     }
-                    // A signed event from the worker, tagged to this
-                    // request: somebody is there. Whatever it says, the
-                    // wait is no longer the short one.
-                    heard = true;
+                    // A relay may deliver one event twice; a delta
+                    // delivered twice must not display twice. The
+                    // deduplication follows the checks so a forged event
+                    // cannot claim a genuine event's id and suppress it,
+                    // and the set is bounded so a flood of bound events
+                    // is a refusal rather than a memory leak.
+                    if !seen.insert(event.id.clone()) {
+                        continue;
+                    }
+                    if seen.len() > MAX_ANSWER_EVENTS {
+                        return Err(GenerateError::Stream(format!(
+                            "the worker sent more than {MAX_ANSWER_EVENTS} events for one job"
+                        )));
+                    }
                     let Ok(plaintext) = nip44::decrypt(&event.content, &conversation) else {
                         continue;
                     };
                     let Ok(feedback) = serde_json::from_str::<Value>(&plaintext) else {
                         continue;
                     };
-                    let kind = feedback["type"].as_str().unwrap_or_default();
-                    if event.kind == FEEDBACK_KIND && kind == "judgment" {
-                        if let Some(line) = feedback["line"].as_str() {
+                    // The payload must name a version this NIP defines
+                    // before its `type` means anything.
+                    let Some(version) = payload_version(&feedback) else {
+                        continue;
+                    };
+                    // The `type` must be one the event's kind carries and
+                    // the fields it needs must be there: a bound event
+                    // with an unknown, mismatched, or malformed payload
+                    // is neither contact nor text. Only a well-formed
+                    // payload of a known type moves the wait to the long
+                    // one.
+                    match (event.kind, feedback["type"].as_str().unwrap_or_default()) {
+                        (FEEDBACK_KIND, "judgment") => {
+                            let Some(line) = feedback["line"].as_str() else {
+                                continue;
+                            };
+                            heard = true;
                             meta(Meta::Judgment(line.to_string()));
                         }
-                    } else if event.kind == FEEDBACK_KIND && kind == "partial" {
-                        if let Some(delta) = feedback["delta"].as_str() {
-                            partials.push_str(delta);
-                            sink(delta);
+                        (FEEDBACK_KIND, "status") => {
+                            let Some(status) = feedback["status"].as_str() else {
+                                continue;
+                            };
+                            if !matches!(status, "queued" | "processing" | "error") {
+                                continue;
+                            }
+                            heard = true;
+                            if status == "error" {
+                                // A typed refusal is an answer: a worker
+                                // read the job and said no, with a reason
+                                // a caller can act on. It is not the
+                                // transport failing.
+                                let code = feedback["code"].as_str().unwrap_or("internal");
+                                let message = feedback["message"].as_str().unwrap_or(code);
+                                return Err(GenerateError::Refused {
+                                    code: code.to_string(),
+                                    message: message.to_string(),
+                                });
+                            }
                         }
-                    } else if event.kind == FEEDBACK_KIND
-                        && kind == "status"
-                        && feedback["status"].as_str() == Some("error")
-                    {
-                        // A typed refusal is an answer: a worker read the
-                        // job and said no, with a reason a caller can act
-                        // on. It is not the transport failing.
-                        let code = feedback["code"].as_str().unwrap_or("internal");
-                        let message = feedback["message"].as_str().unwrap_or(code);
-                        return Err(GenerateError::Refused {
-                            code: code.to_string(),
-                            message: message.to_string(),
-                        });
-                    } else if event.kind == RESULT_KIND {
-                        // The worker names the model it used, and the door
-                        // used to drop it on the floor. A relay run's
-                        // evidence has to be able to say what answered.
-                        if let Some(model) = feedback["model"].as_str().filter(|m| !m.is_empty()) {
-                            meta(Meta::Model(model.to_string()));
+                        (FEEDBACK_KIND, "partial") => {
+                            let Some(delta) = feedback["delta"].as_str() else {
+                                continue;
+                            };
+                            if version == 1 {
+                                // A version-1 partial carries no
+                                // sequence, so its order is the relay's
+                                // word. It proves the worker is there; it
+                                // does not stream text.
+                                heard = true;
+                                continue;
+                            }
+                            let Some(seq) = feedback["seq"].as_u64() else {
+                                continue;
+                            };
+                            heard = true;
+                            // Deltas display only in the signed order.
+                            // The first `seq` that is not next — early,
+                            // late, or repeated — closes the stream:
+                            // nothing is buffered and nothing after it is
+                            // text. The result carries the answer whole
+                            // regardless.
+                            if partials_open && seq == next_partial {
+                                next_partial += 1;
+                                streamed_bytes += delta.len();
+                                if streamed_bytes > MAX_STREAM_BYTES {
+                                    return Err(GenerateError::Stream(format!(
+                                        "the worker streamed more than {MAX_STREAM_BYTES} \
+                                         bytes of deltas"
+                                    )));
+                                }
+                                sink(delta);
+                            } else {
+                                partials_open = false;
+                            }
                         }
-                        let text = feedback["text"].as_str().unwrap_or_default().to_string();
-                        let text = if text.is_empty() { partials } else { text };
-                        if text.is_empty() {
-                            return Err(GenerateError::Stream(
-                                "the worker's result carried no text".into(),
-                            ));
+                        (RESULT_KIND, "result") => {
+                            // The worker names the model it used, and the
+                            // door used to drop it on the floor. A relay
+                            // run's evidence has to be able to say what
+                            // answered.
+                            if let Some(model) =
+                                feedback["model"].as_str().filter(|m| !m.is_empty())
+                            {
+                                meta(Meta::Model(model.to_string()));
+                            }
+                            // The result is the answer, whole. Deltas are
+                            // a preview of it, never a substitute: an
+                            // empty result is an empty answer, however
+                            // much the stream showed.
+                            let text = feedback["text"].as_str().unwrap_or_default();
+                            if text.is_empty() {
+                                return Err(GenerateError::Stream(
+                                    "the worker's result carried no text".into(),
+                                ));
+                            }
+                            let usage = feedback["usage"].as_object().map(|usage| Usage {
+                                input_tokens: usage["input"].as_u64().unwrap_or(0),
+                                output_tokens: usage["output"].as_u64().unwrap_or(0),
+                            });
+                            return Ok((text.to_string(), usage));
                         }
-                        let usage = feedback["usage"].as_object().map(|usage| Usage {
-                            input_tokens: usage["input"].as_u64().unwrap_or(0),
-                            output_tokens: usage["output"].as_u64().unwrap_or(0),
-                        });
-                        return Ok((text, usage));
+                        _ => {}
                     }
                 }
                 _ => {}
             }
         }
+    }
+
+    /// Whether `event` is this job's answer and nobody else's.
+    ///
+    /// Every field checked is inside the event's signature, so a relay
+    /// cannot arrange any of them: the kind must be feedback or a result,
+    /// the signer must be the worker's key, an `e` tag must name the
+    /// request this turn published, and a `p` tag must name this
+    /// identity. A signature over someone else's job is still a valid
+    /// signature, which is why a check that stops at "signed by the
+    /// worker" accepts replays.
+    fn binds(&self, event: &Event, request_id: &str) -> bool {
+        if event.kind != RESULT_KIND && event.kind != FEEDBACK_KIND {
+            return false;
+        }
+        if event.pubkey != self.worker_hex || event.validate_crypto().is_err() {
+            return false;
+        }
+        event.tag_values("e").any(|id| id == request_id)
+            && event
+                .tag_values("p")
+                .any(|pubkey| pubkey == self.identity.pubkey())
     }
 
     /// The failure a wait that ran out produces, in whichever of the two
@@ -658,6 +820,34 @@ mod tests {
         let identity = Identity::from_secret(secret).unwrap();
         let (public, _) = secret.public_key(&Secp256k1::new()).x_only_public_key();
         assert_eq!(identity.pubkey(), public.to_string());
+    }
+
+    #[test]
+    fn payload_versions_are_explicit() {
+        assert_eq!(payload_version(&json!({"v": 1})), Some(1));
+        assert_eq!(payload_version(&json!({"v": 2})), Some(2));
+        // The field is required and numeric: absence, a string, and every
+        // other value are all unsupported.
+        assert_eq!(payload_version(&json!({})), None);
+        assert_eq!(payload_version(&json!({"v": "2"})), None);
+        assert_eq!(payload_version(&json!({"v": 0})), None);
+        assert_eq!(payload_version(&json!({"v": 3})), None);
+    }
+
+    #[test]
+    fn a_worker_answers_at_the_version_the_request_named() {
+        // The worker's response version is the request's: a version-1
+        // request gets version-1 feedback with no `seq` promised, and a
+        // version-2 request gets ordered partials.
+        let v1 = partial_payload(1, 7, "delta");
+        assert_eq!(v1["v"], 1);
+        assert!(v1.get("seq").is_none());
+        let v2 = partial_payload(2, 7, "delta");
+        assert_eq!(v2["v"], 2);
+        assert_eq!(v2["seq"], 7);
+        // And what it produces is what the door accepts.
+        assert_eq!(payload_version(&v1), Some(1));
+        assert_eq!(payload_version(&v2), Some(2));
     }
 
     #[test]

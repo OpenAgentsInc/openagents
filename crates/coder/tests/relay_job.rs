@@ -139,20 +139,20 @@ async fn mock_worker(url: String, key: u8, task: &str) {
     for event in [
         publish(
             FEEDBACK_KIND,
-            json!({"v":1,"type":"judgment","verdict":"respond","line":"respond 1.00 · conf 1.00"}),
+            json!({"v":2,"type":"judgment","verdict":"respond","line":"respond 1.00 · conf 1.00"}),
         ),
         publish(
             FEEDBACK_KIND,
-            json!({"v":1,"type":"partial","delta":"hello"}),
+            json!({"v":2,"type":"partial","seq":0,"delta":"hello"}),
         ),
         publish(
             FEEDBACK_KIND,
-            json!({"v":1,"type":"partial","delta":" there"}),
+            json!({"v":2,"type":"partial","seq":1,"delta":" there"}),
         ),
         publish(
             RESULT_KIND,
             json!({
-                "v": 1,
+                "v": 2,
                 "type": "result",
                 "text": "hello there",
                 "usage": {"input": 10, "output": 2},
@@ -244,7 +244,7 @@ async fn stalling_worker(url: String) {
     let customer = XOnlyPublicKey::from_byte_array(customer_bytes).unwrap();
     let conversation = nip44::conversation_key(&worker_secret, &customer);
     let ciphertext = nip44::encrypt(
-        &json!({"v":1,"type":"judgment","verdict":"respond","line":"respond 1.00"}).to_string(),
+        &json!({"v":2,"type":"judgment","verdict":"respond","line":"respond 1.00"}).to_string(),
         &conversation,
         secp256k1::rand::random::<[u8; 32]>(),
     )
@@ -357,7 +357,7 @@ async fn declining_worker(url: String) {
     let customer = XOnlyPublicKey::from_byte_array(customer_bytes).unwrap();
     let conversation = nip44::conversation_key(&worker_secret, &customer);
     let content = json!({
-        "v": 1,
+        "v": 2,
         "type": "status",
         "status": "error",
         "code": "quota_exhausted",
