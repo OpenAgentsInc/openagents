@@ -280,3 +280,65 @@ convert that engineering into the requested, observable issue-completion process
 at an acceptable pace. I am responsible for that planning, execution, and
 publication failure. The chat-history discrepancy compounds the loss of
 visibility and needs its own evidence-based product investigation.
+
+## Independent review, Linux host
+
+Date: 2026-09-20. Author: a second agent, reviewing on Ubuntu with the pinned
+Rust 1.97.1 toolchain, at `a2775ea96c`.
+
+### Workspace state on Linux
+
+- `cargo check --workspace --all-targets`: passes.
+- `cargo fmt --all --check`: 490 differing hunks across `gym`, `lev`, `kev`,
+  `coder`, `coder-boundary`, `capability`, and `coder-terminal` (#9402).
+- `cargo clippy --workspace --all-targets --features kev/serve,lev/serve,gym/tui,jev/blocking -- -D warnings`:
+  fails on two `unnecessary_cast` findings in
+  `crates/coder-boundary/src/snapshot/observe.rs` (lines 541 and 546).
+  `st_dev` and `st_mode` are already `u64` and `u32` on Linux and have other
+  widths on macOS, so the cast is needed on one platform and refused on the
+  other. The workspace lint baseline recorded in #9429 holds on macOS only.
+- `cargo test --workspace`: 984 passed, 12 failed, 8 ignored. Ten failures are
+  in `crates/coder/tests/program_run.rs` and share one cause: the runtime
+  refuses the `fan_out` step with
+  `boundary_unavailable: this host has no available filesystem boundary for
+  delegation`. One failure is
+  `a_rewrite_with_identical_content_is_seen` in
+  `crates/coder-boundary/tests/snapshot.rs`, which observes `Clean` where it
+  expects `Changed`.
+
+### What this adds to the report
+
+1. **The delegation path is macOS-only.** The filesystem write boundary has
+   no Linux enforcement, so every program that reaches a `delegate` step is
+   refused on Linux. #9435 places the relay and the worker on Linux hosts, so
+   this is a product gap, not a test gap. Either `coder-boundary` gains a
+   Linux backend, or the runtime and its tests state `unsupported` explicitly
+   and the deployment plan accounts for it.
+2. **"Verified" is currently unfalsifiable.** The repository forbids GitHub
+   automation and the manual gate has never passed end to end on any host.
+   A commit message that reports a passing check cannot be distinguished from
+   one that does not. The cheapest correction is to make
+   `scripts/verify-rust.sh` pass once, on both platforms, and require its
+   output before a push. A runner on the project's own cloud does not violate
+   the policy.
+3. **The open backlog is not fan-out input yet.** Most open issues are audit
+   bundles that span several invariants (#9423, #9426, #9427, #9428) or
+   measurement findings that state a result rather than a task (#9395 through
+   #9401). Decomposition into one-invariant issues with owned files and a
+   named regression, as corrective step 2 above requires, comes before any
+   worker can complete one.
+
+### Recommended order
+
+1. Publish the observed golden: commit the retained trace unchanged, migrate
+   the two failing harness fixtures to `grade.expects`, flip the sidecar to
+   `observed`, and close #9404's definition of done.
+2. Make the gate green in separate commits: the formatting-only commit for
+   #9402; the two Linux casts; a decision on Linux enforcement in
+   `coder-boundary`. Close #9429 only when `verify-rust.sh` passes on both
+   platforms.
+3. Decompose the audit bundles. Leave the measurement findings as records.
+4. Run the first writing burndown under the brief's rules: two workers,
+   issues chosen by hand, hosted Jev, boundary enforced, independence in
+   shadow.
+5. Then #9435, which depends on step 2.
