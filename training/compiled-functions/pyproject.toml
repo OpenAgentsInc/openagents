@@ -1,0 +1,11 @@
+[project]
+name = "compiled-functions"
+version = "0.1.0"
+description = "Compiles the routing spec on ProgramAsWeights with zero labels and with four example pairs, and scores both on the held-out routing items."
+requires-python = ">=3.11"
+dependencies = [
+    "programasweights>=0.4,<0.5",
+]
+
+[tool.uv]
+package = false

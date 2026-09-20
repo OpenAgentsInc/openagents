@@ -1,0 +1,20 @@
+{
+  "paw-4b-qwen3-0.6b:2720c3afe9c86c6778a835b3488a9c8e012b158cdba64d6221ab7b0ac40ec443": {
+    "compile_seconds": 3.63,
+    "compiled_at": "2026-09-20T14:25:43+00:00",
+    "compiler": "paw-4b-qwen3-0.6b",
+    "compiler_snapshot": "paw-4b-qwen3-0.6b-20260407",
+    "id": "96943e9b8bdfc3eb7c9f",
+    "spec_kind": "prose",
+    "spec_sha256": "2720c3afe9c86c6778a835b3488a9c8e012b158cdba64d6221ab7b0ac40ec443"
+  },
+  "paw-4b-qwen3-0.6b:85f4b0cdbbbd594e15e7efd542842850045dedd7e6fd67883a0bc42ab6ff0260": {
+    "compile_seconds": 3.88,
+    "compiled_at": "2026-09-20T14:26:47+00:00",
+    "compiler": "paw-4b-qwen3-0.6b",
+    "compiler_snapshot": "paw-4b-qwen3-0.6b-20260407",
+    "id": "1230b5bb2556f2cc8f04",
+    "spec_kind": "with-examples",
+    "spec_sha256": "85f4b0cdbbbd594e15e7efd542842850045dedd7e6fd67883a0bc42ab6ff0260"
+  }
+}

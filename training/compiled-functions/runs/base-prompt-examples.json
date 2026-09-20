@@ -1,0 +1,629 @@
+{
+  "schema": "openagents.training.compiled_functions.v1",
+  "recorded_at": "2026-09-20T14:32:13+00:00",
+  "spec_kind": "base-prompt-examples",
+  "spec": "Which team should handle this message?\n\n- billing: Charges, invoices, refunds, and payment problems\n- technical: Bugs, crashes, outages, and performance\n- sales: Quotes, plans, upgrades, renewals, and pricing\n\nReturn ONLY one of: billing, technical, sales.\n\nInput: I was charged twice for the same order and want one refunded.\nOutput: billing\n\nInput: The app crashes every time I open the settings screen.\nOutput: technical\n\nInput: Can you send me a quote for 50 seats on the enterprise plan?\nOutput: sales\n\nInput: We were billed in dollars but our contract says euros.\nOutput: billing\n",
+  "spec_sha256": "85f4b0cdbbbd594e15e7efd542842850045dedd7e6fd67883a0bc42ab6ff0260",
+  "example_ids": [
+    "routing/000",
+    "routing/020",
+    "routing/040",
+    "routing/006"
+  ],
+  "base_form": "message-team",
+  "program": null,
+  "interpreter": "Qwen/Qwen3-0.6B",
+  "sdk": {
+    "programasweights": "0.4.6"
+  },
+  "machine": {
+    "system": "Linux",
+    "machine": "x86_64",
+    "python": "3.12.8",
+    "gpu_layers": 0,
+    "cpus": 8
+  },
+  "suites": {
+    "support-v2": "6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368",
+    "support-v2-three-way": "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9"
+  },
+  "scored": {
+    "support-v2 evaluation": {
+      "items": 50,
+      "correct": 18,
+      "unparsed": 0,
+      "accuracy": 0.36,
+      "se": 0.0679,
+      "wilson_95": [
+        0.2414,
+        0.4986
+      ]
+    },
+    "support-v2-three-way development": {
+      "items": 40,
+      "correct": 17,
+      "unparsed": 0,
+      "accuracy": 0.425,
+      "se": 0.0782,
+      "wilson_95": [
+        0.2851,
+        0.578
+      ]
+    },
+    "union": {
+      "items": 70,
+      "correct": 28,
+      "unparsed": 0,
+      "accuracy": 0.4,
+      "se": 0.0586,
+      "wilson_95": [
+        0.2933,
+        0.5171
+      ]
+    }
+  },
+  "panel": "accuracy only; a compiled function returns a bare string and no distribution, so ECE, Brier, and log loss are not defined",
+  "inference_seconds": 45.6,
+  "items": [
+    {
+      "id": "routing/001",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 649.7
+    },
+    {
+      "id": "routing/002",
+      "truth": "billing",
+      "raw": "billing",
+      "answer": "billing",
+      "correct": true,
+      "latency_ms": 625.8
+    },
+    {
+      "id": "routing/003",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 570.1
+    },
+    {
+      "id": "routing/005",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 593.6
+    },
+    {
+      "id": "routing/007",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 565.3
+    },
+    {
+      "id": "routing/008",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 561.9
+    },
+    {
+      "id": "routing/009",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 708.8
+    },
+    {
+      "id": "routing/011",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 674.0
+    },
+    {
+      "id": "routing/012",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 589.3
+    },
+    {
+      "id": "routing/013",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 584.0
+    },
+    {
+      "id": "routing/015",
+      "truth": "billing",
+      "raw": "billing",
+      "answer": "billing",
+      "correct": true,
+      "latency_ms": 554.3
+    },
+    {
+      "id": "routing/017",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 552.7
+    },
+    {
+      "id": "routing/018",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 557.9
+    },
+    {
+      "id": "routing/019",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 548.2
+    },
+    {
+      "id": "routing/021",
+      "truth": "technical",
+      "raw": "technical",
+      "answer": "technical",
+      "correct": true,
+      "latency_ms": 562.3
+    },
+    {
+      "id": "routing/022",
+      "truth": "technical",
+      "raw": "technical",
+      "answer": "technical",
+      "correct": true,
+      "latency_ms": 569.1
+    },
+    {
+      "id": "routing/023",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 645.6
+    },
+    {
+      "id": "routing/025",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 696.7
+    },
+    {
+      "id": "routing/027",
+      "truth": "technical",
+      "raw": "technical",
+      "answer": "technical",
+      "correct": true,
+      "latency_ms": 582.9
+    },
+    {
+      "id": "routing/028",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 569.3
+    },
+    {
+      "id": "routing/029",
+      "truth": "technical",
+      "raw": "technical",
+      "answer": "technical",
+      "correct": true,
+      "latency_ms": 556.1
+    },
+    {
+      "id": "routing/031",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 548.9
+    },
+    {
+      "id": "routing/032",
+      "truth": "technical",
+      "raw": "technical",
+      "answer": "technical",
+      "correct": true,
+      "latency_ms": 550.7
+    },
+    {
+      "id": "routing/033",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 549.7
+    },
+    {
+      "id": "routing/035",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 584.1
+    },
+    {
+      "id": "routing/037",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 548.6
+    },
+    {
+      "id": "routing/038",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 575.0
+    },
+    {
+      "id": "routing/039",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 673.9
+    },
+    {
+      "id": "routing/041",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 615.8
+    },
+    {
+      "id": "routing/042",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 599.9
+    },
+    {
+      "id": "routing/043",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 540.3
+    },
+    {
+      "id": "routing/045",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 589.9
+    },
+    {
+      "id": "routing/047",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 591.2
+    },
+    {
+      "id": "routing/048",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 625.9
+    },
+    {
+      "id": "routing/049",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 704.8
+    },
+    {
+      "id": "routing/051",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 743.6
+    },
+    {
+      "id": "routing/052",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 819.4
+    },
+    {
+      "id": "routing/053",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 832.1
+    },
+    {
+      "id": "routing/055",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 682.8
+    },
+    {
+      "id": "routing/057",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 741.1
+    },
+    {
+      "id": "routing/058",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 709.6
+    },
+    {
+      "id": "routing/059",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 685.9
+    },
+    {
+      "id": "routing/061",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 696.0
+    },
+    {
+      "id": "routing/062",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 686.1
+    },
+    {
+      "id": "routing/063",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 743.3
+    },
+    {
+      "id": "routing/065",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 828.6
+    },
+    {
+      "id": "routing/067",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 692.1
+    },
+    {
+      "id": "routing/068",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 694.6
+    },
+    {
+      "id": "routing/069",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 729.7
+    },
+    {
+      "id": "routing/071",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 758.8
+    },
+    {
+      "id": "routing/072",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 682.4
+    },
+    {
+      "id": "routing/073",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 647.8
+    },
+    {
+      "id": "routing/075",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 689.8
+    },
+    {
+      "id": "routing/077",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 840.5
+    },
+    {
+      "id": "routing/078",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 681.7
+    },
+    {
+      "id": "routing/079",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 565.4
+    },
+    {
+      "id": "routing/081",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 550.1
+    },
+    {
+      "id": "routing/082",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 580.2
+    },
+    {
+      "id": "routing/083",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 685.4
+    },
+    {
+      "id": "routing/085",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 691.7
+    },
+    {
+      "id": "routing/087",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 705.3
+    },
+    {
+      "id": "routing/088",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 709.8
+    },
+    {
+      "id": "routing/089",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 809.0
+    },
+    {
+      "id": "routing/091",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 736.5
+    },
+    {
+      "id": "routing/092",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 691.8
+    },
+    {
+      "id": "routing/093",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 695.4
+    },
+    {
+      "id": "routing/095",
+      "truth": "technical",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 689.7
+    },
+    {
+      "id": "routing/097",
+      "truth": "sales",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": true,
+      "latency_ms": 693.8
+    },
+    {
+      "id": "routing/098",
+      "truth": "technical",
+      "raw": "technical",
+      "answer": "technical",
+      "correct": true,
+      "latency_ms": 700.9
+    },
+    {
+      "id": "routing/099",
+      "truth": "billing",
+      "raw": "sales",
+      "answer": "sales",
+      "correct": false,
+      "latency_ms": 717.0
+    }
+  ]
+}
