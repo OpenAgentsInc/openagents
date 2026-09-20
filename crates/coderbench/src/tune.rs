@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 
 use gym::gate::{Comparison, Outcome, Scores, Verdict};
 use gym::spread::Spread;
+use serde::{Deserialize, Serialize};
 
-use crate::{Ending, Fault, Judgment, Observed, Task, observe};
+use crate::{Ending, Fault, Judgment, Observed, Task, Workspace, observe};
 
 /// One judged run, reduced to what a series compares.
 #[derive(Clone, Debug)]
@@ -56,12 +57,95 @@ pub fn measure(task: &Task, run: &Observed, trace: &Path) -> Run {
     }
 }
 
+/// What the driver observed around a run that the trace itself cannot say:
+/// how the turn ended and what the workspace looked like afterwards.
+///
+/// A live run writes this beside its trace so that the same run, read back
+/// later as a baseline, is judged as it was judged live. Without it a
+/// recorded run carries `WritesUnobserved` and `EndingUnstated`, and a live
+/// series compared with a recorded one reads as fixing two faults nothing
+/// changed.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sidecar {
+    pub ending: String,
+    /// Paths that differed after the run; absent when nothing compared the
+    /// workspace.
+    pub changed: Option<Vec<String>>,
+}
+
+impl Sidecar {
+    /// The path a sidecar takes beside `trace`.
+    #[must_use]
+    pub fn path(trace: &Path) -> PathBuf {
+        let mut name = trace.file_name().unwrap_or_default().to_os_string();
+        name.push(".observed.json");
+        trace.with_file_name(name)
+    }
+
+    /// What an observed run leaves for its recording.
+    #[must_use]
+    pub fn of(run: &Observed) -> Self {
+        Self {
+            ending: run.ending.word().to_string(),
+            changed: run
+                .workspace
+                .as_ref()
+                .map(|workspace| workspace.changed.clone()),
+        }
+    }
+
+    /// Writes the sidecar beside `trace`.
+    ///
+    /// # Errors
+    ///
+    /// The path or its contents could not be written.
+    pub fn write(&self, trace: &Path) -> Result<(), String> {
+        let path = Self::path(trace);
+        let text = serde_json::to_string_pretty(self).map_err(|why| why.to_string())?;
+        std::fs::write(&path, text).map_err(|why| format!("{}: {why}", path.display()))
+    }
+
+    /// Reads the sidecar beside `trace`, if one is there.
+    ///
+    /// # Errors
+    ///
+    /// A sidecar is present and does not read as one.
+    pub fn read(trace: &Path) -> Result<Option<Self>, String> {
+        let path = Self::path(trace);
+        match std::fs::read_to_string(&path) {
+            Ok(text) => serde_json::from_str(&text)
+                .map(Some)
+                .map_err(|why| format!("{}: {why}", path.display())),
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(why) => Err(format!("{}: {why}", path.display())),
+        }
+    }
+
+    /// Applies what the driver observed to a run read from its trace.
+    pub fn apply(&self, run: &mut Observed) {
+        run.ending = match self.ending.as_str() {
+            "answered" => Ending::Answered,
+            "declined" => Ending::Declined,
+            "failed" => Ending::Failed,
+            "timed_out" => Ending::TimedOut,
+            "closed" => Ending::Closed,
+            "unobserved" => Ending::Unobserved,
+            other => Ending::Other(other.to_string()),
+        };
+        run.workspace = self.changed.clone().map(|changed| Workspace { changed });
+    }
+}
+
 /// Reads and measures one recorded trace.
 ///
-/// Ending and workspace stay as the trace leaves them, which is what a
-/// recorded trace can say.
+/// Ending and workspace come from the sidecar a live run wrote beside the
+/// trace. Without one they stay as the trace leaves them, which is what a
+/// trace can say on its own.
 pub fn measure_trace(task: &Task, trace: &Path) -> Result<Run, String> {
-    let observed = observe(trace)?;
+    let mut observed = observe(trace)?;
+    if let Some(sidecar) = Sidecar::read(trace)? {
+        sidecar.apply(&mut observed);
+    }
     Ok(measure(task, &observed, trace))
 }
 

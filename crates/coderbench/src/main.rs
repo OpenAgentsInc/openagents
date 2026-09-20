@@ -358,6 +358,7 @@ fn episode(
         }
         Err(reason) => Some(reason),
     };
+    tune::Sidecar::of(&run).write(&ran.trace)?;
     Ok((run, ran, workspace_error))
 }
 

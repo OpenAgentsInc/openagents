@@ -636,7 +636,16 @@ fn tune_refuses_before_a_required_capability_run() {
     );
     let task_arg = task.display().to_string();
     let out_arg = directory.path().join("trials").display().to_string();
-    let output = coderbench(&["tune", &task_arg, "--runs", "2", "--out", &out_arg]);
+    // With no approval on record the probe is `unprobed`, whatever the host
+    // has installed.
+    let output = Command::new(env!("CARGO_BIN_EXE_coderbench"))
+        .args(["tune", &task_arg, "--runs", "2", "--out", &out_arg])
+        .env(
+            capability::STORE_ENV,
+            directory.path().join("no-approvals.json"),
+        )
+        .output()
+        .expect("the binary runs");
     let report = said(&output);
     assert_eq!(output.status.code(), Some(2), "{report}");
     assert!(report.contains("Refused before starting Coder"), "{report}");

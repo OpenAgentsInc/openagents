@@ -4,7 +4,9 @@ mod common;
 
 use std::path::Path;
 
-use coderbench::tune::{FaultRate, Persistence, Series, Shift, measure, traces_in};
+use coderbench::tune::{
+    FaultRate, Persistence, Series, Shift, Sidecar, measure, measure_trace, traces_in,
+};
 use coderbench::{Ending, Workspace, observe};
 use serde_json::Value;
 
@@ -267,4 +269,40 @@ fn it_should_find_sorted_traces_and_reject_an_empty_directory() {
     );
     let empty = tempfile::tempdir().unwrap();
     assert!(traces_in(empty.path()).is_err());
+}
+
+#[test]
+fn it_should_read_a_recorded_run_back_as_it_was_judged_live() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("live.atif.jsonl");
+    std::fs::write(&path, authored_text()).unwrap();
+
+    let bare = measure_trace(&task(), &path).unwrap();
+    assert_eq!(bare.ending, Ending::Closed);
+    assert!(
+        bare.signatures
+            .iter()
+            .any(|fault| fault.contains("nothing compared the workspace")),
+        "{:?}",
+        bare.signatures
+    );
+    assert_ne!(bare.judgment.verdict, coderbench::Verdict::Passed);
+
+    let mut observed = observe(&path).unwrap();
+    observed.ending = Ending::Answered;
+    observed.workspace = Some(Workspace::default());
+    let sidecar = Sidecar::of(&observed);
+    assert_eq!(sidecar.ending, "answered");
+    assert_eq!(sidecar.changed, Some(Vec::new()));
+    sidecar.write(&path).unwrap();
+    assert!(Sidecar::path(&path).ends_with("live.atif.jsonl.observed.json"));
+
+    let recorded = measure_trace(&task(), &path).unwrap();
+    assert_eq!(recorded.ending, Ending::Answered);
+    assert_eq!(recorded.signatures, Vec::<String>::new());
+    assert_eq!(recorded.judgment.verdict, coderbench::Verdict::Passed);
+    assert_eq!(traces_in(directory.path()).unwrap(), vec![path.clone()]);
+
+    std::fs::write(Sidecar::path(&path), "not json").unwrap();
+    assert!(measure_trace(&task(), &path).is_err());
 }
