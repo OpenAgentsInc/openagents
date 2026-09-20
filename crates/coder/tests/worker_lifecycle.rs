@@ -300,7 +300,7 @@ async fn a_request_delivered_twice_is_answered_once() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn check_refuses_an_open_worker_on_a_shared_relay() {
     bounded(async {
-        let customer = format!("{}", identity(CLIENT).pubkey());
+        let customer = identity(CLIENT).pubkey().to_string();
         for (url, allow, status) in [
             ("ws://127.0.0.1:9", None, 0),
             ("wss://relay.example.invalid", None, 78),
