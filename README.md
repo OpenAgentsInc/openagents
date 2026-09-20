@@ -34,6 +34,16 @@ And a **repo context** layer rides every turn: a bounded card of the
 workspace (members, docs, top level) plus a `git grep` sniff of the
 draft's own terms, so project questions land on project knowledge.
 
+An **about this application** block rides alongside it: Coder's version,
+the executable, the working directory it was launched from and keeps, the
+workspace repository or the fact that there is none, and what the terminal
+shows — the bottom-right rail is `input/output` generation tokens for the
+latest completed turn, not a session total, and classifier calls are not
+in it. Questions about Coder itself are answered from that block without
+searching the workspace, which on an installed machine is the user's
+project and not Coder's source; the block says when the source is
+unavailable.
+
 ## Why Nostr
 
 Coder's backend is a relay, not a service.

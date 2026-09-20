@@ -14,6 +14,7 @@ use atif::Decision;
 use jev::SystemOneRequest;
 use serde_json::Value;
 
+use crate::about::About;
 use crate::classify::{
     Judgment, Route, ShellRoute, judgment_of, questions, route, shell_questions, shell_verdict_of,
     state_of,
@@ -41,7 +42,10 @@ pub const INSTRUCTIONS: &str = "You are Coder, an assistant that lives in a term
     change. After they run you receive their output; then plan again or \
     answer. The REPO CONTEXT block describes the repository the user is \
     working in: answer project questions from it and name real paths, and \
-    if the context does not cover the question, say so rather than guessing.";
+    if the context does not cover the question, say so rather than guessing. \
+    The ABOUT THIS APPLICATION block describes Coder itself, the program you \
+    are running as: answer questions about Coder, its terminal, or its \
+    working directory from that block rather than from the repository.";
 
 /// The instructions for the turn's last word: the loop is done, prose only.
 const FINAL_SUFFIX: &str = " The command loop is finished — do not emit a \
@@ -146,6 +150,8 @@ pub struct Agent {
     transcript: Vec<Message>,
     /// The repo the shell sits in, when it sits in one.
     repo: Option<Repo>,
+    /// What the running application knows about itself and where it ran.
+    about: About,
     /// The draft the current turn is classifying, kept until the reply
     /// lands.
     task: String,
@@ -196,7 +202,9 @@ impl Agent {
     /// does.
     fn opening(path: Option<&Path>) -> Result<Self, String> {
         let generate = Door::from_env()?;
-        let repo = Repo::discover(&env::current_dir().unwrap_or_default());
+        let working_directory = env::current_dir().unwrap_or_default();
+        let repo = Repo::discover(&working_directory);
+        let about = About::observe(&working_directory, repo.as_ref().map(|repo| repo.root()));
         let where_it_ran = repo
             .as_ref()
             .map(|repo| repo.root().display().to_string())
@@ -216,6 +224,7 @@ impl Agent {
             generate,
             transcript: Vec::new(),
             repo,
+            about,
             task: String::new(),
             trace,
             trace_error,
@@ -230,6 +239,7 @@ impl Agent {
             generate,
             transcript: Vec::new(),
             repo: None,
+            about: About::observe(&env::current_dir().unwrap_or_default(), None),
             task: String::new(),
             trace: None,
             trace_error: None,
@@ -239,8 +249,28 @@ impl Agent {
 
     /// The repo the shell sits in, for the prompt's context block.
     pub fn with_repo(mut self, repo: Option<Repo>) -> Self {
+        self.about.repository = repo.as_ref().map(|repo| repo.root().to_path_buf());
         self.repo = repo;
         self
+    }
+
+    /// What the application knows about itself: where it ran, and what
+    /// its terminal shows.
+    #[must_use]
+    pub fn about(&self) -> &About {
+        &self.about
+    }
+
+    /// The application block and the repo context block for one
+    /// generation, in that order.
+    #[must_use]
+    pub fn context(&self) -> String {
+        let mut context = self.about.context();
+        if let Some(repo) = &self.repo {
+            context.push_str("\n\n");
+            context.push_str(&repo.context_for(&self.task));
+        }
+        context
     }
 
     /// The recorder this session writes to, for tests and for a caller that
@@ -677,10 +707,8 @@ impl Agent {
         if final_only {
             instructions.push_str(FINAL_SUFFIX);
         }
-        if let Some(repo) = &self.repo {
-            instructions.push_str("\n\n");
-            instructions.push_str(&repo.context_for(&self.task));
-        }
+        instructions.push_str("\n\n");
+        instructions.push_str(&self.context());
         instructions
     }
 
@@ -1070,6 +1098,55 @@ mod tests {
             turned.text
         );
         assert_eq!(agent.transcript().len(), 2, "a repair was asked for");
+    }
+
+    /// The prompt carries both blocks: the application's, always, and
+    /// the repository's when there is one. An agent in an unrelated
+    /// repository with a decoy terminal directory still names its real
+    /// working directory and says Coder's source is not there, while the
+    /// repo context still describes that repository for project questions.
+    #[test]
+    fn the_instructions_tell_the_application_from_the_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("crates/coder-terminal/src")).unwrap();
+        std::fs::write(
+            dir.path().join("crates/coder-terminal/src/rail.rs"),
+            "// decoy\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("README.md"), "# decoy project\n").unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .output()
+                .unwrap()
+        };
+        git(&["init", "-q"]);
+        let outside = saying("hi".to_string());
+        let none = outside.instructions(false, false);
+        assert!(none.contains("about this application:"), "{none}");
+        assert!(none.contains("not available on this machine"), "{none}");
+
+        let repo = Repo::discover(dir.path());
+        assert!(repo.is_some(), "the decoy is a repository");
+        let inside = saying("hi".to_string()).with_repo(repo);
+        let both = inside.instructions(false, false);
+        assert!(
+            both.contains(&format!("workspace repository: {}", dir.path().display()))
+                || both.contains(&format!(
+                    "workspace repository: {}",
+                    dir.path().canonicalize().unwrap().display()
+                )),
+            "{both}"
+        );
+        assert!(both.contains("not available on this machine"), "{both}");
+        assert!(both.contains("repo context:"), "{both}");
+        assert!(
+            both.find("about this application:") < both.find("repo context:"),
+            "the application block comes first"
+        );
+        assert!(!inside.about().in_own_source());
     }
 
     #[tokio::test]

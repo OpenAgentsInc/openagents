@@ -38,6 +38,7 @@
 //! - [`runtime`] runs a program's steps from the program: the bounds it
 //!   can enforce, the ones it refuses, and the trace of what happened.
 
+pub mod about;
 pub mod agent;
 pub mod capability;
 pub mod classify;
@@ -57,6 +58,7 @@ pub mod turn;
 mod worktree;
 
 pub use crate::capability::{Found, Manifest, Presence};
+pub use about::About;
 pub use agent::{Agent, Classified, Ending, Exhausted, REPAIRS_MAX, Turned, Verdict};
 pub use classify::{Action, Judgment, Route, route, state_of};
 pub use delegate::{
