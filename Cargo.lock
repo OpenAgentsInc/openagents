@@ -444,6 +444,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-boundary"
+version = "0.1.0"
+dependencies = [
+ "errno",
+ "libc",
+ "serde",
+ "sha2 0.10.9",
+ "supervise",
+ "tempfile",
+]
+
+[[package]]
 name = "coder-terminal"
 version = "0.1.0"
 dependencies = [

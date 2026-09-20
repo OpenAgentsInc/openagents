@@ -1,0 +1,28 @@
+[package]
+name = "coder-boundary"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "A filesystem write boundary around one command, and the snapshots that check what a run left behind."
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+tempfile = "3"
+
+# The snapshot walk is descriptor-relative — openat, fstatat,
+# readlinkat, fdopendir — because that is the only traversal that never
+# follows a swapped-in link. The same version `supervise` already pins.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+errno = "0.3"
+
+# The supervised tests spawn the wrapped command through the supervisor's
+# blocking half, which exists only on Unix. The boundary's validation and
+# refusal tests need no supervisor and run on every platform.
+[target.'cfg(unix)'.dev-dependencies]
+supervise = { path = "../supervise", default-features = false }
+
+[lints]
+workspace = true
