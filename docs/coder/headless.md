@@ -171,12 +171,14 @@ put the plan's JSON in the middle of the answer.
 | --- | --- |
 | `0` | The turn finished and the agent answered. |
 | `1` | The turn did not finish. The door failed, or a named trace could not be opened. |
-| `2` | The turn finished and declined it — Classify halted, or a program the turn ran stopped at a step that refused. Either way the answer is that there is no confident next step. |
+| `2` | The turn finished without answering. `outcome` says how: `declined` — Classify halted, or a program the turn ran stopped at a step that refused; `refused` — the model's last word was a command plan the host did not run, and `reply` is the host's account of why and of what did run. Either way there is no confident next step. |
 | `64` | The command line was wrong. |
 
 Declining is not failing. A turn that ran correctly and concluded it has no
 next step is a result, and a harness that could not tell it from a dead
-door would score the two the same.
+door would score the two the same. A refused plan shares the exit code
+because it is the same kind of result: the host ran the turn to its bound
+and has no answer it can stand behind. `outcome` tells the two apart.
 
 ## The trace
 

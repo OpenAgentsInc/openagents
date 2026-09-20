@@ -36,7 +36,7 @@ async fn a_conversation_records_itself_as_it_runs() {
     // so rather than leaving a hole where the judgment would be.
     let skipped = agent.classify().await;
     assert!(matches!(skipped, coder::Classified::Skipped(_)));
-    let (answer, _) = agent
+    let coder::Turned { text: answer, .. } = agent
         .turn(
             false,
             Permit::executing(),

@@ -345,6 +345,45 @@ impl Reply {
     }
 }
 
+/// The reply the user reads when the model's last word was a plan the host
+/// would not run: that nothing in it ran, why, and what the turn did
+/// observe before that, so a fact the commands already established is not
+/// lost behind the refusal.
+///
+/// `why` is the host's refusal, `exhausted` the sentence for a loop that
+/// stopped before the model answered, and `ran` every command the turn
+/// did run, in order.
+#[must_use]
+pub fn refusal_text(why: &str, exhausted: Option<String>, ran: &[Outcome]) -> String {
+    let mut text = format!("I proposed more commands and none of them ran: {why}.");
+    if let Some(exhausted) = exhausted {
+        text.push_str(&format!(" Before that, {exhausted}."));
+    }
+    if ran.is_empty() {
+        text.push_str(" No command ran on this turn, so I have no answer to give beyond that.");
+        return text;
+    }
+    text.push_str(&format!(
+        " This is what the {} that ran showed; the question is not fully answered.\n",
+        match ran.len() {
+            1 => "one command".to_string(),
+            count => format!("{count} commands"),
+        }
+    ));
+    for outcome in ran {
+        text.push_str(&format!(
+            "\n$ {}\n{}\n",
+            outcome.proposal.command, outcome.status
+        ));
+        let head = outcome.head(HEAD_MAX).trim_end();
+        if !head.is_empty() {
+            text.push_str(head);
+            text.push('\n');
+        }
+    }
+    text
+}
+
 /// The transcript record of a finished round: what ran, how it ended,
 /// and the bounded output the model reads next.
 pub fn transcript_of(outcomes: &[Outcome]) -> String {

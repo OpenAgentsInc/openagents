@@ -777,17 +777,40 @@ impl Generate for ResponsesDoor {
 
 /// A door that is not there: it answers with a fixed line. The shell and
 /// the tests use it so neither needs credentials.
+///
+/// A test that needs a conversation rather than one line gives the stub a
+/// script: [`StubGenerate::scripted`] plays each line once, in order, and
+/// then says `line` for every generation after that.
 pub struct StubGenerate {
-    /// What the stub says.
+    /// What the stub says once the script, if any, is spent.
     pub line: String,
+    /// Lines still to play before `line`, front first.
+    script: std::sync::Mutex<std::collections::VecDeque<String>>,
+}
+
+impl StubGenerate {
+    /// A stub that says `line`, every time.
+    #[must_use]
+    pub fn saying(line: impl Into<String>) -> Self {
+        Self {
+            line: line.into(),
+            script: std::sync::Mutex::default(),
+        }
+    }
+
+    /// A stub that plays `script` once and then says `line`.
+    #[must_use]
+    pub fn scripted(script: Vec<String>, line: impl Into<String>) -> Self {
+        Self {
+            line: line.into(),
+            script: std::sync::Mutex::new(script.into()),
+        }
+    }
 }
 
 impl Default for StubGenerate {
     fn default() -> Self {
-        Self {
-            line: "(stub door: set CODER_DOOR_KEY or CODER_AI_GATEWAY_KEY for a real answer)"
-                .to_string(),
-        }
+        Self::saying("(stub door: set CODER_DOOR_KEY or CODER_AI_GATEWAY_KEY for a real answer)")
     }
 }
 
@@ -799,8 +822,14 @@ impl Generate for StubGenerate {
         sink: &'a mut (dyn FnMut(&str) + Send),
         _meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
-        sink(&self.line);
-        Ok((self.line.clone(), None))
+        let line = self
+            .script
+            .lock()
+            .ok()
+            .and_then(|mut script| script.pop_front())
+            .unwrap_or_else(|| self.line.clone());
+        sink(&line);
+        Ok((line, None))
     }
 }
 

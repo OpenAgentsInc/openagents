@@ -84,7 +84,7 @@ pub async fn print(options: Print) -> u8 {
         Ok(finished) => {
             let code = match finished.completion {
                 Completion::Answered => EXIT_OK,
-                Completion::Declined => EXIT_DECLINED,
+                Completion::Declined | Completion::Refused => EXIT_DECLINED,
             };
             if options.json {
                 let usage = finished.usage.map(|usage| {

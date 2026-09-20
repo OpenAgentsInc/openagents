@@ -52,6 +52,72 @@ const FINAL_SUFFIX: &str = " The command loop is finished — do not emit a \
 const CLARIFY_SUFFIX: &str = " The router marked this turn ambiguous: ask \
     one short clarifying question and nothing else.";
 
+/// The message the model reads after it answered a finished loop with
+/// another plan: the one repair a turn allows before the host answers for
+/// it.
+const REPAIR: &str = "That reply was a command plan and none of it ran: the \
+    command loop is finished. Answer in plain prose now, from the command \
+    output above. State what you observed, and name what you could not \
+    establish rather than proposing more commands.";
+
+/// How many times a turn asks the model to repair a plan into prose after
+/// the loop is finished. Past this the host writes the answer itself.
+pub const REPAIRS_MAX: usize = 1;
+
+/// How a turn ended, apart from what it said.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ending {
+    /// The model answered in prose.
+    Answered,
+    /// The model's last word was a plan the host would not run. The text
+    /// the user reads is the host's refusal, not the plan; `why` is the
+    /// host's reason and `proposal` the plan as the model wrote it.
+    Refused {
+        /// Why nothing in the plan ran.
+        why: String,
+        /// The reply the model wrote, kept for the record.
+        proposal: String,
+    },
+}
+
+/// Why a turn stopped running commands before the model answered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Exhausted {
+    /// The turn ran every round its permit allowed.
+    Rounds(usize),
+    /// The judge read the last round and said to stop.
+    Stopped,
+}
+
+impl Exhausted {
+    /// The sentence the trace and the user read.
+    #[must_use]
+    pub fn sentence(self) -> String {
+        match self {
+            Exhausted::Rounds(rounds) => {
+                format!("the command loop ran its {rounds} permitted rounds")
+            }
+            Exhausted::Stopped => "the judge stopped the command loop".to_string(),
+        }
+    }
+}
+
+/// What one whole turn produced.
+#[derive(Clone, Debug)]
+pub struct Turned {
+    /// What the user reads.
+    pub text: String,
+    /// What the turn cost across every generation, when the door says.
+    pub usage: Option<Usage>,
+    /// How the turn ended.
+    pub ending: Ending,
+    /// Why the loop stopped before the model answered, when it did. A turn
+    /// whose model answered in prose on its own is `None` here.
+    pub exhausted: Option<Exhausted>,
+    /// How many commands ran on this turn, in all.
+    pub commands: usize,
+}
+
 /// The read Classify made and where it sent the turn, for the transcript's
 /// inline display.
 #[derive(Clone, Debug)]
@@ -466,9 +532,12 @@ impl Agent {
         sink: &mut (dyn FnMut(&str) + Send),
         meta: &mut (dyn FnMut(Meta) + Send),
         shell: &mut (dyn FnMut(ShellEvent) + Send),
-    ) -> Result<(String, Option<Usage>), GenerateError> {
+    ) -> Result<Turned, GenerateError> {
         let mut total: Option<Usage> = None;
         let mut rounds = 0usize;
+        let mut repairs = 0usize;
+        let mut exhausted: Option<Exhausted> = None;
+        let mut ran: Vec<Outcome> = Vec::new();
         let mut permit = match clarify {
             true => permit.withdrawn(),
             false => permit,
@@ -506,22 +575,55 @@ impl Agent {
                 entry.output_tokens += usage.output_tokens;
             }
             // What the reply is, is the host's read of it under this
-            // turn's permit. A reply that asked for commands the host
-            // will not run ends the turn as the answer it also is, and
-            // the trace says why nothing ran.
+            // turn's permit. Prose is the answer. A plan the host will not
+            // run is refused: the trace keeps the plan and the reason, the
+            // model gets one chance to answer in prose when the loop had
+            // run, and past that the host answers with what was observed.
             let plan = match Reply::read(&text, permit) {
                 Reply::Plan(plan) => plan,
-                reply => {
-                    if let Reply::Refused { why, .. } = &reply
-                        && let Some(trace) = &mut self.trace
-                    {
+                Reply::Answer(text) => {
+                    self.transcript.push(Message {
+                        role: Role::Assistant,
+                        text: text.clone(),
+                    });
+                    return Ok(Turned {
+                        text,
+                        usage: total,
+                        ending: Ending::Answered,
+                        exhausted,
+                        commands: ran.len(),
+                    });
+                }
+                Reply::Refused { text, why } => {
+                    if let Some(trace) = &mut self.trace {
                         trace.note(&format!("the host ran none of this reply: {why}"));
                     }
                     self.transcript.push(Message {
                         role: Role::Assistant,
                         text: text.clone(),
                     });
-                    return Ok((text, total));
+                    if exhausted.is_some() && repairs < REPAIRS_MAX {
+                        repairs += 1;
+                        self.transcript.push(Message {
+                            role: Role::User,
+                            text: REPAIR.to_string(),
+                        });
+                        continue;
+                    }
+                    let shown = shell::refusal_text(&why, exhausted.map(Exhausted::sentence), &ran);
+                    if let Some(trace) = &mut self.trace {
+                        trace.answer(&shown, None, 0, None);
+                    }
+                    return Ok(Turned {
+                        text: shown,
+                        usage: total,
+                        ending: Ending::Refused {
+                            why,
+                            proposal: text,
+                        },
+                        exhausted,
+                        commands: ran.len(),
+                    });
                 }
             };
             rounds += 1;
@@ -544,7 +646,21 @@ impl Agent {
                 role: Role::User,
                 text: shell::transcript_of(&outcomes),
             });
-            if route == ShellRoute::Stop || rounds >= permit.rounds() {
+            ran.extend(outcomes);
+            let spent = match (route, rounds >= permit.rounds()) {
+                (ShellRoute::Stop, _) => Some(Exhausted::Stopped),
+                (_, true) => Some(Exhausted::Rounds(rounds)),
+                _ => None,
+            };
+            if let Some(spent) = spent {
+                if let Some(trace) = &mut self.trace {
+                    trace.note(&format!(
+                        "execution withdrawn: {}; {} commands ran",
+                        spent.sentence(),
+                        ran.len()
+                    ));
+                }
+                exhausted = Some(spent);
                 permit = permit.withdrawn();
             }
         }
@@ -662,7 +778,26 @@ mod tests {
 
     /// An agent whose door answers with `line`, every time.
     fn saying(line: String) -> Agent {
-        Agent::new(None, Door::Stub(StubGenerate { line }))
+        Agent::new(None, Door::Stub(StubGenerate::saying(line)))
+    }
+
+    /// An agent whose door plays `script` once and then says `line`.
+    fn scripted(script: Vec<String>, line: &str) -> Agent {
+        Agent::new(None, Door::Stub(StubGenerate::scripted(script, line)))
+    }
+
+    /// A read-only plan of `count` commands, none of which change anything.
+    fn plan_reading(count: usize) -> String {
+        serde_json::json!({
+            "v": 1,
+            "commands": (0..count)
+                .map(|index| serde_json::json!({
+                    "command": format!("printf 'observed {index}'"),
+                    "why": "look",
+                }))
+                .collect::<Vec<_>>(),
+        })
+        .to_string()
     }
 
     /// A plan that writes `marker`, which is how a test tells whether
@@ -689,7 +824,7 @@ mod tests {
         let plan = plan_writing(&marker);
         let mut agent = saying(plan.clone());
         agent.push_user("Ask a clarifying question");
-        let (reply, _) = agent
+        let turned = agent
             .turn(
                 true,
                 Permit::executing(),
@@ -700,7 +835,18 @@ mod tests {
             .await
             .unwrap();
         assert!(!marker.exists(), "a clarifying turn ran a command");
-        assert_eq!(reply, plan, "the reply is the answer it also was");
+        assert!(
+            matches!(&turned.ending, Ending::Refused { proposal, .. } if *proposal == plan),
+            "{:?}",
+            turned.ending
+        );
+        assert!(
+            turned.text.contains("none of them ran") && !turned.text.contains("\"commands\""),
+            "the user reads a refusal, not the plan: {}",
+            turned.text
+        );
+        assert_eq!(turned.commands, 0);
+        assert_eq!(turned.exhausted, None);
     }
 
     /// The operator's permit is the host's, so a turn that carries no
@@ -737,7 +883,7 @@ mod tests {
         );
         let mut agent = saying(example.clone());
         agent.push_user("what does a plan look like");
-        let (reply, _) = agent
+        let Turned { text: reply, .. } = agent
             .turn(
                 false,
                 Permit::executing(),
@@ -777,6 +923,153 @@ mod tests {
             .unwrap();
         assert!(marker.exists(), "a permitted plan did not run");
         assert_eq!(ran, Permit::executing().rounds());
+    }
+
+    /// The audit's exhaustion case: three valid rounds, then the model
+    /// answers the finished loop with a fourth plan, and again when asked
+    /// to repair it. Exactly nine commands ran, the fourth plan did not,
+    /// the turn ended as a refusal rather than as the plan's JSON, and what
+    /// the nine commands observed is in the reply.
+    #[tokio::test]
+    async fn an_exhausted_loop_ends_as_a_refusal_with_what_it_saw() {
+        let rounds = Permit::executing().rounds();
+        let mut agent = scripted(vec![plan_reading(3); rounds], &plan_reading(2));
+        agent.push_user("what does the bottom-right rail mean");
+        let mut proposed = 0usize;
+        let mut ran = 0usize;
+        let turned = agent
+            .turn(
+                false,
+                Permit::executing(),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |event| match event {
+                    ShellEvent::Proposed(_) => proposed += 1,
+                    ShellEvent::Ran(_) => ran += 1,
+                    ShellEvent::Verdict(_) => {}
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(proposed, 3 * rounds);
+        assert_eq!(ran, 3 * rounds, "the fourth plan ran");
+        assert_eq!(turned.commands, 3 * rounds);
+        assert_eq!(turned.exhausted, Some(Exhausted::Rounds(rounds)));
+        assert!(
+            matches!(&turned.ending, Ending::Refused { proposal, .. } if *proposal == plan_reading(2)),
+            "{:?}",
+            turned.ending
+        );
+        assert!(turned.text.contains("none of them ran"), "{}", turned.text);
+        assert!(turned.text.contains("permitted rounds"), "{}", turned.text);
+        assert!(
+            turned.text.contains("observed 0") && turned.text.contains("exit 0"),
+            "what ran is not in the reply: {}",
+            turned.text
+        );
+        assert!(
+            !turned.text.contains("\"commands\""),
+            "the reply is the plan's JSON: {}",
+            turned.text
+        );
+        // Three plans, one refused plan, one repair asked and refused: the
+        // model heard the repair request once and no more.
+        let repairs = agent
+            .transcript()
+            .iter()
+            .filter(|message| message.role == Role::User && message.text == REPAIR)
+            .count();
+        assert_eq!(repairs, REPAIRS_MAX);
+    }
+
+    /// A model that takes the repair answers: the fourth plan is refused,
+    /// the repair request lands, and the prose it produces is the answer.
+    #[tokio::test]
+    async fn a_repaired_exhaustion_answers_in_prose() {
+        let rounds = Permit::executing().rounds();
+        let mut script = vec![plan_reading(1); rounds];
+        script.push(plan_reading(1));
+        let mut agent = scripted(script, "The rail shows tokens for the last turn.");
+        agent.push_user("what does the rail mean");
+        let mut ran = 0usize;
+        let turned = agent
+            .turn(
+                false,
+                Permit::executing(),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |event| {
+                    if matches!(event, ShellEvent::Ran(_)) {
+                        ran += 1;
+                    }
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(ran, rounds);
+        assert_eq!(turned.ending, Ending::Answered);
+        assert_eq!(turned.exhausted, Some(Exhausted::Rounds(rounds)));
+        assert_eq!(turned.text, "The rail shows tokens for the last turn.");
+    }
+
+    /// A model that answers in prose after the rounds are spent needs no
+    /// repair, and the turn says the loop was exhausted all the same.
+    #[tokio::test]
+    async fn prose_after_exhaustion_is_the_answer() {
+        let rounds = Permit::executing().rounds();
+        let mut agent = scripted(vec![plan_reading(1); rounds], "nine crates.");
+        agent.push_user("count the crates");
+        let turned = agent
+            .turn(
+                false,
+                Permit::executing(),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |_| {},
+            )
+            .await
+            .unwrap();
+        assert_eq!(turned.ending, Ending::Answered);
+        assert_eq!(turned.text, "nine crates.");
+        assert_eq!(turned.exhausted, Some(Exhausted::Rounds(rounds)));
+        assert_eq!(turned.commands, rounds);
+    }
+
+    /// A plan the host cannot read on a permitted turn is refused before
+    /// anything runs, with no repair: the loop never started.
+    #[tokio::test]
+    async fn an_unsupported_plan_is_refused_without_a_repair() {
+        let plan = r#"{"v":2,"commands":[{"command":"ls","why":"look"}]}"#;
+        let mut agent = saying(plan.to_string());
+        agent.push_user("list the files");
+        let mut proposed = 0usize;
+        let turned = agent
+            .turn(
+                false,
+                Permit::executing(),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |event| {
+                    if matches!(event, ShellEvent::Proposed(_)) {
+                        proposed += 1;
+                    }
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(proposed, 0);
+        assert!(
+            matches!(turned.ending, Ending::Refused { .. }),
+            "{:?}",
+            turned.ending
+        );
+        assert_eq!(turned.exhausted, None);
+        assert!(
+            turned.text.contains("No command ran on this turn"),
+            "{}",
+            turned.text
+        );
+        assert_eq!(agent.transcript().len(), 2, "a repair was asked for");
     }
 
     #[tokio::test]

@@ -240,6 +240,12 @@ fn unique_name() -> String {
 mod tests {
     use super::*;
 
+    /// How long a test waits for a dropped lock to come free. A sibling
+    /// test that is between fork and exec holds a copy of every open
+    /// descriptor for that moment, and a `flock` lasts until the last
+    /// copy closes.
+    const RELEASE_WAIT: Duration = Duration::from_secs(5);
+
     async fn repository() -> tempfile::TempDir {
         let directory = tempfile::tempdir().unwrap();
         for args in [
@@ -338,7 +344,7 @@ mod tests {
         let error = acquire(&path, Duration::from_millis(30)).unwrap_err();
         assert!(error.contains("timed out"), "{error}");
         drop(held);
-        let _next = acquire(&path, Duration::ZERO).unwrap();
+        let _next = acquire(&path, RELEASE_WAIT).unwrap();
     }
 
     #[test]
@@ -357,7 +363,7 @@ mod tests {
             .unwrap();
         assert!(status.success());
         drop(held);
-        let _next = acquire(&path, Duration::ZERO).unwrap();
+        let _next = acquire(&path, RELEASE_WAIT).unwrap();
     }
 
     #[test]

@@ -49,8 +49,11 @@ and nothing else:
   eleventh command: a truncated plan is a plan nobody wrote.
 - Anything that does not ask for commands is prose: the reply is the
   answer, the turn ends.
-- A refused plan is also the answer. The user reads what the model wrote,
-  and the trace records why none of it ran.
+- A refused plan is not the answer. The user reads a sentence from the
+  host saying that none of the proposed commands ran and why, followed by
+  what any earlier rounds did observe; the plan's JSON is never rendered
+  as the reply. The trace keeps the proposal and the host's reason, and
+  the turn ends `refused` rather than `answered`.
 - The instructions forbid decorating a plan with prose and forbid an
   empty plan — "no commands needed" is expressed by answering in text.
 
@@ -131,6 +134,22 @@ safest informative route, since the model still decides what the output
 means. The round cap (3) and the final-only suffix bound the loop even
 if every judgment says `pass`.
 
+## Exhaustion
+
+The loop stops for one of two reasons, and the turn says which: the judge
+said `stop`, or the permit's rounds are spent. Either way execution is
+withdrawn for the rest of the turn, the model reads the final-only
+suffix, and its next reply is expected to be prose. If it is prose, that
+is the answer, and the turn carries the exhaustion as metadata for the
+trace. If it is another plan, nothing in it runs. The host asks once, in
+a message the model reads, for prose from the output it already has
+(`REPAIRS_MAX` is 1, bounded separately from the rounds). Prose then is
+the answer. A second plan ends the turn as a refusal: the host writes the
+reply itself, naming why the plan did not run, why the loop stopped, and
+each command that did run with its status and a bounded slice of its
+output, so what was observed is not lost with the model's answer. The
+round cap is not raised and the budget is not reset for the repair.
+
 ## The turn, whole
 
 ```
@@ -141,11 +160,13 @@ draft
   → loop:
       generate (instructions + repo card + sniff)
         ├─ prose    → done: answer streams to the user
-        ├─ refused  → done: the reply is the answer, the trace says why
+        ├─ refused  → done: the host's sentence is the reply, the trace says why
         └─ plan     → run commands (permitted, bounded, deny-listed)
                     → judge the round                    ← Jev, round level
                     → outcomes fold into the transcript
-      (a spent permit forces prose: "answer with what you have")
+      (a spent permit forces prose: "answer with what you have";
+       one repair request if a plan comes back; a second plan is refused
+       and the host answers with what ran)
 ```
 
 The transcript records plans as assistant turns and outcomes as a user
@@ -185,12 +206,15 @@ already carry everything the terminal needs to draw.
 
 - Reply asks for commands the host cannot read — an unsupported version,
   an entry missing its text or its reason, an eleventh command → nothing
-  runs, the reply is the answer, and the trace records the sentence.
+  runs, the user reads the host's refusal rather than the JSON, and the
+  trace records the proposal and the sentence.
 - Command fails to spawn → `failed: <io error>`, judged like an exit.
 - Timeout → `timed out`, output empty; the judge usually retries once
   or passes.
 - Every proposal denied → the round is all refusals; the judge sees the
   reasons and typically stops or the model rephrases.
 - Jev unreachable mid-loop → `pass`; the model decides from raw output.
-- Model emits plans past the cap → final-only suffix forces prose; the
-  turn still ends with an answer, never a hang.
+- Model emits plans past the cap → final-only suffix asks for prose, one
+  repair message asks again, and a plan after that is refused with the
+  host's own account of what ran; the turn ends bounded, never a hang
+  and never with a plan on screen.

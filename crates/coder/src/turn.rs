@@ -37,7 +37,7 @@
 
 use std::sync::Mutex;
 
-use crate::agent::{Agent, Classified};
+use crate::agent::{Agent, Classified, Ending};
 use crate::classify::Route;
 use crate::generate::{Meta, Usage};
 use crate::permit::Permit;
@@ -69,6 +69,13 @@ pub enum Completion {
     /// answer is that there is no confident next step — which a caller
     /// should be able to tell from both an answer and a failure.
     Declined,
+    /// The model's last word was a command plan the host would not run.
+    /// The turn ran, the boundary held, and the reply is the host's
+    /// account of what did not run and what was observed — not an answer
+    /// to the request. Reported like `Declined` at the exit code and apart
+    /// from it by word, because a harness that saw only the code would
+    /// file a blocked action as a router decision.
+    Refused,
 }
 
 impl Completion {
@@ -78,6 +85,7 @@ impl Completion {
         match self {
             Completion::Answered => "answered",
             Completion::Declined => "declined",
+            Completion::Refused => "refused",
         }
     }
 }
@@ -182,7 +190,7 @@ pub async fn run(
         Classified::Skipped(_) => Route::Respond,
     };
     let canned = matches!(route, Route::End | Route::Halt(_));
-    let completion = if matches!(route, Route::Halt(_)) {
+    let mut completion = if matches!(route, Route::Halt(_)) {
         Completion::Declined
     } else {
         Completion::Answered
@@ -220,6 +228,12 @@ pub async fn run(
                     },
                 )
                 .await
+                .map(|turned| {
+                    if let Ending::Refused { .. } = turned.ending {
+                        completion = Completion::Refused;
+                    }
+                    (turned.text, turned.usage)
+                })
                 .map_err(|error| Failure::from(&error))
         }
         Route::End => Ok(("goodbye.".to_string(), None)),
@@ -292,6 +306,38 @@ mod tests {
             finished.program.is_none(),
             "a machine with no decision door selects nothing and answers as it always has"
         );
+    }
+
+    /// A door whose only word is a plan the host cannot read: the turn
+    /// finishes refused whatever the permit, the reply is the host's
+    /// account rather than the plan, and the streamed deltas are what the
+    /// model wrote — the caller replaces them with the reply, as the
+    /// terminal does.
+    #[tokio::test]
+    async fn a_refused_plan_finishes_refused() {
+        let plan = r#"{"v":2,"commands":[{"command":"ls","why":"look"}]}"#;
+        let mut agent = Agent::new(None, Door::Stub(StubGenerate::saying(plan)));
+        let mut proposed = 0usize;
+        let finished = run(
+            &mut agent,
+            "say something ambiguous".to_string(),
+            &mut |event| {
+                if let Event::Shell(ShellEvent::Proposed(_)) = event {
+                    proposed += 1;
+                }
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(proposed, 0);
+        assert_eq!(finished.completion, Completion::Refused);
+        assert_eq!(finished.completion.word(), "refused");
+        assert!(
+            finished.reply.contains("none of them ran"),
+            "{}",
+            finished.reply
+        );
+        assert!(!finished.reply.contains(plan), "{}", finished.reply);
     }
 
     /// With no decision door the turn asks no selection question at all:

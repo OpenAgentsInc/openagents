@@ -57,7 +57,7 @@ pub mod turn;
 mod worktree;
 
 pub use crate::capability::{Found, Manifest, Presence};
-pub use agent::{Agent, Classified, Verdict};
+pub use agent::{Agent, Classified, Ending, Exhausted, REPAIRS_MAX, Turned, Verdict};
 pub use classify::{Action, Judgment, Route, route, state_of};
 pub use delegate::{
     Bounds, Delegation, Delegator, EnforcedBoundary, Executor, Isolation, Policy, Task,

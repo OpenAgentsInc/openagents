@@ -447,7 +447,7 @@ async fn a_relay_trace_names_the_model_the_worker_used() {
     let mut agent = Agent::new(None, door).with_trace(Some(recorder));
 
     agent.push_user("say hi in one word");
-    let (reply, _) = agent
+    let coder::Turned { text: reply, .. } = agent
         .turn(
             false,
             Permit::executing(),
