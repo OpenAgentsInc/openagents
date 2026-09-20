@@ -76,7 +76,7 @@ The panel is in `crates/coderbench/goldens/devin-fan-out-six.evidence.json`.
 **The capability probe cannot trust `PATH`.** The first attempt at the
 delegations failed six times with `command not found: devin`. The binary is
 on the operator's interactive `PATH` and not on the one a spawned subshell
-inherits. [NIP-CC](../nips/openagents/NIP-CC.md)'s `detect` resolves a binary
+inherits. [NIP-CAP](../nips/openagents/NIP-CAP.md)'s `detect` resolves a binary
 rather than assuming a name resolves, and this is why. A probe that shelled
 out to `devin --version` would have reported the capability absent on a
 machine that has it.
@@ -92,7 +92,7 @@ implementation's manifests carry a `base` commit.
 ## A recorded golden is not retconned
 
 On 2026-09-20 the `nips/coder/` lane was renamed `nips/openagents/`. One of
-the six delegations asks about `nips/coder/NIP-CC.md`, and that prompt was
+the six delegations asks about `nips/coder/NIP-CAP.md`, and that prompt was
 **left as it was recorded**.
 
 A golden says what happened. The delegate was asked about a path that

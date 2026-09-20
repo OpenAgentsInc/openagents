@@ -53,7 +53,7 @@ pub struct Task {
 /// What has to be true of the machine before the task can run at all.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Requires {
-    /// Capability slugs, as [NIP-CC](../../nips/openagents/NIP-CC.md) names them.
+    /// Capability slugs, as [NIP-CAP](../../nips/openagents/NIP-CAP.md) names them.
     #[serde(default)]
     pub capabilities: Vec<String>,
     #[serde(default)]

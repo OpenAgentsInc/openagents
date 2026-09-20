@@ -1,16 +1,19 @@
-NIP-CC
-======
+NIP-CAP
+=======
 
-Coder Capabilities and Programs
--------------------------------
+Capabilities
+------------
 
 `draft` `optional`
 
-This NIP defines three addressable, signed documents: `kind:30180`
-capability manifests, which say **how to drive an executor**; `kind:30181`
-operator policies, which say **which executors an operator prefers**; and
-`kind:30182` programs, which are **the reusable, composable unit of work**
-the decision engine selects.
+This NIP defines two addressable, signed documents: `kind:30180` capability
+manifests, which say **how to drive an executor**, and `kind:30181` operator
+policies, which say **which executors an operator prefers**.
+
+Programs — the composable unit of work whose steps reach these capabilities
+— are [NIP-PRO](NIP-PRO.md), and are deliberately not defined here. A
+program is a general primitive that says nothing about any machine; a
+capability is specific to one.
 
 ## Capabilities and programs
 
@@ -54,9 +57,10 @@ bounds, which the decision engine picks at the start of a run.
 A **plugin** is none of these. In the reference implementation a plugin is a
 sandboxed WebAssembly guest: small, pure, deterministic, and denied the
 network. An executor that spawns a process and reaches the internet is the
-tier a plugin host refuses to load. The reusable component this NIP is for
-is the **program**, not a plugin, and the distinction is load-bearing rather
-than cosmetic — see [`docs/programs.md`](../../docs/programs.md).
+tier a plugin host refuses to load. The reusable component is the
+**program** of [NIP-PRO](NIP-PRO.md), not a plugin, and the distinction is
+load-bearing rather than cosmetic — see
+[`docs/programs.md`](../../docs/programs.md).
 
 A capability is a thing a Coder instance can hand work to — another agent's
 CLI on the same computer, a cloud lane, a subprocess with a protocol. The
@@ -78,7 +82,6 @@ Both kinds are in the NIP-33 parameterized replaceable range
 | --- | --- | --- |
 | `30180` | Capability manifest | anyone; typically the capability's maintainer |
 | `30181` | Operator capability policy | the operator |
-| `30182` | Program | anyone; the composable unit |
 
 A dedicated kind is taken rather than NIP-78 `kind:30078`
 application-specific data, for the reasons [NIP-AP](../block/NIP-AP.md)
@@ -225,81 +228,7 @@ than a configured behaviour.
 `fan_out_max` bounds how many delegations one request may start.
 `require_independence_check` says the host must not fan out until it has
 decided the tasks do not collide — see
-[`docs/capabilities.md`](../../docs/capabilities.md).
-
-## Program — kind `30182`
-
-A program is a state machine with named steps and per-step bounds. It is
-the unit that composes, the unit an operator shares, and the unit the
-decision engine selects at the start of a run.
-
-```jsonc
-{
-  "kind": 30182,
-  "pubkey": "<author pubkey, hex>",
-  "tags": [["d", "delegate-fan-out"], ["name", "Fan out one issue per executor"]],
-  "content": "<json body>"
-}
-```
-
-```jsonc
-{
-  "v": 1,
-  "summary": "Takes N issues and runs one delegated session per issue.",
-  "inputs": {"issues": "list", "executor": "capability-slug"},
-  "steps": [
-    {
-      "name": "select",
-      "kind": "query",
-      "bounds": {"max_results": 12}
-    },
-    {
-      "name": "independence",
-      "kind": "decide",
-      "question": "openagents.coder.independence.v1",
-      "bounds": {"refuse_below": 0.7, "requires_calibration": true}
-    },
-    {
-      "name": "admit",
-      "kind": "check",
-      "bounds": {"refuse_on": "cannot_enforce_intersection"}
-    },
-    {
-      "name": "fan_out",
-      "kind": "delegate",
-      "bounds": {"concurrent_max": 6, "isolation": "worktree", "minutes": 60}
-    },
-    {
-      "name": "accept",
-      "kind": "decide",
-      "question": "openagents.coder.completion.v1",
-      "bounds": {"per_requirement": true}
-    }
-  ]
-}
-```
-
-A step's `kind` is one of `query` (a structured lookup), `decide` (a typed
-question put to a decision model), `check` (a deterministic admission test),
-or `delegate` (work handed to an executor).
-
-**Every step carries bounds, and a step whose bounds a chosen executor
-lists in `cannot_enforce` does not run.** That is the join between this kind
-and `30180`, and it is the whole reason a manifest states its refusals
-positively.
-
-A `decide` step names a **question identifier**, not question text. The text
-belongs to a question set with its own digest, because rewording a question
-changes what was asked and a program that inlined its wording could not say
-which version produced a result.
-
-### A program is not a script
-
-It names steps and bounds; it does not carry commands, prompts, or code. A
-host that cannot resolve a step's `kind` refuses the program rather than
-skipping the step. A program is therefore safe to fetch from a stranger in
-a way a script is not — the worst a malicious program can do is describe a
-shape the host declines.
+[`docs/programs.md`](../../docs/programs.md).
 
 ## Local presence is not an event
 

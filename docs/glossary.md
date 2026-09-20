@@ -107,7 +107,9 @@ from the reference material in `~/work/coder`.
 | --- | --- | --- |
 | Capability | Designed | A granted ability. A capability that no grant declares is offered to no run. |
 | Executor | Designed | The implementation that performs an agent session, whether the built-in runner or an external agent reached through an adapter. |
-| Program | Designed | A state machine with named steps and per-step bounds, which the decision engine selects at the start of a run. A program names steps and bounds and carries no commands, prompts, or code. Programs are the composable unit. |
+| Program | Designed | A state machine of named steps with per-step bounds, specified by [NIP-PRO](../nips/openagents/NIP-PRO.md). A program carries no code, commands, or prompts, composes by reference under bounds that narrow and never widen, and says nothing about where it runs. It is a general primitive and is not specific to an agent or a product. |
+| Step kind | Designed | What one step of a program does: `query`, `check`, `decide`, `delegate`, or `program`. The registry is open. A host that does not recognize a kind refuses the program, because a program whose unknown steps are skipped is a different program. |
+| Bounds | Designed | The limits a program's step states and an executor promises to keep. A host refuses a step whose bounds it cannot enforce rather than running it unbounded. Under composition, bounds narrow and never widen. |
 | Capability manifest | Designed | A signed document that says how to drive an executor: transport, detection, bounds it enforces, bounds it ignores, whether it sees the repository, and who pays. Published as Nostr `kind:30180`. |
 | `cannot_enforce` | Designed | The bounds an executor accepts and silently ignores. A host refuses a delegation whose requirements intersect this list, because an executor that drops a bound is more dangerous than one that refuses it. |
 | Operator policy | Designed | A signed document that says which capabilities an operator prefers, how wide a fan-out may go, and what to never use. Published as Nostr `kind:30181`. |
@@ -118,5 +120,6 @@ from the reference material in `~/work/coder`.
 | --- | --- | --- |
 | Relay | Implemented | The Nostr relay in `crates/nostr-relay`: one binary and one Postgres database, serving `relay.openagents.com`. |
 | NIP-CJ | Designed | Coder jobs. Ephemeral `25900`, `26900`, and `27000` events carry a request, a result, and feedback between a terminal and a fulfillment worker. Payloads use NIP-44 and sockets authenticate with NIP-42. |
-| NIP-CC | Designed | Coder capabilities and programs. Addressable `30180`, `30181`, and `30182` events carry capability manifests, operator policies, and programs. |
+| NIP-PRO | Designed | Programs. Addressable `30182` events carry a state machine of named steps with per-step bounds. A host that does not recognize a step kind refuses the whole program rather than skipping the step. |
+| NIP-CAP | Designed | Capabilities. Addressable `30180` and `30181` events carry capability manifests and operator policies. |
 | `nips/` | Implemented | Pinned copies of the official NIPs and the extension NIPs. `nips/manifest.json` records the upstream commits. The `coder/` lane is authored here and is not synced. |

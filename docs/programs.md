@@ -64,10 +64,25 @@ prefer, how wide a fan-out may go, and what is never to be used.
 **A program** says what to do: named steps, each with bounds, each either a
 query, a decision, a deterministic check, or a delegation.
 
-All three are addressable Nostr events under
-[NIP-CC](../nips/openagents/NIP-CC.md) — `30180`, `30181`, `30182`. The relay is
-the workspace, which is the pattern `AGENTS.md` names for application
-behaviour: event kinds and relay policy rather than a private backend.
+They are addressable Nostr events in two NIPs, split on purpose.
+[NIP-PRO](../nips/openagents/NIP-PRO.md) defines programs (`30182`) and
+[NIP-CAP](../nips/openagents/NIP-CAP.md) defines capabilities (`30180`,
+`30181`). The relay is the workspace, which is the pattern `AGENTS.md` names
+for application behaviour: event kinds and relay policy rather than a
+private backend.
+
+**A program is the general primitive and does not belong to Coder.** It says
+nothing about an agent, an executor, a model, or a product — only what the
+steps are and what bounds them. Filing it with capabilities implied it was
+part of one product's surface, and it is not. Capabilities are specific to a
+machine; programs are specific to nothing.
+
+That split buys three properties a combined document could not state
+cleanly: programs compose by reference under bounds that **narrow and never
+widen**, a host **refuses** a program whose step kinds it does not recognize
+rather than skipping them, and cycles are refused outright rather than
+bounded by depth. Those are rules about programs, not about what a program
+happens to reach.
 
 **Local presence is not an event.** Whether `devin` is on *this* computer is
 found by running the manifest's `detect` and stays on the machine.
@@ -161,7 +176,7 @@ example of exactly that shape.
 
 ## The first program
 
-`delegate-fan-out`, whose steps are in the NIP:
+`delegate-fan-out`, whose steps are in [NIP-PRO](../nips/openagents/NIP-PRO.md):
 
 ```text
 select  (query)     the top N open issues
