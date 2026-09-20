@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use coder::capability::Trust;
-use coder::delegate::{WORKTREE_DIR, boundary_supported};
+use coder::delegate::{Verdict, WORKTREE_DIR, boundary_supported};
 use coder::program::Program;
 use coder::questions;
 use coder::runtime::{Host, Inputs, Runtime};
@@ -381,7 +381,7 @@ fn decision_named(path: &Path, name: &str) -> atif::Call {
 async fn the_first_program_runs_from_its_definition() {
     // Every delegation runs under an enforced filesystem boundary; a
     // platform without one refuses rather than spawning.
-    if !coder::delegate::boundary_supported() {
+    if !boundary_supported() {
         return;
     }
     let machine = machine();
@@ -452,7 +452,7 @@ async fn the_first_program_runs_from_its_definition() {
 /// The operator's sentence picks the program, and the program runs.
 #[tokio::test]
 async fn a_request_selects_its_program_and_runs_it() {
-    if !coder::delegate::boundary_supported() {
+    if !boundary_supported() {
         return;
     }
     let machine = machine();
@@ -469,7 +469,7 @@ async fn a_request_selects_its_program_and_runs_it() {
 /// the golden.
 #[tokio::test]
 async fn the_recorded_run_is_the_path_the_task_expects() {
-    if !coder::delegate::boundary_supported() {
+    if !boundary_supported() {
         return;
     }
     let machine = machine();
@@ -715,7 +715,7 @@ async fn an_executor_claim_does_not_establish_enforcement() {
 /// The supervisor's deadline does not depend on an executor's promise.
 #[tokio::test]
 async fn the_host_holds_minutes_even_when_the_executor_does_not() {
-    if !coder::delegate::boundary_supported() {
+    if !boundary_supported() {
         return;
     }
     for ignored in [json!([]), json!(["minutes"])] {
@@ -952,7 +952,7 @@ async fn a_source_this_host_does_not_resolve_refuses_the_program() {
 /// order is enforced.
 #[tokio::test]
 async fn a_file_source_is_the_path_an_explicit_list_takes() {
-    if !coder::delegate::boundary_supported() {
+    if !boundary_supported() {
         return;
     }
     let machine = machine();
@@ -1058,6 +1058,115 @@ async fn a_file_source_is_the_path_an_explicit_list_takes() {
         independence.arguments["state"]["collisions"][0]["path"],
         json!(QUESTIONS[1].1)
     );
+}
+
+/// The burn-down, from the repository's own program and source: every
+/// delegate is briefed that the common Git directory is sealed and where
+/// a commit goes instead, and `accept` judges each item against the
+/// answer it states under `expects` — a stated answer passes or fails,
+/// and an item that states none is unverifiable, never passed.
+#[tokio::test]
+async fn the_burn_down_briefs_its_delegates_and_judges_what_each_item_expects() {
+    if !boundary_supported() {
+        return;
+    }
+    let machine = machine();
+    let root = machine.path();
+    std::fs::create_dir_all(root.join("sources")).unwrap();
+    std::fs::copy(
+        checkout().join("sources").join("work-list.json"),
+        root.join("sources").join("work-list.json"),
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join(".coder")).unwrap();
+    std::fs::write(
+        root.join(".coder").join("work-list.json"),
+        json!({
+            "v": 1,
+            "work": [
+                {"id": "1-right", "prompt": QUESTIONS[0].0, "reads": QUESTIONS[0].1,
+                 "expects": QUESTIONS[0].2},
+                {"id": "2-wrong", "prompt": QUESTIONS[1].0, "reads": QUESTIONS[1].1,
+                 "expects": "not what the stub says"},
+                {"id": "3-unstated", "prompt": QUESTIONS[2].0, "reads": QUESTIONS[2].1}
+            ]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let program = Program::load(&root.join("programs").join("burn-down.json"))
+        .expect("the repository's own program");
+    let briefing = program
+        .steps
+        .iter()
+        .find(|step| step.name == "fan_out")
+        .and_then(|step| step.rest.get("briefing"))
+        .and_then(Value::as_str)
+        .expect("the burn-down briefs its delegates");
+    for said in [
+        "common Git directory is sealed",
+        "scratch Git directory",
+        "reviewer fetches",
+    ] {
+        assert!(briefing.contains(said), "the briefing says {said:?}");
+    }
+
+    let traces = tempfile::tempdir().unwrap();
+    let mut recorder = Recorder::open(
+        traces.path(),
+        "kev-latest",
+        "stub",
+        &root.display().to_string(),
+    )
+    .unwrap();
+    let path = recorder.path().to_path_buf();
+    let run = runtime(root)
+        .await
+        .run(&program, &inputs(), Some(&mut recorder))
+        .await;
+    drop(recorder);
+
+    assert_eq!(run.stopped, None, "{:?}", run.stopped);
+    assert_eq!(run.delegations.len(), 3);
+    assert_eq!(run.answered(), 3, "{:#?}", run.delegations);
+    for delegation in &run.delegations {
+        assert!(
+            delegation.task.prompt.starts_with(briefing),
+            "every delegate reads the briefing first: {:?}",
+            delegation.task.prompt
+        );
+    }
+
+    assert_eq!(
+        run.verdicts(),
+        [
+            ("t1".to_string(), Verdict::Passed),
+            ("t2".to_string(), Verdict::Failed),
+            ("t3".to_string(), Verdict::Unverifiable),
+        ],
+        "{}",
+        run.summary()
+    );
+    assert_eq!(run.correct(), (1, 2));
+    assert!(
+        run.summary().contains("1 passed, 1 failed, 1 unverifiable"),
+        "{}",
+        run.summary()
+    );
+    let accept = run
+        .steps
+        .iter()
+        .find(|step| step.name == "accept")
+        .expect("the acceptance ran");
+    assert_eq!(accept.output, "1 passed, 1 failed, 1 unverifiable");
+
+    let decided = decision_named(&path, "accept");
+    let requirements = &decided.arguments["state"]["requirements"];
+    assert_eq!(requirements["t1"]["expects"], json!(QUESTIONS[0].2));
+    assert_eq!(requirements["t1"]["verdict"], json!("passed"));
+    assert_eq!(requirements["t2"]["verdict"], json!("failed"));
+    assert_eq!(requirements["t3"]["expects"], Value::Null);
+    assert_eq!(requirements["t3"]["verdict"], json!("unverifiable"));
 }
 
 /// A plan whose tasks touch six different files reads the way it always

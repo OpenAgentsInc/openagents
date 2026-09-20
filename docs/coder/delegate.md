@@ -160,6 +160,12 @@ and sealed paths — in the call's `extra`.
   one exception — and the common Git directory stays sealed against
   every exception, so a delegate cannot commit, stage, or corrupt the
   shared object store. Its edits stay in the worktree for the reviewer.
+  A delegate that commits does so to a scratch Git directory inside the
+  worktree (`GIT_DIR=.coder-git`, `GIT_WORK_TREE=.`), and the reviewer
+  fetches from it with `git fetch <worktree>/.coder-git HEAD`. The
+  burn-down says so in its `fan_out` step's `briefing`, which the runtime
+  puts in front of every item's prompt, so a delegate is told rather than
+  left to discover it ([#9413](https://github.com/OpenAgentsInc/openagents/issues/9413)).
 - A platform with no enforced backend, a grant that overlaps a protected
   or sealed path, or a path that does not resolve refuses the delegation
   as `boundary_unavailable` before anything spawns. There is no
