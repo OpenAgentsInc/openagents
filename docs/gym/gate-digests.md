@@ -101,7 +101,15 @@ The one migration on record:
 - `decision-v1` and `deployment-v1` recorded no digest under v1, so their
   `previously` is empty and nothing written before v2 attributes to them.
 
-One versioned successor is on record. `probability-v1` compares the two
+Two versioned successors are on record. `deployment-v1` carries
+`latency_block_sigma_relative` as `unmeasured`, so every latency criterion
+under it is `unverifiable`. `deployment-v2` carries the number once it was
+measured on a quiet CPU-only host, 0.17 over 16 blocks per local door
+([`measurements/2026-09-20-kev-quiet-latency.md`](measurements/2026-09-20-kev-quiet-latency.md)),
+and keeps a `pending_measurement` for the doors that answer in seconds,
+which that sweep did not reach. `v1` keeps its file and its digest.
+
+The other: `probability-v1` compares the two
 confident-error counts directly, and openagents#9401 showed that refuses an
 unchanged door on one direction of every pair of seed blocks whose counts
 differ. `probability-v2` is the same rule with a measured

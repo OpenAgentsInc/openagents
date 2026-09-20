@@ -118,24 +118,29 @@
 //! unknown metric, and a gate reading that zero admits a door on a price
 //! nobody quoted.
 //!
-//! # Latency has a noise floor, and it is not measured
+//! # Latency has a noise floor, and which gate has measured it
 //!
 //! Wall clock on a shared machine moves with whatever else is running, so a
 //! latency comparison needs the same thing an accuracy comparison needs: the
 //! spread of the same measurement over blocks where nothing but the clock
-//! changed. Nobody has that number. The attempt, and why it does not count,
-//! is `docs/gym/measurements/2026-09-19-latency-noise-floor.md`: the machine
+//! changed. The first attempt, and why it does not count, is
+//! `docs/gym/measurements/2026-09-19-latency-noise-floor.md`: the machine
 //! was running nine agents against several copies of the same on-device
 //! model, and the sweep measured the contention rather than the door.
 //!
-//! So [`DeploymentRule::latency_block_sigma_relative`] is
-//! [`Basis::Unmeasured`], every latency criterion reports
-//! [`Verdict::Unverifiable`], and no latency comparison can refuse a door
-//! yet. That is the same posture [`DecisionRule::gain_standard_errors`] held
+//! So in `deployment-v1` [`DeploymentRule::latency_block_sigma_relative`]
+//! is [`Basis::Unmeasured`], every latency criterion reports
+//! [`Verdict::Unverifiable`], and no latency comparison can refuse a door.
+//! That is the same posture [`DecisionRule::gain_standard_errors`] held
 //! while openagents#9370 was outstanding, and for the same reason: a gate
 //! that invents this number would refuse doors for whatever else the machine
 //! was running, and the refusal would carry a digest that made it look
-//! measured.
+//! measured. `deployment-v2` carries the number once it was measured, on a
+//! quiet CPU-only host over 16 blocks per local door
+//! (`docs/gym/measurements/2026-09-20-kev-quiet-latency.md`), and keeps a
+//! pending measurement for the doors that answer in seconds, which that
+//! sweep did not reach. `deployment-v1` stays as it was, because a floor
+//! moving from unmeasured to a value is a new rule.
 //!
 //! The cost and refusal criteria do not depend on it. Metering is a count
 //! rather than a clock, and a contended machine does not change what a
@@ -2842,6 +2847,7 @@ mod tests {
             vec![
                 "decision-v1",
                 "deployment-v1",
+                "deployment-v2",
                 "probability-v1",
                 "probability-v2"
             ]

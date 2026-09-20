@@ -1,0 +1,43 @@
+{
+  "$comment": [
+    "Answers the same question as deployment-v1: can this door be afforded on this workload? It reads the latency percentile, the price of a decision, and the share of the workload the door declines, and it reads no accuracy and no probabilities. The one thing that changed is that latency_block_sigma_relative now carries a measured value, so latency criteria can report a verdict instead of unverifiable. deployment-v1 is kept as it was, because a rule whose floor moved from unmeasured to a number is a different rule and the verdicts recorded under the old digest stay attributed to the old rule.",
+    "The floor is the block-to-block spread of the p95 on a machine running nothing of ours but the door under test. docs/gym/measurements/2026-09-20-kev-quiet-latency.md holds the sweep: kev-0.5b and kev-0.6b served by kev-serve on CPU, 157 items in a fixed order, two sweeps of eight blocks each, 16 blocks per door. The p95 moved 16.8% relative to its mean over those blocks for kev-0.5b and 14.3% for kev-0.6b. Hosted Jev on the same items and the same host, in docs/gym/measurements/2026-09-20-hosted-jev-quiet-latency.md, moved 5.3%. The rule carries the widest of the three, rounded up to 0.17, because a floor that is too narrow refuses doors for the machine's weather and a floor that is too wide only fails to separate doors that a longer sweep could. Under regression_sigmas of two, a candidate's p95 has to move 34% against the baseline's before the move is called the door.",
+    "What the figure does and does not transfer to is stated rather than assumed. The two local doors it was measured on answer in 300 to 450 ms and their relative spreads sit within 2.5 points of each other, so between doors of that speed one figure is defensible. The hosted door's spread is a third of theirs, so the figure is conservative there. Nothing has measured the spread of a door that answers in seconds — kev-4b, kev-8b, or Lev — on a quiet machine; their only recorded latencies are the contended rows of 2026-09-19, and pending_measurement names that gap. A comparison whose baseline or candidate is one of those doors is judged under a floor measured on faster doors, and a reader of that verdict should know it.",
+    "No ceiling is stored here, as in deployment-v1: a batch job tolerates 1.6 seconds and a router does not, so the ceilings arrive with the measurement in a Budget the caller states, and a criterion whose ceiling was not stated reports unverifiable rather than passed. Cost keeps its one rule: a lane with no meter on it is unmetered_local_lane and never a zero."
+  ],
+  "schema": "openagents.gym.gate.v2",
+  "id": "deployment-v2",
+  "question": "Can this door be afforded on this workload, in time and in money?",
+  "rule": {
+    "decides": "deployment",
+    "min_calls": {
+      "value": 20,
+      "basis": "derived",
+      "evidence": [
+        { "kind": "code", "id": "gym::gate::percentile" }
+      ],
+      "why": "By nearest rank, the 95th percentile of n calls is the call at position ceil(0.95 * n), which is n itself for every n below 20. A gate reading fewer than 20 timed calls is reading the slowest call of the run and calling it a percentile, and the slowest call of a short run is whatever the machine was doing at the time."
+    },
+    "gated_percentile": "p95",
+    "latency_block_sigma_relative": {
+      "value": 0.17,
+      "basis": "derived",
+      "evidence": [
+        { "kind": "measurement", "id": "2026-09-20-kev-quiet-latency" },
+        { "kind": "measurement", "id": "2026-09-20-hosted-jev-quiet-latency" }
+      ],
+      "why": "The standard deviation of the per-block p95, divided by its mean, over 16 blocks of 157 fixed-order items on a quiet CPU-only host: 0.168 for kev-0.5b and 0.143 for kev-0.6b, served locally, and 0.053 for hosted Jev on the same items from the same host. The rule carries the widest, rounded up. It was measured on doors that answer in 100 to 450 ms; no door that answers in seconds has been swept on a quiet machine, and pending_measurement says so."
+    },
+    "regression_sigmas": {
+      "value": 2.0,
+      "basis": "convention",
+      "evidence": [],
+      "why": "Two standard deviations is the conventional bar for calling a difference real. It is a convention and it is labelled one; the quantity it multiplies is the measurement. It scales the block-to-block latency spread and the binomial standard error of a stated refusal ceiling, which is computed per comparison from the ceiling and the number of calls."
+    },
+    "pending_measurement": {
+      "quantity": "the block-to-block spread of a p95 for a door that answers in seconds, on an uncontended machine",
+      "issue": "openagents#9382",
+      "why": "kev-4b, kev-8b, and every Lev door have only contended latencies on record, and Lev needs Apple hardware this floor was not measured on. Until one of them is swept quietly, a latency verdict involving such a door is judged under a floor measured on doors ten times faster, and the verdict's detail names the floor's basis so a reader can weigh it."
+    }
+  }
+}

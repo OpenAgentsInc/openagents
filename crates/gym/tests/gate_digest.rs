@@ -21,9 +21,10 @@ const PROBABILITY_V1_LEGACY: &str =
     "gate:368cefd18f308119008db3099c8415af380c9d096d4cbcb6997196bfc6d82013";
 
 /// The gates committed to `crates/gym/gates/`.
-const SHIPPED: [&str; 4] = [
+const SHIPPED: [&str; 5] = [
     "decision-v1",
     "deployment-v1",
+    "deployment-v2",
     "probability-v1",
     "probability-v2",
 ];
@@ -290,7 +291,12 @@ fn decision_and_deployment_carried_no_recorded_digest_forward() {
     // The v1 store pinned rows to probability-v1's digest alone; the other
     // two gates recorded no digest under the old encoding, so they carry no
     // aliases and nothing written before this schema attributes to them.
-    for id in ["decision-v1", "deployment-v1", "probability-v2"] {
+    for id in [
+        "decision-v1",
+        "deployment-v1",
+        "deployment-v2",
+        "probability-v2",
+    ] {
         let gate = gate(id);
         assert!(gate.previously.is_empty(), "{id}");
         assert!(!gate.has_digest(PROBABILITY_V1_LEGACY), "{id}");
