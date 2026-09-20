@@ -115,6 +115,74 @@ impl ExecutorDoor {
     pub fn workdir(&self) -> &Path {
         self.delegator.workdir()
     }
+
+    /// The most jobs the executor's manifest says may run at once.
+    #[must_use]
+    pub fn concurrent_max(&self) -> usize {
+        self.delegator.concurrent_max()
+    }
+
+    /// Runs one delegated task the way a fan-out on this machine would:
+    /// a writing task in a retained worktree of its own under the
+    /// writing argv, a reading task in a scratch checkout, both bounded
+    /// to `minutes` and both under this door's approval and boundary.
+    ///
+    /// This is what a relay-carried delegation reaches: the terminal that
+    /// published it holds no executor, so the bounds it asked for are
+    /// applied here, and the answer is the executor's output.
+    ///
+    /// # Errors
+    ///
+    /// The same errors as [`Generate::generate`] on this door: a typed
+    /// refusal keeps its code, a timeout is `Quiet`, and a failed or
+    /// unrunnable executor is a `Stream` error naming why.
+    pub async fn delegate(
+        &self,
+        prompt: &str,
+        writes: bool,
+        minutes: u64,
+    ) -> Result<String, GenerateError> {
+        let mut task = Task::asking(prompt).bounded(Bounds::minutes(minutes.max(1)));
+        task.writes = writes;
+        self.answer(task).await
+    }
+
+    async fn answer(&self, task: Task) -> Result<String, GenerateError> {
+        let delegation = self.delegator.run(task).await;
+        match delegation.status.clone() {
+            Status::Answered => {
+                let text = delegation.output.trim().to_string();
+                if text.is_empty() {
+                    return Err(GenerateError::Stream(format!(
+                        "{} exited cleanly and printed nothing",
+                        self.slug
+                    )));
+                }
+                Ok(text)
+            }
+            Status::Refused(code) => Err(GenerateError::Refused {
+                code,
+                message: delegation.recorded_output(),
+            }),
+            Status::TimedOut => Err(GenerateError::Quiet {
+                heard: !delegation.output.trim().is_empty(),
+                reason: format!(
+                    "{} ran past its {} minute bound",
+                    self.slug,
+                    delegation.task.bounds.wall().as_secs() / 60
+                ),
+            }),
+            Status::Failed(code) => Err(GenerateError::Stream(format!(
+                "{} exited {code}: {}",
+                self.slug,
+                delegation.recorded_output()
+            ))),
+            Status::Harness(why) => Err(GenerateError::Stream(format!(
+                "{} could not run: {why}",
+                self.slug
+            ))),
+        }
+    }
 }
 
 /// Renders instructions and a transcript as one prompt for an executor
@@ -160,37 +228,9 @@ impl Generate for ExecutorDoor {
     ) -> Result<(String, Option<Usage>), GenerateError> {
         let task =
             Task::asking(&prompt(instructions, input)).bounded(Bounds::minutes(self.minutes));
-        let delegation = self.delegator.run(task).await;
-        match delegation.status.clone() {
-            Status::Answered => {
-                let text = delegation.output.trim().to_string();
-                if text.is_empty() {
-                    return Err(GenerateError::Stream(format!(
-                        "{} exited cleanly and printed nothing",
-                        self.slug
-                    )));
-                }
-                sink(&text);
-                Ok((text, None))
-            }
-            Status::Refused(code) => Err(GenerateError::Refused {
-                code,
-                message: delegation.recorded_output(),
-            }),
-            Status::TimedOut => Err(GenerateError::Quiet {
-                heard: !delegation.output.trim().is_empty(),
-                reason: format!("{} ran past its {} minute bound", self.slug, self.minutes),
-            }),
-            Status::Failed(code) => Err(GenerateError::Stream(format!(
-                "{} exited {code}: {}",
-                self.slug,
-                delegation.recorded_output()
-            ))),
-            Status::Harness(why) => Err(GenerateError::Stream(format!(
-                "{} could not run: {why}",
-                self.slug
-            ))),
-        }
+        let text = self.answer(task).await?;
+        sink(&text);
+        Ok((text, None))
     }
 }
 
