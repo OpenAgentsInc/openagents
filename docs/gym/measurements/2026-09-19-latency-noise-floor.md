@@ -149,3 +149,13 @@ Three things the run has to establish, none of which this one did:
 Until then, the honest reading of any latency number in this repository is
 that it is one draw on one machine on one afternoon, and that nobody has said
 how wide the interval around it is.
+
+## Filled, 2026-09-20
+
+[`2026-09-20-hosted-jev-quiet-latency.md`](2026-09-20-hosted-jev-quiet-latency.md)
+ran the sweep for hosted Jev and
+[`2026-09-20-kev-quiet-latency.md`](2026-09-20-kev-quiet-latency.md) for
+`kev-0.5b` and `kev-0.6b`, 16 blocks each on a quiet CPU-only host. The
+p95 spreads were 5.3%, 16.8%, and 14.3%; `deployment-v2` carries 0.17. The
+third test above is answered between the two local doors and between hosted
+and local, and still open for a door that answers in seconds.
