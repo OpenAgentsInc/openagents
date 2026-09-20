@@ -1,0 +1,25 @@
+# Suite scores: `program-selection-v2`
+
+80 items, 28 calibration, 40 development, 12 locked and unread, digest `378b57c423ebef31`.
+
+The production four-option program question. Historical open real turns measure spurious selections; authored requests measure recognition, including burn-down and mentions that do not request execution. Labels are one author's readings, with disputes retained separately. The new locked partition contains no historical items.
+
+Judged by `probability-v2`, digest `gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758`.
+
+Asked as `program-selection-v2`, digest `7a8485ca6904e9d8`. The suite digest covers the items and the question set covers the text, so a reword is a candidate against these items rather than another suite.
+
+## kev-4b-historical-1a0cb0a
+
+Checkpoint: `sha256:2559d7a66cd0f4077d7f47b5460eedaf8211a43b917588638cc2da1f459628f9`. Execution: `{"attention": "eager-block-causal-v1", "backend": "metal", "dtype": "bf16", "head_dtype": "f32", "lora_merge": "fp32-before-cast-v1", "max_branch": "8192", "max_state": "8192", "option_isolation": "false"}`.
+Identity: base `906bfd4b4dc7f14ee4320094d8b41684abff8539`. Estimator `unreported`.
+
+Recorded 68 rows in `crates/gym/results/program-selection-v2-historical-4b.jsonl`.
+
+68 items asked: 68 scored, 0 refused by the door, 0 lost to the harness and unrecorded.
+
+| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
+| --- | --- | --- | --- | --- | --- | --- |
+| calibration, raw | 0.82 | 0.112 | 0.075 | 0.231 | 0 | 28 |
+| development, raw | 0.75 | 0.104 | 0.129 | 0.375 | 0 | 40 |
+
+

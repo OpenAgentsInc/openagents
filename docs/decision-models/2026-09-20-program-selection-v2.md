@@ -72,3 +72,73 @@ The Gym test checks labels against those options, preserves every open
 historical item, and rejects reuse of a historical state as a new locked
 item. The suite, question, and measured model identities will be recorded
 with the scored results.
+
+## Historical 4B result
+
+The suite was frozen in commit `2a0c8e226f` before these calls. Its digest
+is `378b57c423ebef319e94bfc47e43ab6e8460740230d60d078c9e4e573d596026`;
+the unchanged production question digest is
+`7a8485ca6904e9d8658d969da6f6ad3d663e19bd9c7516eb2db6256fef97b9ba`.
+
+The historical adapter is `1a0cb0a0c4ea77e259cd215a3fb85d29edcc499e`,
+with runtime content digest
+`sha256:2559d7a66cd0f4077d7f47b5460eedaf8211a43b917588638cc2da1f459628f9`.
+The door reported `kev-4b-historical-1a0cb0a`, Metal bf16, fp32 head, eager
+attention, and `fp32-before-cast-v1`. The 128 GiB M5 Max host used a 4,096
+packed-token limit and 4,096 MiB forward-memory budget, admitting one
+forward for this variant. Calls were serial. All 68 answered, with no
+refusals or harness failures.
+
+| Open set | Correct | Spurious selections | Missed requests | Wrong program | Confident errors at p ≥ 0.9 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Real turns | 30/32 | 1/31 negatives | 1/1 positive | 0 | 0 |
+| Authored | 23/36 | 3/10 negatives | 8/26 positives | 2 | 0 |
+
+The real-turn constant `none` is correct on 31/32; the model missed the
+only real request for fan-out and spuriously selected `answer-question`
+for the request to list open issue status. Authored recognition remains
+limited despite no confidently wrong answers. These results do not admit
+the historical model for program selection.
+
+Constant-answer correct counts on the same open inputs:
+
+| Constant | Real turns | Authored |
+| --- | ---: | ---: |
+| `none` | 31/32 | 10/36 |
+| `answer-question` | 0/32 | 9/36 |
+| `burn-down` | 0/32 | 6/36 |
+| `delegate-fan-out` | 1/32 | 11/36 |
+
+Calibration raw accuracy/ECE/Brier/NLL are 0.82/0.112/0.075/0.231;
+development values are 0.75/0.104/0.129/0.375. Brier measures the selected
+answer's probability against its correctness, as Gym defines it. No map
+was fitted. The median observed HTTP latency was 194 ms during this run;
+it is not the separately required quiet-host serving benchmark.
+
+[All raw rows](../../crates/gym/results/program-selection-v2-historical-4b.jsonl)
+retain the complete discovery identity and a verified receipt chain.
+[Derived reports](data/program-selection-v2/) retain every error and the
+full denominator. Reproduce them with:
+
+```sh
+gym eval --suite crates/gym/suites/program-selection-v2.json \
+  --door kev-4b-historical-1a0cb0a=http://127.0.0.1:18454 --timeout 300 \
+  --record program-selection-v2-historical-4b.jsonl
+gym compare --suite crates/gym/suites/program-selection-v2.json \
+  --store program-selection-v2-historical-4b.jsonl
+python3 crates/gym/suites/score_program_selection_v2.py \
+  program-selection-v2-historical-4b.jsonl
+```
+
+The hosted reference has not run: this task has no `TYPESAFE_API_KEY`,
+and the credential source is awaiting the operator's response. Historical
+Jev v1 rows have different question text and cannot supply that comparison.
+Issue #9457 remains incomplete until the identical open items are scored
+with the hosted reference. The locked partition is still unused.
+
+The production drift tests and new suite contract test passed. Rebuilding
+the suite reproduces its committed bytes; the result store's receipt chain
+verifies, and every result carries the frozen question digest. The manual
+gate reached the runtime-feature workspace tests and stopped at the
+existing `oversized_http_body_is_a_typed_refusal` connection-reset failure.
+Later stages did not run in this attempt; this is not a full gate pass.
