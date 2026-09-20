@@ -44,7 +44,18 @@ Fine-tuning needs labels. But so does *knowing whether the zero-shot option
 is working* — and the tree implicitly treats the general model as the
 no-labels branch. It is, for getting started. The moment you care whether it
 is right, you need labels anyway, and once you have them every other branch
-opens.
+opens. The no-labels branch has a second leaf since
+[`2026-09-20-compiled-functions.md`](2026-09-20-compiled-functions.md): an
+adapter compiled from the question text alone scored 0.90 on `routing`
+against 0.92 for the LoRA we trained on 98 labels, inside the 0.056 floor.
+Take that leaf only on three conditions, each measured there. You accept a
+frontier model's guess at what your labels would be, because the compiler
+wrote six of its own before it mapped the adapter, and on a family whose
+labels encode an outcome only you can see it has nothing to guess from. The
+task is Choice, because the compiled function returns a bare string. And no
+probability gates an action, because a bare string has no calibration to
+measure or refuse. What our 98 labels bought on `routing` was not accuracy;
+it was a distribution that passes the gate.
 
 So the honest root demotes "taxonomy stable" to second place, where it
 belongs: it decides whether you can train *repeatedly*, not whether you can
@@ -134,7 +145,10 @@ probability and start estimating one, which changes everything downstream.
       your first task is to        |          |
       get labels. Treat every   Choice     Noul or
       number as unverified.      only       Score
-                                   |          |
+      Or a compiled adapter,       |          |
+      if you accept a guessed      |          |
+      label, Choice only, and      |          |
+      no probability gates.        |          |
                           Everything is   A decision
                           available.      model. Most
                           Try frozen      classifiers
@@ -294,5 +308,6 @@ this week has it as a branch.
 | [`research/2026-09-19-question-text-optimization.md`](research/2026-09-19-question-text-optimization.md) | The one lever available on a closed hosted model |
 | [`2026-09-19-frozen-embedding-baseline.md`](2026-09-19-frozen-embedding-baseline.md) | The cheap baseline measured on our own suite, with its intervals and its refusals |
 | [`research/2026-09-19-compiled-functions.md`](research/2026-09-19-compiled-functions.md) | Whether a compiler can produce a working adapter without labels, which would move this page's root |
+| [`2026-09-20-compiled-functions.md`](2026-09-20-compiled-functions.md) | The measurement: a zero-label compile lands inside the floor of our 98-label LoRA on `routing`, and what that does and does not earn |
 | [`lev/disposition.md`](lev/disposition.md) | A worked example of admitting and refusing one model per workload |
 | [`../gym.md`](../gym.md) | The machinery that decides any of this on your own data |
