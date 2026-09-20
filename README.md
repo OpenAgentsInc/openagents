@@ -12,11 +12,10 @@ A terminal agent with a deliberate two-stage mind:
 
 - **System One — Jev.** Every turn starts with typed judgments, not
   vibes. A structured state object (task, transcript, repo vocabulary)
-  goes to Jev, which returns probabilities and scores: `respond` vs
-  `clarify` vs `end`, confidence, risk, progress, whether code is
-  involved. A routing table — plain Rust, reviewable thresholds — turns
+  goes to Jev, which returns a choice and its probabilities: `respond`
+  vs `clarify` vs `end`. A routing table — plain Rust, reviewable — turns
   the judgment into the next step. The same machinery judges each round
-  of shell output: `pass` / `retry` / `stop`, `useful`, `damage`.
+  of shell output: `pass` / `retry` / `stop`.
   Small, fast, cannot fabricate.
 - **System Two — a model door.** The generative side is a trait
   (`Generate`), not a vendor. Own-key Open Responses endpoints, a remote

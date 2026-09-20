@@ -53,11 +53,14 @@ Verify with `cargo test -p coder-terminal` and
 `crates/coder` is the agent on top of it — a live conversation, not a
 mock:
 
-- `classify` — the question set and routing table in one module. Four
-  questions over the structured state (`task`, bounded `transcript`):
-  `action` (Choice: `respond` / `clarify` / `end_conversation` / `none`),
-  `needs_code` (Noul), `risk` and `progress` (Scores). The router halts on
-  `none`, on missing answers, and under a `0.45` confidence floor.
+- `classify` — the question set and routing table in one module. One
+  question over the structured state (`task`, bounded `transcript`):
+  `action` (Choice: `respond` / `clarify` / `end_conversation` / `none`).
+  The set is `coder-turns-v2`; v1's `needs_code`, `risk`, and `progress`
+  are retired by
+  `docs/decision-models/2026-09-20-coder-question-baselines.md`. The
+  router halts on missing answers and reads the argmax choice; `none`
+  answers unrouted.
 - `generate` — the `Generate` trait plus `ResponsesDoor`, a streaming
   client for any Open Responses endpoint: `POST {base}/v1/responses`,
   `input_text`/`output_text` message items, `response.output_text.delta`
@@ -146,8 +149,9 @@ Ordered, each independently shippable:
 
 1. **Tools.** `read_file`, `search` (literal string over a bounded
    directory), `run_build` (allowlisted commands), `apply_edit`
-   (line-anchored, not generated `old_string`). The `needs_code` Noul and
-   the `risk` gate already exist for routing to them.
+   (line-anchored, not generated `old_string`). A question that routes to
+   them is scored on a harvested suite before it is asked; the re-specified
+   `risk` in the question baselines record is the proposal.
 2. **A richer question set.** `is_blocked`, `repeats`, and file selection
    as `Choice` over the real index, per the design rules above.
 3. **Selection, mouse, and paste** in the editor — the pieces the basic

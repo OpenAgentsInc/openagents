@@ -116,15 +116,11 @@ its outcome reads `refused: this turn does not run commands`.
 ## The judgment
 
 After each round, Classify reads the task plus every outcome —
-`{command, why, status, output head}` — and answers three questions:
-
-- `outcome` (choice): `pass` — hand the outputs to the model and
-  continue; `retry` — a command failed or missed, the model should
-  correct and try again; `stop` — the outputs show damage, a stuck
-  loop, or nothing left to learn.
-- `useful` (noul): do the outputs help answer the request?
-- `damage` (noul): did anything suggest the commands harmed files,
-  state, or secrets?
+`{command, why, status, output head}` — and answers one question,
+`outcome` (choice): `pass` — hand the outputs to the model and continue;
+`retry` — a command failed or missed, the model should correct and try
+again; `stop` — the outputs show damage, a stuck loop, or nothing left to
+learn. This is the round half of the `coder-turns-v2` question set.
 
 Routing: `stop` ends the loop. `pass` feeds the round back unchanged.
 `retry` feeds it back with a suffix on the next instructions that says
@@ -137,29 +133,19 @@ since the model still decides what the output means. The round cap (3)
 and the final-only suffix bound the loop even if every judgment says
 `pass`.
 
-### The damage gate
+### The retired damage gate
 
-`damage` stops the round at `DAMAGE_STOP` (0.7) only when the number is a
-calibrated probability. The request names the `damage` family in its
-`extensions`, and the door answers with `extensions.calibration.state`.
-A door that applied an admitted calibration map for the family answers
-`calibrated`, and the gate reads the number. A door that answers
-`uncalibrated`, or a hosted door that says nothing, has its number
-recorded and shown but not routed: the gate is `DamageGate::Unread` with
-the reason, and the `outcome` choice decides alone. The verdict line
-says which: `damage 1.0 (uncalibrated, steps of 1/8)` or
-`damage 0.9 (calibration unstated)`.
-
-The reason the gate refuses is what the raw number means on a sampled
-estimator. Lev answers a Noul as the fraction of `N` seeded draws that
-said yes, so with eight samples the value moves in steps of `1/8`, the
-threshold first crosses at `0.75` (six of eight draws), and `1.0` means
-every draw agreed — the estimator's ceiling, not certainty. A hosted
-Jev door reports `damage` below `0.1` on the same rounds where Lev-base
-reports `1.0`; `docs/decision-models/2026-09-19-coder-turns.md` records
-both. The same threshold cannot gate both numbers, so it gates neither
-until a map fitted on labelled outcomes turns the frequency into a
-probability.
+`coder-turns-v1` asked two more questions each round, `useful` and
+`damage`, and read `damage` against a stop threshold of 0.7 when the door
+said the number was a calibrated probability. Both are retired by
+[the question baselines](../decision-models/2026-09-20-coder-question-baselines.md):
+`damage` was `no` on 55 of 55 labelled rounds and hosted Jev never
+answered above 0.13, `useful` was read by nothing, and the gate never
+fired on the door `coder` ships with because a hosted door says nothing
+about calibration. The v1 text and the rows that measured it stay in
+`crates/gym/questions/coder-turns-v1.json` and
+`crates/gym/results/coder-turns-v1.jsonl`. A harm question comes back only
+with a suite that holds harmful rounds to score it on.
 
 ## Exhaustion
 
@@ -182,7 +168,7 @@ round cap is not raised and the budget is not reset for the repair.
 
 ```
 draft
-  → classify (action/needs_code/risk/progress)          ← Jev, turn level
+  → classify (action)                                  ← Jev, turn level
   → respond route
   → permit (route + operator: does this turn run commands?)  ← the host
   → loop:
@@ -213,7 +199,7 @@ rounds for the token rail.
   $ cargo doc -p jev --no-deps 2>&1 | head
     skim the crate's own docs
     exit 0 · 4.1s
-  shell → pass 0.93 · useful 0.9 · damage 0.0
+  shell → pass 0.93
   Jev is the System One crate …
 ```
 
