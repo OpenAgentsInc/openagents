@@ -35,6 +35,11 @@
 //! `--trace <PATH>` names the file outright, and `CODER_TRACE=off` turns
 //! recording off; the session's first detail line says which. See
 //! `docs/coder/traces.md`.
+//!
+//! The terminal is held by a [`Guard`] that hands it back on every exit
+//! path, the turn reports on two lanes so a command outcome is never lost
+//! behind streamed text, and the scrollback is bounded and wraps each line
+//! once per width. `docs/coder/terminal.md` covers all three.
 
 mod cli;
 mod headless;
@@ -45,25 +50,19 @@ use std::process::ExitCode;
 
 use coder::turn::{self, Event as TurnEvent};
 use coder::{Agent, Classified, Route, ShellEvent, Usage, Verdict};
+use coder_terminal::events::{self, Feed, Lane};
 use coder_terminal::{
-    Composer, ComposerAction, Editor, Intensity, Ladder, Marked, Marks, Rendered, frame_for,
-    handle_key, markdown, wrap_rows,
+    Composer, ComposerAction, Editor, Guard, Intensity, Ladder, Marked, Marks, Rendered,
+    Scrollback, frame_for, handle_key, markdown, wrap_rows,
 };
-use std::io::Write;
 use std::time::Instant;
 
-use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
-use crossterm::execute;
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-};
 use futures_util::StreamExt;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
 
 /// One scrollback line with the tone it draws at. `prefix` leads the first
@@ -92,6 +91,22 @@ struct Row {
     intensity: Intensity,
     loud: bool,
     spans: Vec<(String, Marks)>,
+}
+
+/// The rows one scrollback [`Line`] draws at `width` — what the
+/// [`Scrollback`] caches per line.
+fn wrap_line(line: &Line, width: usize) -> Vec<Row> {
+    let mut rows = Vec::new();
+    expand(
+        &mut rows,
+        line.intensity,
+        line.loud,
+        line.prefix,
+        &line.marked,
+        line.hang,
+        width,
+    );
+    rows
 }
 
 /// Wraps `marked` so `prefix` plus each segment fits `width` cells, and
@@ -141,9 +156,40 @@ enum Work {
     Finished(Result<(String, Option<Usage>), String>),
 }
 
+/// Deltas are preview text and may coalesce or, under pressure, drop;
+/// everything else changes what the transcript says and must arrive.
+impl events::Event for Work {
+    fn lane(&self) -> Lane {
+        match self {
+            Work::Delta(_) => Lane::Text,
+            _ => Lane::Control,
+        }
+    }
+
+    fn text_len(&self) -> usize {
+        match self {
+            Work::Delta(delta) => delta.len(),
+            _ => 0,
+        }
+    }
+
+    fn coalesce(&mut self, next: &Self) -> bool {
+        match (self, next) {
+            (Work::Delta(mine), Work::Delta(theirs)) => {
+                mine.push_str(theirs);
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+/// The bounded transcript with its wrap cache.
+type Lines = Scrollback<Line, Row, fn(&Line, usize) -> Vec<Row>>;
+
 struct App {
     editor: Editor,
-    lines: Vec<Line>,
+    lines: Lines,
     /// The reply streaming in, drawn live under the last settled line.
     pending: String,
     /// A turn is in flight.
@@ -256,11 +302,6 @@ impl App {
     }
 }
 
-/// OSC 12 paints the terminal's hardware cursor the ladder's full amber;
-/// OSC 112 hands the terminal's own color back on exit.
-const CURSOR_COLOR_SET: &str = "\x1b]12;#FFB000\x07";
-const CURSOR_COLOR_RESET: &str = "\x1b]112\x07";
-
 #[tokio::main]
 async fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -284,30 +325,18 @@ async fn main() -> ExitCode {
     }
 }
 
-/// The terminal: raw mode, the alternate screen, and the draw loop, with
-/// the terminal's own colors handed back however the loop ends.
+/// The terminal: the guard takes raw mode, the alternate screen, and the
+/// cursor, the draw loop runs, and the guard hands them back however the
+/// loop ends — a setup step that fails, a quit, an error, or a panic.
 async fn interactive(trace: Option<&Path>) -> io::Result<()> {
-    enable_raw_mode()?;
-    let mut out = stdout();
-    execute!(out, EnterAlternateScreen, SetCursorStyle::BlinkingBlock)?;
-    out.write_all(CURSOR_COLOR_SET.as_bytes())?;
-    out.flush()?;
-    let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
+    let guard = Guard::full_screen()?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
     let result = run(&mut terminal, trace).await;
 
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        SetCursorStyle::DefaultUserShape
-    )?;
-    terminal
-        .backend_mut()
-        .write_all(CURSOR_COLOR_RESET.as_bytes())?;
-    terminal.backend_mut().flush()?;
-    terminal.show_cursor()?;
-    result
+    // Restoring by hand reports what dropping the guard would swallow.
+    let restored = guard.restore();
+    result.and(restored)
 }
 
 /// One turn, on the worker task: [`turn::run`] does the turn and this
@@ -315,8 +344,13 @@ async fn interactive(trace: Option<&Path>) -> io::Result<()> {
 ///
 /// The turn itself is not here on purpose. `--print` runs the same one,
 /// and a turn written twice is two turns that drift.
-async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) {
-    let sender = work.clone();
+///
+/// Control events — verdicts, shell proposals and outcomes, the program
+/// choice, the finish — cannot be dropped for pressure; a delta can, and
+/// the draw loop says so when one is. The only way a control event does
+/// not land is that the draw loop is gone, and then there is nobody to
+/// tell.
+async fn work_turn(agent: &mut Agent, draft: String, feed: &Feed<Work>) {
     let finished = turn::run(agent, draft, &mut |event| {
         let work = match event {
             TurnEvent::Classified(classified) => Work::Classified(classified),
@@ -325,16 +359,14 @@ async fn work_turn(agent: &mut Agent, draft: String, work: &mpsc::Sender<Work>) 
             TurnEvent::Delta(delta) => Work::Delta(delta),
             TurnEvent::Program(slug) => Work::Program(slug),
         };
-        let _ = sender.try_send(work);
+        feed.send(work);
     })
     .await;
-    let _ = work
-        .send(Work::Finished(
-            finished
-                .map(|finished| (finished.reply, finished.usage))
-                .map_err(|failure| failure.reason),
-        ))
-        .await;
+    feed.send(Work::Finished(
+        finished
+            .map(|finished| (finished.reply, finished.usage))
+            .map_err(|failure| failure.reason),
+    ));
 }
 
 /// The draw loop. `trace` is the file the session records to when the
@@ -346,7 +378,7 @@ async fn run(
     let ladder = Ladder::from_environment();
     let mut app = App {
         editor: Editor::new(),
-        lines: Vec::new(),
+        lines: Scrollback::new(wrap_line),
         pending: String::new(),
         busy: false,
         status: "ready".to_string(),
@@ -358,8 +390,8 @@ async fn run(
         verbose: false,
     };
 
-    let (tx, mut rx) = mpsc::channel::<Work>(256);
-    // The agent moves to its own task for each turn; the channel returns
+    let (tx, mut inbox) = events::channel::<Work>();
+    // The agent moves to its own task for each turn; the feed returns
     // each phase.
     // An environment that names two doors ends the session here. Picking
     // one of them quietly would put the wrong door in the trace and in
@@ -403,6 +435,14 @@ async fn run(
             start_turn(&mut app, &mut agent_slot, &mut turn, &tx, draft);
         }
 
+        let dropped = inbox.take_dropped();
+        if dropped > 0 {
+            app.push(
+                Intensity::Half,
+                "  ",
+                format!("preview fell behind — {dropped} bytes not drawn; the reply arrives whole"),
+            );
+        }
         draw(terminal, &ladder, &mut app, &model)?;
 
         tokio::select! {
@@ -462,65 +502,12 @@ async fn run(
             _ = spinner.tick() => {
                 app.tick += 1;
             }
-            Some(work) = rx.recv() => {
-                match work {
-                    Work::Classified(Classified::Judged(verdict)) => {
-                        app.show_verdict(&verdict);
-                        app.status = match verdict.route {
-                            Route::Respond | Route::Clarify => "generating".to_string(),
-                            Route::End | Route::Halt(_) => "ready".to_string(),
-                        };
-                    }
-                    Work::Classified(Classified::Skipped(note)) => {
-                        app.push_detail("  ", note);
-                        app.status = "generating".to_string();
-                    }
-                    Work::Judgment(line) => {
-                        app.push_detail("  ", format!("classify → {line}"));
-                    }
-                    Work::Shell(event) => {
-                        // The plan's JSON streamed into pending; the $ lines
-                        // replace it.
-                        app.pending.clear();
-                        match event {
-                            ShellEvent::Proposed(proposal) => {
-                                app.push(
-                                    Intensity::Half,
-                                    "  ",
-                                    format!("$ {}", proposal.command),
-                                );
-                                if !proposal.why.is_empty() {
-                                    app.push_detail("    ", proposal.why);
-                                }
-                            }
-                            ShellEvent::Ran(outcome) => {
-                                app.push_detail("    ", outcome.line());
-                            }
-                            ShellEvent::Verdict(line) => {
-                                app.push_detail("  ", format!("shell → {line}"));
-                            }
-                        }
-                    }
-                    Work::Program(slug) => {
-                        app.push_detail("  ", format!("program → {slug}"));
-                        app.status = format!("running {slug}");
-                    }
-                    Work::Delta(delta) => app.pending.push_str(&delta),
-                    Work::Finished(Ok((text, usage))) => {
-                        // The reply lays out as markdown lines; each is a
-                        // scrollback row.
-                        for rendered in markdown::render(&text) {
-                            app.push_rendered(rendered);
-                        }
-                        app.pending.clear();
-                        if let Some(usage) = usage {
-                            app.tokens = format!("{}/{}", usage.input_tokens, usage.output_tokens);
-                        }
-                    }
-                    Work::Finished(Err(why)) => {
-                        app.pending.clear();
-                        app.push_loud(why);
-                    }
+            Some(work) = inbox.recv() => {
+                // The rest of the burst lands in this frame too, adjacent
+                // deltas already merged.
+                app.apply(work);
+                for work in inbox.drain() {
+                    app.apply(work);
                 }
             }
         }
@@ -533,13 +520,74 @@ async fn run(
     Ok(())
 }
 
+impl App {
+    /// Folds one report from the turn into the transcript and the rails.
+    fn apply(&mut self, work: Work) {
+        match work {
+            Work::Classified(Classified::Judged(verdict)) => {
+                self.show_verdict(&verdict);
+                self.status = match verdict.route {
+                    Route::Respond | Route::Clarify => "generating".to_string(),
+                    Route::End | Route::Halt(_) => "ready".to_string(),
+                };
+            }
+            Work::Classified(Classified::Skipped(note)) => {
+                self.push_detail("  ", note);
+                self.status = "generating".to_string();
+            }
+            Work::Judgment(line) => {
+                self.push_detail("  ", format!("classify → {line}"));
+            }
+            Work::Shell(event) => {
+                // The plan's JSON streamed into pending; the $ lines
+                // replace it.
+                self.pending.clear();
+                match event {
+                    ShellEvent::Proposed(proposal) => {
+                        self.push(Intensity::Half, "  ", format!("$ {}", proposal.command));
+                        if !proposal.why.is_empty() {
+                            self.push_detail("    ", proposal.why);
+                        }
+                    }
+                    ShellEvent::Ran(outcome) => {
+                        self.push_detail("    ", outcome.line());
+                    }
+                    ShellEvent::Verdict(line) => {
+                        self.push_detail("  ", format!("shell → {line}"));
+                    }
+                }
+            }
+            Work::Program(slug) => {
+                self.push_detail("  ", format!("program → {slug}"));
+                self.status = format!("running {slug}");
+            }
+            Work::Delta(delta) => self.pending.push_str(&delta),
+            Work::Finished(Ok((text, usage))) => {
+                // The reply lays out as markdown lines; each is a
+                // scrollback row.
+                for rendered in markdown::render(&text) {
+                    self.push_rendered(rendered);
+                }
+                self.pending.clear();
+                if let Some(usage) = usage {
+                    self.tokens = format!("{}/{}", usage.input_tokens, usage.output_tokens);
+                }
+            }
+            Work::Finished(Err(why)) => {
+                self.pending.clear();
+                self.push_loud(why);
+            }
+        }
+    }
+}
+
 /// Pushes the user turn into the scrollback and hands the draft to the
 /// agent on its own task.
 fn start_turn(
     app: &mut App,
     agent_slot: &mut Option<Agent>,
     turn: &mut Option<tokio::task::JoinHandle<Agent>>,
-    tx: &mpsc::Sender<Work>,
+    tx: &Feed<Work>,
     draft: String,
 ) {
     for (i, part) in draft.lines().enumerate() {
@@ -592,23 +640,14 @@ fn draw(
             }
         }
 
-        // The scrollback draws newest-at-bottom. Each line wraps on word
-        // boundaries at the row width, its continuation rows hanging under
-        // the prefix; the pending reply wraps the same way as it streams.
+        // The scrollback draws newest-at-bottom. Each settled line wraps on
+        // word boundaries at the row width, its continuation rows hanging
+        // under the prefix, and the wrap is cached until the width changes;
+        // the pending reply and the working line wrap afresh each frame.
         let shown = log_area.height as usize;
         let width = usize::from(area.width);
-        let mut rows: Vec<Row> = Vec::new();
-        for line in app.lines.iter().filter(|line| app.verbose || !line.detail) {
-            expand(
-                &mut rows,
-                line.intensity,
-                line.loud,
-                line.prefix,
-                &line.marked,
-                line.hang,
-                width,
-            );
-        }
+        let verbose = app.verbose;
+        let mut live: Vec<Row> = Vec::new();
         // The streaming reply renders live through the same markdown path —
         // unless it is shaping up as a shell plan: a reply that opens as a
         // JSON object or a code fence is the plan's wire format, and the
@@ -616,7 +655,7 @@ fn draw(
         if app.scroll == 0 && !app.pending.is_empty() && !planish(&app.pending) {
             for rendered in markdown::render(&app.pending) {
                 expand(
-                    &mut rows,
+                    &mut live,
                     rendered.intensity,
                     false,
                     "  ",
@@ -637,7 +676,7 @@ fn draw(
                 format!("{elapsed}s")
             };
             expand(
-                &mut rows,
+                &mut live,
                 Intensity::Half,
                 false,
                 "  ",
@@ -646,6 +685,8 @@ fn draw(
                 width,
             );
         }
+        let mut rows: Vec<&Row> = app.lines.rows(width, |line| verbose || !line.detail);
+        rows.extend(live.iter());
         let end = rows.len().saturating_sub(app.scroll);
         let start = end.saturating_sub(shown);
         for (offset, row) in rows[start..end].iter().enumerate() {

@@ -8,11 +8,8 @@
 use std::io::{self, stdout};
 
 use coder_terminal::{Composer, ComposerAction, Editor, Intensity, Ladder, handle_key};
+use coder_terminal::{Guard, Step, guard::Stdout};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
-use crossterm::execute;
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
@@ -27,17 +24,15 @@ struct Line {
 }
 
 fn main() -> io::Result<()> {
-    enable_raw_mode()?;
-    let mut out = stdout();
-    execute!(out, EnterAlternateScreen)?;
-    let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
+    // The guard takes raw mode and the alternate screen and hands both back
+    // when it drops — after a quit, an error, or a panic.
+    let guard = Guard::enter(Stdout, &[Step::RawMode, Step::AlternateScreen])?;
+    guard.arm_panic_hook();
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
     let result = run(&mut terminal);
 
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-    result
+    result.and(guard.restore())
 }
 
 fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
