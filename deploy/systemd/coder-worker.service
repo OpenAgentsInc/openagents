@@ -1,0 +1,65 @@
+[Unit]
+Description=OpenAgents Coder worker
+Documentation=https://github.com/OpenAgentsInc/openagents/tree/main/deploy
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=coder-worker
+Group=coder-worker
+EnvironmentFile=/etc/coder-worker/coder-worker.env
+Environment=HOME=/var/lib/coder-worker
+ExecStartPre=/usr/bin/test -x /opt/coder-worker/current/coder-worker
+ExecStart=/opt/coder-worker/current/coder-worker
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+KillSignal=SIGTERM
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=coder-worker
+
+# The worker listens on nothing. It opens two outbound connections, one to
+# the relay and one to the door, so it may not bind a port at all.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindDeny=any
+
+# The state directory holds the capability trust store when the worker
+# answers through a local executor; a gateway worker keeps nothing there.
+StateDirectory=coder-worker
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/coder-worker
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+RemoveIPC=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

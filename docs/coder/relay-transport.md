@@ -165,6 +165,13 @@ gateway and model, on a machine that was again not quiet:
 | Relay round trip | p50 | min | max | n |
 | --- | --- | --- | --- | --- |
 | Client-observed minus worker-observed | 470 ms | 441 ms | 514 ms | 6 |
+| Deployed worker (`deploy/systemd/coder-worker.service`, `coder -p` from another machine) | pending | pending | pending | — |
+
+The deployed row is pending until the service in
+[`deploy/README.md`](../../deploy/README.md) runs on the operator's host
+and a run from a machine that is not that host is recorded here with its
+command; nothing above is extrapolated to it
+([#9435](https://github.com/OpenAgentsInc/openagents/issues/9435)).
 
 470 ms against the earlier 471 ms. The two runs are a day apart with
 different code on the client, so the agreement is worth more than either

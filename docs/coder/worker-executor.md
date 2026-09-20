@@ -72,6 +72,19 @@ Measured on 2026-09-20, Linux host with the `bwrap` backend and a local
 Postgres relay: `coder -p "Reply with exactly the word pong"` returned
 `pong` in 7.4 s wall clock; the worker logged `answered in 7358 ms`.
 
+## As a service
+
+On a host, the worker runs under systemd from
+[`deploy/systemd/coder-worker.service`](../../deploy/systemd/coder-worker.service),
+with its variables in an environment file installed from
+[`deploy/coder-worker.env.example`](../../deploy/coder-worker.env.example).
+The executor door needs one more file, the drop-in
+[`deploy/systemd/coder-worker-executor.conf`](../../deploy/systemd/coder-worker-executor.conf),
+because the base unit forbids the namespaces `bwrap` builds. The approval
+is recorded as the service user into the store the environment file
+names. [`deploy/README.md`](../../deploy/README.md) walks through the
+install, the key, the approval, and the smoke test from another machine.
+
 ## Failures you will meet
 
 - `names no capability this host can see` — the workdir is outside the
