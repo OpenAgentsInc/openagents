@@ -153,14 +153,132 @@ pub fn questions() -> Questions {
         )
 }
 
-/// The state Classify reads: the latest message and a bounded transcript.
-/// Named fields, not a concatenated string — the questions can point at
-/// `task` and `transcript` directly.
+/// The bounds [`state_of`] holds a transcript to before a door reads it.
+///
+/// The state has to fit the smallest door `coder` intends to serve, which
+/// is Apple's on-device model behind `lev`. On `coder-turns-v1` that door
+/// answered states up to 12,101 bytes and refused `branch_too_long` from
+/// 10,704 bytes, so the budget is [`STATE_BUDGET`], and these caps are the
+/// rung of the measured ladder where every real turn state lands under it.
+/// `docs/decision-models/2026-09-20-state-budget.md` holds the ladder, the
+/// sizes, and what hosted Jev's accuracy did at each rung.
+///
+/// The caps take the largest contributor first. Command output was
+/// assumed to be it, and on real turns it is not: over the 40 turn states
+/// the assistant's own text is 54% of the bytes and shell records 41%, so
+/// a cap on output alone leaves the median turn over the budget. A cap on
+/// turns and one on each message's text are what bring the state under.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Caps {
+    /// How many of the latest transcript turns the state carries.
+    pub turns: usize,
+    /// How many bytes of one message's text the state carries. A shell
+    /// record is bounded by `commands` and `output_bytes` first, then held
+    /// to this too.
+    pub message_bytes: usize,
+    /// How many commands of one shell record the state carries.
+    pub commands: usize,
+    /// How many bytes of one command's output the state carries.
+    pub output_bytes: usize,
+}
+
+/// The bytes a `classify` state may reach, as `serde_json` writes it.
+///
+/// Apple's runtime refused the smallest real state at 10,704 bytes, so the
+/// budget sits at three quarters of that: tokens per byte vary with what
+/// the text is, and the margin is what keeps a shell-heavy state from
+/// tokenizing past the window the byte count says it fits.
+pub const STATE_BUDGET: usize = 10_704 / 4 * 3;
+
+impl Caps {
+    /// The bounds production applies: six turns, 768 bytes of text per
+    /// message, three commands per shell record, and 256 bytes of output
+    /// per command. Every one of the 40 real turn states in
+    /// `coder-turns-v1` lands under [`STATE_BUDGET`] at these bounds, and
+    /// hosted Jev's accuracy on the development partition is within noise
+    /// of the unbudgeted state.
+    pub const PRODUCTION: Caps = Caps {
+        turns: 6,
+        message_bytes: 768,
+        commands: 3,
+        output_bytes: 256,
+    };
+
+    /// The bounds the state had before it was budgeted: twelve turns,
+    /// whole messages, ten commands, and 2,048 bytes of output. Kept so a
+    /// sweep has a baseline to pair against.
+    pub const UNBUDGETED: Caps = Caps {
+        turns: 12,
+        message_bytes: usize::MAX,
+        commands: crate::shell::COMMANDS_MAX,
+        output_bytes: crate::shell::HEAD_MAX,
+    };
+}
+
+/// The line a shell record opens with; `shell::transcript_of` writes it.
+const SHELL_RECORD: &str = "ran shell commands:\n";
+
+/// The longest prefix of `text` within `bytes`, on a character boundary.
+fn head(text: &str, bytes: usize) -> &str {
+    if text.len() <= bytes {
+        return text;
+    }
+    let mut end = bytes;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+/// One message's text, held to `caps`.
+///
+/// A shell record is the one message the agent writes for itself, in the
+/// shape `shell::transcript_of` gives it: a heading, then one block per
+/// command of the command line, its status, and its output. It is bounded
+/// block by block so a command is never cut mid-line — the first
+/// `caps.commands` blocks stay, each with `caps.output_bytes` of output,
+/// and a line counts the blocks dropped, and the record then keeps its
+/// first `caps.message_bytes` like any other message. Caps no tighter
+/// than the shell's own leave the record as written.
+pub fn bounded_text(text: &str, caps: &Caps) -> String {
+    let shell_bounded =
+        caps.commands >= crate::shell::COMMANDS_MAX && caps.output_bytes >= crate::shell::HEAD_MAX;
+    let Some(records) = text.strip_prefix(SHELL_RECORD).filter(|_| !shell_bounded) else {
+        return head(text, caps.message_bytes).to_string();
+    };
+    let blocks: Vec<&str> = records.split("\n$ ").skip(1).collect();
+    let mut out = String::from(SHELL_RECORD);
+    for block in blocks.iter().take(caps.commands) {
+        let mut lines = block.splitn(3, '\n');
+        let command = lines.next().unwrap_or_default();
+        let status = lines.next().unwrap_or_default();
+        let output = head(lines.next().unwrap_or_default(), caps.output_bytes);
+        out.push_str(&format!("\n$ {command}\n{status}\n{output}"));
+        if !output.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+    let dropped = blocks.len().saturating_sub(caps.commands);
+    if dropped > 0 {
+        out.push_str(&format!("\n{dropped} more commands not shown\n"));
+    }
+    head(&out, caps.message_bytes).to_string()
+}
+
+/// The state Classify reads: the latest message and a transcript bounded
+/// by [`Caps::PRODUCTION`]. Named fields, not a concatenated string — the
+/// questions can point at `task` and `transcript` directly.
 pub fn state_of(task: &str, transcript: &[Message], repo: &[String]) -> Value {
+    state_within(task, transcript, repo, &Caps::PRODUCTION)
+}
+
+/// [`state_of`] under explicit bounds, so a sweep can hold the same
+/// transcript to a ladder of caps and pair the answers.
+pub fn state_within(task: &str, transcript: &[Message], repo: &[String], caps: &Caps) -> Value {
     let turns: Vec<Value> = transcript
         .iter()
         .rev()
-        .take(12)
+        .take(caps.turns)
         .rev()
         .map(|message| {
             json!({
@@ -168,7 +286,7 @@ pub fn state_of(task: &str, transcript: &[Message], repo: &[String]) -> Value {
                     crate::generate::Role::User => "user",
                     crate::generate::Role::Assistant => "assistant",
                 },
-                "text": message.text,
+                "text": bounded_text(&message.text, caps),
             })
         })
         .collect();
