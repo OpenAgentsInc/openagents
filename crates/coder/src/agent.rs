@@ -16,8 +16,8 @@ use serde_json::Value;
 
 use crate::about::About;
 use crate::classify::{
-    Judgment, Route, ShellRoute, judgment_of, questions, route, shell_questions, shell_verdict_of,
-    state_of,
+    Judgment, Route, ShellRoute, judgment_of, questions, route, shell_extensions, shell_questions,
+    shell_verdict_of, state_of,
 };
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
 use crate::permit::Permit;
@@ -56,6 +56,19 @@ const FINAL_SUFFIX: &str = " The command loop is finished — do not emit a \
 const CLARIFY_SUFFIX: &str = " The router marked this turn ambiguous: ask \
     one short clarifying question and nothing else.";
 
+/// The instructions after a round the judge read as `retry`: the output
+/// did not settle the task, so the next plan must differ or the model
+/// must answer with what it has.
+const RETRY_SUFFIX: &str = " The judge read the last round's output as a \
+    retry: those commands did not establish what the task needs. Do not \
+    run the same commands again. Either plan different commands that get \
+    at it another way, or answer in prose with what you have.";
+
+/// How many rounds in a row the judge may read as `retry` before the turn
+/// stops running commands. Past this the retry verdict is a refusal, not
+/// another round.
+pub const RETRIES_MAX: usize = 2;
+
 /// The message the model reads after it answered a finished loop with
 /// another plan: the one repair a turn allows before the host answers for
 /// it.
@@ -91,6 +104,9 @@ pub enum Exhausted {
     Rounds(usize),
     /// The judge read the last round and said to stop.
     Stopped,
+    /// The judge read this many rounds in a row as `retry`, the most a
+    /// turn allows.
+    Retries(usize),
 }
 
 impl Exhausted {
@@ -102,6 +118,11 @@ impl Exhausted {
                 format!("the command loop ran its {rounds} permitted rounds")
             }
             Exhausted::Stopped => "the judge stopped the command loop".to_string(),
+            Exhausted::Retries(retries) => {
+                format!(
+                    "the judge asked for a retry {retries} rounds in a row, the most a turn allows"
+                )
+            }
         }
     }
 }
@@ -516,7 +537,7 @@ impl Agent {
         sink: &mut (dyn FnMut(&str) + Send),
         meta: &mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
-        let instructions = self.instructions(clarify, false);
+        let instructions = self.instructions(clarify, false, false);
         if let Some(trace) = &mut self.trace {
             trace.instructions(&instructions);
         }
@@ -566,6 +587,7 @@ impl Agent {
         let mut total: Option<Usage> = None;
         let mut rounds = 0usize;
         let mut repairs = 0usize;
+        let mut retries = 0usize;
         let mut exhausted: Option<Exhausted> = None;
         let mut ran: Vec<Outcome> = Vec::new();
         let mut permit = match clarify {
@@ -577,7 +599,7 @@ impl Agent {
             // so — except while clarifying, where the one question it is
             // asking for is the whole instruction.
             let final_only = !permit.executes() && !clarify;
-            let instructions = self.instructions(clarify, final_only);
+            let instructions = self.instructions(clarify, final_only, retries > 0);
             if let Some(trace) = &mut self.trace {
                 trace.instructions(&instructions);
             }
@@ -677,9 +699,16 @@ impl Agent {
                 text: shell::transcript_of(&outcomes),
             });
             ran.extend(outcomes);
+            retries = match route {
+                ShellRoute::Retry => retries + 1,
+                ShellRoute::Pass | ShellRoute::Stop => 0,
+            };
             let spent = match (route, rounds >= permit.rounds()) {
                 (ShellRoute::Stop, _) => Some(Exhausted::Stopped),
                 (_, true) => Some(Exhausted::Rounds(rounds)),
+                (ShellRoute::Retry, false) if retries >= RETRIES_MAX => {
+                    Some(Exhausted::Retries(retries))
+                }
                 _ => None,
             };
             if let Some(spent) = spent {
@@ -696,9 +725,9 @@ impl Agent {
         }
     }
 
-    /// The instructions for one generation: the base text, the clarify or
-    /// final suffix, and the repo context block.
-    fn instructions(&self, clarify: bool, final_only: bool) -> String {
+    /// The instructions for one generation: the base text, the clarify,
+    /// retry, or final suffix, and the repo context block.
+    fn instructions(&self, clarify: bool, final_only: bool, retrying: bool) -> String {
         let mut instructions = if clarify {
             format!("{INSTRUCTIONS}{CLARIFY_SUFFIX}")
         } else {
@@ -706,6 +735,8 @@ impl Agent {
         };
         if final_only {
             instructions.push_str(FINAL_SUFFIX);
+        } else if retrying {
+            instructions.push_str(RETRY_SUFFIX);
         }
         instructions.push_str("\n\n");
         instructions.push_str(&self.context());
@@ -724,7 +755,8 @@ impl Agent {
             return ShellRoute::Pass;
         };
         let state = shell::state_of(&self.task, outcomes);
-        let request = SystemOneRequest::new(state, shell_questions());
+        let request =
+            SystemOneRequest::new(state, shell_questions()).extra_body(shell_extensions());
         let asked = request
             .body(classify.default_model())
             .map_or(Value::Null, Value::Object);
@@ -1063,6 +1095,23 @@ mod tests {
         assert_eq!(turned.commands, rounds);
     }
 
+    /// A retry verdict reaches the next generation as an instruction; a
+    /// finished loop's final suffix takes its place, since a turn that runs
+    /// nothing more has nothing to retry.
+    #[test]
+    fn a_retry_changes_the_next_instructions() {
+        let agent = saying("hi".to_string());
+        let plain = agent.instructions(false, false, false);
+        assert!(!plain.contains(RETRY_SUFFIX), "{plain}");
+        let retrying = agent.instructions(false, false, true);
+        assert!(retrying.contains(RETRY_SUFFIX), "{retrying}");
+        let last = agent.instructions(false, true, true);
+        assert!(
+            last.contains(FINAL_SUFFIX) && !last.contains(RETRY_SUFFIX),
+            "{last}"
+        );
+    }
+
     /// A plan the host cannot read on a permitted turn is refused before
     /// anything runs, with no repair: the loop never started.
     #[tokio::test]
@@ -1124,14 +1173,14 @@ mod tests {
         };
         git(&["init", "-q"]);
         let outside = saying("hi".to_string());
-        let none = outside.instructions(false, false);
+        let none = outside.instructions(false, false, false);
         assert!(none.contains("about this application:"), "{none}");
         assert!(none.contains("not available on this machine"), "{none}");
 
         let repo = Repo::discover(dir.path());
         assert!(repo.is_some(), "the decoy is a repository");
         let inside = saying("hi".to_string()).with_repo(repo);
-        let both = inside.instructions(false, false);
+        let both = inside.instructions(false, false, false);
         assert!(
             both.contains(&format!("workspace repository: {}", dir.path().display()))
                 || both.contains(&format!(

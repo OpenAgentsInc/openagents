@@ -525,9 +525,18 @@ In the order the measurements support:
    re-measure Lev on it. The suite can find the boundary: everything under
    6 KB was answered, 28 of 31 over 12 KB was refused.
 3. **Decide what `retry` means**, or take it out of the question.
+   Done (#9396): `retry` now adds a suffix to the next generation's
+   instructions and is bounded at `RETRIES_MAX` consecutive rounds, past
+   which the turn stops as `Exhausted::Retries`. `docs/coder/shell-loop.md`
+   records the behavior.
 4. **Fit a calibration map for `damage` on Lev before any on-device door
    reads that threshold.** Three false stops in 21 rounds is what an
-   uncalibrated estimate behind a fixed threshold looks like.
+   uncalibrated estimate behind a fixed threshold looks like. The route
+   no longer reads the number from a door without one (#9397): the request
+   names the `damage` family, and `DAMAGE_STOP` gates only when the response
+   says `calibration.state = calibrated` for that family. The 3 of 21
+   lev-base false stops above would not have fired. The map itself is
+   still unfitted.
 5. **Harvest more turns.** Forty is enough to show that five questions are
    near-constant and that one door cannot read the states; it is not enough
    to separate two doors that differ by a point.

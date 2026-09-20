@@ -126,18 +126,46 @@ After each round, Classify reads the task plus every outcome —
 - `damage` (noul): did anything suggest the commands harmed files,
   state, or secrets?
 
-Routing: `damage ≥ 0.7` forces `stop` whatever the choice says; `stop`
-ends the loop; `retry` and `pass` both feed the round back — the
-difference is the instruction the model reads into its next plan. A
-missing classifier or a malformed verdict defaults to `pass`: the
-safest informative route, since the model still decides what the output
-means. The round cap (3) and the final-only suffix bound the loop even
-if every judgment says `pass`.
+Routing: `stop` ends the loop. `pass` feeds the round back unchanged.
+`retry` feeds it back with a suffix on the next instructions that says
+the judge read the round as a retry and asks for different commands or a
+prose answer. Consecutive retries are bounded by `RETRIES_MAX` (2): a
+second `retry` in a row stops the loop as `Exhausted::Retries`, and a
+`pass` between them resets the count. A missing classifier or a
+malformed verdict defaults to `pass`: the safest informative route,
+since the model still decides what the output means. The round cap (3)
+and the final-only suffix bound the loop even if every judgment says
+`pass`.
+
+### The damage gate
+
+`damage` stops the round at `DAMAGE_STOP` (0.7) only when the number is a
+calibrated probability. The request names the `damage` family in its
+`extensions`, and the door answers with `extensions.calibration.state`.
+A door that applied an admitted calibration map for the family answers
+`calibrated`, and the gate reads the number. A door that answers
+`uncalibrated`, or a hosted door that says nothing, has its number
+recorded and shown but not routed: the gate is `DamageGate::Unread` with
+the reason, and the `outcome` choice decides alone. The verdict line
+says which: `damage 1.0 (uncalibrated, steps of 1/8)` or
+`damage 0.9 (calibration unstated)`.
+
+The reason the gate refuses is what the raw number means on a sampled
+estimator. Lev answers a Noul as the fraction of `N` seeded draws that
+said yes, so with eight samples the value moves in steps of `1/8`, the
+threshold first crosses at `0.75` (six of eight draws), and `1.0` means
+every draw agreed — the estimator's ceiling, not certainty. A hosted
+Jev door reports `damage` below `0.1` on the same rounds where Lev-base
+reports `1.0`; `docs/decision-models/2026-09-19-coder-turns.md` records
+both. The same threshold cannot gate both numbers, so it gates neither
+until a map fitted on labelled outcomes turns the frequency into a
+probability.
 
 ## Exhaustion
 
-The loop stops for one of two reasons, and the turn says which: the judge
-said `stop`, or the permit's rounds are spent. Either way execution is
+The loop stops for one of three reasons, and the turn says which: the
+judge said `stop`, the judge said `retry` `RETRIES_MAX` rounds in a row,
+or the permit's rounds are spent. Either way execution is
 withdrawn for the rest of the turn, the model reads the final-only
 suffix, and its next reply is expected to be prose. If it is prose, that
 is the answer, and the turn carries the exhaustion as metadata for the

@@ -9,7 +9,7 @@
 
 use indexmap::IndexMap;
 use jev::{Answer, Choice, Entry, Noul, Questions, Score, SystemOneResponse};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::generate::Message;
 
@@ -271,6 +271,89 @@ impl ShellRoute {
     }
 }
 
+/// The question family the `damage` Noul belongs to, as a calibration
+/// record names it. `docs/decision-models/2026-09-19-coder-turns.md`
+/// labels the family under this name.
+pub const DAMAGE_FAMILY: &str = "damage";
+
+/// The calibrated probability of harm at which a round stops.
+///
+/// This is the one place in the module where a probability gates an
+/// action rather than an argmax being taken, so the number has to be a
+/// probability. It reads as one only from a door that applied an admitted
+/// calibration map for [`DAMAGE_FAMILY`]; [`ShellVerdict::damage_gate`]
+/// refuses to read it from any other door.
+///
+/// Against a sampled estimator the same number means something else. A
+/// door that counts `N` seeded draws answers in steps of `1/N`, so with
+/// eight draws the threshold is "six of eight draws agreed" (`0.75`, the
+/// first step at or above `0.7`), and a unanimous sample reads `1.0`
+/// however often the model is wrong. On `coder-turns-v1` the uncalibrated
+/// `lev-base` door crossed this value on 3 of 21 rounds that damaged
+/// nothing, while hosted Jev never rose above `0.1`.
+pub const DAMAGE_STOP: f64 = 0.7;
+
+/// What the serving door said about the numbers it returned.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Calibration {
+    /// The door applied an admitted calibration map for the family the
+    /// request named, so its probabilities are probabilities.
+    Calibrated,
+    /// The door said its numbers are raw: frequencies over seeded samples,
+    /// at a resolution of one over `samples` when it reported them.
+    Uncalibrated {
+        /// How many draws the estimator counted, when the door said.
+        samples: Option<u64>,
+    },
+    /// The door said nothing about calibration.
+    Unstated,
+}
+
+impl Calibration {
+    /// Reads the `extensions` a door attaches to its response body: the
+    /// calibration state and, for the `damage` question, the estimator's
+    /// sample count. A body without them is [`Calibration::Unstated`].
+    pub fn of(response: &SystemOneResponse) -> Self {
+        let Some(jev::ResponseBody::Json(body)) = response.raw().body() else {
+            return Calibration::Unstated;
+        };
+        let extensions = &body["extensions"];
+        let calibration = &extensions["calibration"];
+        match calibration["state"].as_str() {
+            Some("calibrated") if calibration["family"] == DAMAGE_FAMILY => Calibration::Calibrated,
+            Some(_) => Calibration::Uncalibrated {
+                samples: extensions["estimator"]["damage"]["samples"].as_u64(),
+            },
+            None => Calibration::Unstated,
+        }
+    }
+
+    /// The word the display line and the trace carry.
+    pub fn word(&self) -> String {
+        match self {
+            Calibration::Calibrated => "calibrated".to_string(),
+            Calibration::Uncalibrated {
+                samples: Some(samples),
+            } => format!("uncalibrated, steps of 1/{samples}"),
+            Calibration::Uncalibrated { samples: None } => "uncalibrated".to_string(),
+            Calibration::Unstated => "calibration unstated".to_string(),
+        }
+    }
+}
+
+/// What the `damage` probability did to the route.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DamageGate {
+    /// A calibrated probability reached [`DAMAGE_STOP`]; the round stops.
+    Stop,
+    /// A calibrated probability stayed below [`DAMAGE_STOP`], or the
+    /// question went unanswered; the choice decides.
+    Clear,
+    /// The number is not a probability this gate can read, so it did not
+    /// gate. The choice decides, and the reason goes to the trace.
+    Unread(String),
+}
+
 /// What the judge read of a shell round.
 #[derive(Clone, Debug)]
 pub struct ShellVerdict {
@@ -280,14 +363,41 @@ pub struct ShellVerdict {
     pub useful: Option<f64>,
     /// The `damage` Noul probability.
     pub damage: Option<f64>,
+    /// What the door said the `damage` number is.
+    pub calibration: Calibration,
 }
 
 impl ShellVerdict {
-    /// The route the verdict means: `damage` forces `Stop` whatever the
-    /// choice says; a missing or unlisted choice means `Pass`, the least
-    /// forceful reading.
+    /// Whether `damage` stops the round.
+    ///
+    /// The gate reads only a calibrated probability. A door that serves a
+    /// raw frequency, or one that does not say, has its `damage` number
+    /// recorded and displayed but not acted on: the number could be
+    /// "every draw agreed" as easily as "seventy percent likely," and
+    /// stopping an agent on it would be stopping on a guess. Refusing to
+    /// read it is typed and explicit so a reader of the trace sees that
+    /// the gate was there and did not fire, rather than that it fired
+    /// low.
+    pub fn damage_gate(&self) -> DamageGate {
+        let Some(damage) = self.damage else {
+            return DamageGate::Clear;
+        };
+        match &self.calibration {
+            Calibration::Calibrated if damage >= DAMAGE_STOP => DamageGate::Stop,
+            Calibration::Calibrated => DamageGate::Clear,
+            other => DamageGate::Unread(format!(
+                "damage {damage:.3} not routed: the door serves `{DAMAGE_FAMILY}` {} and \
+                 the stop threshold {DAMAGE_STOP} reads a calibrated probability",
+                other.word()
+            )),
+        }
+    }
+
+    /// The route the verdict means: a calibrated `damage` at or above
+    /// [`DAMAGE_STOP`] forces `Stop` whatever the choice says; a missing
+    /// or unlisted choice means `Pass`, the least forceful reading.
     pub fn route(&self) -> ShellRoute {
-        if self.damage.is_some_and(|damage| damage >= 0.7) {
+        if self.damage_gate() == DamageGate::Stop {
             return ShellRoute::Stop;
         }
         match self.outcome.as_ref().map(|outcome| outcome.choice.as_str()) {
@@ -297,19 +407,40 @@ impl ShellVerdict {
         }
     }
 
-    /// The display line: `pass 0.91 · useful 0.8 · damage 0.0`.
+    /// The display line: `pass 0.91 · useful 0.8 · damage 0.0`, with the
+    /// door's word on the number when it is not a calibrated probability:
+    /// `damage 1.0 (uncalibrated, steps of 1/8)`.
     pub fn line(&self) -> String {
         let route = self.route().word();
         let confidence = self
             .outcome
             .as_ref()
             .map_or(0.0, |outcome| outcome.confidence);
+        let calibration = match (&self.damage, &self.calibration) {
+            (None, _) | (_, Calibration::Calibrated) => String::new(),
+            (Some(_), other) => format!(" ({})", other.word()),
+        };
         format!(
-            "{route} {confidence:.2} · useful {:.1} · damage {:.1}",
+            "{route} {confidence:.2} · useful {:.1} · damage {:.1}{calibration}",
             self.useful.unwrap_or(0.0),
             self.damage.unwrap_or(0.0),
         )
     }
+}
+
+/// The `extensions` a shell-round request carries: the family the
+/// `damage` question belongs to, so a door holding an admitted map for it
+/// applies the map, and a request for the estimator's record, so the
+/// door says at what resolution it answered. A door that serves no
+/// extensions ignores the field, and the response then says nothing,
+/// which [`Calibration::of`] reads as [`Calibration::Unstated`].
+pub fn shell_extensions() -> Map<String, Value> {
+    let mut extra = Map::new();
+    extra.insert(
+        "extensions".to_string(),
+        json!({ "family": DAMAGE_FAMILY, "estimator": true }),
+    );
+    extra
 }
 
 /// The questions for a round of shell outcomes: where the loop goes, and
@@ -373,6 +504,7 @@ pub fn shell_verdict_of(response: &SystemOneResponse) -> ShellVerdict {
         outcome,
         useful: noul("useful"),
         damage: noul("damage"),
+        calibration: Calibration::of(response),
     }
 }
 
@@ -439,6 +571,128 @@ mod tests {
         assert_eq!(state["repo_members"][0], "coder");
         assert_eq!(state["task"], "what time is it");
         assert_eq!(state["transcript"][0]["role"], "user");
+    }
+
+    /// A shell verdict with `damage` at `damage`, from a door that said
+    /// `calibration` about it.
+    fn judged(choice: &str, damage: f64, calibration: Calibration) -> ShellVerdict {
+        ShellVerdict {
+            outcome: Some(ChoiceAnswer {
+                choice: choice.to_string(),
+                confidence: 0.9,
+                probabilities: IndexMap::new(),
+            }),
+            useful: Some(0.5),
+            damage: Some(damage),
+            calibration,
+        }
+    }
+
+    /// A door's response body, decoded the way the client decodes it.
+    fn response(body: Value) -> SystemOneResponse {
+        SystemOneResponse::decode(jev::RawResponse {
+            status: 200,
+            headers: Default::default(),
+            bytes: body.to_string().into_bytes(),
+        })
+        .expect("a readable response")
+    }
+
+    #[test]
+    fn a_calibrated_door_routes_damage_to_stop() {
+        let verdict = judged("pass", 0.75, Calibration::Calibrated);
+        assert_eq!(verdict.damage_gate(), DamageGate::Stop);
+        assert_eq!(verdict.route(), ShellRoute::Stop);
+        let clear = judged("retry", 0.6, Calibration::Calibrated);
+        assert_eq!(clear.damage_gate(), DamageGate::Clear);
+        assert_eq!(clear.route(), ShellRoute::Retry);
+        assert!(!clear.line().contains('('), "{}", clear.line());
+    }
+
+    #[test]
+    fn an_uncalibrated_door_does_not_fire_the_stop() {
+        // Eight draws that all said yes read 1.0 on a sampled estimator,
+        // which is the estimator's ceiling and not a probability of one.
+        let unanimous = judged("pass", 1.0, Calibration::Uncalibrated { samples: Some(8) });
+        let DamageGate::Unread(why) = unanimous.damage_gate() else {
+            panic!(
+                "an uncalibrated number was routed: {:?}",
+                unanimous.damage_gate()
+            );
+        };
+        assert!(why.contains("1/8") && why.contains("0.7"), "{why}");
+        assert_eq!(unanimous.route(), ShellRoute::Pass);
+        assert!(
+            unanimous.line().contains("steps of 1/8"),
+            "{}",
+            unanimous.line()
+        );
+
+        let unstated = judged("retry", 0.9, Calibration::Unstated);
+        assert!(matches!(unstated.damage_gate(), DamageGate::Unread(_)));
+        assert_eq!(unstated.route(), ShellRoute::Retry);
+        assert!(unstated.line().contains("unstated"), "{}", unstated.line());
+
+        let stop = judged("stop", 0.0, Calibration::Unstated);
+        assert_eq!(stop.route(), ShellRoute::Stop, "the choice still stops");
+    }
+
+    #[test]
+    fn a_missing_damage_answer_clears_the_gate() {
+        let mut verdict = judged("pass", 0.0, Calibration::Unstated);
+        verdict.damage = None;
+        assert_eq!(verdict.damage_gate(), DamageGate::Clear);
+        assert_eq!(verdict.route(), ShellRoute::Pass);
+    }
+
+    #[test]
+    fn the_calibration_is_read_from_the_response_extensions() {
+        let answers = json!({
+            "outcome": { "type": "choice", "choice": "pass", "confidence": 0.9,
+                         "probabilities": { "pass": 0.9, "retry": 0.1, "stop": 0.0 } },
+            "damage": { "type": "noul", "noul": 1.0 },
+        });
+        let hosted = response(json!({ "model": "jev", "answers": answers }));
+        assert_eq!(Calibration::of(&hosted), Calibration::Unstated);
+
+        let raw = response(json!({
+            "model": "lev-base", "answers": answers,
+            "extensions": {
+                "calibration": { "state": "uncalibrated" },
+                "estimator": { "damage": { "samples": 8, "resolution": 0.125 } },
+            },
+        }));
+        assert_eq!(
+            Calibration::of(&raw),
+            Calibration::Uncalibrated { samples: Some(8) }
+        );
+        let verdict = shell_verdict_of(&raw);
+        assert_eq!(verdict.damage, Some(1.0));
+        assert_eq!(verdict.route(), ShellRoute::Pass);
+
+        let fitted = response(json!({
+            "model": "lev-adapted", "answers": answers,
+            "extensions": { "calibration": { "state": "calibrated", "family": DAMAGE_FAMILY } },
+        }));
+        assert_eq!(Calibration::of(&fitted), Calibration::Calibrated);
+        assert_eq!(shell_verdict_of(&fitted).route(), ShellRoute::Stop);
+
+        // A map fitted for another family is not a map for this one.
+        let borrowed = response(json!({
+            "model": "lev-adapted", "answers": answers,
+            "extensions": { "calibration": { "state": "calibrated", "family": "urgency" } },
+        }));
+        assert_eq!(
+            Calibration::of(&borrowed),
+            Calibration::Uncalibrated { samples: None }
+        );
+    }
+
+    #[test]
+    fn the_request_names_the_family() {
+        let extra = shell_extensions();
+        assert_eq!(extra["extensions"]["family"], DAMAGE_FAMILY);
+        assert_eq!(extra["extensions"]["estimator"], true);
     }
 
     #[test]
