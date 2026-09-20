@@ -85,6 +85,20 @@
 //! reference implementation in `~/work/coder` reports drift, which is right
 //! for a task manifest whose upstream pins legitimately move, and wrong
 //! here: in a labelled suite a changed label is tampering.
+//!
+//! # When the locked partition is training data
+//!
+//! A held-out number means nothing for a door that trained on the items.
+//! `support-v2-three-way` was partitioned over the same 196 items that the
+//! two-way `support-v2` had already split, and `training/lev-adapter` had
+//! trained every Lev adapter from that two-way calibration split before the
+//! three-way file locked 20 of those 98 records (openagents#9399). The
+//! manifest says so in a typed field, [`Suite::exposure`], and
+//! [`LockedLedger::read_locked`] refuses to spend an exposed locked
+//! partition for any door that serves an adapter. Base and hosted doors
+//! never trained on anything, so their read still goes through. The clean
+//! set the adapters can be confirmed on is `support-v2-unseen`, which the
+//! exposure names as its `successor`.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -108,6 +122,12 @@ pub const LOCKED_READ_SCHEMA: &str = "openagents.gym.locked_read.v1";
 
 /// The suite this repository scores on, as committed.
 pub const SUPPORT_V2_THREE_WAY: &str = include_str!("../suites/support-v2-three-way.json");
+
+/// The 98 items of `support-v2` that no Lev adapter trained on, under the
+/// partitions `support-v2-three-way` gave them. This is the suite an adapted
+/// door's locked read is spent on, because the three-way suite's locked
+/// partition is half training data for every adapter.
+pub const SUPPORT_V2_UNSEEN: &str = include_str!("../suites/support-v2-unseen.json");
 
 /// What can go wrong with a suite or with a read of its locked partition.
 #[derive(Debug, thiserror::Error)]
@@ -166,6 +186,32 @@ pub enum SuiteError {
         "the locked partition is not read through `partition`: spend it through a `LockedLedger`, which records the read"
     )]
     LockedNotOpen,
+    /// The manifest's exposure record does not describe the suite it is on.
+    #[error("the suite's exposure record is not usable: {0}")]
+    ExposureMalformed(String),
+    /// The locked partition holds training data for adapted doors, and the
+    /// caller is spending it for one. A number read off memorized items is
+    /// not a confirmation, so the read is refused rather than recorded.
+    #[error(
+        "the locked partition of {suite} is training data for adapted doors: {items} of its \
+         {locked} items were exposed through {through}, so it cannot confirm the adapter \
+         `{adapter}`{successor}"
+    )]
+    Exposed {
+        /// The suite whose locked partition is exposed.
+        suite: String,
+        /// How many locked items were exposed.
+        items: usize,
+        /// How many items the locked partition holds.
+        locked: usize,
+        /// What exposed them.
+        through: String,
+        /// The adapter the caller wanted to confirm.
+        adapter: String,
+        /// `; spend <successor> instead` when the manifest names a
+        /// replacement, and empty otherwise.
+        successor: String,
+    },
     /// A read of the locked partition left one of its own fields blank.
     #[error("a read of the locked partition records why it was spent, and {field} is empty")]
     Unrecorded {
@@ -335,6 +381,33 @@ impl Item {
     }
 }
 
+/// A record that a partition's items were training data for a door.
+///
+/// A suite carries this when items it holds back were trained on before it
+/// held them back, which is the ordering accident openagents#9399 found:
+/// the two-way `support-v2` split trained every Lev adapter, and the
+/// three-way partitioning of the same items came later and locked 20 of
+/// the 98 training records. The record is typed rather than written in a
+/// document so the tooling reads it: [`LockedLedger::read_locked`] refuses
+/// to spend an exposed locked partition for a door that serves an adapter.
+///
+/// Outside the digest, like `gate` and `questions`: it describes what
+/// happened to the items, not what they are, and adding it to a suite must
+/// leave every row and record that pins that suite's digest valid.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Exposure {
+    /// Which partition was exposed.
+    pub partition: Partition,
+    /// How many of that partition's items were exposed.
+    pub items: usize,
+    /// What exposed them: the script, the split it read, and when.
+    pub through: String,
+    /// The suite that replaces this one for the doors the exposure
+    /// affects, when one exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub successor: Option<String>,
+}
+
 /// A suite of labelled items in three partitions.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Suite {
@@ -394,6 +467,11 @@ pub struct Suite {
     /// they are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sampling: Option<Value>,
+    /// Which of this suite's partitions was training data for a door,
+    /// when one was. Read by the ledger, which refuses to spend an exposed
+    /// locked partition for an adapted door. Outside the digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exposure: Option<Exposure>,
     /// The items.
     pub items: Vec<Item>,
 }
@@ -447,7 +525,58 @@ impl Suite {
         if carried == 0 && suite.questions.is_none() {
             return Err(SuiteError::NoQuestions);
         }
+        if let Some(exposure) = &suite.exposure {
+            let held = suite.counts()[&exposure.partition];
+            if exposure.items == 0 {
+                return Err(SuiteError::ExposureMalformed(
+                    "it exposes zero items, which is no exposure; remove the record".to_string(),
+                ));
+            }
+            if exposure.items > held {
+                return Err(SuiteError::ExposureMalformed(format!(
+                    "it exposes {} items of a {} partition that holds {held}",
+                    exposure.items, exposure.partition
+                )));
+            }
+            if exposure.through.trim().is_empty() {
+                return Err(SuiteError::ExposureMalformed(
+                    "it does not say what exposed the items".to_string(),
+                ));
+            }
+        }
         Ok(suite)
+    }
+
+    /// Whether the locked partition is training data for adapted doors.
+    #[must_use]
+    pub fn locked_is_exposed(&self) -> bool {
+        self.exposure
+            .as_ref()
+            .is_some_and(|exposure| exposure.partition == Partition::Locked)
+    }
+
+    /// Refuses to spend the locked partition for a door whose adapter may
+    /// have trained on it. A door that serves no adapter, which is what an
+    /// empty `adapter` says, never trained on anything and is not refused.
+    fn check_exposure(&self, adapter: &str) -> Result<(), SuiteError> {
+        let Some(exposure) = &self.exposure else {
+            return Ok(());
+        };
+        if exposure.partition != Partition::Locked || adapter.trim().is_empty() {
+            return Ok(());
+        }
+        Err(SuiteError::Exposed {
+            suite: self.name.clone(),
+            items: exposure.items,
+            locked: self.counts()[&Partition::Locked],
+            through: exposure.through.clone(),
+            adapter: adapter.to_owned(),
+            successor: exposure
+                .successor
+                .as_deref()
+                .map(|successor| format!("; spend `{successor}` instead"))
+                .unwrap_or_default(),
+        })
     }
 
     /// Loads a suite from a file.
@@ -545,6 +674,11 @@ pub fn support_v2_three_way() -> Result<Suite, SuiteError> {
     Suite::load(SUPPORT_V2_THREE_WAY)
 }
 
+/// Loads the suite an adapted door's locked read is spent on.
+pub fn support_v2_unseen() -> Result<Suite, SuiteError> {
+    Suite::load(SUPPORT_V2_UNSEEN)
+}
+
 /// What a read of a locked partition records about itself.
 #[derive(Clone, Copy, Debug)]
 pub struct Spend<'a> {
@@ -554,6 +688,15 @@ pub struct Spend<'a> {
     pub reason: &'a str,
     /// When, as the caller dates it.
     pub at: &'a str,
+    /// The adapter the door serves, as [`crate::row::DoorIdentity::adapter`]
+    /// reports it, or empty for a base or hosted door that serves none.
+    ///
+    /// The ledger reads this against [`Suite::exposure`]: a locked
+    /// partition that was training data for adapters is refused to any
+    /// door that serves one. Naming the adapter is what makes the refusal
+    /// possible, so a read that leaves it blank is a read for a door that
+    /// never trained, and the caller is saying so.
+    pub adapter: &'a str,
 }
 
 impl Spend<'_> {
@@ -599,6 +742,9 @@ pub struct LockedRead {
     pub at: String,
     /// How many items the read covered.
     pub items: usize,
+    /// The adapter the door served, or absent for a door that served none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub adapter: String,
     /// Set when this read overrides an earlier one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub overrides: Option<Override>,
@@ -689,12 +835,18 @@ impl LockedLedger {
     /// and only then are the items handed back. If that digest has been
     /// read before, this is refused: a second read is an override, and
     /// [`LockedLedger::read_locked_again`] is how you take one deliberately.
+    ///
+    /// A suite whose [`Suite::exposure`] marks the locked partition as
+    /// training data is refused with [`SuiteError::Exposed`] when the spend
+    /// names an adapter, before the ledger is touched. Nothing is recorded:
+    /// a read that would have meant nothing did not happen.
     pub fn read_locked<'a>(
         &self,
         suite: &'a Suite,
         spend: &Spend<'_>,
     ) -> Result<Vec<&'a Item>, SuiteError> {
         spend.check()?;
+        suite.check_exposure(spend.adapter)?;
         self.spend(suite, spend, |earlier| match earlier.first() {
             Some(first) => Err(SuiteError::AlreadyRead {
                 suite: suite.name.clone(),
@@ -710,6 +862,10 @@ impl LockedLedger {
     ///
     /// This is refused when there is nothing to override. An override with
     /// no earlier read is a caller reaching for the loud door by habit.
+    ///
+    /// An exposed locked partition is refused here too, for the same door.
+    /// Authority can spend a partition twice; it cannot make memorized
+    /// items into held-out ones.
     pub fn read_locked_again<'a>(
         &self,
         suite: &'a Suite,
@@ -718,6 +874,7 @@ impl LockedLedger {
         because: &str,
     ) -> Result<Vec<&'a Item>, SuiteError> {
         spend.check()?;
+        suite.check_exposure(spend.adapter)?;
         if authority.trim().is_empty() {
             return Err(SuiteError::Unrecorded { field: "authority" });
         }
@@ -787,6 +944,7 @@ impl LockedLedger {
             reason: spend.reason.to_owned(),
             at: spend.at.to_owned(),
             items: items.len(),
+            adapter: spend.adapter.to_owned(),
             overrides,
         };
         self.commit(text.as_deref(), &record, &new_dirs)?;
@@ -1044,6 +1202,7 @@ pub(crate) fn canonicalize(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn suite() -> Suite {
         support_v2_three_way().expect("the committed suite loads")
@@ -1125,10 +1284,156 @@ mod tests {
     }
 
     const SPEND: Spend<'static> = Spend {
+        subject: "lev-base",
+        reason: "the published candidate, scored once before the model card",
+        at: "2026-09-19",
+        adapter: "",
+    };
+
+    /// A spend for a door that serves an adapter trained from `support-v2`.
+    const ADAPTED_SPEND: Spend<'static> = Spend {
         subject: "lev-band-adapter-e4",
         reason: "the published candidate, scored once before the model card",
         at: "2026-09-19",
+        adapter: "band-v1",
     };
+
+    fn unseen() -> Suite {
+        support_v2_unseen().expect("the unseen suite loads")
+    }
+
+    #[test]
+    fn the_three_way_suite_says_its_locked_partition_is_exposed() {
+        let suite = suite();
+        let exposure = suite.exposure.as_ref().expect("the manifest says it");
+        assert_eq!(exposure.partition, Partition::Locked);
+        assert_eq!(exposure.items, 20);
+        assert_eq!(exposure.successor.as_deref(), Some("support-v2-unseen"));
+        assert!(suite.locked_is_exposed());
+        assert_eq!(
+            suite.digest, "54fbf4137c3de538f2dea07d47ca1ee835c09eb25aa26a320441679129f618f9",
+            "saying so did not reissue the digest the week's rows pin"
+        );
+    }
+
+    #[test]
+    fn an_exposed_locked_partition_is_refused_to_an_adapted_door_and_not_recorded() {
+        let suite = suite();
+        let (_directory, ledger) = ledger();
+        let error = ledger.read_locked(&suite, &ADAPTED_SPEND).unwrap_err();
+        assert!(matches!(error, SuiteError::Exposed { .. }), "{error}");
+        let message = error.to_string();
+        assert!(message.contains("band-v1"), "{message}");
+        assert!(message.contains("support-v2-unseen"), "{message}");
+        assert!(message.contains("20 of its 39"), "{message}");
+        assert!(!ledger.path().exists(), "a refused read leaves no record");
+
+        // Authority does not turn memorized items into held-out ones.
+        let error = ledger
+            .read_locked_again(&suite, &ADAPTED_SPEND, "chris", "the number is wanted")
+            .unwrap_err();
+        assert!(matches!(error, SuiteError::Exposed { .. }), "{error}");
+        assert!(!ledger.path().exists());
+    }
+
+    #[test]
+    fn an_exposed_locked_partition_still_serves_a_door_that_never_trained() {
+        // Base and hosted doors trained on nothing, so for them the
+        // partition is as held out as it ever was.
+        let suite = suite();
+        let (_directory, ledger) = ledger();
+        let items = ledger
+            .read_locked(&suite, &SPEND)
+            .expect("a base door reads");
+        assert_eq!(items.len(), 39);
+        let reads = ledger.reads().expect("the ledger reads back");
+        assert_eq!(reads[0].adapter, "");
+    }
+
+    #[test]
+    fn the_unseen_suite_is_the_three_way_suite_minus_what_the_adapters_saw() {
+        let three_way = suite();
+        let unseen = unseen();
+        assert_eq!(unseen.name, "support-v2-unseen");
+        assert_eq!(unseen.items.len(), 98);
+        assert!(unseen.exposure.is_none(), "nothing trained on these");
+        assert_ne!(unseen.digest, three_way.digest);
+        let counts = unseen.counts();
+        assert_eq!(counts[&Partition::Calibration], 40);
+        assert_eq!(counts[&Partition::Development], 39);
+        assert_eq!(counts[&Partition::Locked], 19);
+
+        // Every item is one of the three-way suite's, with the same label
+        // and the same partition, so a development read of one is a
+        // development read of the other.
+        let two_way: Value =
+            serde_json::from_str(include_str!("../suites/support-v2.json")).expect("it parses");
+        let trained: Vec<&str> = two_way["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .filter(|item| item["split"] == "calibration")
+            .map(|item| item["id"].as_str().expect("an id"))
+            .collect();
+        assert_eq!(trained.len(), 98);
+        for item in &unseen.items {
+            assert!(
+                !trained.contains(&item.id.as_str()),
+                "{} was in the adapters' training split",
+                item.id
+            );
+            let original = three_way
+                .items
+                .iter()
+                .find(|candidate| candidate.id == item.id)
+                .expect("the item is in the three-way suite");
+            assert_eq!(original.truth, item.truth);
+            assert_eq!(original.partition, item.partition);
+            assert_eq!(original.question, item.question);
+        }
+
+        let (_directory, ledger) = ledger();
+        let items = ledger
+            .read_locked(&unseen, &ADAPTED_SPEND)
+            .expect("the clean partition serves an adapted door");
+        assert_eq!(items.len(), 19);
+    }
+
+    #[test]
+    fn an_exposure_that_does_not_describe_its_suite_is_refused() {
+        let mut value: Value = serde_json::from_str(SUPPORT_V2_THREE_WAY).expect("it parses");
+        value["exposure"]["items"] = json!(40);
+        let error = Suite::load(&value.to_string()).unwrap_err();
+        assert!(matches!(error, SuiteError::ExposureMalformed(_)), "{error}");
+        assert!(error.to_string().contains("holds 39"), "{error}");
+
+        value["exposure"]["items"] = json!(0);
+        assert!(matches!(
+            Suite::load(&value.to_string()),
+            Err(SuiteError::ExposureMalformed(_))
+        ));
+
+        value["exposure"]["items"] = json!(20);
+        value["exposure"]["through"] = json!("  ");
+        assert!(matches!(
+            Suite::load(&value.to_string()),
+            Err(SuiteError::ExposureMalformed(_))
+        ));
+
+        // An exposure of an open partition is recorded but does not refuse
+        // a locked read; the locked items are not the ones that leaked.
+        value["exposure"] = json!({
+            "partition": "development",
+            "items": 39,
+            "through": "a test"
+        });
+        let suite = Suite::load(&value.to_string()).expect("it loads");
+        assert!(!suite.locked_is_exposed());
+        let (_directory, ledger) = ledger();
+        ledger
+            .read_locked(&suite, &ADAPTED_SPEND)
+            .expect("the locked partition itself is clean");
+    }
 
     #[test]
     fn the_committed_suite_loads_and_its_digest_matches() {
@@ -1221,10 +1526,13 @@ mod tests {
     #[test]
     fn moving_one_item_between_partitions_is_refused() {
         // The partitions are inside the digest, so a quiet reshuffle that
-        // slipped locked items into calibration would not load.
+        // slipped locked items into calibration would not load. The
+        // item's field is matched by its indentation; the manifest's
+        // `exposure` record names the same partition one level up, and
+        // that record is outside the digest.
         let moved = SUPPORT_V2_THREE_WAY.replacen(
-            "\"partition\": \"locked\"",
-            "\"partition\": \"calibration\"",
+            "   \"partition\": \"locked\"",
+            "   \"partition\": \"calibration\"",
             1,
         );
         assert!(matches!(
@@ -1452,6 +1760,7 @@ mod tests {
         let suite = suite();
         let (_directory, ledger) = ledger();
         let blank = Spend {
+            adapter: "",
             subject: "lev-band-adapter-e4",
             reason: "   ",
             at: "2026-09-19",

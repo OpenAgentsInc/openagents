@@ -486,6 +486,18 @@ async fn eval_command(options: Options) -> Result<(), String> {
         &suite.digest[..16]
     );
     println!("{}\n", suite.description);
+    if let Some(exposure) = &suite.exposure {
+        let successor = exposure
+            .successor
+            .as_deref()
+            .map(|successor| format!(" Confirm adapted doors on `{successor}` instead."))
+            .unwrap_or_default();
+        println!(
+            "Exposure: {} of the {} partition's items were training data, through {}. The ledger \
+             refuses that partition to any door that serves an adapter.{successor}\n",
+            exposure.items, exposure.partition, exposure.through
+        );
+    }
     let evidence = suite.evidence_counts();
     if evidence.len() > 1 {
         let detail: Vec<String> = evidence

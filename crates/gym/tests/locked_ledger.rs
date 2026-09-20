@@ -51,6 +51,7 @@ const SPEND: Spend<'static> = Spend {
     subject: "locked-ledger-integration-test",
     reason: "proving the read is a transaction",
     at: "2026-09-20T00:00:00Z",
+    adapter: "",
 };
 
 /// The suite a child spends: the committed one, or `b` — the same items
