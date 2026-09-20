@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "slug": "devin-local",
+  "name": "Devin CLI, this computer",
+  "summary": "Hands a bounded task to the Devin CLI on this computer.",
+  "transport": "subprocess",
+  "detect": {
+    "binary": "devin",
+    "version": ["devin", "--version"]
+  },
+  "enforces": ["max_turns", "minutes", "model"],
+  "cannot_enforce": ["tool_set", "role", "budget_cents", "effort"],
+  "sees_repository": true,
+  "concurrent_max": 6,
+  "cost": "operator_account",
+  "isolation": ["worktree", "directory"],
+  "invoke": ["devin", "-p", "--"],
+  "workspace_probe": {
+    "argv": ["devin", "-p", "capability probe", "--model", "openagents-capability-probe"],
+    "note": "The model name is deliberately not a model. The executor checks workspace trust before it validates the model, so this argv reaches the trust refusal and otherwise stops at an unknown model, without starting a session or spending anything."
+  },
+  "refuses": [
+    {
+      "name": "untrusted_workspace",
+      "match": "Refusing to run in an untrusted workspace",
+      "explanation": "The executor declines a directory nobody has trusted interactively. Six of six delegations from a git worktree under /private/tmp were declined this way while the capability was installed, detected, and reporting its version, which is the state a present-or-absent probe cannot report."
+    }
+  ]
+}

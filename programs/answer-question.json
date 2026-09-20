@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "slug": "answer-question",
+  "name": "Answer a question from the repository",
+  "summary": "Answers a question about the repository from its own contents.",
+  "inputs": {"question": "string"},
+  "outputs": {"answer": "string"},
+  "steps": [
+    {"name": "answer", "kind": "delegate",
+     "bounds": {"concurrent_max": 1, "isolation": "directory", "minutes": 10}}
+  ]
+}

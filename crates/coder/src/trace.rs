@@ -340,6 +340,22 @@ impl Recorder {
         self.write(step);
     }
 
+    /// One deterministic call the host made on the machine, and what came
+    /// back — a capability probe, a program registry read, an admission
+    /// check.
+    ///
+    /// Kept apart from [`Recorder::decision`] because the difference is
+    /// what a reader grades on: a check is code and answers the same way
+    /// every time, and a decision is a model and does not. The step is the
+    /// host's rather than the agent's, so it records as `System`.
+    pub fn check(&mut self, message: &str, mut call: Call) {
+        call.id = self.next_call_id();
+        let milliseconds = call.milliseconds;
+        let mut step = Step::said(Source::System, message).taking(milliseconds);
+        step.call = Some(call);
+        self.write(step);
+    }
+
     /// One question put to a decision model, and what it answered.
     pub fn decision(&mut self, mut decision: Decision) {
         decision.id = self.next_call_id();

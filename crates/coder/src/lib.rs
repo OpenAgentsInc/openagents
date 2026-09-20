@@ -19,25 +19,37 @@
 //! - [`turn`] is one turn of that conversation, start to finish. The
 //!   terminal and `coder --print` both call it, so neither can drift from
 //!   the other.
+//! - [`capability`] probes what this machine can hand work to, in three
+//!   states: present, absent, and present and unavailable.
+//! - [`program`] reads the programs a run can take, each a state machine of
+//!   named steps with per-step bounds.
+//! - [`survey`] is the two of them together: what a host knows about itself
+//!   at the moment it starts choosing.
 
 pub mod agent;
+pub mod capability;
 pub mod classify;
 pub mod delegate;
 pub mod generate;
+pub mod program;
 pub mod relay;
 pub mod repo;
 pub mod shell;
+pub mod survey;
 pub mod trace;
 pub mod turn;
 
 pub use agent::{Agent, Classified, Verdict};
+pub use capability::{Found, Manifest, Presence};
 pub use classify::{Action, Judgment, Route, route, state_of};
 pub use delegate::{Bounds, Delegation, Delegator, Executor, Isolation, Task};
 pub use generate::{
     Door, Generate, GenerateError, Message, Meta, ResponsesDoor, Role, StubGenerate, Usage,
 };
+pub use program::Program;
 pub use relay::{Identity, RelayDoor};
 pub use repo::Repo;
 pub use shell::{Outcome, Proposal, ShellEvent, Status};
+pub use survey::Survey;
 pub use trace::Recorder;
 pub use turn::{Completion, Event, Finished};

@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "slug": "delegate-fan-out",
+  "name": "Fan out one session per task",
+  "summary": "Runs one delegated session per task, in parallel.",
+  "inputs": {"tasks": "list", "executor": "capability-slug"},
+  "outputs": {"results": "list"},
+  "steps": [
+    {"name": "select", "kind": "query", "bounds": {"max_results": 12}},
+    {"name": "independence", "kind": "decide",
+     "question": "openagents.independence.v1",
+     "bounds": {"refuse_below": 0.7, "requires_calibration": true}},
+    {"name": "admit", "kind": "check",
+     "bounds": {"refuse_on": "cannot_enforce_intersection"}},
+    {"name": "fan_out", "kind": "delegate",
+     "bounds": {"concurrent_max": 6, "isolation": "worktree", "minutes": 60}},
+    {"name": "accept", "kind": "decide",
+     "question": "openagents.completion.v1",
+     "bounds": {"per_requirement": true}}
+  ]
+}

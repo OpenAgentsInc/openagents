@@ -89,6 +89,68 @@ found by running the manifest's `detect` and stays on the machine.
 Publishing it would broadcast an inventory of somebody's computer, and no
 party here needs it.
 
+## The local registry
+
+Manifests and programs are files before they are events. The repository
+carries both, and `crates/coder` reads them:
+
+| Directory | What it holds |
+| --- | --- |
+| `capabilities/` | One `kind:30180` manifest per file. `devin-local` is the first. |
+| `programs/` | One `kind:30182` program per file: `delegate-fan-out`, `review-changes`, `answer-question`, `run-suite`. |
+
+A host reads `CODER_CAPABILITY_DIR` first, then the repository's directory,
+then `~/.openagents/capabilities`, and the same three for programs. The
+first definition of a slug wins, so an operator overrides a checkout
+without editing it.
+
+The program registry read records the Nostr filter it would have sent
+beside the answer it got from disk, because the query is the part that has
+to keep working when the answer does not. Publishing to the relay changes
+where the answer comes from and not what was asked.
+
+### Three states, not two
+
+A probe answers **present**, **absent**, or **present and unavailable**.
+
+Absence is not an error. The capability is not an option, which is the
+whole reason an operator without Devin loses nothing — the option set for
+the program-selection decision is built from what the probe found, so an
+absent executor is a route nobody was offered rather than one that fails
+when it is taken.
+
+The third state is the one a present-or-absent probe cannot report, and it
+happened before it was implemented. Six of six delegations in the
+[`coderbench` golden](coderbench.md) were declined with `Refusing to run in
+an untrusted workspace` from a git worktree under `/private/tmp`, while the
+executor stayed installed and kept reporting its version. A host that reads
+that as present offers a route that fails every time.
+
+The manifest states it: `refuses` names what the executor declines while
+installed, and `workspace_probe` is the argv a host runs in a candidate
+directory to ask. The argv stops short of starting a session, because a
+host asks this whenever it considers a directory and a probe that did the
+work would charge the operator for a question.
+
+### The manifest drives the executor
+
+`invoke` is the argv that hands one task over, with the prompt appended
+last, so a delegation runs the binary the probe resolved under the
+arguments the manifest names rather than a name written into the source.
+A capability that is absent, or refusing this workspace, produces no
+executor — which is how it drops out of a fan-out instead of failing in
+one.
+
+### `PATH` is a hint, not the answer
+
+The probe resolves an absolute path and runs that path. `devin` was on the
+operator's interactive `PATH` and not on the one a spawned subshell
+inherited, and six delegations failed with `command not found` before the
+full path was resolved. So the search reads `PATH` for candidate
+directories, then keeps looking through the directories a login shell
+usually adds, and what it reports — and what a delegation later runs — is
+always the resolved path.
+
 ## What the decision engine is actually for
 
 This is the part that is easy to get wrong, and we have this week's
@@ -208,7 +270,8 @@ list rather than from hope.
 
 1. **A capability manifest for `devin-local`**, resolved from a local file
    before anything is fetched from a relay. Presence probe, `enforces`,
-   `cannot_enforce`, `sees_repository`.
+   `cannot_enforce`, `sees_repository`. **Landed**, with the program
+   registry read beside it — see [The local registry](#the-local-registry).
 2. **The `independence` question**, as a typed question with a question-set
    digest, served through the existing contract so all three doors can
    answer it.

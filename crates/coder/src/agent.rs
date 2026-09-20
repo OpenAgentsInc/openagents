@@ -21,6 +21,7 @@ use crate::classify::{
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
 use crate::repo::Repo;
 use crate::shell::{self, Outcome, ShellEvent};
+use crate::survey::Survey;
 use crate::trace::{Recorder, answers_value};
 
 /// The instructions Generate hears for a plain answer.
@@ -84,6 +85,9 @@ pub struct Agent {
     trace: Option<Recorder>,
     /// Why there is no trace, when there should have been one.
     trace_error: Option<String>,
+    /// What this machine can reach and what it could run, once something
+    /// has asked.
+    survey: Option<Survey>,
 }
 
 impl Agent {
@@ -136,6 +140,7 @@ impl Agent {
             task: String::new(),
             trace,
             trace_error,
+            survey: None,
         }
     }
 
@@ -149,6 +154,7 @@ impl Agent {
             task: String::new(),
             trace: None,
             trace_error: None,
+            survey: None,
         }
     }
 
@@ -163,6 +169,30 @@ impl Agent {
     pub fn with_trace(mut self, trace: Option<Recorder>) -> Self {
         self.trace = trace;
         self
+    }
+
+    /// What this machine can reach and what it could run, read once and
+    /// recorded to the trace the first time anything asks.
+    ///
+    /// Read on demand rather than at startup because a probe spawns a
+    /// process for every declared capability, and a conversation that never
+    /// delegates should not pay for asking. The first caller is whatever
+    /// needs an option set: a host builds one from the capabilities the
+    /// probe found available, so an absent executor is a route that was
+    /// never offered rather than one that fails when it is taken.
+    pub fn survey(&mut self) -> &Survey {
+        if self.survey.is_none() {
+            let workspace = env::current_dir().unwrap_or_default();
+            let root = self.repo.as_ref().map(|repo| repo.root().to_path_buf());
+            let survey = Survey::read(root.as_deref(), &workspace);
+            if let Some(trace) = &mut self.trace {
+                survey.record(trace, None);
+            }
+            self.survey = Some(survey);
+        }
+        self.survey
+            .as_ref()
+            .expect("the survey was read a moment ago")
     }
 
     /// Where this session is being recorded, when it is.

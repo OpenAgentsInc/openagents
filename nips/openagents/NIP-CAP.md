@@ -168,7 +168,19 @@ There MUST be exactly one `d` tag. The `transport` tag duplicates
   "sees_repository": true,
   "concurrent_max": null,
   "cost": "operator_account",
-  "isolation": ["worktree", "directory"]
+  "isolation": ["worktree", "directory"],
+  "invoke": ["devin", "-p", "--"],
+  "workspace_probe": {
+    "argv": ["devin", "-p", "capability probe", "--model", "not-a-model"],
+    "note": "Reaches the trust check and stops short of starting a session."
+  },
+  "refuses": [
+    {
+      "name": "untrusted_workspace",
+      "match": "Refusing to run in an untrusted workspace",
+      "explanation": "Declines a directory nobody has trusted interactively."
+    }
+  ]
 }
 ```
 
@@ -182,6 +194,15 @@ There MUST be exactly one `d` tag. The `transport` tag duplicates
 | `concurrent_max` | The most simultaneous instances the manifest claims are safe, or `null` for unstated. |
 | `cost` | Who pays: `operator_account`, `metered`, `local`. Never a number; prices go stale in a signed event. |
 | `isolation` | Which checkout shapes it accepts. |
+| `invoke` | The argv that hands the executor one task, with the prompt appended as the final argument. A fixed argv, like `detect`. |
+| `workspace_probe` | A fixed argv a host runs **in a candidate working directory** to find out whether the executor will accept it. |
+| `refuses` | What the executor declines while installed, each with the text that identifies it. |
+
+`detect` and `invoke` are both fixed argv, and a host replaces the first
+element of each with the absolute path it resolved. A manifest with no
+`invoke` says how to find an executor and not how to drive one, so a host
+that reads one can report the capability present and MUST NOT delegate
+through it.
 
 ### `cannot_enforce` is the field that matters
 
@@ -193,6 +214,43 @@ This is the one part of a manifest a host treats as a **constraint** rather
 than as advice, and it is why the field is stated positively instead of
 being inferred from the absence of an `enforces` entry: an omission is
 ambiguous and a refusal must not rest on an omission.
+
+## Presence has three states
+
+A host that has run `detect` knows one of three things, and the third is the
+one a present-or-absent answer cannot carry.
+
+| State | Meaning |
+| --- | --- |
+| Present | `detect` resolved and the version parsed. |
+| Absent | Nothing to run. **Not an error** — the capability is not an option, which is why an operator without an executor loses nothing. |
+| Present and unavailable | Installed, detected, and refusing this context. |
+
+The third state is a fact about a pairing rather than about a machine. The
+reference implementation recorded six of six delegations declined with
+`Refusing to run in an untrusted workspace`, from a git worktree the
+executor did not trust, while that executor stayed installed and reported
+its version throughout. A host that reads that as present offers a route
+that fails every time it is taken, and a host that reads it as absent
+cannot say why a capability the operator installed went missing.
+
+`refuses` names what an executor declines while installed, and
+`workspace_probe` is how a host asks. The host runs the argv in the
+candidate working directory and reads everything it printed, standard error
+included, for a declared `match`. Two rules make that safe to do on every
+look:
+
+- **A workspace probe MUST NOT do the work.** An argv that starts a session
+  charges the operator for a question, and a host asks this question
+  whenever it considers a directory.
+- **An unmatched probe means present, never unavailable.** A host that
+  cannot produce a refusal reports what `detect` already established. A
+  probe that failed to run proves nothing, and a host that treats its
+  silence as a refusal hides a capability the operator has.
+
+Presence still stays on the machine. The state a probe found is local fact
+under [Local presence is not an event](#local-presence-is-not-an-event),
+and this section adds nothing an event carries.
 
 ## Operator capability policy — kind `30181`
 
@@ -252,6 +310,11 @@ maintainer wrote it, not that it is safe. A host SHOULD:
   command would be a remote execution primitive;
 - ignore any field it does not understand, and refuse a `v` it does not
   know rather than guessing;
+- resolve `detect.binary` to an absolute path and run that path, rather
+  than letting `PATH` decide which binary a delegation reaches — `PATH`
+  differs between an operator's interactive shell and the one a spawned
+  process inherits, and a host that reports a version from one and
+  delegates through the other has reported on something it did not run;
 - re-probe presence rather than trusting a cached answer across an upgrade.
 
 There are no signatures on executables here and no attestation that a

@@ -113,7 +113,10 @@ from the reference material in `~/work/coder`.
 | Bounds | Designed | The limits a program's step states and an executor promises to keep. A host refuses a step whose bounds it cannot enforce rather than running it unbounded. Under composition, bounds narrow and never widen. |
 | Module | Designed | A WebAssembly module a program's `module` step runs, named by content hash. The hash is required and the sources are hints, so the place bytes come from cannot decide what runs. |
 | Module announcement | Designed | An optional `30183` event saying where a module's bytes can be found and what it requires. A locator, not an authority: it cannot change what a program runs, because the program names a hash. |
-| Capability manifest | Designed | A signed document that says how to drive an executor: transport, detection, bounds it enforces, bounds it ignores, whether it sees the repository, and who pays. Published as Nostr `kind:30180`. |
+| Capability manifest | Implemented | A document that says how to drive an executor: transport, detection, bounds it enforces, bounds it ignores, whether it sees the repository, and who pays. Read from `capabilities/` today and published as Nostr `kind:30180` later. |
+| Capability probe | Implemented | Running a manifest's `detect` on this machine, in `crates/coder`'s `capability` module. It resolves an absolute path rather than trusting `PATH`, and answers in three states. |
+| Presence | Implemented | What a probe found: **present**, **absent**, or **present and unavailable**. Absence is not an error — the capability is not an option. The third state is an executor that is installed, detected, and refusing this context. |
+| Program registry | Implemented | The programs a host resolved, read from `programs/` in `crates/coder`'s `program` module. The read records the Nostr filter it would have sent beside the answer it got from disk. |
 | `cannot_enforce` | Designed | The bounds an executor accepts and silently ignores. A host refuses a delegation whose requirements intersect this list, because an executor that drops a bound is more dangerous than one that refuses it. |
 | Operator policy | Designed | A signed document that says which capabilities an operator prefers, how wide a fan-out may go, and what to never use. Published as Nostr `kind:30181`. |
 

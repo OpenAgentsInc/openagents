@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "slug": "review-changes",
+  "name": "Review a diff and report problems",
+  "summary": "Reads a diff and reports what is wrong with it.",
+  "inputs": {"revision": "string"},
+  "outputs": {"findings": "list"},
+  "steps": [
+    {"name": "diff", "kind": "query", "bounds": {"max_results": 200}},
+    {"name": "review", "kind": "decide",
+     "question": "openagents.review-finding.v1",
+     "bounds": {"per_finding": true}}
+  ]
+}

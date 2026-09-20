@@ -69,7 +69,10 @@ uses, and marks which are implemented and which are only specified.
   location, the opt-out, and what a trace holds. `delegate` hands a
   bounded task to an executor and runs a fan-out of them under a stated
   bound; read `docs/coder/delegate.md` before changing it, and do not
-  offer delegation to the model as a tool it may elect.
+  offer delegation to the model as a tool it may elect. `capability` and
+  `program` read the manifests in `capabilities/` and the programs in
+  `programs/`, so what a machine can reach is probed rather than
+  hardcoded; `docs/programs.md` covers both.
 - `crates/lev` — the same contract answered by Apple's on-device foundation
   model, through the in-repo Swift helper in `swift/lev-bridge`. Build the
   helper with `./scripts/build-lev-bridge.sh`; the crate builds and tests
@@ -92,3 +95,7 @@ uses, and marks which are implemented and which are only specified.
 - The Block lane is the model for application behavior: the relay is the
   workspace, and application logic is expressed as event kinds plus relay
   policy rather than a private backend.
+- `capabilities/` and `programs/` hold the local registry: one NIP-CAP
+  `kind:30180` manifest and one NIP-PRG `kind:30182` program per file. They
+  are files before they are events, and a host reads them from disk until
+  the relay serves them.

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "slug": "run-suite",
+  "name": "Score doors on a suite",
+  "summary": "Scores doors on a pinned suite and reports the metrics against the gate.",
+  "inputs": {"suite": "string", "doors": "list"},
+  "outputs": {"metrics": "map", "gate": "string"},
+  "steps": [
+    {"name": "score", "kind": "delegate",
+     "bounds": {"concurrent_max": 1, "isolation": "directory", "minutes": 30}},
+    {"name": "gate", "kind": "check",
+     "bounds": {"refuse_on": "gate_not_met"}}
+  ]
+}
