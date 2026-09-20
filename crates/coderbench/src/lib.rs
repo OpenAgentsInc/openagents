@@ -33,6 +33,7 @@ use serde_json::Value;
 
 pub mod drive;
 pub mod preflight;
+pub mod tune;
 
 /// The three-valued verdict, which is `crates/gym`'s rather than a second
 /// copy of it.
@@ -717,6 +718,9 @@ pub struct Observed {
     pub closed: bool,
     /// Lines of the trace that did not read back.
     pub unreadable_lines: usize,
+    /// Wall clock from the first step to the last, as the trace records it.
+    /// Zero when the trace holds fewer than two steps.
+    pub milliseconds: u64,
 }
 
 /// One delegated session, as the trace recorded it.
@@ -1420,6 +1424,18 @@ pub fn observe(path: &Path) -> Result<Observed, String> {
             }
         }
     }
+    out.milliseconds = recording
+        .steps
+        .last()
+        .map(|step| step.at)
+        .unwrap_or_default()
+        .saturating_sub(
+            recording
+                .steps
+                .first()
+                .map(|step| step.at)
+                .unwrap_or_default(),
+        );
     Ok(out)
 }
 
