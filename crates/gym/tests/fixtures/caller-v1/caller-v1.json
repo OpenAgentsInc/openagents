@@ -1,74 +1,74 @@
 {
- "$comment": "The question text of `caller-v1`, supplied by the caller with the items. Keys are family names where a family shares one question, item ids where items carry their own option sets; `QuestionSet::ask` reads an item id before it reads a family.",
- "schema": "openagents.gym.question_set.v1",
- "id": "caller-v1",
- "suite": "caller-v1",
- "questions": {
-  "routing": {
-   "type": "choice",
-   "instructions": "Which team should handle this message?",
-   "criteria": {
-    "billing": "Charges, invoices, refunds",
-    "technical": "Bugs, crashes, outages",
-    "sales": "Quotes, plans, upgrades"
-   }
-  },
-  "severity": {
-   "type": "score",
-   "instructions": "How severe is the reported issue?",
-   "criteria": [
-    "Cosmetic",
-    "Impaired",
-    "Blocking"
-   ]
-  },
-  "facts/001": {
-   "type": "noul",
-   "instructions": "Is claim 0 supported by the document?",
-   "criteria": {
-    "true": "supported",
-    "false": "not supported"
-   }
-  },
-  "facts/002": {
-   "type": "noul",
-   "instructions": "Is claim 1 supported by the document?",
-   "criteria": {
-    "true": "supported",
-    "false": "not supported"
-   }
-  },
-  "facts/003": {
-   "type": "noul",
-   "instructions": "Is claim 2 supported by the document?",
-   "criteria": {
-    "true": "supported",
-    "false": "not supported"
-   }
-  },
-  "facts/004": {
-   "type": "noul",
-   "instructions": "Is claim 3 supported by the document?",
-   "criteria": {
-    "true": "supported",
-    "false": "not supported"
-   }
-  },
-  "facts/005": {
-   "type": "noul",
-   "instructions": "Is claim 4 supported by the document?",
-   "criteria": {
-    "true": "supported",
-    "false": "not supported"
-   }
-  },
-  "facts/006": {
-   "type": "noul",
-   "instructions": "Is claim 5 supported by the document?",
-   "criteria": {
-    "true": "supported",
-    "false": "not supported"
-   }
+  "$comment": "The question text of `caller-v1`, supplied by the caller with the items. Keys are family names where a family shares one question, item ids where items carry their own option sets; `QuestionSet::ask` reads an item id before it reads a family.",
+  "schema": "openagents.gym.question_set.v1",
+  "id": "caller-v1",
+  "suite": "caller-v1",
+  "questions": {
+    "routing": {
+      "type": "choice",
+      "instructions": "Which team should handle this message?",
+      "criteria": {
+        "billing": "Charges, invoices, refunds",
+        "technical": "Bugs, crashes, outages",
+        "sales": "Quotes, plans, upgrades"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "How severe is the reported issue?",
+      "criteria": [
+        "Cosmetic",
+        "Impaired",
+        "Blocking"
+      ]
+    },
+    "facts/001": {
+      "type": "noul",
+      "instructions": "Is claim 0 supported by the document?",
+      "criteria": {
+        "true": "supported",
+        "false": "not supported"
+      }
+    },
+    "facts/002": {
+      "type": "noul",
+      "instructions": "Is claim 1 supported by the document?",
+      "criteria": {
+        "true": "supported",
+        "false": "not supported"
+      }
+    },
+    "facts/003": {
+      "type": "noul",
+      "instructions": "Is claim 2 supported by the document?",
+      "criteria": {
+        "true": "supported",
+        "false": "not supported"
+      }
+    },
+    "facts/004": {
+      "type": "noul",
+      "instructions": "Is claim 3 supported by the document?",
+      "criteria": {
+        "true": "supported",
+        "false": "not supported"
+      }
+    },
+    "facts/005": {
+      "type": "noul",
+      "instructions": "Is claim 4 supported by the document?",
+      "criteria": {
+        "true": "supported",
+        "false": "not supported"
+      }
+    },
+    "facts/006": {
+      "type": "noul",
+      "instructions": "Is claim 5 supported by the document?",
+      "criteria": {
+        "true": "supported",
+        "false": "not supported"
+      }
+    }
   }
- }
 }

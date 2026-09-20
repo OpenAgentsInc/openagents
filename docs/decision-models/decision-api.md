@@ -209,13 +209,13 @@ ones come first. Nothing later depends on a public endpoint existing.
 
 ### Phase 0 — measurement as a service (no new infrastructure)
 
-1. **Caller-suite intake** (openagents#9464, landed). `build_caller_v1.py`
-   takes a caller's labelled data (JSONL of `family`, `kind`, `state`,
-   `truth`, and `question`) and emits a digested gym suite and question
-   set: `label_source` naming the caller, a `label_rule` per item, a
-   `--agreement` ceiling per family, and paraphrase groups held in one
-   partition. A caller's file round-trips through `Suite::load` and the
-   digest is reproducible.
+1. **Caller-suite intake** (openagents#9464, landed; ported to `gym build`
+   in openagents#9477). A caller's labelled data (JSONL of `family`,
+   `kind`, `state`, `truth`, and `question`) becomes a digested gym suite
+   and question set: `label_source` naming the caller, a `label_rule` per
+   item, a `--agreement` ceiling per family, and paraphrase groups held in
+   one partition. A caller's file round-trips through `Suite::load` and
+   the digest is reproducible.
 2. **The measured report** (openagents#9465, landed). `gym report` renders a
    store of rows as a standalone record — digests, chain head, per-door
    and per-family tables, refusals counted, ceilings beside scores — and

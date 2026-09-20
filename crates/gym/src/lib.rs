@@ -43,6 +43,7 @@
 //! the door.
 
 pub mod ab;
+pub mod build;
 pub mod calibrate;
 pub mod eval;
 pub mod gate;
