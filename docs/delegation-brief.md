@@ -65,9 +65,10 @@ weight; moving `Verdict` somewhere lighter is a reasonable future change.
 
 The sentence-driven path has run, but #9427 remains a prerequisite to unattended
 work. Shared capability trust landed in `4010baadbc`; the filesystem boundary
-and independent snapshots landed as a component in `b14cfedb83`. Runtime and
-CoderBench integration, actual adapter verification, and the observed graded
-golden remain required. Check current issue and worktree state before starting
+and independent snapshots landed as a component in `b14cfedb83`. CoderBench
+now observes filesystem snapshots independently (`54d33bec05`, with distinct
+escaped path labels in `1aca30819a`). Runtime integration, actual adapter
+verification, and the observed graded golden remain required. Check current issue and worktree state before starting
 another implementation of these pieces.
 
 ### 2. [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427), held on purpose
@@ -75,8 +76,8 @@ another implementation of these pieces.
 Read-only is still not enforced by the integrated delegation path at
 `4010baadbc`. The earlier conflict with #9416 is resolved. Wire the landed
 boundary into delegation, keep its resources alive through process cleanup,
-retain writing worktrees for review, and make CoderBench observe workspace
-changes independently. Manifest approval permits a probe; it does not establish
+retain writing worktrees for review, and verify the integrated path against
+CoderBench's independent workspace observation. Manifest approval permits a probe; it does not establish
 that the executor enforces its declared bounds.
 
 Note `shell::run` gained a `Permit` parameter from #9415 and the bounded
@@ -278,6 +279,15 @@ Choice's raw selection but changes Noul and Score selections while mapped
 metrics retain the original outcome. See the
 [reproduction](audits/2026-09-19-codebase-audit/verification.md#a05-the-fixed-selection-does-not-survive-every-wire-shape).
 Historical metric re-derivation alone cannot close that contract gap.
+
+A06 is fixed in `9ec50704cb`; #9420 is closed. The locked-partition ledger
+holds a cross-process lock through eligibility, append, and durable commit.
+Canonical aliases share a lock, torn records fail closed, and overrides retain
+their provenance. Main passed 245 Gym library tests and six ledger integration
+tests; the full Gym suite and strict Clippy passed in the implementation
+worktree. See [the ledger contract](gym/ledger.md) for local-filesystem and
+Unix durability assumptions. This does not resolve #9399's contaminated
+training partition.
 
 A09's UTF-8 half is fixed for the direct door as a
 side effect of bounding it — the old loop ran `String::from_utf8_lossy` per
