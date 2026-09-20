@@ -1,0 +1,24 @@
+# Suite scores: `program-selection-v2`
+
+80 items, 28 calibration, 40 development, 12 locked and unread, digest `378b57c423ebef31`.
+
+The production four-option program question. Historical open real turns measure spurious selections; authored requests measure recognition, including burn-down and mentions that do not request execution. Labels are one author's readings, with disputes retained separately. The new locked partition contains no historical items.
+
+Judged by `probability-v2`, digest `gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758`.
+
+Asked as `program-selection-v2`, digest `7a8485ca6904e9d8`. The suite digest covers the items and the question set covers the text, so a reword is a candidate against these items rather than another suite.
+
+## jev (hosted)
+
+Identity: not verifiable for this door.
+
+Recorded 68 rows in `crates/gym/results/program-selection-v2-jev.jsonl`.
+
+68 items asked: 68 scored, 0 refused by the door, 0 lost to the harness and unrecorded.
+
+| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
+| --- | --- | --- | --- | --- | --- | --- |
+| calibration, raw | 0.86 | 0.095 | 0.083 | 0.256 | 0 | 28 |
+| development, raw | 0.93 | 0.107 | 0.076 | 0.245 | 0 | 40 |
+
+

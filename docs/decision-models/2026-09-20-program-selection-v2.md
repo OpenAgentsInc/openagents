@@ -130,11 +130,36 @@ python3 crates/gym/suites/score_program_selection_v2.py \
   program-selection-v2-historical-4b.jsonl
 ```
 
-The hosted reference has not run: this task has no `TYPESAFE_API_KEY`,
-and the credential source is awaiting the operator's response. Historical
-Jev v1 rows have different question text and cannot supply that comparison.
-Issue #9457 remains incomplete until the identical open items are scored
-with the hosted reference. The locked partition is still unused.
+## Hosted Jev comparison
+
+Hosted `jev-latest` answered the identical 68 open items: 61 correct,
+no refusals, and no harness failures. The service supplies no independently
+verifiable weight identity. These calls used the existing TypeSafe
+credential supplied by the operator; no credential is retained in results.
+
+| Open set | Correct | Spurious selections | Missed requests | Wrong program | Confident errors at p ≥ 0.9 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Real turns | 30/32 | 2/31 negatives | 0/1 positive | 0 | 0 |
+| Authored | 31/36 | 3/10 negatives | 0/26 positives | 2 | 0 |
+
+On paired items, Jev alone is correct on nine cases and Kev alone on one.
+The real turns contribute one in each direction; the authored cases
+contribute eight Jev-only corrections and no Kev-only corrections.
+
+Jev recognizes more authored requests but also selects `answer-question`
+for ordinary repository questions. Both models fall below constant `none`
+on the real turns. Neither result establishes safe automatic program
+execution. The offered summary and intended delegation requirement overlap;
+this is a question-contract concern as well as a model-quality concern.
+
+Calibration raw accuracy/ECE/Brier/NLL are 0.86/0.095/0.083/0.256;
+development values are 0.93/0.107/0.076/0.245. No calibration map was fitted.
+The observed HTTP median was 199 ms, not a controlled latency benchmark.
+[Hosted raw rows](../../crates/gym/results/program-selection-v2-jev.jsonl)
+and [derived reports](data/program-selection-v2/) preserve the complete
+open denominator and verify against the frozen suite and question digests.
+The 12 locked cases remain unused. Repeat the commands above with `--jev`
+and the hosted result path to reproduce the comparison workflow.
 
 The production drift tests and new suite contract test passed. Rebuilding
 the suite reproduces its committed bytes; the result store's receipt chain

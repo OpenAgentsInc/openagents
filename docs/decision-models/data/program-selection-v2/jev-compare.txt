@@ -1,0 +1,14 @@
+# One contract, 1 implementation
+
+Read from `crates/gym/results/program-selection-v2-jev.jsonl`: 68 rows over 1 side. The chain verified, so no row was removed and none was inserted.
+
+| Side | Identity | Accuracy | ECE | Brier | NLL | Confident errors | Scored | Refused | Median latency |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| jev (hosted) asked as program-selection-v2 | incomplete identity | 0.90 | 0.079 | 0.079 | 0.249 | 0 | 68 | 0 | 199 ms |
+
+A refused item stays in the door's denominator and out of its numerator, so a door that declines the hard questions does not score better for declining them.
+
+## Judged by `decision-v1`, digest `gate:dff5d2023b6116a80ceeeef14707bdc2bd02fedbcfaf61be42b0d0cd653b20b1`
+
+Only `jev (hosted) asked as program-selection-v2` has rows in this store, so there is nothing to compare it against yet.
+
