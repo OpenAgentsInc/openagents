@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-for command_name in initdb pg_ctl createdb cargo curl python3 sed; do
+for command_name in initdb pg_ctl createdb pg_dump pg_restore psql cargo curl python3 sed tar sha256sum awk; do
   command -v "${command_name}" >/dev/null || {
     echo "test-postgres: missing ${command_name}" >&2
     exit 1
@@ -59,6 +59,13 @@ createdb -h "${socket_dir}" -U "${database_user}" nostr_relay_import_test
 NOSTR_RELAY_TEST_DATABASE_URL="host=${socket_dir} user=${database_user} dbname=nostr_relay_import_test" \
   NOSTR_RELAY_TEST_ALLOW_DESTRUCTIVE=1 \
   cargo test --locked -p nostr-relay --test bulk_import_postgres -- --nocapture
+
+createdb -h "${socket_dir}" -U "${database_user}" nostr_relay_backup_test
+createdb -h "${socket_dir}" -U "${database_user}" nostr_relay_restore_test
+NOSTR_RELAY_TEST_DATABASE_URL="host=${socket_dir} user=${database_user} dbname=nostr_relay_backup_test" \
+  NOSTR_RELAY_TEST_RESTORE_DATABASE_URL="host=${socket_dir} user=${database_user} dbname=nostr_relay_restore_test" \
+  NOSTR_RELAY_TEST_ALLOW_DESTRUCTIVE=1 \
+  cargo test --locked -p nostr-relay --test backup_postgres -- --nocapture
 
 createdb -h "${socket_dir}" -U "${database_user}" nostr_relay_load_test
 NOSTR_RELAY_TEST_DATABASE_URL="host=${socket_dir} user=${database_user} dbname=nostr_relay_load_test" \

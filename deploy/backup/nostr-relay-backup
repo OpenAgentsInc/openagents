@@ -1,39 +1,119 @@
 #!/bin/sh
+# Create one restorable nostr-relay backup unit: a database dump, a media
+# archive that holds every blob the dump references, and a manifest that
+# names both with their digests. The manifest is written last and only when
+# both components are complete and verified; a run that fails leaves no
+# manifest, so a dump or archive without one is not a restorable pair.
+#
+# Consistency rests on the relay's deletion barrier: a deleted blob's bytes
+# stay under `<media root>/.deleted/` for `DELETED_RETENTION` (48 hours), and
+# the dump is taken before the archive. A blob the dump references is
+# therefore either live or retained when the archive runs, as long as the
+# run finishes inside that window. Blobs uploaded after the dump appear in
+# the archive without a database row and are harmless orphans on restore.
+#
+# Environment (all optional):
+#   NOSTR_RELAY_BACKUP_DIR        where the unit is written; default
+#                                 /var/backups/nostr-relay
+#   NOSTR_RELAY_BACKUP_DATABASE   pg_dump --dbname value; default nostr_relay
+#   NOSTR_RELAY_MEDIA_ROOT        media root; default /var/lib/nostr-relay/media
+#   NOSTR_RELAY_BACKUP_RETENTION  days to keep units; default 14
 set -eu
 
-backup_dir=/var/backups/nostr-relay
-retention_days=14
-stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
-destination="${backup_dir}/nostr-relay-${stamp}.dump"
-temporary="${destination}.tmp"
+backup_dir="${NOSTR_RELAY_BACKUP_DIR:-/var/backups/nostr-relay}"
+database="${NOSTR_RELAY_BACKUP_DATABASE:-nostr_relay}"
 media_root="${NOSTR_RELAY_MEDIA_ROOT:-/var/lib/nostr-relay/media}"
-media_destination="${backup_dir}/nostr-relay-media-${stamp}.tar"
-media_temporary="${media_destination}.tmp"
+retention_days="${NOSTR_RELAY_BACKUP_RETENTION:-14}"
+stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
+unit="nostr-relay-${stamp}"
+dump="${backup_dir}/${unit}.dump"
+archive="${backup_dir}/${unit}-media.tar"
+manifest="${backup_dir}/${unit}.manifest"
+work="${backup_dir}/.${unit}.work"
 
 cleanup() {
-    if test -n "${temporary}"; then
-        rm -f -- "${temporary}"
-    fi
-    if test -n "${media_temporary}"; then
-        rm -f -- "${media_temporary}"
-    fi
+    rm -rf -- "${work}"
 }
 trap cleanup EXIT HUP INT TERM
 
-umask 077
-test -d "${backup_dir}"
-pg_dump --dbname=nostr_relay --format=custom --no-owner --no-acl \
-    --file="${temporary}"
-chmod 0600 "${temporary}"
-mv -- "${temporary}" "${destination}"
-temporary=
+fail() {
+    echo "nostr-relay-backup: $*" >&2
+    exit 1
+}
 
+umask 077
+test -d "${backup_dir}" || fail "backup directory ${backup_dir} is missing"
+mkdir -- "${work}"
+
+# 1. Database dump. It is the reference set for the archive.
+pg_dump --dbname="${database}" --format=custom --no-owner --no-acl \
+    --file="${work}/db.dump"
+
+# 2. Media archive, taken after the dump so the deletion barrier covers
+#    every blob the dump names. Upload temporaries are not part of a backup.
 if test -d "${media_root}"; then
-    tar --create --file="${media_temporary}" --directory="${media_root}" .
-    chmod 0600 "${media_temporary}"
-    mv -- "${media_temporary}" "${media_destination}"
-    media_temporary=
+    tar --create --file="${work}/media.tar" --directory="${media_root}" \
+        --exclude='./.tmp' --exclude='./.tmp/*' .
+else
+    tar --create --file="${work}/media.tar" --files-from=/dev/null
 fi
 
-find "${backup_dir}" -type f \( -name 'nostr-relay-*.dump' -o -name 'nostr-relay-media-*.tar' \) \
-    -mtime "+${retention_days}" -delete
+# 3. Completeness: every ready blob row in the dump has its bytes in the
+#    archive, either at its live path or under .deleted/.
+pg_restore --data-only --table=media_blob --file="${work}/media_blob.sql" \
+    "${work}/db.dump"
+awk '
+    /^COPY / { copying = 1; next }
+    /^\\\.$/ { copying = 0; next }
+    copying && $6 == "t" { print $1 "\t" $2 }
+' "${work}/media_blob.sql" | LC_ALL=C sort > "${work}/referenced.tsv"
+tar --list --file="${work}/media.tar" | LC_ALL=C sort > "${work}/archived.txt"
+missing=0
+while IFS="$(printf '\t')" read -r sha256 storage_key; do
+    prefix="$(printf '%s' "${sha256}" | cut -c1-2)"
+    if ! grep -qxF -e "./${prefix}/${sha256}.${storage_key}" \
+        -e "./.deleted/${sha256}.${storage_key}" "${work}/archived.txt"
+    then
+        echo "nostr-relay-backup: blob ${sha256} is in the dump but not the archive" >&2
+        missing=$((missing + 1))
+    fi
+done < "${work}/referenced.tsv"
+test "${missing}" -eq 0 || fail "${missing} referenced blob(s) missing; no manifest written"
+
+# 4. Publish. The dump and archive move into place first; the manifest,
+#    naming both with their digests, is the last write.
+chmod 0600 "${work}/db.dump" "${work}/media.tar"
+mv -- "${work}/db.dump" "${dump}"
+mv -- "${work}/media.tar" "${archive}"
+dump_digest="$(sha256sum "${dump}" | cut -d' ' -f1)"
+archive_digest="$(sha256sum "${archive}" | cut -d' ' -f1)"
+referenced="$(wc -l < "${work}/referenced.tsv" | tr -d ' ')"
+{
+    printf 'unit\t%s\n' "${unit}"
+    printf 'created_at\t%s\n' "${stamp}"
+    printf 'database\t%s\t%s\t%s\n' "$(basename -- "${dump}")" "${dump_digest}" \
+        "$(wc -c < "${dump}" | tr -d ' ')"
+    printf 'media\t%s\t%s\t%s\n' "$(basename -- "${archive}")" "${archive_digest}" \
+        "$(wc -c < "${archive}" | tr -d ' ')"
+    printf 'referenced_blobs\t%s\n' "${referenced}"
+} > "${work}/manifest"
+chmod 0600 "${work}/manifest"
+mv -- "${work}/manifest" "${manifest}"
+
+# 5. Retention: whole units past the window go together. A dump or archive
+#    whose manifest never appeared is a failed run and goes at once.
+find "${backup_dir}" -maxdepth 1 -type f -name 'nostr-relay-*.manifest' \
+    -mtime "+${retention_days}" | while read -r old_manifest; do
+    old_unit="$(basename -- "${old_manifest}" .manifest)"
+    rm -f -- "${backup_dir}/${old_unit}.dump" "${backup_dir}/${old_unit}-media.tar" \
+        "${old_manifest}"
+done
+for candidate in "${backup_dir}"/nostr-relay-*.dump; do
+    test -f "${candidate}" || continue
+    candidate_unit="$(basename -- "${candidate}" .dump)"
+    if test "${candidate_unit}" != "${unit}" \
+        && ! test -f "${backup_dir}/${candidate_unit}.manifest"
+    then
+        rm -f -- "${candidate}" "${backup_dir}/${candidate_unit}-media.tar"
+    fi
+done

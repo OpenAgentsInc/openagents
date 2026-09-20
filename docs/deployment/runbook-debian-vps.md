@@ -182,14 +182,19 @@ and query it back.
 
 ## 7. Install and prove nightly backups
 
-The backup service creates a private, atomic custom-format `pg_dump` plus a
-media tar archive when M7 is enabled, retains 14 days locally, and catches up
-after downtime. Install the committed artifacts:
+The backup service writes one restorable unit per run: a private custom-format
+`pg_dump`, a media tar archive that holds every blob the dump references, and
+a manifest that names both files with their SHA-256 digests and sizes. The
+manifest is the last file written and appears only after the script has
+confirmed that every ready `media_blob` row in the dump has its bytes in the
+archive. A dump or archive without a manifest is a failed run, not a restore
+point, and the next run removes it. Units are retained 14 days locally and the
+timer catches up after downtime. Install the committed artifacts:
 
 ```sh
 sudo install -d -o postgres -g postgres -m 0700 /var/backups/nostr-relay
 sudo install -o root -g root -m 0755 deploy/backup/nostr-relay-backup \
-  /usr/local/sbin/nostr-relay-backup
+  deploy/backup/nostr-relay-restore /usr/local/sbin/
 sudo install -o root -g root -m 0644 \
   deploy/backup/nostr-relay-backup.service \
   deploy/backup/nostr-relay-backup.timer \
@@ -202,53 +207,61 @@ sudo systemctl enable --now nostr-relay-backup.timer
 sudo systemctl start nostr-relay-backup.service
 sudo systemctl status nostr-relay-backup.service --no-pager
 sudo ls -l /var/backups/nostr-relay/
+sudo cat /var/backups/nostr-relay/nostr-relay-<TIMESTAMP>.manifest
 ```
 
-Copy backups off the server on an operator-controlled schedule. A dump on the
-same disk is a restore point, not a disaster-recovery backup.
+Copy whole units (all three files) off the server on an operator-controlled
+schedule. A dump on the same disk is a restore point, not a disaster-recovery
+backup.
 
-The timer runs online, so its database dump and media tar are individually
-atomic but not one cross-store snapshot. Content addressing makes extra files
-harmless, but a delete racing the pair could remove a file named by the dump.
-For a guaranteed paired restore point, stop `nostr-relay.service`, start the
-backup service, copy both files with the same timestamp off-host, then restart
-the relay. Upgrades use this cold sequence below.
+The timer runs online. The unit is consistent because the relay never destroys
+a deleted blob's bytes at once: a delete moves the file to
+`<media root>/.deleted/`, where it stays for 48 hours, and the script dumps the
+database before it archives the media root. Every blob the dump names is
+therefore live or retained when the archive runs. Blobs uploaded after the
+dump appear in the archive without a row and are harmless orphans. The relay
+removes retained files after their window; do not clear `.deleted/` by hand
+while a backup is due.
 
-Test the newest dump immediately:
+Test the newest unit immediately, into an empty database and an empty media
+root. The restore script checks both digests against the manifest before it
+writes, refuses a target that already holds tables or files, and fails if any
+ready blob row ends up without bytes:
 
 ```sh
-sudo -u postgres createdb --owner=nostr-relay nostr-relay_restore_test
-sudo -u postgres pg_restore --role=nostr-relay \
-  --dbname=nostr_relay_restore_test \
-  /var/backups/nostr-relay/nostr-relay-<TIMESTAMP>.dump
+sudo -u postgres createdb --owner=nostr-relay nostr_relay_restore_test
+sudo -u postgres nostr-relay-restore \
+  /var/backups/nostr-relay/nostr-relay-<TIMESTAMP>.manifest \
+  nostr_relay_restore_test /var/tmp/nostr-relay-restore-test
 sudo -u postgres psql --dbname=nostr_relay_restore_test \
   --command='SELECT count(*) FROM nostr_event;'
 sudo -u postgres psql --dbname=nostr_relay_restore_test \
   --command='SELECT version, name, sha256 FROM schema_migrations ORDER BY version;'
-sudo -u postgres psql --dbname=nostr_relay_restore_test \
-  --command='SELECT count(*) FROM media_blob WHERE ready;'
-sudo tar --list --file=/var/backups/nostr-relay/nostr-relay-media-<TIMESTAMP>.tar \
-  >/dev/null
-sudo -u postgres dropdb nostr-relay_restore_test
+sudo -u postgres dropdb nostr_relay_restore_test
+sudo rm -rf /var/tmp/nostr-relay-restore-test
 ```
+
+The same check runs against a disposable relay in
+`crates/nostr-relay/tests/backup_postgres.rs` under
+`./scripts/test-postgres.sh`, with uploads and deletes in flight while the
+backup runs.
 
 ### Recover the production database
 
-Keep the failed database until the restored relay passes verification:
+Keep the failed database and media root until the restored relay passes
+verification:
 
 ```sh
 sudo systemctl stop nostr-relay.service
 sudo -u postgres psql --dbname=postgres \
-  --command="SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'nostr-relay';"
+  --command="SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'nostr_relay';"
 sudo -u postgres psql --dbname=postgres \
-  --command='ALTER DATABASE nostr_relay RENAME TO nostr-relay_failed;'
-sudo -u postgres createdb --owner=nostr-relay nostr-relay
-sudo -u postgres pg_restore --role=nostr-relay --dbname=nostr_relay \
-  /var/backups/nostr-relay/nostr-relay-<TIMESTAMP>.dump
-sudo install -d -o nostr-relay -g nostr-relay -m 0750 /var/lib/nostr-relay/media
-sudo tar --extract \
-  --file=/var/backups/nostr-relay/nostr-relay-media-<TIMESTAMP>.tar \
-  --directory=/var/lib/nostr-relay/media
+  --command='ALTER DATABASE nostr_relay RENAME TO nostr_relay_failed;'
+sudo mv /var/lib/nostr-relay/media /var/lib/nostr-relay/media.failed
+sudo -u postgres createdb --owner=nostr-relay nostr_relay
+sudo -u postgres nostr-relay-restore \
+  /var/backups/nostr-relay/nostr-relay-<TIMESTAMP>.manifest \
+  nostr_relay /var/lib/nostr-relay/media
 sudo chown -R nostr-relay:nostr-relay /var/lib/nostr-relay/media
 sudo chmod -R u=rwX,g=rX,o= /var/lib/nostr-relay/media
 sudo systemctl start nostr-relay.service
@@ -257,9 +270,9 @@ journalctl -u nostr-relay.service -n 30 --no-pager
 ```
 
 After publish/query verification and owner approval, remove
-`nostr-relay_failed`. If verification fails, stop the service, remove the newly
-restored `nostr-relay` database, rename `nostr-relay_failed` back to `nostr-relay`, and
-start the service.
+`nostr_relay_failed` and `media.failed`. If verification fails, stop the
+service, drop the restored `nostr_relay`, rename `nostr_relay_failed` back to
+`nostr_relay`, move `media.failed` back, and start the service.
 
 For a tighter recovery-point objective, configure Postgres WAL archiving and
 periodic base backups to operator-controlled off-host storage. That remains

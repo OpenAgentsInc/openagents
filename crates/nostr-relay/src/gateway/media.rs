@@ -6,7 +6,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use serde_json::json;
@@ -34,6 +34,11 @@ use super::{
 const MEDIA_IO_TIMEOUT: Duration = Duration::from_secs(30);
 const MEDIA_UPLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 const STALE_TEMPORARY_AGE: Duration = Duration::from_secs(3_600);
+/// How long a deleted blob's bytes stay under `.deleted/`. A backup that
+/// dumps the database and then archives the media root within this window
+/// finds every blob the dump references, live or retained. Read
+/// `docs/protocol/media.md` before changing it.
+pub const DELETED_RETENTION: Duration = Duration::from_secs(48 * 3_600);
 const STREAM_BUFFER_BYTES: usize = 64 * 1024;
 
 #[derive(Clone)]
@@ -46,6 +51,7 @@ pub struct MediaStorage {
 impl MediaStorage {
     pub async fn prepare(config: &MediaConfig) -> Result<Self, GatewayError> {
         fs::create_dir_all(config.root.join(".tmp")).await?;
+        fs::create_dir_all(config.root.join(".deleted")).await?;
         let root = fs::canonicalize(&config.root).await?;
         if !fs::metadata(&root).await?.is_dir() {
             return Err(GatewayError::Config(
@@ -53,6 +59,7 @@ impl MediaStorage {
             ));
         }
         clean_stale_temporary_files(&root).await?;
+        clean_expired_deleted_blobs(&root).await?;
         Ok(Self {
             root: Arc::new(root),
             cloud_base_url: config
@@ -75,6 +82,35 @@ impl MediaStorage {
                 .join(&record.sha256[..2])
                 .join(format!("{}.{}", record.sha256, record.storage_key))
         }
+    }
+
+    /// Where a deleted blob's bytes rest until `DELETED_RETENTION` passes.
+    fn deleted_path(&self, record: &MediaRecord) -> PathBuf {
+        self.root
+            .join(".deleted")
+            .join(format!("{}.{}", record.sha256, record.storage_key))
+    }
+
+    /// Take a blob out of service without destroying its bytes yet: the
+    /// file moves to `.deleted/`, and retained files past their window go.
+    async fn retire_blob(&self, record: &MediaRecord) -> io::Result<()> {
+        let deleted_path = self.deleted_path(record);
+        match fs::rename(self.blob_path(record), &deleted_path).await {
+            Ok(()) => {
+                // The retention window counts from deletion, not upload.
+                tokio::task::spawn_blocking(move || {
+                    std::fs::File::options()
+                        .write(true)
+                        .open(deleted_path)?
+                        .set_modified(SystemTime::now())
+                })
+                .await
+                .map_err(io::Error::other)??;
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        clean_expired_deleted_blobs(&self.root).await
     }
 
     async fn temporary_file(&self) -> io::Result<(PathBuf, File)> {
@@ -562,9 +598,8 @@ async fn serve_delete(
             media_success(&mut stream, "ownership removed").await
         }
         Ok(MediaDeleteOutcome::BlobRemoved(record)) => {
-            match fs::remove_file(storage.blob_path(&record)).await {
+            match storage.retire_blob(&record).await {
                 Ok(()) => {}
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
                 Err(_) => {
                     return media_error(
                         &mut stream,
@@ -607,6 +642,22 @@ async fn clean_stale_temporary_files(root: &Path) -> Result<(), GatewayError> {
             .modified()?
             .elapsed()
             .is_ok_and(|age| age >= STALE_TEMPORARY_AGE)
+        {
+            fs::remove_file(entry.path()).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn clean_expired_deleted_blobs(root: &Path) -> io::Result<()> {
+    let mut entries = fs::read_dir(root.join(".deleted")).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let metadata = fs::symlink_metadata(entry.path()).await?;
+        if metadata.is_file()
+            && metadata
+                .modified()?
+                .elapsed()
+                .is_ok_and(|age| age >= DELETED_RETENTION)
         {
             fs::remove_file(entry.path()).await?;
         }

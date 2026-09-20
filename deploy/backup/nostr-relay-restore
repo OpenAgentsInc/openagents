@@ -1,0 +1,72 @@
+#!/bin/sh
+# Restore one nostr-relay backup unit into a database and media root that
+# must both be empty. The unit is named by its manifest; the dump and archive
+# are checked against the manifest's digests before anything is written, and
+# after the restore every ready blob row must have its bytes on disk.
+#
+# Usage:
+#   nostr-relay-restore <manifest> <pg_restore --dbname value> <media root>
+#
+# The target database must exist and hold no tables; the media root must be
+# an empty directory or missing. Nothing here touches the source relay.
+set -eu
+
+fail() {
+    echo "nostr-relay-restore: $*" >&2
+    exit 1
+}
+
+test "$#" -eq 3 || fail "usage: nostr-relay-restore <manifest> <database> <media root>"
+manifest="$1"
+database="$2"
+media_root="$3"
+backup_dir="$(dirname -- "${manifest}")"
+
+test -f "${manifest}" || fail "manifest ${manifest} is missing"
+dump_name="$(awk -F'\t' '$1 == "database" { print $2 }' "${manifest}")"
+dump_digest="$(awk -F'\t' '$1 == "database" { print $3 }' "${manifest}")"
+archive_name="$(awk -F'\t' '$1 == "media" { print $2 }' "${manifest}")"
+archive_digest="$(awk -F'\t' '$1 == "media" { print $3 }' "${manifest}")"
+test -n "${dump_name}" && test -n "${archive_name}" || fail "manifest names no pair"
+dump="${backup_dir}/${dump_name}"
+archive="${backup_dir}/${archive_name}"
+test -f "${dump}" || fail "dump ${dump} is missing"
+test -f "${archive}" || fail "archive ${archive} is missing"
+test "$(sha256sum "${dump}" | cut -d' ' -f1)" = "${dump_digest}" \
+    || fail "dump digest does not match the manifest"
+test "$(sha256sum "${archive}" | cut -d' ' -f1)" = "${archive_digest}" \
+    || fail "archive digest does not match the manifest"
+
+table_count="$(psql --dbname="${database}" --tuples-only --no-align --command \
+    "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
+test "${table_count}" = "0" || fail "target database already holds tables"
+if test -e "${media_root}"; then
+    test -d "${media_root}" || fail "media root is not a directory"
+    test -z "$(ls -A -- "${media_root}")" || fail "media root is not empty"
+else
+    mkdir -p -- "${media_root}"
+fi
+
+pg_restore --dbname="${database}" --no-owner --no-acl --exit-on-error "${dump}"
+tar --extract --file="${archive}" --directory="${media_root}"
+mkdir -p -- "${media_root}/.tmp" "${media_root}/.deleted"
+
+# Every ready blob row has its bytes, live or retained.
+referenced="$(mktemp)"
+trap 'rm -f -- "${referenced}"' EXIT HUP INT TERM
+psql --dbname="${database}" --tuples-only --no-align --field-separator="$(printf '\t')" \
+    --command "SELECT sha256, storage_key FROM media_blob WHERE ready ORDER BY sha256" \
+    > "${referenced}"
+missing=0
+while IFS="$(printf '\t')" read -r sha256 storage_key; do
+    test -n "${sha256}" || continue
+    prefix="$(printf '%s' "${sha256}" | cut -c1-2)"
+    if ! test -f "${media_root}/${prefix}/${sha256}.${storage_key}" \
+        && ! test -f "${media_root}/.deleted/${sha256}.${storage_key}"
+    then
+        echo "nostr-relay-restore: blob ${sha256} has no bytes" >&2
+        missing=$((missing + 1))
+    fi
+done < "${referenced}"
+test "${missing}" -eq 0 || fail "${missing} blob(s) without bytes; the restore is incomplete"
+echo "nostr-relay-restore: restored $(basename -- "${manifest}" .manifest) into ${database} and ${media_root}"

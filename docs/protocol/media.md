@@ -79,3 +79,20 @@ The committed single-box deployment uses the filesystem adapter. A container
 must bind-mount a persistent writable media directory or leave media disabled.
 The Cloud Run path leaves M7 disabled because its ordinary writable filesystem
 is ephemeral.
+
+## Deletion retention and backups
+
+A delete that removes a blob's last owner takes the row out of the database at
+once but does not destroy the bytes: the file moves to `<media root>/.deleted/`
+under its content hash and storage key, where it stays for 48 hours
+(`DELETED_RETENTION` in `crates/nostr-relay/src/gateway/media.rs`) before the
+relay removes it. The retained file is never served; `GET` answers from the
+database, which no longer names it.
+
+That window is the barrier `deploy/backup/nostr-relay-backup` rests on. The
+script dumps the database first and archives the media root second, so every
+blob the dump references is either at its live path or under `.deleted/` when
+the archive runs, as long as the run finishes inside the window. The script
+verifies that from the dump itself and writes the unit's manifest only when
+the check passes. `docs/deployment/runbook-debian-vps.md` covers the unit,
+the restore script, and recovery.
