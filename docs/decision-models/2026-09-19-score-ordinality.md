@@ -350,3 +350,14 @@ spelling, so the probe spent 192 hosted calls in total. The only price on
 record in this repository is the cookbook's $0.000043 for one 14-question
 call, which puts the whole run well under a cent at that order; the exact
 charge is on TypeSafe's meter, not ours.
+
+## The decision this record raised
+
+openagents#9394, which this probe was raised out of, is settled in
+[`2026-09-20-score-contract.md`](2026-09-20-score-contract.md): `score` stays
+the probability-weighted position the public contract promises, every
+published Score number is declared argmax accuracy, and the tie convention —
+the last level listed — is stated and tested rather than left as an accident
+of `max_by`. Nothing above moves: this record's own analysis took the first
+of equal maxima, which is why its accuracy figures carry the convention
+spread noted in "Lev's disagreements are ties, not troughs".

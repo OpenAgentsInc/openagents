@@ -81,7 +81,10 @@ impl Raw {
     /// The frequency the winning option carried.
     #[must_use]
     pub fn top(&self) -> f64 {
-        self.frequency.get(&self.choice).copied().unwrap_or_default()
+        self.frequency
+            .get(&self.choice)
+            .copied()
+            .unwrap_or_default()
     }
 }
 
@@ -89,7 +92,10 @@ impl Raw {
 pub fn l1(bridge: &mut Bridge, compiled: &Compiled) -> Result<Raw> {
     let outcome = bridge.decide(&Call::decide(compiled, Sampling::Greedy))?;
     let choice = outcome.choice.ok_or_else(|| {
-        Refusal::new(RefusalCode::DecodingFailure, "the runtime selected no option")
+        Refusal::new(
+            RefusalCode::DecodingFailure,
+            "the runtime selected no option",
+        )
     })?;
     Ok(Raw {
         estimator: Estimator::L1,
@@ -119,7 +125,10 @@ pub fn l1(bridge: &mut Bridge, compiled: &Compiled) -> Result<Raw> {
 /// it has not drawn yet.
 pub fn seed_block(seed_base: u64, n: u64) -> Result<std::ops::Range<u64>> {
     if n == 0 {
-        return Err(Refusal::new(RefusalCode::InvalidRequest, "an ensemble draws at least one sample"));
+        return Err(Refusal::new(
+            RefusalCode::InvalidRequest,
+            "an ensemble draws at least one sample",
+        ));
     }
     let overflow = || {
         Refusal::new(
@@ -157,7 +166,13 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64, seed_base: u64) -> R
     let mut refused = 0_u64;
     let mut last: Option<Refusal> = None;
     for seed in block {
-        let call = Call::decide(compiled, Sampling::Random { seed, temperature: None });
+        let call = Call::decide(
+            compiled,
+            Sampling::Random {
+                seed,
+                temperature: None,
+            },
+        );
         let outcome = match bridge.decide(&call) {
             Ok(outcome) => outcome,
             Err(refusal) if refusal.code == RefusalCode::Guardrail => {
@@ -168,7 +183,10 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64, seed_base: u64) -> R
             Err(refusal) => return Err(refusal),
         };
         let choice = outcome.choice.ok_or_else(|| {
-            Refusal::new(RefusalCode::DecodingFailure, "the runtime selected no option")
+            Refusal::new(
+                RefusalCode::DecodingFailure,
+                "the runtime selected no option",
+            )
         })?;
         let slot = counts.get_mut(&choice).ok_or_else(|| {
             Refusal::new(
@@ -183,11 +201,19 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64, seed_base: u64) -> R
 
     let drawn = n - refused;
     if drawn == 0 {
-        return Err(last.unwrap_or_else(|| {
-            Refusal::new(RefusalCode::Guardrail, "every draw was refused")
-        }));
+        return Err(
+            last.unwrap_or_else(|| Refusal::new(RefusalCode::Guardrail, "every draw was refused"))
+        );
     }
-    let mut raw = finish(Estimator::L2, counts, drawn, seeds, seed_base, None, latency);
+    let mut raw = finish(
+        Estimator::L2,
+        counts,
+        drawn,
+        seeds,
+        seed_base,
+        None,
+        latency,
+    );
     raw.refused = refused;
     Ok(raw)
 }
@@ -214,7 +240,13 @@ pub fn l2_pool_with(
     let first = block.start;
     let calls: Vec<Call> = block
         .map(|seed| {
-            let call = Call::decide(compiled, Sampling::Random { seed, temperature: None });
+            let call = Call::decide(
+                compiled,
+                Sampling::Random {
+                    seed,
+                    temperature: None,
+                },
+            );
             match adapter {
                 Some(path) => call.with_adapter(path),
                 None => call,
@@ -223,8 +255,11 @@ pub fn l2_pool_with(
         .collect();
     let outcomes = pool.decide_all(&calls);
 
-    let mut counts: IndexMap<String, u64> =
-        compiled.options.iter().map(|option| (option.clone(), 0)).collect();
+    let mut counts: IndexMap<String, u64> = compiled
+        .options
+        .iter()
+        .map(|option| (option.clone(), 0))
+        .collect();
     let mut seeds = Vec::new();
     let mut latency = 0.0_f64;
     let mut refused = 0_u64;
@@ -234,7 +269,10 @@ pub fn l2_pool_with(
         match outcome {
             Ok(outcome) => {
                 let choice = outcome.choice.ok_or_else(|| {
-                    Refusal::new(RefusalCode::DecodingFailure, "the runtime selected no option")
+                    Refusal::new(
+                        RefusalCode::DecodingFailure,
+                        "the runtime selected no option",
+                    )
                 })?;
                 let slot = counts.get_mut(&choice).ok_or_else(|| {
                     Refusal::new(
@@ -258,10 +296,19 @@ pub fn l2_pool_with(
 
     let drawn = n - refused;
     if drawn == 0 {
-        return Err(last
-            .unwrap_or_else(|| Refusal::new(RefusalCode::Guardrail, "every draw was refused")));
+        return Err(
+            last.unwrap_or_else(|| Refusal::new(RefusalCode::Guardrail, "every draw was refused"))
+        );
     }
-    let mut raw = finish(Estimator::L2, counts, drawn, seeds, seed_base, None, latency);
+    let mut raw = finish(
+        Estimator::L2,
+        counts,
+        drawn,
+        seeds,
+        seed_base,
+        None,
+        latency,
+    );
     raw.refused = refused;
     Ok(raw)
 }
@@ -272,7 +319,10 @@ pub fn l3(bridge: &mut Bridge, compiled: &Compiled) -> Result<Raw> {
     let call = Call::decide(compiled, Sampling::Greedy).with_band(bands);
     let outcome = bridge.decide(&call)?;
     let choice = outcome.choice.ok_or_else(|| {
-        Refusal::new(RefusalCode::DecodingFailure, "the runtime selected no option")
+        Refusal::new(
+            RefusalCode::DecodingFailure,
+            "the runtime selected no option",
+        )
     })?;
     let mut counts: IndexMap<String, u64> = compiled
         .options
@@ -283,7 +333,15 @@ pub fn l3(bridge: &mut Bridge, compiled: &Compiled) -> Result<Raw> {
         *slot = 1;
     }
     let latency = outcome.latency_ms.unwrap_or_default();
-    Ok(finish(Estimator::L3, counts, 1, Vec::new(), 0, outcome.band, latency))
+    Ok(finish(
+        Estimator::L3,
+        counts,
+        1,
+        Vec::new(),
+        0,
+        outcome.band,
+        latency,
+    ))
 }
 
 fn finish(
@@ -360,34 +418,40 @@ pub fn confidence_in(probabilities: &IndexMap<String, f64>, option: &str) -> f64
 /// distribution before any map touched it. A map calibrates how sure a door
 /// is about a fixed answer and never picks a different one, and a rescale
 /// can leave the selected option below a runner-up, so this is passed in
-/// rather than re-derived here. `crates/gym/src/calibrate.rs` carries the
-/// contract.
+/// rather than re-derived here — and it goes out on the wire: `choice`
+/// carries it on a Choice and `selected` carries it on a Noul or a Score,
+/// which have no other field that can. `crates/gym/src/calibrate.rs` carries
+/// the contract.
 pub fn answer(
     kind: Kind,
     probabilities: &IndexMap<String, f64>,
     legend: &IndexMap<String, Value>,
     selected: &str,
 ) -> Result<Answer> {
+    if !probabilities.contains_key(selected) {
+        return Err(Refusal::new(
+            RefusalCode::DecodingFailure,
+            format!("the distribution names no '{selected}'"),
+        ));
+    }
     match kind {
         Kind::Noul => {
             let yes = probabilities.get("yes").copied().ok_or_else(|| {
-                Refusal::new(RefusalCode::DecodingFailure, "a Noul distribution names no 'yes'")
-            })?;
-            Ok(Answer::Noul { noul: yes })
-        }
-        Kind::Choice => {
-            if !probabilities.contains_key(selected) {
-                return Err(Refusal::new(
+                Refusal::new(
                     RefusalCode::DecodingFailure,
-                    format!("the distribution names no '{selected}'"),
-                ));
-            }
-            Ok(Answer::Choice {
-                choice: selected.to_string(),
-                confidence: confidence_in(probabilities, selected),
-                probabilities: probabilities.clone(),
+                    "a Noul distribution names no 'yes'",
+                )
+            })?;
+            Ok(Answer::Noul {
+                noul: yes,
+                selected: Some(selected.to_string()),
             })
         }
+        Kind::Choice => Ok(Answer::Choice {
+            choice: selected.to_string(),
+            confidence: confidence_in(probabilities, selected),
+            probabilities: probabilities.clone(),
+        }),
         Kind::Score => {
             let mut score = 0.0;
             for (key, probability) in probabilities {
@@ -408,6 +472,7 @@ pub fn answer(
             Ok(Answer::Score {
                 score,
                 confidence: confidence(probabilities),
+                selected: Some(selected.to_string()),
                 legend: legend.clone(),
                 probabilities: probabilities.clone(),
             })
@@ -439,7 +504,10 @@ mod tests {
     use serde_json::json;
 
     fn distribution(pairs: &[(&str, f64)]) -> IndexMap<String, f64> {
-        pairs.iter().map(|(key, value)| ((*key).to_string(), *value)).collect()
+        pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), *value))
+            .collect()
     }
 
     #[test]
@@ -459,7 +527,13 @@ mod tests {
     fn a_noul_answer_is_the_probability_of_yes() {
         let probabilities = distribution(&[("no", 0.08), ("yes", 0.92)]);
         let answer = answer(Kind::Noul, &probabilities, &IndexMap::new(), "yes").unwrap();
-        assert_eq!(answer, Answer::Noul { noul: 0.92 });
+        assert_eq!(
+            answer,
+            Answer::Noul {
+                noul: 0.92,
+                selected: Some("yes".to_string())
+            }
+        );
     }
 
     #[test]
@@ -478,11 +552,26 @@ mod tests {
     }
 
     #[test]
+    fn a_tied_argmax_resolves_to_the_last_level_listed() {
+        // The convention shared by `gym::calibrate::selected` and this
+        // estimator: equal leaders resolve to the
+        // last of them, which for a Score's ordered levels is the highest
+        // tied level. An 8-sample grid makes exact halves common — the
+        // distribution below is what `ramp/search-box/3` returned — and the
+        // tie is a fact about the distribution, not a refusal.
+        let tied = distribution(&[("0", 0.0), ("1", 0.0), ("2", 0.5), ("3", 0.5), ("4", 0.0)]);
+        assert_eq!(argmax(&tied).unwrap(), "3");
+        assert_eq!(gym::calibrate::tied(&tied), 2);
+    }
+
+    #[test]
     fn a_choice_answer_takes_the_selected_option() {
-        let probabilities = distribution(&[("billing", 0.08), ("technical", 0.85), ("sales", 0.07)]);
+        let probabilities =
+            distribution(&[("billing", 0.08), ("technical", 0.85), ("sales", 0.07)]);
         let selected = argmax(&probabilities).unwrap();
-        let Answer::Choice { choice, confidence, .. } =
-            answer(Kind::Choice, &probabilities, &IndexMap::new(), &selected).unwrap()
+        let Answer::Choice {
+            choice, confidence, ..
+        } = answer(Kind::Choice, &probabilities, &IndexMap::new(), &selected).unwrap()
         else {
             panic!("expected a Choice");
         };
@@ -506,13 +595,71 @@ mod tests {
         let rescaled = map.apply_distribution(&raw);
         assert!(rescaled["no"] > rescaled["yes"], "{rescaled:?}");
 
-        let Answer::Choice { choice, confidence, .. } =
-            answer(Kind::Choice, &rescaled, &IndexMap::new(), &selected).unwrap()
+        let Answer::Choice {
+            choice, confidence, ..
+        } = answer(Kind::Choice, &rescaled, &IndexMap::new(), &selected).unwrap()
         else {
             panic!("expected a Choice");
         };
-        assert_eq!(choice, "yes", "the map rescaled the answer rather than replacing it");
-        assert!((confidence - 0.0).abs() < 1e-12, "confidence was {confidence}");
+        assert_eq!(
+            choice, "yes",
+            "the map rescaled the answer rather than replacing it"
+        );
+        assert!(
+            (confidence - 0.0).abs() < 1e-12,
+            "confidence was {confidence}"
+        );
+    }
+
+    #[test]
+    fn a_noul_or_score_carries_the_selected_option_through_an_inversion() {
+        // The wire field that makes the Choice `choice` field's job work on
+        // the other two kinds: the answer's own numbers no longer name the
+        // pick once a map has sunk it, so `selected` does. `noul` and
+        // `score` stay what the contract says they are — the calibrated
+        // probability of yes and the weighted position of the mapped
+        // distribution.
+        let map = gym::calibrate::Map::fit(&[gym::calibrate::Observation::new(0.8, false)], 1);
+
+        let raw = distribution(&[("no", 0.2), ("yes", 0.8)]);
+        let rescaled = map.apply_distribution(&raw);
+        assert!(rescaled["no"] > rescaled["yes"], "{rescaled:?}");
+        let Answer::Noul { noul, selected } =
+            answer(Kind::Noul, &rescaled, &IndexMap::new(), "yes").unwrap()
+        else {
+            panic!("expected a Noul");
+        };
+        assert!(
+            (noul - 0.25).abs() < 1e-12,
+            "the calibrated probability of yes: {noul}"
+        );
+        assert_eq!(
+            selected.as_deref(),
+            Some("yes"),
+            "the answer survived the wire"
+        );
+
+        let raw = distribution(&[("0", 0.8), ("1", 0.15), ("2", 0.05)]);
+        let rescaled = map.apply_distribution(&raw);
+        assert!(rescaled["1"] > rescaled["0"], "{rescaled:?}");
+        let Answer::Score {
+            score, selected, ..
+        } = answer(Kind::Score, &rescaled, &IndexMap::new(), "0").unwrap()
+        else {
+            panic!("expected a Score");
+        };
+        // The mapped distribution is 0.25, 0.5625, 0.1875, so the weighted
+        // position is 0.9375 — a `score` that names level 1 to anyone
+        // rounding it, while the answer stays level 0.
+        assert!(
+            (score - 0.9375).abs() < 1e-12,
+            "the weighted position: {score}"
+        );
+        assert_eq!(
+            selected.as_deref(),
+            Some("0"),
+            "the answer survived the wire"
+        );
     }
 
     #[test]
@@ -533,8 +680,9 @@ mod tests {
     #[test]
     fn two_blocks_never_share_a_seed() {
         let n = 8;
-        let blocks: Vec<Vec<u64>> =
-            (0..8).map(|base| seed_block(base, n).unwrap().collect()).collect();
+        let blocks: Vec<Vec<u64>> = (0..8)
+            .map(|base| seed_block(base, n).unwrap().collect())
+            .collect();
         for (left, first) in blocks.iter().enumerate() {
             for (right, second) in blocks.iter().enumerate().skip(left + 1) {
                 assert!(
@@ -559,8 +707,9 @@ mod tests {
 
     #[test]
     fn an_l2_estimate_carries_its_own_resolution() {
-        let counts: IndexMap<String, u64> =
-            [("a".to_string(), 5_u64), ("b".to_string(), 3)].into_iter().collect();
+        let counts: IndexMap<String, u64> = [("a".to_string(), 5_u64), ("b".to_string(), 3)]
+            .into_iter()
+            .collect();
         let raw = finish(Estimator::L2, counts, 8, (0..8).collect(), 0, None, 0.0);
         assert_eq!(raw.choice, "a");
         assert!((raw.top() - 0.625).abs() < 1e-12);

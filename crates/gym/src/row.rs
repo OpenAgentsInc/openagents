@@ -39,7 +39,12 @@ use serde::{Deserialize, Serialize};
 ///
 /// It is written into the row rather than inferred from the file, so a line
 /// that escapes its store still says what it is and what reads it.
-pub const SCHEMA: &str = "openagents.gym.eval_row.v1";
+pub const SCHEMA: &str = "openagents.gym.eval_row.v2";
+
+/// Historical rows whose `raw_top` was the distribution maximum.
+/// Their bytes and receipts remain unchanged; readers use the legacy
+/// selection fallback when no named answer was recorded.
+pub const LEGACY_SCHEMA: &str = "openagents.gym.eval_row.v1";
 
 /// What a door was running when it answered.
 ///
@@ -76,7 +81,11 @@ impl DoorIdentity {
     /// proof, and will not compare it against a serving runtime.
     #[must_use]
     pub fn hosted(model: impl Into<String>) -> Self {
-        Self { model: model.into(), verified: false, ..Self::default() }
+        Self {
+            model: model.into(),
+            verified: false,
+            ..Self::default()
+        }
     }
 
     /// Names a door whose runtime publishes what it is running.
@@ -285,6 +294,17 @@ pub enum RowError {
     /// divides a partial numerator by a full denominator.
     #[error("the row is answered but does not say whether the answer was correct")]
     AnsweredWithoutVerdict,
+    /// The row names an answer the distribution does not offer.
+    ///
+    /// `selected` is the option the door's answer carried, and a name that
+    /// is not in the distribution means the row cannot say what the door
+    /// claimed for it — `correct` would be about an answer the door never
+    /// reported.
+    #[error("the row answers '{selected}', which the distribution does not offer")]
+    SelectedOutsideDistribution {
+        /// The option the row named.
+        selected: String,
+    },
 }
 
 /// One result, for one item, on one door, in one run.
@@ -390,10 +410,16 @@ pub struct Row {
     /// cannot improve its score by refusing the questions it finds hard.
     #[serde(default)]
     pub refusal: Option<RefusalCode>,
-    /// The top probability the door reported, before any calibration map.
+    /// The probability the door reported on its answer.
     ///
     /// Raw, so that fitting a map later does not require rerunning the door,
-    /// and so a map's effect stays separable from the model's.
+    /// and so a map's effect stays separable from the model's. Equal to the
+    /// distribution's largest value whenever the answer is the argmax —
+    /// subject to the legacy argmax assumption when `selected` is absent —
+    /// and the selected option's own share on a row that stored a served calibrated
+    /// distribution, where a runner-up can hold the largest number. It is
+    /// the signal [`Row::correct`] is about, not a measure of the
+    /// distribution's sharpness.
     #[serde(default)]
     pub raw_top: Option<f64>,
     /// The full distribution over options, in the order they were served.
@@ -403,6 +429,21 @@ pub struct Row {
     /// one of them is a calibration problem.
     #[serde(default)]
     pub distribution: Option<IndexMap<String, f64>>,
+    /// The option the door's answer named: `choice` on a Choice answer and
+    /// `selected` on a Noul or a Score.
+    ///
+    /// It is not always the largest number in `distribution`. A calibration
+    /// map served on the door rescales the answer's probability without
+    /// replacing the answer, and can leave the pick below a runner-up — in
+    /// which case this field is the only place the answer survives the
+    /// trip. Absent on a refusal and on a row written before the field
+    /// existed; a reader derives such a row's answer from the
+    /// distribution's argmax as a legacy fallback. That fallback cannot
+    /// recover a historical non-argmax choice without other evidence.
+    /// [`crate::eval::read_answer`] and
+    /// [`crate::eval::mapped_observations`] follow that rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected: Option<String>,
     /// Whether the answer matched the label.
     ///
     /// `null` on a refusal. A refused item is not a wrong answer, and
@@ -468,6 +509,7 @@ impl Default for Row {
             refusal: None,
             raw_top: None,
             distribution: None,
+            selected: None,
             correct: None,
             latency_ms: None,
             label_source: LabelSource::Author,
@@ -501,16 +543,48 @@ impl Row {
         }
     }
 
-    /// Records what the door answered.
+    /// Records what the door answered, taking the answer to be the
+    /// distribution's own argmax.
     ///
-    /// `raw_top` is the largest probability in the distribution. An empty
-    /// distribution leaves it `null`: a door that returned no options
-    /// reported no confidence, and `0.0` would be a confidence it never
-    /// expressed.
+    /// That is the right reading for an uncalibrated answer, where the
+    /// largest share is the pick by definition. [`Row::scored_as`] is the
+    /// form a caller uses when the answer names its option, which is what
+    /// every served answer does.
     #[must_use]
-    pub fn scored(mut self, distribution: IndexMap<String, f64>, correct: bool) -> Self {
-        self.raw_top = distribution.values().copied().reduce(f64::max);
+    pub fn scored(self, distribution: IndexMap<String, f64>, correct: bool) -> Self {
+        let selected =
+            crate::calibrate::selected(&distribution).map(|(option, _)| option.to_string());
+        self.scored_as(distribution, selected, correct)
+    }
+
+    /// Records what the door answered, naming the option the answer
+    /// carried.
+    ///
+    /// Use this when the answer's own field — a Choice's `choice`, a Noul's
+    /// or Score's `selected` — names an option that is not the
+    /// distribution's argmax: a served calibration map can leave the
+    /// estimator's pick below a runner-up. `raw_top` is then the
+    /// probability the door put on *that* option, because it is the signal
+    /// [`Row::correct`] is about. `selected: None` reads as "the
+    /// distribution's own argmax", which is what an uncalibrated answer
+    /// means.
+    ///
+    /// An empty distribution leaves `raw_top` `null`: a door that returned
+    /// no options reported no confidence, and `0.0` would be a confidence
+    /// it never expressed.
+    #[must_use]
+    pub fn scored_as(
+        mut self,
+        distribution: IndexMap<String, f64>,
+        selected: Option<String>,
+        correct: bool,
+    ) -> Self {
+        self.raw_top = match &selected {
+            Some(option) => distribution.get(option).copied(),
+            None => distribution.values().copied().reduce(f64::max),
+        };
         self.distribution = Some(distribution);
+        self.selected = selected;
         self.answered = true;
         self.refusal = None;
         self.correct = Some(correct);
@@ -527,6 +601,7 @@ impl Row {
         self.refusal = Some(refusal);
         self.raw_top = None;
         self.distribution = None;
+        self.selected = None;
         self.correct = None;
         self
     }
@@ -553,12 +628,16 @@ impl Row {
     ///
     /// Returns the first contradiction found.
     pub fn check(&self) -> Result<(), RowError> {
-        if self.schema != SCHEMA {
-            return Err(RowError::UnknownSchema { found: self.schema.clone() });
+        if self.schema != SCHEMA && self.schema != LEGACY_SCHEMA {
+            return Err(RowError::UnknownSchema {
+                found: self.schema.clone(),
+            });
         }
         match (self.answered, &self.refusal) {
             (true, Some(code)) => {
-                return Err(RowError::AnsweredAndRefused { code: code.label().to_string() });
+                return Err(RowError::AnsweredAndRefused {
+                    code: code.label().to_string(),
+                });
             }
             (false, None) => return Err(RowError::NoOutcome),
             _ => {}
@@ -568,13 +647,30 @@ impl Row {
                 return Err(RowError::RefusalCarriesScore { field: "raw_top" });
             }
             if self.distribution.is_some() {
-                return Err(RowError::RefusalCarriesScore { field: "distribution" });
+                return Err(RowError::RefusalCarriesScore {
+                    field: "distribution",
+                });
             }
             if self.correct.is_some() {
                 return Err(RowError::RefusalCarriesScore { field: "correct" });
             }
-        } else if self.correct.is_none() {
-            return Err(RowError::AnsweredWithoutVerdict);
+            if self.selected.is_some() {
+                return Err(RowError::RefusalCarriesScore { field: "selected" });
+            }
+        } else {
+            if self.correct.is_none() {
+                return Err(RowError::AnsweredWithoutVerdict);
+            }
+            if let Some(selected) = &self.selected
+                && !self
+                    .distribution
+                    .as_ref()
+                    .is_some_and(|distribution| distribution.contains_key(selected))
+            {
+                return Err(RowError::SelectedOutsideDistribution {
+                    selected: selected.clone(),
+                });
+            }
         }
         Ok(())
     }
@@ -586,7 +682,7 @@ mod tests {
     use crate::SCHEMA_PREFIX;
 
     /// The field names in the order the schema fixes them.
-    const FIELDS: [&str; 26] = [
+    const FIELDS: [&str; 27] = [
         "schema",
         "recorded_at",
         "suite",
@@ -606,6 +702,7 @@ mod tests {
         "refusal",
         "raw_top",
         "distribution",
+        "selected",
         "correct",
         "latency_ms",
         "label_source",
@@ -616,7 +713,10 @@ mod tests {
     ];
 
     fn distribution(pairs: &[(&str, f64)]) -> IndexMap<String, f64> {
-        pairs.iter().map(|(key, value)| ((*key).to_string(), *value)).collect()
+        pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), *value))
+            .collect()
     }
 
     fn scored_row() -> Row {
@@ -633,8 +733,11 @@ mod tests {
 
     #[test]
     fn the_schema_tag_belongs_to_this_crate() {
-        assert_eq!(SCHEMA, "openagents.gym.eval_row.v1");
-        assert!(SCHEMA.starts_with(SCHEMA_PREFIX), "the row is tagged into the Gym family");
+        assert_eq!(SCHEMA, "openagents.gym.eval_row.v2");
+        assert!(
+            SCHEMA.starts_with(SCHEMA_PREFIX),
+            "the row is tagged into the Gym family"
+        );
     }
 
     #[test]
@@ -643,7 +746,24 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&rendered).expect("it is JSON");
         let object = parsed.as_object().expect("a row is an object");
         let keys: Vec<&str> = object.keys().map(String::as_str).collect();
-        assert_eq!(keys, FIELDS, "every field is present, in the order the schema fixes");
+        assert_eq!(
+            keys, FIELDS,
+            "every field is present, in the order the schema fixes"
+        );
+    }
+
+    #[test]
+    fn historical_rows_keep_their_schema_and_omit_new_provenance() {
+        let mut legacy = scored_row();
+        legacy.schema = LEGACY_SCHEMA.to_string();
+        legacy.selected = None;
+        let before = serde_json::to_value(&legacy).unwrap();
+        assert!(before.get("selected").is_none());
+        let decoded: Row = serde_json::from_value(before.clone()).unwrap();
+        decoded.check().unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), before);
+        assert_eq!(before["schema"], LEGACY_SCHEMA);
+        assert_ne!(before["schema"], SCHEMA);
     }
 
     #[test]
@@ -662,13 +782,22 @@ mod tests {
         row.seed_base = None;
         let rendered = serde_json::to_string(&row).expect("a row serializes");
 
-        assert!(rendered.contains("\"latency_ms\":null"), "unknown latency reads as unknown");
+        assert!(
+            rendered.contains("\"latency_ms\":null"),
+            "unknown latency reads as unknown"
+        );
         assert!(
             !rendered.contains("\"latency_ms\":0"),
             "unknown latency never reads as a measured zero: {rendered}"
         );
-        assert!(!rendered.contains("\"samples\":0"), "unknown sample count is not zero draws");
-        assert!(!rendered.contains("\"seed_base\":0"), "an absent seed is not seed zero");
+        assert!(
+            !rendered.contains("\"samples\":0"),
+            "unknown sample count is not zero draws"
+        );
+        assert!(
+            !rendered.contains("\"seed_base\":0"),
+            "an absent seed is not seed zero"
+        );
     }
 
     #[test]
@@ -676,30 +805,91 @@ mod tests {
         let mut row = scored_row();
         row.latency_ms = Some(0.0);
         let rendered = serde_json::to_string(&row).expect("a row serializes");
-        assert!(rendered.contains("\"latency_ms\":0"), "a measured zero is a measurement");
+        assert!(
+            rendered.contains("\"latency_ms\":0"),
+            "a measured zero is a measurement"
+        );
 
         let read: Row = serde_json::from_str(&rendered).expect("a row parses");
         assert_eq!(read.latency_ms, Some(0.0));
-        assert_ne!(read.latency_ms, None, "zero and unknown stay distinguishable");
+        assert_ne!(
+            read.latency_ms, None,
+            "zero and unknown stay distinguishable"
+        );
     }
 
     #[test]
     fn an_empty_distribution_leaves_the_top_probability_unknown() {
-        let row = Row::new("support-v2", "sha256:abc", "item-7", "lev")
-            .scored(IndexMap::new(), false);
-        assert_eq!(row.raw_top, None, "no options reported means no confidence reported");
+        let row =
+            Row::new("support-v2", "sha256:abc", "item-7", "lev").scored(IndexMap::new(), false);
+        assert_eq!(
+            row.raw_top, None,
+            "no options reported means no confidence reported"
+        );
     }
 
     #[test]
     fn a_score_takes_the_top_probability_from_the_distribution() {
         let row = scored_row();
         assert_eq!(row.raw_top, Some(0.75));
+        assert_eq!(
+            row.selected.as_deref(),
+            Some("yes"),
+            "the argmax is the answer"
+        );
+    }
+
+    #[test]
+    fn a_scored_row_keeps_the_named_answer_over_the_argmax() {
+        // The shape a served calibrated answer stores: the map rescaled the
+        // picked option below a runner-up, so the largest number in the
+        // distribution is not the answer. `raw_top` is the share the answer
+        // carried, because it is the signal `correct` is about.
+        let row = Row::new("support-v2", "sha256:abc", "item-7", "lev").scored_as(
+            distribution(&[("0", 0.25), ("1", 0.5625), ("2", 0.1875)]),
+            Some("0".to_string()),
+            false,
+        );
+        assert_eq!(row.selected.as_deref(), Some("0"));
+        assert_eq!(
+            row.raw_top,
+            Some(0.25),
+            "the answer's share, not the runner-up's"
+        );
+        assert_eq!(row.correct, Some(false));
+        row.check().expect("the row is coherent");
+    }
+
+    #[test]
+    fn a_named_answer_requires_its_distribution() {
+        let mut row = scored_row();
+        row.distribution = None;
+        assert!(matches!(
+            row.check(),
+            Err(RowError::SelectedOutsideDistribution { .. })
+        ));
+    }
+
+    #[test]
+    fn a_row_naming_an_option_the_distribution_lacks_is_rejected() {
+        let mut row = scored_row();
+        row.selected = Some("maybe".to_string());
+        assert_eq!(
+            row.check(),
+            Err(RowError::SelectedOutsideDistribution {
+                selected: "maybe".to_string()
+            }),
+            "a claim about an answer the door never reported is not a row"
+        );
     }
 
     #[test]
     fn a_hosted_identity_round_trips_without_inventing_a_signature() {
         let hosted = DoorIdentity::hosted("jev-latest");
-        assert!(!hosted.verified, "a hosted closed model publishes nothing to check");
+        assert!(
+            !hosted.verified,
+            "a hosted closed model publishes nothing to check"
+        );
         assert!(hosted.base_model_signature.is_empty());
         assert!(hosted.adapter.is_empty());
 
@@ -708,7 +898,10 @@ mod tests {
             !rendered.contains("base_model_signature"),
             "an absent signature stays absent: {rendered}"
         );
-        assert!(rendered.contains("\"verified\":false"), "the row says it cannot be checked");
+        assert!(
+            rendered.contains("\"verified\":false"),
+            "the row says it cannot be checked"
+        );
 
         let read: DoorIdentity = serde_json::from_str(&rendered).expect("an identity parses");
         assert_eq!(read, hosted);
@@ -730,7 +923,10 @@ mod tests {
     #[test]
     fn an_identity_without_a_signature_is_not_verified() {
         let identity = DoorIdentity::published("lev", "", "band-v1");
-        assert!(!identity.verified, "an empty signature is nothing to match against");
+        assert!(
+            !identity.verified,
+            "an empty signature is nothing to match against"
+        );
     }
 
     #[test]
@@ -746,8 +942,8 @@ mod tests {
 
     #[test]
     fn a_refused_row_is_distinguishable_from_a_scored_one() {
-        let refused = Row::new("support-v2", "sha256:abc", "item-7", "lev")
-            .refused(RefusalCode::Guardrail);
+        let refused =
+            Row::new("support-v2", "sha256:abc", "item-7", "lev").refused(RefusalCode::Guardrail);
         let scored = scored_row();
 
         assert!(refused.is_refused() && !refused.is_scored());
@@ -775,6 +971,7 @@ mod tests {
         let row = scored_row().refused(RefusalCode::BranchTooLong);
         assert_eq!(row.raw_top, None);
         assert_eq!(row.distribution, None);
+        assert_eq!(row.selected, None);
         assert_eq!(row.correct, None);
         row.check().expect("the row is coherent");
     }
@@ -803,12 +1000,14 @@ mod tests {
 
     #[test]
     fn an_unnamed_refusal_code_is_kept_rather_than_bucketed() {
-        let read: RefusalCode =
-            serde_json::from_str("\"policy_withheld\"").expect("a code parses");
+        let read: RefusalCode = serde_json::from_str("\"policy_withheld\"").expect("a code parses");
         assert_eq!(read, RefusalCode::Other("policy_withheld".to_string()));
         assert_eq!(read.label(), "policy_withheld");
         let rendered = serde_json::to_string(&read).expect("a code serializes");
-        assert_eq!(rendered, "\"policy_withheld\"", "the door's own word survives the trip");
+        assert_eq!(
+            rendered, "\"policy_withheld\"",
+            "the door's own word survives the trip"
+        );
     }
 
     #[test]
@@ -816,12 +1015,19 @@ mod tests {
         let row = scored_row();
         assert_eq!(row.label_source, LabelSource::Author);
         let rendered = serde_json::to_string(&row).expect("a row serializes");
-        assert!(rendered.contains("\"label_source\":\"author\""), "{rendered}");
+        assert!(
+            rendered.contains("\"label_source\":\"author\""),
+            "{rendered}"
+        );
 
         let read: LabelSource =
             serde_json::from_str("\"independent_verifier\"").expect("a source parses");
         assert_eq!(read, LabelSource::Other("independent_verifier".to_string()));
-        assert_ne!(read, LabelSource::Author, "an unknown source never reads as the author");
+        assert_ne!(
+            read,
+            LabelSource::Author,
+            "an unknown source never reads as the author"
+        );
     }
 
     #[test]
@@ -835,20 +1041,29 @@ mod tests {
         assert_eq!(read.permutation, Some(vec![2, 0, 1]));
 
         let unpermuted = scored_row();
-        assert_eq!(unpermuted.permutation, None, "the suite's own order reads as no permutation");
+        assert_eq!(
+            unpermuted.permutation, None,
+            "the suite's own order reads as no permutation"
+        );
     }
 
     #[test]
     fn the_gate_and_the_chain_are_declared_but_not_computed_here() {
         let row = scored_row();
-        assert_eq!(row.gate_id, None, "no rule has judged a row this module built");
+        assert_eq!(
+            row.gate_id, None,
+            "no rule has judged a row this module built"
+        );
         assert_eq!(row.gate_digest, None);
         assert_eq!(row.previous_receipt, None, "the store owns the chain");
         assert_eq!(row.receipt, None);
 
         let rendered = serde_json::to_string(&row).expect("a row serializes");
         for field in ["gate_id", "gate_digest", "previous_receipt", "receipt"] {
-            assert!(rendered.contains(&format!("\"{field}\":null")), "{field} is null: {rendered}");
+            assert!(
+                rendered.contains(&format!("\"{field}\":null")),
+                "{field} is null: {rendered}"
+            );
         }
     }
 
@@ -867,25 +1082,34 @@ mod tests {
         row.refusal = Some(RefusalCode::Guardrail);
         assert_eq!(
             row.check(),
-            Err(RowError::AnsweredAndRefused { code: "guardrail".to_string() })
+            Err(RowError::AnsweredAndRefused {
+                code: "guardrail".to_string()
+            })
         );
     }
 
     #[test]
     fn a_row_with_no_outcome_is_rejected() {
         let row = Row::new("support-v2", "sha256:abc", "item-7", "lev");
-        assert_eq!(row.check(), Err(RowError::NoOutcome), "a row must record something");
+        assert_eq!(
+            row.check(),
+            Err(RowError::NoOutcome),
+            "a row must record something"
+        );
     }
 
     #[test]
     fn a_refusal_that_carries_a_score_is_rejected() {
-        let mut row = Row::new("support-v2", "sha256:abc", "item-7", "lev")
-            .refused(RefusalCode::Guardrail);
+        let mut row =
+            Row::new("support-v2", "sha256:abc", "item-7", "lev").refused(RefusalCode::Guardrail);
         row.raw_top = Some(0.9);
-        assert_eq!(row.check(), Err(RowError::RefusalCarriesScore { field: "raw_top" }));
+        assert_eq!(
+            row.check(),
+            Err(RowError::RefusalCarriesScore { field: "raw_top" })
+        );
 
-        let mut row = Row::new("support-v2", "sha256:abc", "item-7", "lev")
-            .refused(RefusalCode::Guardrail);
+        let mut row =
+            Row::new("support-v2", "sha256:abc", "item-7", "lev").refused(RefusalCode::Guardrail);
         row.correct = Some(false);
         assert_eq!(
             row.check(),
@@ -911,7 +1135,9 @@ mod tests {
         row.schema = "openagents.bench_result.v3".to_string();
         assert_eq!(
             row.check(),
-            Err(RowError::UnknownSchema { found: "openagents.bench_result.v3".to_string() })
+            Err(RowError::UnknownSchema {
+                found: "openagents.bench_result.v3".to_string()
+            })
         );
     }
 

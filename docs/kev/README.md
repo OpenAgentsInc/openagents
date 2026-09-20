@@ -58,6 +58,16 @@ One caveat travels with `score`. On `kev-0.5b` the weighted mean it returns
 is not a usable position on the rubric, and a caller should read the level
 with the greatest probability instead: [Do not read this checkpoint's `score`
 as a position](model-cards.md#do-not-read-this-checkpoints-score-as-a-position).
+The convention that level is read under — argmax over `probabilities`, ties
+to the last level listed — is stated for every door in
+[`../decision-models/2026-09-20-score-contract.md`](../decision-models/2026-09-20-score-contract.md).
+Two wire details follow from that. The numbers kev reports — `noul`,
+`score`, `confidence`, and every `probabilities` entry — are rounded to two
+decimals before they leave the door, so a reader should not compare them
+past that precision. And kev serves no calibration map, so its answers carry
+no `selected`: on this door the pick is always the argmax of what it
+reported. An absent `selected` elsewhere is not proof a map never ran — only
+that none was reported.
 
 Kev is not Jev. It is a laptop-scale research prototype that shows the
 mechanism works; on out-of-domain suites it trails the hosted Jev by

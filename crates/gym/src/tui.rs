@@ -32,7 +32,7 @@
 //! soon looks like a gate that refuses everything.
 //!
 //! The types under [`records`] are the terminal's own fixtures. They carry
-//! the field names of `openagents.gym.eval_row.v1`, so wiring the real store
+//! the field names of `openagents.gym.eval_row.v2`, so wiring the real store
 //! is a change of type and not a change of column.
 
 use ratatui::buffer::Buffer;
@@ -122,7 +122,7 @@ pub mod show {
 ///
 /// These are the terminal's own fixtures, written so the views can be built
 /// and tested before the store lands. They carry the field names of
-/// `openagents.gym.eval_row.v1`, so the real store replaces a type without
+/// `openagents.gym.eval_row.v2`, so the real store replaces a type without
 /// moving a column.
 pub mod records {
     /// A door's verifiable identity.

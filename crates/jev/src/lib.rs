@@ -181,10 +181,11 @@
 //!     confidence: 0.82,
 //!     probabilities: Default::default(),
 //! };
-//! let _ = NoulAnswer { noul: 0.92 };
+//! let _ = NoulAnswer { noul: 0.92, selected: None };
 //! let _ = ScoreAnswer {
 //!     score: 1.6,
 //!     confidence: 0.78,
+//!     selected: None,
 //!     legend: Default::default(),
 //!     probabilities: Default::default(),
 //! };

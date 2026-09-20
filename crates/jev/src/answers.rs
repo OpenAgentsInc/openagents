@@ -24,6 +24,18 @@ use crate::questions::Entry;
 pub struct NoulAnswer {
     /// The probability of yes, from 0 to 1.
     pub noul: f64,
+    /// The option the estimator's own distribution named, when the door
+    /// reports one.
+    ///
+    /// `noul` is the probability of yes and stays that even when a served
+    /// calibration map has pulled it below one half: on a calibrated answer
+    /// this field is what `noul` was measured on, so a reader that wants
+    /// the estimator's pick reads it rather than deriving one from the
+    /// number. When absent, a categorical reader falls back to yes at or
+    /// above one half and no below. Absence does not prove that the door is
+    /// uncalibrated; legacy responses carry no selected-answer provenance.
+    #[serde(default)]
+    pub selected: Option<String>,
 }
 
 /// The option a Choice question picked, with a probability for each option.
@@ -41,9 +53,24 @@ pub struct ChoiceAnswer {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ScoreAnswer {
     /// The probability-weighted mean level, which falls between levels.
+    /// A caller that needs a categorical level reads `selected`, or falls
+    /// back to the argmax of `probabilities` when the answer lacks it.
+    /// `docs/decision-models/2026-09-20-score-contract.md` states the rule.
     pub score: f64,
     /// How sharp the distribution is, as the API reports it.
     pub confidence: f64,
+    /// The level the estimator's own distribution named, when the door
+    /// reports one.
+    ///
+    /// A served calibration map rescales the selected level's probability
+    /// without replacing the answer, and can leave a runner-up numerically
+    /// larger in `probabilities`; this field is then the only place the
+    /// estimator's pick survives the wire. When absent, a categorical reader
+    /// falls back to the argmax of `probabilities`, with a tied maximum
+    /// resolving to the highest level. Absence is not evidence that no
+    /// calibration map was served.
+    #[serde(default)]
+    pub selected: Option<String>,
     /// The rubric, keyed by level.
     pub legend: BTreeMap<u32, Entry>,
     /// A probability for each level. The API leaves this out on some answers,
@@ -281,9 +308,30 @@ fn decode_answer(raw: &RawResponse, id: &str, body: &RawValue) -> Result<Option<
         .r#type
         .ok_or_else(|| validation(raw, format!("answers.{id}.type")))?;
     match kind.as_str() {
-        "noul" => read(raw, id, body, NOUL_FIELDS).map(|answer| Some(Answer::Noul(answer))),
+        "noul" => {
+            let answer: NoulAnswer = read(raw, id, body, NOUL_FIELDS)?;
+            if answer
+                .selected
+                .as_deref()
+                .is_some_and(|option| !matches!(option, "no" | "yes"))
+            {
+                return Err(validation(raw, format!("answers.{id}.selected")));
+            }
+            Ok(Some(Answer::Noul(answer)))
+        }
         "choice" => read(raw, id, body, CHOICE_FIELDS).map(|answer| Some(Answer::Choice(answer))),
-        "score" => read(raw, id, body, SCORE_FIELDS).map(|answer| Some(Answer::Score(answer))),
+        "score" => {
+            let answer: ScoreAnswer = read(raw, id, body, SCORE_FIELDS)?;
+            if let Some(selected) = &answer.selected {
+                let valid = selected.parse::<u32>().ok().is_some_and(|level| {
+                    level.to_string() == *selected && answer.probabilities.contains_key(&level)
+                });
+                if !valid {
+                    return Err(validation(raw, format!("answers.{id}.selected")));
+                }
+            }
+            Ok(Some(Answer::Score(answer)))
+        }
         other => {
             // A newer API may answer with a type this crate does not model. The
             // rest of the response still reads, and the bytes stay on `raw()`.
@@ -329,11 +377,18 @@ enum Shape {
     Object,
 }
 
-const NOUL_FIELDS: &[Field] = &[Field {
-    name: "noul",
-    shape: Shape::Number,
-    required: true,
-}];
+const NOUL_FIELDS: &[Field] = &[
+    Field {
+        name: "noul",
+        shape: Shape::Number,
+        required: true,
+    },
+    Field {
+        name: "selected",
+        shape: Shape::Text,
+        required: false,
+    },
+];
 
 const CHOICE_FIELDS: &[Field] = &[
     Field {
@@ -368,6 +423,11 @@ const SCORE_FIELDS: &[Field] = &[
         name: "legend",
         shape: Shape::Object,
         required: true,
+    },
+    Field {
+        name: "selected",
+        shape: Shape::Text,
+        required: false,
     },
     Field {
         name: "probabilities",

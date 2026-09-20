@@ -120,6 +120,11 @@ pub struct Meta {
 #[serde(tag = "type", rename = "noul")]
 pub struct NoulAnswer {
     /// `p(yes)`.
+    ///
+    /// Kev serves no calibration map, so the pick is what the number itself
+    /// implies — yes at or above one half — and the answer carries no
+    /// `selected`. A calibrated door writes that field because its `noul`
+    /// can sit below one half while the pick stays yes.
     pub noul: f64,
 }
 
@@ -127,7 +132,9 @@ pub struct NoulAnswer {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename = "choice")]
 pub struct ChoiceAnswer {
-    /// The option with the greatest probability.
+    /// The option with the greatest probability. Equal leaders resolve to
+    /// the last option listed, the convention `gym::calibrate::selected`
+    /// declares for categorical selection.
     pub choice: String,
     /// `(p_max − 1/K) / (1 − 1/K)`: how far the leader stands above uniform.
     pub confidence: f64,
@@ -139,7 +146,17 @@ pub struct ChoiceAnswer {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename = "score")]
 pub struct ScoreAnswer {
-    /// The probability-weighted mean level.
+    /// The probability-weighted mean level, `Σ i · p_i`, which can land
+    /// between levels. The wire shape carries no categorical level: a
+    /// reader that wants one takes the argmax of `probabilities`, and the
+    /// retained categorical accuracy measurements compare that level with
+    /// the label. `docs/decision-models/2026-09-20-score-contract.md`
+    /// states both, and the tie convention.
+    ///
+    /// Kev serves no calibration map, so the pick is always the argmax and
+    /// the answer carries no `selected`. A calibrated door writes that
+    /// field because a map can leave the pick below a runner-up in
+    /// `probabilities`.
     pub score: f64,
     /// Distance-from-mode statistic; TypeSafe's formula is unpublished, so
     /// this uses `1 − E|level − mode| / (L − 1)` like the reference.
@@ -359,11 +376,7 @@ pub fn to_answers(probs: &[Vec<f64>], meta: &[Meta]) -> IndexMap<String, Answer>
                 Answer::Choice(ChoiceAnswer {
                     choice,
                     confidence: r2(choice_confidence(p)),
-                    probabilities: keys
-                        .iter()
-                        .cloned()
-                        .zip(p.iter().map(|v| r2(*v)))
-                        .collect(),
+                    probabilities: keys.iter().cloned().zip(p.iter().map(|v| r2(*v))).collect(),
                 })
             }
             _ => {

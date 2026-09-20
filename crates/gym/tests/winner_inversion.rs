@@ -29,7 +29,10 @@ use gym::row::Row;
 use indexmap::IndexMap;
 
 fn distribution(pairs: &[(&str, f64)]) -> IndexMap<String, f64> {
-    pairs.iter().map(|(key, value)| ((*key).to_string(), *value)).collect()
+    pairs
+        .iter()
+        .map(|(key, value)| ((*key).to_string(), *value))
+        .collect()
 }
 
 /// The largest option in a distribution, however it got there.
@@ -46,7 +49,12 @@ fn largest(map: &IndexMap<String, f64>) -> String {
 
 fn flat_map(fitted: f64) -> Map {
     Map {
-        bins: vec![Bin { lo: 0.0, hi: 1.0, fitted, count: 1 }],
+        bins: vec![Bin {
+            lo: 0.0,
+            hi: 1.0,
+            fitted,
+            count: 1,
+        }],
         base_rate: fitted,
         fitted_on: 1,
         by_band: BTreeMap::new(),
@@ -63,14 +71,21 @@ fn committed_rows() -> Vec<(String, Row)> {
     files.sort();
     let mut rows = Vec::new();
     for path in files {
-        let name = path.file_name().expect("a file name").to_string_lossy().to_string();
+        let name = path
+            .file_name()
+            .expect("a file name")
+            .to_string_lossy()
+            .to_string();
         let text = std::fs::read_to_string(&path).expect("the file reads");
         for (index, line) in text.lines().enumerate() {
             if line.trim().is_empty() {
                 continue;
             }
             let value: serde_json::Value = serde_json::from_str(line).expect("a line parses");
-            let schema = value.get("schema").and_then(serde_json::Value::as_str).unwrap_or("");
+            let schema = value
+                .get("schema")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
             if schema == gym::spread::DRAW_SCHEMA {
                 // A block draw records the argmax and its top frequency, not
                 // the distribution, so no map is ever applied to one.
@@ -81,7 +96,10 @@ fn committed_rows() -> Vec<(String, Row)> {
                 "{name} line {}: unknown schema {schema}",
                 index + 1
             );
-            rows.push((name.clone(), serde_json::from_value::<Row>(value).expect("a row parses")));
+            rows.push((
+                name.clone(),
+                serde_json::from_value::<Row>(value).expect("a row parses"),
+            ));
         }
     }
     rows
@@ -151,7 +169,11 @@ fn the_argmax_moves_exactly_when_the_calibrated_probability_falls_below_the_runn
     let mut moves = 0;
     for shape in &shapes {
         let (selected, _) = gym::calibrate::selected(shape).expect("a selected option");
-        let rest: f64 = shape.iter().filter(|(key, _)| *key != selected).map(|(_, v)| *v).sum();
+        let rest: f64 = shape
+            .iter()
+            .filter(|(key, _)| *key != selected)
+            .map(|(_, v)| *v)
+            .sum();
         let runner_up = shape
             .iter()
             .filter(|(key, _)| *key != selected)
@@ -164,7 +186,10 @@ fn the_argmax_moves_exactly_when_the_calibrated_probability_falls_below_the_runn
         } else {
             1.0 / shape.len() as f64
         };
-        assert!(threshold <= 0.5 + 1e-12, "the threshold cannot exceed one half: {threshold}");
+        assert!(
+            threshold <= 0.5 + 1e-12,
+            "the threshold cannot exceed one half: {threshold}"
+        );
 
         for step in 0..=100 {
             let calibrated = f64::from(step) / 100.0;
@@ -189,7 +214,10 @@ fn the_argmax_moves_exactly_when_the_calibrated_probability_falls_below_the_runn
             );
         }
     }
-    assert!(moves > 0, "the sweep never moved an argmax, so it tested nothing");
+    assert!(
+        moves > 0,
+        "the sweep never moved an argmax, so it tested nothing"
+    );
 }
 
 #[test]
@@ -209,7 +237,62 @@ fn an_observation_reads_the_selected_options_probability_rather_than_the_largest
     assert_eq!(observed.len(), 1);
     assert!((observed[0].raw - 0.25).abs() < 1e-12, "{:?}", observed[0]);
     assert!(!observed[0].correct);
-    assert_eq!(score(&observed).confident_errors, 0, "0.25 is not a confident claim");
+    assert_eq!(
+        score(&observed).confident_errors,
+        0,
+        "0.25 is not a confident claim"
+    );
+}
+
+#[test]
+fn a_stored_calibrated_row_maps_around_its_named_answer() {
+    // A row that stored a served, already-calibrated distribution: the wire
+    // named level 0 while level 1 holds the largest number. A second map
+    // rescales the named answer's share — never the runner-up's — because
+    // `correct` is about level 0, and a row without `selected` would have no
+    // way to say so.
+    let row = Row::new("audit", "digest", "one", "audit").scored_as(
+        distribution(&[("0", 0.25), ("1", 0.5625), ("2", 0.1875)]),
+        Some("0".to_string()),
+        false,
+    );
+    row.check().expect("a coherent row");
+
+    let map = flat_map(0.9);
+    let rescaled = map.apply_distribution_to(row.distribution.as_ref().unwrap(), "0");
+    assert!(
+        (rescaled["0"] - 0.9).abs() < 1e-12,
+        "the named answer, rescaled: {rescaled:?}"
+    );
+    assert!(
+        (rescaled["1"] - 0.075).abs() < 1e-12,
+        "the runner-up shares the rest"
+    );
+
+    let observed = mapped_observations(&[row], &map);
+    assert_eq!(observed.len(), 1);
+    assert_eq!(observed[0].raw, 0.9, "the named answer's rescaled share");
+    assert!(
+        !observed[0].correct,
+        "the verdict is the answer's, not the runner-up's"
+    );
+}
+
+#[test]
+fn a_row_without_a_named_answer_reads_its_own_argmax() {
+    // The fallback half of `mapped_observations`: rows written before
+    // `selected` existed — and every committed row is one — name no option,
+    // and their answer is the distribution's own argmax. The two readings
+    // coincide on any uncalibrated row, which is why the field can be
+    // absent rather than written out as a convention.
+    let mut row = Row::new("audit", "digest", "one", "audit")
+        .scored(distribution(&[("yes", 0.8), ("no", 0.2)]), false);
+    row.selected = None;
+
+    let map = flat_map(0.25);
+    let observed = mapped_observations(&[row], &map);
+    assert_eq!(observed.len(), 1);
+    assert_eq!(observed[0].raw, 0.25, "the argmax's share, rescaled");
 }
 
 #[test]
@@ -236,7 +319,10 @@ fn no_map_moves_the_accuracy_of_the_rows_it_scores() {
     for step in 0..=20 {
         let map = flat_map(f64::from(step) / 20.0);
         let mapped = score(&mapped_observations(&rows, &map)).accuracy;
-        assert!((mapped - raw).abs() < 1e-12, "a map moved accuracy from {raw} to {mapped}");
+        assert!(
+            (mapped - raw).abs() < 1e-12,
+            "a map moved accuracy from {raw} to {mapped}"
+        );
     }
 }
 
@@ -260,12 +346,20 @@ fn the_probability_gate_admits_a_map_that_moves_the_argmax() {
     let gate = gym::gate::load("probability-v1").expect("the committed probability gate");
     let fit = fit_family("audit", fit_on, score_on, &gate);
 
-    let lowest = fit.map.bins.iter().map(|bin| bin.fitted).fold(f64::INFINITY, f64::min);
+    let lowest = fit
+        .map
+        .bins
+        .iter()
+        .map(|bin| bin.fitted)
+        .fold(f64::INFINITY, f64::min);
     println!(
         "the fitted table is {:?}\nraw {:?}\nthrough the map {:?}",
         fit.map.bins, fit.raw, fit.calibrated
     );
-    assert!(lowest < 0.5, "the fitted table reads {lowest}, which cannot move an argmax");
+    assert!(
+        lowest < 0.5,
+        "the fitted table reads {lowest}, which cannot move an argmax"
+    );
 
     let raw = distribution(&[("yes", 1.0), ("no", 0.0)]);
     assert_eq!(
@@ -300,7 +394,9 @@ fn no_committed_map_moves_the_argmax_of_any_committed_row() {
             if !row.is_scored() {
                 continue;
             }
-            let Some(raw) = row.distribution.as_ref() else { continue };
+            let Some(raw) = row.distribution.as_ref() else {
+                continue;
+            };
             pairs += 1;
             let (selected, _) = gym::calibrate::selected(raw).expect("a selected option");
             let rescaled = record.map.apply_distribution(raw);
@@ -313,7 +409,10 @@ fn no_committed_map_moves_the_argmax_of_any_committed_row() {
             }
         }
     }
-    println!("{pairs} map-and-row pairs over {} committed records", records.len());
+    println!(
+        "{pairs} map-and-row pairs over {} committed records",
+        records.len()
+    );
     assert!(
         moved.is_empty(),
         "a committed map moves an argmax, so the record in docs/lev/calibration.md needs \
@@ -332,16 +431,25 @@ fn no_map_the_gate_admits_over_the_committed_store_moves_an_argmax() {
 
     let mut groups: BTreeMap<(String, String, String), Vec<Row>> = BTreeMap::new();
     for (file, row) in committed_rows() {
-        groups.entry((file, row.door.clone(), row.family.clone())).or_default().push(row);
+        groups
+            .entry((file, row.door.clone(), row.family.clone()))
+            .or_default()
+            .push(row);
     }
 
     let mut judged = 0_usize;
     let mut admitted_and_moving: Vec<String> = Vec::new();
     for ((file, door, family), rows) in &groups {
-        let fit_on: Vec<Row> =
-            rows.iter().filter(|row| row.split == "calibration").cloned().collect();
-        let score_on: Vec<Row> =
-            rows.iter().filter(|row| row.split != "calibration").cloned().collect();
+        let fit_on: Vec<Row> = rows
+            .iter()
+            .filter(|row| row.split == "calibration")
+            .cloned()
+            .collect();
+        let score_on: Vec<Row> = rows
+            .iter()
+            .filter(|row| row.split != "calibration")
+            .cloned()
+            .collect();
         if fit_on.is_empty() || score_on.is_empty() {
             continue;
         }
@@ -357,7 +465,12 @@ fn no_map_the_gate_admits_over_the_committed_store_moves_an_argmax() {
                 })
             })
             .count();
-        let lowest = fit.map.bins.iter().map(|bin| bin.fitted).fold(f64::INFINITY, f64::min);
+        let lowest = fit
+            .map
+            .bins
+            .iter()
+            .map(|bin| bin.fitted)
+            .fold(f64::INFINITY, f64::min);
         println!(
             "{file} {door} {family}: fitted on {}, scored {}, lowest bin {lowest:.3}, \
              {moves} argmax moves, {}",
@@ -402,11 +515,14 @@ fn a_gate_verdict_over_scores_alone_cannot_see_a_map_that_moves_the_argmax() {
         confident_errors: 0,
         items: 40,
     };
-    let outcome = gate
-        .judge(&Comparison::new("audit", raw.scores(), calibrated.scores()).fitted_on(40));
+    let outcome =
+        gate.judge(&Comparison::new("audit", raw.scores(), calibrated.scores()).fitted_on(40));
     assert_eq!(outcome.verdict, Verdict::Passed);
     assert!(
-        !outcome.criteria.iter().any(|criterion| criterion.name.contains("argmax")),
+        !outcome
+            .criteria
+            .iter()
+            .any(|criterion| criterion.name.contains("argmax")),
         "a criterion now reads the map; openagents#9438's record needs updating"
     );
 }

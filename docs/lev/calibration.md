@@ -178,10 +178,10 @@ waiting for now exists.** `min_ece_reduction` records that "nothing has
 measured the variance", and the gate's `pending_measurement` names
 openagents#9370, which measured accuracy only.
 [`measurements/2026-09-19-calibration-variance.md`](measurements/2026-09-19-calibration-variance.md)
-measures it for ECE, Brier, and log loss: four disjoint seed blocks over the
-same 98 evaluation items give standard deviations of 0.0207, 0.0099, and
-0.6605 on an unchanged base door. A tenth of an ECE near 0.11 is 0.011,
-which is about half of one such standard deviation, so the inherited
+measures it for ECE, Brier, and log loss: eight disjoint seed blocks over
+the same 98 evaluation items give standard deviations of 0.0266, 0.0119,
+and 0.6428 on an unchanged base door. A tenth of an ECE near 0.12 is 0.012,
+which is less than half of one such standard deviation, so the inherited
 threshold is smaller than the noise it was meant to exclude. Deriving the
 margins from that measurement moves the gate digest every recorded verdict
 names, so it is its own change and its own re-judging of the record, not a

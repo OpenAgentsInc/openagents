@@ -169,7 +169,9 @@ fn validate_question(id: &str, question: &Question) -> Result<()> {
                     return Err(Refusal::question(
                         RefusalCode::InvalidRequest,
                         id,
-                        format!("the Choice option '{key}' carries surrounding whitespace, which a constrained enum cannot round-trip"),
+                        format!(
+                            "the Choice option '{key}' carries surrounding whitespace, which a constrained enum cannot round-trip"
+                        ),
                     ));
                 }
             }
@@ -201,13 +203,28 @@ fn validate_question(id: &str, question: &Question) -> Result<()> {
 }
 
 /// One typed answer, shaped as `crates/jev` decodes it.
+///
+/// Every answer names the option the estimator's own distribution picked:
+/// `choice` carries it on a Choice, and `selected` carries it on a Noul or
+/// a Score, where the other fields cannot. A served calibration map rescales
+/// that option's probability without replacing the answer, so on a
+/// calibrated answer `selected` can name an option that is not the largest
+/// number the answer reports. Doors that serve an uncalibrated distribution
+/// leave `selected` out, and a reader derives the same pick from the
+/// answer's own numbers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Answer {
     /// A probability of yes.
     Noul {
-        /// The probability of yes, from 0 to 1.
+        /// The probability of yes, from 0 to 1. It is that probability even
+        /// when a served calibration map has pulled it below one half.
         noul: f64,
+        /// The option `noul` was measured on: the estimator's pick before
+        /// any map ran. `crates/jev` leaves the field off an answer that
+        /// carries none, and the number's own implication stands.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selected: Option<String>,
     },
     /// One option, with the distribution behind it.
     Choice {
@@ -224,6 +241,12 @@ pub enum Answer {
         score: f64,
         /// How sharp the distribution is.
         confidence: f64,
+        /// The level the estimator's distribution picked before any map
+        /// ran. A map can leave a runner-up numerically larger in
+        /// `probabilities`; this field is then the only place the pick
+        /// survives the wire.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selected: Option<String>,
         /// The rubric, keyed by level index.
         legend: IndexMap<String, Value>,
         /// A probability per level index.
@@ -270,7 +293,10 @@ mod tests {
         for index in 0..options {
             criteria.insert(format!("option{index}"), None);
         }
-        Question::Choice { instructions: None, criteria }
+        Question::Choice {
+            instructions: None,
+            criteria,
+        }
     }
 
     fn request(question: Question) -> SystemOneRequest {
@@ -311,10 +337,22 @@ mod tests {
 
     #[test]
     fn score_levels_are_bounded_at_both_ends() {
-        let one = Question::Score { instructions: None, criteria: vec![None] };
-        assert_eq!(request(one).validate().unwrap_err().code, RefusalCode::InvalidRequest);
-        let eleven = Question::Score { instructions: None, criteria: vec![None; 11] };
-        assert_eq!(request(eleven).validate().unwrap_err().code, RefusalCode::InvalidRequest);
+        let one = Question::Score {
+            instructions: None,
+            criteria: vec![None],
+        };
+        assert_eq!(
+            request(one).validate().unwrap_err().code,
+            RefusalCode::InvalidRequest
+        );
+        let eleven = Question::Score {
+            instructions: None,
+            criteria: vec![None; 11],
+        };
+        assert_eq!(
+            request(eleven).validate().unwrap_err().code,
+            RefusalCode::InvalidRequest
+        );
     }
 
     #[test]
@@ -322,14 +360,26 @@ mod tests {
         let mut criteria = IndexMap::new();
         criteria.insert("  ".to_string(), None);
         criteria.insert("real".to_string(), None);
-        let blank = Question::Choice { instructions: None, criteria };
-        assert_eq!(request(blank).validate().unwrap_err().code, RefusalCode::InvalidRequest);
+        let blank = Question::Choice {
+            instructions: None,
+            criteria,
+        };
+        assert_eq!(
+            request(blank).validate().unwrap_err().code,
+            RefusalCode::InvalidRequest
+        );
 
         let mut criteria = IndexMap::new();
         criteria.insert(" padded".to_string(), None);
         criteria.insert("real".to_string(), None);
-        let padded = Question::Choice { instructions: None, criteria };
-        assert_eq!(request(padded).validate().unwrap_err().code, RefusalCode::InvalidRequest);
+        let padded = Question::Choice {
+            instructions: None,
+            criteria,
+        };
+        assert_eq!(
+            request(padded).validate().unwrap_err().code,
+            RefusalCode::InvalidRequest
+        );
     }
 
     #[test]
@@ -342,8 +392,29 @@ mod tests {
 
     #[test]
     fn an_answer_carries_the_tag_jev_reads() {
-        let answer = Answer::Noul { noul: 0.92 };
+        let answer = Answer::Noul {
+            noul: 0.92,
+            selected: None,
+        };
         let wire = serde_json::to_value(&answer).unwrap();
         assert_eq!(wire, json!({"type": "noul", "noul": 0.92}));
+    }
+
+    #[test]
+    fn a_calibrated_answer_names_its_selected_option_on_the_wire() {
+        // A map that rescaled the picked option below one half: `noul`
+        // still reads as the calibrated probability of yes, and `selected`
+        // says which option that probability was measured on.
+        let answer = Answer::Noul {
+            noul: 0.25,
+            selected: Some("yes".to_string()),
+        };
+        let wire = serde_json::to_value(&answer).unwrap();
+        assert_eq!(
+            wire,
+            json!({"type": "noul", "noul": 0.25, "selected": "yes"})
+        );
+        let back: Answer = serde_json::from_value(wire).unwrap();
+        assert_eq!(back, answer, "the selection round-trips");
     }
 }

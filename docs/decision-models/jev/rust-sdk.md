@@ -142,6 +142,13 @@ dotted `field_path` such as `answers.tone.confidence`. A Score answer with
 `probabilities` missing, as the quick start's sample shows, decodes with an
 empty map rather than failing.
 
+`NoulAnswer` and `ScoreAnswer` also decode an optional `selected` field: the
+option the door's answer was, when a served calibration map can leave the
+reported numbers naming a different one. The hosted API does not emit it;
+Lev does. [`../2026-09-20-score-contract.md`](../2026-09-20-score-contract.md)
+states which field names the pick on each answer kind and what its absence
+means.
+
 ### Retry policy
 
 | Field | Default | Rust field |

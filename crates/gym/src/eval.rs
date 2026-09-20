@@ -148,22 +148,44 @@ fn refusal_code(body: &jev::ResponseBody) -> Option<String> {
         .and_then(|error| error.get("code"))
         .or_else(|| value.get("code"))?;
     let code = code.as_str()?.trim();
-    if code.is_empty() { None } else { Some(code.to_string()) }
+    if code.is_empty() {
+        None
+    } else {
+        Some(code.to_string())
+    }
 }
 
 /// Reads a typed answer as an option and a distribution over options.
 ///
-/// A Noul is two options, `no` and `yes`, which is how a labelled suite
-/// scores one. A Score's levels are named by their numbers.
+/// The option is the one the answer names: `choice` on a Choice, and
+/// `selected` on a Noul or a Score, where the answer's own numbers cannot
+/// carry it — a served calibration map can leave the estimator's pick below
+/// a runner-up, and deriving it from the reported numbers would read a
+/// different answer than the door gave. An answer that names none falls
+/// back to what its numbers imply: yes at or above one half on a Noul, the
+/// argmax of `probabilities` under [`crate::calibrate::selected`]'s
+/// convention — equal leaders resolve to the last level listed — on a
+/// Score. This fallback preserves legacy evaluation behavior; it cannot
+/// recover an omitted fixed selection from a calibrated distribution.
+///
+/// The `score` field is not read here: it is the probability-weighted
+/// position the contract promises, a different statistic from the level
+/// scored, and `docs/decision-models/2026-09-20-score-contract.md` keeps
+/// the two apart.
 #[must_use]
 pub fn read_answer(answer: &jev::Answer) -> Disposition {
     let (chosen, distribution) = match answer {
         jev::Answer::Noul(noul) => {
             let yes = noul.noul;
-            let chosen = if yes >= 0.5 { "yes" } else { "no" };
+            let chosen = noul
+                .selected
+                .clone()
+                .unwrap_or_else(|| if yes >= 0.5 { "yes" } else { "no" }.to_string());
             let distribution: IndexMap<String, f64> =
-                [("no".to_string(), 1.0 - yes), ("yes".to_string(), yes)].into_iter().collect();
-            (chosen.to_string(), distribution)
+                [("no".to_string(), 1.0 - yes), ("yes".to_string(), yes)]
+                    .into_iter()
+                    .collect();
+            (chosen, distribution)
         }
         jev::Answer::Choice(choice) => (choice.choice.clone(), choice.probabilities.clone()),
         jev::Answer::Score(score) => {
@@ -172,15 +194,22 @@ pub fn read_answer(answer: &jev::Answer) -> Disposition {
                 .iter()
                 .map(|(level, probability)| (level.to_string(), *probability))
                 .collect();
-            let chosen = distribution
-                .iter()
-                .max_by(|left, right| left.1.total_cmp(right.1))
-                .map(|(key, _)| key.clone())
-                .unwrap_or_default();
+            // `selected`, not a local argmax: the level a row's `correct`
+            // refers to is the same option a calibration map calibrates,
+            // tie convention included, and the wire carries it whenever a
+            // map has run.
+            let chosen = score.selected.clone().unwrap_or_else(|| {
+                crate::calibrate::selected(&distribution)
+                    .map(|(level, _)| level.to_string())
+                    .unwrap_or_default()
+            });
             (chosen, distribution)
         }
     };
-    Disposition::Answered { chosen, distribution }
+    Disposition::Answered {
+        chosen,
+        distribution,
+    }
 }
 
 /// What every row of one run shares: the suite, the door, and the estimator.
@@ -245,9 +274,17 @@ impl Run {
         // is the fault the field exists to stop.
         row.label_source = item.evidence();
         match disposition {
-            Disposition::Answered { chosen, distribution } => {
-                Some(row.scored(distribution.clone(), *chosen == item.truth))
-            }
+            Disposition::Answered {
+                chosen,
+                distribution,
+            } => Some(row.scored_as(
+                distribution.clone(),
+                // A degenerate answer with nothing behind it names no
+                // option: `None` is the argmax reading, which an empty
+                // distribution has none of either.
+                (!chosen.is_empty()).then(|| chosen.clone()),
+                *chosen == item.truth,
+            )),
             Disposition::Refused(code) => Some(row.refused(code.clone())),
             Disposition::Harness(_) => None,
         }
@@ -264,31 +301,34 @@ impl Run {
 pub fn observations(rows: &[Row]) -> Vec<Observation> {
     rows.iter()
         .filter(|row| row.is_scored())
-        .filter_map(|row| {
-            Some(Observation::new(row.raw_top?, row.correct.unwrap_or(false)))
-        })
+        .filter_map(|row| Some(Observation::new(row.raw_top?, row.correct.unwrap_or(false))))
         .collect()
 }
 
 /// The same observations with a map applied to each distribution.
 ///
-/// The probability is the selected option's, and the selected option is the
-/// raw estimator's argmax — the one [`Row::correct`] is about. It is not the
-/// largest number in the rescaled distribution, which is a different
-/// quantity whenever a map reads a signal below one half: there a runner-up
-/// ends up above the selected option, and pairing its probability with the
-/// selected option's outcome records a wrong answer at a confidence the door
-/// never claimed for it. `crates/gym/src/calibrate.rs` carries the contract
-/// and openagents#9438 the enumeration.
+/// The probability is the answer's, and the answer is [`Row::selected`]
+/// when the row names one — the option the door's answer carried — and the
+/// distribution's own argmax as a fallback when the field is absent.
+/// Historical non-argmax selections need separate provenance. It is not the largest number in the
+/// rescaled distribution, which is a different quantity whenever a map
+/// reads a signal below one half: there a runner-up ends up above the
+/// answer, and pairing its probability with the answer's outcome records a
+/// wrong answer at a confidence the door never claimed for it.
+/// `crates/gym/src/calibrate.rs` carries the contract and openagents#9438
+/// the enumeration.
 #[must_use]
 pub fn mapped_observations(rows: &[Row], map: &Map) -> Vec<Observation> {
     rows.iter()
         .filter(|row| row.is_scored())
         .filter_map(|row| {
             let distribution = row.distribution.as_ref()?;
-            let (selected, _) = crate::calibrate::selected(distribution)?;
-            let mapped = map.apply_distribution(distribution);
-            let probability = mapped.get(selected).copied()?;
+            let selected = match row.selected.as_deref() {
+                Some(option) => option.to_string(),
+                None => crate::calibrate::selected(distribution)?.0.to_string(),
+            };
+            let mapped = map.apply_distribution_to(distribution, &selected);
+            let probability = mapped.get(&selected).copied()?;
             Some(Observation::new(probability, row.correct.unwrap_or(false)))
         })
         .collect()
@@ -359,7 +399,10 @@ impl Fit {
         if self.outcome.verdict != crate::gate::Verdict::Passed {
             return match self.outcome.deciding() {
                 Some(criterion) => {
-                    format!("{}: {} ({})", self.outcome.verdict, criterion.name, criterion.detail)
+                    format!(
+                        "{}: {} ({})",
+                        self.outcome.verdict, criterion.name, criterion.detail
+                    )
                 }
                 None => self.outcome.verdict.to_string(),
             };
@@ -390,8 +433,8 @@ pub fn fit_family(family: &str, fit_on: &[Row], score_on: &[Row], gate: &Gate) -
     let map = Map::fit_auto(&observations(fit_on));
     let raw = score(&observations(score_on));
     let calibrated = score(&mapped_observations(score_on, &map));
-    let comparison = Comparison::new(family, raw.scores(), calibrated.scores())
-        .fitted_on(map.fitted_on);
+    let comparison =
+        Comparison::new(family, raw.scores(), calibrated.scores()).fitted_on(map.fitted_on);
     let outcome = gate.judge(&comparison);
     Fit {
         family: family.to_string(),
@@ -434,7 +477,9 @@ pub fn permuted(question: &Value, order: &[usize]) -> Option<Value> {
         reordered.insert(key.clone(), criteria.get(key)?.clone());
     }
     let mut question = question.clone();
-    question.as_object_mut()?.insert("criteria".to_string(), Value::Object(reordered));
+    question
+        .as_object_mut()?
+        .insert("criteria".to_string(), Value::Object(reordered));
     Some(question)
 }
 
@@ -482,7 +527,11 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let shifted_month = (5 * day_of_year + 2) / 153;
     let day = (day_of_year - (153 * shifted_month + 2) / 5 + 1) as u32;
-    let month = if shifted_month < 10 { shifted_month + 3 } else { shifted_month - 9 } as u32;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    } as u32;
     (if month <= 2 { year + 1 } else { year }, month, day)
 }
 
@@ -494,7 +543,11 @@ mod tests {
     use serde_json::json;
 
     fn refused_with(status: u16, body: Value) -> Disposition {
-        classify_response(status, Some(&jev::ResponseBody::Json(body)), "the door refused")
+        classify_response(
+            status,
+            Some(&jev::ResponseBody::Json(body)),
+            "the door refused",
+        )
     }
 
     fn item(id: &str, truth: &str) -> Item {
@@ -578,12 +631,18 @@ mod tests {
         // A 502 from something in front of the door is not a refusal either.
         let disposition = classify_response(
             502,
-            Some(&jev::ResponseBody::Text("<html>bad gateway</html>".to_string())),
+            Some(&jev::ResponseBody::Text(
+                "<html>bad gateway</html>".to_string(),
+            )),
             "bad gateway",
         );
         assert!(matches!(disposition, Disposition::Harness(_)));
         assert!(!disposition.is_recorded());
-        assert!(run().row(&item("routing/000", "billing"), None, &disposition, None).is_none());
+        assert!(
+            run()
+                .row(&item("routing/000", "billing"), None, &disposition, None)
+                .is_none()
+        );
     }
 
     #[test]
@@ -603,7 +662,12 @@ mod tests {
     fn a_refused_row_stays_in_the_denominator_with_no_score() {
         let asked = item("routing/000", "billing");
         let refused = run()
-            .row(&asked, None, &Disposition::Refused(RefusalCode::Guardrail), Some(12.0))
+            .row(
+                &asked,
+                None,
+                &Disposition::Refused(RefusalCode::Guardrail),
+                Some(12.0),
+            )
             .expect("a refusal is recorded");
         refused.check().expect("the row is coherent");
         assert!(refused.is_refused());
@@ -621,7 +685,12 @@ mod tests {
     fn a_scored_row_carries_the_verdict_and_the_whole_distribution() {
         let asked = item("routing/000", "billing");
         let row = run()
-            .row(&asked, Some(vec![2, 1, 0]), &answered("billing"), Some(2100.0))
+            .row(
+                &asked,
+                Some(vec![2, 1, 0]),
+                &answered("billing"),
+                Some(2100.0),
+            )
             .expect("an answer is recorded");
         row.check().expect("the row is coherent");
         assert_eq!(row.correct, Some(true));
@@ -631,26 +700,197 @@ mod tests {
         assert_eq!(row.gate_id.as_deref(), Some("probability-v1"));
 
         let wrong = run()
-            .row(&item("routing/001", "sales"), None, &answered("billing"), None)
+            .row(
+                &item("routing/001", "sales"),
+                None,
+                &answered("billing"),
+                None,
+            )
             .expect("an answer is recorded");
         assert_eq!(wrong.correct, Some(false));
-        assert_eq!(wrong.latency_ms, None, "an unmeasured latency stays unknown");
+        assert_eq!(
+            wrong.latency_ms, None,
+            "an unmeasured latency stays unknown"
+        );
+    }
+
+    #[test]
+    fn a_score_is_scored_on_its_argmax_level_not_its_weighted_mean() {
+        // The contract's two statistics, pinned apart. `score` is the
+        // probability-weighted position and can land between levels; the
+        // level `correct` judges is the argmax of `probabilities`. On a
+        // skewed distribution the two disagree, which is the point of
+        // saying so: 0.5, 0.375, 0.125 means 0.625, and 0.625 rounds to a
+        // level the door did not pick.
+        let answer = jev::Answer::Score(jev::ScoreAnswer {
+            score: 0.62,
+            confidence: 0.5,
+            selected: None,
+            legend: BTreeMap::new(),
+            probabilities: [(0, 0.5), (1, 0.375), (2, 0.125)].into_iter().collect(),
+        });
+        let Disposition::Answered {
+            chosen,
+            distribution,
+        } = read_answer(&answer)
+        else {
+            panic!("a Score answer is answered");
+        };
+        assert_eq!(
+            chosen, "0",
+            "the level carrying 0.5, not the level 0.62 rounds to"
+        );
+        assert_eq!(
+            crate::calibrate::tied(&distribution),
+            1,
+            "a clear winner, not a tie"
+        );
+    }
+
+    #[test]
+    fn a_named_selected_overrides_what_the_numbers_imply() {
+        // The fixed-answer contract at the evaluation boundary: a served
+        // calibration map left the estimator's pick below a runner-up, and
+        // the wire names it in `selected`. A reader that derived the answer
+        // from `noul` or from the mapped argmax would score a different
+        // answer than the door gave.
+        let noul = jev::Answer::Noul(jev::NoulAnswer {
+            noul: 0.25,
+            selected: Some("yes".to_string()),
+        });
+        let Disposition::Answered {
+            chosen,
+            distribution,
+        } = read_answer(&noul)
+        else {
+            panic!("a Noul answer is answered");
+        };
+        assert_eq!(
+            chosen, "yes",
+            "the pick, though the calibrated number says otherwise"
+        );
+        assert_eq!(
+            distribution["yes"], 0.25,
+            "the reported number is unchanged"
+        );
+
+        let score = jev::Answer::Score(jev::ScoreAnswer {
+            score: 0.94,
+            confidence: 0.0,
+            selected: Some("0".to_string()),
+            legend: BTreeMap::new(),
+            probabilities: [(0, 0.25), (1, 0.5625), (2, 0.1875)].into_iter().collect(),
+        });
+        let Disposition::Answered {
+            chosen,
+            distribution,
+        } = read_answer(&score)
+        else {
+            panic!("a Score answer is answered");
+        };
+        assert_eq!(
+            chosen, "0",
+            "the pick, though level 1 leads the mapped distribution"
+        );
+
+        // And the row records it: `correct` judges level 0, `raw_top` is
+        // the share the door reported for it.
+        let row = run()
+            .row(
+                &Item {
+                    family: "severity".to_string(),
+                    kind: "score".to_string(),
+                    ..item("severity/000", "0")
+                },
+                None,
+                &Disposition::Answered {
+                    chosen,
+                    distribution,
+                },
+                None,
+            )
+            .expect("a named answer is recorded");
+        assert_eq!(row.selected.as_deref(), Some("0"));
+        assert_eq!(row.correct, Some(true), "level 0 against a label of 0");
+        assert_eq!(row.raw_top, Some(0.25), "the share the answer carried");
+    }
+
+    #[test]
+    fn a_tied_score_is_the_highest_tied_level_and_it_is_not_a_refusal() {
+        // An 8-sample estimator answers in steps of 0.125, so a 4-4 split
+        // is common and `score` lands exactly between the two leaders. The
+        // convention every argmax in this workspace shares resolves the tie
+        // to the last level listed — the highest tied level, since a
+        // Score's levels list in rubric order — and the door answered, so
+        // the item is scored rather than refused.
+        let answer = jev::Answer::Score(jev::ScoreAnswer {
+            score: 2.5,
+            confidence: 0.0,
+            selected: None,
+            legend: BTreeMap::new(),
+            probabilities: [(0, 0.0), (1, 0.0), (2, 0.5), (3, 0.5), (4, 0.0)]
+                .into_iter()
+                .collect(),
+        });
+        let Disposition::Answered {
+            chosen,
+            distribution,
+        } = read_answer(&answer)
+        else {
+            panic!("a Score answer is answered");
+        };
+        assert_eq!(chosen, "3");
+        assert_eq!(
+            crate::calibrate::tied(&distribution),
+            2,
+            "the tie is on the record"
+        );
+
+        let row = run()
+            .row(
+                &Item {
+                    family: "severity".to_string(),
+                    kind: "score".to_string(),
+                    ..item("severity/000", "3")
+                },
+                None,
+                &Disposition::Answered {
+                    chosen,
+                    distribution,
+                },
+                None,
+            )
+            .expect("a tied answer is still an answer");
+        assert_eq!(row.correct, Some(true), "level 3 against a label of 3");
     }
 
     #[test]
     fn the_table_is_computed_from_the_rows() {
         let rows: Vec<Row> = vec![
-            run().row(&item("a", "billing"), None, &answered("billing"), None).unwrap(),
-            run().row(&item("b", "sales"), None, &answered("billing"), None).unwrap(),
             run()
-                .row(&item("c", "billing"), None, &Disposition::Refused(RefusalCode::Busy), None)
+                .row(&item("a", "billing"), None, &answered("billing"), None)
+                .unwrap(),
+            run()
+                .row(&item("b", "sales"), None, &answered("billing"), None)
+                .unwrap(),
+            run()
+                .row(
+                    &item("c", "billing"),
+                    None,
+                    &Disposition::Refused(RefusalCode::Busy),
+                    None,
+                )
                 .unwrap(),
         ];
         let metrics = score(&observations(&rows));
         assert_eq!(metrics.items, 2, "the refusal is not scored");
         assert!((metrics.accuracy - 0.5).abs() < 1e-12);
         assert_eq!(families(&rows), vec!["routing".to_string()]);
-        assert_eq!(of_family(&rows, "routing").len(), 3, "the refusal is still in the record");
+        assert_eq!(
+            of_family(&rows, "routing").len(),
+            3,
+            "the refusal is still in the record"
+        );
     }
 
     #[test]
@@ -661,9 +901,17 @@ mod tests {
         for index in 0..40 {
             let truth = if index % 4 == 0 { "sales" } else { "billing" };
             let fitting = item(&format!("fit/{index}"), truth);
-            fit_rows.push(run().row(&fitting, None, &answered("billing"), None).unwrap());
+            fit_rows.push(
+                run()
+                    .row(&fitting, None, &answered("billing"), None)
+                    .unwrap(),
+            );
             let scoring = item(&format!("score/{index}"), truth);
-            score_rows.push(run().row(&scoring, None, &answered("billing"), None).unwrap());
+            score_rows.push(
+                run()
+                    .row(&scoring, None, &answered("billing"), None)
+                    .unwrap(),
+            );
         }
         let fit = fit_family("routing", &fit_rows, &score_rows, &gate);
         assert_eq!(fit.map.fitted_on, 40);
@@ -680,24 +928,39 @@ mod tests {
 
     #[test]
     fn only_a_choice_has_an_order_to_permute() {
-        let question = item("a", "billing").question.expect("the test item carries its text");
+        let question = item("a", "billing")
+            .question
+            .expect("the test item carries its text");
         assert_eq!(
             options_of(&question),
-            Some(vec!["billing".to_string(), "technical".to_string(), "sales".to_string()])
+            Some(vec![
+                "billing".to_string(),
+                "technical".to_string(),
+                "sales".to_string()
+            ])
         );
         assert_eq!(options_of(&json!({ "type": "noul" })), None);
-        assert_eq!(options_of(&json!({ "type": "score", "criteria": { "1": "low" } })), None);
+        assert_eq!(
+            options_of(&json!({ "type": "score", "criteria": { "1": "low" } })),
+            None
+        );
     }
 
     #[test]
     fn a_permutation_reorders_the_options_and_nothing_else() {
-        let question = item("a", "billing").question.expect("the test item carries its text");
+        let question = item("a", "billing")
+            .question
+            .expect("the test item carries its text");
         let order = reversed(3);
         assert_eq!(order, vec![2, 1, 0]);
         let backward = permuted(&question, &order).expect("a choice permutes");
         assert_eq!(
             options_of(&backward),
-            Some(vec!["sales".to_string(), "technical".to_string(), "billing".to_string()])
+            Some(vec![
+                "sales".to_string(),
+                "technical".to_string(),
+                "billing".to_string()
+            ])
         );
         assert_eq!(
             backward.get("instructions"),
@@ -709,7 +972,11 @@ mod tests {
             question.get("criteria").and_then(|c| c.get("sales")),
             "each option kept its description"
         );
-        assert_eq!(permuted(&question, &[0, 1]), None, "a short order is not a permutation");
+        assert_eq!(
+            permuted(&question, &[0, 1]),
+            None,
+            "a short order is not a permutation"
+        );
     }
 
     #[test]

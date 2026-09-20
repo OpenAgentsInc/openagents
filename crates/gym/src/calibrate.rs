@@ -100,13 +100,21 @@ impl Observation {
     /// An observation with no band.
     #[must_use]
     pub const fn new(raw: f64, correct: bool) -> Self {
-        Self { raw, correct, band: None }
+        Self {
+            raw,
+            correct,
+            band: None,
+        }
     }
 
     /// An observation carrying the band the model selected.
     #[must_use]
     pub fn banded(raw: f64, correct: bool, band: impl Into<String>) -> Self {
-        Self { raw, correct, band: Some(band.into()) }
+        Self {
+            raw,
+            correct,
+            band: Some(band.into()),
+        }
     }
 }
 
@@ -194,9 +202,19 @@ impl Map {
                 let correct = inside.iter().filter(|o| o.correct).count() as f64;
                 (correct + 0.5) / (count as f64 + 1.0)
             };
-            built.push(Bin { lo, hi, fitted, count });
+            built.push(Bin {
+                lo,
+                hi,
+                fitted,
+                count,
+            });
         }
-        Self { bins: built, base_rate, fitted_on: observations.len(), by_band: BTreeMap::new() }
+        Self {
+            bins: built,
+            base_rate,
+            fitted_on: observations.len(),
+            by_band: BTreeMap::new(),
+        }
     }
 
     /// Fits a table per band, falling back to the pooled table where a band
@@ -212,7 +230,10 @@ impl Map {
         let mut grouped: BTreeMap<String, Vec<Observation>> = BTreeMap::new();
         for observation in observations {
             if let Some(band) = &observation.band {
-                grouped.entry(band.clone()).or_default().push(observation.clone());
+                grouped
+                    .entry(band.clone())
+                    .or_default()
+                    .push(observation.clone());
             }
         }
         for (band, inside) in grouped {
@@ -277,12 +298,34 @@ impl Map {
     /// the reasoning.
     #[must_use]
     pub fn apply_distribution(&self, raw: &IndexMap<String, f64>) -> IndexMap<String, f64> {
-        let Some((winner, top)) = selected(raw) else {
+        let Some((winner, _)) = selected(raw) else {
             return raw.clone();
         };
-        let winner = winner.to_string();
+        self.apply_distribution_to(raw, winner)
+    }
+
+    /// Rescales a whole distribution around a named option rather than the
+    /// argmax.
+    ///
+    /// The option is the answer the door gave, which is [`selected`]'s pick
+    /// on a raw distribution and a row's own `selected` on a stored one: a
+    /// row that already carries a calibrated distribution can name an answer
+    /// that is not its argmax, and a second map still rescales the named
+    /// option because that is what the row's `correct` is about. An option
+    /// the distribution does not offer leaves the distribution untouched —
+    /// the map reads the signal the answer was measured on, and a name the
+    /// distribution cannot score has none.
+    #[must_use]
+    pub fn apply_distribution_to(
+        &self,
+        raw: &IndexMap<String, f64>,
+        option: &str,
+    ) -> IndexMap<String, f64> {
+        let Some(&top) = raw.get(option) else {
+            return raw.clone();
+        };
         let calibrated = self.apply(top).clamp(0.0, 1.0);
-        rescale(raw, &winner, calibrated)
+        rescale(raw, option, calibrated)
     }
 }
 
@@ -303,14 +346,32 @@ pub fn selected(raw: &IndexMap<String, f64>) -> Option<(&str, f64)> {
         .map(|(option, top)| (option.as_str(), *top))
 }
 
+/// How many options carry the distribution's maximum: none on an empty
+/// distribution, one on a clear winner, more on an exact tie.
+///
+/// A tie is evidence the answer itself carries, not a refusal: the
+/// estimator answered, and [`selected`] resolves the tie to the last option
+/// listed, which for a Score's ordered levels is the highest of them. This
+/// count is what a reader uses to see that the answer was a convention pick
+/// rather than a measured one.
+#[must_use]
+pub fn tied(raw: &IndexMap<String, f64>) -> usize {
+    let Some((_, top)) = selected(raw) else {
+        return 0;
+    };
+    raw.values()
+        .filter(|probability| **probability == top)
+        .count()
+}
+
 /// Gives the winner its calibrated probability and shares what is left among
 /// the rest, in the proportions the estimator observed.
-fn rescale(
-    raw: &IndexMap<String, f64>,
-    winner: &str,
-    calibrated: f64,
-) -> IndexMap<String, f64> {
-    let rest: f64 = raw.iter().filter(|(k, _)| k.as_str() != winner).map(|(_, v)| *v).sum();
+fn rescale(raw: &IndexMap<String, f64>, winner: &str, calibrated: f64) -> IndexMap<String, f64> {
+    let rest: f64 = raw
+        .iter()
+        .filter(|(k, _)| k.as_str() != winner)
+        .map(|(_, v)| *v)
+        .sum();
     let remaining = 1.0 - calibrated;
     raw.iter()
         .map(|(key, value)| {
@@ -368,7 +429,10 @@ pub fn score(observations: &[Observation]) -> Metrics {
         })
         .sum::<f64>()
         / n;
-    let confident_errors = observations.iter().filter(|o| !o.correct && o.raw >= 0.9).count();
+    let confident_errors = observations
+        .iter()
+        .filter(|o| !o.correct && o.raw >= 0.9)
+        .count();
 
     let mut ece = 0.0;
     for index in 0..10 {
@@ -383,12 +447,18 @@ pub fn score(observations: &[Observation]) -> Metrics {
         }
         let share = inside.len() as f64 / n;
         let mean_p = inside.iter().map(|o| o.raw).sum::<f64>() / inside.len() as f64;
-        let mean_correct =
-            inside.iter().filter(|o| o.correct).count() as f64 / inside.len() as f64;
+        let mean_correct = inside.iter().filter(|o| o.correct).count() as f64 / inside.len() as f64;
         ece += share * (mean_p - mean_correct).abs();
     }
 
-    Metrics { accuracy, ece, brier, nll, confident_errors, items: observations.len() }
+    Metrics {
+        accuracy,
+        ece,
+        brier,
+        nll,
+        confident_errors,
+        items: observations.len(),
+    }
 }
 
 impl Metrics {
@@ -438,7 +508,11 @@ impl EstimatorConfig {
     /// A configuration naming the estimator, its draws, and its seed block.
     #[must_use]
     pub fn new(estimator: impl Into<String>, samples: u64, seed_base: u64) -> Self {
-        Self { estimator: estimator.into(), samples, seed_base }
+        Self {
+            estimator: estimator.into(),
+            samples,
+            seed_base,
+        }
     }
 }
 
@@ -482,7 +556,9 @@ pub enum Mismatch {
     )]
     DoorUnverifiable,
     /// The base model underneath has changed.
-    #[error("base_model_signature: the map was fitted against {fitted} and this door runs {serving}")]
+    #[error(
+        "base_model_signature: the map was fitted against {fitted} and this door runs {serving}"
+    )]
     BaseModelSignature {
         /// The signature the map was fitted against.
         fitted: String,
@@ -646,10 +722,14 @@ impl Record {
     /// Returns the first [`Mismatch`] found, which names the field.
     pub fn serve_to(&self, os_build: &str, identity: &DoorIdentity) -> Result<(), Mismatch> {
         if self.schema != RECORD_SCHEMA {
-            return Err(Mismatch::Schema { found: self.schema.clone() });
+            return Err(Mismatch::Schema {
+                found: self.schema.clone(),
+            });
         }
         if !self.admitted {
-            return Err(Mismatch::NotAdmitted { verdict: self.verdict.clone() });
+            return Err(Mismatch::NotAdmitted {
+                verdict: self.verdict.clone(),
+            });
         }
         if self.os_build != os_build {
             return Err(Mismatch::OsBuild {
@@ -692,7 +772,11 @@ impl Record {
 /// An empty field reads as `none` rather than as an empty string, so a
 /// refusal message says what it means.
 fn name_or_none(value: &str) -> String {
-    if value.is_empty() { "none".to_string() } else { value.to_string() }
+    if value.is_empty() {
+        "none".to_string()
+    } else {
+        value.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -700,7 +784,10 @@ mod tests {
     use super::*;
 
     fn observations(pairs: &[(f64, bool)]) -> Vec<Observation> {
-        pairs.iter().map(|(raw, correct)| Observation::new(*raw, *correct)).collect()
+        pairs
+            .iter()
+            .map(|(raw, correct)| Observation::new(*raw, *correct))
+            .collect()
     }
 
     fn banded(pairs: &[(f64, bool, &str)]) -> Vec<Observation> {
@@ -740,19 +827,33 @@ mod tests {
         // Nothing ever landed near 0.15, so the map declines to claim more
         // than the overall rate.
         assert!((fitted.apply(0.15) - fitted.base_rate).abs() < 1e-12);
-        assert_eq!(fitted.bins.iter().find(|b| b.lo < 0.2 && b.lo >= 0.1).unwrap().count, 0);
+        assert_eq!(
+            fitted
+                .bins
+                .iter()
+                .find(|b| b.lo < 0.2 && b.lo >= 0.1)
+                .unwrap()
+                .count,
+            0
+        );
     }
 
     #[test]
     fn a_distribution_keeps_its_shape_when_it_is_rescaled() {
         let fitted = Map::fit(&observations(&[(1.0, true), (1.0, false)]), 2);
-        let raw: IndexMap<String, f64> =
-            [("a".to_string(), 0.8), ("b".to_string(), 0.15), ("c".to_string(), 0.05)]
-                .into_iter()
-                .collect();
+        let raw: IndexMap<String, f64> = [
+            ("a".to_string(), 0.8),
+            ("b".to_string(), 0.15),
+            ("c".to_string(), 0.05),
+        ]
+        .into_iter()
+        .collect();
         let out = fitted.apply_distribution(&raw);
         let total: f64 = out.values().sum();
-        assert!((total - 1.0).abs() < 1e-9, "a distribution sums to one, got {total}");
+        assert!(
+            (total - 1.0).abs() < 1e-9,
+            "a distribution sums to one, got {total}"
+        );
         // b kept three times c's share, as it had before.
         assert!((out["b"] / out["c"] - 3.0).abs() < 1e-9);
     }
@@ -760,10 +861,13 @@ mod tests {
     #[test]
     fn a_unanimous_estimate_spreads_the_remainder_evenly() {
         let fitted = Map::fit(&observations(&[(1.0, true), (1.0, false)]), 2);
-        let raw: IndexMap<String, f64> =
-            [("a".to_string(), 1.0), ("b".to_string(), 0.0), ("c".to_string(), 0.0)]
-                .into_iter()
-                .collect();
+        let raw: IndexMap<String, f64> = [
+            ("a".to_string(), 1.0),
+            ("b".to_string(), 0.0),
+            ("c".to_string(), 0.0),
+        ]
+        .into_iter()
+        .collect();
         let out = fitted.apply_distribution(&raw);
         assert!((out["b"] - out["c"]).abs() < 1e-12);
         assert!((out.values().sum::<f64>() - 1.0).abs() < 1e-9);
@@ -815,8 +919,14 @@ mod tests {
         let pooled = map.apply(1.0);
         let low = map.apply_banded(1.0, Some("unlikely"));
         let high = map.apply_banded(1.0, Some("almost certain"));
-        assert!(low < pooled, "the low band should read below the pool: {low} against {pooled}");
-        assert!(high > pooled, "the high band should read above it: {high} against {pooled}");
+        assert!(
+            low < pooled,
+            "the low band should read below the pool: {low} against {pooled}"
+        );
+        assert!(
+            high > pooled,
+            "the high band should read above it: {high} against {pooled}"
+        );
         assert!(low < 0.5 && high > 0.8, "low {low}, high {high}");
     }
 
@@ -824,12 +934,16 @@ mod tests {
     fn a_thin_band_falls_back_to_the_pooled_table() {
         // Two items in a band is not a probability. The map declines to fit
         // one and the pooled answer is used instead.
-        let mut rows: Vec<(f64, bool, &str)> = vec![(1.0, false, "unlikely"), (1.0, false, "unlikely")];
+        let mut rows: Vec<(f64, bool, &str)> =
+            vec![(1.0, false, "unlikely"), (1.0, false, "unlikely")];
         for _ in 0..20 {
             rows.push((1.0, true, "almost certain"));
         }
         let map = Map::fit_banded(&banded(&rows));
-        assert!(!map.by_band.contains_key("unlikely"), "a two-item band was fitted");
+        assert!(
+            !map.by_band.contains_key("unlikely"),
+            "a two-item band was fitted"
+        );
         assert!(map.by_band.contains_key("almost certain"));
         // Falling back means the thin band reads the pool, not its own two items.
         assert!((map.apply_banded(1.0, Some("unlikely")) - map.apply(1.0)).abs() < 1e-12);
@@ -876,7 +990,9 @@ mod tests {
         let same = record.door_identity.clone();
         assert!(record.valid_for("25E246", &same));
 
-        let moved = record.serve_to("25F100", &same).expect_err("a new build is a new host");
+        let moved = record
+            .serve_to("25F100", &same)
+            .expect_err("a new build is a new host");
         assert!(matches!(moved, Mismatch::OsBuild { .. }), "{moved}");
         assert!(moved.to_string().starts_with("os_build:"), "{moved}");
     }
@@ -891,7 +1007,9 @@ mod tests {
             adapter: "fmadapter-lev-9799725".to_string(),
             ..record.door_identity.clone()
         };
-        let refused = record.serve_to("25E246", &adapted).expect_err("an adapter is a new door");
+        let refused = record
+            .serve_to("25E246", &adapted)
+            .expect_err("an adapter is a new door");
         assert_eq!(
             refused,
             Mismatch::Adapter {
@@ -902,8 +1020,13 @@ mod tests {
         assert!(refused.to_string().starts_with("adapter:"), "{refused}");
 
         let rebased = DoorIdentity::published("lev-base", "a-later-base", "");
-        let refused = record.serve_to("25E246", &rebased).expect_err("a new base is a new door");
-        assert!(refused.to_string().starts_with("base_model_signature:"), "{refused}");
+        let refused = record
+            .serve_to("25E246", &rebased)
+            .expect_err("a new base is a new door");
+        assert!(
+            refused.to_string().starts_with("base_model_signature:"),
+            "{refused}"
+        );
     }
 
     #[test]
@@ -913,12 +1036,18 @@ mod tests {
         // claim it. Matching on the name alone is how a map fitted against
         // one model serves another that reused the label.
         let hosted = DoorIdentity::hosted("jev-latest");
-        assert_eq!(record.serve_to("25E246", &hosted), Err(Mismatch::DoorUnverifiable));
+        assert_eq!(
+            record.serve_to("25E246", &hosted),
+            Err(Mismatch::DoorUnverifiable)
+        );
 
         // And a record that cannot say what it was fitted against never
         // serves, whatever door asks. This is what the three committed maps
         // were: an operating system build, and nothing else.
-        let unattributable = Record { door_identity: DoorIdentity::default(), ..record.clone() };
+        let unattributable = Record {
+            door_identity: DoorIdentity::default(),
+            ..record.clone()
+        };
         assert_eq!(
             unattributable.serve_to("25E246", &record.door_identity),
             Err(Mismatch::RecordUnverifiable)
@@ -935,7 +1064,9 @@ mod tests {
         let identity = refused.door_identity.clone();
         assert_eq!(
             refused.serve_to("25E246", &identity),
-            Err(Mismatch::NotAdmitted { verdict: "refused: Brier rose".to_string() })
+            Err(Mismatch::NotAdmitted {
+                verdict: "refused: Brier rose".to_string()
+            })
         );
     }
 
@@ -957,12 +1088,18 @@ mod tests {
         }
         let read = Record::from_json(&rendered).expect("a record parses");
         assert_eq!(read, record);
-        assert_eq!(read.estimator_config.seed_base, 0, "the seed block travels with the record");
+        assert_eq!(
+            read.estimator_config.seed_base, 0,
+            "the seed block travels with the record"
+        );
     }
 
     #[test]
     fn a_document_tagged_as_something_else_does_not_serve() {
-        let mislabelled = Record { schema: "openagents.lev.calibration.v1".to_string(), ..record() };
+        let mislabelled = Record {
+            schema: "openagents.lev.calibration.v1".to_string(),
+            ..record()
+        };
         let identity = mislabelled.door_identity.clone();
         assert!(matches!(
             mislabelled.serve_to("25E246", &identity),
@@ -974,7 +1111,9 @@ mod tests {
     fn a_directory_of_records_reads_in_order_and_an_absent_one_reads_as_none() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         assert!(
-            Record::load_dir(&dir.path().join("nothing-here")).expect("an absent directory").is_empty(),
+            Record::load_dir(&dir.path().join("nothing-here"))
+                .expect("an absent directory")
+                .is_empty(),
             "holding no calibration is a normal state, not an error"
         );
 
@@ -987,8 +1126,12 @@ mod tests {
         assert_eq!(loaded[0].1, record);
 
         std::fs::write(dir.path().join("broken.json"), "{").expect("the broken file writes");
-        let error = Record::load_dir(dir.path()).expect_err("a record that does not parse is an error");
-        assert!(error.contains("broken.json"), "the error names the file: {error}");
+        let error =
+            Record::load_dir(dir.path()).expect_err("a record that does not parse is an error");
+        assert!(
+            error.contains("broken.json"),
+            "the error names the file: {error}"
+        );
     }
 
     #[test]

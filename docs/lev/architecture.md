@@ -209,20 +209,23 @@ question types map onto guided generation:
 
 | Question type | Schema | Answer derived from the distribution |
 | --- | --- | --- |
-| `noul` | a two-value enum, `no` and `yes`, with the criteria text as the value descriptions | `noul = p(yes)` |
+| `noul` | a two-value enum, `no` and `yes`, with the criteria text as the value descriptions | `noul = p(yes)`, `selected` names the option the estimator's raw distribution picked |
 | `choice` | one enum value per criteria key, described by `name` or `name: description` | `choice = argmax` of the **raw** estimator distribution, `probabilities` by option key, `confidence = (p_choice − 1/K) / (1 − 1/K)`, floored at zero |
-| `score` | one enum value per ordered level description | `score = Σ k · p[k]`, `legend` maps indices to level text, `probabilities` by index |
+| `score` | one enum value per ordered level description | `score = Σ k · p[k]`, `selected` names the level the estimator's raw distribution picked, `legend` maps indices to level text, `probabilities` by index |
 
-That table is deliberately identical to kev's. Two implementations of one
-contract should agree on what a question means even when they disagree on
-how to answer it.
+That table is deliberately identical to kev's but for `selected`. Two
+implementations of one contract should agree on what a question means even
+when they disagree on how to answer it.
 
-The two "raw" qualifications on the `choice` row are the one place the
-implementations can come apart, and only when a calibration map is serving.
-A map rescales the probability of the answer the estimator chose and never
-picks a different one, so a rescale that leaves a runner-up holding the
-larger share changes the number beside the answer rather than the answer.
-kev applies no map, so its argmax is always the raw one.
+The "raw" qualifications — and `selected` on the other two rows — are the
+one place the implementations can come apart, and only when a calibration
+map is serving. A map rescales the probability of the answer the estimator
+chose and never picks a different one, so a rescale that leaves a runner-up
+holding the larger share changes the number beside the answer rather than
+the answer — and then `choice` or `selected` is the only place the answer
+survives the wire, because `noul` can sit below one half and a runner-up
+level can lead `probabilities`. kev applies no map, so its argmax is always
+the raw one and it writes no `selected`.
 [`../gym/measurements/2026-09-19-calibration-and-the-argmax.md`](../gym/measurements/2026-09-19-calibration-and-the-argmax.md)
 carries the contract and the enumeration behind it.
 

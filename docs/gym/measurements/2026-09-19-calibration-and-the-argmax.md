@@ -95,13 +95,16 @@ with the committed rule — gives the same answer where it counts:
 | `support-v2-three-way` `kev-0.6b` `severity` | 15 | 0.333 | 14 | unverifiable: `fitted_on>=30` |
 | `restatement-v1` `kev-4b` `writes_none` | 8 | 0.000 | 8 | unverifiable: `fitted_on>=30` |
 
-The two passing rows reproduce the two committed admitted records verbatim,
-verdict line included. Everything that moves an argmax is refused, and the
-third row is the one to watch: `kev-4b` on `routing` clears the 30-item floor
-with 40 items, reads its top bin at 0.250, moves two argmaxes out of 40, and
-is refused for a Brier move of 0.143 to 0.193 against a ceiling of 0.157 —
-which has nothing to do with the map's shape. One different number in an
-unrelated column and it is admitted.
+The two passing rows reproduce the two committed admitted records — every
+count, the fitted table, and the verdict line are bit-identical, and each
+float metric is the stored number or within one representable step of it (see
+[`2026-09-20-raw-floors-and-mapped-claims.md`](2026-09-20-raw-floors-and-mapped-claims.md)
+for the differing fields and the limits of this comparison). Everything that moves an
+argmax is refused, and the third row is the one to watch: `kev-4b` on
+`routing` clears the 30-item floor with 40 items, reads its top bin at 0.250,
+moves two argmaxes out of 40, and is refused for a Brier move of 0.143 to
+0.193 against a ceiling of 0.157 — which has nothing to do with the map's
+shape. One different number in an unrelated column and it is admitted.
 
 That row is also the shape of door this is most likely to arrive from. A door
 that answers a question's negation backwards is confidently anti-correlated
@@ -138,7 +141,11 @@ now name the selected option:
   the recorded observation charged the selected answer with a probability the
   door never claimed for it. On the audit's own construction it recorded
   `(0.75, false)` — a confident error — where the map's claim about that
-  answer was 0.25. It now reads the selected option's probability.
+  answer was 0.25. It now reads the option `Row::selected` names — and on a
+  row written before the field existed, the distribution's argmax. That
+  fallback reproduces the option the row's `correct` was scored against,
+  because the evaluator of the time read the same argmax; what it cannot show
+  is that the stored distribution was raw rather than rescaled.
 - `lev::serve` derived a Choice's `choice` and `confidence` from the rescaled
   distribution, so a moved argmax would have been served as a different
   answer than the estimator chose. The door now reads the selected option
@@ -146,11 +153,29 @@ now name the selected option:
   `estimator::confidence_in` reports sharpness on the answer rather than on
   whichever option leads.
 
-A Noul is untouched, and deliberately. It answers with `p(yes)` rather than
-with a choice, so there is no selected answer to hold fixed: the number is
-the answer, and a rescale of a two-option distribution is a correct posterior
-over it. A caller that wants a yes or a no reads it against its own
-threshold, which is the same thing it does without a map.
+A third gap surfaced on the wire: a Choice answer names its pick in `choice`,
+but a Noul or a Score answer's own fields cannot — `noul` is the calibrated
+probability of yes and `score` is the weighted position, and redefining
+either to carry the pick would break the public contract for a convenience.
+So the wire shape carries the pick explicitly: `selected`, emitted by Lev
+alongside the calibrated number, decoded by `crates/jev`, and stored on the
+row by `gym`. An answer that names no `selected` is read the way it always
+was — the threshold or the argmax of its numbers. On an answer that was
+never rescaled that reading is the estimator's pick; the field's absence
+alone cannot prove an answer was never rescaled, only that none was
+reported, and on the hypothetical legacy row this leaves the served argmax
+reading the option `correct` was scored against anyway. No committed row
+carries a served calibrated distribution — the harness wrote raw estimator
+output — so the distinction is documented here rather than litigated there.
+[`crates/lev/tests/calibrated_answer_roundtrip.rs`](../../../crates/lev/tests/calibrated_answer_roundtrip.rs)
+walks the whole path — estimator, answer, JSON, jev decode, evaluation, the
+stored row — for all three kinds on distributions where the map actually
+moves the argmax, including a tied raw maximum and a band-conditioned map.
+
+An earlier version of this page said a Noul is untouched because "the number
+is the answer." That was the wrong half of the contract: it made a calibrated
+`noul` of 0.25 flip the answer the calibration was fitted on. `noul` stays
+the probability of yes; `selected` is the answer it was measured on.
 
 No committed number moves, because nothing committed reaches the case. The
 two refitted verdicts above are computed after the change and match the
@@ -165,3 +190,18 @@ are spreads of an unchanged door across disjoint seed blocks, scored by
 `calibrate::score` over `Draws::observations`. Those are raw block draws
 carrying a top frequency and an outcome, with no distribution in them, so no
 map is applied and `mapped_observations` is not on that path at all.
+
+## Re-derived, not argued
+
+openagents#9419 required more than the reachability argument above: the
+floors re-derived, the two-sigma bounds kept distinct from the spreads, and
+the affected retained claims labelled. The named artifact inventory is now
+checked by retained tests.
+[`2026-09-20-raw-floors-and-mapped-claims.md`](2026-09-20-raw-floors-and-mapped-claims.md)
+is the record and the claim inventory, and
+[`crates/gym/tests/rederived_floors.rs`](../../../crates/gym/tests/rederived_floors.rs)
+recomputes every number in it from the committed draws, rows, and records.
+The six committed calibration records retain their counts, fitted maps,
+verdicts, and provenance. Eight float fields differ by one representable
+step; the inventory reports those differences rather than claiming exact
+regeneration. Published rounded values are unchanged.

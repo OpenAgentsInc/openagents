@@ -627,10 +627,13 @@ fn recorded_answer(row: &Row) -> Option<Disposition> {
         return Some(Disposition::Refused(code.clone()));
     }
     let distribution = row.distribution.clone()?;
-    let chosen = distribution
-        .iter()
-        .max_by(|left, right| left.1.total_cmp(right.1))
-        .map(|(option, _)| option.clone())?;
+    // The answer is the option the row names, and a row that names none was
+    // written before `selected` existed — its answer is the distribution's
+    // own argmax, under the shared last-of-equal-leaders convention.
+    let chosen = match row.selected.clone() {
+        Some(option) => option,
+        None => gym::calibrate::selected(&distribution).map(|(option, _)| option.to_string())?,
+    };
     Some(Disposition::Answered { chosen, distribution })
 }
 
@@ -1229,7 +1232,8 @@ fn flips_command(options: &Options) -> Result<(), String> {
     Ok(())
 }
 
-/// The option a recorded row's distribution puts first.
+/// The option a recorded row says the door answered — its `selected` when it
+/// names one, else the distribution's argmax.
 fn chosen_of(row: &Row) -> Option<String> {
     match recorded_answer(row) {
         Some(Disposition::Answered { chosen, .. }) => Some(chosen),

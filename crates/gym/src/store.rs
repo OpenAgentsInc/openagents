@@ -80,7 +80,7 @@ use std::path::{Path, PathBuf};
 /// it. `crate::row::SCHEMA` is a `&str` for the same reason, and naming it
 /// here keeps one declaration of the string while leaving the allowlist a
 /// list of names.
-pub const KNOWN_ROW_SCHEMAS: &[&str] = &[crate::row::SCHEMA];
+pub const KNOWN_ROW_SCHEMAS: &[&str] = &[crate::row::LEGACY_SCHEMA, crate::row::SCHEMA];
 
 /// The field holding a row's own receipt.
 pub const RECEIPT_FIELD: &str = "receipt";
@@ -1296,9 +1296,10 @@ mod tests {
         // One declaration of the string, and it is still a string: a reader
         // checks a name it read off disk, and never has to deserialize a row
         // into the type that wrote it to find out whether it may.
-        assert_eq!(KNOWN_ROW_SCHEMAS, &[crate::row::SCHEMA]);
+        assert_eq!(KNOWN_ROW_SCHEMAS, &[crate::row::LEGACY_SCHEMA, crate::row::SCHEMA]);
         assert!(known_row_schema("openagents.gym.eval_row.v1"));
-        assert!(!known_row_schema("openagents.gym.eval_row.v2"));
+        assert!(known_row_schema("openagents.gym.eval_row.v2"));
+        assert!(!known_row_schema("openagents.gym.eval_row.v3"));
 
         let dir = tempfile::tempdir().unwrap();
         let store = store_in(&dir);
