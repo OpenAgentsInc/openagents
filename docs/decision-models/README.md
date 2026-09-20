@@ -96,8 +96,11 @@ authored are in
 
 The second reader was an automated session, not a person, so the table says
 the labels are reproducible by a reader who did not write them and not that
-they are correct. External suites carry their sources' published agreement
-instead: BoolQ 0.90, MultiNLI 0.887.
+they are correct. External suites carry what their sources publish instead:
+BoolQ 0.90 and MultiNLI 0.887 agreement on `external-v1`, and on
+`external-jevbench-v1` each item's authored label basis — written with a
+rationale, cross-model reviewed before any system ran — carried as
+`label_rule`, because JevBench publishes no agreement figure.
 
 ## Measurements that cross the implementations
 

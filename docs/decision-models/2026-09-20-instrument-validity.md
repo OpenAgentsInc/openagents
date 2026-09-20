@@ -96,6 +96,14 @@ Both sets publish their own agreement, which is this suite's ceiling:
 - MultiNLI: an individual validation label matches the gold label on
   **88.7%** of the matched development set (Williams et al., 2018, table 3).
 
+Later on the same day, [`external-jevbench-v1`](../../crates/gym/suites/external-jevbench-v1.json)
+joined it as a second external suite — 231 public JevBench decisions,
+recorded in [`others/2026-09-20-jevbench.md`](others/2026-09-20-jevbench.md).
+It removes this suite's one authored part: its question text is the
+benchmark's own, kept in an item-keyed question set rather than written
+here. JevBench publishes no agreement figure, so its items carry their
+label basis as `label_rule` in place of a ceiling.
+
 ### Hosted Jev's score
 
 ```text

@@ -71,10 +71,11 @@ target/release/gym compare \
     --baseline "jev (hosted) asked as support-v2-three-way-v1"
 ```
 
-`gym eval --family` lands with this record. A question set holds one question
-per family and a reword touches one of them, so asking the other two spends
-door calls and then averages the change against items whose text could not
-have moved.
+`gym eval --family` lands with this record. The question sets in this run
+hold one question per family — a set may also key its questions by item id,
+as `external-jevbench-v1` does — and a reword touches one of them, so asking
+the other two spends door calls and then averages the change against items
+whose text could not have moved.
 
 ## Development, the partition the candidates were written against
 
