@@ -140,3 +140,9 @@ implementation: abstention as an additive `abstain` outcome on the answer,
 emitted by the door from an input-conditioned signal and scored under a cost
 matrix the workload supplies through the gate's budget. It names the
 measurement that would settle it before anything is built (openagents#9383).
+
+[`decision-api.md`](decision-api.md) is a product design, also with no
+implementation: an open decision API over `POST /v1/systemone` — private,
+dedicated, and trained endpoints — mapped onto the serving binaries, the
+relay lanes, and the gym's measurement plane that already exist, with the
+billing, multi-tenant, and training-path pieces named as missing.
