@@ -100,8 +100,9 @@ the `selections` ranking only; the `levels` tally still counts every
 answered input's level. An entry's `uncertain` lists the flagged input ids
 in input order and is present only when the unit's rule declares
 `uncertain_below`. Inputs that were refused, unavailable, or unattempted
-appear under `outcomes` and `unevaluated` — never as a zero, a label, or a
-no-match they did not earn.
+appear under the unit's `outcomes` — and under `unevaluated` on the binary
+and score `selections` entries — never as a zero, a label, or a no-match
+they did not earn.
 
 Native SDK validation checks answer types and probability distributions;
 a score answer is additionally held to the declared rubric, so a legend or

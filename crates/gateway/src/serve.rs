@@ -1721,9 +1721,12 @@ fn unit_result(
             if !(0.0..=1.0).contains(&probability) {
                 return unit_failure(unit, "unavailable", "a noul answer is not a probability");
             }
-            if !rule.selects(probability) {
+            let selected = if rule.selects(probability) {
+                json!(unit.labels[0].id)
+            } else {
                 base["no_match"] = json!(true);
-            }
+                Value::Null
+            };
             if rule
                 .uncertain_below
                 .is_some_and(|cut| probability.max(1.0 - probability) < cut)
@@ -1732,11 +1735,7 @@ fn unit_result(
             }
             base["outcome"] = json!("answered");
             base["raw"] = answer.clone();
-            base["selected"] = if rule.selects(probability) {
-                json!(unit.labels[0].id)
-            } else {
-                Value::Null
-            };
+            base["selected"] = selected;
             base
         }
         Mode::Score => {
