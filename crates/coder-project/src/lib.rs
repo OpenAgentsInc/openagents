@@ -17,6 +17,7 @@ pub mod github;
 pub mod gym_suite;
 pub mod poll;
 pub mod reservations;
+pub mod semantics;
 
 /// An operator-prepared task. Tracker text cannot populate its authority.
 #[derive(Clone, Debug, Serialize, Deserialize)]
