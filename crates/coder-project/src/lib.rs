@@ -12,6 +12,7 @@ use supervise::{Job, Limits};
 
 pub mod artifact;
 pub mod controller;
+pub mod discovery;
 pub mod github;
 pub mod gym_suite;
 
