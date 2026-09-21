@@ -56,7 +56,47 @@ pub struct Configuration {
     pub dispatch_limit: u32,
     pub admission_minutes: u64,
     pub poll_seconds: u64,
+    /// How long a task whose attempt ended on an executor capacity
+    /// refusal stays unadmitted — the host's stated delay before the
+    /// task is offered again, not a guess at the provider's clock.
+    /// Default is five minutes; zero asks for a hot retry and is
+    /// refused.
+    #[serde(default = "default_quota_backoff_seconds")]
+    pub quota_backoff_seconds: u64,
     pub tasks: Vec<Prepared>,
+}
+
+/// The default capacity-refusal delay — five minutes. Deliberately not
+/// zero: a hot retry against a full lane or a quota is exactly the
+/// retry storm the bound exists to prevent.
+fn default_quota_backoff_seconds() -> u64 {
+    300
+}
+
+/// The refusal causes that mean the executor could not take the work
+/// now — a full lane, a quota, a rate limit, a door that went away —
+/// as the words the refusal or execution status actually carries. A
+/// refusal matching none of these is a wrong-answer or authority
+/// problem and still lands in review for a human.
+const CAPACITY_WORDS: &[&str] = &["quota", "rate", "busy", "capacity", "door_unavailable"];
+
+/// Whether a dispatch report is an executor capacity refusal — the
+/// attempt ran nothing, so requeueing under a stated delay is the
+/// safe, declared no-effect retry. Returns the matched status text as
+/// the recorded cause.
+fn capacity_cause(report: &crate::DispatchReport) -> Option<String> {
+    [
+        report.execution_status.as_deref(),
+        report.refusal.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|status| {
+        CAPACITY_WORDS
+            .iter()
+            .any(|word| status.to_lowercase().contains(word))
+    })
+    .map(str::to_string)
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String> {
@@ -101,6 +141,7 @@ impl Configuration {
             || !(1..=1000).contains(&self.dispatch_limit)
             || !(1..=720).contains(&self.admission_minutes)
             || !(10..=3600).contains(&self.poll_seconds)
+            || !(1..=86400).contains(&self.quota_backoff_seconds)
             || self.capacity.integration_lanes != 1
         {
             return Err(
@@ -371,12 +412,16 @@ fn plan_round(
             .iter()
             .find(|p| p.scheduling.id == task.id)
             .expect("catalog contains prepared tasks");
-        let reason = match snapshot {
-            Err(error) => Some(error.clone()),
-            Ok(snapshot) if !snapshot.issues.contains_key(&task.issue) => {
-                Some("issue is no longer visible in the scoped project".into())
-            }
-            Ok(snapshot) => tracker_block(configuration, prepared, snapshot),
+        let now = atif::now_ms() / 1000;
+        let reason = match ledger.record(&task.id).and_then(|r| r.backoff_until) {
+            Some(until) if until > now => Some(format!("executor capacity backoff until {until}")),
+            _ => match snapshot {
+                Err(error) => Some(error.clone()),
+                Ok(snapshot) if !snapshot.issues.contains_key(&task.issue) => {
+                    Some("issue is no longer visible in the scoped project".into())
+                }
+                Ok(snapshot) => tracker_block(configuration, prepared, snapshot),
+            },
         };
         if let Some(reason) = reason {
             reasons.insert(task.id.clone(), reason);
@@ -564,8 +609,19 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
                     let value = match &result { Ok(report) => json!(report), Err(error) => json!({"error":error,"artifact_verified":false}) };
                     write_new(&directory.join("result.json"), &value)?;
                     let result_digest = atif::digest(&value);
-                    ledger.settle(&id, &attempt, &owner, &result_digest).map_err(|e| e.to_string())?;
-                    eprintln!("result {id} attempt {attempt}: pending independent review");
+                    let capacity = result.as_ref().ok().and_then(capacity_cause);
+                    if let Some(cause) = capacity {
+                        // The executor refused for capacity — the attempt
+                        // ran nothing, so it requeues under the stated
+                        // backoff rather than waiting on human review or
+                        // retrying hot.
+                        let until = atif::now_ms() / 1000 + configuration.quota_backoff_seconds;
+                        ledger.backoff(&id, &attempt, &owner, &result_digest, until).map_err(|e| e.to_string())?;
+                        eprintln!("result {id} attempt {attempt}: capacity refusal ({cause}); requeued under backoff until {until}");
+                    } else {
+                        ledger.settle(&id, &attempt, &owner, &result_digest).map_err(|e| e.to_string())?;
+                        eprintln!("result {id} attempt {attempt}: pending independent review");
+                    }
                 }
             }
             _ = tokio::time::sleep(Duration::from_secs(configuration.poll_seconds)) => {},
@@ -662,6 +718,7 @@ mod tests {
             dispatch_limit: 10,
             admission_minutes: 30,
             poll_seconds: 30,
+            quota_backoff_seconds: 300,
             tasks: vec![prepared()],
         }
     }
@@ -1179,5 +1236,69 @@ mod tests {
         let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot));
         assert_eq!(round.plan.admit.len(), 1);
         assert_eq!(round.plan.admit[0].task, "task-b");
+    }
+
+    #[test]
+    fn a_capacity_refusal_requeues_under_backoff_never_retries_hot() {
+        let state = tempfile::tempdir().unwrap();
+        control_dirs(state.path());
+        let configuration = configuration();
+        let (mut ledger, catalog) = ledger_at(state.path(), &configuration);
+
+        // A claimed attempt ends on a capacity refusal — the executor
+        // said it could not take the work, so the attempt ran nothing.
+        let digest = catalog.task("task-a").unwrap().digest();
+        let attempt = ledger.claim("task-a", "coordinator", &digest).unwrap();
+        let until = atif::now_ms() / 1000 + configuration.quota_backoff_seconds;
+        ledger
+            .backoff("task-a", &attempt, "coordinator", "quota-result", until)
+            .unwrap();
+        let record = ledger.record("task-a").unwrap();
+        // The task is queued again — not reviewed, not rejected — and
+        // the refused result's digest stays as evidence of the attempt.
+        assert_eq!(record.status, Status::Queued);
+        assert_eq!(record.result_digest.as_deref(), Some("quota-result"));
+        assert_eq!(record.backoff_until, Some(until));
+
+        // While the backoff stands the round blocks it by name rather
+        // than silently hot-retrying.
+        let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot()));
+        assert!(round.plan.admit.is_empty());
+        assert!(
+            round.reasons["task-a"].contains("executor capacity backoff"),
+            "{:?}",
+            round.reasons
+        );
+    }
+
+    #[test]
+    fn a_wrong_answer_is_not_a_capacity_refusal() {
+        let report = crate::DispatchReport {
+            schema: "openagents.project-dispatch.v1".into(),
+            task_id: "task-a".into(),
+            input_digest: "input".into(),
+            base: "a".repeat(40),
+            program_digest: "program".into(),
+            trace: PathBuf::from("/tmp/trace"),
+            answered: true,
+            execution_status: Some("answered".into()),
+            text_matched: Some(false),
+            refusal: None,
+            retained_worktree: None,
+            elapsed_ms: 1000,
+            executor_cost_usd: None,
+            artifact_verified: false,
+        };
+        // An answered attempt that failed its text check is review
+        // work for a human, not an executor capacity problem.
+        assert_eq!(capacity_cause(&report), None);
+
+        let mut refused = crate::DispatchReport { ..report };
+        refused.answered = false;
+        refused.execution_status = Some("refused: quota".into());
+        assert_eq!(capacity_cause(&refused).as_deref(), Some("refused: quota"));
+        refused.execution_status = Some("refused: untrusted_workspace".into());
+        // An authority refusal is not capacity — it lands in review.
+        assert_eq!(capacity_cause(&refused), None);
     }
 }

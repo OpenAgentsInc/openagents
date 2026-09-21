@@ -94,6 +94,13 @@ pub struct TaskRecord {
     /// The reject cause or the recovery note, when one applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cause: Option<String>,
+    /// The Unix second a queued task stays unadmitted until — set when
+    /// an attempt ends on an executor capacity refusal, cleared when a
+    /// new attempt is claimed. Not a wall-clock guess about the
+    /// provider: the host's own stated delay before it offers the task
+    /// again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backoff_until: Option<u64>,
     /// How many times the task has been claimed.
     #[serde(default)]
     pub attempts: u32,
@@ -414,6 +421,7 @@ impl Ledger {
                             owner: String::new(),
                             result_digest: None,
                             cause: None,
+                            backoff_until: None,
                             attempts: 0,
                             updated_unix: now,
                         },
@@ -508,9 +516,37 @@ impl Ledger {
         record.attempts = attempts;
         record.result_digest = None;
         record.cause = None;
+        record.backoff_until = None;
         record.updated_unix = unix_now();
         self.commit()?;
         Ok(attempt)
+    }
+
+    /// Return an in-flight attempt to `queued` under a stated delay:
+    /// `dispatched` → `queued` with the refused result's digest kept as
+    /// evidence and `backoff_until` naming the earliest Unix second the
+    /// task may admit again.
+    ///
+    /// This is the one automatic requeue the ledger performs, and it is
+    /// honest about why it is safe: an executor capacity refusal means
+    /// the attempt ran nothing — a declared no-effect outcome, not the
+    /// ambiguous write that [`requeue`](Self::requeue) leaves to the
+    /// operator. Anything else still settles into review.
+    pub fn backoff(
+        &mut self,
+        task: &str,
+        attempt: &str,
+        owner: &str,
+        result_digest: &str,
+        until_unix: u64,
+    ) -> Result<(), LedgerError> {
+        let record = self.expect(task, attempt, owner, Status::Active, "queued")?;
+        record.status = Status::Queued;
+        record.result_digest = Some(result_digest.to_string());
+        record.cause = Some("executor capacity refusal; held to its backoff".to_string());
+        record.backoff_until = Some(until_unix);
+        record.updated_unix = unix_now();
+        self.commit()
     }
 
     /// The one record under `task`, checked to be `status` and to carry
