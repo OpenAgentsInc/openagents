@@ -482,11 +482,11 @@ complete retained inventory and measured time accounting.
 
 ## How a TypeSafe-native Coder could prevent this failure
 
-This recommendation applies the founder's
+This recommendation applies the Jev founder's
 [original coding-agent document](../../coder/thoughts-on-a-typesafe-coding-agent.md),
 the [Coder architecture analysis](../../coder/typesafe-agent-analysis.md), and the
 [delivery roadmap](../../coder/typesafe-agent-roadmap.md) to the failures measured
-above. The founder's relevant ideas are query-specific context, explicit shared
+above. The Jev founder's relevant ideas are query-specific context, explicit shared
 state, subgoal deduplication, and background consumers of existing observations.
 The roadmap supplies the crucial implementation boundary: Rust owns authority,
 state transitions, freshness, and resource limits; typed judgments supply narrow
@@ -508,7 +508,7 @@ unresolved requirement. A successful commit or test changes only the requirement
 it supplies evidence for. It cannot erase unrelated missing requirements or
 release the issue's work-in-progress slot.
 
-The founder's meta-attention idea makes this practical: each context request asks
+The Jev founder's meta-attention idea makes this practical: each context request asks
 what is needed to resolve a particular remaining requirement. It need not replay
 every earlier log, delegate transcript, and product plan. But context selection
 alone would not have stopped my scope switching. The controller must also enforce
@@ -621,7 +621,7 @@ control; the contract governs the handoff and acceptance, not its hidden interna
 
 ### Parallelism should optimize accepted delivery
 
-The founder's shared-state proposal could reduce duplicated repository searches
+The Jev founder's shared-state proposal could reduce duplicated repository searches
 and context preparation across delegates and reviewers. It would not multiply
 integration capacity. Use immutable snapshots and declared write footprints;
 recheck changed bases and conflicts on return. Keep one integration lane and an
@@ -634,7 +634,7 @@ likely resource needs, but the host must conservatively enforce declared resourc
 classes. Do not infer that eight tasks are safe because a model predicts they are
 “software only.” Nor should a cheaper generator be preferred from token price
 alone: include context loading, failed escalation, review, and repair costs, as
-the founder's cache example motivates without establishing current prices.
+the Jev founder's cache example motivates without establishing current prices.
 
 Start background work with one evidence-derived progress or diff view. It should
 reuse the same observations, debounce changes, cancel superseded work, and run
@@ -682,7 +682,7 @@ The proposal earns adoption only if it reduces avoidable work or improves
 completion without increasing false acceptance or weakening required checks.
 The deterministic stop condition, evidence freshness, and resource boundaries
 must pass even when every optional semantic call refuses. That is the specific
-way the founder's architecture could prevent this incident from recurring:
+way the Jev founder's architecture could prevent this incident from recurring:
 useful judgments over retained state, inside a controller that makes unfinished
 acceptance work and the user's actual objective impossible to lose.
 
