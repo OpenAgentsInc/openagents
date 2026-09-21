@@ -27,6 +27,13 @@ def main():
         Draft202012Validator.check_schema(schema)
         validators[name] = Draft202012Validator(schema)
 
+    request_defs = validators["request"].schema["$defs"]
+    response_defs = validators["response"].schema["$defs"]
+    for name in ("policy", "singleSelect", "multiSelect", "binarySelect",
+                 "scoreSelect", "review", "fallback"):
+        if request_defs[name] != response_defs[name]:
+            raise SystemExit(f"The response's embedded {name} schema differs from the request.")
+
     corpus = DOCS / "fixtures" / "classify-v1"
     requests = 0
     for case in read(corpus / "manifest.json")["cases"]:
@@ -36,7 +43,7 @@ def main():
             requests += 1
 
     responses = sorted((corpus / "responses").glob("*.json"))
-    if len(responses) < 7:
+    if len(responses) < 10:
         raise SystemExit("The runtime response corpus is incomplete.")
     for path in responses:
         validators["response"].validate(read(path))
@@ -59,6 +66,12 @@ def main():
     value = copy.deepcopy(original)
     del value["outcomes"]["unattempted"]
     invalid.append(("missing outcome counter", value))
+    value = read(corpus / "responses" / "review-corrected.json")
+    del value["results"][0]["attempts"][1]["served"]
+    invalid.append(("secondary attempt without served identity", value))
+    value = read(corpus / "responses" / "review-invalid.json")
+    value["results"][0]["units"][0]["review"]["selected"] = "a"
+    invalid.append(("failed review claiming a selected answer", value))
     for name, value in invalid:
         if validators["response"].is_valid(value):
             raise SystemExit(f"The response schema accepted {name}.")

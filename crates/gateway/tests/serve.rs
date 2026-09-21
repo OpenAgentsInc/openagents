@@ -875,26 +875,49 @@ fn classify_call() -> Value {
 }
 
 /// Compare a public response fixture with a real HTTP result. Only elapsed
-/// times are normalized; identities, scores, outcomes, and usage stay intact.
+/// times and run-specific references are normalized. Model identities,
+/// scores, outcomes, and usage stay intact; receipt integrity has separate tests.
 fn classification_response_fixture(name: &str, body: &Value) {
-    fn normalize(value: &mut Value) {
+    fn normalize(value: &mut Value, identities: &mut BTreeMap<String, String>) {
         match value {
             Value::Object(fields) => {
                 for (key, value) in fields {
+                    // Declared budgets are contract values, not measurements.
+                    if matches!(key.as_str(), "policy" | "bounds") {
+                        continue;
+                    }
                     if key == "latency_ms" {
                         assert!(value.as_u64().is_some());
                         *value = json!(0);
+                    } else if matches!(key.as_str(), "attempt_id" | "receipt" | "usage_ref") {
+                        if let Some(identity) = value.as_str() {
+                            let next = identities.len();
+                            let replacement =
+                                identities.entry(identity.to_string()).or_insert_with(|| {
+                                    if key == "receipt" {
+                                        assert!(
+                                            identity.starts_with("sha256:") && identity.len() == 71
+                                        );
+                                        format!("sha256:{next:064x}")
+                                    } else {
+                                        format!("fixture-reference-{next}")
+                                    }
+                                });
+                            *value = json!(replacement);
+                        }
                     } else {
-                        normalize(value);
+                        normalize(value, identities);
                     }
                 }
             }
-            Value::Array(values) => values.iter_mut().for_each(normalize),
+            Value::Array(values) => values
+                .iter_mut()
+                .for_each(|value| normalize(value, identities)),
             _ => {}
         }
     }
     let mut actual = body.clone();
-    normalize(&mut actual);
+    normalize(&mut actual, &mut BTreeMap::new());
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/decision-models/fixtures/classify-v1/responses")
         .join(format!("{name}.json"));
@@ -3307,6 +3330,7 @@ async fn classify_review_rejudges_flagged_units_and_records_both_answers() {
     ));
     let (status, body) = send_classification(&deployment, &call).await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    classification_response_fixture("review-corrected", &body);
     // Every input re-judged through the reviewer door, none through the
     // fallback.
     assert_eq!(primary_forwards.load(Ordering::SeqCst), 2);
@@ -3396,6 +3420,7 @@ async fn classify_review_keeps_the_original_when_the_reviewed_answer_fails_contr
     ));
     let (status, body) = send_classification(&deployment, &call).await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    classification_response_fixture("review-invalid", &body);
     for item in body["results"].as_array().unwrap() {
         let unit = &item["units"][0];
         assert_eq!(unit["selected"], "a", "{unit}");
@@ -3574,6 +3599,7 @@ async fn classify_fallback_retries_a_declared_transport_failure() {
     call["inputs"] = json!([{"id":"one","text":"one"}]);
     let (status, body) = send_classification(&deployment, &call).await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    classification_response_fixture("fallback", &body);
     assert_eq!(fallback_forwards.load(Ordering::SeqCst), 1);
     let item = &body["results"][0];
     assert_eq!(item["outcome"], "answered", "{item}");

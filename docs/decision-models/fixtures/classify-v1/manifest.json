@@ -137,6 +137,39 @@
       "normalization": [
         "latency_ms"
       ]
+    },
+    {
+      "file": "responses/review-corrected.json",
+      "status": 200,
+      "outcome": "answered",
+      "normalization": [
+        "latency_ms",
+        "attempt_id",
+        "receipt",
+        "usage_ref"
+      ]
+    },
+    {
+      "file": "responses/review-invalid.json",
+      "status": 200,
+      "outcome": "answered",
+      "normalization": [
+        "latency_ms",
+        "attempt_id",
+        "receipt",
+        "usage_ref"
+      ]
+    },
+    {
+      "file": "responses/fallback.json",
+      "status": 200,
+      "outcome": "answered",
+      "normalization": [
+        "latency_ms",
+        "attempt_id",
+        "receipt",
+        "usage_ref"
+      ]
     }
   ]
 }

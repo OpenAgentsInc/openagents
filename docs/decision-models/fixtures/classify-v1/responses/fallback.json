@@ -1,0 +1,205 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "acme-kev",
+  "capacity": "dedicated",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "test-policy",
+    "select": {
+      "single_label": {
+        "ties": "first-declared",
+        "uncertain_below": 0.9,
+        "no_match": {
+          "kind": "null"
+        }
+      }
+    },
+    "review": {
+      "v": "openagents.classify-review.v1",
+      "reviewer": "acme-kev-review",
+      "trigger": "no-match",
+      "on_failure": "keep-original",
+      "max_items": 8,
+      "max_attempts": 8,
+      "latency_ms": 5000,
+      "fallback": [
+        {
+          "on": "transport",
+          "model": "acme-kev-fb"
+        }
+      ]
+    }
+  },
+  "served": {
+    "model": "kev-0.6b",
+    "artifact_signature": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "outcome": "answered",
+  "outcomes": {
+    "answered": 1,
+    "refused": 0,
+    "unavailable": 0,
+    "unattempted": 0
+  },
+  "results": [
+    {
+      "input": "one",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "single-label",
+          "outcome": "answered",
+          "raw": {
+            "type": "choice",
+            "choice": "a",
+            "confidence": 0.8,
+            "probabilities": {
+              "a": 0.8,
+              "b": 0.2
+            }
+          },
+          "selected": "a",
+          "uncertain": true
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": {
+        "input_tokens": 3,
+        "output_tokens": 1
+      },
+      "review_status": "not-reviewed",
+      "attempts": [
+        {
+          "role": "primary",
+          "door": "acme-kev",
+          "model": "kev-0.6b",
+          "outcome": "unavailable",
+          "attempt_id": "fixture-reference-0",
+          "cause": "the door answered 503 Service Unavailable",
+          "latency_ms": 0
+        },
+        {
+          "role": "fallback",
+          "door": "acme-kev-fb",
+          "model": "kev-0.6b",
+          "outcome": "answered",
+          "attempt_id": "fixture-reference-1",
+          "latency_ms": 0,
+          "receipt": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "served": {
+            "model": "kev-0.6b",
+            "artifact_signature": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "usage_ref": "fixture-reference-3"
+        }
+      ],
+      "original": {
+        "input": "one",
+        "outcome": "unavailable",
+        "cause": "the door answered 503 Service Unavailable",
+        "units": [
+          {
+            "mode": "single-label",
+            "outcome": "unavailable",
+            "cause": "the door answered 503 Service Unavailable",
+            "selected": null
+          }
+        ],
+        "latency_ms": 0,
+        "attempts": [
+          {
+            "role": "primary",
+            "door": "acme-kev",
+            "model": "kev-0.6b",
+            "outcome": "unavailable",
+            "attempt_id": "fixture-reference-0",
+            "cause": "the door answered 503 Service Unavailable",
+            "latency_ms": 0
+          },
+          {
+            "role": "fallback",
+            "door": "acme-kev-fb",
+            "model": "kev-0.6b",
+            "outcome": "answered",
+            "attempt_id": "fixture-reference-1",
+            "latency_ms": 0,
+            "receipt": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+            "served": {
+              "model": "kev-0.6b",
+              "artifact_signature": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "usage_ref": "fixture-reference-3"
+          }
+        ]
+      },
+      "fallback": {
+        "on": "transport",
+        "door": "acme-kev-fb",
+        "model": "kev-0.6b",
+        "outcome": "answered",
+        "attempt_id": "fixture-reference-1"
+      }
+    }
+  ],
+  "selections": [],
+  "aggregates": [
+    {
+      "mode": "single-label",
+      "outcomes": {
+        "answered": 1,
+        "refused": 0,
+        "unavailable": 0,
+        "unattempted": 0
+      },
+      "no_match": 0,
+      "labels": {
+        "a": 1,
+        "b": 0
+      },
+      "uncertain": [
+        "one"
+      ]
+    }
+  ],
+  "usage": {
+    "forwards": 1,
+    "input_tokens_complete": false,
+    "output_tokens_complete": false,
+    "review": {
+      "forwards": 0,
+      "input_tokens_complete": true,
+      "output_tokens_complete": true,
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    "fallback": {
+      "forwards": 1,
+      "input_tokens_complete": true,
+      "output_tokens_complete": true,
+      "input_tokens": 3,
+      "output_tokens": 1
+    }
+  },
+  "timing": {
+    "latency_ms": 0
+  },
+  "review": {
+    "v": "openagents.classify-review.v1",
+    "policy_digest": "sha256:5c7852090c7cceade50d5fa1889477018d3d2033dd43f9cc3ceb8b036d270f7b",
+    "reviewer": "acme-kev-review",
+    "trigger": "no-match",
+    "on_failure": "keep-original",
+    "bounds": {
+      "max_items": 8,
+      "max_attempts": 8,
+      "latency_ms": 5000,
+      "max_spend": null
+    },
+    "attempts": 1,
+    "reviewed": 0,
+    "review_answered": 0,
+    "fallback_dispatched": 1,
+    "fallback_answered": 1
+  }
+}

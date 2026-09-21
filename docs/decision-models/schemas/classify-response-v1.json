@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openagents.com/schemas/classify-response-v1.json",
   "title": "Classification response v1",
-  "description": "Native and reviewed classification reports. Enforces nested native result shapes and usage completeness. Cross-field label/rubric membership, distribution mass, aggregate arithmetic, and review policy semantics are checked by runtime conformance tests. Review and attempt records remain additive objects pending their complete schema.",
+  "description": "Native and reviewed classification reports, including nested results, attempt identities, review outcomes, fallback, and usage completeness. Cross-field label/rubric membership, distribution mass, aggregate arithmetic, receipt integrity, and policy semantics require runtime conformance tests.",
   "type": "object",
   "required": [
     "v",
@@ -29,7 +29,7 @@
       "type": "string"
     },
     "policy": {
-      "type": "object"
+      "$ref": "#/$defs/policy"
     },
     "served": {
       "$ref": "#/$defs/served"
@@ -82,7 +82,7 @@
       "additionalProperties": true
     },
     "review": {
-      "type": "object"
+      "$ref": "#/$defs/review_summary"
     }
   },
   "additionalProperties": true,
@@ -287,7 +287,7 @@
           "$ref": "#/$defs/unit"
         },
         "review": {
-          "type": "object"
+          "$ref": "#/$defs/review_record"
         },
         "final_source": {
           "enum": [
@@ -328,6 +328,20 @@
                   },
                   {
                     "type": "null"
+                  }
+                ]
+              },
+              "review": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/review_record"
+                  },
+                  {
+                    "properties": {
+                      "raw": {
+                        "$ref": "#/$defs/choice"
+                      }
+                    }
                   }
                 ]
               }
@@ -372,6 +386,23 @@
                     "type": "null"
                   }
                 ]
+              },
+              "review": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/review_record"
+                  },
+                  {
+                    "properties": {
+                      "raw": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "$ref": "#/$defs/noul"
+                        }
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
@@ -406,6 +437,20 @@
                   },
                   {
                     "type": "null"
+                  }
+                ]
+              },
+              "review": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/review_record"
+                  },
+                  {
+                    "properties": {
+                      "raw": {
+                        "$ref": "#/$defs/noul"
+                      }
+                    }
                   }
                 ]
               }
@@ -443,6 +488,20 @@
                   },
                   {
                     "type": "null"
+                  }
+                ]
+              },
+              "review": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/review_record"
+                  },
+                  {
+                    "properties": {
+                      "raw": {
+                        "$ref": "#/$defs/score"
+                      }
+                    }
                   }
                 ]
               }
@@ -541,12 +600,13 @@
         },
         "attempts": {
           "type": "array",
+          "minItems": 1,
           "items": {
-            "type": "object"
+            "$ref": "#/$defs/attempt"
           }
         },
         "fallback": {
-          "type": "object"
+          "$ref": "#/$defs/fallback_record"
         }
       },
       "additionalProperties": true
@@ -714,10 +774,10 @@
           "minimum": 0
         },
         "review": {
-          "type": "object"
+          "$ref": "#/$defs/secondary_usage"
         },
         "fallback": {
-          "type": "object"
+          "$ref": "#/$defs/secondary_usage"
         }
       },
       "additionalProperties": true,
@@ -765,6 +825,766 @@
           }
         }
       ]
+    },
+    "attempt": {
+      "type": "object",
+      "required": [
+        "role",
+        "door",
+        "model",
+        "outcome",
+        "attempt_id"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "primary",
+            "review",
+            "fallback"
+          ]
+        },
+        "door": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "answered",
+            "mixed",
+            "refused",
+            "unavailable",
+            "unattempted"
+          ]
+        },
+        "attempt_id": {
+          "type": "string"
+        },
+        "cause": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "receipt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "served": {
+          "$ref": "#/$defs/served"
+        },
+        "usage_ref": {
+          "type": "string"
+        },
+        "settlement": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "enum": [
+                  "review",
+                  "fallback"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "receipt",
+              "served",
+              "latency_ms"
+            ]
+          }
+        }
+      ]
+    },
+    "review_record": {
+      "type": "object",
+      "required": [
+        "reason",
+        "outcome",
+        "selected"
+      ],
+      "properties": {
+        "reason": {
+          "enum": [
+            "uncertain",
+            "no-match",
+            "always"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "answered",
+            "refused",
+            "unavailable",
+            "unattempted"
+          ]
+        },
+        "selected": {},
+        "cause": {
+          "type": "string"
+        },
+        "attempt_id": {
+          "type": "string"
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "artifact": {
+          "type": "string"
+        },
+        "settlement": {
+          "type": "string"
+        },
+        "raw": {},
+        "changed": {
+          "type": "boolean"
+        },
+        "no_match": {
+          "type": "boolean"
+        },
+        "uncertain": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "answered"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "raw",
+              "changed",
+              "attempt_id",
+              "latency_ms",
+              "usage"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "refused",
+                  "unavailable",
+                  "unattempted"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selected": {
+                "type": "null"
+              }
+            },
+            "not": {
+              "required": [
+                "raw"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "fallback_record": {
+      "type": "object",
+      "required": [
+        "on",
+        "outcome"
+      ],
+      "properties": {
+        "on": {
+          "enum": [
+            "transport",
+            "capacity",
+            "refused"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "answered",
+            "refused",
+            "unavailable",
+            "unattempted",
+            "skipped"
+          ]
+        },
+        "cause": {
+          "type": "string"
+        },
+        "door": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "attempt_id": {
+          "type": "string"
+        },
+        "settlement": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "review_summary": {
+      "type": "object",
+      "required": [
+        "v",
+        "policy_digest",
+        "reviewer",
+        "trigger",
+        "on_failure",
+        "bounds",
+        "attempts",
+        "reviewed",
+        "review_answered",
+        "fallback_dispatched",
+        "fallback_answered"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.classify-review.v1"
+        },
+        "policy_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "reviewer": {
+          "type": "string"
+        },
+        "trigger": {
+          "enum": [
+            "uncertain",
+            "no-match",
+            "always"
+          ]
+        },
+        "on_failure": {
+          "enum": [
+            "keep-original",
+            "strict"
+          ]
+        },
+        "bounds": {
+          "type": "object",
+          "required": [
+            "max_items",
+            "max_attempts",
+            "latency_ms",
+            "max_spend"
+          ],
+          "properties": {
+            "max_items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_attempts": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "latency_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_spend": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reviewed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "review_answered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fallback_dispatched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fallback_answered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reserved_spend": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "secondary_usage": {
+      "type": "object",
+      "required": [
+        "forwards",
+        "input_tokens_complete",
+        "output_tokens_complete"
+      ],
+      "properties": {
+        "forwards": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "input_tokens_complete": {
+          "type": "boolean"
+        },
+        "output_tokens_complete": {
+          "type": "boolean"
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "input_tokens_complete": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "input_tokens"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "input_tokens"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_tokens_complete": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "output_tokens"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "output_tokens"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": "openagents.classify-policy.v1"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "select": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "single_label": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/singleSelect"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "multi_label": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/multiSelect"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "binary": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/binarySelect"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/scoreSelect"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": []
+        },
+        "review": {
+          "$ref": "#/$defs/review"
+        }
+      },
+      "required": [
+        "v",
+        "name",
+        "select"
+      ]
+    },
+    "singleSelect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ties": {
+          "enum": [
+            "first-declared",
+            "no-match"
+          ]
+        },
+        "min_probability": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "uncertain_below": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "no_match": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "null"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "label"
+                },
+                "label": {
+                  "$ref": "#/$defs/id"
+                }
+              },
+              "required": [
+                "kind",
+                "label"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "ties",
+        "no_match"
+      ]
+    },
+    "multiSelect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "top_n": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ties": {
+          "enum": [
+            "include-all",
+            "truncate"
+          ]
+        },
+        "no_match": {
+          "enum": [
+            "empty",
+            "null"
+          ]
+        },
+        "uncertain_below": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "threshold",
+        "ties",
+        "no_match"
+      ]
+    },
+    "binarySelect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "uncertain_below": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "threshold"
+      ]
+    },
+    "scoreSelect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "enum": [
+            "ascending",
+            "descending"
+          ]
+        },
+        "top_n": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "uncertain_below": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "order"
+      ]
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "reviewer",
+        "trigger",
+        "on_failure",
+        "max_items",
+        "max_attempts",
+        "latency_ms"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.classify-review.v1"
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trigger": {
+          "enum": [
+            "uncertain",
+            "no-match",
+            "always"
+          ]
+        },
+        "on_failure": {
+          "enum": [
+            "keep-original",
+            "strict"
+          ]
+        },
+        "max_items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18446744073709551615
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18446744073709551615
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18446744073709551615
+        },
+        "max_spend": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18446744073709551615
+        },
+        "fallback": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fallback"
+          }
+        }
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "on",
+        "model"
+      ],
+      "properties": {
+        "on": {
+          "enum": [
+            "transport",
+            "capacity",
+            "refused"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "codes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   }
 }

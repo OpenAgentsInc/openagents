@@ -27,10 +27,14 @@ recommendations. Fixture text does not establish multilingual model support.
 
 `responses/` contains reports produced by real gateway HTTP tests against
 bounded synthetic backends: categorical, independent multi-label, binary with
-refusal, score, full refusal, unavailable, and mixed completion. The mixed
-report includes queued work that never dispatched. Only elapsed `latency_ms`
-values are normalized to zero; this is not latency evidence. Native scores,
-usage completeness, input order, and served identity must match exactly.
+refusal, score, full refusal, unavailable, mixed completion, corrected review,
+invalid review with original retention, and opt-in fallback. The mixed
+report includes queued work that never dispatched. Elapsed `latency_ms` values are normalized to zero. Run-specific attempt,
+receipt, and usage references are replaced with stable placeholders while
+preserving reference equality. These examples are neither latency evidence nor
+valid receipt chains. Separate runtime tests verify actual receipt hashes and
+response bindings. Native scores, usage completeness, input order, and model
+identity must match exactly.
 
 Run `cargo test --locked -p gateway --test serve` to compare the reports with
 the executing gateway. Run the Oak corpus test above to decode every answered
@@ -44,7 +48,8 @@ UPDATE_CLASSIFY_FIXTURES=1 cargo test --locked -p gateway --test serve classify_
 The [response JSON Schema](../../schemas/classify-response-v1.json) constrains
 native item, unit, aggregate, selection, identity, and usage shapes. Distribution
 mass, label membership, aggregate arithmetic, and policy semantics still need
-runtime checks. Review extension objects are not yet fully constrained.
+runtime checks. Nested review records, attempts, fallback, and secondary usage
+are covered structurally too; schema validation does not verify a receipt hash.
 A disconnected caller receives no cancellation response; transport cancellation
 and durable settlement need their own runtime evidence, not a fabricated JSON
 report. This corpus does not yet establish that cancellation requirement.

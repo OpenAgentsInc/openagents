@@ -1,0 +1,237 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "acme-kev",
+  "capacity": "dedicated",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "test-policy",
+    "select": {
+      "single_label": {
+        "ties": "first-declared",
+        "uncertain_below": 0.9,
+        "no_match": {
+          "kind": "null"
+        }
+      }
+    },
+    "review": {
+      "v": "openagents.classify-review.v1",
+      "reviewer": "acme-kev-review",
+      "trigger": "uncertain",
+      "on_failure": "keep-original",
+      "max_items": 8,
+      "max_attempts": 8,
+      "latency_ms": 5000
+    }
+  },
+  "served": {
+    "model": "kev-0.6b",
+    "artifact_signature": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "outcome": "answered",
+  "outcomes": {
+    "answered": 2,
+    "refused": 0,
+    "unavailable": 0,
+    "unattempted": 0
+  },
+  "results": [
+    {
+      "input": "second",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "single-label",
+          "outcome": "answered",
+          "raw": {
+            "type": "choice",
+            "choice": "a",
+            "confidence": 0.55,
+            "probabilities": {
+              "a": 0.55,
+              "b": 0.45
+            }
+          },
+          "selected": "a",
+          "uncertain": true,
+          "review": {
+            "reason": "uncertain",
+            "attempt_id": "fixture-reference-0",
+            "latency_ms": 0,
+            "usage": {
+              "input_tokens": 4,
+              "output_tokens": 2
+            },
+            "model": "kev-0.6b",
+            "artifact": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "outcome": "unavailable",
+            "selected": null,
+            "cause": "the answer is not a choice"
+          },
+          "final_source": "primary"
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": {
+        "input_tokens": 3,
+        "output_tokens": 1
+      },
+      "review_status": "review-incomplete",
+      "attempts": [
+        {
+          "role": "primary",
+          "door": "acme-kev",
+          "model": "kev-0.6b",
+          "outcome": "answered",
+          "attempt_id": "fixture-reference-1",
+          "latency_ms": 0
+        },
+        {
+          "role": "review",
+          "door": "acme-kev-review",
+          "model": "kev-0.6b",
+          "outcome": "answered",
+          "attempt_id": "fixture-reference-0",
+          "latency_ms": 0,
+          "receipt": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "served": {
+            "model": "kev-0.6b",
+            "artifact_signature": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "usage_ref": "fixture-reference-3"
+        }
+      ]
+    },
+    {
+      "input": "first",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "single-label",
+          "outcome": "answered",
+          "raw": {
+            "type": "choice",
+            "choice": "a",
+            "confidence": 0.55,
+            "probabilities": {
+              "a": 0.55,
+              "b": 0.45
+            }
+          },
+          "selected": "a",
+          "uncertain": true,
+          "review": {
+            "reason": "uncertain",
+            "attempt_id": "fixture-reference-4",
+            "latency_ms": 0,
+            "usage": {
+              "input_tokens": 4,
+              "output_tokens": 2
+            },
+            "model": "kev-0.6b",
+            "artifact": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "outcome": "unavailable",
+            "selected": null,
+            "cause": "the answer is not a choice"
+          },
+          "final_source": "primary"
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": {
+        "input_tokens": 3,
+        "output_tokens": 1
+      },
+      "review_status": "review-incomplete",
+      "attempts": [
+        {
+          "role": "primary",
+          "door": "acme-kev",
+          "model": "kev-0.6b",
+          "outcome": "answered",
+          "attempt_id": "fixture-reference-5",
+          "latency_ms": 0
+        },
+        {
+          "role": "review",
+          "door": "acme-kev-review",
+          "model": "kev-0.6b",
+          "outcome": "answered",
+          "attempt_id": "fixture-reference-4",
+          "latency_ms": 0,
+          "receipt": "sha256:0000000000000000000000000000000000000000000000000000000000000006",
+          "served": {
+            "model": "kev-0.6b",
+            "artifact_signature": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "usage_ref": "fixture-reference-7"
+        }
+      ]
+    }
+  ],
+  "selections": [],
+  "aggregates": [
+    {
+      "mode": "single-label",
+      "outcomes": {
+        "answered": 2,
+        "refused": 0,
+        "unavailable": 0,
+        "unattempted": 0
+      },
+      "no_match": 0,
+      "labels": {
+        "a": 2,
+        "b": 0
+      },
+      "uncertain": [
+        "second",
+        "first"
+      ]
+    }
+  ],
+  "usage": {
+    "forwards": 2,
+    "input_tokens_complete": true,
+    "output_tokens_complete": true,
+    "input_tokens": 6,
+    "output_tokens": 2,
+    "review": {
+      "forwards": 2,
+      "input_tokens_complete": true,
+      "output_tokens_complete": true,
+      "input_tokens": 8,
+      "output_tokens": 4
+    },
+    "fallback": {
+      "forwards": 0,
+      "input_tokens_complete": true,
+      "output_tokens_complete": true,
+      "input_tokens": 0,
+      "output_tokens": 0
+    }
+  },
+  "timing": {
+    "latency_ms": 0
+  },
+  "review": {
+    "v": "openagents.classify-review.v1",
+    "policy_digest": "sha256:da9a6456743ec79324c872242e7dfe4b8fed5acafb0fc04742bea3931977a1dd",
+    "reviewer": "acme-kev-review",
+    "trigger": "uncertain",
+    "on_failure": "keep-original",
+    "bounds": {
+      "max_items": 8,
+      "max_attempts": 8,
+      "latency_ms": 5000,
+      "max_spend": null
+    },
+    "attempts": 2,
+    "reviewed": 2,
+    "review_answered": 0,
+    "fallback_dispatched": 0,
+    "fallback_answered": 0
+  }
+}
