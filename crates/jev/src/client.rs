@@ -156,7 +156,7 @@ pub struct Client {
 /// What every request reads, behind one allocation.
 #[derive(Debug)]
 struct Inner {
-    api_key: ApiKey,
+    api_key: Option<ApiKey>,
     base_url: String,
     default_model: String,
     timeout: Duration,
@@ -337,7 +337,7 @@ impl Client {
         let headers = transport::headers(
             &self.inner.default_headers,
             headers,
-            &self.inner.api_key,
+            self.inner.api_key.as_ref(),
             body.is_some(),
         )?;
         Ok(Prepared {

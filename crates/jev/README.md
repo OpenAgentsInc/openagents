@@ -23,6 +23,27 @@ and the wire contract is [the Jev knowledge base](../../docs/decision-models/jev
 
 ## Asking a question
 
+For a local server that requires no credential, construct the client explicitly:
+
+```rust
+# fn local() -> jev::Result<()> {
+let client = jev::Client::new(jev::Config::local(
+    "http://127.0.0.1:8000",
+    "local-model",
+))?;
+# let _ = client;
+# Ok(()) }
+```
+
+`Config::local` requires a loopback IP literal such as `127.0.0.1` or `[::1]`
+and an explicit model. It ignores provider environment credentials and does not
+use proxies or follow redirects. Hostnames, remote IPs, URL credentials, query
+strings, fragments, explicit API keys, custom HTTP clients, and credential headers
+are refused. Use the ordinary authenticated configuration for a remote provider.
+This SDK option does not yet migrate Coder's environment-based decision profiles.
+It confines the client's transport to loopback; it does not attest where the
+local server performs inference or whether that server forwards requests.
+
 ```rust
 use jev::{Choice, Client, Config, Noul, Questions, Score, SystemOneRequest};
 

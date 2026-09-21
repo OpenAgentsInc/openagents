@@ -53,7 +53,7 @@ static RUNTIME: LazyLock<String> = LazyLock::new(|| {
 pub(crate) fn headers(
     defaults: &HeaderMap,
     per_call: &HeaderMap,
-    key: &ApiKey,
+    key: Option<&ApiKey>,
     has_body: bool,
 ) -> Result<HeaderMap> {
     let mut merged = defaults.clone();
@@ -61,9 +61,22 @@ pub(crate) fn headers(
         merged.insert(name.clone(), value.clone());
     }
     merged.remove(RETRY_COUNT_HEADER);
-    let bearer = HeaderValue::from_str(&format!("Bearer {}", key.expose()))
-        .map_err(|_| Error::Config("the API key holds a character a header cannot carry".into()))?;
-    merged.insert(AUTHORIZATION, bearer);
+    if let Some(key) = key {
+        let bearer = HeaderValue::from_str(&format!("Bearer {}", key.expose())).map_err(|_| {
+            Error::Config("the API key holds a character a header cannot carry".into())
+        })?;
+        merged.insert(AUTHORIZATION, bearer);
+    } else if merged.keys().any(|name| {
+        matches!(
+            name.as_str(),
+            "authorization" | "proxy-authorization" | "x-api-key" | "api-key" | "cookie"
+        ) || name.as_str().contains("token")
+            || name.as_str().contains("secret")
+    }) {
+        return Err(Error::Config(
+            "local-only requests cannot carry credential headers".into(),
+        ));
+    }
     merged.insert(ACCEPT, HeaderValue::from_static(JSON));
     merged.insert(USER_AGENT, value(&AGENT)?);
     merged.insert(name(SDK_HEADER)?, value(&AGENT)?);

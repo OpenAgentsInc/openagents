@@ -19,6 +19,81 @@ use tokio::sync::Mutex;
 
 type Outcome = Result<(), Box<dyn std::error::Error>>;
 
+#[tokio::test]
+async fn local_only_sends_no_credentials_and_does_not_follow_redirects() -> Outcome {
+    let (base, seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE)]).await?;
+    Client::new(Config::local(&base, "local-model").retry(once()))?
+        .system_one(asking())
+        .await?;
+    let observed = seen.lock().await;
+    assert_eq!(observed[0].header("authorization"), None);
+    assert_eq!(observed[0].json()?["model"], "local-model");
+    drop(observed);
+
+    let (destination, destination_seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE)]).await?;
+    let (base, seen) = serve(vec![
+        Reply::new(307, "").header("location", &format!("{destination}/v1/systemone")),
+    ])
+    .await?;
+    assert!(
+        Client::new(Config::local(&base, "local-model").retry(once()))?
+            .system_one(asking())
+            .await
+            .is_err()
+    );
+    assert_eq!(seen.lock().await.len(), 1);
+    assert!(destination_seen.lock().await.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn local_only_refuses_remote_urls_and_credential_overrides() -> Outcome {
+    for url in [
+        "https://api.typesafe.ai",
+        "http://localhost:8000",
+        "http://192.168.1.2:8000",
+        "http://user:password@127.0.0.1",
+        "http://127.0.0.1?key=x",
+        "http://127.0.0.1#fragment",
+    ] {
+        assert!(matches!(
+            Client::new(Config::local(url, "local")),
+            Err(Error::Config(_))
+        ));
+    }
+    assert!(Client::new(Config::local("http://[::1]:8000", "local")).is_ok());
+    assert!(Client::new(Config::local("http://127.0.0.1", "")).is_err());
+    assert!(Client::new(Config::local("http://127.0.0.1", "local").api_key("unwanted")).is_err());
+    assert!(
+        Client::new(Config::local("http://127.0.0.1", "local").http_client(reqwest::Client::new()))
+            .is_err()
+    );
+    let (base, seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE)]).await?;
+    for header in [
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "x-api-key",
+        "x-access-token",
+    ] {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_bytes(header.as_bytes())?,
+            HeaderValue::from_static("unwanted"),
+        );
+        assert!(
+            Client::new(Config::local(&base, "local").default_headers(headers.clone())).is_err()
+        );
+        let error = Client::new(Config::local(&base, "local").retry(once()))?
+            .system_one(asking().headers(headers))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, Error::Config(_)));
+    }
+    assert!(seen.lock().await.is_empty());
+    Ok(())
+}
+
 /// The recorded request of a real `POST /v1/systemone`.
 const RECORDED_REQUEST: &str = include_str!("fixtures/systemone-request.json");
 

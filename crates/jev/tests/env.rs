@@ -99,5 +99,12 @@ fn resolution_is_explicit_then_env_then_default() -> Outcome {
     let client = Client::new(Config::new())?;
     assert_eq!(client.base_url(), "https://api.typesafe.ai");
     assert_eq!(client.default_model(), "jev-latest");
+
+    // An explicit local profile cannot inherit a hosted endpoint or model.
+    set(BASE, Some("https://example.invalid"));
+    set(MODEL, Some("remote-model"));
+    let local = Client::new(Config::local("http://127.0.0.1:8000", "local-model"))?;
+    assert_eq!(local.base_url(), "http://127.0.0.1:8000");
+    assert_eq!(local.default_model(), "local-model");
     Ok(())
 }

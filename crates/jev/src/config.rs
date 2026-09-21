@@ -82,6 +82,7 @@ impl From<String> for ApiKey {
 #[derive(Debug, Clone, Default)]
 pub struct Config {
     api_key: Option<ApiKey>,
+    local_only: bool,
     base_url: Option<String>,
     default_model: Option<String>,
     timeout: Option<Duration>,
@@ -95,6 +96,20 @@ impl Config {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Connect directly to an explicitly named loopback IP without credentials.
+    /// This mode ignores provider environment settings and disables proxies and
+    /// redirects. It refuses custom HTTP clients and explicit API keys because
+    /// either could widen its transport or credential boundary.
+    #[must_use]
+    pub fn local<U: Into<String>, M: Into<String>>(url: U, model: M) -> Self {
+        Self {
+            local_only: true,
+            base_url: Some(url.into()),
+            default_model: Some(model.into()),
+            ..Self::default()
+        }
     }
 
     /// The key to send. Read from `TYPESAFE_API_KEY` when left out.
@@ -156,14 +171,20 @@ impl Config {
 
     /// Resolve every setting and check it.
     pub(crate) fn resolve(self) -> Result<Resolved> {
-        let api_key = match self.api_key {
-            Some(key) => key,
-            None => ApiKey::new(from_env(env::API_KEY).ok_or_else(|| {
+        let api_key = match (self.local_only, self.api_key) {
+            (true, Some(_)) => {
+                return Err(Error::Config(
+                    "a local-only client cannot carry an API key".into(),
+                ));
+            }
+            (true, None) => None,
+            (false, Some(key)) => Some(key),
+            (false, None) => Some(ApiKey::new(from_env(env::API_KEY).ok_or_else(|| {
                 Error::Config(format!(
                     "no API key was provided; pass `Config::api_key` or set {}",
                     env::API_KEY
                 ))
-            })?),
+            })?)),
         };
         let base_url = self
             .base_url
@@ -178,10 +199,39 @@ impl Config {
                 parsed.scheme()
             )));
         }
+        if self.local_only {
+            let loopback = match parsed.host() {
+                Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+                Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+                _ => false,
+            };
+            if !loopback
+                || !parsed.username().is_empty()
+                || parsed.password().is_some()
+                || parsed.query().is_some()
+                || parsed.fragment().is_some()
+            {
+                return Err(Error::Config(
+                    "local-only requires a loopback IP URL without credentials, query, or fragment"
+                        .into(),
+                ));
+            }
+            if self.http_client.is_some() {
+                return Err(Error::Config(
+                    "local-only cannot use a custom HTTP client".into(),
+                ));
+            }
+            crate::transport::headers(&self.default_headers, &HeaderMap::new(), None, false)?;
+        }
         let default_model = self
             .default_model
             .or_else(|| from_env(env::DEFAULT_MODEL))
             .unwrap_or_else(|| defaults::MODEL.to_string());
+        if self.local_only && default_model.trim().is_empty() {
+            return Err(Error::Config(
+                "local-only requires an explicit nonempty model".into(),
+            ));
+        }
         let timeout = self.timeout.unwrap_or(defaults::TIMEOUT);
         if timeout.is_zero() {
             return Err(Error::Config(
@@ -192,9 +242,19 @@ impl Config {
         retry.validate()?;
         let http = match self.http_client {
             Some(client) => client,
-            None => reqwest::Client::builder().build().map_err(|error| {
-                Error::Config(format!("the HTTP client failed to build: {error}"))
-            })?,
+            None => {
+                let builder = reqwest::Client::builder();
+                let builder = if self.local_only {
+                    builder
+                        .no_proxy()
+                        .redirect(reqwest::redirect::Policy::none())
+                } else {
+                    builder
+                };
+                builder.build().map_err(|error| {
+                    Error::Config(format!("the HTTP client failed to build: {error}"))
+                })?
+            }
         };
         Ok(Resolved {
             api_key,
@@ -210,7 +270,7 @@ impl Config {
 
 /// Every setting, resolved and checked.
 pub(crate) struct Resolved {
-    pub(crate) api_key: ApiKey,
+    pub(crate) api_key: Option<ApiKey>,
     pub(crate) base_url: String,
     pub(crate) default_model: String,
     pub(crate) timeout: Duration,
