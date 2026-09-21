@@ -1,22 +1,10 @@
-//! The admission record a `trained` binding is activated on.
+//! Immutable candidate admission records produced by replaying Gym evidence.
 //!
-//! `gym::admission` writes a decision document — the frozen plan, the
-//! ruling, the evidence references, the candidate identity — and seals it
-//! as `admission:<sha256>` over the canonical serialization of every field
-//! but the digest itself. This module is the registry's copy of that
-//! contract: it parses the same document, recomputes the same digest under
-//! the same canonicalization the manifest uses, and refuses anything that
-//! does not verify. The two crates do not link to each other; the document
-//! is the interface, which is the point — a record verified on read cannot
-//! be swapped for a stronger-looking one on the way to activation.
-//!
-//! What the registry consumes of the record is small on purpose: the
-//! ruling, the exact candidate identity, the family scope the admission
-//! covered, and the plan it was judged under. Everything else — the
-//! criteria, the evidence references, the phases — stays inside the
-//! document's digest, so it is bound even where this crate does not read
-//! it. `docs/decision-models/candidate-admission.md` states the full
-//! contract.
+//! A checksum binds bytes but does not establish that their claimed ruling is
+//! true. Public callers construct records through [`Record::evaluate`] or
+//! [`Record::verify`], both of which run the native Gym evaluator. Loading a
+//! serialized decision alone cannot authorize activation. The evaluator still
+//! relies on the operator to supply authentic, protected measurement stores.
 
 use std::collections::BTreeMap;
 
@@ -70,28 +58,24 @@ pub struct Candidate {
     pub execution: BTreeMap<String, String>,
 }
 
-/// A verified admission record.
-///
-/// `Record::parse` runs the verification: a record that exists at all has
-/// already had its schema checked and its digest recomputed over the
-/// document it arrived in. What remains to a caller is whether the ruling
-/// admits — [`Record::admitted`] — and what the record binds.
+/// An immutable admission record constructed by native evidence replay.
 #[derive(Clone, Debug)]
 pub struct Record {
+    base: Candidate,
     /// The plan's id.
-    pub plan: String,
+    plan: String,
     /// The plan's digest — the identity the locked read was spent under.
-    pub plan_digest: String,
+    plan_digest: String,
     /// What the evidence concluded.
-    pub ruling: Ruling,
+    ruling: Ruling,
     /// The exact artifact identity the activation binds.
-    pub candidate: Candidate,
+    candidate: Candidate,
     /// The family scope the admission covered, which the binding carries.
-    pub scope: Vec<String>,
+    scope: Vec<String>,
     /// When the decision was taken, as the recorder dated it.
-    pub decided_at: String,
+    decided_at: String,
     /// `admission:<sha256>` over the document's other fields.
-    pub digest: String,
+    digest: String,
     /// The verified document, kept whole: the criteria, the phases, and
     /// the evidence references are bound by the digest whether or not this
     /// crate reads them.
@@ -141,7 +125,10 @@ impl std::fmt::Display for Fault {
         match self {
             Self::Malformed(reason) => write!(f, "the admission record is not readable: {reason}"),
             Self::Schema { found } => {
-                write!(f, "the admission record is tagged {found}, which is not {DECISION_SCHEMA}")
+                write!(
+                    f,
+                    "the admission record is tagged {found}, which is not {DECISION_SCHEMA}"
+                )
             }
             Self::Tampered { recorded, computed } => write!(
                 f,
@@ -191,14 +178,70 @@ struct Wire {
 }
 
 impl Record {
-    /// Parse and verify an admission record.
-    ///
-    /// Three checks, all before a field is trusted: the document parses,
-    /// it is tagged `openagents.gym.admission_decision.v1`, and its
-    /// `admission:<sha256>` digest recomputes over every other field under
-    /// the manifest's canonicalization. A record that fails any of them is
-    /// not a record — it is refused, and no ruling inside it is read.
-    pub fn parse(text: &str) -> Result<Self, Fault> {
+    /// Evaluate a frozen plan against native evidence before constructing a record.
+    pub fn evaluate(
+        plan: &gym::admission::Plan,
+        evidence: &gym::admission::Evidence<'_>,
+    ) -> Result<Self, Fault> {
+        let decision = plan
+            .decide(evidence)
+            .map_err(|error| Fault::Malformed(error.to_string()))?;
+        let text = serde_json::to_string(&decision)
+            .map_err(|error| Fault::Malformed(error.to_string()))?;
+        Self::parse_evaluated(
+            &text,
+            Candidate {
+                model: plan.base.identity.model.clone(),
+                adapter: (!plan.base.identity.adapter.is_empty())
+                    .then(|| plan.base.identity.adapter.clone()),
+                artifact_signature: plan.base.identity.artifact_signature.clone(),
+                execution: plan.base.identity.execution.clone(),
+            },
+        )
+    }
+
+    /// Reload a stored decision only when replay produces the exact same record.
+    pub fn verify(
+        text: &str,
+        plan: &gym::admission::Plan,
+        evidence: &gym::admission::Evidence<'_>,
+    ) -> Result<Self, Fault> {
+        let evaluated = Self::evaluate(plan, evidence)?;
+        let supplied = Self::parse_evaluated(text, evaluated.base.clone())?;
+        if supplied.digest != evaluated.digest || supplied.document != evaluated.document {
+            return Err(Fault::Denied(
+                "stored admission does not match native evidence replay".into(),
+            ));
+        }
+        Ok(evaluated)
+    }
+
+    /// The candidate identity produced by evaluation.
+    pub fn candidate(&self) -> &Candidate {
+        &self.candidate
+    }
+
+    /// The family scope produced by evaluation.
+    pub fn scope(&self) -> &[String] {
+        &self.scope
+    }
+
+    /// The pinned plan and its digest.
+    pub fn plan(&self) -> (&str, &str) {
+        (&self.plan, &self.plan_digest)
+    }
+
+    /// The recorded evidence evaluation time.
+    pub fn decided_at(&self) -> &str {
+        &self.decided_at
+    }
+
+    /// The base identity whose measured replacement was authorized.
+    pub fn base(&self) -> &Candidate {
+        &self.base
+    }
+
+    fn parse_evaluated(text: &str, base: Candidate) -> Result<Self, Fault> {
         let mut document: Value =
             serde_json::from_str(text).map_err(|error| Fault::Malformed(error.to_string()))?;
         let object = document
@@ -216,15 +259,18 @@ impl Record {
             .remove("digest")
             .and_then(|value| value.as_str().map(str::to_string))
             .unwrap_or_default();
-        let computed = format!("admission:{:x}", Sha256::digest(canonicalize(&document).as_bytes()));
+        let computed = format!(
+            "admission:{:x}",
+            Sha256::digest(canonicalize(&document).as_bytes())
+        );
         if recorded != computed {
             return Err(Fault::Tampered { recorded, computed });
         }
-        let wire: Wire =
-            serde_json::from_value(document.clone()).map_err(|error| {
-                Fault::Malformed(format!("the record is not the decision's shape: {error}"))
-            })?;
+        let wire: Wire = serde_json::from_value(document.clone()).map_err(|error| {
+            Fault::Malformed(format!("the record is not the decision's shape: {error}"))
+        })?;
         Ok(Self {
+            base,
             plan: wire.plan,
             plan_digest: wire.plan_digest,
             ruling: wire.ruling,
@@ -278,5 +324,157 @@ const fn ruling_name(ruling: Ruling) -> &'static str {
         Ruling::Failed => "failed",
         Ruling::Unverifiable => "unverifiable",
         Ruling::Refused => "refused",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gym::ab::{Metric, MetricFloor, Rule};
+    use gym::admission::*;
+    use gym::gate::{Basis, Bound, Budget, DeploymentRule, GatedPercentile};
+    use gym::suite::{Partition, Suite};
+
+    fn plan(suite: &Suite) -> Plan {
+        let unknown = Bound {
+            value: None,
+            basis: Basis::Unmeasured,
+            evidence: vec![],
+            why: "Fixture has no measurements.".into(),
+        };
+        let floor = |metric| MetricFloor {
+            metric,
+            block_sigma: unknown.clone(),
+        };
+        let base = gym::row::DoorIdentity {
+            model: "fixture".into(),
+            base_model_signature: String::new(),
+            adapter: String::new(),
+            artifact_signature: format!("sha256:{}", "a".repeat(64)),
+            execution: BTreeMap::new(),
+            verified: true,
+        };
+        let mut candidate = base.clone();
+        candidate.artifact_signature = format!("sha256:{}", "b".repeat(64));
+        let mut plan = Plan {
+            schema: PLAN_SCHEMA.into(),
+            id: "fixture-v1".into(),
+            question: "Does the measured candidate improve?".into(),
+            base: Pinned {
+                door: "base".into(),
+                identity: base,
+            },
+            candidate: Pinned {
+                door: "candidate".into(),
+                identity: candidate,
+            },
+            differences: vec!["artifact_signature".into()],
+            workload: Workload {
+                suite: suite.name.clone(),
+                suite_digest: suite.digest.clone(),
+                question_set: None,
+                question_digest: None,
+                partitions: vec![Partition::Development],
+                gate_digest: None,
+            },
+            instrument: Instrument {
+                estimator: "fixture".into(),
+                ..Instrument::default()
+            },
+            rule: Rule {
+                id: "fixture-rule".into(),
+                question: "Fixture only".into(),
+                metric_order: vec![floor(Metric::Accuracy)],
+                effect_size_sigmas: unknown.clone(),
+                family_regression_sigmas: unknown.clone(),
+                min_blocks_per_side: unknown.clone(),
+                requeue_limit: 0,
+                covers: "Nothing measured".into(),
+                does_not_cover: "Quality".into(),
+                pending_measurements: vec![],
+            },
+            guards: Guards {
+                max_new_refusals: unknown.clone(),
+                max_new_confident_errors: unknown.clone(),
+                calibration: [Metric::Ece, Metric::Brier, Metric::Nll]
+                    .into_iter()
+                    .map(floor)
+                    .collect(),
+                transfer: TransferGuard {
+                    suite: suite.name.clone(),
+                    suite_digest: suite.digest.clone(),
+                    max_regression_sigmas: unknown.clone(),
+                },
+                deployment: DeploymentGuard {
+                    rule: DeploymentRule {
+                        min_calls: unknown.clone(),
+                        gated_percentile: GatedPercentile::P95,
+                        latency_block_sigma_relative: unknown.clone(),
+                        regression_sigmas: unknown,
+                        pending_measurement: None,
+                    },
+                    budget: Budget::new("fixture", "Unmeasured"),
+                },
+            },
+            scope: suite.families(),
+            digest: String::new(),
+        };
+        plan.seal();
+        plan
+    }
+
+    #[test]
+    fn replay_rejects_a_resealed_success_claim_over_missing_evidence() {
+        let suite = Suite::load(include_str!(
+            "../../gym/tests/fixtures/caller-v1/suite.json"
+        ))
+        .unwrap();
+        let plan = plan(&suite);
+        let evidence = Evidence {
+            suite: &suite,
+            development: Side {
+                base: &[],
+                candidate: &[],
+                store_head: None,
+            },
+            locked: None,
+            transfer: None,
+            deployment: None,
+            decided_at: "fixture".into(),
+            commitment: None,
+        };
+        let original = Record::evaluate(&plan, &evidence).unwrap();
+        assert!(original.admitted().is_err());
+        let mut forged = plan.decide(&evidence).unwrap();
+        forged.ruling = gym::admission::Ruling::Passed;
+        forged.seal();
+        assert!(
+            Record::verify(&serde_json::to_string(&forged).unwrap(), &plan, &evidence).is_err()
+        );
+        let valid = plan.decide(&evidence).unwrap();
+        assert!(
+            Record::verify(&serde_json::to_string(&valid).unwrap(), &plan, &evidence)
+                .unwrap()
+                .admitted()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn frozen_plan_cannot_omit_calibration_or_change_winning_metric_between_phases() {
+        let suite = Suite::load(include_str!(
+            "../../gym/tests/fixtures/caller-v1/suite.json"
+        ))
+        .unwrap();
+        let mut plan = plan(&suite);
+        plan.guards.calibration.clear();
+        plan.seal();
+        assert!(plan.validate().is_err());
+        let mut plan = self::plan(&suite);
+        plan.rule
+            .metric_order
+            .push(plan.rule.metric_order[0].clone());
+        plan.seal();
+        assert!(plan.validate().is_err());
     }
 }

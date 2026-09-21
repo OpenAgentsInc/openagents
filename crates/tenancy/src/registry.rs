@@ -292,6 +292,8 @@ impl Registry {
     /// (digest computed) if it is not already, validated, archived into
     /// `history/`, and written as `registry.json`.
     pub fn install(dir: &Path, mut manifest: Manifest) -> Result<Self, Trouble> {
+        std::fs::create_dir_all(dir)?;
+        let _lock = mutation_lock(dir)?;
         if manifest.sequence != 0 {
             return Err(Trouble::Sequence {
                 expected: 0,
@@ -336,6 +338,7 @@ impl Registry {
     /// stays archived under its digest; the new one is archived too, and
     /// the revision log gains a line.
     pub fn update(dir: &Path, mut manifest: Manifest) -> Result<Self, Trouble> {
+        let _lock = mutation_lock(dir)?;
         let installed = Self::open(dir)?;
         if manifest.sequence != installed.manifest.sequence + 1 {
             return Err(Trouble::Sequence {
@@ -390,6 +393,7 @@ impl Registry {
         record: &Record,
     ) -> Result<Self, Trouble> {
         record.admitted().map_err(Trouble::Admission)?;
+        let _lock = mutation_lock(dir)?;
         let installed = Self::open(dir)?;
         let mut manifest = installed.manifest.clone();
         let entry = manifest.tenants.get_mut(tenant).ok_or_else(|| {
@@ -401,23 +405,35 @@ impl Registry {
         // The binding the door already held keeps its capacity: activation
         // replaces what the door serves, not the share of it the tenant
         // was promised.
-        let capacity = entry
-            .doors
-            .get(door)
-            .and_then(|binding| binding.capacity.clone());
+        let binding = entry.doors.get(door).ok_or_else(|| {
+            Trouble::Admission(admission::Fault::Denied(
+                "activation cannot add an unmeasured door".into(),
+            ))
+        })?;
+        let base = record.base();
+        if binding.artifact.model != base.model
+            || binding.artifact.adapter != base.adapter
+            || binding.artifact.artifact_signature != base.artifact_signature
+            || binding.artifact.execution != base.execution
+        {
+            return Err(Trouble::Admission(admission::Fault::Denied(
+                "installed door no longer matches the evaluated admission base".into(),
+            )));
+        }
+        let capacity = binding.capacity.clone();
         entry.doors.insert(
             door.to_string(),
             Binding {
                 lane: Lane::Trained,
                 artifact: Expected {
-                    model: record.candidate.model.clone(),
-                    adapter: record.candidate.adapter.clone(),
-                    artifact_signature: record.candidate.artifact_signature.clone(),
-                    execution: record.candidate.execution.clone(),
+                    model: record.candidate().model.clone(),
+                    adapter: record.candidate().adapter.clone(),
+                    artifact_signature: record.candidate().artifact_signature.clone(),
+                    execution: record.candidate().execution.clone(),
                 },
                 capacity,
                 promotion: Some(record.reference().to_string()),
-                scope: record.scope.clone(),
+                scope: record.scope().to_vec(),
             },
         );
         manifest.sequence = installed.manifest.sequence + 1;
@@ -444,6 +460,7 @@ impl Registry {
     /// genesis and there is nothing to return to, and the usual write
     /// failures otherwise.
     pub fn rollback(dir: &Path) -> Result<Self, Trouble> {
+        let _lock = mutation_lock(dir)?;
         let installed = Self::open(dir)?;
         let Some(supersedes) = installed.manifest.supersedes.clone() else {
             return Err(Trouble::Invalid(
@@ -608,6 +625,19 @@ impl Registry {
     }
 }
 
+/// Serialize every read-modify-write mutation with an OS-released lock.
+fn mutation_lock(dir: &Path) -> Result<std::fs::File, Trouble> {
+    let path = dir.join("registry.lock");
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)?;
+    file.lock()?;
+    Ok(file)
+}
+
 /// The guard [`Registry::install`] and [`Registry::update`] share: no
 /// trained binding may appear or change outside [`Registry::activate`].
 ///
@@ -703,6 +733,7 @@ mod tests {
                 requests_per_minute: Some(600),
             }),
             promotion: None,
+            scope: Vec::new(),
         }
     }
 
@@ -719,6 +750,7 @@ mod tests {
             },
             capacity: None,
             promotion: None,
+            scope: Vec::new(),
         }
     }
 
@@ -1003,5 +1035,60 @@ mod tests {
             admission.verify(&card),
             Err(Fault::ModelMoved { .. })
         ));
+    }
+    #[test]
+    fn concurrent_updates_cannot_both_replace_one_revision() {
+        let dir = tempfile::tempdir().unwrap();
+        let installed = Registry::install(dir.path(), manifest(0, None)).unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let handles: Vec<_> = (0..2)
+            .map(|index| {
+                let path = dir.path().to_owned();
+                let barrier = barrier.clone();
+                let mut next = installed.manifest.clone();
+                next.sequence += 1;
+                next.supersedes = Some(installed.digest().into());
+                next.tenants.get_mut("acme").unwrap().credential =
+                    format!("key-ref:concurrent/{index}");
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    Registry::update(&path, next)
+                })
+            })
+            .collect();
+        let results: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        assert_eq!(Registry::open(dir.path()).unwrap().sequence(), 1);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("revisions.jsonl"))
+                .unwrap()
+                .lines()
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn a_promotion_digest_without_evaluation_cannot_install_a_trained_door() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut candidate = manifest(0, None);
+        let binding = candidate
+            .tenants
+            .get_mut("acme")
+            .unwrap()
+            .doors
+            .get_mut("acme-dedicated")
+            .unwrap();
+        binding.lane = Lane::Trained;
+        binding.promotion = Some(format!("admission:{}", "a".repeat(64)));
+        binding.scope = vec!["fixture".into()];
+        assert!(matches!(
+            Registry::install(dir.path(), candidate),
+            Err(Trouble::Admission(_))
+        ));
+        assert!(!dir.path().join(CURRENT).exists());
     }
 }

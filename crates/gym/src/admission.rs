@@ -59,7 +59,8 @@
 //! the locked-read record, a report commitment), and the candidate identity
 //! and scope the activation binds. The record is self-digested as
 //! `admission:<sha256>` over the same canonicalization the tenancy manifest
-//! uses, so `tenancy::admission` can verify it without linking this crate.
+//! uses. `tenancy::admission` replays this evaluator before activation; a
+//! self-digested serialized claim alone is not admission evidence.
 //! `docs/decision-models/candidate-admission.md` states the contract.
 
 use std::collections::BTreeSet;
@@ -74,9 +75,7 @@ use crate::ab::{Metric, MetricFloor, Rule, RuleError};
 use crate::calibrate::score;
 use crate::coverage::{Coverage, Expected};
 use crate::eval::observations;
-use crate::gate::{
-    Bound, Budget, Criterion, Deployment, DeploymentRule, Gate, Scores, Verdict,
-};
+use crate::gate::{Bound, Budget, Criterion, Deployment, DeploymentRule, Gate, Scores, Verdict};
 use crate::row::{DoorIdentity, Row};
 use crate::suite::{LockedLedger, LockedRead, Partition, Suite};
 
@@ -315,7 +314,9 @@ pub enum PlanError {
         found: String,
     },
     /// The recorded digest does not recompute over the contents.
-    #[error("the plan's digest does not recompute over its contents: recorded {recorded}, computed {computed}")]
+    #[error(
+        "the plan's digest does not recompute over its contents: recorded {recorded}, computed {computed}"
+    )]
     Tampered {
         /// The digest the file claims.
         recorded: String,
@@ -385,7 +386,10 @@ impl Plan {
             .as_object_mut()
             .expect("a plan is an object")
             .remove("digest");
-        format!("admission-plan:{}", hex_digest(canonicalize(&value).as_bytes()))
+        format!(
+            "admission-plan:{}",
+            hex_digest(canonicalize(&value).as_bytes())
+        )
     }
 
     /// Read and validate a plan.
@@ -452,6 +456,30 @@ impl Plan {
             return Err(PlanError::UndeclaredDifference { field });
         }
         self.rule.validate()?;
+        if self.rule.metric_order.len() != 1 {
+            return Err(PlanError::Bound {
+                name: "rule.metric_order".into(),
+                problem:
+                    "freeze exactly one winning metric before development and locked confirmation"
+                        .into(),
+            });
+        }
+        let required_calibration = [Metric::Ece, Metric::Brier, Metric::Nll];
+        if self.guards.calibration.len() != required_calibration.len()
+            || required_calibration.iter().any(|metric| {
+                self.guards
+                    .calibration
+                    .iter()
+                    .filter(|floor| floor.metric == *metric)
+                    .count()
+                    != 1
+            })
+        {
+            return Err(PlanError::Bound {
+                name: "guards.calibration".into(),
+                problem: "declare each ECE, Brier, and NLL guard exactly once".into(),
+            });
+        }
         check_bound(&self.guards.max_new_refusals, "guards.max_new_refusals")?;
         check_bound(
             &self.guards.max_new_confident_errors,
@@ -469,7 +497,10 @@ impl Plan {
         )?;
         let deployment = &self.guards.deployment;
         for (bound, name) in [
-            (&deployment.rule.min_calls, "guards.deployment.rule.min_calls"),
+            (
+                &deployment.rule.min_calls,
+                "guards.deployment.rule.min_calls",
+            ),
             (
                 &deployment.rule.latency_block_sigma_relative,
                 "guards.deployment.rule.latency_block_sigma_relative",
@@ -585,9 +616,7 @@ impl Plan {
                         None => {
                             let spent = reads
                                 .first()
-                                .map(|read| {
-                                    format!("`{}` at {}", read.subject, read.at)
-                                })
+                                .map(|read| format!("`{}` at {}", read.subject, read.at))
                                 .unwrap_or_else(|| "nothing yet".to_string());
                             refusals.push(format!(
                                 "the locked partition of `{}` was spent on {spent}, not on \
@@ -761,12 +790,9 @@ impl Plan {
                 ));
             }
             let (suite_digest, question_set, question_digest, splits) = match kind {
-                EvidenceKind::Transfer => (
-                    self.guards.transfer.suite_digest.as_str(),
-                    None,
-                    None,
-                    None,
-                ),
+                EvidenceKind::Transfer => {
+                    (self.guards.transfer.suite_digest.as_str(), None, None, None)
+                }
                 EvidenceKind::Development => (
                     self.workload.suite_digest.as_str(),
                     self.workload.question_set.as_deref(),
@@ -916,10 +942,7 @@ impl Plan {
             criteria.push(passed(
                 "the_sides_asked_the_same_items",
                 1,
-                format!(
-                    "both sides asked the same {} items",
-                    candidate.asked.len()
-                ),
+                format!("both sides asked the same {} items", candidate.asked.len()),
             ));
         } else {
             let gone: Vec<String> = base.asked.difference(&candidate.asked).cloned().collect();
@@ -942,6 +965,15 @@ impl Plan {
 
         // Seed blocks: each side must rest on at least the declared number
         // of distinct blocks, or a difference cannot be told from one draw.
+        if self.rule.min_blocks_per_side.count().is_none() {
+            criteria.push(Criterion {
+                name: "each_side_drew_enough_seed_blocks".into(),
+                rank: 1,
+                verdict: Verdict::Unverifiable,
+                detail: "the plan does not establish a minimum seed-block count".into(),
+            });
+            blocked = Some("the seed-block minimum is unmeasured");
+        }
         let needed = self.rule.min_blocks_per_side.count().unwrap_or(0);
         if blocked.is_none() && (base.blocks < needed || candidate.blocks < needed) {
             criteria.push(Criterion {
@@ -1008,9 +1040,9 @@ impl Plan {
             };
             let gain = metric.gain(before, after);
             let moved = format!("{metric} {before:.3} to {after:.3}, a move of {gain:+.3}");
-            let Some(effect) = self
-                .rule
-                .effect_size(metric, base.blocks.max(1), candidate.blocks.max(1))
+            let Some(effect) =
+                self.rule
+                    .effect_size(metric, base.blocks.max(1), candidate.blocks.max(1))
             else {
                 if gain > 0.0 {
                     unmeasured.get_or_insert(format!(
@@ -1092,8 +1124,7 @@ impl Plan {
         for family in &families {
             let was = measure(&of_family(base_rows, family));
             let now = measure(&of_family(candidate_rows, family));
-            let (Some(before), Some(after)) =
-                (metric.read(&was.scores), metric.read(&now.scores))
+            let (Some(before), Some(after)) = (metric.read(&was.scores), metric.read(&now.scores))
             else {
                 continue;
             };
@@ -1296,7 +1327,11 @@ impl Plan {
                 ),
             };
         }
-        passed(&name, 3, format!("{moved}, within the allowance of {allowance:.3}"))
+        passed(
+            &name,
+            3,
+            format!("{moved}, within the allowance of {allowance:.3}"),
+        )
     }
 
     /// The transfer check: the candidate must hold on the second suite the
@@ -1354,8 +1389,7 @@ impl Plan {
             match (metric.read(&base.scores), metric.read(&candidate.scores)) {
                 (Some(before), Some(after)) => {
                     let gain = metric.gain(before, after);
-                    let moved =
-                        format!("{metric} {before:.3} to {after:.3}, a move of {gain:+.3}");
+                    let moved = format!("{metric} {before:.3} to {after:.3}, a move of {gain:+.3}");
                     let allowance = self
                         .rule
                         .block_sigma(metric)
@@ -1453,11 +1487,17 @@ impl Plan {
             schema: crate::gate::SCHEMA.to_string(),
             id: format!("{}-deployment", self.id),
             previously: Vec::new(),
-            question: format!("Can the {} workload afford this candidate?", deployment.group),
+            question: format!(
+                "Can the {} workload afford this candidate?",
+                deployment.group
+            ),
             rule: crate::gate::Rule::Deployment(self.guards.deployment.rule.clone()),
         };
-        let outcome =
-            gate.judge_deployment(&deployment.clone().under(self.guards.deployment.budget.clone()));
+        let outcome = gate.judge_deployment(
+            &deployment
+                .clone()
+                .under(self.guards.deployment.budget.clone()),
+        );
         PhaseOutcome {
             phase: phase.to_string(),
             verdict: outcome.verdict,
@@ -1664,9 +1704,8 @@ impl PhaseOutcome {
 /// binding.
 ///
 /// `digest` is `admission:<sha256>` over every field but itself, under the
-/// same canonicalization the tenancy manifest uses, so the registry's copy
-/// of the rule — `tenancy::admission` — recomputes the same value without
-/// linking this crate.
+/// same canonicalization the tenancy manifest uses. The registry replays
+/// the native evaluator before trusting a stored decision.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Decision {
@@ -1760,9 +1799,9 @@ fn check_bound(bound: &Bound, name: &str) -> Result<(), PlanError> {
             "has no value and a {} basis; record it as unmeasured",
             bound.basis
         )),
-        (Some(value), false) if !value.is_finite() || value < 0.0 => {
-            Some(format!("must be a finite number at or above zero, got {value}"))
-        }
+        (Some(value), false) if !value.is_finite() || value < 0.0 => Some(format!(
+            "must be a finite number at or above zero, got {value}"
+        )),
         _ if bound.why.trim().is_empty() => {
             Some("has no provenance; say where the number came from".to_string())
         }
