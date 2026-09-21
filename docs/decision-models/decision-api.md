@@ -337,6 +337,13 @@ primitive. Include one refusal, one retryable failure, one partial batch,
 and one review with no valid score. Rust CLI and docs owner:
 [#9476](https://github.com/OpenAgentsInc/openagents/issues/9476).
 
+The first caller surface is landed: `crates/oak` is the CLI (`ask` for one
+state or a bounded batch, `models` for the caller's doors), and
+[caller.md](caller.md), [openapi.yaml](openapi.yaml), the runnable
+[examples/](examples/), and the `decision-api` skill cover the contract.
+Labels, dimensions, multi-label output, and capacity/review selection wait
+for the classification and review routes that carry them.
+
 Extend the Rust client and provide runnable curl, Python, Go, and JavaScript
 HTTP examples. Supported Python and Go SDK distributions are part of the
 target product, with a tracked architecture decision: use a Rust-owned

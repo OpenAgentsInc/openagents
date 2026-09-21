@@ -1,0 +1,15 @@
+{
+  "refund": {
+    "type": "noul",
+    "instructions": "Does the customer ask for money back?"
+  },
+  "department": {
+    "type": "choice",
+    "instructions": "Which team should own this ticket?",
+    "criteria": {
+      "billing": "Charges, invoices, and refunds",
+      "technical": "Bugs and outages",
+      "none": "No team fits this ticket"
+    }
+  }
+}
