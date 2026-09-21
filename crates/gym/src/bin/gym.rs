@@ -2801,9 +2801,11 @@ fn rows_for(rows: &[Row], door: &str) -> Vec<Row> {
 fn profile_of(rows: &[Row]) -> Profile {
     let latencies: Vec<f64> = rows.iter().filter_map(|row| row.latency_ms).collect();
     let refusals = rows.iter().filter(|row| row.is_refused()).count();
-    Profile::timed(&latencies)
-        .refusing(refusals)
-        .costing(gym::gate::Cost::UnmeteredLocalLane)
+    if latencies.len() != rows.len() || latencies.iter().any(|ms| !ms.is_finite() || *ms < 0.0) {
+        return Profile::default();
+    }
+    // Rows do not establish a billing policy. Cost remains unknown.
+    Profile::timed(&latencies).refusing(refusals)
 }
 
 /// Judges a frozen admission plan against recorded evidence and writes the
@@ -3474,6 +3476,21 @@ fn report_map_spread(raw: &[Metrics], pooled: &[Metrics], banded: &[Metrics]) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn admission_profile_does_not_invent_cost_or_drop_missing_timings() {
+        let mut first = gym::row::Row::new("fixture", "digest", "one", "door");
+        first.latency_ms = Some(10.0);
+        let second = gym::row::Row::new("fixture", "digest", "two", "door");
+        let complete = super::profile_of(&[first.clone()]);
+        assert_eq!(complete.calls, 1);
+        assert_eq!(complete.latency_p95_ms, Some(10.0));
+        assert!(complete.cost.is_none());
+        let incomplete = super::profile_of(&[first, second]);
+        assert_eq!(incomplete.calls, 0);
+        assert!(incomplete.latency_p95_ms.is_none());
+        assert!(incomplete.cost.is_none());
+    }
+
     use super::*;
 
     #[test]
