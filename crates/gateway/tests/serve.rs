@@ -668,3 +668,222 @@ async fn discovery_lists_the_callers_doors() {
         .unwrap();
     assert_eq!(body["models"].as_array().unwrap().len(), 1);
 }
+
+fn classify_call() -> Value {
+    json!({
+        "v":"openagents.classify.v1", "model":"acme-kev", "capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1", "name":"test-policy",
+          "select":{"single_label":{"ties":"first-declared","no_match":{"kind":"null"}}}},
+        "inputs":[{"id":"second","text":"one"},{"id":"first","text":"two"}],
+        "mode":"single-label", "labels":[{"id":"a"},{"id":"b"}]
+    })
+}
+
+#[tokio::test]
+async fn classify_preserves_input_order_and_records_verified_native_answers() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), json!({
+        "model":"kev-0.6b", "answers":{"q0":{"type":"choice","choice":"a","confidence":0.8,"probabilities":{"a":0.8,"b":0.2}}},
+        "usage":{"input_tokens":3,"output_tokens":1}
+    }))).await;
+    let deployment = deploy_doors(
+        manifest(None),
+        [(
+            "acme-kev".into(),
+            Door {
+                endpoint,
+                classify: Some(gateway::classify::BackendLimits::product()),
+            },
+        )]
+        .into_iter()
+        .collect(),
+    )
+    .await;
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/classify", deployment.address))
+        .bearer_auth(&deployment.tokens["acme"])
+        .json(&classify_call())
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(forwards.load(Ordering::SeqCst), 2);
+    assert_eq!(body["results"][0]["input"], "second");
+    assert_eq!(body["results"][1]["input"], "first");
+    assert_eq!(body["results"][0]["units"][0]["selected"], "a");
+    assert_eq!(body["usage"]["input_tokens"], 6);
+    assert_eq!(receipt_log(&deployment.dir).len(), 1);
+}
+
+#[tokio::test]
+async fn classify_refuses_undeclared_limits_before_forwarding() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), json!({}))).await;
+    let deployment = deploy(
+        manifest(None),
+        [("acme-kev".into(), endpoint)].into_iter().collect(),
+    )
+    .await;
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/classify", deployment.address))
+        .bearer_auth(&deployment.tokens["acme"])
+        .json(&classify_call())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["error"]["code"],
+        "unsupported_limits"
+    );
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+}
+
+async fn classification_deployment(endpoint: String) -> Deployment {
+    deploy_doors(
+        manifest(None),
+        [(
+            "acme-kev".into(),
+            Door {
+                endpoint,
+                classify: Some(gateway::classify::BackendLimits::product()),
+            },
+        )]
+        .into_iter()
+        .collect(),
+    )
+    .await
+}
+
+async fn send_classification(deployment: &Deployment, call: &Value) -> (StatusCode, Value) {
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/classify", deployment.address))
+        .bearer_auth(&deployment.tokens["acme"])
+        .json(call)
+        .send()
+        .await
+        .unwrap();
+    (response.status(), response.json().await.unwrap())
+}
+
+#[tokio::test]
+async fn classify_retains_partial_outcomes_and_does_not_invent_complete_usage() {
+    let forwards = Arc::new(AtomicUsize::new(0));
+    let counter = forwards.clone();
+    let app = axum::Router::new()
+        .route("/v1/models", get(|| async { Json(json!({"models":[{"id":"kev-0.6b", "artifact_identity":{"digest":artifact('b')}, "execution":{}}]})) }))
+        .route("/v1/systemone", post(move || {
+            let index = counter.fetch_add(1,Ordering::SeqCst);
+            async move {
+                if index == 0 { (StatusCode::OK,Json(json!({"model":"kev-0.6b", "answers":{"q0":{"type":"choice","choice":"a","confidence":0.8,"probabilities":{"a":0.8,"b":0.2}}}, "usage":{"input_tokens":3,"output_tokens":1}}))) }
+                else { (StatusCode::SERVICE_UNAVAILABLE,Json(json!({"error":"unavailable"}))) }
+            }
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(axum::serve(listener, app).into_future());
+    let deployment = classification_deployment(endpoint).await;
+    let mut call = classify_call();
+    call["inputs"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"id":"third","text":"three"}));
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "mixed");
+    assert_eq!(
+        body["outcomes"],
+        json!({"answered":1,"unavailable":1,"unattempted":1,"refused":0})
+    );
+    assert_eq!(forwards.load(Ordering::SeqCst), 2);
+    assert_eq!(body["results"][2]["input"], "third");
+    assert_eq!(body["usage"]["input_tokens_complete"], false);
+    assert!(body["usage"].get("input_tokens").is_none());
+    assert_eq!(body["results"][0]["usage"]["input_tokens"], 3);
+    let ledger = std::fs::read_to_string(deployment.dir.path().join("quota-ledger.jsonl")).unwrap();
+    let settled: Value = ledger
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|event| event["event"] == "settled")
+        .expect("the attempt settled");
+    assert_eq!(settled["units"]["questions"], 2);
+    assert_eq!(settled["units"]["options"], 4);
+}
+
+#[tokio::test]
+async fn classify_rejects_wrong_models_and_invalid_distributions() {
+    for answer in [
+        json!({"model":"other", "answers":{"q0":{"type":"choice","choice":"a","confidence":0.8,"probabilities":{"a":0.8,"b":0.2}}}}),
+        json!({"model":"kev-0.6b", "answers":{"q0":{"type":"choice","choice":"a","confidence":0.8,"probabilities":{"a":0.8,"b":0.8}}}}),
+    ] {
+        let (endpoint, _) = backend(honest(artifact('b'), answer)).await;
+        let deployment = classification_deployment(endpoint).await;
+        let (status, body) = send_classification(&deployment, &classify_call()).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        assert_eq!(body["outcomes"]["answered"], 0);
+        assert!(body["results"][0]["units"][0]["selected"].is_null());
+    }
+}
+
+#[tokio::test]
+async fn an_unfinished_chunked_response_is_refused_at_the_byte_limit() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        for index in 0..2 {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 8192];
+            loop {
+                let n = socket.read(&mut buffer).await.unwrap();
+                assert!(n > 0);
+                request.extend_from_slice(&buffer[..n]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+                assert!(request.len() < 16384);
+            }
+            if index == 0 {
+                assert!(request.starts_with(b"GET /v1/models"));
+                let body=json!({"models":[{"id":"kev-0.6b","artifact_identity":{"digest":artifact('b')},"execution":{}}]}).to_string();
+                let header = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                socket.write_all(header.as_bytes()).await.unwrap();
+                socket.write_all(body.as_bytes()).await.unwrap();
+                socket.shutdown().await.unwrap();
+            } else {
+                assert!(request.starts_with(b"POST /v1/systemone"));
+                socket
+                    .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n400001\r\n")
+                    .await
+                    .unwrap();
+                // Deliberately never send the terminating chunk or close the
+                // connection. A read-to-end implementation waits for timeout.
+                let bytes = vec![b'x'; 4_194_305];
+                let _ = socket.write_all(&bytes).await;
+                std::future::pending::<()>().await;
+            }
+        }
+    });
+    let deployment = classification_deployment(endpoint).await;
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        send_classification(&deployment, &classify_call()),
+    )
+    .await;
+    server.abort();
+    let (status, body) =
+        result.expect("the byte bound refuses without waiting for response completion");
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert!(
+        body["results"][0]["cause"]
+            .as_str()
+            .unwrap()
+            .contains("exceeded 4194304 bytes"),
+        "{body}"
+    );
+    assert_eq!(body["results"][1]["outcome"], "unattempted");
+}

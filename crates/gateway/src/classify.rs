@@ -327,10 +327,10 @@ impl Policy {
     /// validated against them: a declared cut is a probability and a
     /// declared cap admits at least one label.
     fn check(&self) -> Result<(), Refusal> {
-        if let Some(rule) = &self.select.single_label {
-            if let Some(cut) = rule.min_probability {
-                check_probability("min_probability", cut)?;
-            }
+        if let Some(rule) = &self.select.single_label
+            && let Some(cut) = rule.min_probability
+        {
+            check_probability("min_probability", cut)?;
         }
         if let Some(rule) = &self.select.multi_label {
             check_probability("threshold", rule.threshold)?;
@@ -369,9 +369,10 @@ impl SingleSelect {
         probabilities
             .iter()
             .find(|(_, probability)| *probability == top)
-            .map_or_else(|| self.unmatched(), |(label, _)| {
-                Value::String(label.clone())
-            })
+            .map_or_else(
+                || self.unmatched(),
+                |(label, _)| Value::String(label.clone()),
+            )
     }
 
     /// What the unit selects when nothing matched.
@@ -398,22 +399,20 @@ impl MultiSelect {
             .collect();
         // The sort is stable, so equal probabilities keep their
         // declared order.
-        passed.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        passed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         let mut selected: Vec<String> = passed.iter().map(|(label, _)| label.clone()).collect();
-        if let Some(cap) = self.top_n.map(|top_n| top_n as usize) {
-            if selected.len() > cap {
-                match self.ties {
-                    BoundaryTies::Truncate => selected.truncate(cap),
-                    BoundaryTies::IncludeAll => {
-                        let boundary = passed[cap - 1].1;
-                        selected = passed
-                            .iter()
-                            .take_while(|(_, probability)| *probability >= boundary)
-                            .map(|(label, _)| label.clone())
-                            .collect();
-                    }
+        if let Some(cap) = self.top_n.map(|top_n| top_n as usize)
+            && selected.len() > cap
+        {
+            match self.ties {
+                BoundaryTies::Truncate => selected.truncate(cap),
+                BoundaryTies::IncludeAll => {
+                    let boundary = passed[cap - 1].1;
+                    selected = passed
+                        .iter()
+                        .take_while(|(_, probability)| *probability >= boundary)
+                        .map(|(label, _)| label.clone())
+                        .collect();
                 }
             }
         }
@@ -772,13 +771,13 @@ impl Request {
                             "the policy declares no `single_label` selection rule".to_string(),
                         )
                     })?;
-                    if let NoMatch::Label { label } = &rule.no_match {
-                        if !labels.iter().any(|candidate| &candidate.id == label) {
-                            return Err(Refusal::InvalidRequest(format!(
-                                "the policy's no-match label `{label}` is not in the label set{}",
-                                dimension.map_or_else(String::new, |d| format!(" of `{d}`")),
-                            )));
-                        }
+                    if let NoMatch::Label { label } = &rule.no_match
+                        && !labels.iter().any(|candidate| &candidate.id == label)
+                    {
+                        return Err(Refusal::InvalidRequest(format!(
+                            "the policy's no-match label `{label}` is not in the label set{}",
+                            dimension.map_or_else(String::new, |d| format!(" of `{d}`")),
+                        )));
                     }
                 }
                 Mode::MultiLabel => {
@@ -787,14 +786,14 @@ impl Request {
                             "the policy declares no `multi_label` selection rule".to_string(),
                         )
                     })?;
-                    if let Some(top_n) = rule.top_n {
-                        if top_n > labels.len() as u64 {
-                            return Err(Refusal::InvalidRequest(format!(
-                                "the policy's `top_n` of {top_n} exceeds the {} labels{}",
-                                labels.len(),
-                                dimension.map_or_else(String::new, |d| format!(" of `{d}`")),
-                            )));
-                        }
+                    if let Some(top_n) = rule.top_n
+                        && top_n > labels.len() as u64
+                    {
+                        return Err(Refusal::InvalidRequest(format!(
+                            "the policy's `top_n` of {top_n} exceeds the {} labels{}",
+                            labels.len(),
+                            dimension.map_or_else(String::new, |d| format!(" of `{d}`")),
+                        )));
                     }
                 }
             }

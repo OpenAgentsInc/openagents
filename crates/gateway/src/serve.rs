@@ -300,8 +300,10 @@ fn authenticate(
 }
 
 /// What an attempt needs for its receipt — the identities it ran under.
+type Context = Box<ReceiptContext>;
+
 #[derive(Clone, Default)]
-struct Context {
+struct ReceiptContext {
     /// The credential reference — the key id, or absent for anonymous.
     tenant_ref: Option<String>,
     /// The registry revision the call was admitted under.
@@ -478,10 +480,10 @@ fn authenticated(
             outcome: Outcome::Refused,
             ctx: Context::default(),
         })?;
-    let ctx = Context {
+    let ctx = Box::new(ReceiptContext {
         tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),
-        ..Context::default()
-    };
+        ..ReceiptContext::default()
+    });
     Ok((registry, caller, ctx))
 }
 
@@ -960,15 +962,29 @@ async fn classify_admitted(
             counts.unattempted += plan.units.len() as u64;
             continue;
         }
+        let Some(remaining) =
+            Duration::from_millis(state.config.forward_timeout_ms).checked_sub(started.elapsed())
+        else {
+            halted = true;
+            items.push(unattempted_item(input, &plan));
+            counts.unattempted += plan.units.len() as u64;
+            continue;
+        };
         let (forward_body, asked) = forward_body(&request, &plan, input, &artifact);
         let item_started = Instant::now();
         forwards += 1;
-        match forward(state, &endpoint, &forward_body).await {
+        let forwarded = tokio::time::timeout(remaining, forward(state, &endpoint, &forward_body))
+            .await
+            .unwrap_or_else(|_| Forwarded::Unavailable {
+                message: "the classification call exceeded its execution deadline".to_string(),
+            });
+        match forwarded {
             Forwarded::Served { body, .. } => {
                 let (item, usage) = served_item(
                     input,
                     &plan,
                     &asked,
+                    &artifact,
                     &body,
                     item_started.elapsed(),
                     &mut counts,
@@ -1025,6 +1041,13 @@ async fn classify_admitted(
             StatusCode::OK,
             Outcome::Answered,
             Some("mixed".to_string()),
+        )
+    } else if forwards == 0 {
+        (
+            "unattempted",
+            StatusCode::SERVICE_UNAVAILABLE,
+            Outcome::Unattempted,
+            Some("deadline".to_string()),
         )
     } else if counts.unavailable + counts.unattempted > 0 {
         (
@@ -1224,6 +1247,7 @@ fn served_item(
     input: &classify::Input,
     plan: &classify::Plan,
     asked: &[(usize, String, Option<String>)],
+    expected_model: &str,
     body: &Bytes,
     latency: Duration,
     counts: &mut Counts,
@@ -1231,6 +1255,7 @@ fn served_item(
     let parsed = serde_json::from_slice::<Value>(body).ok();
     let answers = parsed
         .as_ref()
+        .filter(|body| body.get("model").and_then(Value::as_str) == Some(expected_model))
         .and_then(|body| body.get("answers"))
         .and_then(Value::as_object)
         .cloned();
@@ -1290,7 +1315,7 @@ fn valid_primitive(answer: &Value, kind: &str) -> bool {
         headers: Default::default(),
         bytes,
     })
-    .is_ok_and(|response| response.answer("q").is_ok())
+    .is_ok_and(|response| response.answers.contains_key("q"))
 }
 
 /// One unit's result inside an answered forward: the raw answer and
@@ -1814,11 +1839,11 @@ mod classification_accounting_tests {
     #[test]
     fn choice_mass_and_answer_types_follow_the_native_contract() {
         assert!(!valid_primitive(
-            &json!({"type":"choice","choice":"a","probabilities":{"a":0.9,"b":0.9}}),
+            &json!({"type":"choice","choice":"a","confidence":0.8,"probabilities":{"a":0.9,"b":0.9}}),
             "choice"
         ));
         assert!(valid_primitive(
-            &json!({"type":"choice","choice":"a","probabilities":{"a":0.8,"b":0.2}}),
+            &json!({"type":"choice","choice":"a","confidence":0.8,"probabilities":{"a":0.8,"b":0.2}}),
             "choice"
         ));
         assert!(!valid_primitive(
