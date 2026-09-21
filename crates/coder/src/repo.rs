@@ -28,8 +28,12 @@ const PATHS_MAX: usize = 8;
 const HITS_MAX: usize = 10;
 /// One quoted line's width.
 const LINE_MAX: usize = 160;
-/// The whole sniff block's size.
+/// The quoted source text budget, excluding its separately bounded references.
 const SNIFF_BYTES: usize = 2048;
+/// Rendered excerpts and references, leaving 512 bytes for coverage diagnostics.
+const EVIDENCE_BYTES: usize = 8192;
+/// Largest atomic source file admitted to repository evidence.
+const SOURCE_BYTES: u64 = 1024 * 1024;
 
 /// Words too common or structural to sniff for.
 const STOP: &[&str] = &[
@@ -146,77 +150,153 @@ impl Repo {
     /// Follows the draft's terms through `git grep`: the paths they hit
     /// and a few quoted lines. Empty outside a git repo or on no hits.
     fn sniff(&self, draft: &str) -> String {
-        if git(&self.root, &["rev-parse", "--git-dir"]).is_none() {
-            return String::new();
-        }
-        let mut paths: BTreeSet<String> = BTreeSet::new();
-        let mut hits: Vec<String> = Vec::new();
-        let mut bytes = 0usize;
-        for term in terms(draft) {
-            let Some(listed) = git(
-                &self.root,
-                &[
-                    "grep",
-                    "-l",
-                    "-i",
-                    "--max-count",
-                    "1",
-                    "-e",
-                    &term,
-                    "--",
-                    ":!*.lock",
-                ],
-            ) else {
-                continue;
-            };
-            for path in listed.lines().take(PATHS_MAX) {
-                paths.insert(path.to_string());
-                if paths.len() >= PATHS_MAX {
-                    break;
-                }
-            }
-            for path in paths.iter().cloned().collect::<Vec<_>>() {
-                if hits.len() >= HITS_MAX || bytes >= SNIFF_BYTES {
-                    break;
-                }
-                let Some(hit) = git(
-                    &self.root,
-                    &[
-                        "grep",
-                        "-n",
-                        "-i",
-                        "--max-count",
-                        "1",
-                        "-e",
-                        &term,
-                        "--",
-                        &path,
-                    ],
-                ) else {
-                    continue;
-                };
-                for line in hit.lines().take(2) {
-                    let line = &line[..line.floor_char_boundary(LINE_MAX.min(line.len()))];
-                    if bytes + line.len() > SNIFF_BYTES || hits.len() >= HITS_MAX {
-                        break;
+        let terms = terms(draft);
+        let mut paths = BTreeSet::new();
+        let mut diagnostics = BTreeSet::new();
+        for term in &terms {
+            let mut command = Command::new("git");
+            command.arg("-C").arg(&self.root).args([
+                "grep",
+                "-l",
+                "-z",
+                "-i",
+                "--max-count",
+                "1",
+                "-e",
+                term,
+                "--",
+                ":!*.lock",
+            ]);
+            match crate::capability::bounded::run(command, Duration::from_secs(2)) {
+                Ok(result) if result.code == Some(0) && !result.truncated => {
+                    for path in result.out.split('\0').filter(|p| !p.is_empty()) {
+                        if paths.len() < PATHS_MAX {
+                            paths.insert(path.to_owned());
+                        } else if !paths.contains(path) {
+                            diagnostics.insert("path limit omitted candidates");
+                        }
                     }
-                    bytes += line.len();
-                    hits.push(line.to_string());
+                }
+                Ok(result) if result.code == Some(1) && !result.truncated => {}
+                _ => {
+                    diagnostics.insert("search unavailable or exceeded its capture bound");
                 }
             }
         }
-        if paths.is_empty() {
-            return String::new();
+        let base = git(&self.root, &["rev-parse", "HEAD"]);
+        let mut rendered = String::new();
+        let mut count = 0;
+        let mut excerpt_bytes = 0;
+        let lowered: Vec<_> = terms.iter().map(|t| t.to_lowercase()).collect();
+        for path in paths {
+            let source = match SourceFile::capture(&self.root, &path) {
+                Ok(source) => source,
+                Err(reason) => {
+                    diagnostics.insert(reason);
+                    continue;
+                }
+            };
+            for (offset, line) in source.text.lines().enumerate() {
+                if !lowered
+                    .iter()
+                    .any(|term| line.to_lowercase().contains(term))
+                {
+                    continue;
+                }
+                let end = line.floor_char_boundary(LINE_MAX.min(line.len()));
+                let excerpt = &line[..end];
+                let reference = SourceSpan {
+                    schema: "openagents.repository-source.v1",
+                    path: &path,
+                    line: offset + 1,
+                    source_digest: &source.digest,
+                    excerpt_digest: atif::digest(&serde_json::json!(excerpt)),
+                    truncated: end < line.len(),
+                    base: base.as_deref(),
+                };
+                let record = format!(
+                    "source {}\n  {}:{}:{}\n",
+                    serde_json::to_string(&reference).expect("source reference serializes"),
+                    path,
+                    offset + 1,
+                    excerpt
+                );
+                if count >= HITS_MAX
+                    || excerpt_bytes + excerpt.len() > SNIFF_BYTES
+                    || rendered.len() + record.len() > EVIDENCE_BYTES - 512
+                {
+                    diagnostics.insert("excerpt budget omitted matching evidence");
+                    break;
+                }
+                rendered.push_str(&record);
+                count += 1;
+                excerpt_bytes += excerpt.len();
+            }
         }
-        let mut out = format!(
-            "sniff: {}\n",
-            paths.iter().cloned().collect::<Vec<_>>().join(", ")
-        );
-        for hit in hits {
-            out.push_str(&format!("  {hit}\n"));
+        if !diagnostics.is_empty() {
+            rendered.push_str(&format!(
+                "evidence coverage: {}\n",
+                diagnostics.into_iter().collect::<Vec<_>>().join("; ")
+            ));
         }
-        out
+        rendered
     }
+}
+
+/// One observed file. Its digest covers the complete admitted UTF-8 contents.
+struct SourceFile {
+    text: String,
+    digest: String,
+}
+
+impl SourceFile {
+    fn capture(root: &Path, relative: &str) -> Result<Self, &'static str> {
+        let path = Path::new(relative);
+        if path.is_absolute()
+            || path
+                .components()
+                .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
+            return Err("excluded non-relative source path");
+        }
+        let root = root
+            .canonicalize()
+            .map_err(|_| "repository root unavailable")?;
+        let path = root.join(path);
+        let canonical = path.canonicalize().map_err(|_| "source unavailable")?;
+        if !canonical.starts_with(&root) {
+            return Err("excluded source outside repository");
+        }
+        let file = fs::File::open(&canonical).map_err(|_| "source unavailable")?;
+        if !file
+            .metadata()
+            .map_err(|_| "source metadata unavailable")?
+            .is_file()
+        {
+            return Err("excluded non-file source");
+        }
+        let mut text = String::new();
+        file.take(SOURCE_BYTES + 1)
+            .read_to_string(&mut text)
+            .map_err(|_| "source unavailable or not UTF-8")?;
+        if text.len() as u64 > SOURCE_BYTES {
+            return Err("oversize atomic source excluded");
+        }
+        let digest = atif::digest(&serde_json::json!(text));
+        Ok(Self { text, digest })
+    }
+}
+
+/// A source link binds a line to the observed contents, not only a Git commit.
+#[derive(serde::Serialize)]
+struct SourceSpan<'a> {
+    schema: &'static str,
+    path: &'a str,
+    line: usize,
+    source_digest: &'a str,
+    excerpt_digest: String,
+    truncated: bool,
+    base: Option<&'a str>,
 }
 
 /// The draft's searchable terms: identifier-shaped words of three letters
@@ -335,6 +415,80 @@ mod tests {
         assert!(git(dir.path(), &["hash-object", "-w", "large.txt"]).is_some());
         let digest = git(dir.path(), &["hash-object", "large.txt"]).unwrap();
         assert!(git(dir.path(), &["cat-file", "blob", &digest]).is_none());
+    }
+
+    #[test]
+    fn source_references_do_not_consume_the_excerpt_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(git(dir.path(), &["init"]).is_some());
+        fs::write(
+            dir.path().join("hits.txt"),
+            "needle evidence line\n".repeat(HITS_MAX + 1),
+        )
+        .unwrap();
+        let mut command = Command::new("git");
+        command.arg("-C").arg(dir.path()).args(["add", "hits.txt"]);
+        assert_eq!(
+            crate::capability::bounded::run(command, Duration::from_secs(2))
+                .unwrap()
+                .code,
+            Some(0)
+        );
+        let repo = Repo::discover(dir.path()).unwrap();
+        let evidence = repo.sniff("needle");
+        assert_eq!(
+            evidence
+                .lines()
+                .filter(|line| line.starts_with("source "))
+                .count(),
+            HITS_MAX
+        );
+        assert!(evidence.contains("excerpt budget omitted matching evidence"));
+        assert!(evidence.len() <= EVIDENCE_BYTES);
+        for line in evidence
+            .lines()
+            .filter_map(|line| line.strip_prefix("source "))
+        {
+            let reference: serde_json::Value = serde_json::from_str(line).unwrap();
+            assert_eq!(reference["path"], "hits.txt");
+            assert!(!reference["source_digest"].as_str().unwrap().is_empty());
+            assert_eq!(reference["truncated"], false);
+        }
+    }
+
+    #[test]
+    fn source_identity_changes_with_uncommitted_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("source.txt");
+        fs::write(&path, "before").unwrap();
+        let before = SourceFile::capture(dir.path(), "source.txt").unwrap();
+        fs::write(&path, "after").unwrap();
+        let after = SourceFile::capture(dir.path(), "source.txt").unwrap();
+        assert_ne!(before.digest, after.digest);
+        assert_eq!(before.text, "before");
+    }
+
+    #[test]
+    fn atomic_sources_refuse_oversize_and_external_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("large"),
+            vec![b'x'; SOURCE_BYTES as usize + 1],
+        )
+        .unwrap();
+        assert_eq!(
+            SourceFile::capture(dir.path(), "large").err(),
+            Some("oversize atomic source excluded")
+        );
+        let external = tempfile::tempdir().unwrap();
+        fs::write(external.path().join("private"), "outside").unwrap();
+        std::os::unix::fs::symlink(external.path().join("private"), dir.path().join("link"))
+            .unwrap();
+        assert_eq!(
+            SourceFile::capture(dir.path(), "link").err(),
+            Some("excluded source outside repository")
+        );
+        assert!(SourceFile::capture(dir.path(), "../private").is_err());
     }
 
     #[test]
