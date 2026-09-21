@@ -3,8 +3,9 @@
 `coder-project verify` runs operator-prepared checks against a retained Coder
 scratch worktree. It records mechanical evidence separately from the delegate's
 answer and from the operator's decision to integrate. This is the first host
-verification layer for #9509; it does not complete the `run-suite` or
-`review-changes` program contracts.
+verification layer for #9509. The `run-suite` program's host path now runs
+through it under the bounds described below; `review-changes` remains
+unimplemented.
 
 ## Prepare the check
 
@@ -54,6 +55,34 @@ Its complete stdout must be a JSON object containing `schema` equal to
 evidence cannot pass, even when the process exits successfully. A Gym adapter
 must explicitly produce this contract; arbitrary Gym output is not accepted.
 
+## Gate a program on typed suite evidence
+
+A `check` step gated on `gate_not_met` runs the installed plan. Two further
+bounds say what the plan must be before any check runs:
+
+- `acceptance` — the evidence every check in the plan must produce:
+  `suite` for a typed suite verdict or `exit-success` for a reviewed
+  command. A plan whose checks answer with the other kind refuses at
+  admission, so exit status cannot satisfy a requested typed suite. A
+  `suite` requirement also narrows the plan to one suite identity.
+- `max_tests` — the most checks the plan may run under the step, held
+  against the plan's check count at admission.
+
+The repository's `run-suite` program is one such step:
+
+```json
+{"name": "score", "kind": "check",
+ "bounds": {"refuse_on": "gate_not_met", "acceptance": "suite", "max_tests": 16}}
+```
+
+The suite digests and the adapter arguments stay in the host-prepared plan;
+the program carries only what the check requires. A host with no installed
+plan refuses `run-suite` at admission, so it stays out of program selection
+on a machine that was not given one. The earlier shape — a `delegate` step
+that ran the suite through an executor and a `check` step that read its
+answer — is gone: delegating the tests and accepting the delegate's final
+text is what this path replaces.
+
 ## Run and review
 
 ```sh
@@ -96,5 +125,13 @@ to make a test pass.
 
 Current tests cover immutable workspace execution, failed and hung commands,
 typed evidence identity, missing evidence, truncated output, plan validation,
-and the CLI's artifact pinning. They use bounded fixture commands. They do not
-establish that a full Cargo build or a Gym acceptance run works in this boundary.
+evidence requirements at admission, the test budget, and the CLI's artifact
+pinning. They use bounded fixture commands. They do not establish that a full
+Cargo build or a Gym acceptance run works in this boundary.
+
+`run-suite` is supported only as far as this path reaches. Still missing for
+the full #9509 contract: a shipped suite adapter that emits the evidence
+contract, a host entry point that installs a suite plan and runs `run-suite`
+end to end (`coder-project verify` remains the only plan installer), and the
+`metrics` output the earlier contract declared — the report's typed verdicts
+are the only result the run records.

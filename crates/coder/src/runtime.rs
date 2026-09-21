@@ -47,8 +47,15 @@
 //! all specified and none is needed to run the first program. A runtime
 //! that runs one program correctly is worth more than one that describes
 //! five.
+//!
+//! A `check` step gated on `gate_not_met` runs the operator-installed
+//! verification plan rather than anything the program carries. Its
+//! `acceptance` bound names the evidence every check in the plan must
+//! produce — a typed suite verdict, never a bare exit status where a
+//! suite was asked for — and `max_tests` bounds how many checks the plan
+//! may run. Admission holds the plan to both before any check executes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -235,7 +242,7 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
     match kind {
         Kind::Query => &["max_results", "on_overflow"],
         Kind::Decide => &["refuse_below", "requires_calibration", "per_requirement"],
-        Kind::Check => &["refuse_on"],
+        Kind::Check => &["refuse_on", "acceptance", "max_tests"],
         Kind::Delegate => &["concurrent_max", "isolation", "minutes"],
         // Composition and WebAssembly are specified and not built. A host
         // that met one and ran the rest would be running a different
@@ -662,6 +669,13 @@ impl Runtime {
                     other.unwrap_or("that")
                 )),
             },
+            "acceptance" => match value.as_str() {
+                Some("exit-success" | "suite") => Ok(()),
+                other => refuse(format!(
+                    "acceptance names the evidence a gated check requires, and this step names {}",
+                    other.unwrap_or("that")
+                )),
+            },
             "on_overflow" => match value.as_str().and_then(OnOverflow::named) {
                 Some(_) => Ok(()),
                 None => refuse(format!(
@@ -681,7 +695,7 @@ impl Runtime {
                     "minutes must name a positive deadline this host can represent, and this step names {value}"
                 )),
             },
-            "max_results" | "concurrent_max" => match value.as_u64() {
+            "max_results" | "concurrent_max" | "max_tests" => match value.as_u64() {
                 Some(count) if count > 0 && usize::try_from(count).is_ok() => Ok(()),
                 _ => refuse(format!(
                     "{bound} is a count above zero, and this step names {value}"
@@ -761,6 +775,11 @@ impl Runtime {
     }
 
     /// Whether this host can run what a `check` step names.
+    ///
+    /// A step gated on `gate_not_met` runs the operator-installed
+    /// verification plan rather than anything the program carries, so
+    /// admission is where the plan is held to the step: missing evidence
+    /// and bounds the plan cannot meet refuse here, before any check runs.
     fn admit_check(&self, program: &Program, step: &Step) -> Result<(), Refused> {
         if step.bounds.get("refuse_on").and_then(Value::as_str) == Some("gate_not_met") {
             let (_, plan, _) = self.verification.as_ref().ok_or_else(|| {
@@ -772,6 +791,7 @@ impl Runtime {
             })?;
             plan.validate()
                 .map_err(|reason| Refused::at(&step.name, "bound_unenforceable", reason))?;
+            self.admit_evidence(step, plan)?;
             if !boundary_supported() {
                 return Err(Refused::at(
                     &step.name,
@@ -788,6 +808,13 @@ impl Runtime {
                 "this host runs one check, and it is the one refuse_on names".to_string(),
             ));
         }
+        if step.bounds.contains_key("acceptance") || step.bounds.contains_key("max_tests") {
+            return Err(Refused::at(
+                &step.name,
+                "bound_unenforceable",
+                "acceptance and max_tests bound a host-prepared check, and this check tests a delegation's bounds",
+            ));
+        }
         match self.next_delegate(program, &step.name).is_some() {
             true => Ok(()),
             false => Err(Refused::at(
@@ -798,6 +825,58 @@ impl Runtime {
                 ),
             )),
         }
+    }
+
+    /// Whether the installed plan can produce the evidence a gated check
+    /// requires, before any of it runs.
+    ///
+    /// `acceptance` is the kind every check in the plan must answer with:
+    /// a step that asks for a typed suite cannot be satisfied by an exit
+    /// status, and a step that asks for an exit status is not satisfied by
+    /// suite evidence it did not ask for. A suite requirement also narrows
+    /// the plan to one suite identity, because the step runs *a* suite.
+    /// `max_tests` is the most checks the plan may carry under the step.
+    fn admit_evidence(&self, step: &Step, plan: &crate::verification::Plan) -> Result<(), Refused> {
+        if let Some(required) = step.bounds.get("acceptance").and_then(Value::as_str) {
+            let mut suites = BTreeSet::new();
+            for check in &plan.checks {
+                if check.acceptance.word() != required {
+                    return Err(Refused::at(
+                        &step.name,
+                        "check_unavailable",
+                        format!(
+                            "this step requires {required} evidence and the installed plan's {} check does not answer with it",
+                            check.id
+                        ),
+                    ));
+                }
+                if let crate::verification::Acceptance::Suite { suite_digest, .. } =
+                    &check.acceptance
+                {
+                    suites.insert(suite_digest.as_str());
+                }
+            }
+            if suites.len() > 1 {
+                return Err(Refused::at(
+                    &step.name,
+                    "check_unavailable",
+                    "the installed plan names more than one suite, and a suite step runs one pinned suite",
+                ));
+            }
+        }
+        if let Some(budget) = step.bounds.get("max_tests").and_then(Value::as_u64)
+            && plan.checks.len() as u64 > budget
+        {
+            return Err(Refused::at(
+                &step.name,
+                "bound_unenforceable",
+                format!(
+                    "the installed plan runs {} checks, past the test budget of {budget} this step states",
+                    plan.checks.len()
+                ),
+            ));
+        }
+        Ok(())
     }
 
     /// The `delegate` step a check admits: the next one after it.
@@ -816,9 +895,10 @@ impl Runtime {
     /// refuses at admission is not a route: offering it puts an option on
     /// the question whose only possible outcome is a refusal, and a
     /// shorter option set is the same answer the capability probe gives
-    /// for an executor that is not here. `run-suite` names a check this
-    /// host does not run and `review-changes` names a question set it has
-    /// no wording for, so a machine carrying all five programs offers three.
+    /// for an executor that is not here. `run-suite` needs a host-prepared
+    /// verification plan this runtime does not carry and `review-changes`
+    /// names a question set it has no wording for, so a machine carrying
+    /// all five programs offers three.
     #[must_use]
     pub fn selectable(&self) -> Vec<(String, String)> {
         self.survey
@@ -2221,5 +2301,333 @@ mod tests {
         assert!(run.steps.is_empty(), "{:?}", run.step_names());
         let stopped = run.stopped.expect("nothing was granted");
         assert_eq!(stopped.code, program_authority::UNAUTHORIZED);
+    }
+
+    /// A bounded fixture suite adapter and the plan that runs it, shaped
+    /// the way `crate::verification`'s tests shape theirs.
+    fn suite_fixture(
+        command: &str,
+        acceptance: crate::verification::Acceptance,
+    ) -> (
+        tempfile::TempDir,
+        tempfile::TempDir,
+        crate::verification::Plan,
+    ) {
+        let host = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(workspace.path().join("candidate.txt"), "immutable\n").unwrap();
+        let manifest = host.path().join("suite.json");
+        std::fs::write(
+            &manifest,
+            serde_json::to_vec(&json!({
+                "v":1,"slug":"suite-fixture","name":"Suite fixture","transport":"subprocess",
+                "detect":{"binary":"/bin/sh","version":["/bin/sh","--version"]},
+                "enforces":[],"cannot_enforce":[],"sees_repository":true,
+                "cost":"local","invoke":["/bin/sh"],"isolation":["directory"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let entry = capability::Entry::load(&manifest, capability::Source::Operator).unwrap();
+        let plan = crate::verification::Plan {
+            schema: crate::verification::SCHEMA.into(),
+            input_digest: "candidate-digest".into(),
+            seconds: 10,
+            allow_unrestricted_reads: true,
+            allow_network: true,
+            checks: vec![crate::verification::Check {
+                id: "suite".into(),
+                manifest,
+                manifest_digest: entry.digest,
+                arguments: vec!["-c".into(), command.into()],
+                seconds: 3,
+                output_bytes: 4096,
+                acceptance,
+            }],
+        };
+        (host, workspace, plan)
+    }
+
+    /// The repository's run-suite step shape: one gated check requiring
+    /// typed suite evidence under a stated test budget.
+    fn suite_program() -> Program {
+        serde_json::from_value(json!({
+            "v":1,"slug":"run-suite",
+            "steps":[{"name":"score","kind":"check",
+                      "bounds":{"refuse_on":"gate_not_met","acceptance":"suite","max_tests":4}}]
+        }))
+        .unwrap()
+    }
+
+    fn suite_acceptance() -> crate::verification::Acceptance {
+        crate::verification::Acceptance::Suite {
+            suite_digest: "suite-1".into(),
+            input_digest: "candidate-digest".into(),
+        }
+    }
+
+    /// The adapter's complete stdout: typed suite evidence in the shape
+    /// `crate::verification::SuiteEvidence` judges.
+    fn suite_evidence(suite: &str, input: &str, verdict: &str) -> String {
+        let evidence = json!({
+            "schema": crate::verification::SCHEMA,
+            "suite_digest": suite,
+            "input_digest": input,
+            "verdict": verdict,
+        });
+        format!("printf '%s' '{evidence}'")
+    }
+
+    fn suite_runtime(
+        workspace: &Path,
+        plan: crate::verification::Plan,
+        trust: capability::Trust,
+    ) -> Runtime {
+        let survey = Survey {
+            capabilities: Vec::new(),
+            programs: crate::program::Registry::open(&[]),
+            sources: source::Registry::open(&[]),
+            workspace: workspace.into(),
+        };
+        Runtime::using(survey, None).with_verification(workspace.into(), plan, trust)
+    }
+
+    /// Whether this host can run one command inside the boundary, not
+    /// merely build the profile — a nested sandbox compiles one and then
+    /// cannot apply it, which is a host that cannot run checks.
+    fn supported() -> bool {
+        let runs = coder_boundary::Boundary::readonly()
+            .build()
+            .and_then(|boundary| boundary.command(Path::new("/bin/true"), Vec::<String>::new()))
+            .map(|mut command| {
+                command
+                    .env_clear()
+                    .status()
+                    .is_ok_and(|status| status.success())
+            })
+            .unwrap_or(false);
+        if runs {
+            true
+        } else {
+            eprintln!("skipping: suite checks need an enforcing filesystem boundary");
+            false
+        }
+    }
+
+    /// A gated check runs only the evidence the step asks for. No plan, a
+    /// plan whose checks answer with the wrong kind, and a plan naming
+    /// more than one suite all refuse before any check runs — a bare exit
+    /// status cannot satisfy a requested typed suite.
+    #[test]
+    fn a_requested_suite_refuses_plans_that_cannot_answer_with_it() {
+        let program = suite_program();
+        let refused = empty_runtime().admit(&program).unwrap_err();
+        assert_eq!(refused.step, "score");
+        assert_eq!(refused.code, "check_unavailable");
+
+        let (_host, workspace, plan) =
+            suite_fixture("true", crate::verification::Acceptance::ExitSuccess);
+        let refused = suite_runtime(workspace.path(), plan, capability::Trust::everything())
+            .admit(&program)
+            .unwrap_err();
+        assert_eq!(refused.code, "check_unavailable");
+        assert!(refused.reason.contains("suite"), "{refused}");
+
+        let (_host, workspace, mut plan) = suite_fixture("true", suite_acceptance());
+        let mut second = plan.checks[0].clone();
+        second.id = "other".into();
+        second.acceptance = crate::verification::Acceptance::Suite {
+            suite_digest: "suite-2".into(),
+            input_digest: "candidate-digest".into(),
+        };
+        plan.checks.push(second);
+        let refused = suite_runtime(workspace.path(), plan, capability::Trust::everything())
+            .admit(&program)
+            .unwrap_err();
+        assert_eq!(refused.code, "check_unavailable");
+        assert!(refused.reason.contains("more than one suite"), "{refused}");
+    }
+
+    /// The requirement reads both ways: suite evidence cannot satisfy a
+    /// step that asked for a reviewed command's exit status either.
+    #[test]
+    fn a_requested_exit_status_refuses_suite_evidence() {
+        let program: Program = serde_json::from_value(json!({
+            "v":1,"slug":"verify-fixture",
+            "steps":[{"name":"gate","kind":"check",
+                      "bounds":{"refuse_on":"gate_not_met","acceptance":"exit-success"}}]
+        }))
+        .unwrap();
+        let (_host, workspace, plan) = suite_fixture("true", suite_acceptance());
+        let refused = suite_runtime(workspace.path(), plan, capability::Trust::everything())
+            .admit(&program)
+            .unwrap_err();
+        assert_eq!(refused.code, "check_unavailable");
+    }
+
+    /// The new bounds are held the way every other bound is: words and
+    /// counts the host cannot read refuse at admission, the test budget
+    /// holds the plan's check count, and evidence bounds mean nothing on
+    /// the delegation admission check.
+    #[test]
+    fn suite_bounds_refuse_what_the_host_cannot_hold() {
+        for bounds in [
+            json!({"refuse_on":"gate_not_met","acceptance":"vibes"}),
+            json!({"refuse_on":"gate_not_met","max_tests":0}),
+            json!({"refuse_on":"gate_not_met","max_tests":"four"}),
+        ] {
+            let program: Program = serde_json::from_value(json!({
+                "v":1,"slug":"run-suite",
+                "steps":[{"name":"score","kind":"check","bounds":bounds}]
+            }))
+            .unwrap();
+            assert_eq!(
+                empty_runtime().admit(&program).unwrap_err().code,
+                "bound_unenforceable",
+                "{bounds}"
+            );
+        }
+        let program: Program = serde_json::from_value(json!({
+            "v":1,"slug":"run-suite",
+            "steps":[{"name":"score","kind":"check",
+                      "bounds":{"refuse_on":"gate_not_met","acceptance":"suite","max_tests":1}}]
+        }))
+        .unwrap();
+        let (_host, workspace, mut plan) = suite_fixture("true", suite_acceptance());
+        let mut second = plan.checks[0].clone();
+        second.id = "other".into();
+        plan.checks.push(second);
+        let refused = suite_runtime(workspace.path(), plan, capability::Trust::everything())
+            .admit(&program)
+            .unwrap_err();
+        assert_eq!(refused.code, "bound_unenforceable");
+        assert!(refused.reason.contains("test budget"), "{refused}");
+
+        let program: Program = serde_json::from_value(json!({
+            "v":1,"slug":"pairing",
+            "steps":[
+                {"name":"admit","kind":"check",
+                 "bounds":{"refuse_on":"cannot_enforce_intersection","acceptance":"suite"}},
+                {"name":"work","kind":"delegate","bounds":{}}]
+        }))
+        .unwrap();
+        let refused = empty_runtime().admit(&program).unwrap_err();
+        assert_eq!(refused.step, "admit");
+        assert_eq!(refused.code, "bound_unenforceable");
+    }
+
+    /// A typed suite passes on matching evidence and stops the program on
+    /// a failed or unverifiable verdict, and neither becomes a pass.
+    #[tokio::test]
+    async fn a_typed_suite_passes_fails_and_stays_unverifiable_on_its_evidence() {
+        if !supported() {
+            return;
+        }
+        let program = suite_program();
+        let inputs = Inputs::read("Run the pinned suite.", "");
+        for (verdict, expected, finished) in [
+            ("passed", crate::verification::Verdict::Passed, true),
+            ("failed", crate::verification::Verdict::Failed, false),
+            (
+                "unverifiable",
+                crate::verification::Verdict::Unverifiable,
+                false,
+            ),
+        ] {
+            let (_host, workspace, plan) = suite_fixture(
+                &suite_evidence("suite-1", "candidate-digest", verdict),
+                suite_acceptance(),
+            );
+            let run = suite_runtime(workspace.path(), plan, capability::Trust::everything())
+                .run(&program, &inputs, &Grant::all(), None)
+                .await;
+            assert_eq!(run.finished(), finished, "{verdict}: {:?}", run.stopped);
+            assert_eq!(run.verification.len(), 1);
+            assert_eq!(run.verification[0].verdict, expected, "{verdict}");
+            if !finished {
+                assert_eq!(run.stopped.as_ref().unwrap().code, "gate_not_met");
+            }
+        }
+    }
+
+    /// Evidence that is missing or names another suite or input is
+    /// unverifiable, never a pass — a successful exit cannot stand in for
+    /// the pinned identities.
+    #[tokio::test]
+    async fn missing_or_mismatched_suite_identity_never_passes() {
+        if !supported() {
+            return;
+        }
+        let program = suite_program();
+        let inputs = Inputs::read("Run the pinned suite.", "");
+        for command in [
+            "true".to_string(),
+            suite_evidence("another-suite", "candidate-digest", "passed"),
+            suite_evidence("suite-1", "another-input", "passed"),
+        ] {
+            let (_host, workspace, plan) = suite_fixture(&command, suite_acceptance());
+            let run = suite_runtime(workspace.path(), plan, capability::Trust::everything())
+                .run(&program, &inputs, &Grant::all(), None)
+                .await;
+            let stopped = run.stopped.expect("mismatched evidence cannot pass");
+            assert_eq!(stopped.code, "gate_not_met", "{command}");
+            assert_eq!(
+                run.verification[0].verdict,
+                crate::verification::Verdict::Unverifiable,
+                "{command}"
+            );
+        }
+    }
+
+    /// The suite's adapter is a capability: without an approval covering
+    /// it the check refuses before it runs, and the run records no verdict.
+    #[tokio::test]
+    async fn an_unapproved_suite_adapter_never_runs() {
+        if !supported() {
+            return;
+        }
+        let program = suite_program();
+        let inputs = Inputs::read("Run the pinned suite.", "");
+        let (_host, workspace, plan) = suite_fixture(
+            &suite_evidence("suite-1", "candidate-digest", "passed"),
+            suite_acceptance(),
+        );
+        let run = suite_runtime(workspace.path(), plan, capability::Trust::empty())
+            .run(&program, &inputs, &Grant::all(), None)
+            .await;
+        let stopped = run.stopped.expect("an unapproved adapter cannot run");
+        assert_eq!(stopped.code, "verification_unverifiable");
+        assert!(run.verification.is_empty());
+    }
+
+    /// The program the repository ships asks for typed suite evidence: a
+    /// host with no plan refuses it at admission, and a host with a
+    /// matching suite plan runs it end to end.
+    #[tokio::test]
+    async fn the_shipped_run_suite_runs_a_pinned_suite() {
+        let program = crate::program::Program::load(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../programs/run-suite.json"),
+        )
+        .expect("the repository's run-suite reads");
+        assert_eq!(program.step_names(), ["score"]);
+        let refused = empty_runtime().admit(&program).unwrap_err();
+        assert_eq!(refused.step, "score");
+        assert_eq!(refused.code, "check_unavailable");
+        if !supported() {
+            return;
+        }
+        let inputs = Inputs::read("Run the pinned suite.", "");
+        let (_host, workspace, plan) = suite_fixture(
+            &suite_evidence("suite-1", "candidate-digest", "passed"),
+            suite_acceptance(),
+        );
+        let run = suite_runtime(workspace.path(), plan, capability::Trust::everything())
+            .run(&program, &inputs, &Grant::all(), None)
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(
+            run.verification[0].verdict,
+            crate::verification::Verdict::Passed
+        );
     }
 }

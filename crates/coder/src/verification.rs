@@ -29,6 +29,23 @@ pub enum Acceptance {
     },
 }
 
+impl Acceptance {
+    /// The evidence kind's name, as a program step's `acceptance` bound
+    /// spells it.
+    ///
+    /// A gated check names the evidence it requires, and the host refuses
+    /// one the installed plan cannot answer with: exit status cannot
+    /// satisfy a requested typed suite, and suite evidence cannot satisfy
+    /// a step that asked for a bare exit status.
+    #[must_use]
+    pub fn word(&self) -> &'static str {
+        match self {
+            Acceptance::ExitSuccess => "exit-success",
+            Acceptance::Suite { .. } => "suite",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Check {
@@ -342,8 +359,21 @@ mod tests {
         (host, workspace, plan)
     }
 
+    /// Whether this host can run one command inside the boundary, not
+    /// merely build the profile — a nested sandbox compiles one and then
+    /// cannot apply it, which is a host that cannot run checks.
     fn supported() -> bool {
-        if crate::delegate::boundary_supported() {
+        let runs = coder_boundary::Boundary::readonly()
+            .build()
+            .and_then(|boundary| boundary.command(Path::new("/bin/true"), Vec::<String>::new()))
+            .map(|mut command| {
+                command
+                    .env_clear()
+                    .status()
+                    .is_ok_and(|status| status.success())
+            })
+            .unwrap_or(false);
+        if runs {
             true
         } else {
             eprintln!("skipping: verification needs an enforcing filesystem boundary");
