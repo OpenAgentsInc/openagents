@@ -24,6 +24,7 @@ features='kev/serve,lev/serve,gym/tui,jev/blocking'
 echo 'Gate: Rust 1.97.1, rustfmt style edition 2024.'
 phase "Artifact acquisition tests" python3 scripts/test_fetch_kev_artifacts.py
 phase "Delegation evidence checks" python3 -B -m unittest discover -s scripts/tests -p 'test_check_coder_delegation_run.py'
+phase "Backup collection tests" python3 -B -m unittest discover -s scripts/tests -p 'test_backup_media.py'
 phase "Workspace formatting" cargo fmt --all --check
 phase "Default workspace Clippy" cargo clippy --locked --workspace --all-targets -- -D warnings
 phase "Feature workspace Clippy" cargo clippy --locked --workspace --all-targets --features "$features" -- -D warnings

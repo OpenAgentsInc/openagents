@@ -65,7 +65,7 @@ fn backup_is_private_atomic_retained_and_scheduled() {
         "pg_dump --dbname=\"${database}\" --format=custom",
         "--file=\"${work}/db.dump\"",
         "tar --create --file=\"${work}/media.tar\"",
-        "--exclude='./.tmp'",
+        "--directory=\"${work}/media\"",
         "pg_restore --data-only --table=media_blob",
         "no manifest written",
         "mv -- \"${work}/db.dump\" \"${dump}\"",

@@ -217,11 +217,14 @@ backup.
 The timer runs online. The unit is consistent because the relay never destroys
 a deleted blob's bytes at once: a delete moves the file to
 `<media root>/.deleted/`, where it stays for 48 hours, and the script dumps the
-database before it archives the media root. Every blob the dump names is
-therefore live or retained when the archive runs. Blobs uploaded after the
-dump appear in the archive without a row and are harmless orphans. The relay
-removes retained files after their window; do not clear `.deleted/` by hand
-while a backup is due.
+database before collecting its referenced blobs. The collector copies each
+blob from its live path or, if deletion moved it, its retained path. It checks
+each content digest, then archives the staging directory. This avoids missing
+a blob renamed between directory visits. Unreferenced blobs and unfinished
+uploads do not enter the archive. Allow space for the staged media and archive
+at the same time. The relay removes retained files after their window; finish
+collection within that window and do not clear `.deleted/` by hand while a
+backup is due.
 
 Test the newest unit immediately, into an empty database and an empty media
 root. The restore script checks both digests against the manifest before it
