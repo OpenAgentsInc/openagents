@@ -29,6 +29,7 @@
 pub mod execution;
 pub mod export;
 pub mod join;
+pub mod replay;
 pub mod validate;
 
 pub use execution::{Evaluation, ExecutionReceipt, Outcome, ReceiptError, SCHEMA, Served, Timing};
