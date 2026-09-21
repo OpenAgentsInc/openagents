@@ -830,7 +830,13 @@ mod tests {
     fn session_count_lanes_run_integrations_concurrently() {
         let externals = fixtures::mixed_dag_externals();
         let catalog = fixtures::mixed_dag();
-        let separate = run_lanes(&catalog, &host(4), Fill::Refill, Lanes::Separate, &externals);
+        let separate = run_lanes(
+            &catalog,
+            &host(4),
+            Fill::Refill,
+            Lanes::Separate,
+            &externals,
+        );
         let counted = run_lanes(
             &catalog,
             &host(4),
@@ -859,8 +865,7 @@ mod tests {
                         .unwrap_or_else(|| panic!("{id} scheduled"));
                     (completion.start_tick, completion.end_tick)
                 };
-                let overlaps =
-                    |a: (u64, u64), b: (u64, u64)| a.0 < b.1 && b.0 < a.1;
+                let overlaps = |a: (u64, u64), b: (u64, u64)| a.0 < b.1 && b.0 < a.1;
                 // The write-write pair never overlaps.
                 assert!(!overlaps(interval("docs-a"), interval("docs-b")));
                 // The quiet measurement runs alone.

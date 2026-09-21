@@ -164,10 +164,8 @@ fn references(run: &Run) -> Vec<(String, String)> {
     use crate::runstate::State;
     let unfinished = |state| matches!(state, State::Dispatched | State::Unknown);
     let mut references = Vec::new();
-    if unfinished(run.state) {
-        if let Some(reference) = &run.result {
-            references.push(("run".to_string(), reference.clone()));
-        }
+    if let (true, Some(reference)) = (unfinished(run.state), run.result.as_ref()) {
+        references.push(("run".to_string(), reference.clone()));
     }
     for step in &run.steps {
         if let (true, Some(reference)) = (unfinished(step.state), step.result.as_ref()) {
