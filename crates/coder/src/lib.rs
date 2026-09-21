@@ -48,6 +48,7 @@ pub mod capability;
 pub mod classify;
 pub mod decision;
 pub mod delegate;
+pub mod evidence;
 pub mod executor_door;
 pub mod generate;
 pub mod permit;
