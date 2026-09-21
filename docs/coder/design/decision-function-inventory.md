@@ -16,7 +16,7 @@ that issue.
 | `openagents.independence.v1` | `questions/independence.json` | Six-task wording; Noul independence, read-only, and tool-restriction judgments | Bound by no program since 2026-09-21; retained so the digests earlier runs recorded stay resolvable. |
 | `openagents.independence.v2` | `questions/independence-v2.json` | Listed tasks of any length; the same three Noul roles | Referenced by `programs/delegate-fan-out.json` and `programs/burn-down.json`. Host write footprints, dependency checks, and resource reservations remain authoritative. |
 | `openagents.completion.v1` | `questions/completion.json` | One requirement in recorded delegation state; Noul usability judgment | Used by delegation programs. A semantic answer cannot substitute for artifact verification, test evidence, or supervisor acceptance. |
-| `openagents.review-finding.v1` | `questions/review-finding.json` | One finding and captured change evidence; Noul judgment | Used by `programs/review-changes.json` after mechanical verification. Pinned reviewer execution and evidence bounds do not establish semantic accuracy. |
+| `openagents.review-finding.v1` | `questions/review-finding.json` | One finding and captured change evidence; Noul judgment | Used by `programs/review-changes.json` after mechanical verification. Pinned reviewer execution and evidence bounds do not establish semantic accuracy. Wording baseline: [2026-09-22-review-finding-baseline](../measurements/2026-09-22-review-finding-baseline.md) — 0.90 agreement on a twenty-finding labeled suite, both misses inside the ambiguous band. |
 
 File-defined sets carry schema version `v: 1` and their own IDs. Their contents
 are digested independently of the program that names them. Code-defined

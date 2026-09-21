@@ -1,0 +1,13 @@
+{"item":"rf-01","suite":"review-finding-v1","latency_ms":495,"model":"jev-1.13.0","findings":{"f1":{"noul":0.86,"truth":true,"agree":true}}}
+{"item":"rf-02","suite":"review-finding-v1","latency_ms":261,"model":"jev-1.13.0","findings":{"f1":{"noul":0.26,"truth":false,"agree":true},"f2":{"noul":0.15,"truth":false,"agree":true}}}
+{"item":"rf-03","suite":"review-finding-v1","latency_ms":149,"model":"jev-1.13.0","findings":{"f1":{"noul":0.92,"truth":true,"agree":true}}}
+{"item":"rf-04","suite":"review-finding-v1","latency_ms":139,"model":"jev-1.13.0","findings":{"f1":{"noul":0.94,"truth":true,"agree":true},"f2":{"noul":0.74,"truth":true,"agree":true}}}
+{"item":"rf-05","suite":"review-finding-v1","latency_ms":141,"model":"jev-1.13.0","findings":{"f1":{"noul":0.34,"truth":false,"agree":true},"f2":{"noul":0.04,"truth":false,"agree":true}}}
+{"item":"rf-06","suite":"review-finding-v1","latency_ms":148,"model":"jev-1.13.0","findings":{"f1":{"noul":0.51,"truth":false,"agree":false},"f2":{"noul":0.33,"truth":false,"agree":true}}}
+{"item":"rf-07","suite":"review-finding-v1","latency_ms":207,"model":"jev-1.13.0","findings":{"f1":{"noul":0.08,"truth":false,"agree":true}}}
+{"item":"rf-08","suite":"review-finding-v1","latency_ms":162,"model":"jev-1.13.0","findings":{"f1":{"noul":0.09,"truth":false,"agree":true},"f2":{"noul":0.05,"truth":false,"agree":true}}}
+{"item":"rf-09","suite":"review-finding-v1","latency_ms":150,"model":"jev-1.13.0","findings":{"f1":{"noul":0.85,"truth":true,"agree":true},"f2":{"noul":0.43,"truth":false,"agree":true}}}
+{"item":"rf-10","suite":"review-finding-v1","latency_ms":215,"model":"jev-1.13.0","findings":{"f1":{"noul":0.25,"truth":true,"agree":false},"f2":{"noul":0.05,"truth":false,"agree":true}}}
+{"item":"rf-11","suite":"review-finding-v1","latency_ms":138,"model":"jev-1.13.0","findings":{"f1":{"noul":0.05,"truth":false,"agree":true}}}
+{"item":"rf-12","suite":"review-finding-v1","latency_ms":258,"model":"jev-1.13.0","findings":{"f1":{"noul":0.89,"truth":true,"agree":true},"f2":{"noul":0.04,"truth":false,"agree":true}}}
+{"summary":{"suite":"review-finding-v1","set":"openagents.review-finding.v1","set_digest":"567027733b5a40e7d2ab52c8ba5785f51eb0fb82d0b8ed8041c7d3553cd2b50c","items":12,"findings_judged":20,"findings_unanswered":0,"agreement":0.9,"confident_errors":0,"errors":0,"latency_ms":{"mean":205.25,"max":495},"tokens":{"input":8064,"output":388},"cost":"unknown"}}
