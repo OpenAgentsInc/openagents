@@ -1450,6 +1450,7 @@ async fn classify_admitted(
                 state,
                 registry: &registry,
                 caller: &caller,
+                headers,
                 request: &request,
                 plan: &plan,
                 artifact: &artifact,
@@ -1835,6 +1836,8 @@ async fn door_slots(state: &ServeState, door: &str) -> Option<Arc<Semaphore>> {
 /// the primary's — never a bypass around authorization, bounds, quota,
 /// monetary admission, identity, or the receipt.
 struct SubCall {
+    /// The artifact authorized when the parent call froze its policy context.
+    expected: Option<tenancy::Expected>,
     /// The door this dispatch names — a bound door, authorized fresh.
     door: String,
     /// The reservation and hold request id: `{request}:{role}:{seq}` —
@@ -1942,24 +1945,22 @@ struct DispatchOutcome {
 /// monetary spend under its own request identity, verify the backend's
 /// published card against the binding, forward, settle, and leave a
 /// sealed receipt — every secondary call audited like the primary's.
-async fn dispatch(
-    state: &ServeState,
-    registry: &Registry,
-    caller: &Caller,
-    sub: &SubCall,
-) -> DispatchOutcome {
+async fn dispatch(state: &ServeState, headers: &HeaderMap, sub: &SubCall) -> DispatchOutcome {
     let started = Instant::now();
-    let mut ctx: Context = Box::new(ReceiptContext {
-        tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),
-        ..ReceiptContext::default()
-    });
+    let mut ctx: Context = Box::default();
     let naming = Naming {
         request: &sub.request,
         attempt: sub.attempt,
         attempt_id: sub.attempt_id.clone(),
         request_digest: &sub.request_digest,
     };
-    let result = dispatch_admitted(state, registry, caller, sub, &naming, &mut ctx).await;
+    let result = match authenticated(state, headers) {
+        Ok((registry, caller, fresh)) => {
+            ctx = fresh;
+            dispatch_admitted(state, &registry, &caller, sub, &naming, &mut ctx).await
+        }
+        Err(verdict) => Err(fail(verdict)),
+    };
     let (outcome, cause, code) = match &result {
         Ok(Forwarded::Served { .. }) => (Outcome::Answered, None, None),
         Ok(Forwarded::Refused { cause, .. }) => {
@@ -2026,6 +2027,19 @@ async fn dispatch_admitted(
     // Authorize the named door — a reviewer or fallback the caller's
     // bindings do not name is refused here, never dispatched.
     let (admission, backend) = authorized(state, registry, caller, &sub.door, ctx).map_err(fail)?;
+    if sub.expected.as_ref() != Some(&admission.binding.artifact) {
+        return Err(Fail {
+            outcome: Outcome::Unattempted,
+            code: "identity_mismatch".to_string(),
+            message: "the secondary door's artifact changed after the parent call was admitted"
+                .to_string(),
+        });
+    }
+    if Instant::now() >= sub.deadline {
+        return Err(Fail::unattempted(
+            "the secondary dispatch deadline passed during admission",
+        ));
+    }
     let capacity = admission.binding.capacity.clone().unwrap_or_default();
     windowed(state, &sub.door, &capacity, ctx)
         .await
@@ -2059,9 +2073,30 @@ async fn dispatch_admitted(
     let hold = money_hold(state, caller, &sub.door, &admission, naming, ctx)
         .await
         .map_err(fail)?;
-    verified(state, &backend.endpoint, &admission, naming, ctx, &hold)
-        .await
-        .map_err(fail)?;
+    match tokio::time::timeout_at(
+        cutoff,
+        verified(state, &backend.endpoint, &admission, naming, ctx, &hold),
+    )
+    .await
+    {
+        Ok(result) => result.map_err(fail)?,
+        Err(_) => {
+            // Identity reads cannot execute inference. Both reservations can
+            // therefore be released when this pre-dispatch deadline expires.
+            state.release(naming.request, naming.attempt).await;
+            ctx.settlement = money_release(state, &hold).await;
+            return Err(Fail::unattempted(
+                "the secondary dispatch deadline passed during identity verification",
+            ));
+        }
+    }
+    if Instant::now() >= sub.deadline {
+        state.release(naming.request, naming.attempt).await;
+        ctx.settlement = money_release(state, &hold).await;
+        return Err(Fail::unattempted(
+            "the secondary dispatch deadline passed before forwarding",
+        ));
+    }
     let forwarded = tokio::time::timeout_at(cutoff, forward(state, &backend.endpoint, &sub.body))
         .await
         .unwrap_or_else(|_| Forwarded::Unavailable {
@@ -2293,6 +2328,7 @@ struct PhaseContext<'a> {
     state: &'a ServeState,
     registry: &'a Registry,
     caller: &'a Caller,
+    headers: &'a HeaderMap,
     request: &'a ClassifyRequest,
     plan: &'a Arc<classify::Plan>,
     artifact: &'a str,
@@ -2317,6 +2353,7 @@ async fn review_phase(
         state,
         registry,
         caller,
+        headers,
         request,
         plan,
         artifact,
@@ -2372,15 +2409,20 @@ async fn review_phase(
         }
         // The body names the fallback door's bound artifact — the same
         // questions and state the primary carried.
-        let fallback_artifact = registry
+        let expected = registry
             .authorize(caller.tenant.as_deref(), &entry.model)
-            .map(|admission| admission.binding.artifact.model.clone())
-            .unwrap_or_else(|_| entry.model.clone());
+            .ok()
+            .map(|admission| admission.binding.artifact.clone());
+        let fallback_artifact = expected
+            .as_ref()
+            .map(|artifact| artifact.model.clone())
+            .unwrap_or_else(|| entry.model.clone());
         let (envelope, asked) =
             forward_envelope(request, plan, &request.inputs[index], &fallback_artifact);
         let body = Bytes::from(serde_json::to_vec(&envelope).unwrap_or_default());
         book.seq += 1;
         let sub = SubCall {
+            expected,
             door: entry.model.clone(),
             request: format!("{}:fb:{}", naming.request, book.seq),
             attempt: naming.attempt,
@@ -2390,9 +2432,11 @@ async fn review_phase(
             body,
             deadline,
         };
-        let result = dispatch(state, registry, caller, &sub).await;
+        let result = dispatch(state, headers, &sub).await;
         book.attempts += 1;
-        book.spend += quote.unwrap_or(0);
+        if result.settlement.is_some() {
+            book.spend += quote.unwrap_or(0);
+        }
         if result.dispatched {
             book.fallback_dispatched += 1;
             book.fallback_input.add(
@@ -2554,10 +2598,14 @@ async fn review_phase(
             }
             // The body names the reviewer door's bound artifact; the
             // dispatch itself re-authorizes fresh under the caller.
-            let reviewer_artifact = registry
+            let expected = registry
                 .authorize(caller.tenant.as_deref(), &policy.reviewer)
-                .map(|admission| admission.binding.artifact.model.clone())
-                .unwrap_or_else(|_| policy.reviewer.clone());
+                .ok()
+                .map(|admission| admission.binding.artifact.clone());
+            let reviewer_artifact = expected
+                .as_ref()
+                .map(|artifact| artifact.model.clone())
+                .unwrap_or_else(|| policy.reviewer.clone());
             let (envelope, asked) = unit_forward_envelope(
                 request,
                 plan,
@@ -2568,6 +2616,7 @@ async fn review_phase(
             let body = Bytes::from(serde_json::to_vec(&envelope).unwrap_or_default());
             book.seq += 1;
             let sub = SubCall {
+                expected,
                 door: policy.reviewer.clone(),
                 request: format!("{}:rev:{}", naming.request, book.seq),
                 attempt: naming.attempt,
@@ -2577,10 +2626,12 @@ async fn review_phase(
                 body,
                 deadline,
             };
-            let result = dispatch(state, registry, caller, &sub).await;
+            let result = dispatch(state, headers, &sub).await;
             book.attempts += 1;
             book.reviewed += 1;
-            book.spend += spend_quote(state, &policy.reviewer).unwrap_or(0);
+            if result.settlement.is_some() {
+                book.spend += spend_quote(state, &policy.reviewer).unwrap_or(0);
+            }
             if result.dispatched {
                 book.review_forwards += 1;
                 book.review_input.add(

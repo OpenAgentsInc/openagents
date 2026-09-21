@@ -460,8 +460,8 @@ pub struct Review {
     pub latency_ms: u64,
     /// The most worst-case spend — the sum of the doors' quoted maximum
     /// reservations — the phase's monetary holds may take, in the
-    /// account's millionths. Inert when the gateway runs no monetary
-    /// admission.
+    /// account's millionths. A declared bound refuses secondary work when
+    /// the gateway has no configured price for its destination.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_spend: Option<u64>,
     /// The fallback entries, first match per cause winning.

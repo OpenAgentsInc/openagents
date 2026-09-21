@@ -3879,3 +3879,128 @@ async fn classify_review_attempts_reference_receipts_that_bind_the_actual_respon
         assert_eq!(attempt["served"]["artifact_signature"], artifact('c'));
     }
 }
+
+#[tokio::test]
+async fn classify_review_rechecks_a_key_revoked_after_primary_admission() {
+    let mutation = Arc::new(Mutex::new(None::<(std::path::PathBuf, String)>));
+    let pending = mutation.clone();
+    let mut primary = honest(artifact('b'), uncertain_answer());
+    primary.respond = Some(Arc::new(move |_| {
+        if let Some((path, key)) = pending.lock().unwrap().take() {
+            keys::revoke(&path, &key).unwrap();
+        }
+        (StatusCode::OK, uncertain_answer())
+    }));
+    let (primary, _) = backend(primary).await;
+    let (reviewer, forwards) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let token = &deployment.tokens["acme"];
+    let key = token
+        .strip_prefix("oak_")
+        .unwrap()
+        .split_once('.')
+        .unwrap()
+        .0;
+    *mutation.lock().unwrap() = Some((deployment.dir.path().to_path_buf(), key.to_string()));
+    let (_, body) = send_classification(
+        &deployment,
+        &review_call(review_policy("acme-kev-review", "uncertain", "strict")),
+    )
+    .await;
+    assert_eq!(forwards.load(Ordering::SeqCst), 0, "{body}");
+    for item in body["results"].as_array().unwrap() {
+        assert!(item["units"][0]["selected"].is_null(), "{body}");
+        assert_eq!(item["units"][0]["original"]["selected"], "a", "{body}");
+        assert!(
+            item["attempts"].to_string().contains("unauthenticated"),
+            "{body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn classify_review_refuses_an_artifact_rebound_after_primary_admission() {
+    let mutation = Arc::new(Mutex::new(None::<std::path::PathBuf>));
+    let pending = mutation.clone();
+    let mut primary = honest(artifact('b'), uncertain_answer());
+    primary.respond = Some(Arc::new(move |_| {
+        if let Some(path) = pending.lock().unwrap().take() {
+            let mut updated = review_manifest();
+            updated.sequence = 1;
+            updated.supersedes = Some(Registry::open(&path).unwrap().digest().to_string());
+            updated
+                .tenants
+                .get_mut("acme")
+                .unwrap()
+                .doors
+                .get_mut("acme-kev-review")
+                .unwrap()
+                .artifact
+                .artifact_signature = artifact('e');
+            Registry::update(&path, updated).unwrap();
+        }
+        (StatusCode::OK, uncertain_answer())
+    }));
+    let (primary, _) = backend(primary).await;
+    let (reviewer, forwards) = backend(honest(artifact('e'), corrected_answer())).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    *mutation.lock().unwrap() = Some(deployment.dir.path().to_path_buf());
+    let (_, body) = send_classification(
+        &deployment,
+        &review_call(review_policy("acme-kev-review", "uncertain", "strict")),
+    )
+    .await;
+    assert_eq!(forwards.load(Ordering::SeqCst), 0, "{body}");
+    for item in body["results"].as_array().unwrap() {
+        assert!(item["units"][0]["selected"].is_null(), "{body}");
+        assert_eq!(item["units"][0]["original"]["selected"], "a", "{body}");
+        assert!(
+            item["attempts"].to_string().contains("identity_mismatch"),
+            "{body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn classify_review_bounds_identity_reads_before_inference() {
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let forwards = Arc::new(AtomicUsize::new(0));
+    let observed = forwards.clone();
+    let router = axum::Router::new()
+        .route(
+            "/v1/models",
+            get(|| async {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                Json(json!({"models": [{"id": "kev-0.6b",
+                "artifact_identity": {"digest": artifact('c')}}]}))
+            }),
+        )
+        .route(
+            "/v1/systemone",
+            post(move || {
+                observed.fetch_add(1, Ordering::SeqCst);
+                async { Json(corrected_answer()) }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(axum::serve(listener, router).into_future());
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, format!("http://{address}"), fallback).await;
+    let mut policy = review_policy("acme-kev-review", "uncertain", "strict");
+    policy["latency_ms"] = json!(100);
+    let (_, body) = send_classification(&deployment, &review_call(policy)).await;
+    assert_eq!(forwards.load(Ordering::SeqCst), 0, "{body}");
+    assert!(
+        body["results"][0]["attempts"]
+            .to_string()
+            .contains("during identity verification"),
+        "{body}"
+    );
+    for item in body["results"].as_array().unwrap() {
+        assert!(item["units"][0]["selected"].is_null(), "{body}");
+        assert_eq!(item["units"][0]["original"]["selected"], "a", "{body}");
+    }
+}

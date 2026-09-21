@@ -464,6 +464,9 @@
             }
           },
           "required": []
+        },
+        "review": {
+          "$ref": "#/$defs/review"
         }
       },
       "required": [
@@ -471,6 +474,96 @@
         "name",
         "select"
       ]
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "reviewer",
+        "trigger",
+        "on_failure",
+        "max_items",
+        "max_attempts",
+        "latency_ms"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.classify-review.v1"
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trigger": {
+          "enum": [
+            "uncertain",
+            "no-match",
+            "always"
+          ]
+        },
+        "on_failure": {
+          "enum": [
+            "keep-original",
+            "strict"
+          ]
+        },
+        "max_items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18446744073709551615
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18446744073709551615
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18446744073709551615
+        },
+        "max_spend": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18446744073709551615
+        },
+        "fallback": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fallback"
+          }
+        }
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "on",
+        "model"
+      ],
+      "properties": {
+        "on": {
+          "enum": [
+            "transport",
+            "capacity",
+            "refused"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "codes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   }
 }

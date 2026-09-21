@@ -94,6 +94,11 @@ An item whose cause has no declared entry reports the skip on its
 
 ## Admission and identity
 
+Each secondary dispatch rechecks the current key and registry authorization.
+A changed artifact binding refuses the dispatch; it cannot substitute a new
+artifact after primary admission. Identity reads and inference share the
+phase deadline. Durable reservation cleanup can outlast that deadline.
+
 Every secondary dispatch — review or fallback — passes the same admission
 path as the primary call, under its own recorded request and attempt
 identity:
