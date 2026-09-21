@@ -396,7 +396,7 @@ impl BackendLimits {
     /// Refuse a limits document a backend cannot mean: a bound of zero
     /// admits no work at all, and a bound above the product maximum is
     /// a limit the facade does not serve.
-    fn check(&self) -> Result<(), Refusal> {
+    pub(crate) fn check(&self) -> Result<(), Refusal> {
         let product = Self::product();
         let fields = [
             ("max_inputs", self.max_inputs, product.max_inputs),

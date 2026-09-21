@@ -1933,3 +1933,67 @@ async fn classify_serial_and_concurrent_batches_are_measured() {
         }
     }
 }
+
+#[tokio::test]
+async fn discovery_reports_classify_limits_without_inventing_backend_support() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment_tuned(endpoint, 4, |config| {
+        config.max_classify_inputs = 6;
+        config.max_classify_inputs_per_tenant = 3;
+        let limits = config
+            .doors
+            .get_mut("acme-kev")
+            .unwrap()
+            .classify
+            .as_mut()
+            .unwrap();
+        limits.max_inputs = 5;
+        limits.max_labels = 7;
+        limits.max_input_bytes = 100;
+    })
+    .await;
+    let cards: Value = reqwest::Client::new()
+        .get(format!("{}/v1/models", deployment.address))
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let model = cards["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["id"] == "acme-kev")
+        .unwrap();
+    let contract = &model["classification"];
+    assert_eq!(contract["status"], "configured");
+    assert_eq!(contract["limits"]["max_inputs"], 3);
+    assert_eq!(contract["limits"]["max_labels"], 7);
+    assert_eq!(contract["limits"]["max_input_bytes"], 100);
+    assert_eq!(contract["execution"]["max_item_concurrency"], 2);
+    assert_eq!(contract["execution"]["model_packing"], false);
+    assert!(contract["admission"]["context_tokens"].is_null());
+    let missing = cards["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["id"] == "shared-kev")
+        .unwrap();
+    assert_eq!(missing["classification"]["status"], "unavailable");
+    assert!(missing["classification"].get("limits").is_none());
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+    // The advertised per-tenant ceiling agrees with actual admission.
+    assert_eq!(
+        send_classification(&deployment, &classify_batch(4)).await.0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    let mut oversized = classify_batch(1);
+    oversized["inputs"][0]["text"] = json!("x".repeat(101));
+    assert_eq!(
+        send_classification(&deployment, &oversized).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+}

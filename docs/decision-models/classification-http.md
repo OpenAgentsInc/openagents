@@ -146,3 +146,23 @@ reproducible serial-versus-concurrent fixture measurement in
 throughput, caller-declared label exclusions, per-item receipt
 identities, semantic review of flagged inputs, or the durable-job
 surface #9484 owns.
+
+## Discover configured classification bounds
+
+Each authorized `GET /v1/models` card includes a `classification` object with
+schema `openagents.classify-discovery.v1`. `configured` publishes the request
+and policy schemas, supported modes, declared backend limits, gateway body
+and admitted-input ceilings, membership-header requirement, execution timeout,
+and effective per-item concurrency. The input limit is narrowed by global and
+per-tenant admitted-input ceilings; available capacity can still be lower while
+other requests are active. Independent multi-label work counts every input-label
+judgment, not only the number of inputs.
+
+`unsupported` means the configured door declares no classification limits;
+`unavailable` means no backend is configured; `invalid-limits` means its bounds
+cannot be served. These states publish no invented limits. A configured card is
+operator-declared support, not a live probe, artifact attestation, or throughput
+guarantee. `context_tokens: null` explicitly leaves token-context support unknown;
+byte, count, and wire limits are not token estimates. Execution remains native
+per-input forwarding with `model_packing: false`. Discovery has the same tenant
+and optional workspace admission as the decision routes.

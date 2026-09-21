@@ -234,10 +234,67 @@ async fn models(
                 "model": binding.artifact.model,
                 "artifact_signature": binding.artifact.artifact_signature,
                 "lane": tenancy::lane_name(binding.lane),
+                "classification": classification_card(&state, door, binding),
             }))
         })
         .collect();
     Ok(Json(json!({"models": cards})))
+}
+
+/// Publish configured admission bounds without claiming a live backend probe or
+/// model quality. Missing declarations never inherit product maxima.
+fn classification_card(state: &ServeState, door: &str, binding: &tenancy::Binding) -> Value {
+    let mut card = json!({
+        "v": "openagents.classify-discovery.v1",
+        "request_schema": classify::SCHEMA,
+        "policy_schema": classify::POLICY_SCHEMA,
+        "status": "unavailable",
+    });
+    let Some(backend) = state.config.doors.get(door) else {
+        return card;
+    };
+    let Some(mut limits) = backend.classify else {
+        card["status"] = json!("unsupported");
+        return card;
+    };
+    if limits.check().is_err() {
+        card["status"] = json!("invalid-limits");
+        return card;
+    }
+    limits.max_inputs = limits
+        .max_inputs
+        .min(u64::from(state.config.max_classify_inputs))
+        .min(u64::from(state.config.max_classify_inputs_per_tenant));
+    let capacity = binding.capacity.clone().unwrap_or_default();
+    let concurrency = backend
+        .classify_item_concurrency
+        .min(capacity.concurrency.unwrap_or(u64::MAX))
+        .min(state.config.max_in_flight as u64)
+        .min(limits.max_inputs);
+    let mut modes = vec!["multi-label", "binary"];
+    if limits.max_labels >= 2 {
+        modes.push("single-label");
+    }
+    if limits.max_levels >= 2 {
+        modes.push("score");
+    }
+    card["status"] = json!("configured");
+    card["limits"] = json!(limits);
+    card["modes"] = json!(modes);
+    card["admission"] = json!({
+        "max_body_bytes": state.config.max_body_bytes,
+        "max_pending_inputs": state.config.max_classify_inputs,
+        "max_pending_inputs_per_tenant": state.config.max_classify_inputs_per_tenant,
+        "requires_workspace_membership": state.config.require_workspace_membership,
+        "context_tokens": null,
+    });
+    card["execution"] = json!({
+        "kind": "native-per-input",
+        "max_item_concurrency": concurrency,
+        "timeout_ms": state.config.forward_timeout_ms,
+        "model_packing": false,
+    });
+    card
 }
 
 /// Who the call is, once authentication has run.
