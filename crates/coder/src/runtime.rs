@@ -384,6 +384,27 @@ pub struct Run {
     pub spend: Vec<crate::spend::Book>,
 }
 
+/// What a resumer rules over one recovered run.
+///
+/// The rulings pair the two questions recovery asks in the order a
+/// resumer reads them: [`crate::reattach`] answers whether in-flight
+/// work still runs under the reference a `dispatched` record holds,
+/// and [`crate::reconcile`] answers what a record recovery marked
+/// `unknown` may do next. A record that reattaches `Observe` needs no
+/// replay decision; one that cannot reattach is what reconciliation
+/// rules.
+#[derive(Clone, Debug)]
+pub struct Rulings {
+    /// Per-subject reattachment rulings — `run`, `step:<name>`, or
+    /// `task:<name>#<attempt>` — one per unfinished record holding a
+    /// dispatch reference.
+    pub reattach: Vec<(String, crate::reattach::Reattachment)>,
+    /// Per-subject reconciliation rulings over every `unknown` record,
+    /// each carrying the declared effects the ruling read and the
+    /// evidence the record kept.
+    pub reconcile: Vec<crate::reconcile::Ruling>,
+}
+
 impl Run {
     /// Whether every step ran.
     #[must_use]
@@ -1403,6 +1424,37 @@ impl Runtime {
         Ok(())
     }
 
+    /// Rule one recovered run's unfinished records for a resumer — the
+    /// runtime consulting [`crate::reattach`] and [`crate::reconcile`]
+    /// over the program the record pinned.
+    ///
+    /// The declared effects a reconciliation ruling reads come from the
+    /// pinned program, resolved in this host's registry by digest or by
+    /// the slug an older record kept; a pin that resolves to nothing
+    /// declares nothing, and undeclared records rule `NeedsDecision`
+    /// rather than guessing. `grant` is the resuming session's own
+    /// ceiling — a replay it does not allow rules `OutsideAuthority`
+    /// whatever the first session held. `observe` is the host's probe of
+    /// each record's dispatch reference; a probe that answers
+    /// [`crate::reattach::Observation::Unsupported`] for every reference
+    /// rules `NewAttempt` honestly, because that is what an executor
+    /// that cannot resume means.
+    pub fn rulings(
+        &self,
+        run: &runstate::Run,
+        grant: &Grant,
+        observe: impl for<'a> Fn(&str, &'a str) -> crate::reattach::Observation<'a>,
+    ) -> Rulings {
+        Rulings {
+            reattach: crate::reattach::reattachable(run, observe),
+            reconcile: crate::reconcile::reconcile(
+                run,
+                &self.declared_subjects(run),
+                grant.effects(),
+            ),
+        }
+    }
+
     /// The effects each step of a program declares, derived from what the
     /// step does rather than stated in the program — a program's own
     /// words are a claim, and the grant is held against what the step
@@ -1412,10 +1464,11 @@ impl Runtime {
         program: &'a Program,
         inputs: &Inputs,
     ) -> Vec<(&'a Step, Effects)> {
+        let mut visiting = vec![program.slug.clone()];
         program
             .steps
             .iter()
-            .map(|step| (step, self.step_effects(step, inputs)))
+            .map(|step| (step, self.step_effects(step, inputs, &mut visiting)))
             .collect()
     }
 
@@ -1430,7 +1483,7 @@ impl Runtime {
     /// transport that is not the relay, `spend` for any cost that is not
     /// `local`. An executor this host cannot resolve declares the wider
     /// set, because the refusal that names it reads the same survey.
-    fn step_effects(&self, step: &Step, inputs: &Inputs) -> Effects {
+    fn step_effects(&self, step: &Step, inputs: &Inputs, visiting: &mut Vec<String>) -> Effects {
         let mut effects = match step.kind {
             Kind::Query => Effects {
                 reads: true,
@@ -1459,8 +1512,25 @@ impl Runtime {
                 network: true,
                 ..Effects::none()
             },
-            // These kinds are refused at admission and never reach a grant.
-            Kind::Program | Kind::Module => Effects::none(),
+            // A `program` step declares what its resolved child declares:
+            // naming a program in the grant consents to the composition it
+            // pins, and the effect ceiling is what bounds it. A child that
+            // does not resolve declares nothing — admission refused the
+            // composition before a grant ever read it — and `visiting`
+            // keeps a cycle that slipped admission from recursing.
+            Kind::Program => self
+                .child_of(step, visiting)
+                .map(|child| {
+                    visiting.push(child.slug.clone());
+                    let union = child.steps.iter().fold(Effects::none(), |union, step| {
+                        union.union(self.step_effects(step, inputs, visiting))
+                    });
+                    visiting.pop();
+                    union
+                })
+                .unwrap_or_else(Effects::none),
+            // Refused at admission and never reaches a grant.
+            Kind::Module => Effects::none(),
         };
         if step.kind == Kind::Delegate {
             match self.survey.capability(&inputs.executor) {
@@ -1479,6 +1549,101 @@ impl Runtime {
             }
         }
         effects
+    }
+
+    /// The program a `program` step's reference resolves to, the same
+    /// resolution composition checking and execution use — `visiting`
+    /// holds the slugs on the path to the step, so a program that names
+    /// an ancestor resolves to nothing rather than recursing.
+    fn child_of<'a>(&'a self, step: &Step, visiting: &[String]) -> Option<&'a Program> {
+        let reference = crate::child::ChildRef::parse(step.program.as_deref()?).ok()?;
+        let resolution = reference.resolve(&self.survey.programs)?;
+        if visiting.contains(&resolution.slug) {
+            return None;
+        }
+        self.survey.programs.get(&resolution.slug)
+    }
+
+    /// The declared effects of every subject a recovered run can name —
+    /// `run`, `step:<name>` namespaced by composition path the way the
+    /// record namespaces them, and `task:<name>#<attempt>` — derived from
+    /// the program the record pinned, which the claim wrote as a digest
+    /// and older records kept as a slug. A task attempt's declaration is
+    /// the union of every `delegate` step's effects: the record does not
+    /// say which step dispatched it, so the honest bound is any of them.
+    /// A pin that names no program this host holds declares nothing, and
+    /// undeclared records rule `NeedsDecision` rather than guessing at
+    /// what an unknown program did.
+    fn declared_subjects(&self, run: &runstate::Run) -> BTreeMap<String, Effects> {
+        let mut declared = BTreeMap::new();
+        let Some(program) = self.survey.programs.programs().iter().find(|program| {
+            crate::child::digest(program) == run.program || program.slug == run.program
+        }) else {
+            return declared;
+        };
+        let inputs = Inputs::read("", "");
+        let mut delegation = Effects::none();
+        let union = self.subject_effects(
+            program,
+            "",
+            &inputs,
+            &mut vec![program.slug.clone()],
+            &mut declared,
+            &mut delegation,
+        );
+        declared.insert("run".to_string(), union);
+        for task in &run.tasks {
+            declared
+                .entry(format!("task:{}#{}", task.task, task.attempt))
+                .or_insert(delegation);
+        }
+        declared
+    }
+
+    /// Walk one program's steps recording each one's declared effects
+    /// under its composition path, recursing into `program` steps so a
+    /// child's steps rule under names like `step:call/pick`. Returns the
+    /// union — what the walked program itself declares.
+    fn subject_effects(
+        &self,
+        program: &Program,
+        prefix: &str,
+        inputs: &Inputs,
+        visiting: &mut Vec<String>,
+        declared: &mut BTreeMap<String, Effects>,
+        delegation: &mut Effects,
+    ) -> Effects {
+        let mut union = Effects::none();
+        for step in &program.steps {
+            let subject = if prefix.is_empty() {
+                step.name.clone()
+            } else {
+                format!("{prefix}/{}", step.name)
+            };
+            let effects = if step.kind == Kind::Program {
+                match self.child_of(step, visiting) {
+                    Some(child) => {
+                        visiting.push(child.slug.clone());
+                        let union = self.subject_effects(
+                            child, &subject, inputs, visiting, declared, delegation,
+                        );
+                        visiting.pop();
+                        union
+                    }
+                    // An unresolvable child declares nothing: the step's
+                    // subject stays out of the map and rules `NeedsDecision`.
+                    None => continue,
+                }
+            } else {
+                self.step_effects(step, inputs, visiting)
+            };
+            union = union.union(effects);
+            declared.insert(format!("step:{subject}"), effects);
+            if step.kind == Kind::Delegate {
+                *delegation = delegation.union(effects);
+            }
+        }
+        union
     }
 
     /// The grant decision, recorded the way every other check is: what
@@ -2148,11 +2313,12 @@ impl Runtime {
         };
         let id = run_id(&program.slug);
         let base = self.base_commit();
+        let pin = crate::child::digest(program);
         let (questions, sources) = self.claim_pins(program);
         match store.claim(&Claim {
             run: &id,
             base: &base,
-            program: &program.slug,
+            program: &pin,
             questions: &questions,
             sources: &sources,
         }) {
@@ -4223,9 +4389,10 @@ mod tests {
         let record = store.get(&ids[0]).unwrap().unwrap();
         assert_eq!(record.state, State::Settled);
         assert_eq!(record.outcome, Some(runstate::Outcome::Answered));
-        // The claim pins: the program by slug, this host's missing base
-        // commit as empty, and the request source the query step read.
-        assert_eq!(record.program, "burn-down");
+        // The claim pins: the program by its canonical digest, this
+        // host's missing base commit as empty, and the request source
+        // the query step read.
+        assert_eq!(record.program, crate::child::digest(&program));
         assert_eq!(record.base, "");
         assert_eq!(record.sources, ["request"]);
         assert!(record.questions.is_empty());
@@ -4973,6 +5140,197 @@ mod tests {
         // A step the parent never reached is nowhere: `select` was
         // never marked by the cancellation.
         assert!(record.steps.iter().all(|step| step.step != "select"));
+    }
+
+    /// A `program` step is held to the grant by what its composition
+    /// declares: a parent whose child delegates is not a reads-only
+    /// program, and a grant that allows only reads refuses it — naming
+    /// the parent consents to the composition it pins, never to more.
+    #[test]
+    fn a_childs_declared_effects_are_held_to_the_grant() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "work", "kind": "delegate", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "child-program@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let grant = Grant::selected(Some("parent-program"), Some("reads"));
+        let refused = runtime
+            .authorize(&parent, &inputs, &grant)
+            .expect_err("a reads-only grant does not cover a child's delegation");
+        assert_eq!(refused.code, program_authority::UNAUTHORIZED);
+        assert_eq!(refused.step, "call");
+        runtime
+            .authorize(&parent, &inputs, &Grant::all())
+            .expect("a full grant admits the whole composition");
+    }
+
+    /// A resumer's rulings read the program the record pinned: the
+    /// dispatched step's reference reattaches through the host's
+    /// observation, and the `unknown` marks rule by the effects the
+    /// pinned program declared — reads replay, and nothing guesses.
+    #[test]
+    fn rulings_read_the_pinned_programs_declared_effects() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "read-only",
+            r#"[{"name": "look", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let program = runtime.survey.programs.get("read-only").unwrap().clone();
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(dir.path()).unwrap();
+        store
+            .claim(&Claim {
+                run: "run-1",
+                base: "",
+                program: &crate::child::digest(&program),
+                questions: &[],
+                sources: &["request".to_string()],
+            })
+            .unwrap();
+        store
+            .advance("run-1", Mark::run(State::Dispatched))
+            .unwrap();
+        store
+            .advance(
+                "run-1",
+                Mark::step("look", State::Dispatched).result("job-7"),
+            )
+            .unwrap();
+        let runs = store.recover().unwrap();
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert_eq!(run.steps[0].state, State::Unknown);
+
+        let rulings = runtime.rulings(run, &Grant::all(), |_, _| {
+            crate::reattach::Observation::Live {
+                reference: "job-7",
+                pins_match: true,
+            }
+        });
+        // The live job under matching pins is observed to its end —
+        // never run a second attempt alongside it.
+        assert!(matches!(
+            rulings.reattach.as_slice(),
+            [(subject, crate::reattach::Reattachment::Observe { reference })]
+                if subject == "step:look" && reference == "job-7"
+        ));
+        // A read-only step's unknown mark is replayable — reads could
+        // not have changed the world — and so is the run's own.
+        let look = rulings
+            .reconcile
+            .iter()
+            .find(|ruling| ruling.subject == "step:look")
+            .unwrap();
+        assert_eq!(look.ruling, crate::reconcile::Reconciliation::Replayable);
+        let whole = rulings
+            .reconcile
+            .iter()
+            .find(|ruling| ruling.subject == "run")
+            .unwrap();
+        assert_eq!(whole.ruling, crate::reconcile::Reconciliation::Replayable);
+    }
+
+    /// A record whose pin names no program this host holds declares
+    /// nothing, and undeclared effects are never replayable — the
+    /// ruling is `NeedsDecision`, stated rather than guessed. The same
+    /// unknown record under a narrower grant than its declared work
+    /// rules `OutsideAuthority`: a crash does not widen authority.
+    #[test]
+    fn rulings_refuse_what_the_pin_or_grant_cannot_cover() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "writes-work",
+            r#"[{"name": "work", "kind": "delegate", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(dir.path()).unwrap();
+        store
+            .claim(&Claim {
+                run: "run-2",
+                base: "",
+                program: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                questions: &[],
+                sources: &[],
+            })
+            .unwrap();
+        store
+            .advance("run-2", Mark::run(State::Dispatched))
+            .unwrap();
+        store
+            .advance("run-2", Mark::step("work", State::Dispatched))
+            .unwrap();
+        let run = store.recover().unwrap().remove(0);
+
+        let rulings = runtime.rulings(&run, &Grant::all(), |_, _| {
+            crate::reattach::Observation::Unsupported
+        });
+        let step = rulings
+            .reconcile
+            .iter()
+            .find(|ruling| ruling.subject == "step:work")
+            .unwrap();
+        assert_eq!(step.ruling, crate::reconcile::Reconciliation::NeedsDecision);
+        assert_eq!(step.effects, None);
+
+        // The same shape, pinned to the real program: a delegate step's
+        // unknown mark under a grant without delegation refuses replay.
+        let program = runtime.survey.programs.get("writes-work").unwrap().clone();
+        store
+            .claim(&Claim {
+                run: "run-3",
+                base: "",
+                program: &crate::child::digest(&program),
+                questions: &[],
+                sources: &[],
+            })
+            .unwrap();
+        store
+            .advance("run-3", Mark::run(State::Dispatched))
+            .unwrap();
+        store
+            .advance("run-3", Mark::step("work", State::Dispatched))
+            .unwrap();
+        let run = store
+            .recover()
+            .unwrap()
+            .into_iter()
+            .find(|run| run.run == "run-3")
+            .unwrap();
+        let rulings = runtime.rulings(
+            &run,
+            &Grant::selected(Some("writes-work"), Some("reads")),
+            |_, _| crate::reattach::Observation::Unsupported,
+        );
+        let step = rulings
+            .reconcile
+            .iter()
+            .find(|ruling| ruling.subject == "step:work")
+            .unwrap();
+        assert_eq!(
+            step.ruling,
+            crate::reconcile::Reconciliation::OutsideAuthority
+        );
     }
 
     /// A program file under `dir`, for a registry to open.
