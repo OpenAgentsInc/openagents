@@ -3108,9 +3108,9 @@ mod tests {
                 .unwrap_or_else(|refusal| panic!("{} builds a door: {refusal}", profile.name()));
             let mut runtime = empty_runtime().asking(Some(door));
             runtime.questions = questions::Registry::open(&[dir.path().to_path_buf()]);
-            runtime.admit(&program).unwrap_or_else(|refused| {
-                panic!("{} admits the step: {refused}", profile.name())
-            });
+            runtime
+                .admit(&program)
+                .unwrap_or_else(|refused| panic!("{} admits the step: {refused}", profile.name()));
         }
     }
 
@@ -3168,14 +3168,16 @@ mod tests {
         )
         .unwrap();
         let mut runtime = empty_runtime();
-        runtime.survey.programs =
-            crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
         runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
         runtime.door_error = Some("CODER_DECISION_URL is not an http or https URL".to_string());
 
         let refused = runtime.select("run it", None).await.unwrap_err();
         assert_eq!(refused.code, "door_unavailable");
-        assert_eq!(refused.reason, "CODER_DECISION_URL is not an http or https URL");
+        assert_eq!(
+            refused.reason,
+            "CODER_DECISION_URL is not an http or https URL"
+        );
     }
 
     /// The work is the list the sentence carries, in the order it was
