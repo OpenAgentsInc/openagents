@@ -61,9 +61,20 @@ can support a quality claim.
    decision calls carry it.
 2. Bind each function to input/output schemas, state limits, allowed artifact
    profiles, evaluation/calibration evidence, and a versioned abstention policy.
-3. Connect opt-in review/fallback to the original result, reviewer result,
+3. ~~Connect opt-in review/fallback to the original result, reviewer result,
    actual artifact identities, nullable scores, and every attempt's usage and
-   cost. Honor local disclosure restrictions before a remote attempt.
+   cost. Honor local disclosure restrictions before a remote attempt.~~
+   Done: `policy.review` and `policy.fallback` declare the secondary phase on
+   the set — a gated read under `below` re-judges through the named reviewer,
+   a covered transport or refusal cause retries through a named fallback, and
+   every model in either must sit in `models` when it is declared, so no
+   secondary attempt reaches an artifact the set's state may not. The
+   decision record carries the selected answer beside `attempts` — each
+   dispatch's own model, answers, usage, timing, and outcome — and a
+   `review` record naming the trigger, both gate reads, and the outcome:
+   confirmed, changed, unscorable, failed, or unattempted. A failed review
+   keeps the original under `keep-original` and refuses under `strict`;
+   neither path lets an unreviewed answer read as reviewed.
 4. Test absent candidates, changed artifacts, missing evidence, and confidently
    wrong judgments. Measure any new context, relevance, review, ranking, or
    executor-choice question before production adoption.

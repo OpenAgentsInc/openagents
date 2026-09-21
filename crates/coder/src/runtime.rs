@@ -3521,75 +3521,214 @@ impl Runtime {
             .body(door.default_model())
             .map_or(Value::Null, Value::Object);
         let started = Instant::now();
-        let answered = door.system_one(request).await;
+        // Secondary dispatches — fallback retries and the review — are
+        // bounded by the review block's declared count, or by the
+        // fallback entries themselves when no review is declared: each
+        // entry fires at most once, and a cause matches only its first.
+        let max_secondary = set
+            .policy
+            .review
+            .as_ref()
+            .map_or(set.policy.fallback.len() as u64, |review| {
+                review.max_attempts
+            });
+        let mut attempts: Vec<atif::Attempt> = Vec::new();
+        let mut secondary = 0u64;
+        let mut answered = {
+            let dispatch = Instant::now();
+            let result = door.system_one(request.clone()).await;
+            attempts.push(dispatch_record(
+                "primary",
+                door.default_model(),
+                &result,
+                dispatch.elapsed(),
+            ));
+            result
+        };
+        // Fallback: a cause an entry covers retries the same state
+        // through the model the entry names — admitted under the set's
+        // `models` like the primary, so a retry never sends the state to
+        // an artifact the function's admission did not name.
+        let mut spent = Vec::new();
+        while let Err(error) = &answered {
+            if secondary >= max_secondary {
+                break;
+            }
+            let (on, code) = cause_of(error);
+            let Some(index) = set
+                .policy
+                .fallback
+                .iter()
+                .enumerate()
+                .find_map(|(index, entry)| {
+                    (!spent.contains(&index)
+                        && entry.on == on
+                        && match entry.on {
+                            crate::questions::FallbackOn::Transport => true,
+                            crate::questions::FallbackOn::Refused => entry
+                                .codes
+                                .as_ref()
+                                .is_some_and(|codes| codes.iter().any(|named| named == code)),
+                        })
+                    .then_some(index)
+                })
+            else {
+                break;
+            };
+            spent.push(index);
+            secondary += 1;
+            let entry = &set.policy.fallback[index];
+            let dispatch = Instant::now();
+            let result = door
+                .system_one(request.clone().model(entry.model.clone()))
+                .await;
+            attempts.push(dispatch_record(
+                &format!("fallback:{}", on.name()),
+                &entry.model,
+                &result,
+                dispatch.elapsed(),
+            ));
+            answered = result;
+        }
+        let mut response = match answered {
+            Ok(response) => response,
+            Err(error) => {
+                let milliseconds = started.elapsed().as_millis() as u64;
+                let decision = Decision {
+                    id: String::new(),
+                    name: name.to_string(),
+                    door: door.base_url().to_string(),
+                    model: door.default_model().to_string(),
+                    request: asked,
+                    answers: Value::Null,
+                    route: None,
+                    error: Some(error.to_string()),
+                    attempts,
+                    review: None,
+                    milliseconds,
+                };
+                self.record_decision(trace, set, decision);
+                return Err(door_refused(name, &error));
+            }
+        };
+        // The policy binds what came back, too: an answer reporting a
+        // model the function does not admit, or a gated confidence under
+        // its abstention floor, is the typed outcome — not a read a
+        // caller treats as an answer.
+        let mut refused = answer_refused(set, name, &response);
+        // A declared review re-judges an uncertain gate through the
+        // model the policy names. The original and the reviewer's own
+        // answer stay separate records; a reviewer that answers without
+        // a scored gate leaves a null read, never the primary's
+        // confidence under another model's name.
+        let mut review_record: Option<Value> = None;
+        if refused.is_none()
+            && let Some(review) = &set.policy.review
+        {
+            let gate_read = response.answers.get(&set.gate).and_then(probability);
+            let reason = match gate_read {
+                Some(read) => format!("{} answered {read:.2}, under {}", set.gate, review.below),
+                None => format!("{} answered nothing", set.gate),
+            };
+            if gate_read.is_none_or(|read| read < review.below) {
+                if secondary < max_secondary {
+                    let dispatch = Instant::now();
+                    let result = door
+                        .system_one(request.clone().model(review.model.clone()))
+                        .await;
+                    attempts.push(dispatch_record(
+                        "review",
+                        &review.model,
+                        &result,
+                        dispatch.elapsed(),
+                    ));
+                    match result {
+                        Ok(reviewed) => {
+                            let reviewed_read =
+                                reviewed.answers.get(&set.gate).and_then(probability);
+                            if reviewed_read.is_some() {
+                                let changed = verdict_of(&reviewed, &set.gate)
+                                    != verdict_of(&response, &set.gate);
+                                review_record = Some(json!({
+                                    "reason": reason,
+                                    "reviewer": reviewed.model,
+                                    "original": { "model": response.model, "gate": gate_read },
+                                    "reviewed": { "model": reviewed.model, "gate": reviewed_read },
+                                    "outcome": if changed { "changed" } else { "confirmed" },
+                                }));
+                                refused = answer_refused(set, name, &reviewed);
+                                response = reviewed;
+                            } else {
+                                review_record = Some(json!({
+                                    "reason": reason,
+                                    "reviewer": reviewed.model,
+                                    "original": { "model": response.model, "gate": gate_read },
+                                    "reviewed": { "model": reviewed.model, "gate": Value::Null },
+                                    "outcome": "unscorable",
+                                }));
+                                if review.on_failure == crate::questions::OnFailure::Strict {
+                                    refused = Some(Refused::at(
+                                        name,
+                                        "review_unanswered",
+                                        format!(
+                                            "{} declares its review strict and {} answered without a scored {}",
+                                            set.id, review.model, set.gate
+                                        ),
+                                    ));
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            review_record = Some(json!({
+                                "reason": reason,
+                                "reviewer": review.model,
+                                "original": { "model": response.model, "gate": gate_read },
+                                "outcome": "failed",
+                                "cause": cause_of(&error).1,
+                            }));
+                            if review.on_failure == crate::questions::OnFailure::Strict {
+                                refused = Some(Refused::at(
+                                    name,
+                                    "review_failed",
+                                    format!(
+                                        "{} declares its review strict and {} did not answer: {error}",
+                                        set.id, review.model
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                } else {
+                    review_record = Some(json!({
+                        "reason": reason,
+                        "reviewer": review.model,
+                        "original": { "model": response.model, "gate": gate_read },
+                        "outcome": "unattempted",
+                        "cause": "the policy's max_attempts is spent",
+                    }));
+                }
+            }
+        }
         let milliseconds = started.elapsed().as_millis() as u64;
-        let mut decision = Decision {
+        let decision = Decision {
             id: String::new(),
             name: name.to_string(),
             door: door.base_url().to_string(),
-            model: door.default_model().to_string(),
+            model: response.model.clone(),
             request: asked,
-            answers: Value::Null,
-            route: None,
-            error: None,
+            answers: answers_value(&response.answers),
+            route: refused
+                .is_none()
+                .then(|| route(read_of(&response, &set.gate))),
+            error: refused.as_ref().map(ToString::to_string),
+            attempts,
+            review: review_record,
             milliseconds,
         };
-        match answered {
-            Ok(response) => {
-                decision.model = response.model.clone();
-                decision.answers = answers_value(&response.answers);
-                decision.route = Some(route(read_of(&response, &set.gate)));
-                // The policy binds what came back, too: an answer
-                // reporting a model the function does not admit, or a
-                // gated confidence under its abstention floor, is the
-                // typed outcome — not a read a caller treats as an
-                // answer.
-                let refused = if !set.policy.models.is_empty()
-                    && !set.policy.models.contains(&response.model)
-                {
-                    Some(Refused::at(
-                        name,
-                        "unbound_model",
-                        format!(
-                            "{} admits answers from [{}] and this answer came from {}",
-                            set.id,
-                            set.policy.models.join(", "),
-                            response.model
-                        ),
-                    ))
-                } else {
-                    set.policy.abstain_below.and_then(|floor| {
-                        response
-                            .answers
-                            .get(&set.gate)
-                            .and_then(probability)
-                            .filter(|read| *read < floor)
-                            .map(|read| {
-                                Refused::at(
-                                    name,
-                                    "abstained",
-                                    format!(
-                                        "{} abstains: {} came back at {read:.2}, under the policy's {floor}",
-                                        set.id, set.gate
-                                    ),
-                                )
-                            })
-                    })
-                };
-                if let Some(refused) = &refused {
-                    decision.error = Some(refused.to_string());
-                }
-                self.record_decision(trace, set, decision);
-                match refused {
-                    Some(refused) => Err(refused),
-                    None => Ok(response),
-                }
-            }
-            Err(error) => {
-                decision.error = Some(error.to_string());
-                self.record_decision(trace, set, decision);
-                Err(door_refused(name, &error))
-            }
+        self.record_decision(trace, set, decision);
+        match refused {
+            Some(refused) => Err(refused),
+            None => Ok(response),
         }
     }
 
@@ -3682,7 +3821,12 @@ fn refusal_state(refused: &Refused) -> State {
 /// failure — transport, timeout, an unreadable answer — is
 /// `door_unavailable` as before.
 fn door_refused(step: &str, error: &jev::Error) -> Refused {
-    let code = match error {
+    Refused::at(step, door_code(error), error.to_string())
+}
+
+/// The refusal code a door failure maps to.
+fn door_code(error: &jev::Error) -> &'static str {
+    match error {
         jev::Error::Api(api) => match api.kind {
             jev::ApiErrorKind::Authentication => "door_unauthenticated",
             jev::ApiErrorKind::PermissionDenied => "door_unauthorized",
@@ -3690,8 +3834,90 @@ fn door_refused(step: &str, error: &jev::Error) -> Refused {
             _ => "door_unavailable",
         },
         _ => "door_unavailable",
-    };
-    Refused::at(step, code, error.to_string())
+    }
+}
+
+/// The failure class a failed dispatch ended in, for the fallback
+/// entries a set declares: `transport` when the door never produced a
+/// decided answer — a dead door, a 5xx, a timeout, a body the SDK
+/// cannot read — and `refused` with the typed code when it answered a
+/// refusal. A `refused` entry may retry only the codes it names.
+fn cause_of(error: &jev::Error) -> (crate::questions::FallbackOn, &'static str) {
+    match error {
+        jev::Error::Api(api) if api.status < 500 => {
+            (crate::questions::FallbackOn::Refused, door_code(error))
+        }
+        _ => (crate::questions::FallbackOn::Transport, "transport"),
+    }
+}
+
+/// One dispatch as the decision record keeps it: its own model,
+/// answers, usage, timing, and outcome — attribution the selected
+/// answer never absorbs.
+fn dispatch_record(
+    role: &str,
+    requested: &str,
+    answered: &Result<jev::SystemOneResponse, jev::Error>,
+    elapsed: std::time::Duration,
+) -> atif::Attempt {
+    let milliseconds = elapsed.as_millis() as u64;
+    match answered {
+        Ok(response) => atif::Attempt {
+            role: role.to_string(),
+            model: response.model.clone(),
+            answers: answers_value(&response.answers),
+            input_tokens: response.usage.input_tokens,
+            output_tokens: response.usage.output_tokens,
+            milliseconds,
+            outcome: "answered".to_string(),
+        },
+        Err(error) => atif::Attempt {
+            role: role.to_string(),
+            model: requested.to_string(),
+            answers: Value::Null,
+            input_tokens: None,
+            output_tokens: None,
+            milliseconds,
+            outcome: cause_of(error).1.to_string(),
+        },
+    }
+}
+
+/// The response-side policy binds: an answer reporting a model the
+/// function does not admit, or a gated confidence under its abstention
+/// floor, is the typed outcome rather than a read a caller treats as
+/// an answer. Runs on whatever answer the chain selected, primary or
+/// reviewed.
+fn answer_refused(set: &Set, name: &str, response: &jev::SystemOneResponse) -> Option<Refused> {
+    if !set.policy.models.is_empty() && !set.policy.models.contains(&response.model) {
+        return Some(Refused::at(
+            name,
+            "unbound_model",
+            format!(
+                "{} admits answers from [{}] and this answer came from {}",
+                set.id,
+                set.policy.models.join(", "),
+                response.model
+            ),
+        ));
+    }
+    set.policy.abstain_below.and_then(|floor| {
+        response
+            .answers
+            .get(&set.gate)
+            .and_then(probability)
+            .filter(|read| *read < floor)
+            .map(|read| {
+                Refused::at(
+                    name,
+                    "abstained",
+                    format!(
+                        "{} abstains: {} came back at {read:.2}, under the policy's {floor}",
+                        set.id, set.gate
+                    ),
+                )
+            })
+    })
 }
 
 /// The tightest room the enclosing scopes still promise one lane — the
@@ -4012,6 +4238,19 @@ fn read_of(response: &jev::SystemOneResponse, gate: &str) -> String {
         Some(Answer::Noul(noul)) => format!("{gate} {:.2}", noul.noul),
         Some(Answer::Score(score)) => format!("{gate} {:.2}", score.score),
         None => format!("{} answers", response.answers.len()),
+    }
+}
+
+/// The judgment a gate's answer carries, for whether a review changed
+/// it: a noul's yes or no, a choice's selection, a score's level — the
+/// verdict, not the confidence digits. Two answers that agree are the
+/// same outcome however far apart their probabilities sit.
+fn verdict_of(response: &jev::SystemOneResponse, gate: &str) -> String {
+    match response.answers.get(gate) {
+        Some(Answer::Choice(choice)) => choice.choice.clone(),
+        Some(Answer::Noul(noul)) => (noul.noul >= 0.5).to_string(),
+        Some(Answer::Score(score)) => score.score.to_string(),
+        None => "unanswered".to_string(),
     }
 }
 
@@ -4538,6 +4777,57 @@ mod tests {
         port
     }
 
+    /// A door answering by the `model` each request's body asks — what
+    /// a review or fallback chain's second dispatch receives: `(model,
+    /// status, body)` per model the policy names, and a 500 for a model
+    /// nothing declared.
+    async fn serve_by_model(bodies: Vec<(&'static str, u16, Value)>) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 1 << 20];
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+                let text = String::from_utf8_lossy(&buf[..n]).into_owned();
+                let asked = text
+                    .split("\r\n\r\n")
+                    .nth(1)
+                    .and_then(|body| serde_json::from_str::<Value>(body).ok())
+                    .and_then(|body| body["model"].as_str().map(str::to_string))
+                    .unwrap_or_default();
+                let (status, body) = bodies.iter().find(|(model, _, _)| *model == asked).map_or(
+                    (500u16, json!({"error": {"message": "unbound model"}})),
+                    |(_, status, body)| (*status, body.clone()),
+                );
+                let text = body.to_string();
+                let head = format!(
+                    "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    text.len()
+                );
+                let _ = socket.write_all(head.as_bytes()).await;
+                let _ = socket.write_all(text.as_bytes()).await;
+            }
+        });
+        port
+    }
+
+    /// A runtime wired to a `serve_by_model` port and a `test.policy.v1`
+    /// set built from `policy`.
+    async fn policy_runtime(dir: &Path, policy: &str, port: u16) -> Runtime {
+        policy_questions(dir, policy);
+        let mut runtime = empty_runtime();
+        runtime.questions = questions::Registry::open(&[dir.to_path_buf()]);
+        runtime.door = Some(
+            jev::Client::new(jev::Config::local(
+                format!("http://127.0.0.1:{port}"),
+                "stub",
+            ))
+            .unwrap(),
+        );
+        runtime
+    }
+
     /// A question set under `dir` carrying `policy` — the binding a run
     /// is held to.
     fn policy_questions(dir: &Path, policy: &str) {
@@ -4648,6 +4938,251 @@ mod tests {
         assert_eq!(
             run.stopped.as_ref().map(|refused| refused.code.as_str()),
             Some("abstained")
+        );
+    }
+
+    /// A declared review re-judges an uncertain gate through the model
+    /// the policy names: the reviewed answer is the call's answer, the
+    /// original stays recorded beside it, and the trace carries both
+    /// attempts with their own models and outcomes.
+    #[tokio::test]
+    async fn a_declared_review_rejudges_an_uncertain_gate() {
+        let questions_dir = tempfile::tempdir().unwrap();
+        let policy = r#"{"v": 1, "review": {"v": 1, "model": "reviewer", "below": 0.6, "on_failure": "keep-original", "max_attempts": 2}}"#;
+        let port = serve_by_model(vec![
+            (
+                "stub",
+                200,
+                json!({"model": "stub", "answers": {"q": {"type": "noul", "noul": 0.4}}}),
+            ),
+            (
+                "reviewer",
+                200,
+                json!({"model": "reviewer", "answers": {"q": {"type": "noul", "noul": 0.95}}}),
+            ),
+        ])
+        .await;
+        let runtime = policy_runtime(questions_dir.path(), policy, port).await;
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let logs = tempfile::tempdir().unwrap();
+        let mut recorder =
+            Recorder::open(logs.path(), "fixture", "fixture", "fixture-repo").unwrap();
+        let trace = recorder.path().to_path_buf();
+
+        let run = runtime
+            .run(
+                &policy_program(),
+                &inputs,
+                &Grant::all(),
+                Some(&mut recorder),
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        // The reviewed answer is the call's: 0.95, not the original 0.4.
+        assert_eq!(run.answers["judge"]["q"]["noul"], json!(0.95));
+        drop(recorder);
+        let document = atif::log::read(&trace).unwrap().document();
+        let calls = serde_json::to_string(&document).unwrap();
+        assert!(calls.contains("\"role\":\"primary\""), "{calls}");
+        assert!(calls.contains("\"role\":\"review\""), "{calls}");
+        assert!(calls.contains("\"outcome\":\"changed\""), "{calls}");
+    }
+
+    /// A review that does not answer keeps the original when the policy
+    /// allows it, and refuses the call when the policy declares its
+    /// review strict — a failed review never reads as a passed one, and
+    /// an unreviewed answer is never hidden by the attempt.
+    #[tokio::test]
+    async fn a_failed_review_keeps_or_refuses_as_declared() {
+        for (on_failure, expected) in [("keep-original", None), ("strict", Some("review_failed"))] {
+            let questions_dir = tempfile::tempdir().unwrap();
+            let policy = format!(
+                r#"{{"v": 1, "review": {{"v": 1, "model": "reviewer", "below": 0.6, "on_failure": "{on_failure}", "max_attempts": 2}}}}"#
+            );
+            let port = serve_by_model(vec![
+                (
+                    "stub",
+                    200,
+                    json!({"model": "stub", "answers": {"q": {"type": "noul", "noul": 0.4}}}),
+                ),
+                ("reviewer", 500, json!({"error": {"message": "down"}})),
+            ])
+            .await;
+            let runtime = policy_runtime(questions_dir.path(), &policy, port).await;
+            let inputs = Inputs::read("do the list\n- one", "stub-local");
+            let run = runtime
+                .run(&policy_program(), &inputs, &Grant::all(), None)
+                .await;
+            match expected {
+                None => {
+                    assert!(run.finished(), "{:?}", run.stopped);
+                    // The original stands — 0.4, visibly unreviewed.
+                    assert_eq!(run.answers["judge"]["q"]["noul"], json!(0.4));
+                }
+                Some(code) => assert_eq!(
+                    run.stopped.as_ref().map(|refused| refused.code.as_str()),
+                    Some(code)
+                ),
+            }
+        }
+    }
+
+    /// A reviewer that agrees with the primary confirms it — same
+    /// verdict at its own probability — and one the secondary budget
+    /// never reaches is recorded unattempted rather than silently
+    /// skipped: the fallback's answer stands, visibly unreviewed.
+    #[tokio::test]
+    async fn a_review_confirms_or_reports_its_budget() {
+        // Confirmed: the reviewer agrees at its own confidence — the
+        // reviewed answer is the call's, and the outcome is unchanged.
+        let questions_dir = tempfile::tempdir().unwrap();
+        let port = serve_by_model(vec![
+            (
+                "stub",
+                200,
+                json!({"model": "stub", "answers": {"q": {"type": "noul", "noul": 0.4}}}),
+            ),
+            (
+                "reviewer",
+                200,
+                json!({"model": "reviewer", "answers": {"q": {"type": "noul", "noul": 0.45}}}),
+            ),
+        ])
+        .await;
+        let runtime = policy_runtime(
+            questions_dir.path(),
+            r#"{"v": 1, "review": {"v": 1, "model": "reviewer", "below": 0.6, "on_failure": "keep-original", "max_attempts": 2}}"#,
+            port,
+        )
+        .await;
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let logs = tempfile::tempdir().unwrap();
+        let mut recorder =
+            Recorder::open(logs.path(), "fixture", "fixture", "fixture-repo").unwrap();
+        let trace = recorder.path().to_path_buf();
+        let run = runtime
+            .run(
+                &policy_program(),
+                &inputs,
+                &Grant::all(),
+                Some(&mut recorder),
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.answers["judge"]["q"]["noul"], json!(0.45));
+        drop(recorder);
+        let calls = serde_json::to_string(&atif::log::read(&trace).unwrap().document()).unwrap();
+        assert!(calls.contains("\"outcome\":\"confirmed\""), "{calls}");
+
+        // Unattempted: the fallback spent the one secondary dispatch the
+        // policy declared, so the review never fires — and the answer
+        // that stands is the fallback's, recorded as unreviewed.
+        let questions_dir = tempfile::tempdir().unwrap();
+        let port = serve_by_model(vec![
+            ("stub", 500, json!({"error": {"message": "down"}})),
+            (
+                "backup",
+                200,
+                json!({"model": "backup", "answers": {"q": {"type": "noul", "noul": 0.4}}}),
+            ),
+        ])
+        .await;
+        let runtime = policy_runtime(
+            questions_dir.path(),
+            r#"{"v": 1, "review": {"v": 1, "model": "reviewer", "below": 0.6, "on_failure": "keep-original", "max_attempts": 1}, "fallback": [{"on": "transport", "model": "backup"}]}"#,
+            port,
+        )
+        .await;
+        let mut recorder =
+            Recorder::open(logs.path(), "fixture", "fixture", "fixture-repo").unwrap();
+        let trace = recorder.path().to_path_buf();
+        let run = runtime
+            .run(
+                &policy_program(),
+                &inputs,
+                &Grant::all(),
+                Some(&mut recorder),
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.answers["judge"]["q"]["noul"], json!(0.4));
+        drop(recorder);
+        let calls = serde_json::to_string(&atif::log::read(&trace).unwrap().document()).unwrap();
+        assert!(calls.contains("\"outcome\":\"unattempted\""), "{calls}");
+    }
+
+    /// A fallback retries the cause its entry covers through the model
+    /// it names — a transport failure through `transport`, a typed
+    /// refusal through `refused` only for the codes the entry carries —
+    /// and a cause no entry covers propagates unanswered.
+    #[tokio::test]
+    async fn a_fallback_retries_the_causes_it_covers() {
+        // Transport: the primary never produced a decided answer, and
+        // the named model answers for it.
+        let questions_dir = tempfile::tempdir().unwrap();
+        let port = serve_by_model(vec![
+            ("stub", 500, json!({"error": {"message": "down"}})),
+            (
+                "fallback-model",
+                200,
+                json!({"model": "fallback-model", "answers": {"q": {"type": "noul", "noul": 0.9}}}),
+            ),
+        ])
+        .await;
+        let runtime = policy_runtime(
+            questions_dir.path(),
+            r#"{"v": 1, "fallback": [{"on": "transport", "model": "fallback-model"}]}"#,
+            port,
+        )
+        .await;
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let run = runtime
+            .run(&policy_program(), &inputs, &Grant::all(), None)
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.answers["judge"]["q"]["noul"], json!(0.9));
+
+        // Refused: the entry names the code it may retry, and the
+        // refusal it matched does not propagate.
+        let questions_dir = tempfile::tempdir().unwrap();
+        let port = serve_by_model(vec![
+            ("stub", 403, json!({"error": {"message": "denied"}})),
+            (
+                "fallback-model",
+                200,
+                json!({"model": "fallback-model", "answers": {"q": {"type": "noul", "noul": 0.9}}}),
+            ),
+        ])
+        .await;
+        let runtime = policy_runtime(
+            questions_dir.path(),
+            r#"{"v": 1, "fallback": [{"on": "refused", "model": "fallback-model", "codes": ["door_unauthorized"]}]}"#,
+            port,
+        )
+        .await;
+        let run = runtime
+            .run(&policy_program(), &inputs, &Grant::all(), None)
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.answers["judge"]["q"]["noul"], json!(0.9));
+
+        // A refusal the entry does not cover never retries: the door's
+        // own refusal is the step's outcome.
+        let questions_dir = tempfile::tempdir().unwrap();
+        let port =
+            serve_by_model(vec![("stub", 403, json!({"error": {"message": "denied"}}))]).await;
+        let runtime = policy_runtime(
+            questions_dir.path(),
+            r#"{"v": 1, "fallback": [{"on": "refused", "model": "fallback-model", "codes": ["door_rate_limited"]}]}"#,
+            port,
+        )
+        .await;
+        let run = runtime
+            .run(&policy_program(), &inputs, &Grant::all(), None)
+            .await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some("door_unauthorized")
         );
     }
 

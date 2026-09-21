@@ -125,6 +125,17 @@ pub struct Policy {
     /// unmeasured, and the record says so by saying nothing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<String>,
+    /// The opt-in review phase: a second judgment of uncertain answers
+    /// through a named admitted model. Absent is strict primary
+    /// operation — the first answer is the call's answer, and no second
+    /// model ever sees the state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<Review>,
+    /// The opt-in fallback entries: which failure classes may retry the
+    /// same state through which named admitted models, first match per
+    /// cause winning. A cause no entry covers never retries.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallback: Vec<Fallback>,
 }
 
 impl Policy {
@@ -137,7 +148,96 @@ impl Policy {
             && self.state_max_bytes.is_none()
             && self.abstain_below.is_none()
             && self.evidence.is_empty()
+            && self.review.is_none()
+            && self.fallback.is_empty()
     }
+}
+
+/// The schema version a `review` block declares.
+pub const REVIEW_VERSION: u32 = 1;
+
+/// The opt-in review phase a set declares: a gated probability below
+/// `below` is re-judged once by `model`, and the two answers are
+/// recorded apart. The reviewer is an artifact identity the same door
+/// serves — review never sends the state anywhere the primary could
+/// not go, and `models` binds it the way it binds the primary.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Review {
+    /// The review policy revision — [`REVIEW_VERSION`].
+    pub v: u32,
+    /// The model the review dispatch asks. When `models` is declared
+    /// the reviewer must sit in it: a set's state may not reach an
+    /// artifact its admission never named.
+    pub model: String,
+    /// The gated probability under which the primary's answer is
+    /// re-judged. A gate that answered nothing triggers review too:
+    /// unanswered is the most uncertain read a door can return.
+    pub below: f64,
+    /// What the call reports when a triggered review does not answer.
+    pub on_failure: OnFailure,
+    /// The most secondary dispatches — fallback retries and the review
+    /// itself — one call may spend past its primary dispatch.
+    pub max_attempts: u64,
+}
+
+/// What a call reports when a triggered review does not answer.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OnFailure {
+    /// The primary's answer stands as the call's answer; the failed
+    /// review stays recorded on the decision.
+    KeepOriginal,
+    /// The review governs: an unanswered review refuses the call — the
+    /// set declared the primary's answer is not to be trusted
+    /// unconfirmed.
+    Strict,
+}
+
+/// The failure class a fallback entry covers. The classes are distinct
+/// causes, not interchangeable retries: `transport` means the door
+/// never produced a decided answer, and `refused` is the door's typed
+/// refusal — which retries only where the entry names its code.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FallbackOn {
+    /// The dispatch produced no decided answer: a dead door, a 5xx, a
+    /// timeout, or a response the SDK cannot read.
+    Transport,
+    /// The door's typed refusal. An entry covering `refused` must name
+    /// the refusal codes it may retry — a semantic refusal is an
+    /// answer, and bypassing it is a declared decision, never a
+    /// default.
+    Refused,
+}
+
+impl FallbackOn {
+    /// The cause's record name.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Transport => "transport",
+            Self::Refused => "refused",
+        }
+    }
+}
+
+/// One fallback destination: the failure class it covers and the model
+/// the retry asks, admitted like the primary.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fallback {
+    /// The failure class this entry covers — the first entry matching
+    /// the dispatch's cause wins; a cause with no entry never retries.
+    pub on: FallbackOn,
+    /// The model the retry asks — admitted through `models` like the
+    /// reviewer and the primary.
+    pub model: String,
+    /// For `refused` entries: the refusal codes this entry may retry.
+    /// Required and nonempty there — a semantic refusal does not
+    /// retry by default — and refused on `transport`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codes: Option<Vec<String>>,
 }
 
 /// Which template a set is, when it is one.
@@ -228,6 +328,60 @@ impl Set {
             .any(|reference| reference.trim().is_empty())
         {
             return Err("policy names an empty evidence reference".to_string());
+        }
+        if let Some(review) = &self.policy.review {
+            if review.v != REVIEW_VERSION {
+                return Err(format!(
+                    "policy review is version {}, this version reads {REVIEW_VERSION}",
+                    review.v
+                ));
+            }
+            if !(0.0..=1.0).contains(&review.below) {
+                return Err(format!(
+                    "policy review below is {}, outside 0 to 1",
+                    review.below
+                ));
+            }
+            if review.max_attempts == 0 {
+                return Err("policy review admits no secondary attempts".to_string());
+            }
+            if self.gate.is_empty() {
+                return Err("policy review reads a gate this set does not declare".to_string());
+            }
+            if review.model.is_empty() {
+                return Err("policy review names an empty model identity".to_string());
+            }
+            if !self.policy.models.is_empty() && !self.policy.models.contains(&review.model) {
+                return Err(format!(
+                    "policy review asks {}, which the set's admitted models do not name",
+                    review.model
+                ));
+            }
+        }
+        for fallback in &self.policy.fallback {
+            if fallback.model.is_empty() {
+                return Err("a fallback names an empty model identity".to_string());
+            }
+            if !self.policy.models.is_empty() && !self.policy.models.contains(&fallback.model) {
+                return Err(format!(
+                    "a fallback asks {}, which the set's admitted models do not name",
+                    fallback.model
+                ));
+            }
+            match (fallback.on, &fallback.codes) {
+                (FallbackOn::Refused, Some(codes)) if !codes.is_empty() => {}
+                (FallbackOn::Refused, _) => {
+                    return Err(
+                        "a refused fallback must name the refusal codes it may retry".to_string(),
+                    );
+                }
+                (FallbackOn::Transport, Some(_)) => {
+                    return Err(
+                        "a transport fallback names refusal codes it cannot carry".to_string()
+                    );
+                }
+                (FallbackOn::Transport, None) => {}
+            }
         }
         if !self.questions.is_empty() && self.template().is_some() {
             return Err("a set is a fixed set or a template, and this one is both".to_string());
@@ -415,6 +569,11 @@ fn record(id: &str, gate: &str, digest: String, policy: &Policy) -> Value {
             v => json!(v),
         },
     });
+    if !policy.is_empty() {
+        provenance["policy_digest"] = json!(atif::digest(
+            &serde_json::to_value(policy).unwrap_or_default()
+        ));
+    }
     if !policy.evidence.is_empty() {
         provenance["evidence"] = json!(policy.evidence);
     }
@@ -627,6 +786,78 @@ mod tests {
                 "openagents.review-finding.v1"
             ]
         );
+    }
+
+    /// A declared review or fallback is bound like the rest of the
+    /// policy: its own revision, a gate to read, an admitted reviewer,
+    /// and fallback entries that name the causes and codes they may
+    /// carry. Anything less refuses at load, before the door is asked.
+    #[test]
+    fn a_secondary_policy_is_validated_with_the_set() {
+        let base = |policy: Value| {
+            let set: Set = serde_json::from_value(json!({
+                "v": 1,
+                "id": "test.policy.v1",
+                "gate": "q",
+                "questions": {"q": {"type": "noul", "instructions": "Whether."}},
+                "policy": policy,
+            }))
+            .unwrap();
+            set.validate()
+        };
+        assert!(base(json!({
+            "v": 1,
+            "models": ["stub", "reviewer", "backup"],
+            "review": {"v": 1, "model": "reviewer", "below": 0.6, "on_failure": "keep-original", "max_attempts": 2},
+            "fallback": [
+                {"on": "transport", "model": "backup"},
+                {"on": "refused", "model": "backup", "codes": ["door_rate_limited"]}
+            ]
+        }))
+        .is_ok());
+        for (policy, why) in [
+            (
+                json!({"review": {"v": 2, "model": "r", "below": 0.5, "on_failure": "strict", "max_attempts": 1}}),
+                "version",
+            ),
+            (
+                json!({"review": {"v": 1, "model": "r", "below": 1.5, "on_failure": "strict", "max_attempts": 1}}),
+                "below",
+            ),
+            (
+                json!({"review": {"v": 1, "model": "r", "below": 0.5, "on_failure": "strict", "max_attempts": 0}}),
+                "attempts",
+            ),
+            (
+                json!({"models": ["stub"], "review": {"v": 1, "model": "outsider", "below": 0.5, "on_failure": "strict", "max_attempts": 1}}),
+                "admitted models",
+            ),
+            (
+                json!({"fallback": [{"on": "refused", "model": "b"}]}),
+                "refusal codes",
+            ),
+            (
+                json!({"fallback": [{"on": "transport", "model": "b", "codes": ["x"]}]}),
+                "cannot carry",
+            ),
+            (
+                json!({"models": ["stub"], "fallback": [{"on": "transport", "model": "outsider"}]}),
+                "admitted models",
+            ),
+        ] {
+            let error = base(policy.clone()).expect_err(&format!("{policy}"));
+            assert!(error.contains(why), "{policy}: {error}");
+        }
+        // A review on a set with no gate refuses at load: there is
+        // nothing for its `below` to read.
+        let set: Set = serde_json::from_value(json!({
+            "v": 1,
+            "id": "test.gateless.v1",
+            "questions": {"q": {"type": "noul", "instructions": "Whether."}},
+            "policy": {"review": {"v": 1, "model": "r", "below": 0.5, "on_failure": "strict", "max_attempts": 1}},
+        }))
+        .unwrap();
+        assert!(set.validate().unwrap_err().contains("gate"));
     }
 
     #[test]
