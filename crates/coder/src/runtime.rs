@@ -5479,6 +5479,68 @@ mod tests {
         assert!(run.finished(), "{:?}", run.stopped);
     }
 
+    /// A child that writes runs its delegation inside the parent's
+    /// run: the steps mark `call/pick` and `call/work` on the shared
+    /// record, the delegation lands on the run's own list, and the
+    /// checkout the work kept is a claim the run reports where it left
+    /// it.
+    #[tokio::test]
+    async fn a_child_delegates_writing_work_inside_the_parents_run() {
+        if !boundary_supported() || !boundary_enforces() {
+            return;
+        }
+        let Some(repo) = scratch_repository() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stub(dir.path(), "answers", "echo done");
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "writer-child",
+            r#"[
+                {"name": "pick", "kind": "query", "bounds": {}},
+                {"name": "work", "kind": "delegate",
+                 "bounds": {"minutes": 5, "isolation": "worktree"}}
+            ]"#,
+        );
+        let mut runtime = stub_runtime(repo.path(), &binary, dir.path());
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "writer-child@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"}}
+            ]
+        }))
+        .unwrap();
+        let mut task = Task::asking("write it");
+        task.writes = true;
+        let inputs = Inputs {
+            request: "write".to_string(),
+            tasks: vec![task],
+            executor: "stub-local".to_string(),
+        };
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.step_names(), ["call/pick", "call/work", "call"]);
+        assert_eq!(run.delegations.len(), 1);
+        assert_eq!(run.delegations[0].status, Status::Answered);
+
+        let store = Store::open(dir.path()).unwrap();
+        let ids = claimed(dir.path());
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        for name in ["call/pick", "call/work", "call"] {
+            let step = record
+                .steps
+                .iter()
+                .find(|step| step.step == name)
+                .unwrap_or_else(|| panic!("no step record for {name}"));
+            assert_eq!(step.state, State::Answered, "{name}");
+        }
+    }
+
     /// `spend` and `minutes` are bounds a `program` step may declare —
     /// a ceiling in micros and the child's own deadline — each a count,
     /// and anything else refuses at admission.
