@@ -453,13 +453,7 @@ async fn conclude(
 
     let receipt_digest =
         write_receipt(state, naming, outcome, cause.as_deref(), started, &ctx).await;
-    respond(
-        status,
-        body_out,
-        naming,
-        label,
-        receipt_digest.as_deref(),
-    )
+    respond(status, body_out, naming, label, receipt_digest.as_deref())
 }
 
 /// The permits a bound attempt holds until it resolves.
@@ -476,15 +470,14 @@ fn authenticated(
     state: &ServeState,
     headers: &HeaderMap,
 ) -> Result<(Registry, Caller, Context), Verdict> {
-    let (registry, caller) = authenticate(state, headers).map_err(|(status, code, message)| {
-        Verdict::Refused {
+    let (registry, caller) =
+        authenticate(state, headers).map_err(|(status, code, message)| Verdict::Refused {
             status,
             code,
             message,
             outcome: Outcome::Refused,
             ctx: Context::default(),
-        }
-    })?;
+        })?;
     let ctx = Context {
         tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),
         ..Context::default()
@@ -872,11 +865,11 @@ async fn classify_admitted(
     // 2. Authorize the named door. The capacity the caller names is
     // the binding's lane — anything else is an unsupported
     // combination, not an option with no effect.
-    let (admission, backend) =
-        match authorized(state, &registry, &caller, &request.model, &mut ctx) {
-            Ok(parts) => parts,
-            Err(verdict) => return verdict,
-        };
+    let (admission, backend) = match authorized(state, &registry, &caller, &request.model, &mut ctx)
+    {
+        Ok(parts) => parts,
+        Err(verdict) => return verdict,
+    };
     if request.capacity != lane_name(admission.binding.lane) {
         return Verdict::Refused {
             status: StatusCode::UNPROCESSABLE_ENTITY,
@@ -956,8 +949,8 @@ async fn classify_admitted(
     let mut items = Vec::with_capacity(request.inputs.len());
     let mut counts = Counts::default();
     let mut forwards = 0_u64;
-    let mut input_tokens: Option<u64> = None;
-    let mut output_tokens: Option<u64> = None;
+    let mut input_tokens = CompleteCounter::default();
+    let mut output_tokens = CompleteCounter::default();
     let mut halted = false;
     for input in &request.inputs {
         if halted {
@@ -980,17 +973,23 @@ async fn classify_admitted(
                     item_started.elapsed(),
                     &mut counts,
                 );
-                if let Some(usage) = usage {
-                    if let Some(tokens) = usage.get("input_tokens").and_then(Value::as_u64) {
-                        *input_tokens.get_or_insert(0) += tokens;
-                    }
-                    if let Some(tokens) = usage.get("output_tokens").and_then(Value::as_u64) {
-                        *output_tokens.get_or_insert(0) += tokens;
-                    }
-                }
+                input_tokens.add(
+                    usage
+                        .as_ref()
+                        .and_then(|u| u.get("input_tokens"))
+                        .and_then(Value::as_u64),
+                );
+                output_tokens.add(
+                    usage
+                        .as_ref()
+                        .and_then(|u| u.get("output_tokens"))
+                        .and_then(Value::as_u64),
+                );
                 items.push(item);
             }
             Forwarded::Refused { cause, .. } => {
+                input_tokens.add(None);
+                output_tokens.add(None);
                 items.push(failed_item(
                     input,
                     &plan,
@@ -1001,6 +1000,8 @@ async fn classify_admitted(
                 counts.refused += plan.units.len() as u64;
             }
             Forwarded::Unavailable { message } => {
+                input_tokens.add(None);
+                output_tokens.add(None);
                 items.push(failed_item(
                     input,
                     &plan,
@@ -1043,11 +1044,11 @@ async fn classify_admitted(
                 .map(str::to_string),
         )
     };
-    let mut usage = json!({"forwards": forwards});
-    if let Some(tokens) = input_tokens {
+    let mut usage = json!({"forwards": forwards, "input_tokens_complete": input_tokens.total().is_some(), "output_tokens_complete": output_tokens.total().is_some()});
+    if let Some(tokens) = input_tokens.total() {
         usage["input_tokens"] = json!(tokens);
     }
-    if let Some(tokens) = output_tokens {
+    if let Some(tokens) = output_tokens.total() {
         usage["output_tokens"] = json!(tokens);
     }
     let response = json!({
@@ -1069,7 +1070,12 @@ async fn classify_admitted(
     });
     let body_out = Bytes::from(serde_json::to_vec(&response).unwrap_or_default());
     ctx.result_digest = Some(digest_bytes(&body_out));
-    settled(state, naming, outcome, &units).await;
+    let attempted = quota::Units {
+        questions: (plan.judgments / plan.inputs) * forwards,
+        options: (options / plan.inputs) * forwards,
+        input_bytes: units.input_bytes,
+    };
+    settled(state, naming, outcome, &attempted).await;
     Verdict::Forwarded {
         status,
         body: body_out,
@@ -1077,6 +1083,26 @@ async fn classify_admitted(
         label,
         cause,
         ctx,
+    }
+}
+
+/// A total exists only when every dispatched input reports the counter.
+#[derive(Default)]
+struct CompleteCounter {
+    value: u64,
+    missing: bool,
+}
+
+impl CompleteCounter {
+    fn add(&mut self, value: Option<u64>) {
+        match value.and_then(|value| self.value.checked_add(value)) {
+            Some(total) => self.value = total,
+            None => self.missing = true,
+        }
+    }
+
+    fn total(&self) -> Option<u64> {
+        (!self.missing).then_some(self.value)
     }
 }
 
@@ -1174,11 +1200,7 @@ fn forward_body(
 
 /// The instructions one question carries: the request's own, the
 /// dimension's, then the judgment's framing — in that order.
-fn instructions_for(
-    request: &ClassifyRequest,
-    unit: &classify::Unit,
-    framing: &str,
-) -> String {
+fn instructions_for(request: &ClassifyRequest, unit: &classify::Unit, framing: &str) -> String {
     let dimension = unit
         .dimension
         .as_deref()
@@ -1217,10 +1239,7 @@ fn served_item(
         .and_then(|body| body.get("model"))
         .and_then(Value::as_str)
         .map(str::to_string);
-    let usage = parsed
-        .as_ref()
-        .and_then(|body| body.get("usage"))
-        .cloned();
+    let usage = parsed.as_ref().and_then(|body| body.get("usage")).cloned();
     let mut units = Vec::with_capacity(plan.units.len());
     let mut answered = 0_u64;
     for (unit_index, unit) in plan.units.iter().enumerate() {
@@ -1252,7 +1271,26 @@ fn served_item(
     if let Some(model) = model {
         item["model"] = json!(model);
     }
+    item["usage"] = usage.clone().unwrap_or(Value::Null);
+    item["review_status"] = json!("not-reviewed");
     (item, usage)
+}
+
+/// Reuse the native SDK's answer validation, including categorical mass.
+/// The local envelope supplies only the decoder context; it is never returned
+/// as serving evidence and does not make a network call.
+fn valid_primitive(answer: &Value, kind: &str) -> bool {
+    if answer.get("type").and_then(Value::as_str) != Some(kind) {
+        return false;
+    }
+    let bytes = serde_json::to_vec(&json!({"model":"decoder-context", "answers":{"q":answer}}))
+        .expect("a JSON value serializes");
+    jev::SystemOneResponse::decode(jev::RawResponse {
+        status: 200,
+        headers: Default::default(),
+        bytes,
+    })
+    .is_ok_and(|response| response.answer("q").is_ok())
 }
 
 /// One unit's result inside an answered forward: the raw answer and
@@ -1274,9 +1312,7 @@ fn unit_result(
     if let Some(dimension) = &unit.dimension {
         base["dimension"] = json!(dimension);
     }
-    let mut asked = asked
-        .iter()
-        .filter(|(index, _, _)| *index == unit_index);
+    let mut asked = asked.iter().filter(|(index, _, _)| *index == unit_index);
     match unit.mode {
         Mode::SingleLabel => {
             let Some(rule) = plan.policy.select.single_label.as_ref() else {
@@ -1285,9 +1321,23 @@ fn unit_result(
             let Some(answer) = asked.next().and_then(|(_, qid, _)| answers.get(qid)) else {
                 return unit_failure(unit, "unavailable", "the door answered no choice");
             };
+            if !valid_primitive(answer, "choice") {
+                return unit_failure(unit, "unavailable", "the answer is not a choice");
+            }
             let Some(probabilities) = answer.get("probabilities").and_then(Value::as_object) else {
-                return unit_failure(unit, "unavailable", "the choice answer names no distribution");
+                return unit_failure(
+                    unit,
+                    "unavailable",
+                    "the choice answer names no distribution",
+                );
             };
+            if probabilities.len() != unit.labels.len() {
+                return unit_failure(
+                    unit,
+                    "unavailable",
+                    "the distribution has a different label set",
+                );
+            }
             let mut pairs = Vec::with_capacity(unit.labels.len());
             for label in &unit.labels {
                 match probabilities.get(&label.id).and_then(Value::as_f64) {
@@ -1320,6 +1370,9 @@ fn unit_result(
                 let Some(answer) = answers.get(qid) else {
                     return unit_failure(unit, "unavailable", "the door answered no noul");
                 };
+                if !valid_primitive(answer, "noul") {
+                    return unit_failure(unit, "unavailable", "the answer is not a noul");
+                }
                 let Some(probability) = answer.get("noul").and_then(Value::as_f64) else {
                     return unit_failure(unit, "unavailable", "a noul answer holds no probability");
                 };
@@ -1547,7 +1600,7 @@ enum Forwarded {
 /// Forward the request body to the backend's `systemone`, bounded by the
 /// configured timeout and response cap.
 async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded {
-    let response = match state
+    let mut response = match state
         .client
         .post(format!("{endpoint}/v1/systemone"))
         .header("content-type", "application/json")
@@ -1572,19 +1625,26 @@ async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded 
             message: format!("the door's answer exceeded {limit} bytes"),
         };
     }
-    let body = match response.bytes().await {
-        Ok(body) => body,
-        Err(error) => {
-            return Forwarded::Unavailable {
-                message: format!("the door's answer could not be read: {error}"),
-            };
+    let mut bytes = Vec::new();
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                if chunk.len() > limit.saturating_sub(bytes.len()) {
+                    return Forwarded::Unavailable {
+                        message: format!("the door's answer exceeded {limit} bytes"),
+                    };
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(error) => {
+                return Forwarded::Unavailable {
+                    message: format!("the door's answer could not be read: {error}"),
+                };
+            }
         }
-    };
-    if body.len() > limit {
-        return Forwarded::Unavailable {
-            message: format!("the door's answer exceeded {limit} bytes"),
-        };
     }
+    let body = Bytes::from(bytes);
     if status.is_success() {
         Forwarded::Served { status, body }
     } else if status.is_client_error() {
@@ -1744,4 +1804,42 @@ fn unix_now() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|span| span.as_secs())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod classification_accounting_tests {
+    use super::{CompleteCounter, valid_primitive};
+    use serde_json::json;
+
+    #[test]
+    fn choice_mass_and_answer_types_follow_the_native_contract() {
+        assert!(!valid_primitive(
+            &json!({"type":"choice","choice":"a","probabilities":{"a":0.9,"b":0.9}}),
+            "choice"
+        ));
+        assert!(valid_primitive(
+            &json!({"type":"choice","choice":"a","probabilities":{"a":0.8,"b":0.2}}),
+            "choice"
+        ));
+        assert!(!valid_primitive(
+            &json!({"type":"noul","noul":0.8}),
+            "choice"
+        ));
+        assert!(!valid_primitive(&json!({"type":"noul","noul":1.1}), "noul"));
+    }
+
+    #[test]
+    fn missing_or_overflowed_usage_never_becomes_a_complete_total() {
+        for entries in [vec![Some(2), None, Some(3)], vec![Some(u64::MAX), Some(1)]] {
+            let mut counter = CompleteCounter::default();
+            for entry in entries {
+                counter.add(entry);
+            }
+            assert_eq!(counter.total(), None);
+        }
+        let mut counter = CompleteCounter::default();
+        counter.add(Some(0));
+        counter.add(Some(3));
+        assert_eq!(counter.total(), Some(3));
+    }
 }

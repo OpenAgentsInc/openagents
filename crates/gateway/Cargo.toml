@@ -7,6 +7,7 @@ description = "The keyed HTTP gateway in front of decision doors: authenticate, 
 publish.workspace = true
 
 [dependencies]
+jev = { path = "../jev" }
 axum = "0.8"
 receipts = { path = "../receipts" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
