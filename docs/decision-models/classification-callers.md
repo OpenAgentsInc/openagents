@@ -56,6 +56,33 @@ use the existing mixed-result exit code, and refusals or unavailable results
 remain nonzero. Inspect the report rather than treating every nonzero exit as an
 unattempted request.
 
+## Contract files
+
+See the [OpenAPI contract](openapi.yaml), [request schema](schemas/classify-request-v1.json),
+and [request fixture corpus](fixtures/classify-v1/README.md) for machine-readable
+shapes and validation examples. Schema validation does not replace admission.
+
+## Routes and private input
+
+The gateway serves classification only through `POST /v1/classify`; it does not
+publish GET classification or compatibility aliases. `POST /v1/systemone`
+remains the native typed-question route. Both use the gateway's authorization,
+capacity, quota, identity, and receipt checks, plus monetary admission when
+configured. Use `GET /healthz` for process liveness and `GET /v1/models` for
+authorized discovery. For example:
+
+```sh
+curl --fail --silent --show-error http://127.0.0.1:8080/healthz
+oak models --quiet
+```
+
+The local URL is an operator-run gateway, not a public service promise. The
+`oak models` command uses the configured endpoint and protected credential.
+Keep input, keys, and workspace credentials out of query strings. Private
+classification content belongs in a POST body; keys belong in authorization
+headers supplied by the configured caller. A future compatibility alias must
+use the same admission and accounting path before it can be advertised.
+
 ## MCP stdio
 
 Configure an MCP client to launch `oak-mcp`, with the same protected environment

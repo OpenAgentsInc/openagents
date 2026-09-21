@@ -1,0 +1,26 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "fixture-model",
+  "capacity": "shared",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "fixture-only",
+    "select": {
+      "score": {
+        "order": "descending"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "ticket-1",
+      "text": "Refund request"
+    }
+  ],
+  "mode": "score",
+  "levels": [
+    "No effect",
+    "Limited effect",
+    "Broad effect"
+  ]
+}

@@ -1,0 +1,476 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/classify-request-v1.json",
+  "title": "Classification request v1",
+  "description": "Structural request schema. Runtime validation additionally checks UTF-8 byte limits, unique and valid IDs, mode-specific label/rubric rules, policy compatibility, total judgment count, and discovered backend limits. Passing this schema does not authorize or admit a call.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "const": "openagents.classify.v1"
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capacity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/input"
+      },
+      "minItems": 1,
+      "maxItems": 1000
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "single-label",
+            "multi-label",
+            "binary",
+            "score"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/label"
+      },
+      "minItems": 0,
+      "maxItems": 100
+    },
+    "levels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 10
+    },
+    "instructions": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/dimension"
+      },
+      "minItems": 0,
+      "maxItems": 20
+    }
+  },
+  "required": [
+    "v",
+    "model",
+    "capacity",
+    "policy",
+    "inputs"
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "label": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "record": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "text"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "record": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "required": [
+            "record"
+          ],
+          "properties": {
+            "record": {
+              "type": "object"
+            },
+            "text": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "mode": {
+          "enum": [
+            "single-label",
+            "multi-label",
+            "binary",
+            "score"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/label"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0,
+          "maxItems": 10
+        },
+        "instructions": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "mode"
+      ]
+    },
+    "singleSelect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ties": {
+          "enum": [
+            "first-declared",
+            "no-match"
+          ]
+        },
+        "min_probability": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "uncertain_below": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "no_match": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "null"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "label"
+                },
+                "label": {
+                  "$ref": "#/$defs/id"
+                }
+              },
+              "required": [
+                "kind",
+                "label"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "ties",
+        "no_match"
+      ]
+    },
+    "multiSelect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "top_n": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ties": {
+          "enum": [
+            "include-all",
+            "truncate"
+          ]
+        },
+        "no_match": {
+          "enum": [
+            "empty",
+            "null"
+          ]
+        },
+        "uncertain_below": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "threshold",
+        "ties",
+        "no_match"
+      ]
+    },
+    "binarySelect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "uncertain_below": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "threshold"
+      ]
+    },
+    "scoreSelect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "enum": [
+            "ascending",
+            "descending"
+          ]
+        },
+        "top_n": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "uncertain_below": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "order"
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": "openagents.classify-policy.v1"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "select": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "single_label": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/singleSelect"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "multi_label": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/multiSelect"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "binary": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/binarySelect"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/scoreSelect"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": []
+        }
+      },
+      "required": [
+        "v",
+        "name",
+        "select"
+      ]
+    }
+  }
+}

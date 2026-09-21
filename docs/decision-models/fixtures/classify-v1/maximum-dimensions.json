@@ -1,0 +1,461 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "fixture-model",
+  "capacity": "shared",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "fixture-only",
+    "select": {
+      "single_label": {
+        "ties": "no-match",
+        "no_match": {
+          "kind": "null"
+        }
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "input-0",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-1",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-2",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-3",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-4",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-5",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-6",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-7",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-8",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-9",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-10",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-11",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-12",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-13",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-14",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-15",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-16",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-17",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-18",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-19",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-20",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-21",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-22",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-23",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-24",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-25",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-26",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-27",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-28",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-29",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-30",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-31",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-32",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-33",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-34",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-35",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-36",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-37",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-38",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-39",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-40",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-41",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-42",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-43",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-44",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-45",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-46",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-47",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-48",
+      "text": "Fixture input"
+    },
+    {
+      "id": "input-49",
+      "text": "Fixture input"
+    }
+  ],
+  "dimensions": [
+    {
+      "id": "dimension-0",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-1",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-2",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-3",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-4",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-5",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-6",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-7",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-8",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-9",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-10",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-11",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-12",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-13",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-14",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-15",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-16",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-17",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-18",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    },
+    {
+      "id": "dimension-19",
+      "mode": "single-label",
+      "labels": [
+        {
+          "id": "refund"
+        },
+        {
+          "id": "other"
+        }
+      ]
+    }
+  ]
+}

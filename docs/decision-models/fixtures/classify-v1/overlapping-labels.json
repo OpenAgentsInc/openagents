@@ -1,0 +1,33 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "fixture-model",
+  "capacity": "shared",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "fixture-only",
+    "select": {
+      "multi_label": {
+        "threshold": 0.5,
+        "ties": "include-all",
+        "no_match": "empty"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "ticket-1",
+      "text": "Refund request"
+    }
+  ],
+  "mode": "multi-label",
+  "labels": [
+    {
+      "id": "billing",
+      "description": "Billing issues, including refunds"
+    },
+    {
+      "id": "refund",
+      "description": "Refund requests, including billing issues"
+    }
+  ]
+}

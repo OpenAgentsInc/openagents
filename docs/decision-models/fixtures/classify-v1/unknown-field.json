@@ -1,0 +1,33 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "fixture-model",
+  "capacity": "shared",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "fixture-only",
+    "select": {
+      "single_label": {
+        "ties": "no-match",
+        "no_match": {
+          "kind": "null"
+        }
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "ticket-1",
+      "text": "Refund request"
+    }
+  ],
+  "mode": "single-label",
+  "labels": [
+    {
+      "id": "refund"
+    },
+    {
+      "id": "other"
+    }
+  ],
+  "unexpected": true
+}

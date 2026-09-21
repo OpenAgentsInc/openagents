@@ -1,0 +1,84 @@
+{
+  "v": "openagents.classify-fixtures.v1",
+  "limits": "product",
+  "cases": [
+    {
+      "file": "single.json",
+      "expected": {
+        "judgments": 1
+      }
+    },
+    {
+      "file": "unicode-record.json",
+      "expected": {
+        "judgments": 1
+      }
+    },
+    {
+      "file": "empty.json",
+      "expected": {
+        "code": "invalid_request"
+      }
+    },
+    {
+      "file": "duplicate-id.json",
+      "expected": {
+        "code": "duplicate_id"
+      }
+    },
+    {
+      "file": "both-content-forms.json",
+      "expected": {
+        "code": "invalid_request"
+      }
+    },
+    {
+      "file": "unknown-field.json",
+      "expected": {
+        "code": "invalid_request"
+      }
+    },
+    {
+      "file": "unsupported-version.json",
+      "expected": {
+        "code": "unsupported_schema"
+      }
+    },
+    {
+      "file": "overlapping-labels.json",
+      "expected": {
+        "judgments": 2
+      }
+    },
+    {
+      "file": "maximum-choice.json",
+      "expected": {
+        "judgments": 1000
+      }
+    },
+    {
+      "file": "maximum-dimensions.json",
+      "expected": {
+        "judgments": 1000
+      }
+    },
+    {
+      "file": "judgment-overflow.json",
+      "expected": {
+        "code": "too_many_judgments"
+      }
+    },
+    {
+      "file": "score.json",
+      "expected": {
+        "judgments": 1
+      }
+    },
+    {
+      "file": "binary.json",
+      "expected": {
+        "judgments": 1
+      }
+    }
+  ]
+}

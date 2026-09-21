@@ -1,0 +1,38 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "fixture-model",
+  "capacity": "shared",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "fixture-only",
+    "select": {
+      "single_label": {
+        "ties": "no-match",
+        "no_match": {
+          "kind": "null"
+        }
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "日本語-é",
+      "record": {
+        "text": "返金のご相談 👋",
+        "context": [
+          "café",
+          "مرحبا"
+        ]
+      }
+    }
+  ],
+  "mode": "single-label",
+  "labels": [
+    {
+      "id": "refund"
+    },
+    {
+      "id": "other"
+    }
+  ]
+}

@@ -7,9 +7,9 @@ info:
     questions about one state; `GET /v1/models` lists the doors the caller's
     credential is authorized for. Every admitted call is authenticated,
     authorized, bounded, quota-reserved, identity-verified, and receipted.
-    Classification, batch, job, and review routes are specified in
-    `decision-api.md` and join this same admission path as they land; they
-    are not part of this document.
+    `POST /v1/classify` provides bounded classification through this same
+    admission path. Job and review extensions are specified separately in
+    `decision-api.md`; this document does not establish their availability.
 servers:
   - url: http://127.0.0.1:8080
     description: A locally deployed gateway; deployments choose their origin.
@@ -54,6 +54,73 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/ModelCard"
+  /v1/classify:
+    post:
+      summary: Classify ordered inputs under an explicit selection policy
+      description: >-
+        Supports single-label Choice, independent multi-label Noul, binary
+        Noul filtering, and Score ranking, including named dimensions.
+        Discover effective limits before submitting. Structural schema
+        validation does not replace runtime byte, ID, policy, total-judgment,
+        capacity, authorization, or accounting checks. The complete envelope
+        is validated before dispatch. A runtime failure may leave a partial
+        report; preserve its outcomes and usage instead of retrying it as
+        an unattempted request. Private input belongs in this POST body.
+      parameters:
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Required when the deployment enforces workspace membership.
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Caller-owned request identity; retain it across retry attempts.
+        - name: X-Attempt
+          in: header
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Attempt number, defaulting to 1; increment for a new attempt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "schemas/classify-request-v1.json"
+      responses:
+        "200":
+          description: An ordered classification report, including per-item outcomes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClassificationReport"
+        "400":
+          $ref: "#/components/responses/TypedError"
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "403":
+          $ref: "#/components/responses/TypedError"
+        "409":
+          $ref: "#/components/responses/TypedError"
+        "413":
+          $ref: "#/components/responses/TypedError"
+        "422":
+          $ref: "#/components/responses/TypedError"
+        "429":
+          $ref: "#/components/responses/TypedError"
+        "503":
+          description: Admission failure or a report with unavailable or partial work.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/TypedError"
+                  - $ref: "#/components/schemas/ClassificationReport"
   /v1/systemone:
     post:
       summary: Answer typed questions about one state
@@ -155,6 +222,45 @@ components:
         type: string
       description: The sealed execution receipt's digest.
   schemas:
+    ClassificationReport:
+      type: object
+      description: >-
+        Common report fields. Mode-specific result, selection, aggregate,
+        usage, and served-identity objects are preserved without reducing
+        them to a single score. This schema does not fully constrain those
+        nested contracts. Missing usage is unknown, not zero.
+      required: [v, model, capacity, policy, served, outcome, outcomes, results, selections, aggregates, usage, timing]
+      properties:
+        v:
+          const: openagents.classify.v1
+        model:
+          type: string
+        capacity:
+          type: string
+        policy:
+          type: object
+        served:
+          type: object
+        outcome:
+          type: string
+        outcomes:
+          type: object
+        results:
+          type: array
+          items:
+            type: object
+        selections:
+          type: array
+          items:
+            type: object
+        aggregates:
+          type: array
+          items:
+            type: object
+        usage:
+          type: object
+        timing:
+          type: object
     ModelCard:
       type: object
       required: [name]
