@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -98,6 +99,9 @@ fn manifest(requests_per_day: Option<u64>) -> Manifest {
     }
 }
 
+/// A stub's per-request responder: the forwarded body to its answer.
+type Responder = dyn Fn(&Value) -> (StatusCode, Value) + Send + Sync;
+
 /// What a stub backend publishes and answers.
 struct Backend {
     /// The card's model id.
@@ -112,6 +116,12 @@ struct Backend {
     delay_ms: u64,
     /// How many forwards arrived — a refusal must not spend one.
     forwards: Arc<AtomicUsize>,
+    /// Every forwarded body, so a test can read the questions the
+    /// facade actually sent.
+    bodies: Arc<Mutex<Vec<Value>>>,
+    /// A per-request answer, when the test needs input-dependent
+    /// replies — keyed off the request's state.
+    respond: Option<Arc<Responder>>,
 }
 
 async fn backend_models(State(backend): State<Arc<Backend>>) -> Json<Value> {
@@ -125,10 +135,16 @@ async fn backend_models(State(backend): State<Arc<Backend>>) -> Json<Value> {
     }))
 }
 
-async fn backend_systemone(State(backend): State<Arc<Backend>>, _body: Bytes) -> Response {
+async fn backend_systemone(State(backend): State<Arc<Backend>>, body: Bytes) -> Response {
     backend.forwards.fetch_add(1, Ordering::SeqCst);
+    let parsed: Value = serde_json::from_slice(&body).unwrap_or_default();
+    backend.bodies.lock().unwrap().push(parsed.clone());
     if backend.delay_ms > 0 {
         tokio::time::sleep(Duration::from_millis(backend.delay_ms)).await;
+    }
+    if let Some(respond) = &backend.respond {
+        let (status, body) = respond(&parsed);
+        return (status, Json(body)).into_response();
     }
     (backend.answer_status, Json(backend.answer_body.clone())).into_response()
 }
@@ -155,6 +171,8 @@ fn honest(digest: String, body: Value) -> Backend {
         answer_body: body,
         delay_ms: 0,
         forwards: Arc::new(AtomicUsize::new(0)),
+        bodies: Arc::new(Mutex::new(Vec::new())),
+        respond: None,
     }
 }
 
@@ -886,4 +904,239 @@ async fn an_unfinished_chunked_response_is_refused_at_the_byte_limit() {
         "{body}"
     );
     assert_eq!(body["results"][1]["outcome"], "unattempted");
+}
+
+/// A stub that answers each forward from the request's state — the seam
+/// the per-input modes need.
+fn per_input_backend(
+    respond: impl Fn(&Value) -> (StatusCode, Value) + Send + Sync + 'static,
+) -> Backend {
+    Backend {
+        respond: Some(Arc::new(respond)),
+        ..honest(artifact('b'), json!({}))
+    }
+}
+
+#[tokio::test]
+async fn classify_binary_sends_one_noul_and_selects_the_declared_subset() {
+    // The noul rises with the input's own text: "keep" is over the
+    // caller's 0.5 cut, "edge" lands on it, "drop" falls under.
+    let stub = per_input_backend(|body| {
+        let state = body["state"].as_str().unwrap_or_default();
+        let noul = if state.contains("keep") {
+            0.9
+        } else if state.contains("edge") {
+            0.5
+        } else {
+            0.1
+        };
+        (
+            StatusCode::OK,
+            json!({"model":"kev-0.6b",
+                   "answers":{"q0":{"type":"noul","noul":noul}},
+                   "usage":{"input_tokens":3,"output_tokens":1}}),
+        )
+    });
+    let bodies = stub.bodies.clone();
+    let (endpoint, forwards) = backend(stub).await;
+    let deployment = classification_deployment(endpoint).await;
+    let call = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"filter",
+          "select":{"binary":{"threshold":0.5}}},
+        "inputs":[{"id":"a","text":"keep this"},{"id":"b","text":"drop this"},{"id":"c","text":"edge case"}],
+        "mode":"binary","labels":[{"id":"keep","description":"Worth keeping"}]
+    });
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "answered");
+    assert_eq!(forwards.load(Ordering::SeqCst), 3);
+
+    // Each forward asked exactly one noul question — one judgment per
+    // input, the filter's label its only criterion.
+    for sent in bodies.lock().unwrap().iter() {
+        let questions = sent["questions"].as_object().unwrap();
+        assert_eq!(questions.len(), 1);
+        assert_eq!(questions["q0"]["type"], "noul");
+        assert!(
+            questions["q0"]["instructions"]
+                .as_str()
+                .unwrap()
+                .contains("Worth keeping")
+        );
+    }
+
+    // Per-input outcomes keep input order; the corpus subset names the
+    // ids the threshold admitted — the boundary case included.
+    assert_eq!(body["results"][0]["input"], "a");
+    assert_eq!(body["results"][1]["input"], "b");
+    assert_eq!(body["results"][2]["input"], "c");
+    assert_eq!(body["results"][0]["units"][0]["selected"], "keep");
+    assert!(body["results"][1]["units"][0]["selected"].is_null());
+    assert_eq!(body["results"][2]["units"][0]["selected"], "keep");
+    assert_eq!(body["results"][0]["units"][0]["raw"]["noul"], 0.9);
+    assert_eq!(
+        body["selections"],
+        json!([{"mode":"binary","label":"keep","selected":["a","c"],"unevaluated":[]}])
+    );
+    assert_eq!(receipt_log(&deployment.dir).len(), 1);
+}
+
+#[tokio::test]
+async fn classify_score_ranks_inputs_on_the_declared_rubric() {
+    // Three inputs, three positions on one rubric: a scores highest,
+    // then c, then b — the ranking is the call's, not input order.
+    let rubric = json!({"0":"weak","1":"fair","2":"strong"});
+    let rubric_for_answer = rubric.clone();
+    let stub = per_input_backend(move |body| {
+        let (score, level, probabilities) = match body["state"].as_str().unwrap_or_default() {
+            "a-input" => (2.0, "2", json!({"0":0.0,"1":0.0,"2":1.0})),
+            "b-input" => (0.4, "0", json!({"0":0.8,"1":0.2,"2":0.0})),
+            _ => (1.2, "1", json!({"0":0.2,"1":0.6,"2":0.2})),
+        };
+        (
+            StatusCode::OK,
+            json!({"model":"kev-0.6b",
+                   "answers":{"q0":{"type":"score","score":score,"confidence":0.9,
+                                   "legend":rubric_for_answer,"selected":level,
+                                   "probabilities":probabilities}},
+                   "usage":{"input_tokens":4,"output_tokens":2}}),
+        )
+    });
+    let bodies = stub.bodies.clone();
+    let (endpoint, _) = backend(stub).await;
+    let deployment = classification_deployment(endpoint).await;
+    let call = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"rubric",
+          "select":{"score":{"order":"descending"}}},
+        "inputs":[{"id":"a","text":"a-input"},{"id":"b","text":"b-input"},{"id":"c","text":"c-input"}],
+        "mode":"score","levels":["weak","fair","strong"]
+    });
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // The forward carried the rubric as an ordered score criteria.
+    let questions = bodies.lock().unwrap()[0]["questions"].clone();
+    assert_eq!(questions["q0"]["type"], "score");
+    assert_eq!(
+        questions["q0"]["criteria"],
+        json!(["weak", "fair", "strong"])
+    );
+
+    // Raw positions survive; `selected` is the categorical level the
+    // estimator named; the corpus ranking orders by weighted position.
+    assert_eq!(body["results"][0]["units"][0]["raw"]["score"], 2.0);
+    assert_eq!(body["results"][0]["units"][0]["selected"], 2);
+    assert_eq!(body["results"][2]["units"][0]["raw"]["score"], 1.2);
+    assert_eq!(
+        body["selections"],
+        json!([{"mode":"score","ranking":["a","c","b"],"unevaluated":[]}])
+    );
+}
+
+#[tokio::test]
+async fn classify_refuses_invalid_rubrics_and_undeclared_rules() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), json!({}))).await;
+    let deployment = classification_deployment(endpoint).await;
+    let base = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"rubric",
+          "select":{"score":{"order":"descending"},"binary":{"threshold":0.5}}},
+        "inputs":[{"id":"a","text":"x"}],
+        "mode":"score","levels":["weak","strong"]
+    });
+
+    // A one-level rubric, an over-maximum rubric, a rubric beside a
+    // label set, and a binary unit with two labels all refuse before
+    // any forward.
+    let mut under_minimum = base.clone();
+    under_minimum["levels"] = json!(["only"]);
+    let mut over_maximum = base.clone();
+    over_maximum["levels"] = json!((0..=10).map(|n| format!("level {n}")).collect::<Vec<_>>());
+    let mut with_labels = base.clone();
+    with_labels["labels"] = json!([{"id":"x"}]);
+    let mut wide_binary = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":base["policy"].clone(),
+        "inputs":[{"id":"a","text":"x"}],
+        "mode":"binary","labels":[{"id":"keep"},{"id":"drop"}]
+    });
+    for call in [
+        under_minimum,
+        over_maximum,
+        with_labels,
+        wide_binary.clone(),
+    ] {
+        let (status, body) = send_classification(&deployment, &call).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    }
+    // Eleven levels is a count refusal, the rest invalid envelopes.
+    let mut levels_11 = base.clone();
+    levels_11["levels"] = json!((0..11).map(|n| format!("level {n}")).collect::<Vec<_>>());
+    let (_, body) = send_classification(&deployment, &levels_11).await;
+    assert_eq!(body["error"]["code"], "too_many_levels");
+
+    // A mode the policy does not declare is refused rather than
+    // assigned a rule.
+    let mut undeclared = base.clone();
+    undeclared["policy"]["select"]["score"] = Value::Null;
+    let (status, body) = send_classification(&deployment, &undeclared).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "invalid_request");
+    wide_binary["policy"]["select"]["binary"] = Value::Null;
+    let (status, _) = send_classification(&deployment, &wide_binary).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn classify_score_keeps_outcome_order_when_forwards_fail() {
+    // One input answers, one is refused by the backend, one is
+    // unavailable: the corpus ranking names only the scored input and
+    // `unevaluated` carries the rest rather than dropping them.
+    let stub = per_input_backend(|body| match body["state"].as_str().unwrap_or_default() {
+        "a-input" => (
+            StatusCode::OK,
+            json!({"model":"kev-0.6b",
+                   "answers":{"q0":{"type":"score","score":0.75,"confidence":0.9,
+                                   "legend":{"0":"weak","1":"strong"},
+                                   "probabilities":{"0":0.25,"1":0.75}}}}),
+        ),
+        "b-input" => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({"error":{"code":"too_many_options","message":"…"}}),
+        ),
+        _ => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({"error":{"code":"busy"}}),
+        ),
+    });
+    let (endpoint, _) = backend(stub).await;
+    let deployment = classification_deployment(endpoint).await;
+    let call = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"rubric",
+          "select":{"score":{"order":"ascending"}}},
+        "inputs":[{"id":"a","text":"a-input"},{"id":"b","text":"b-input"},{"id":"c","text":"c-input"}],
+        "mode":"score","levels":["weak","strong"]
+    });
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "mixed");
+    assert_eq!(
+        body["outcomes"],
+        json!({"answered":1,"refused":1,"unavailable":1,"unattempted":0})
+    );
+    assert_eq!(body["results"][0]["input"], "a");
+    assert_eq!(body["results"][1]["input"], "b");
+    assert_eq!(body["results"][1]["outcome"], "refused");
+    assert_eq!(body["results"][1]["cause"], "too_many_options");
+    assert_eq!(body["results"][2]["input"], "c");
+    assert_eq!(body["results"][2]["outcome"], "unavailable");
+    assert_eq!(
+        body["selections"],
+        json!([{"mode":"score","ranking":["a"],"unevaluated":["b","c"]}])
+    );
 }

@@ -45,7 +45,7 @@ use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 
 use tenancy::{Admission, Capacity, Published, Registry, keys, lane_name, quota};
 
-use crate::classify::{self, Mode, Request as ClassifyRequest};
+use crate::classify::{self, Mode, RankOrder, Request as ClassifyRequest};
 use crate::config::{Config, Door};
 
 /// The file every attempt's sealed receipt appends to.
@@ -921,7 +921,7 @@ async fn classify_admitted(
 
     // 3–5. Bound, reserve, verify — the reservation's units are the
     // plan's: one question per judgment, the readout width of every
-    // categorical set, and the envelope's own bytes.
+    // categorical set and rubric, and the envelope's own bytes.
     let capacity = admission.binding.capacity.clone().unwrap_or_default();
     let _permits = match bounded(state, &request.model, &capacity, &ctx).await {
         Ok(permits) => permits,
@@ -930,8 +930,11 @@ async fn classify_admitted(
     let options: u64 = plan
         .units
         .iter()
-        .filter(|unit| unit.mode == Mode::SingleLabel)
-        .map(|unit| plan.inputs * unit.labels.len() as u64)
+        .map(|unit| match unit.mode {
+            Mode::SingleLabel => plan.inputs * unit.labels.len() as u64,
+            Mode::Score => plan.inputs * unit.levels.len() as u64,
+            Mode::MultiLabel | Mode::Binary => 0,
+        })
         .sum();
     let units = quota::Units {
         questions: plan.judgments,
@@ -1074,6 +1077,10 @@ async fn classify_admitted(
     if let Some(tokens) = output_tokens.total() {
         usage["output_tokens"] = json!(tokens);
     }
+    // The corpus views the binary and score units produce — built from
+    // the assembled items so a failed input is named rather than
+    // silently absent.
+    let selections = corpus_selections(&plan, &items);
     let response = json!({
         "v": classify::SCHEMA,
         "model": request.model,
@@ -1088,6 +1095,7 @@ async fn classify_admitted(
             "unattempted": counts.unattempted,
         },
         "results": items,
+        "selections": selections,
         "usage": usage,
         "timing": {"latency_ms": started.elapsed().as_millis() as u64},
     });
@@ -1181,7 +1189,7 @@ fn forward_body(
                 );
                 asked.push((unit_index, qid, None));
             }
-            Mode::MultiLabel => {
+            Mode::MultiLabel | Mode::Binary => {
                 for label in &unit.labels {
                     let qid = format!("q{next}");
                     next += 1;
@@ -1203,6 +1211,27 @@ fn forward_body(
                     );
                     asked.push((unit_index, qid, Some(label.id.clone())));
                 }
+            }
+            Mode::Score => {
+                let qid = format!("q{next}");
+                next += 1;
+                let criteria: Vec<Value> = unit
+                    .levels
+                    .iter()
+                    .map(|level| Value::String(level.clone()))
+                    .collect();
+                let instructions = instructions_for(
+                    request,
+                    unit,
+                    "Place the input on the rubric's ordered levels; level 0 is the \
+                     first criterion.",
+                );
+                questions.insert(
+                    qid.clone(),
+                    json!({"type": "score", "instructions": instructions,
+                           "criteria": criteria}),
+                );
+                asked.push((unit_index, qid, None));
             }
         }
     }
@@ -1239,6 +1268,89 @@ fn instructions_for(request: &ClassifyRequest, unit: &classify::Unit, framing: &
         .flatten()
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+/// The corpus-level views a call reports: one entry per binary or score
+/// unit. A binary unit reports the input ids its declared threshold
+/// selected; a score unit reports the answered inputs ordered by their
+/// weighted positions, equal scores keeping input order. Both name the
+/// inputs no judgment answered — an input the call could not evaluate
+/// is neither selected nor ranked, and never silently dropped.
+fn corpus_selections(plan: &classify::Plan, items: &[Value]) -> Vec<Value> {
+    /// One input's result for a unit, by the unit's plan position.
+    fn unit_of(item: &Value, unit_index: usize) -> Option<&Value> {
+        item.get("units")?.get(unit_index)
+    }
+    /// Whether the unit answered on this input.
+    fn answered(item: &Value, unit_index: usize) -> bool {
+        unit_of(item, unit_index)
+            .and_then(|unit| unit.get("outcome"))
+            .and_then(Value::as_str)
+            == Some("answered")
+    }
+    let mut selections = Vec::new();
+    for (unit_index, unit) in plan.units.iter().enumerate() {
+        let mut entry = match unit.mode {
+            Mode::Binary => {
+                let label = unit.labels.first().map_or("", |label| label.id.as_str());
+                let selected: Vec<Value> = items
+                    .iter()
+                    .filter(|item| {
+                        answered(item, unit_index)
+                            && unit_of(item, unit_index)
+                                .and_then(|unit| unit.get("selected"))
+                                .and_then(Value::as_str)
+                                == Some(label)
+                    })
+                    .map(|item| item["input"].clone())
+                    .collect();
+                json!({"mode": "binary", "label": label, "selected": selected})
+            }
+            Mode::Score => {
+                let Some(rule) = plan.policy.select.score.as_ref() else {
+                    continue;
+                };
+                let mut scored: Vec<(&Value, f64)> = items
+                    .iter()
+                    .filter(|item| answered(item, unit_index))
+                    .filter_map(|item| {
+                        unit_of(item, unit_index)
+                            .and_then(|unit| unit.get("raw"))
+                            .and_then(|raw| raw.get("score"))
+                            .and_then(Value::as_f64)
+                            .map(|score| (item, score))
+                    })
+                    .collect();
+                // The sort is stable, so equal positions keep input order.
+                match rule.order {
+                    RankOrder::Descending => {
+                        scored.sort_by(|a, b| b.1.total_cmp(&a.1));
+                    }
+                    RankOrder::Ascending => scored.sort_by(|a, b| a.1.total_cmp(&b.1)),
+                }
+                if let Some(top_n) = rule.top_n {
+                    scored.truncate(top_n as usize);
+                }
+                let ranking: Vec<Value> = scored
+                    .iter()
+                    .map(|(item, _)| item["input"].clone())
+                    .collect();
+                json!({"mode": "score", "ranking": ranking})
+            }
+            Mode::SingleLabel | Mode::MultiLabel => continue,
+        };
+        if let Some(dimension) = &unit.dimension {
+            entry["dimension"] = json!(dimension);
+        }
+        let unevaluated: Vec<Value> = items
+            .iter()
+            .filter(|item| !answered(item, unit_index))
+            .map(|item| item["input"].clone())
+            .collect();
+        entry["unevaluated"] = json!(unevaluated);
+        selections.push(entry);
+    }
+    selections
 }
 
 /// One input's assembled result when its forward answered: each unit's
@@ -1305,9 +1417,11 @@ fn served_item(
 /// The local envelope supplies only the decoder context; it is never returned
 /// as serving evidence and does not make a network call.
 fn valid_primitive(answer: &Value, kind: &str) -> bool {
-    if answer.get("type").and_then(Value::as_str) != Some(kind) {
-        return false;
-    }
+    decode_answer(answer).is_some_and(|answer| answer.kind() == kind)
+}
+
+/// One answer decoded through the native SDK, whatever its type.
+fn decode_answer(answer: &Value) -> Option<jev::Answer> {
     let bytes = serde_json::to_vec(&json!({"model":"decoder-context", "answers":{"q":answer}}))
         .expect("a JSON value serializes");
     jev::SystemOneResponse::decode(jev::RawResponse {
@@ -1315,7 +1429,49 @@ fn valid_primitive(answer: &Value, kind: &str) -> bool {
         headers: Default::default(),
         bytes,
     })
-    .is_ok_and(|response| response.answers.contains_key("q"))
+    .ok()
+    .and_then(|response| response.answers.get("q").cloned())
+}
+
+/// A score answer the native SDK validates, held to exactly the rubric
+/// the unit declared — the same check `check_against` runs against the
+/// questions a request sent, so a legend or a distribution that names
+/// other levels fails.
+fn valid_score(answer: &Value, levels: usize) -> Option<jev::ScoreAnswer> {
+    if answer.get("type").and_then(Value::as_str) != Some("score") {
+        return None;
+    }
+    let bytes = serde_json::to_vec(&json!({"model":"decoder-context", "answers":{"q":answer}}))
+        .expect("a JSON value serializes");
+    let response = jev::SystemOneResponse::decode(jev::RawResponse {
+        status: 200,
+        headers: Default::default(),
+        bytes,
+    })
+    .ok()?;
+    let mut asked = jev::Questions::new();
+    asked.insert(
+        "q",
+        jev::Score::new("the unit's rubric", vec![None; levels]),
+    );
+    response.check_against(&asked).ok()?;
+    response.score("q").ok().cloned()
+}
+
+/// The categorical level a score answer reports: the estimator's own
+/// `selected` when it sent one, else the highest level among the
+/// distribution's maxima — the documented fallback. An answer with no
+/// distribution selects nothing; its weighted position is still on
+/// `raw`.
+fn selected_level(answer: &jev::ScoreAnswer) -> Option<u64> {
+    if let Some(selected) = &answer.selected {
+        return selected.parse().ok();
+    }
+    answer
+        .probabilities
+        .iter()
+        .max_by(|a, b| a.1.total_cmp(b.1).then(a.0.cmp(b.0)))
+        .map(|(level, _)| u64::from(*level))
 }
 
 /// One unit's result inside an answered forward: the raw answer and
@@ -1328,12 +1484,7 @@ fn unit_result(
     asked: &[(usize, String, Option<String>)],
     answers: &serde_json::Map<String, Value>,
 ) -> Value {
-    let mut base = json!({
-        "mode": match unit.mode {
-            Mode::SingleLabel => "single-label",
-            Mode::MultiLabel => "multi-label",
-        },
-    });
+    let mut base = json!({"mode": unit.mode.name()});
     if let Some(dimension) = &unit.dimension {
         base["dimension"] = json!(dimension);
     }
@@ -1412,16 +1563,54 @@ fn unit_result(
             base["selected"] = rule.select(&pairs);
             base
         }
+        Mode::Binary => {
+            let Some(rule) = plan.policy.select.binary.as_ref() else {
+                return unit_failure(unit, "unavailable", "no declared selection rule");
+            };
+            let Some(answer) = asked.next().and_then(|(_, qid, _)| answers.get(qid)) else {
+                return unit_failure(unit, "unavailable", "the door answered no noul");
+            };
+            if !valid_primitive(answer, "noul") {
+                return unit_failure(unit, "unavailable", "the answer is not a noul");
+            }
+            let Some(probability) = answer.get("noul").and_then(Value::as_f64) else {
+                return unit_failure(unit, "unavailable", "a noul answer holds no probability");
+            };
+            if !(0.0..=1.0).contains(&probability) {
+                return unit_failure(unit, "unavailable", "a noul answer is not a probability");
+            }
+            base["outcome"] = json!("answered");
+            base["raw"] = answer.clone();
+            base["selected"] = if rule.selects(probability) {
+                json!(unit.labels[0].id)
+            } else {
+                Value::Null
+            };
+            base
+        }
+        Mode::Score => {
+            let Some(answer) = asked.next().and_then(|(_, qid, _)| answers.get(qid)) else {
+                return unit_failure(unit, "unavailable", "the door answered no score");
+            };
+            let Some(scored) = valid_score(answer, unit.levels.len()) else {
+                return unit_failure(
+                    unit,
+                    "unavailable",
+                    "the answer is not a score on this rubric",
+                );
+            };
+            base["outcome"] = json!("answered");
+            base["raw"] = answer.clone();
+            base["selected"] = selected_level(&scored).map_or(Value::Null, |level| json!(level));
+            base
+        }
     }
 }
 
 /// One unit's result when it carries no usable answer.
 fn unit_failure(unit: &classify::Unit, outcome: &str, cause: &str) -> Value {
     let mut base = json!({
-        "mode": match unit.mode {
-            Mode::SingleLabel => "single-label",
-            Mode::MultiLabel => "multi-label",
-        },
+        "mode": unit.mode.name(),
         "outcome": outcome,
         "cause": cause,
         "selected": Value::Null,

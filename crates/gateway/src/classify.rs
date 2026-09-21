@@ -2,7 +2,7 @@
 //! `POST /v1/classify` facade, and the deterministic plan a valid
 //! envelope produces.
 //!
-//! This module is the first slice of the facade described in
+//! This module is a slice of the facade described in
 //! `docs/decision-models/decision-api.md`: it defines what a caller may
 //! send and checks it completely, before any route, handler, or backend
 //! exists. Nothing here runs inference, picks a threshold, guesses a
@@ -12,10 +12,11 @@
 //!
 //! The product maxima are the schema design targets the contract
 //! publishes: 1–1,000 inputs, up to 100 labels per label set, up to 20
-//! named dimensions, and at most 1,000 item-dimension or input-label
-//! judgments per synchronous call. A backend may bind tighter limits; a
-//! caller passes them in as [`BackendLimits`], and a declaration above a
-//! product maximum is refused rather than advertised.
+//! named dimensions, a rubric of 2–10 levels per scored unit, and at most
+//! 1,000 item-dimension or input-label judgments per synchronous call. A
+//! backend may bind tighter limits; a caller passes them in as
+//! [`BackendLimits`], and a declaration above a product maximum is
+//! refused rather than advertised.
 
 use std::collections::HashSet;
 
@@ -52,20 +53,32 @@ pub const MAX_INPUT_BYTES: u64 = 262_144;
 /// The most bytes a request's or a dimension's instructions may carry.
 pub const MAX_INSTRUCTIONS_BYTES: u64 = 16_384;
 
-/// The most bytes a label's description may carry.
+/// The most bytes a label's description or a rubric level's text may
+/// carry.
 pub const MAX_LABEL_BYTES: u64 = 4_096;
+
+/// The most levels one rubric may carry — the native Score contract's
+/// own bound.
+pub const MAX_LEVELS: u64 = 10;
 
 /// The label minimum a single-label set observes: a categorical choice
 /// needs at least two options to be a judgment.
 const MIN_SINGLE_LABELS: u64 = 2;
 
-/// How the labels on a set are judged.
+/// The fewest levels a rubric holds: a Score question needs at least
+/// two ordered levels to be a judgment.
+const MIN_SCORE_LEVELS: u64 = 2;
+
+/// How the work on a unit is judged.
 ///
-/// The two modes answer differently, and a plan keeps them distinct: a
+/// The modes answer differently, and a plan keeps them distinct: a
 /// single-label judgment is one categorical distribution that compares
-/// the labels, while a multi-label judgment is one independent
-/// probability per label — those probabilities do not sum to one.
-/// Binary filtering is multi-label work with a single label.
+/// the labels, a multi-label judgment is one independent probability
+/// per label — those probabilities do not sum to one — and a binary
+/// judgment is that same independent probability read as a filter over
+/// the corpus. A score judgment asks for no labels at all: it places
+/// each input on the unit's ordered rubric so the per-item positions
+/// compare.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Mode {
@@ -73,6 +86,25 @@ pub enum Mode {
     SingleLabel,
     /// One Noul per input per label: each label is judged on its own.
     MultiLabel,
+    /// One Noul per input over the unit's single label: a filter that
+    /// selects a subset of the corpus.
+    Binary,
+    /// One Score per input on the unit's rubric: comparable per-item
+    /// positions the call ranks.
+    Score,
+}
+
+impl Mode {
+    /// The mode's wire name.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::SingleLabel => "single-label",
+            Self::MultiLabel => "multi-label",
+            Self::Binary => "binary",
+            Self::Score => "score",
+        }
+    }
 }
 
 /// One label: a stable id and an optional description the judgment can
@@ -103,7 +135,7 @@ pub struct Input {
     pub record: Option<Map<String, Value>>,
 }
 
-/// A named dimension: its own mode, label set, and optional
+/// A named dimension: its own mode, label set or rubric, and optional
 /// instructions, judged independently of the request's other
 /// dimensions.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -111,10 +143,16 @@ pub struct Input {
 pub struct Dimension {
     /// The dimension's caller-chosen id, unique within the request.
     pub id: String,
-    /// How this dimension's labels are judged.
+    /// How this dimension's work is judged.
     pub mode: Mode,
-    /// The dimension's label set.
+    /// The dimension's label set, for every mode but `score`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub labels: Vec<Label>,
+    /// The dimension's rubric: the ordered level descriptions a `score`
+    /// dimension is judged on, level 0 first. Present only under that
+    /// mode.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub levels: Vec<String>,
     /// Instructions scoped to this dimension, layered over the
     /// request's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -201,6 +239,50 @@ pub struct MultiSelect {
     pub no_match: EmptySelection,
 }
 
+/// The selection rule for a binary unit: the cut the filter's one Noul
+/// must reach for an input to join the selected subset. The probability
+/// is the caller's to pick and to evaluate — the contract does not
+/// invent one.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BinarySelect {
+    /// The probability at or above which an input is selected.
+    pub threshold: f64,
+}
+
+impl BinarySelect {
+    /// Whether the answered probability selects the input.
+    #[must_use]
+    pub fn selects(&self, probability: f64) -> bool {
+        probability >= self.threshold
+    }
+}
+
+/// The direction a score unit's ranking reports.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RankOrder {
+    /// Highest score first — a "best first" reading of the rubric.
+    Descending,
+    /// Lowest score first — a "worst first" reading, for a rubric that
+    /// measures severity or risk.
+    Ascending,
+}
+
+/// The selection rule for a score unit: how the per-item positions
+/// order the corpus. The weighted scores themselves are never
+/// thresholded here — a caller that wants a cut declares it on its own
+/// data downstream of the raw answers.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScoreSelect {
+    /// The direction the ranking reports.
+    pub order: RankOrder,
+    /// A cap on the ranking's length, when the caller declares one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_n: Option<u64>,
+}
+
 /// The selection rules a policy declares, one entry per mode.
 ///
 /// Each entry is optional on the document and required by the work:
@@ -215,6 +297,12 @@ pub struct Select {
     /// The rule for multi-label units.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multi_label: Option<MultiSelect>,
+    /// The rule for binary units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<BinarySelect>,
+    /// The rule for score units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<ScoreSelect>,
 }
 
 /// The versioned policy identity the call runs under: its name and
@@ -254,8 +342,12 @@ pub struct BackendLimits {
     pub max_input_bytes: u64,
     /// The most bytes the backend takes in an instructions field.
     pub max_instructions_bytes: u64,
-    /// The most bytes the backend takes in a label description.
+    /// The most bytes the backend takes in a label description or a
+    /// rubric level's text.
     pub max_label_bytes: u64,
+    /// The most levels the backend takes in one rubric — a bound below
+    /// the two-level minimum admits no score work at all.
+    pub max_levels: u64,
 }
 
 impl BackendLimits {
@@ -272,6 +364,7 @@ impl BackendLimits {
             max_input_bytes: MAX_INPUT_BYTES,
             max_instructions_bytes: MAX_INSTRUCTIONS_BYTES,
             max_label_bytes: MAX_LABEL_BYTES,
+            max_levels: MAX_LEVELS,
         }
     }
 
@@ -305,6 +398,7 @@ impl BackendLimits {
                 self.max_label_bytes,
                 product.max_label_bytes,
             ),
+            ("max_levels", self.max_levels, product.max_levels),
         ];
         for (name, declared, maximum) in fields {
             if declared == 0 {
@@ -317,6 +411,13 @@ impl BackendLimits {
                     "the backend's `{name}` of {declared} exceeds the facade's {maximum}"
                 )));
             }
+        }
+        if self.max_levels < MIN_SCORE_LEVELS {
+            return Err(Refusal::UnsupportedLimits(format!(
+                "the backend's `max_levels` of {} admits no rubric — a score needs \
+                 at least {MIN_SCORE_LEVELS} levels",
+                self.max_levels
+            )));
         }
         Ok(())
     }
@@ -339,6 +440,16 @@ impl Policy {
                     "the policy's `top_n` of 0 selects no labels".to_string(),
                 ));
             }
+        }
+        if let Some(rule) = &self.select.binary {
+            check_probability("threshold", rule.threshold)?;
+        }
+        if let Some(rule) = &self.select.score
+            && rule.top_n == Some(0)
+        {
+            return Err(Refusal::InvalidRequest(
+                "the policy's `top_n` of 0 ranks no inputs".to_string(),
+            ));
         }
         Ok(())
     }
@@ -461,6 +572,11 @@ pub struct Request {
     /// The request's label set, for a request without dimensions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub labels: Vec<Label>,
+    /// The request's rubric, for a `score` request without dimensions:
+    /// the ordered level descriptions, level 0 first. Present only
+    /// under that mode.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub levels: Vec<String>,
     /// The request's named dimensions, for a dimensional request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dimensions: Vec<Dimension>,
@@ -505,8 +621,8 @@ pub enum Refusal {
     },
     /// A count exceeds its bound.
     TooMany {
-        /// What ran over: `inputs`, `labels`, `dimensions`, or
-        /// `judgments`.
+        /// What ran over: `inputs`, `labels`, `levels`, `dimensions`,
+        /// or `judgments`.
         what: &'static str,
         /// The count the request carried.
         got: u64,
@@ -542,6 +658,7 @@ impl Refusal {
             Self::TooMany { what, .. } => match *what {
                 "inputs" => "too_many_inputs",
                 "labels" => "too_many_labels",
+                "levels" => "too_many_levels",
                 "dimensions" => "too_many_dimensions",
                 _ => "too_many_judgments",
             },
@@ -599,6 +716,11 @@ pub enum Primitive {
         /// The label id this judgment scores.
         label: String,
     },
+    /// One probability-weighted position on the unit's rubric.
+    Score {
+        /// How many levels the rubric declares.
+        levels: u64,
+    },
 }
 
 /// One unit of classification work: a dimension's or the request's own
@@ -612,10 +734,16 @@ pub struct Unit {
     /// The dimension's id, absent for a request without dimensions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dimension: Option<String>,
-    /// How the unit's labels are judged.
+    /// How the unit's work is judged.
     pub mode: Mode,
-    /// The unit's label set, in declared order.
+    /// The unit's label set, in declared order — empty for a `score`
+    /// unit, which carries a rubric instead.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub labels: Vec<Label>,
+    /// The unit's rubric, level 0 first — present only for a `score`
+    /// unit.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub levels: Vec<String>,
 }
 
 /// One judgment the request would need, in the order it must report:
@@ -711,20 +839,25 @@ impl Request {
         }
         self.check_inputs(limits)?;
 
-        // Normalize the two shapes into one list of (dimension, mode,
-        // labels) units: a flat request is one anonymous unit.
-        let units: Vec<(Option<&str>, Mode, &[Label])> = if self.dimensions.is_empty() {
+        // Normalize the two shapes into one list of units: a flat
+        // request is one anonymous unit.
+        let units: Vec<UnitRef> = if self.dimensions.is_empty() {
             if self.mode.is_none() {
                 return Err(Refusal::InvalidRequest(
-                    "the envelope names no `mode` for its `labels`".to_string(),
+                    "the envelope names no `mode`".to_string(),
                 ));
             }
-            vec![(None, self.mode.unwrap_or(Mode::SingleLabel), &self.labels)]
+            vec![UnitRef {
+                dimension: None,
+                mode: self.mode.unwrap_or(Mode::SingleLabel),
+                labels: &self.labels,
+                levels: &self.levels,
+            }]
         } else {
-            if self.mode.is_some() || !self.labels.is_empty() {
+            if self.mode.is_some() || !self.labels.is_empty() || !self.levels.is_empty() {
                 return Err(Refusal::InvalidRequest(
-                    "a dimensional request carries `mode` and `labels` on each \
-                     dimension, not on the envelope"
+                    "a dimensional request carries `mode`, `labels`, and `levels` on \
+                     each dimension, not on the envelope"
                         .to_string(),
                 ));
             }
@@ -747,24 +880,28 @@ impl Request {
                             limits.max_instructions_bytes,
                         )?;
                     }
-                    check_labels(&dimension.labels, dimension.mode, limits)?;
-                    Ok((
-                        Some(dimension.id.as_str()),
-                        dimension.mode,
-                        dimension.labels.as_slice(),
-                    ))
+                    Ok(UnitRef {
+                        dimension: Some(dimension.id.as_str()),
+                        mode: dimension.mode,
+                        labels: &dimension.labels,
+                        levels: &dimension.levels,
+                    })
                 })
                 .collect::<Result<_, Refusal>>()?
         };
-        if self.dimensions.is_empty() {
-            check_labels(&self.labels, self.mode.unwrap_or(Mode::SingleLabel), limits)?;
+        for unit in &units {
+            check_unit(unit, limits)?;
         }
 
         // The policy must declare a rule for every mode the request
         // plans, and a named no-match label must be in each set it
         // could select from.
-        for (dimension, mode, labels) in &units {
-            match mode {
+        for unit in &units {
+            let context = || {
+                unit.dimension
+                    .map_or_else(String::new, |d| format!(" of `{d}`"))
+            };
+            match unit.mode {
                 Mode::SingleLabel => {
                     let rule = self.policy.select.single_label.as_ref().ok_or_else(|| {
                         Refusal::InvalidRequest(
@@ -772,11 +909,11 @@ impl Request {
                         )
                     })?;
                     if let NoMatch::Label { label } = &rule.no_match
-                        && !labels.iter().any(|candidate| &candidate.id == label)
+                        && !unit.labels.iter().any(|candidate| &candidate.id == label)
                     {
                         return Err(Refusal::InvalidRequest(format!(
                             "the policy's no-match label `{label}` is not in the label set{}",
-                            dimension.map_or_else(String::new, |d| format!(" of `{d}`")),
+                            context(),
                         )));
                     }
                 }
@@ -787,12 +924,34 @@ impl Request {
                         )
                     })?;
                     if let Some(top_n) = rule.top_n
-                        && top_n > labels.len() as u64
+                        && top_n > unit.labels.len() as u64
                     {
                         return Err(Refusal::InvalidRequest(format!(
                             "the policy's `top_n` of {top_n} exceeds the {} labels{}",
-                            labels.len(),
-                            dimension.map_or_else(String::new, |d| format!(" of `{d}`")),
+                            unit.labels.len(),
+                            context(),
+                        )));
+                    }
+                }
+                Mode::Binary => {
+                    if self.policy.select.binary.is_none() {
+                        return Err(Refusal::InvalidRequest(
+                            "the policy declares no `binary` selection rule".to_string(),
+                        ));
+                    }
+                }
+                Mode::Score => {
+                    let rule = self.policy.select.score.as_ref().ok_or_else(|| {
+                        Refusal::InvalidRequest(
+                            "the policy declares no `score` selection rule".to_string(),
+                        )
+                    })?;
+                    if let Some(top_n) = rule.top_n
+                        && top_n > self.inputs.len() as u64
+                    {
+                        return Err(Refusal::InvalidRequest(format!(
+                            "the policy's `top_n` of {top_n} exceeds the {} inputs",
+                            self.inputs.len(),
                         )));
                     }
                 }
@@ -803,10 +962,10 @@ impl Request {
         // the same order — inputs, then dimensions, then labels.
         let inputs = self.inputs.len() as u64;
         let mut judgments: u64 = 0;
-        for (_, mode, labels) in &units {
-            let per_input = match mode {
-                Mode::SingleLabel => 1_u64,
-                Mode::MultiLabel => labels.len() as u64,
+        for unit in &units {
+            let per_input = match unit.mode {
+                Mode::SingleLabel | Mode::Binary | Mode::Score => 1_u64,
+                Mode::MultiLabel => unit.labels.len() as u64,
             };
             judgments = judgments
                 .checked_add(inputs.checked_mul(per_input).ok_or(Refusal::Overflow)?)
@@ -822,21 +981,21 @@ impl Request {
 
         let mut work = Vec::with_capacity(judgments as usize);
         for input in &self.inputs {
-            for (dimension, mode, labels) in &units {
-                match mode {
+            for unit in &units {
+                match unit.mode {
                     Mode::SingleLabel => work.push(Judgment {
                         input: input.id.clone(),
-                        dimension: dimension.map(str::to_string),
+                        dimension: unit.dimension.map(str::to_string),
                         primitive: Primitive::Choice {
-                            options: labels.iter().map(|label| label.id.clone()).collect(),
+                            options: unit.labels.iter().map(|label| label.id.clone()).collect(),
                         },
                         outcome: Outcome::Unattempted,
                     }),
                     Mode::MultiLabel => {
-                        for label in *labels {
+                        for label in unit.labels {
                             work.push(Judgment {
                                 input: input.id.clone(),
-                                dimension: dimension.map(str::to_string),
+                                dimension: unit.dimension.map(str::to_string),
                                 primitive: Primitive::Noul {
                                     label: label.id.clone(),
                                 },
@@ -844,6 +1003,22 @@ impl Request {
                             });
                         }
                     }
+                    Mode::Binary => work.push(Judgment {
+                        input: input.id.clone(),
+                        dimension: unit.dimension.map(str::to_string),
+                        primitive: Primitive::Noul {
+                            label: unit.labels[0].id.clone(),
+                        },
+                        outcome: Outcome::Unattempted,
+                    }),
+                    Mode::Score => work.push(Judgment {
+                        input: input.id.clone(),
+                        dimension: unit.dimension.map(str::to_string),
+                        primitive: Primitive::Score {
+                            levels: unit.levels.len() as u64,
+                        },
+                        outcome: Outcome::Unattempted,
+                    }),
                 }
             }
         }
@@ -856,10 +1031,11 @@ impl Request {
             judgments,
             units: units
                 .iter()
-                .map(|(dimension, mode, labels)| Unit {
-                    dimension: dimension.map(str::to_string),
-                    mode: *mode,
-                    labels: labels.to_vec(),
+                .map(|unit| Unit {
+                    dimension: unit.dimension.map(str::to_string),
+                    mode: unit.mode,
+                    labels: unit.labels.to_vec(),
+                    levels: unit.levels.to_vec(),
                 })
                 .collect(),
             work,
@@ -908,22 +1084,85 @@ impl Request {
     }
 }
 
+/// One unit borrowed from the envelope: the dimension it belongs to,
+/// the mode it is judged under, and the labels or rubric it carries.
+struct UnitRef<'a> {
+    /// The dimension's id, absent for a request without dimensions.
+    dimension: Option<&'a str>,
+    /// How the unit's work is judged.
+    mode: Mode,
+    /// The unit's label set — empty for a `score` unit.
+    labels: &'a [Label],
+    /// The unit's rubric — empty for every mode but `score`.
+    levels: &'a [String],
+}
+
+/// A unit's shape checks: the mode decides which of `labels` and
+/// `levels` the unit must carry and which it must not.
+fn check_unit(unit: &UnitRef<'_>, limits: &BackendLimits) -> Result<(), Refusal> {
+    if unit.mode == Mode::Score {
+        if !unit.labels.is_empty() {
+            return Err(Refusal::InvalidRequest(
+                "a score unit carries `levels`, not `labels`".to_string(),
+            ));
+        }
+        return check_levels(unit.levels, limits);
+    }
+    if !unit.levels.is_empty() {
+        return Err(Refusal::InvalidRequest(format!(
+            "a {} unit carries `labels`, not `levels`",
+            unit.mode.name()
+        )));
+    }
+    if unit.mode == Mode::Binary && unit.labels.len() != 1 {
+        return Err(Refusal::InvalidRequest(format!(
+            "a binary unit carries exactly one label, and this one carries {}",
+            unit.labels.len()
+        )));
+    }
+    check_labels(unit.labels, unit.mode, limits)
+}
+
+/// A rubric's checks: two to `max_levels` ordered levels, each a
+/// nonempty description within the byte bound.
+fn check_levels(levels: &[String], limits: &BackendLimits) -> Result<(), Refusal> {
+    if (levels.len() as u64) < MIN_SCORE_LEVELS {
+        return Err(Refusal::InvalidRequest(format!(
+            "a rubric needs at least {MIN_SCORE_LEVELS} levels, and this one carries {}",
+            levels.len()
+        )));
+    }
+    if levels.len() as u64 > limits.max_levels {
+        return Err(Refusal::TooMany {
+            what: "levels",
+            got: levels.len() as u64,
+            limit: limits.max_levels,
+        });
+    }
+    for level in levels {
+        if level.trim().is_empty() {
+            return Err(Refusal::InvalidRequest(
+                "a rubric level's description is empty".to_string(),
+            ));
+        }
+        check_bytes("level", level.len() as u64, limits.max_label_bytes)?;
+    }
+    Ok(())
+}
+
 /// A label set's checks: bounded, unique, valid ids, and at least two
 /// labels where the mode is a categorical choice.
 fn check_labels(labels: &[Label], mode: Mode, limits: &BackendLimits) -> Result<(), Refusal> {
     let minimum = match mode {
         Mode::SingleLabel => MIN_SINGLE_LABELS,
-        Mode::MultiLabel => 1,
+        Mode::MultiLabel | Mode::Binary => 1,
+        Mode::Score => 0,
     };
     if (labels.len() as u64) < minimum {
         return Err(Refusal::InvalidRequest(format!(
-            "a {mode_name} label set needs at least {minimum} labels, and this one \
-             carries {}",
+            "a {} label set needs at least {minimum} labels, and this one carries {}",
+            mode.name(),
             labels.len(),
-            mode_name = match mode {
-                Mode::SingleLabel => "single-label",
-                Mode::MultiLabel => "multi-label",
-            },
         )));
     }
     if labels.len() as u64 > limits.max_labels {
@@ -1018,7 +1257,8 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// A policy declaring both selection rules — the tests' default.
+    /// A policy declaring all four selection rules — the tests'
+    /// default.
     fn policy() -> Value {
         json!({
             "v": POLICY_SCHEMA,
@@ -1026,6 +1266,8 @@ mod tests {
             "select": {
                 "single_label": {"ties": "first-declared", "no_match": {"kind": "null"}},
                 "multi_label": {"threshold": 0.5, "ties": "include-all", "no_match": "empty"},
+                "binary": {"threshold": 0.5},
+                "score": {"order": "descending"},
             },
         })
     }
@@ -1085,7 +1327,7 @@ mod tests {
             .iter()
             .map(|judgment| match &judgment.primitive {
                 Primitive::Noul { label } => label.as_str(),
-                Primitive::Choice { .. } => panic!("a multi-label plan holds no choice"),
+                _ => panic!("a multi-label plan holds nouls alone"),
             })
             .collect();
         assert_eq!(labels, ["billing", "shipping", "billing", "shipping"]);
@@ -1615,6 +1857,209 @@ mod tests {
             json!({"input": "i", "dimension": "tags",
                    "primitive": "noul", "label": "x",
                    "outcome": "unattempted"})
+        );
+    }
+
+    /// A binary envelope: one label and a `binary` rule.
+    fn binary_envelope() -> Value {
+        json!({
+            "v": SCHEMA,
+            "model": "shared-kev",
+            "capacity": "shared",
+            "policy": policy(),
+            "inputs": [
+                {"id": "a", "text": "charged twice"},
+                {"id": "b", "text": "where is my order"},
+            ],
+            "mode": "binary",
+            "labels": [{"id": "keep"}],
+        })
+    }
+
+    /// A score envelope: a rubric and a `score` rule.
+    fn score_envelope() -> Value {
+        json!({
+            "v": SCHEMA,
+            "model": "shared-kev",
+            "capacity": "shared",
+            "policy": policy(),
+            "inputs": [
+                {"id": "a", "text": "charged twice"},
+                {"id": "b", "text": "where is my order"},
+            ],
+            "mode": "score",
+            "levels": ["poor", "acceptable", "excellent"],
+        })
+    }
+
+    #[test]
+    fn a_binary_request_plans_one_noul_per_input() {
+        let plan = plan(&binary_envelope()).unwrap();
+        assert_eq!(plan.judgments, 2);
+        assert_eq!(
+            plan.work[1].primitive,
+            Primitive::Noul {
+                label: "keep".to_string()
+            }
+        );
+        assert_eq!(plan.units[0].mode, Mode::Binary);
+    }
+
+    #[test]
+    fn a_binary_unit_carries_exactly_one_label() {
+        let mut value = binary_envelope();
+        value["labels"] = json!([]);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+
+        let mut value = binary_envelope();
+        value["labels"] = json!([{"id": "keep"}, {"id": "drop"}]);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn a_score_request_plans_one_score_per_input() {
+        let plan = plan(&score_envelope()).unwrap();
+        assert_eq!(plan.judgments, 2);
+        assert_eq!(plan.work[0].primitive, Primitive::Score { levels: 3 });
+        assert_eq!(plan.units[0].levels.len(), 3);
+        assert!(plan.units[0].labels.is_empty());
+    }
+
+    #[test]
+    fn a_score_unit_carries_levels_not_labels() {
+        // A rubric under the two-level minimum is no judgment.
+        let mut value = score_envelope();
+        value["levels"] = json!(["only"]);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+
+        // A score unit that also names labels is refused.
+        let mut value = score_envelope();
+        value["labels"] = json!([{"id": "x"}]);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+
+        // And a non-score unit that names levels is refused.
+        let mut value = envelope();
+        value["levels"] = json!(["low", "high"]);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn a_rubric_observes_the_declared_level_bound() {
+        // Eleven levels is over the product maximum.
+        let mut value = score_envelope();
+        value["levels"] = json!(
+            (0..=MAX_LEVELS)
+                .map(|n| format!("l{n}"))
+                .collect::<Vec<_>>()
+        );
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "too_many_levels");
+
+        // A backend may declare tighter.
+        let mut tight = BackendLimits::product();
+        tight.max_levels = 2;
+        let request = parse(&score_envelope()).unwrap();
+        let refusal = request.plan(&tight).unwrap_err();
+        assert_eq!(code(&refusal), "too_many_levels");
+
+        // And a bound below the rubric minimum admits no score work at
+        // all — the declaration itself is refused.
+        let mut tight = BackendLimits::product();
+        tight.max_levels = 1;
+        let request = parse(&score_envelope()).unwrap();
+        let refusal = request.plan(&tight).unwrap_err();
+        assert_eq!(code(&refusal), "unsupported_limits");
+
+        // An empty level is a gap in the rubric, not a level.
+        let mut value = score_envelope();
+        value["levels"] = json!(["low", "  "]);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn the_policy_must_declare_the_new_modes_rules() {
+        let mut value = binary_envelope();
+        value["policy"]["select"]["binary"] = Value::Null;
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+
+        let mut value = score_envelope();
+        value["policy"]["select"]["score"] = Value::Null;
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn a_binary_cut_is_a_probability_and_a_rank_cap_ranks() {
+        for cut in [-0.1, 1.1] {
+            let mut value = binary_envelope();
+            value["policy"]["select"]["binary"]["threshold"] = json!(cut);
+            let refusal = plan(&value).unwrap_err();
+            assert_eq!(code(&refusal), "invalid_request", "cut {cut}");
+        }
+        let mut value = score_envelope();
+        value["policy"]["select"]["score"]["top_n"] = json!(0);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+
+        // A cap past the corpus is refused, as a label cap past the set is.
+        let mut value = score_envelope();
+        value["policy"]["select"]["score"]["top_n"] = json!(3);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn dimensions_may_mix_all_four_modes() {
+        let value = json!({
+            "v": SCHEMA,
+            "model": "m",
+            "capacity": "c",
+            "policy": policy(),
+            "inputs": [{"id": "i", "text": "x"}],
+            "dimensions": [
+                {"id": "cat", "mode": "single-label",
+                 "labels": [{"id": "a"}, {"id": "b"}]},
+                {"id": "tags", "mode": "multi-label",
+                 "labels": [{"id": "x"}, {"id": "y"}]},
+                {"id": "gate", "mode": "binary",
+                 "labels": [{"id": "keep"}]},
+                {"id": "quality", "mode": "score",
+                 "levels": ["poor", "ok", "great"]},
+            ],
+        });
+        let plan = plan(&value).unwrap();
+        // 1 choice + 2 nouls + 1 noul + 1 score = 5 judgments.
+        assert_eq!(plan.judgments, 5);
+        let order: Vec<(&str, &str)> = plan
+            .work
+            .iter()
+            .map(|j| {
+                (
+                    j.dimension.as_deref().unwrap(),
+                    match &j.primitive {
+                        Primitive::Choice { .. } => "choice",
+                        Primitive::Noul { .. } => "noul",
+                        Primitive::Score { .. } => "score",
+                    },
+                )
+            })
+            .collect();
+        assert_eq!(
+            order,
+            [
+                ("cat", "choice"),
+                ("tags", "noul"),
+                ("tags", "noul"),
+                ("gate", "noul"),
+                ("quality", "score"),
+            ]
         );
     }
 }
