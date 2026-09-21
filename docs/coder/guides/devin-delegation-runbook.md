@@ -490,6 +490,8 @@ historical runs.
 | `worker_absent` or `worker_stalled` | Check worker subscription, identity, allowlist, relay connectivity, and job logs before retrying. |
 | Scratch commit includes the whole repository | Find the seeded root and inspect only later commits; do not integrate the root. |
 | Timed-out or interrupted writing task | Preserve its worktree and reconcile the old attempt before dispatching a replacement. |
+| `devin-local is unprobed here` | Export `CODER_CAPABILITY_TRUST` pointing at the approved `trust.json`; the default store under `~/.openagents` is not the delegation store. |
+| `cannot record to ... trace.atif.jsonl: File exists` | A previous run already claimed that trace path. Remove the stale trace or pick a fresh evidence directory; traces are create-new, never appended across runs. |
 
 The [consumer vision](../design/coder-as-decision-router-consumer.md) describes the
 remaining product work. The [workstation verification record](../verification/2026-09-20-devin-runbook.md)
