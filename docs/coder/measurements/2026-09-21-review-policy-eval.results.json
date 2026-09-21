@@ -1,0 +1,974 @@
+{
+ "schema": "openagents.gym.review-policy-eval.v1",
+ "suite": {
+  "name": "review-policy-eval-v1",
+  "digest": "0c06abfb7635a9a0f9fa5444d88e779d823d9204998203009b7d3ca4705c9c0d",
+  "items": 20
+ },
+ "created": "2026-09-21T21:58:54Z",
+ "door": {
+  "base": "http://127.0.0.1:18099",
+  "model": "local-kev",
+  "capacity": "shared",
+  "reviewer": "local-kev"
+ },
+ "uncertain_below": 0.9,
+ "policy_digest": "sha256:9db6ebdb4cd062dce588c001cd90ad032ece5b06b919de7d34ab34dbf617cbef",
+ "baseline_policy_digest": "sha256:d93a719bad77771ea257d9c42fdcbb5d1175f74dc52a521fe875b528b333b20a",
+ "review_block_digest": "sha256:d37feb142e06b74021b1892ddc8fd76ac9a3eed1aa1f719c6ef4225466f328e0",
+ "gateway_policy_digest": [
+  "sha256:d37feb142e06b74021b1892ddc8fd76ac9a3eed1aa1f719c6ef4225466f328e0"
+ ],
+ "labeling": "author self-labeled, single annotator, unadjudicated",
+ "definitions": {
+  "confident_errors": "baseline cases answered wrong with no `uncertain` flag at the declared cut",
+  "review_coverage": "share of cases the review pass dispatched a re-judgment for",
+  "caught_by_review": "reviewed cases whose primary was wrong and whose review answered with the expected selection",
+  "high_confidence_wrong_caught": "caught cases whose primary evidence met the cut \u2014 under `trigger: uncertain` the pass never sees unflagged units, so this measures what that trigger cannot rescue",
+  "rescued": "reviewed cases wrong under the primary and right under the reviewer's final selection",
+  "regressed": "reviewed cases right under the primary and wrong under the reviewer's final selection"
+ },
+ "totals": {
+  "cases": 20,
+  "answered": {
+   "baseline": 20,
+   "review": 20
+  },
+  "primary_correct": 12,
+  "final_correct": 12,
+  "uncertain_flagged": {
+   "baseline": 16,
+   "review_primary": 16
+  },
+  "confident_errors": 1,
+  "review_coverage": 0.8,
+  "review_triggered": 16,
+  "review_answered": 16,
+  "review_changed": 0,
+  "wrong_answers_reviewed": 7,
+  "caught_by_review": 0,
+  "high_confidence_wrong_caught": 0,
+  "rescued": 0,
+  "regressed": 0
+ },
+ "risk_coverage": {
+  "primary_error_rate": 0.4,
+  "final_error_rate": 0.4,
+  "coverage_reviewed": 0.8,
+  "extra_dispatches": 16,
+  "errors_rescued": 0,
+  "errors_regressed": 0
+ },
+ "attempts": {
+  "http_calls_sent": 40,
+  "dispatches": {
+   "primary": 16,
+   "review": 16,
+   "fallback": 0
+  }
+ },
+ "latency": {
+  "wall_ms": 1017010,
+  "baseline_calls_ms": 375536,
+  "review_calls_ms": 641449,
+  "review_dispatches_ms": 289185
+ },
+ "cost": {
+  "spend": "unknown",
+  "reserved_spend_millionths": "unknown",
+  "input_tokens": 3652,
+  "output_tokens": 2952,
+  "review_input_tokens": 1458,
+  "review_output_tokens": 1112
+ },
+ "cases": [
+  {
+   "id": "review-policy/noul-refund-clear",
+   "kind": "noul",
+   "partition": "answerable",
+   "expected": "yes",
+   "flag": "confident",
+   "baseline": {
+    "outcome": "answered",
+    "selected": "refund-request",
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.7,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": "refund-request",
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.7,
+     "correct": true
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": "refund-request",
+     "changed": false,
+     "uncertain": true,
+     "correct": true,
+     "latency_ms": 14456
+    },
+    "final": {
+     "selected": "refund-request",
+     "correct": true,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 13677,
+    "review_call": 29001,
+    "review_dispatch": 14456
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/noul-invoice-copy-clear",
+   "kind": "noul",
+   "partition": "answerable",
+   "expected": "no",
+   "flag": "confident",
+   "baseline": {
+    "outcome": "answered",
+    "selected": null,
+    "uncertain": true,
+    "no_match": true,
+    "evidence": 0.71,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": null,
+     "uncertain": true,
+     "no_match": true,
+     "evidence": 0.71,
+     "correct": true
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": null,
+     "changed": false,
+     "uncertain": true,
+     "correct": true,
+     "latency_ms": 13499
+    },
+    "final": {
+     "selected": null,
+     "correct": true,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 14128,
+    "review_call": 27066,
+    "review_dispatch": 13499
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/noul-cancellation-ambiguous",
+   "kind": "noul",
+   "partition": "ambiguous",
+   "expected": "no",
+   "flag": "uncertain",
+   "baseline": {
+    "outcome": "answered",
+    "selected": null,
+    "uncertain": true,
+    "no_match": true,
+    "evidence": 0.54,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": null,
+     "uncertain": true,
+     "no_match": true,
+     "evidence": 0.54,
+     "correct": true
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": null,
+     "changed": false,
+     "uncertain": true,
+     "correct": true,
+     "latency_ms": 14472
+    },
+    "final": {
+     "selected": null,
+     "correct": true,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 14959,
+    "review_call": 28956,
+    "review_dispatch": 14472
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/noul-urgency-ambiguous",
+   "kind": "noul",
+   "partition": "ambiguous",
+   "expected": "no",
+   "flag": "uncertain",
+   "baseline": {
+    "outcome": "answered",
+    "selected": null,
+    "uncertain": true,
+    "no_match": true,
+    "evidence": 0.6799999999999999,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": null,
+     "uncertain": true,
+     "no_match": true,
+     "evidence": 0.6799999999999999,
+     "correct": true
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": null,
+     "changed": false,
+     "uncertain": true,
+     "correct": true,
+     "latency_ms": 13540
+    },
+    "final": {
+     "selected": null,
+     "correct": true,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 13682,
+    "review_call": 27052,
+    "review_dispatch": 13540
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/noul-bug-borderline",
+   "kind": "noul",
+   "partition": "near-threshold",
+   "expected": "yes",
+   "flag": "either",
+   "baseline": {
+    "outcome": "answered",
+    "selected": null,
+    "uncertain": true,
+    "no_match": true,
+    "evidence": 0.79,
+    "correct": false
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": null,
+     "uncertain": true,
+     "no_match": true,
+     "evidence": 0.79,
+     "correct": false
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": null,
+     "changed": false,
+     "uncertain": true,
+     "correct": false,
+     "latency_ms": 18753
+    },
+    "final": {
+     "selected": null,
+     "correct": false,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 15191,
+    "review_call": 34446,
+    "review_dispatch": 18753
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/noul-praise-clear",
+   "kind": "noul",
+   "partition": "answerable",
+   "expected": "no",
+   "flag": "confident",
+   "baseline": {
+    "outcome": "answered",
+    "selected": null,
+    "uncertain": true,
+    "no_match": true,
+    "evidence": 0.84,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": null,
+     "uncertain": true,
+     "no_match": true,
+     "evidence": 0.84,
+     "correct": true
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": null,
+     "changed": false,
+     "uncertain": true,
+     "correct": true,
+     "latency_ms": 12175
+    },
+    "final": {
+     "selected": null,
+     "correct": true,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 13065,
+    "review_call": 24426,
+    "review_dispatch": 12175
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/noul-refund-borderline",
+   "kind": "noul",
+   "partition": "near-threshold",
+   "expected": "no",
+   "flag": "either",
+   "baseline": {
+    "outcome": "answered",
+    "selected": "refund-request",
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.77,
+    "correct": false
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": "refund-request",
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.77,
+     "correct": false
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": "refund-request",
+     "changed": false,
+     "uncertain": true,
+     "correct": false,
+     "latency_ms": 14622
+    },
+    "final": {
+     "selected": "refund-request",
+     "correct": false,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 15525,
+    "review_call": 30168,
+    "review_dispatch": 14622
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/choice-route-billing-clear",
+   "kind": "choice",
+   "partition": "answerable",
+   "expected": "billing",
+   "flag": "confident",
+   "baseline": {
+    "outcome": "answered",
+    "selected": "billing",
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.6,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": "billing",
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.6,
+     "correct": true
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": "billing",
+     "changed": false,
+     "uncertain": true,
+     "correct": true,
+     "latency_ms": 19432
+    },
+    "final": {
+     "selected": "billing",
+     "correct": true,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 20099,
+    "review_call": 38769,
+    "review_dispatch": 19432
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/choice-route-technical-clear",
+   "kind": "choice",
+   "partition": "answerable",
+   "expected": "technical",
+   "flag": "confident",
+   "baseline": {
+    "outcome": "answered",
+    "selected": "technical",
+    "uncertain": false,
+    "no_match": false,
+    "evidence": 0.95,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": "technical",
+     "uncertain": false,
+     "no_match": false,
+     "evidence": 0.95,
+     "correct": true
+    },
+    "review": null,
+    "final": {
+     "selected": "technical",
+     "correct": true,
+     "final_source": null
+    },
+    "review_status": "not-reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 23645,
+    "review_call": 18962,
+    "review_dispatch": null
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/choice-route-mixed-ambiguous",
+   "kind": "choice",
+   "partition": "ambiguous",
+   "expected": "account",
+   "flag": "uncertain",
+   "baseline": {
+    "outcome": "answered",
+    "selected": "account",
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.5,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": "account",
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.5,
+     "correct": true
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": "account",
+     "changed": false,
+     "uncertain": true,
+     "correct": true,
+     "latency_ms": 21222
+    },
+    "final": {
+     "selected": "account",
+     "correct": true,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 24877,
+    "review_call": 42449,
+    "review_dispatch": 21222
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/choice-route-vague-ambiguous",
+   "kind": "choice",
+   "partition": "ambiguous",
+   "expected": "other",
+   "flag": "uncertain",
+   "baseline": {
+    "outcome": "answered",
+    "selected": "account",
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.66,
+    "correct": false
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": "account",
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.66,
+     "correct": false
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": "account",
+     "changed": false,
+     "uncertain": true,
+     "correct": false,
+     "latency_ms": 18463
+    },
+    "final": {
+     "selected": "account",
+     "correct": false,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 18821,
+    "review_call": 36807,
+    "review_dispatch": 18463
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/choice-route-billing-borderline",
+   "kind": "choice",
+   "partition": "near-threshold",
+   "expected": "billing",
+   "flag": "either",
+   "baseline": {
+    "outcome": "answered",
+    "selected": "other",
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.65,
+    "correct": false
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": "other",
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.65,
+     "correct": false
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": "other",
+     "changed": false,
+     "uncertain": true,
+     "correct": false,
+     "latency_ms": 19082
+    },
+    "final": {
+     "selected": "other",
+     "correct": false,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 19601,
+    "review_call": 38371,
+    "review_dispatch": 19082
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/choice-route-technical-borderline",
+   "kind": "choice",
+   "partition": "near-threshold",
+   "expected": "technical",
+   "flag": "either",
+   "baseline": {
+    "outcome": "answered",
+    "selected": "other",
+    "uncertain": false,
+    "no_match": false,
+    "evidence": 0.92,
+    "correct": false
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": "other",
+     "uncertain": false,
+     "no_match": false,
+     "evidence": 0.92,
+     "correct": false
+    },
+    "review": null,
+    "final": {
+     "selected": "other",
+     "correct": false,
+     "final_source": null
+    },
+    "review_status": "not-reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 20196,
+    "review_call": 18943,
+    "review_dispatch": null
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/choice-route-account-clear",
+   "kind": "choice",
+   "partition": "answerable",
+   "expected": "account",
+   "flag": "confident",
+   "baseline": {
+    "outcome": "answered",
+    "selected": "account",
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.86,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": "account",
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.86,
+     "correct": true
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": "account",
+     "changed": false,
+     "uncertain": true,
+     "correct": true,
+     "latency_ms": 18906
+    },
+    "final": {
+     "selected": "account",
+     "correct": true,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 20093,
+    "review_call": 37923,
+    "review_dispatch": 18906
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/score-severity-critical-clear",
+   "kind": "score",
+   "partition": "answerable",
+   "expected": 3,
+   "flag": "confident",
+   "baseline": {
+    "outcome": "answered",
+    "selected": 2,
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.74,
+    "correct": false
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": 2,
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.74,
+     "correct": false
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": 2,
+     "changed": false,
+     "uncertain": true,
+     "correct": false,
+     "latency_ms": 22911
+    },
+    "final": {
+     "selected": 2,
+     "correct": false,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 23632,
+    "review_call": 45645,
+    "review_dispatch": 22911
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/score-severity-cosmetic-clear",
+   "kind": "score",
+   "partition": "answerable",
+   "expected": 0,
+   "flag": "confident",
+   "baseline": {
+    "outcome": "answered",
+    "selected": 1,
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.41,
+    "correct": false
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": 1,
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.41,
+     "correct": false
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": 1,
+     "changed": false,
+     "uncertain": true,
+     "correct": false,
+     "latency_ms": 25811
+    },
+    "final": {
+     "selected": 1,
+     "correct": false,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 21580,
+    "review_call": 46086,
+    "review_dispatch": 25811
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/score-severity-vague-ambiguous",
+   "kind": "score",
+   "partition": "ambiguous",
+   "expected": 1,
+   "flag": "uncertain",
+   "baseline": {
+    "outcome": "answered",
+    "selected": 0,
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.49,
+    "correct": false
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": 0,
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.49,
+     "correct": false
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": 0,
+     "changed": false,
+     "uncertain": true,
+     "correct": false,
+     "latency_ms": 20957
+    },
+    "final": {
+     "selected": 0,
+     "correct": false,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 26774,
+    "review_call": 42601,
+    "review_dispatch": 20957
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/score-severity-intermittent-borderline",
+   "kind": "score",
+   "partition": "near-threshold",
+   "expected": 1,
+   "flag": "either",
+   "baseline": {
+    "outcome": "answered",
+    "selected": 1,
+    "uncertain": true,
+    "no_match": false,
+    "evidence": 0.71,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": 1,
+     "uncertain": true,
+     "no_match": false,
+     "evidence": 0.71,
+     "correct": true
+    },
+    "review": {
+     "reason": "uncertain",
+     "outcome": "answered",
+     "selected": 1,
+     "changed": false,
+     "uncertain": true,
+     "correct": true,
+     "latency_ms": 20884
+    },
+    "final": {
+     "selected": 1,
+     "correct": true,
+     "final_source": "reviewer"
+    },
+    "review_status": "reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 22573,
+    "review_call": 41732,
+    "review_dispatch": 20884
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/score-sentiment-positive-clear",
+   "kind": "score",
+   "partition": "answerable",
+   "expected": 2,
+   "flag": "confident",
+   "baseline": {
+    "outcome": "answered",
+    "selected": 2,
+    "uncertain": false,
+    "no_match": false,
+    "evidence": 0.95,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": 2,
+     "uncertain": false,
+     "no_match": false,
+     "evidence": 0.95,
+     "correct": true
+    },
+    "review": null,
+    "final": {
+     "selected": 2,
+     "correct": true,
+     "final_source": null
+    },
+    "review_status": "not-reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 15937,
+    "review_call": 15377,
+    "review_dispatch": null
+   },
+   "errors": []
+  },
+  {
+   "id": "review-policy/score-sentiment-tepid-borderline",
+   "kind": "score",
+   "partition": "near-threshold",
+   "expected": 1,
+   "flag": "either",
+   "baseline": {
+    "outcome": "answered",
+    "selected": 1,
+    "uncertain": false,
+    "no_match": false,
+    "evidence": 0.92,
+    "correct": true
+   },
+   "reviewed_run": {
+    "primary": {
+     "outcome": "answered",
+     "selected": 1,
+     "uncertain": false,
+     "no_match": false,
+     "evidence": 0.92,
+     "correct": true
+    },
+    "review": null,
+    "final": {
+     "selected": 1,
+     "correct": true,
+     "final_source": null
+    },
+    "review_status": "not-reviewed"
+   },
+   "latency_ms": {
+    "baseline_call": 17481,
+    "review_call": 16669,
+    "review_dispatch": null
+   },
+   "errors": []
+  }
+ ]
+}
