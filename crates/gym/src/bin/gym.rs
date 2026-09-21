@@ -2900,6 +2900,13 @@ fn admit_command(options: &Options) -> Result<(), String> {
     };
 
     let evidence = gym::admission::Evidence {
+        reports: gym::admission::Reports {
+            development: Some(gym::admission::ReportEvidence {
+                commitment: &commitment,
+                rows: &development,
+            }),
+            ..gym::admission::Reports::default()
+        },
         suite: &suite,
         development: gym::admission::Side {
             base: &dev_base,

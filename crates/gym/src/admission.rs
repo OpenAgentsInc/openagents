@@ -742,6 +742,80 @@ impl Plan {
             }
         }
         refs.commitment = evidence.commitment.clone();
+        let mut report_criteria = Vec::new();
+        let mut locked_workload = self.workload.clone();
+        locked_workload.partitions = vec![Partition::Locked];
+        let transfer_workload = Workload {
+            suite: self.guards.transfer.suite.clone(),
+            suite_digest: self.guards.transfer.suite_digest.clone(),
+            question_set: self.guards.transfer.question_set.clone(),
+            question_digest: self.guards.transfer.question_digest.clone(),
+            partitions: self.guards.transfer.partitions.clone(),
+            gate_digest: None,
+        };
+        let empty: &[Row] = &[];
+        let checks = [
+            (
+                DEVELOPMENT_PHASE,
+                evidence.reports.development.as_ref(),
+                evidence.suite,
+                &self.workload,
+                evidence.development.base,
+                evidence.development.candidate,
+            ),
+            (
+                LOCKED_PHASE,
+                evidence.reports.locked.as_ref(),
+                evidence.suite,
+                &locked_workload,
+                evidence.locked.as_ref().map_or(empty, |e| e.base),
+                evidence.locked.as_ref().map_or(empty, |e| e.candidate),
+            ),
+            (
+                TRANSFER_PHASE,
+                evidence.reports.transfer.as_ref(),
+                evidence
+                    .transfer
+                    .as_ref()
+                    .map_or(evidence.suite, |e| e.suite),
+                &transfer_workload,
+                evidence.transfer.as_ref().map_or(empty, |e| e.base),
+                evidence.transfer.as_ref().map_or(empty, |e| e.candidate),
+            ),
+        ];
+        for (phase, report, suite, workload, base, candidate) in checks {
+            let name = format!("{phase}_retained_report_matches");
+            let Some(report) = report else {
+                report_criteria.push(not_judged(
+                    &name,
+                    1,
+                    "a separately retained report is missing",
+                ));
+                continue;
+            };
+            let doors = [self.base.door.clone(), self.candidate.door.clone()];
+            if let Err(error) =
+                verify_report(report.commitment, report.rows, suite, workload, &doors)
+            {
+                refusals.push(format!("{phase}: {error}"));
+                continue;
+            }
+            for (door, selected) in [(&self.base.door, base), (&self.candidate.door, candidate)] {
+                let retained: Vec<_> = report.rows.iter().filter(|row| &row.door == door).collect();
+                if serde_json::to_value(&retained).ok() != serde_json::to_value(selected).ok() {
+                    refusals.push(format!(
+                        "{phase}: evaluated rows differ from the retained report for {door}"
+                    ));
+                }
+            }
+            refs.retained_reports
+                .insert(phase.into(), report.commitment.digest.clone());
+            report_criteria.push(passed(
+                &name,
+                1,
+                "the verified report binds the evaluated rows and frozen selection".into(),
+            ));
+        }
 
         if !refusals.is_empty() {
             let mut decision = Decision {
@@ -761,7 +835,11 @@ impl Plan {
             return Ok(decision);
         }
 
-        let mut phases = Vec::new();
+        let mut phases = vec![PhaseOutcome {
+            phase: "retained_evidence".into(),
+            verdict: Verdict::over(report_criteria.iter().map(|c| c.verdict)),
+            criteria: report_criteria,
+        }];
         phases.push(self.judge_phase(
             DEVELOPMENT_PHASE,
             evidence.development.base,
@@ -1735,10 +1813,27 @@ pub struct Transfer<'a> {
     pub store_head: Option<String>,
 }
 
+/// A separately retained commitment and the complete ordered store it binds.
+#[derive(Clone, Debug)]
+pub struct ReportEvidence<'a> {
+    pub commitment: &'a crate::commitment::Commitment,
+    pub rows: &'a [Row],
+}
+
+/// Retained reports for each evaluation phase. Missing reports cannot pass.
+#[derive(Clone, Debug, Default)]
+pub struct Reports<'a> {
+    pub development: Option<ReportEvidence<'a>>,
+    pub locked: Option<ReportEvidence<'a>>,
+    pub transfer: Option<ReportEvidence<'a>>,
+}
+
 /// Everything a decision is judged on. Evidence that is absent is not
 /// failed — it is unverifiable, which does not activate either.
 #[derive(Clone, Debug)]
 pub struct Evidence<'a> {
+    /// Whole reports retained independently of their result stores.
+    pub reports: Reports<'a>,
     /// The suite the development and locked rows were scored on. Its digest
     /// must be the frozen one.
     pub suite: &'a Suite,
@@ -1789,6 +1884,9 @@ pub struct LockedRef {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceRefs {
+    /// Verified commitment digests by evaluation phase.
+    #[serde(default)]
+    pub retained_reports: std::collections::BTreeMap<String, String>,
     /// The development store's chain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub development: Option<StoreRef>,

@@ -441,6 +441,7 @@ mod tests {
         .unwrap();
         let plan = plan(&suite);
         let evidence = Evidence {
+            reports: Reports::default(),
             suite: &suite,
             development: Side {
                 base: &[],
@@ -453,6 +454,19 @@ mod tests {
             decided_at: "fixture".into(),
             commitment: None,
         };
+        let evidence_decision = plan.decide(&evidence).unwrap();
+        let retained = evidence_decision
+            .phases
+            .iter()
+            .find(|p| p.phase == "retained_evidence")
+            .unwrap();
+        assert_eq!(retained.criteria.len(), 3);
+        assert!(
+            retained
+                .criteria
+                .iter()
+                .all(|c| c.verdict == gym::gate::Verdict::Unverifiable)
+        );
         let original = Record::evaluate(&plan, &evidence).unwrap();
         assert!(original.admitted().is_err());
         let mut forged = plan.decide(&evidence).unwrap();
@@ -493,6 +507,7 @@ mod tests {
                 }
             }
             let evidence = Evidence {
+                reports: Reports::default(),
                 suite: &suite,
                 development: Side {
                     base: &[],
@@ -570,6 +585,7 @@ mod tests {
             comparison.rule.metric_order[0].block_sigma = synthetic(sigma);
             comparison.seal();
             let evidence = Evidence {
+                reports: Reports::default(),
                 suite: &suite,
                 development: Side {
                     base: &base,
@@ -671,6 +687,7 @@ mod tests {
                 _ => {}
             }
             let evidence = Evidence {
+                reports: Reports::default(),
                 suite: &suite,
                 development: Side {
                     base: &base,
@@ -753,6 +770,7 @@ mod tests {
         };
         ledger.read_locked(&suite, &spend).unwrap();
         let evidence = Evidence {
+            reports: Reports::default(),
             suite: &suite,
             development: Side {
                 base: &[],
@@ -824,6 +842,7 @@ mod tests {
         candidate.door = plan.candidate.door.clone();
         candidate.door_identity = plan.candidate.identity.clone();
         let evidence = Evidence {
+            reports: Reports::default(),
             suite: &suite,
             development: Side {
                 base: &[],
@@ -894,6 +913,7 @@ mod tests {
             })
             .collect();
         let evidence = Evidence {
+            reports: Reports::default(),
             transfer: Some(Transfer {
                 suite: &transfer,
                 base: &base_rows,
