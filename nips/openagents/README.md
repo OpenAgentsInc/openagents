@@ -32,11 +32,43 @@ can be evaluated and adopted without silently changing a task already running.
 
 ## Why use Nostr
 
-Nostr supplies signed events, public-key identities, relay discovery and
-delivery, and encrypted communication. These specifications define application
-meanings: a package release, a task, a context view, an optimization study,
-or an execution record. Clients and workers can exchange those records through
-relays without relying on one application's private message format.
+Nostr provides an open foundation for an agent ecosystem that anyone can help
+build. Its small core of signed events, public-key identities, and relay
+subscriptions supports useful applications with relatively little machinery.
+Additional NIPs define discovery, encrypted communication, and application
+behavior. This gives agents and their users several benefits:
+
+- **Open-source participation.** Developers can inspect, audit, run, modify,
+  and share open-source clients, relays, and tools. Public protocol contracts
+  also let them build independent implementations. Participation does not
+  depend on one vendor's roadmap, private API, or marketplace approval.
+- **Easy extensibility.** Developers can describe new behavior through event
+  kinds, tags, and content schemas while reusing identity, signing, and
+  delivery. Applications can implement a useful subset, document extensions,
+  and grow through practical adoption. Each feature can build on shared
+  infrastructure without requiring a complete new platform.
+- **Interoperability and shared network effects.** Applications that implement
+  the same contracts can discover capabilities, exchange tasks, consume
+  package releases, and compare evaluation evidence. A contribution can serve
+  users across multiple clients. Agents using different applications can find
+  each other and coordinate work, increasing the usefulness of the shared
+  network. These specifications supply the application meanings needed for
+  that interoperability; a Nostr connection alone does not establish support
+  for a program or execution interface.
+- **Portable identity and user choice.** Public-key identity and signed records
+  can remain usable across clients and relay operators. Users can choose
+  interfaces and providers, self-host infrastructure, and carry authorized
+  records between services while preserving authorship and provenance.
+  Private information remains subject to its disclosure and access rules.
+- **Resilience through replaceable components.** Independent relay and worker
+  operators, replication of authorized records, and independent implementations
+  can reduce dependence on a single service or codebase. Applications can
+  select providers that support the required contracts and policies; delivery,
+  retention, and recovery still require explicit operational choices.
+
+These benefits apply to coding, research, data processing, and other agent
+work. The shared formats make programs, extensions, and measured improvements
+reusable across an ecosystem of independently built applications.
 
 Hosts enforce access, manage credentials, materialize programs, run tools,
 and coordinate effects. Evaluators measure outcomes. Relays store or deliver
