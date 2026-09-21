@@ -437,8 +437,10 @@ proptest! {
         prop_assert!(padded >= length);
         prop_assert!(padded >= 32);
         // NIP-44 pads to a multiple of `chunk`, where `chunk` is 32 or an
-        // eighth of the next power of two above `length - 1`.
-        let chunk = 32.max((length - 1).next_power_of_two() / 8);
+        // eighth of the power of two strictly above `length - 1`.
+        // next_power_of_two on length - 1 is not strict at 257, 513, etc.
+        let next_power = if length <= 32 { 32 } else { 1_usize << ((length - 1).ilog2() + 1) };
+        let chunk = 32.max(next_power / 8);
         prop_assert!(padded - length < chunk);
         prop_assert!(padded.is_multiple_of(chunk));
         if length > 1 {
