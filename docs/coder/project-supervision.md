@@ -177,7 +177,7 @@ The scheduler is `coder-scheduler`; neither crate implements another agent.
    cp "$REPO/docs/coder/examples/project-supervisor.json" "$QUEUE/template.json"
    ```
 
-3. Edit the template's absolute repository path, task prompts, expected outputs,
+3. Edit the template's absolute repository path, open issue IDs, task prompts, expected outputs,
    owned paths, resource reservations, and task dependencies. Keep #9476 excluded
    while it has a separate owner. Reserve external capacity and list external
    write ownership in `external_owners`, using objects with `owner` and `writes`.
@@ -238,7 +238,7 @@ under `state/control/` with these fields:
 
 ```json
 {
-  "task": "9507-review-intake",
+  "task": "9509-review-artifact",
   "attempt": "COPY_FROM_LEDGER",
   "task_digest": "COPY_FROM_LEDGER",
   "result_digest": "COPY_FROM_LEDGER",

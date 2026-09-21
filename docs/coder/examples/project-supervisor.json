@@ -31,15 +31,15 @@
   "tasks": [
     {
       "scheduling": {
-        "id": "9507-review-intake",
-        "issue": 9507,
+        "id": "9509-review-artifact",
+        "issue": 9509,
         "base": "",
         "input": "",
         "depends_on": [],
         "footprint": {
           "kind": "declared",
           "reads": [
-            "crates/coder/src/tracker.rs"
+            "crates/coder-project/src/artifact.rs"
           ],
           "writes": []
         },
@@ -54,11 +54,11 @@
         "estimate_ticks": 1
       },
       "assignment": {
-        "id": "9507-review-intake",
+        "id": "9509-review-artifact",
         "base": "",
-        "prompt": "Read crates/coder/src/tracker.rs and report its pagination refusal conditions. Do not change files or run builds. Put findings before the final line. End with exactly: Final answer: intake-reviewed",
+        "prompt": "Read crates/coder-project/src/artifact.rs and report its artifact acceptance conditions. Do not change files or run builds. Put findings before the final line. End with exactly: Final answer: artifact-reviewed",
         "writes": false,
-        "expected_text": "intake-reviewed",
+        "expected_text": "artifact-reviewed",
         "minutes": 5
       },
       "issue_updated": "",
