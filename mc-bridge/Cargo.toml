@@ -1,0 +1,40 @@
+[package]
+name = "mc-bridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The Minecraft bot helper: an azalea client that speaks line-delimited JSON over stdin and stdout. Built by scripts/build-mc-bridge.sh on the pinned nightly, supervised as a child process by crates/voyager."
+
+# A workspace of its own: azalea requires nightly Rust, which the parent
+# workspace's pinned stable toolchain cannot provide. The helper is a child
+# process, not a dependency, so the split is exactly the swift/lev-bridge
+# precedent: built by a repo script, supervised by the crate that drives it.
+[workspace]
+
+# Azalea publishes one `0.15.1` per Minecraft version as `0.15.1+mc*` —
+# semver metadata is ignored in requirements, so the committed Cargo.lock
+# is what pins the `+mc1.21.11` build.
+[dependencies]
+azalea = "=0.15.1"
+azalea-block = "=0.15.1"
+azalea-client = "=0.15.1"
+azalea-entity = "=0.15.1"
+azalea-inventory = "=0.15.1"
+azalea-registry = "=0.15.1"
+azalea-world = "=0.15.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+
+# azalea-auth pins crypto-bigint =0.7.0-rc.21, so rsa can only be rc.13 —
+# every later rc wants a newer crypto-bigint. rc.13 in turn was written
+# for the pkcs8 0.11.0-rc.9 API: stable 0.11.0 made `Error::KeyMalformed`
+# a tuple variant. Pin the rc stack rsa-rc.13 was actually built against.
+pkcs8 = "=0.11.0-rc.9"
+der = "=0.8.0-rc.10"
+spki = "=0.8.0-rc.4"
+pkcs1 = "=0.8.0-rc.4"
+
+[profile.release]
+opt-level = 3

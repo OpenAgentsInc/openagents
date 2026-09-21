@@ -1,4 +1,5 @@
 /target
+/target-mc/
 /.coder/
 
 # Local build products; measurement records and fixtures stay tracked.
