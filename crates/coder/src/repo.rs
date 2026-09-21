@@ -9,8 +9,10 @@
 
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 /// The workspace members a card lists at most.
 const MEMBERS_MAX: usize = 24;
@@ -194,7 +196,7 @@ impl Repo {
                     continue;
                 };
                 for line in hit.lines().take(2) {
-                    let line = &line[..line.len().min(LINE_MAX)];
+                    let line = &line[..line.floor_char_boundary(LINE_MAX.min(line.len()))];
                     if bytes + line.len() > SNIFF_BYTES || hits.len() >= HITS_MAX {
                         break;
                     }
@@ -239,7 +241,20 @@ fn terms(draft: &str) -> Vec<String> {
 
 /// The first bounded bytes of a doc file, whole lines only.
 fn doc_head(path: &Path) -> Option<String> {
-    let text = fs::read_to_string(path).ok()?;
+    let file = fs::File::open(path).ok()?;
+    // A bounded prefix must not allocate the rest of a large document.
+    let mut bytes = Vec::new();
+    file.take((DOC_HEAD_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    let complete = match std::str::from_utf8(&bytes) {
+        Ok(text) => text,
+        Err(error) if error.error_len().is_none() => {
+            std::str::from_utf8(&bytes[..error.valid_up_to()]).ok()?
+        }
+        Err(_) => return None,
+    };
+    let text = complete;
     let mut head = String::new();
     for line in text.lines() {
         if head.len() + line.len() + 1 > DOC_HEAD_BYTES {
@@ -253,16 +268,14 @@ fn doc_head(path: &Path) -> Option<String> {
 
 /// One `git` call at `dir`, trimmed stdout on success.
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .output()
-        .ok()?;
-    if !output.status.success() {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(dir).args(args);
+    let output = crate::capability::bounded::run(command, Duration::from_secs(2)).ok()?;
+    // A partial path or grep record must not masquerade as complete evidence.
+    if output.code != Some(0) || output.truncated {
         return None;
     }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let text = output.out.trim().to_string();
     (!text.is_empty()).then_some(text)
 }
 
@@ -279,6 +292,49 @@ mod tests {
         assert!(found.contains(&"auth".to_string()));
         assert!(found.contains(&"handshake".to_string()));
         assert!(!found.contains(&"the".to_string()));
+    }
+
+    #[test]
+    fn document_prefix_handles_a_split_character_and_large_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("README.md");
+        let text = format!(
+            "heading\n{}é\n{}",
+            "a".repeat(DOC_HEAD_BYTES - 8),
+            "z".repeat(100_000)
+        );
+        fs::write(&path, text).unwrap();
+        assert_eq!(doc_head(&path).as_deref(), Some("heading\n"));
+    }
+
+    #[test]
+    fn grep_excerpt_does_not_split_utf8() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(git(dir.path(), &["init"]).is_some());
+        let line = format!("needle {}", "é".repeat(100));
+        fs::write(dir.path().join("sample.txt"), line).unwrap();
+        // Indexing is enough: grep reads the working tree without a commit.
+        let mut command = Command::new("git");
+        command
+            .arg("-C")
+            .arg(dir.path())
+            .args(["add", "sample.txt"]);
+        let result = crate::capability::bounded::run(command, Duration::from_secs(2)).unwrap();
+        assert_eq!(result.code, Some(0));
+        let repo = Repo::discover(dir.path()).unwrap();
+        let context = repo.context_for("needle");
+        assert!(context.contains("sample.txt:1:needle"));
+        assert!(!context.contains('\u{fffd}'));
+    }
+
+    #[test]
+    fn oversized_git_output_is_not_treated_as_complete() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(git(dir.path(), &["init"]).is_some());
+        fs::write(dir.path().join("large.txt"), "x".repeat(100_000)).unwrap();
+        assert!(git(dir.path(), &["hash-object", "-w", "large.txt"]).is_some());
+        let digest = git(dir.path(), &["hash-object", "large.txt"]).unwrap();
+        assert!(git(dir.path(), &["cat-file", "blob", &digest]).is_none());
     }
 
     #[test]
