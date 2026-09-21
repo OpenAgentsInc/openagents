@@ -280,7 +280,9 @@ impl Profile {
     /// [`Refusal::Malformed`] naming the setting that held it.
     pub fn client(&self) -> Result<jev::Client, Refusal> {
         let (url, config) = match self {
-            Self::HostedHttp { url, model, key, .. } => (
+            Self::HostedHttp {
+                url, model, key, ..
+            } => (
                 url,
                 jev::Config::new()
                     .base_url(url.value.as_str())
@@ -301,7 +303,9 @@ impl Profile {
                     jev::Config::local(url.value.as_str(), model.value.as_str()),
                 )
             }
-            Self::OwnProvider { url, model, key, .. } => (
+            Self::OwnProvider {
+                url, model, key, ..
+            } => (
                 url,
                 match key {
                     Some(key) => jev::Config::new()
@@ -740,7 +744,10 @@ impl fmt::Display for Refusal {
                 write!(f, "the {profile} profile does not take {variable}")
             }
             Self::Unsupported { profile, reason } => {
-                write!(f, "the {profile} profile builds no System One client: {reason}")
+                write!(
+                    f,
+                    "the {profile} profile builds no System One client: {reason}"
+                )
             }
         }
     }
