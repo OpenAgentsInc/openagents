@@ -180,7 +180,32 @@ of unrelated API calls.
 Parallel successful children do not establish parent success. Show pending,
 rejected, stale, and unknown findings separately from accepted results.
 
-## Conformance and existing protocols
+## Coordinating optimization studies
+
+An [OPT](NIP-OPT.md) study can fan out proposal, materialization, evaluation,
+and confirmation tasks under the same coordinator contract. Task input
+identity MUST include study, candidate or baseline, phase, case, independent
+trial ID, implementation lock, and environment. Equal display names or inputs
+do not make different experimental repetitions duplicates.
+
+Retransmission deduplication preserves one logical attempt. Independent
+repeats require separate trial identities and accounting; the coordinator
+MUST NOT coalesce them or reuse one result as independent evidence. Cache and
+reset policy belong to the frozen study environment. All child reservations
+draw from the admitted aggregate study budget.
+
+The authority owning confirmation access must serialize allowance consumption
+across workers before exposure. Task claims alone do not prevent a proposer
+from reading an incorrectly shared dataset. Enforcement requires scoped
+storage, credentials, and evaluator isolation. Recovery cannot replenish a
+spent allowance.
+
+Background optimization requires an explicit plan and authority for its data
+use, recipients, and budget. Its finding may propose an exact implementation
+and reports. Integration uses POL/EVAL adoption and EXT pins; the finding
+cannot rewrite a running agent, protected grader, or live policy.
+
+## Conformance and protocol relationships
 
 Required cases include two racing claims, duplicate CJ delivery, cyclic tasks,
 aliasing resources, stale frames, semantic false duplicates, lost renewals,

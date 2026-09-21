@@ -1,147 +1,74 @@
-# Coder agent and terminal rebuild plan
+# Coder agent and terminal plan
 
-Status: implementation overview and next steps, checked against `9dd4ddab67`
-on 2026-09-21. The [consumer contract](coder-as-decision-router-consumer.md)
-defines the product boundary. The [TypeSafe-native analysis](typesafe-agent-analysis.md)
-and [roadmap](typesafe-agent-roadmap.md) provide the architecture and current
-implementation order derived from the founder's coding-agent proposal.
+Status: target design. The [architecture](typesafe-agent-analysis.md),
+[roadmap](typesafe-agent-roadmap.md), and
+[AI programming design](../../optimization/README.md) define the agent.
+Coder is the first specialization of general agent infrastructure.
 
-## Design and repository boundary
+## Agent structure
 
-Coder separates typed semantic judgments from open-ended generation and
-host execution. `Classify` answers bounded questions about supplied state.
-`Generate` writes explanations, plans, and code. Rust determines what those
-answers mean, what may run, and how observations return to the next step.
-Typed answers can be wrong; their value must be measured against simpler
-rules on the workload that consumes them.
+Use one host execution path for interactive and automated tasks. The host
+owns task state, evidence, authority, scheduling, reservations, effects,
+verification, and durable outcomes. The terminal presents and controls that
+same task, rather than implementing another agent.
 
-The terminal and two-tool design were inspired by earlier private work and
-reimplemented here. Product code and contracts in this repository are public.
-Do not copy private backend code, prompts, endpoints, credentials, or other
-private source. The public `ResponsesDoor` client now implements generation
-against configured Open Responses endpoints; a private generation client is
-not a prerequisite. A credential-free stub remains available.
+Define useful AI operations through semantic signatures and exact
+implementations. Typed judgments, generation, retrieval, and bounded
+composition are available implementation materials. Model-specific wording
+and inference structure can change through measured optimization while
+protected control remains stable.
 
-## What has landed
+## Typed judgments and generation
 
-`crates/coder-terminal` owns the shared terminal design system:
+Use typed decisions for bounded uncertain questions where they earn their
+cost. Preserve abstention, refusal, model identity, and consuming-policy
+identity. A probability is neither permission nor proof of correctness.
 
-- `Intensity` supplies the four-step amber ladder: `Quarter`, `Half`,
-  `ThreeQuarters`, and `Full`, over a near-black field.
-- `Ladder` adapts that intensity to truecolor, 256-color terminals, and
-  `NO_COLOR` through dim styling.
-- `Editor` handles grapheme and word movement, editing, word wrap, a
-  two-to-eight-row composer window, and prompt history.
-- `Composer`, `frame`, and `rail` draw the input frame, prompt, status,
-  location, and token information. Other repository terminals use this
-  foundation rather than defining separate visual systems.
-- `Guard` restores terminal state across fallible setup, normal exit, and
-  panic. Event delivery preserves control events and counts dropped text
-  previews; scrollback is bounded and wrapping is cached.
+Use generation for explanations, patches, summaries, and open-ended proposals.
+Validate structured outputs against their schemas and check actual operation
+arguments at dispatch. Both decision and generation calls share disclosure,
+accounting, tracing, and cancellation boundaries.
 
-See [terminal lifecycle and events](../runtime/terminal.md) for the implemented
-contracts and verification. The example shell exercises the visual core;
-`cargo run -p coder` runs the agent.
+## Evidence and useful work
 
-`crates/coder` provides the live agent:
+Build source captures and task frames with explicit version, scope, retention,
+and completeness. Construct recipient-specific context and preserve mandatory
+instructions. Native tools perform admitted reads, searches, edits, and checks.
+Programs compose those operations under typed dataflow and shared bounds.
 
-| Component | Current behavior |
-| --- | --- |
-| `turn::run` | Shared terminal/headless turn; program selection precedes the ordinary action path |
-| `classify` | `coder-turns-v2` action Choice (`respond`, `clarify`, `end_conversation`, `none`) and a separate shell-outcome question; missing action answers halt, while `none` takes the unrouted response path |
-| `generate` | Streaming Open Responses client, configured provider/model, relay or local-executor doors, and a stub when no generation door is selected |
-| `agent` | Conversation state, typed decisions, streaming replies, bounded shell rounds, and trace recording |
-| Program runtime | File-defined queries, decisions, checks, delegation, and explicit host grants; unsupported kinds refuse |
-| Repository workflows | Scoped tracker intake, bounded local/relay delegation, worktrees, project scheduling, and independent artifact checks |
+Independent acceptance checks exact artifacts and source state. Keep completion,
+verification, and integration separate. Preserve unknown outcomes through
+recovery rather than guessing that a timed-out effect did not happen.
 
-The [shell loop](../runtime/shell-loop.md), [program authority](../guides/program-authority.md),
-[tracker intake](../guides/tracker-intake.md), [project supervision](../guides/project-supervision.md),
-and [artifact verification](../guides/artifact-verification.md) describe the actual
-bounds. A manifest in the registry does not imply that every proposed
-program or step kind is implemented.
+## Learning and adoption
 
-## The two model capabilities
+DSPy/GEPA authoring runs through a bounded bridge that emits supported inert
+definitions and assets. Product execution remains Rust. A foreign runtime
+object cannot bypass package validation or become executable on installation.
 
-### Typed judgments
+Materialize each exact candidate, measure it through Gym and domain evaluators,
+confirm under a frozen policy, and adopt an eligible pin through host policy.
+Active tasks retain their admitted implementation. Source or composition
+search cannot modify the grader, labels, grants, or protected control.
 
-A decision call sends structured state and explicitly worded questions.
-Choice selects among supplied alternatives; Noul assesses independent
-propositions; Score uses an ordered rubric. The caller's IDs associate
-answers with their consumers; IDs do not replace model-visible wording.
+## Terminal experience
 
-Use each primitive where it fits:
+Provide a readable conversation, clear composition and cancellation controls,
+bounded scrollback, and consistent evidence/approval/result views. Show current
+task intent, active work, budget, sources, and verification. Render partial
+output as provisional and preserve a complete final artifact when available.
 
-- Include a no-match path when none of the alternatives may apply.
-- Select real candidates for closed choices, such as known files or
-  eligible operations. An omitted candidate cannot be recovered by selection.
-- Ask independent questions together when they share evidence and the
-  request fits backend limits. Dependent questions need the preceding
-  observation first. Batching does not make arbitrary question growth free.
-- Keep state, question, model/artifact, and consuming policy identities
-  together. A threshold needs workload evidence; confidence alone is not
-  authority or correctness.
-- Retain deterministic baselines and typed unavailable/refused outcomes.
-  Do not silently change providers to satisfy a required judgment.
+Explain selected evidence and omitted coverage without presenting relevance
+as model attention. Distinguish a candidate, a confirmed result, an adopted
+version, and an unknown outcome. Keep technical compiler/protocol details in
+an optional inspection view.
 
-The [question baseline record](../../decision-models/measurements/2026-09-20-coder-question-baselines.md)
-retired `needs_code`, `risk`, `progress`, and other questions that did not
-justify their place. The current action question also has weak evidence
-against constant response on its retained real-turn distribution. A richer
-agent should introduce specific useful functions rather than restore a
-large generic question set.
+## Delivery and evaluation
 
-### Generation
+Deliver one complete coding workflow before expanding breadth. Exercise the
+same semantic and protocol contracts with a non-coding fixture. Evaluate task
+success, harmful errors, interruption burden, latency, and full cost.
 
-`Generate` is the public asynchronous interface implemented by
-`ResponsesDoor`, the configured door variants, and the stub. It streams
-available output and reports usage where the provider supplies it.
-`CODER_DOOR_URL`, `CODER_MODEL`, and the documented credential/profile
-settings select the generation path. See [headless usage](../guides/headless.md) and
-[relay transport](../measurements/relay-transport.md) for their current contracts.
-
-The generator currently receives the in-memory conversation, while action
-classification uses bounded state slices. A common evidence store and
-context manifest are proposed, not already implemented. The next design
-makes generation consume a task-specific context with source references,
-applicable instructions, and known omissions.
-
-Generation remains necessary for new patches, open-ended arguments,
-explanations, and summaries. The host validates structured proposals and
-source versions before execution. A generated shell plan is executable only
-under the existing shell permit; a selected program needs its own host grant.
-
-## The next agent increments
-
-Follow the detailed [roadmap](typesafe-agent-roadmap.md):
-
-1. Unify decision configuration and outcomes across `Agent` and `Runtime`.
-   Carry function, model, attempt, and available receipt identities.
-2. Add versioned evidence and task frames. Build deterministic candidates,
-   one measured relevance function, and inspectable context manifests.
-3. Complete a native repair flow with bounded reading/search, anchored edits,
-   retained diagnostics, suitable execution budgets, and independent checks.
-4. Load optional operation schemas and guidance progressively. Preserve
-   mandatory instructions by scope and precedence. Measure generation
-   routing against full-task quality and context/cache costs.
-5. Share snapshots and structured findings between tasks. Add one bounded
-   background explanation that reuses observations and yields to the user.
-6. Extend current claim recovery into complete durable programs, composition,
-   whole-run accounting, and portable packages.
-
-All increments preserve `turn::run` and the public decision contract. A
-native Coder context improvement does not change the hidden internal loop
-of an external executor such as Devin.
-
-## The next terminal increments
-
-Keep the composer and conversation as the primary surface. Add expandable
-views for the task, evidence, decisions, and artifacts through the same
-shared event stream. Show source freshness, unknown outcomes, and independent
-verification before adding decorative confidence displays. Background
-findings carry the revision they describe and do not interrupt the user
-when nothing actionable changed.
-
-The [planned view contract](../runtime/terminal.md#planned-evidence-and-task-views)
-defines behavior for terminal and headless clients. Markdown rendering,
-selection/paste improvements, and syntax emphasis can improve readability
-without creating a second agent or replacing the amber design system.
+The [consolidated proposed issues](../../optimization/proposed-issues.md)
+contain implementation dependencies and acceptance. They are unfiled planning
+records; implementation and paid experiments are deferred.

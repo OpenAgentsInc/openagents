@@ -54,6 +54,10 @@ Read the spec before the code. The files you need most often:
 - `nips/openagents/NIP-POL.md` — instructions, approvals, disclosure, and routing records.
 - `nips/openagents/NIP-COORD.md` — task claims, fencing, and background findings.
 - `nips/openagents/NIP-EVAL.md` — attributable workload evaluation and promotion evidence.
+- `nips/openagents/NIP-OPT.md` — semantic AI contracts, immutable implementations,
+  bounded studies, actual candidate execution, and optimization evidence.
+- `docs/optimization/README.md` — DSPy/GEPA concepts, Gym evaluation, host
+  boundaries, and a consolidated unfiled integration backlog.
 - `nips/openagents/contracts.md` — pinned identities, schemas, locks, evidence,
   context, effects, outcomes, and private artifact envelopes for the v1 contracts.
 - `docs/coder/design/typesafe-agent-protocol-addendum.md` — what belongs in
@@ -159,7 +163,7 @@ only: it holds no job state and sees only ciphertext.
 | Kind | Name | Direction | Payload `type` |
 | --- | --- | --- | --- |
 | `25900` | job request | terminal → worker | `task`, `transcript`, `instructions`, `client`, `v` |
-| `27000` | job feedback | worker → terminal | `judgment`, `partial` (with `seq` under `v: 2`), `status` |
+| `27000` | job feedback | worker → terminal | `judgment`, `partial` (with `seq` under `v: 1`), `status` |
 | `26900` | job result | worker → terminal | `result` with `text`, optional `usage` and `model` |
 
 The flow, in the order the sockets speak it:
@@ -188,9 +192,9 @@ The flow, in the order the sockets speak it:
    for its duration, so a caller that cancels the turn drops the socket
    with it; the relay frees the subscription when the connection ends.
 
-Versions: a `v: 2` request gets `v: 2` feedback with sequenced partials;
-`v: 1` partials prove liveness but are never rendered; a request with no
-`v` or an unknown one is declined with code `unsupported_version`.
+The conversation specification uses integer v1 with sequenced partials.
+Decision and execution bodies use their named v1 schemas. Validate each family
+against its own complete contract; do not infer support from a version alone.
 
 Deadlines and failure words, on the terminal side
 (`crates/coder/src/relay.rs`): if nothing bound to the request arrives
@@ -245,37 +249,22 @@ meet, with per-transport latency and refusal causes.
 
 ## Capabilities and programs (NIP-CAP, NIP-PRG)
 
-These drafts were revised in place as v1 on 2026-09-21. The paragraphs below
-describe the earlier implemented local registry boundary, not conformance to
-every revised field. CAP separates definitions, local bindings, and grants;
-PRG defines typed dataflow, `invoke`, and the plugin ABI; EXT defines
-distribution and RUN durable records. Read the current specs and implementation
-plan before changing readers or manifests; the required shapes must migrate
-together. Existing CJ conversation/decision payloads remain separate from
-execution v1 on `25920`/`26920`/`27020`.
+CAP describes portable interfaces, host bindings, presence, and operator
+preferences. Reading a manifest is inert; probes and invocations have separate
+admission. PRG defines typed workflows, seven step kinds, bounded composition,
+and the Wasm packet ABI. EXT distributes immutable components and RUN records
+durable execution.
 
-These two NIPs define the events behind `capabilities/`, `programs/`,
-`questions/`, and `sources/`. They are files first and events second: a
-host reads them from disk until the relay serves them.
+OPT separates semantic AI signatures from their concrete implementations.
+Programs can invoke a supported pinned implementation through the same host
+boundary. Compiler, optimizer, evaluator, and inference capabilities remain
+distinct. EVAL supplies workload evidence and scoped promotion; neither a score
+nor a package signature grants execution.
 
-- **NIP-CAP kind `30180`, capability manifest.** Says how to detect and
-  drive an executor (`detect`, `invoke`), what bounds it `enforces`, what
-  it `cannot_enforce`, what phrases it prints when it `refuses`, and how
-  it isolates. `capabilities/devin-local.json` is the Devin CLI on this
-  computer. Reading a manifest never runs it; a probe runs only under an
-  approval recorded with the `capability-trust` binary, which pins the
-  manifest digest and the adapter's canonical path and contents. Presence
-  has five states — present, absent, present-and-unavailable, unprobed,
-  unknown — and only present is a route. Local presence is never
-  published as an event.
-- **NIP-CAP kind `30181`, operator policy.** Which capabilities an
-  operator prefers.
-- **NIP-PRG kind `30182`, program.** An addressable state machine of
-  named steps with per-step bounds. A program carries no code and no
-  question wording: a `decide` step names a set in `questions/`, a
-  `query` step names a source in `sources/`, a `delegate` step names a
-  capability slug. `docs/programs.md` describes the five programs.
-  Kind `30183` announces where a WebAssembly module's bytes can be found.
+Follow the normative NIPs for exact fields and validation. Implement only
+supported roles and advertise them after conformance. Artifact identity,
+actual materialization, protected evaluation, and operator adoption are
+separate checks. Local operation need not publish an event for every action.
 
 ## The relay (`crates/nostr-relay`)
 

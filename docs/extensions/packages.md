@@ -30,6 +30,24 @@ Component types retain their own admission rules. A package with one useful
 pure plugin does not gain the permissions of its bundled executor descriptor.
 Expose per-component enablement and make unsatisfied dependencies explicit.
 
+## Compiled AI components
+
+Packages can contain semantic AI signatures and their immutable implementations
+under [NIP-OPT](../../nips/openagents/NIP-OPT.md). Include all functional
+instructions, examples, question sets, renderers, adapters, inference settings,
+model targets, and executable dependencies in the verified closure.
+
+Compilation provenance identifies the producing tool and inputs; evaluation
+evidence identifies what actually ran. Neither grants installation effects
+or activation. Installation stays inert. An operator adopts a measured version
+for its workload through a new pin; no catalog update changes an active run.
+
+Derived prompts and examples can contain private source information. Review
+the entire release closure before public publication. Private studies and
+candidates remain scoped even when a public implementation references a
+cleared aggregate report. Record evidence unavailable to downstream readers
+as a limitation.
+
 ## Identity, dependencies, and locks
 
 Distinguish these objects:
@@ -50,11 +68,9 @@ components, archive size, and fetch attempts. Verify every dependency using
 the same rules as the root package; trust does not transfer from a trusted
 root to an arbitrary transitive publisher.
 
-Existing local registries use first-definition-wins slug lookup. Preserve that
-behavior for legacy runs and record the resolved digest. Portable packages
-must use qualified identities and explicit bindings so installing another
-package cannot shadow a previously selected component. Migration produces a
-new lock; it does not rewrite earlier execution records.
+Portable packages use qualified identities and explicit bindings so another
+installed package cannot shadow a selected component. Each update produces a
+new lock without rewriting execution records.
 
 Locks contain portable identities and public dependency locators, not private
 absolute paths, access tokens, host credentials, or machine inventories.
@@ -81,7 +97,7 @@ Track these states independently:
 Disabling a component prevents new invocation without deleting its history.
 Installing a package must not create program grants, approve executable
 probes, or widen an existing turn's permit. Repository-provided configuration
-is a proposal; it cannot override operator policy. Follow the existing
+is a proposal; it cannot override operator policy. Follow the
 [program authority](../coder/guides/program-authority.md) and
 [capability trust](../programs.md) boundaries.
 
@@ -137,8 +153,7 @@ a grant service, or a new private backend that the runtime must call before
 every local operation. Start with local packages and verified static sources;
 add remote publication only through an explicitly versioned public contract.
 
-Prefer the repository's existing Nostr identity and relay model when remote
-distribution is introduced. Keep existing event meanings intact:
+Use signed Nostr identities and immutable records for remote distribution:
 
 - NIP-CAP `30180` describes a capability; `30181` describes operator policy.
 - NIP-PRG `30182` describes a program; `30183` locates a module whose bytes

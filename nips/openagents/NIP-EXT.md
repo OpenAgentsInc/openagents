@@ -1,16 +1,13 @@
 # NIP-EXT — Extension distribution
 
-`draft` `optional` — v1. Proposed protocol; publication and installation
-services are not implemented by this document. The [shared contracts](contracts.md)
-are normative. [Architecture](../../docs/extensions/architecture.md) explains
-why programs, plugins, skills, and execution bindings remain different things.
+`draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 
 This NIP distributes immutable component packages with signed provenance.
 It does not grant execution, synchronize private machine inventories, or
 require the catalog to be online for every local invocation.
 
 Packages can specialize any supported agent domain. A domain profile is an
-assembly of existing schemas, sources, operations, programs, guidance, and
+assembly of schemas, sources, operations, programs, guidance, and
 evaluations plus host-owned bindings and policy. It is not a new component kind
 or permission mechanism. Coding packages add repository-specific behavior;
 document, research, or business packages use the same distribution contract.
@@ -75,7 +72,8 @@ execution pin by itself.
 ## Component types and operation descriptors
 
 Kinds are `program`, `plugin`, `capability`, `decision-function`, `skill`,
-`source`, `checker`, `operation`, `guidance`, and `schema`. Executable native
+`source`, `checker`, `operation`, `ai-signature`, `ai-implementation`,
+`guidance`, and `schema`. Executable native
 bindings remain host-owned; their declarations cannot self-install adapters.
 Program/plugin/capability definitions follow their NIPs. Source, checker, and
 operation definitions have `v: "openagents.binding.v1"`, `requires`, `id`,
@@ -117,6 +115,35 @@ Policies consume typed results under explicit abstention/refusal rules.
 Confidence is not permission or proof of calibration. A function cannot call
 itself through a hidden guest network path or redirect a local-only request
 to a hosted reviewer. Every attempt uses the shared accounting/receipt path.
+
+### Semantic AI components and compilation
+
+`ai-signature` and `ai-implementation` definitions follow [OPT](NIP-OPT.md).
+Signature components are inert contracts; implementation components identify
+a signature and an exact executable entry through supported component kinds.
+Their operation descriptors retain separate discovery semantics. A signature
+descriptor is not itself an executable target.
+
+A decision function is a specialized implementation building block. Wrapping
+it in an AI implementation binds its semantic purpose without changing the
+decision question or answer contract. An optimizer may produce new wording,
+demonstrations, or a different supported composition; every functional asset
+is included in the release and dependency lock.
+
+Compilation/build provenance identifies compiler, exporter, source and
+configuration inputs, and output assets. Installation MUST NOT run an optimizer,
+deserialize executable foreign objects, or fetch undeclared model settings.
+Missing or unsupported strategy assets refuse. Candidate provenance does not
+establish evaluation success; an evaluator report does not grant activation.
+
+Optimized prompts and demonstrations are derived data subject to their source
+restrictions. Public release requires explicit clearance of the full closure,
+including examples, metadata, locators, and provenance. Private candidates
+remain local or use the scoped artifact envelope. A public package may omit
+private study evidence only by declaring the resulting verification limits;
+it cannot claim that unavailable evidence was independently reproduced.
+Promotion changes an installed pin through operator policy and never changes
+the package release or lock already admitted by an active run.
 
 ### Skills and bounded hooks
 

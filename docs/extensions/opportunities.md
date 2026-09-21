@@ -9,6 +9,19 @@ The [protocol addendum](../coder/design/typesafe-agent-protocol-addendum.md)
 maps every source recommendation to the NIPs and the host/client implementation
 needed to deliver it, including context, policy, coordination, and evaluation.
 
+## Learn the implementation while preserving the task
+
+Treat each opportunity as a semantic contract with replaceable implementations.
+Do not require a fixed collection of handwritten Jev calls at every boundary.
+Context selection, operation ranking, routing, generation, and bounded
+composition can be searched under DSPy/GEPA or another admitted optimizer.
+
+The [complete opportunity map](../optimization/architecture.md#map-the-typesafe-opportunities-to-learnable-behavior)
+pairs each source recommendation with stable constraints, candidate choices,
+and adoption evidence. It includes explicit state, hierarchy, multimodal
+inputs, parallel work, and background assistance. Optimize whole-task outcomes
+while code enforces disclosure, effects, approvals, and shared budgets.
+
 ## Make extensions part of explicit state
 
 The opportunity is larger than making tool output shorter. Coder can keep
@@ -28,7 +41,7 @@ well enough for the workload.
 
 | Source opportunity | Specific system behavior | Evidence needed before claiming a gain |
 | --- | --- | --- |
-| Input-heavy coding turns and repeated reads | Store captures and source versions once. Plugins derive outlines, diagnostics, facts, and spans. Context manifests reference exactly which representations were supplied. | Actual input/output usage, repeated-read rate, missed evidence, task completion, and total cost against the existing turn. |
+| Input-heavy coding turns and repeated reads | Store captures and source versions once. Plugins derive outlines, diagnostics, facts, and spans. Context manifests reference exactly which representations were supplied. | Actual input/output usage, repeated-read rate, missed evidence, task completion, and total cost against the declared task baseline. |
 | Large tool catalogs and model-specific tool familiarity | Discover from small descriptors, mechanically filter, shortlist, then load only selected schemas. Keep host bindings stable and evaluate the target generator. | Retrieval recall, selection errors, schema tokens, invalid arguments, extra round trips, and full-task outcomes as catalog size grows. |
 | Query-aware context preparation | Typed relevance and sufficiency functions select evidence under a budget. Mandatory instructions and acceptance evidence stay required. A failed sufficiency check expands retained sources. | Held-out recall, omitted-constraint failures, expansion rate, decision overhead, and resulting repair quality. |
 | Switching models can waste a cached prefix | Keep context manifests and stable prefix identities. Route using actual provider usage and price configuration, expected future work, cache uncertainty, and switching cost. | Observed cached/uncached billing and complete-run latency/cost, including rebuilding context. A digest match alone is not a cache-hit measurement. |
@@ -57,23 +70,20 @@ Evaluate both stages. A perfect decision function cannot recover an operation
 the retriever excluded. Record unselected and uninvoked eligible operations
 instead of measuring only successful invocations.
 
-The reference Coder suite suggests several useful package families:
+Useful package families include:
 
-| Family | Reference examples | OpenAgents adaptation |
-| --- | --- | --- |
-| Structural repository evidence | `rust-outline`, `repo-map`, `repo-tree`, `ast-grep-bounded` | Versioned symbol/structure evidence with links to exact source spans; use native parsers where they already suffice. |
-| Bounded retrieval | `repo-search-bounded`, `code-search`, `repo-search` | A source-aware query interface with capture limits, ordered results, and explicit incomplete coverage. |
-| Diagnostics and checks | `cargo-diagnostic-filter`, `test-report`, `patch-check` | Typed diagnostics and test evidence; verification authority stays with the protected host checker. |
-| Context and facts | `repo-context`, `git-facts`, `git-diff-summary`, `env-facts` | Task-specific facts over pinned repository/configuration state, with disclosure filtering before use. |
-| History and knowledge | `session-search`, `read-conversation`, `foreign-sessions`, `knowledge-base` | Scoped evidence retrieval; no automatic cross-session or cross-account access. |
-| Output representation | `shell-digest`, `progress-filter`, file/directory statistics | Optional derivatives with validated format and retained original captures; no claim of success based on compression ratio. |
+| Family | Contract |
+| --- | --- |
+| Structural evidence | Versioned symbols, outlines, and structure linked to exact source spans. |
+| Bounded retrieval | Source-aware queries with capture limits, ordered results, and explicit incomplete coverage. |
+| Diagnostics and checks | Typed diagnostics and test evidence under protected host verification. |
+| Context and facts | Task-specific facts over pinned source/configuration state with disclosure filtering. |
+| History and knowledge | Scoped evidence retrieval without implicit cross-session or cross-account access. |
+| Output representation | Validated derivatives with retained original captures and measured downstream sufficiency. |
 
-These are design references, not a list of implemented or promised ports.
-The source proposal's headroom/rtk, ast-grep/ast-outline, fastcontext, and fff
-examples identify compression, structural search, exploration, and indexing
-opportunities. Evaluate equivalent native operations and maintained adapters
-before choosing dependencies. Installing all reference plugins is not the
-delivery objective.
+Evaluate native operations and supported adapters against the same semantic
+contract before choosing a dependency. A large package catalog is useful only
+when task-specific discovery and measured behavior make it economical.
 
 ## Worked workflow: diagnose and repair a Rust failure
 
@@ -108,7 +118,7 @@ The expected savings come from fewer repeated reads, smaller useful inputs,
 less manual context preparation, and fewer avoidable repair rounds. Added
 selection calls, parsing, storage, or mistaken omissions may erase those
 savings. Compare complete runs against a deterministic host-only baseline
-and the current agent, not just plugin output size.
+and the declared agent baseline, including complete task outcomes.
 
 ## Cache economics and model routing
 

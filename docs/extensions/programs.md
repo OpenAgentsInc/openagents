@@ -1,8 +1,6 @@
 # Programs and decisions
 
-Status: target specification extending the [existing program guide](../programs.md).
-The current interpreter implements four step kinds. Typed composition,
-module execution, portable resolution, and full recovery are proposed.
+Status: target specification for typed workflows and AI implementations.
 
 ## What the program decision decides
 
@@ -10,11 +8,6 @@ Program selection answers: which admissible workflow does the user's request
 ask to run, or `none`? It does not choose a plugin to install, choose an
 arbitrary next command, decide whether execution is permitted, or require
 that every turn use a workflow.
-
-The current entry point uses `openagents.program.v1` before ordinary action
-classification. Keep its separately measured false activations and missed
-requests. The [v2 measurement](../decision-models/measurements/2026-09-20-program-selection-v2.md)
-is a baseline, not evidence that an expanded catalog will select correctly.
 
 The target entry path is:
 
@@ -50,14 +43,7 @@ A program names sources and question sets rather than carrying commands or
 question wording. Keep questions, generation guidance, optional skills, and
 host adapter definitions as separate digested assets.
 
-The existing `briefing` field in some local delegation programs carries
-execution guidance. It is not permission or decision-question wording. New
-portable packages should reference a separate guidance asset; moving a legacy
-briefing changes identity and requires an explicit versioned migration.
-Historical programs and their recorded digests remain unchanged.
-
-The proposed binding contract supplies what the current string-valued input
-and output descriptions do not yet implement:
+The binding contract defines these interfaces:
 
 | Binding | Required semantics |
 | --- | --- |
@@ -74,31 +60,28 @@ unsupported semantics, unresolved child identities, and dependency cycles.
 Missing data is an error or an explicit schema-defined optional value, never
 an empty string inserted to make the next step run.
 
-These bindings are specified by [revised NIP-PRG v1](../../nips/openagents/NIP-PRG.md).
-Earlier draft files and readers must migrate together; they cannot silently
-ignore the revised required fields. The initial executor
-runs an acyclic graph. Bounded retries and repair rounds are explicit host
+These bindings are specified by [NIP-PRG](../../nips/openagents/NIP-PRG.md).
+The executor runs an acyclic graph. Bounded retries and repair rounds are explicit host
 policies with attempt limits; they do not permit recursive program cycles.
 
 ## Step kinds and extension points
 
-| Kind | Contract | Current boundary |
-| --- | --- | --- |
-| `query` | Resolve a named host source into ordered, bounded, attributable data. | Request/file/tracker sources exist; general evidence queries are new bindings. |
-| `check` | Evaluate a deterministic predicate or a protected host verification plan. | Admission and protected suite/artifact checks exist. |
-| `decide` | Ask a separately identified question set through the shared decision client. | Implemented for supported question sets and bounds. |
-| `delegate` | Give a bounded task to a host-approved executor with explicit context and expected outputs. | Existing executor/task path; general native context bindings remain work. |
-| `program` | Execute a fully resolved child program with typed dataflow and narrowed bounds. | Specified, currently refused. |
-| `module` | Invoke a pinned Wasm module through the plugin host with typed packets. | Specified, currently refused. |
-| `invoke` | Invoke a registered native or approved adapter operation under its typed effect contract. | Newly specified; not implemented. |
+| Kind | Contract |
+| --- | --- |
+| `query` | Resolve a named host source into ordered, bounded, attributable data. |
+| `check` | Evaluate a deterministic predicate or a protected host verification plan. |
+| `decide` | Ask a separately identified question set through the shared decision client. |
+| `delegate` | Give a bounded task to a host-approved executor with explicit context and expected outputs. |
+| `program` | Execute a fully resolved child program with typed dataflow and narrowed bounds. |
+| `module` | Invoke a pinned Wasm module through the plugin host with typed packets. |
+| `invoke` | Invoke a registered native or approved adapter operation under its typed effect contract. |
 
 Native reading, editing, testing, and generation use registered host bindings;
 a package cannot add an arbitrary `shell` step by supplying a string. A native
 agent executor can perform an open-ended repair under `delegate`, while Rust
 owns its admitted operations, context construction, and verification. If a
 new independently serialized step kind becomes necessary, specify it before
-use. The revised `invoke` kind supplies this native-operation path; it does
-not make the earlier runtime accept it. Do not disguise a side effect as a
+use. The `invoke` kind supplies this native-operation path. Do not disguise a side effect as a
 deterministic `query`.
 
 Plugins can serve two positions. An explicit `module` step transforms typed
@@ -106,11 +89,29 @@ input into typed output. A host role can automatically derive evidence after
 a supported event. Both use the same guest validation, invocation, authority,
 and receipt boundary. A plugin's installation never changes a program's graph.
 
+## Model-independent AI operations
+
+A program may invoke an [AI implementation](../../nips/openagents/NIP-OPT.md)
+whose signature defines semantic behavior. The implementation resolves to
+a supported decision function, child program, or operation. The host validates
+the full closure and matching schemas before execution.
+
+A typed decision is one useful realization. A cited answer, extraction, or
+context selection may use another supported strategy. Search can change
+bounded internal inference composition while preserving the program's protected
+authority and verification transitions. Every candidate is a new immutable
+definition; running programs keep their admitted pins.
+
+Use whole-task evaluation as well as module metrics. The
+[experiment lifecycle](../optimization/experiments.md) governs selection,
+confirmation, and adoption. Program discovery and semantic selection cannot
+activate an optimizer or replace an implementation automatically.
+
 ## Decision functions inside a program
 
 A function record binds input schema, state builder, question-set digest,
 output schema, policy version, model/artifact eligibility, evaluation scope,
-limits, and refusal/review behavior. Use the existing function inventory and
+limits, and refusal/review behavior. Define a semantic function inventory and
 Decision API instead of creating a plugin-specific inference endpoint.
 
 | Selection | Appropriate judgment | Host consumer |
@@ -172,14 +173,7 @@ The target controller records transitions before effects and observed results
 afterward. ATIF explains the execution; the controller owns resumability; the
 evidence store owns retrievable observations. None substitutes for the others.
 
-The existing `coder::runstate` store uses `openagents.runstate.v1` with
-`pending`, `dispatched`, `answered`, `refused`, `unverifiable`, `settled`, and
-recovery-only `unknown` states. It stores pinned digests and retained worktree
-and result references, but the baseline runtime does not yet call it. Extend
-and integrate that store rather than introducing a competing recovery log.
-
-The following diagram describes conceptual run stages, not replacement wire
-values. Map them to existing records and version any required schema changes:
+The controller records these conceptual stages under the NIP-RUN journal:
 
 ```text
 prepared -> admitted -> running -> completed

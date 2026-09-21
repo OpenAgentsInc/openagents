@@ -1,20 +1,18 @@
 # General agent architecture: remaining work
 
-Status: design and implementation notes, 2026-09-21. These are explicit future
-work items, not implemented features or newly created GitHub issues. The
-[architecture](README.md) defines the shared core and domain boundary. The
-[protocol implementation plan](../protocol/implementation-plan.md) remains the
-queue for the existing NIP work; the items here extend its acceptance scope
-or identify contracts that need a separate design before implementation.
+Status: proposed design and implementation work. These local planning IDs are
+not filed GitHub issues. The [architecture](README.md) defines shared agent
+contracts and domain responsibilities. The [optimization proposals](../optimization/proposed-issues.md)
+are the consolidated backlog for semantic contracts, DSPy/GEPA authoring,
+Gym evaluation, and measured adoption.
 
-All current OpenAgents additions remain v1 drafts. Update validators, data,
-and fixtures together; older partial readers must refuse newly required
-semantics. Existing CJ conversation versions and upstream specifications are
-unchanged. No broad crate rename or new transport family is required now.
+Protocol schemas use v1. Implement only supported roles and advertise them
+after conformance is demonstrated. A declared interface does not establish
+host enforcement or domain readiness.
 
-## Changes specified in this pass
+## Required architecture
 
-| Area | Contract change | Implementation still required |
+| Area | Contract | Required implementation |
 | --- | --- | --- |
 | Product scope | General infrastructure with Coder as the first profile; domain-profile terminology without a new package kind. | Keep domain dependencies out of new shared consumers and advertise only proven profiles. |
 | Sources and state | Shared `openagents.observation.v1`; CTX/evidence `external` sources with pinned adapters, version tokens, and declared read consistency. | Source adapters, retention, freshness/precondition checks, and parser fixtures. |

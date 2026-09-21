@@ -12,6 +12,19 @@ bridge for Apple's on-device model. The [general agent architecture](docs/agents
 separates reusable contracts from domain adapters and records what remains
 before other specializations can claim support.
 
+## Programming and improving agents
+
+The target architecture separates semantic task contracts, replaceable AI
+implementations, bounded optimization, and host enforcement. DSPy and GEPA can
+help author and search implementations; Gym and domain evaluators measure
+whether they improve complete tasks. Typed decisions and generation are useful
+building blocks, with permissions, privacy, and effect control owned by code.
+
+Read the [AI programming and optimization design](docs/optimization/README.md),
+[standalone Nostr specifications](nips/openagents/README.md), and
+[proposed integration issues](docs/optimization/proposed-issues.md). The design
+applies across agent domains; implementation of this integration is deferred.
+
 ## What Coder is
 
 A terminal agent with a deliberate two-stage mind:
@@ -22,7 +35,7 @@ A terminal agent with a deliberate two-stage mind:
   vs `clarify` vs `end`. A routing table — plain Rust, reviewable — turns
   the judgment into the next step. The same machinery judges each round
   of shell output: `pass` / `retry` / `stop`.
-  Small, fast, cannot fabricate.
+  Typed outputs constrain answer shape; correctness still requires evaluation.
 - **System Two — a model door.** The generative side is a trait
   (`Generate`), not a vendor. Own-key Open Responses endpoints, a remote
   worker over the relay, or a stub for tests — the loop doesn't care

@@ -6,6 +6,11 @@ Coder is the first specialization of [OpenAgents' general agent infrastructure](
 These documents focus on coding; shared protocols and runtime contracts also
 serve other domains through explicit adapters and policy.
 
+The [AI programming and optimization design](../../optimization/README.md)
+defines semantic contracts, replaceable implementations, DSPy/GEPA authoring,
+Gym evaluation, and measured adoption. Its [proposed-issues document](../../optimization/proposed-issues.md)
+contains the unfiled full-integration backlog.
+
 [Documentation index](../README.md)
 
 The [program and extension specification](../../extensions/README.md) applies

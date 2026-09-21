@@ -1,133 +1,115 @@
 # OpenAgents protocols
 
-OpenAgents is building general agent infrastructure. Coding agents are the
-first specialization, delivered through Coder. These specifications describe
-how agents can share capabilities, workflows, context, and work across tools,
-models, and machines. They give
-clients and workers a common way to answer practical questions: What can this
-agent do? What is it allowed to see or change? Which version ran? What evidence
-supports its answer? What happens if the connection breaks?
+OpenAgents defines general agent infrastructure. Coding agents are the first
+specialization. These specifications describe how agents share capabilities,
+workflows, context, and work across tools, models, and machines, and how they
+improve their behavior through measured, bounded optimization.
 
 ## Why this exists
 
-The goal is agent work you can inspect, reuse, and control across domains.
-A task should retain its objective, instructions, source evidence, budget,
-and results as it moves between operations or machines. That makes it possible
-to give different models relevant context, share observations with parallel
-tasks, and recover interrupted work while preserving what is still unknown.
+Agent work should be understandable and controllable. A user should be able
+to tell what an agent can do, what it may see or change, which version ran,
+what evidence supports its result, and what remains unknown after a failure.
+A task should preserve its objective, source evidence, instructions, budget,
+and outcomes as it moves between operations or machines.
 
-The TypeSafe coding-agent design is the first concrete application: small typed
-model judgments help select relevant evidence and useful operations, while code owns
-permissions, scheduling, budgets, and execution. Programs describe reusable
-workflows. Extensions distribute their tools, Wasm plugins, skills, and other
-components. The protocols define how these pieces identify themselves and
-exchange information so that different implementations can work together.
+The same task should also survive changes in models and inference techniques.
+A semantic AI contract describes the behavior needed. Its implementation can
+use typed decisions, generation, retrieval, or a bounded composition of them.
+An optimizer can search for a better implementation against an explicit
+objective. Evaluation establishes evidence for adoption; host code controls
+permissions, privacy, effects, and budgets throughout.
+
+This supports the programming model associated with DSPy and optimization
+approaches such as GEPA without making either a protocol runtime requirement.
+Hand-authored implementations and other search methods use the same contracts.
+No algorithm is assumed to improve every workload, and no score grants authority.
 
 For users, the intended benefits are portable extensions, explicit control
-over where private context goes, understandable approvals, recoverable tasks,
-and results linked to the inputs, actions, and checks that produced them.
-Evaluation records let you assess whether context selection, model routing, or background
-assistance improves the complete task, including its cost and failures.
+over private context, understandable approvals, recoverable tasks, and
+measured improvements that identify their costs and limitations. An update
+can be evaluated and adopted without silently changing a task already running.
 
 ## Why use Nostr
 
-Nostr supplies signed identities and events, relay-based discovery and delivery,
-and encrypted communication. These NIPs define the application contracts on
-top: the meaning of a package release, a job, a context view, or a task record.
-Shared contracts let clients and workers communicate through compatible relays
-without depending on one application's private message format.
+Nostr supplies signed events, public-key identities, relay discovery and
+delivery, and encrypted communication. These specifications define application
+meanings: a package release, a task, a context view, an optimization study,
+or an execution record. Clients and workers can exchange those records through
+relays without relying on one application's private message format.
 
-Hosts enforce access, run tools, manage credentials, and coordinate effects.
-Relays store and deliver the records under their configured privacy and
-retention policies. The same artifact formats also work locally; using an agent
-on one machine does not require publishing each observation or making a relay
-round trip for each action.
+Hosts enforce access, manage credentials, materialize programs, run tools,
+and coordinate effects. Evaluators measure outcomes. Relays store or deliver
+events under explicit privacy and retention rules. Signatures establish
+attribution, not truth, permission, statistical validity, or remote attestation.
+The artifact formats also work locally; every model call or observation need
+not become an event or require a relay round trip.
 
-## What generalizes and what is specific to coding
+## General infrastructure and coding specialization
 
-The shared core is identity, typed operations and workflows, extension
-distribution, evidence and context, permissions, routing, budgets, task
-coordination, recovery, and evaluation. Research, document, data-analysis,
-and business-workflow agents can use those same contracts with their own
-sources, operations, policies, and acceptance criteria. They do not need a Git
-repository, terminal, shell, or coding model to participate.
+The shared core is identity, semantic contracts, typed operations and workflows,
+extensions, evidence, authority, execution, coordination, evaluation, and
+optimization. Research, document, data-analysis, and business agents use it
+with their own sources, schemas, operations, and acceptance criteria.
 
-Coder supplies the first domain adapters: repository snapshots, code search,
-compiler diagnostics, shell execution, worktrees, patch review, tests, and Git
-integration. A research agent could instead capture documents and produce a
-cited report; a business-workflow agent could inspect records and propose an
-authorized update. Resource versions, evidence, grants, and verification still
-matter, but each domain defines what they mean and how they are enforced.
+Coding adds repository snapshots, code search, compiler diagnostics, isolated
+execution, patches, tests, and Git integration. A research agent can instead
+produce cited findings from documents. A records agent can propose an update
+from scoped observations. Neither needs a repository or terminal. Sending a
+message or changing an external record requires domain-specific authorization,
+version checks, effect confirmation, and reconciliation.
 
-General protocols do not make every domain ready to use. Hosts need concrete
-adapters, effect controls, credentials, and workload evaluations. The
-[general agent architecture](../../docs/agents/README.md) defines that boundary;
-the [remaining architecture work](../../docs/agents/roadmap.md) tracks external
-effects, durable waits, event-driven work, and other needs beyond the initial
-coding specialization. The `CJ` identifier is retained for compatibility;
-its decision and execution families are domain-independent.
+Generality does not make domain guarantees interchangeable. A host supports
+only the adapters, policies, and validation it can enforce. A coding benchmark
+cannot admit a different domain merely because it uses the same model.
 
 ## How the pieces fit together
 
-1. **Discover and install.** CAP describes execution capabilities. EXT packages
-   and identifies exact releases so you can see what an extension provides.
-2. **Describe the work.** PRG defines typed workflows, their dependencies, and
-   their limits, including operations supplied by native tools or Wasm plugins.
-3. **Prepare context and authority.** CTX records the task and relevant evidence.
-   POL records applicable instructions, approvals, allowed recipients, and
-   routing decisions.
-4. **Execute and coordinate.** CJ carries jobs to workers. COORD describes
-   shared tasks and background work. RUN retains the execution history needed
-   to explain results and recover interrupted work.
-5. **Measure and improve.** EVAL describes comparable workload evidence so
-   hosts can make explicit, informed choices about which versions to adopt.
+1. **Define and discover.** OPT identifies semantic AI contracts. CAP describes
+   execution interfaces. EXT distributes exact component releases.
+2. **Compose the work.** PRG defines typed workflows and bounded component
+   invocation. An AI implementation binds a semantic contract to an executable
+   entry and its complete dependencies.
+3. **Prepare context and authority.** CTX identifies task state and evidence.
+   POL resolves instructions, disclosure, approvals, and routing.
+4. **Execute and recover.** CJ carries jobs. COORD manages shared tasks and
+   claims. RUN records durable outcomes and unresolved effects.
+5. **Measure and improve.** OPT bounds candidate search and records what ran.
+   EVAL records workload comparisons and scoped admission evidence. Operator
+   policy adopts an immutable eligible version for subsequent work.
 
-For example, a parser repair could reuse one captured test failure for the
-repairing agent, a separate reviewer, and a background explanation. Each would
-receive its own permitted context. Their results would identify the source
-revision, consumed resources, verification, and whether the proposed change
-was accepted into the workspace.
+For example, an evidence-selection operation may compare a typed relevance
+model with a joint retrieval strategy. Both must preserve required context,
+source attribution, and disclosure constraints. Evaluate complete task quality
+and total cost before adopting either. The optimizer cannot modify the grader,
+read protected confirmation labels, or give itself new permissions.
 
 ## Specification reference
 
-This lane is authored here and is not synced from upstream. These contracts
-define the program and extension system. They are drafts; source text and
-kind allocation do not establish implementation or deployment.
+All contracts in this set are v1 drafts. They define protocol behavior;
+conformance requires validation and enforcement for each advertised role.
 
 | Contract | Responsibility | Kinds |
 | --- | --- | --- |
-| [Shared contracts](contracts.md) | References, schemas, locks, effects, evidence, context, and outcomes. | No new kinds. |
-| [NIP-CAP](NIP-CAP.md) | Execution definitions, local bindings, grants, and preferences. | `30180`, `30181`. |
-| [NIP-PRG](NIP-PRG.md) | Typed programs, seven step kinds, composition, and plugin packet ABI. | `30182`, `30183`. |
-| [NIP-EXT](NIP-EXT.md) | Releases, descriptors, packages, revocation, and namespace migration. | `3184`–`3186`, `30184`, `30185`. |
-| [NIP-RUN](NIP-RUN.md) | Encrypted journals, evidence, fencing, recovery, and retention. | `3187`, `30186`. |
-| [NIP-CJ](NIP-CJ.md) | Conversation, decision, and recoverable execution transports. | Conversation `25900`/`26900`/`27000`; decision `25910`/`26910`/`27010`; execution `25920`/`26920`/`27020`. |
-| [NIP-CTX](NIP-CTX.md) | Task frames, evidence representations, context views, and hierarchical expansion. | Shared private artifact `3188`; existing CJ/RUN. |
-| [NIP-POL](NIP-POL.md) | Scoped instructions, action approval, disclosure, and route/cache/cost records. | Shared private artifact `3188`; existing CJ/RUN. |
-| [NIP-COORD](NIP-COORD.md) | Shared tasks, fenced claims, background plans, and findings. | Shared private artifact `3188`; existing CJ/RUN. |
-| [NIP-EVAL](NIP-EVAL.md) | Workload comparisons, evaluation reports, and scoped promotion evidence. | Shared private artifact `3188`; public declaration `3189`. |
+| [Shared contracts](contracts.md) | Encoding, references, schemas, locks, effects, evidence, outcomes, and private artifact envelopes. | Private artifact `3188`. |
+| [NIP-CAP](NIP-CAP.md) | Execution descriptions, host bindings, grants, presence, and preferences. | `30180`, `30181`. |
+| [NIP-PRG](NIP-PRG.md) | Typed workflows, seven step kinds, bounded composition, and plugin packet ABI. | `30182`, `30183`. |
+| [NIP-EXT](NIP-EXT.md) | Component packages, immutable releases, discovery, revocation, and namespace transfer. | `3184`–`3186`, `30184`, `30185`. |
+| [NIP-RUN](NIP-RUN.md) | Encrypted durable journals, fencing, evidence, and recovery. | `3187`, `30186`. |
+| [NIP-CJ](NIP-CJ.md) | Conversation, typed-decision, and recoverable execution jobs. | `25900`/`26900`/`27000`, `25910`/`26910`/`27010`, `25920`/`26920`/`27020`. |
+| [NIP-CTX](NIP-CTX.md) | Task frames, snapshots, context views, representations, and expansion. | Shared `3188`; CJ/RUN references. |
+| [NIP-POL](NIP-POL.md) | Instructions, approvals, disclosure, routing, and adoption authority. | Shared `3188`; CJ/RUN references. |
+| [NIP-COORD](NIP-COORD.md) | Tasks, fenced claims, shared budgets, background findings, and trial coordination. | Shared `3188`; CJ/RUN references. |
+| [NIP-EVAL](NIP-EVAL.md) | Workload evaluation, comparisons, and scoped promotion evidence. | Shared `3188`; public declaration `3189`. |
+| [NIP-OPT](NIP-OPT.md) | AI signatures, implementations, studies, data partitions, candidates, materialization, trials, and results. | Shared `3188`; EXT/EVAL declarations and CJ/RUN execution. |
 
-CAP and PRG are revised in place as v1. New EXT, RUN, shared artifact schemas,
-and execution jobs also begin at v1. Existing CJ conversation integer versions
-1/2 and decision `openagents.systemone.v1` retain their separate contracts.
-Earlier repository CAP/PRG objects require coordinated reader/data changes;
-an unchanged `v` value does not make the earlier draft shape conformant.
-CTX, POL, COORD, and EVAL also start at v1. The
-[TypeSafe agent addendum](../../docs/coder/design/typesafe-agent-protocol-addendum.md)
-maps every source recommendation to these protocols and the host/client work
-that remains. Artifact-only contracts do not require a new event for every
-local action or a relay connection for local execution.
+Discovery heads are mutable. Exact signed records and artifact digests pin
+execution. Publication, installation, enablement, selection, grants, admission,
+and promotion are separate actions. Private evidence and derived examples
+remain scoped even when the resulting implementation is useful to others.
 
-Addresses identify mutable heads; exact signed records and artifact digests
-identify execution. Discovery, publication, installation, enablement, grants,
-selection, and admission are distinct. Private evidence stays scoped; every
-local artifact or judgment need not become a Nostr event.
-
-Kind numbers are local draft assignments checked against the pinned lanes,
-not upstream registrations. Conformance belongs separately to domain parsers,
-relays, host execution, and configured clients/workers. Only proven roles and
-features may be advertised. [Implementation tracking](../../docs/protocol/implementation-plan.md)
-maps this lane and the pinned official/Block lanes to completion work.
-Named draft extensions belong in NIP-11 `supported_extensions`, not numeric
-`supported_nips`. Name the configured role; forwarding an envelope does not
-claim host admission, coordination, or semantic correctness.
+Kind allocations are draft assignments, not upstream registrations. Named
+extensions belong in NIP-11 `supported_extensions`, not numeric
+`supported_nips`. Advertise only tested, configured roles. A relay forwarding
+an envelope cannot claim to execute programs, isolate an evaluator, enforce
+spending, or establish semantic correctness.

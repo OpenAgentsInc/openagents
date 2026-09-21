@@ -8,8 +8,8 @@ automatic training pipeline, or remote attestation.
 
 All artifacts include `v`, `requires`, and optional inert `meta`. Evaluate
 locally by default. Private reports use the scoped `3188` envelope; approved
-public reports may use `3189` below. Execution/decision receipts, ATIF, and
-Gym result identities are retained and referenced, not rewritten.
+public reports may use `3189` below. Reports retain and reference the exact
+execution, decision, trajectory, and evaluator record identities.
 
 Suites are domain-specific and reports are general. A coding suite may check
 tests and patches; research may check citations and coverage; a records workflow
@@ -94,10 +94,52 @@ and adverse outcomes, with explicitly unknown values when unmeasured:
 | Better parallelism or reuse | Preparation/assimilation cost, duplicate work avoided, invalid reuse, contention, stale integration, unknown effects, and independent final verification. |
 | Better background assistance | Foreground latency, incremental compute/disclosure/spend, useful/noisy/stale findings, and accepted versus merely proposed outcomes. |
 
-Reports can reference finer-grained measurements from Gym or ATIF as artifacts.
-Do not invent a success rate for a profile with no labeled denominator. Historic
-cost examples, external token breakdowns, and hierarchical-search complexity
-claims are hypotheses until measured on the stated workload.
+Reports can reference finer-grained measurements and trajectories as artifacts.
+Do not invent a success rate for a profile with no labeled denominator. Cost, token-efficiency, and hierarchical-search complexity claims require
+measurement on the stated workload.
+
+## Optimization evaluation
+
+For an [OPT](NIP-OPT.md) study, a report additionally requires
+`optimization: {study, candidate, phase, materializations}`. Study is an
+ArtifactRef; candidate is a candidate ArtifactRef or null for a baseline-only
+report; phase is `search`, `selection`, or `confirmation`; materializations
+is an array of ai-materialization ArtifactRefs, one per loaded attempt.
+Unloaded/refused attempts remain in the report with no fabricated materialization.
+Per-trial reports do not reference the enclosing trial record, avoiding a
+cyclic digest; trial records may reference their reports.
+
+The suite and phase case membership MUST match the frozen study/data plan.
+The report subject must equal the candidate implementation, or the study
+baseline when candidate is null. A comparison baseline must equal the study
+baseline. Match each materialization to its own subject/baseline arm, case,
+and attempt; one loaded execution cannot stand for several independent trials.
+Every scored attempt binds the actual loaded functional closure,
+host binding, model observations, and environment to its execution receipts.
+A mismatched candidate or insufficient required identity assurance cannot
+establish a passing quality claim.
+
+Search and selection results are development evidence. Neither can be labeled
+unseen confirmation. Confirmation requires recorded candidate selection and
+policy commitment before protected exposure, with allowance consumption and
+known contamination disclosed. A search budget, favorable example, or reused
+validation score is not a confidence interval.
+
+Freeze labels, graders, metrics, aggregation, missing-result rules, and the
+acceptance policy outside candidate control. Record model judges and their
+uncertainty/bias; a judge optimized on candidate outcomes cannot independently
+confirm them. System-level reports include task success, adverse outcomes,
+escalation, and total latency/cost alongside module metrics. Account separately
+for the cost of optimization and runtime performance. Include failed builds,
+refusals, cancelled trials, unknown spend, and unselected candidates in study
+evidence under the retention policy.
+
+Improvement claims must state comparison design, repetitions, uncertainty,
+workload scope, model assurance, and minimum detectable effect where relevant.
+No optimizer or model family receives a universal acceptance threshold.
+A result may be inconclusive or show no improvement without invalidating the
+study's execution. EVAL admission never resets data exposure or modifies an
+active implementation.
 
 ## Publication and disclosure
 
@@ -144,7 +186,7 @@ set, or threshold. New versions require explicit measured promotion.
 Background evaluation, traffic shadowing, data labeling, model training, and
 export are separate effectful jobs with their own grants, retention policy,
 recipients, and budget. Reusing source captures does not authorize training on
-them. The protocol defines records for the evidence; Gym, the host scheduler,
+them. The protocol defines records for the evidence; evaluators, host schedulers,
 and operators own running experiments and consuming results.
 
 ## Conformance

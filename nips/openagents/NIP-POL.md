@@ -158,10 +158,36 @@ A usage artifact has `v: "openagents.route-usage.v1"`, `route` (ArtifactRef),
 `currency`, and `basis` (`observed`, `estimated`, or `unknown`). Unknown numeric
 values are null; units and provider definitions must be retained in referenced
 receipts. Mixed estimates and observations require separate artifacts. Failed
-routes and escalation attempts remain in totals. NIP-AM/ATIF receipts may
-supply observations without changing their original schemas.
+routes and escalation attempts remain in totals. Accounting and trajectory receipts may supply observations through pinned
+artifact schemas.
 RUN links later usage artifacts back to the immutable route receipt; the route
 does not contain a circular reference to its future actual usage.
+
+## Optimization authority and adoption
+
+An [OPT](NIP-OPT.md) study declares which implementation choices can vary.
+Host admission separately authorizes evaluation, reflection, prompt/example
+optimization, weight training, data export, and deployment. One permission
+does not imply another, even when no model weights change.
+
+Semantic routing, relevance, and escalation recommendations can be optimized
+within a fixed authority envelope. Mandatory instructions, credential scope,
+recipient eligibility, exact approval consumption, protected verification,
+and hard bounds MUST remain outside that search space. A candidate confidence
+score cannot grant an effect or lower its own acceptance rule.
+
+The host admits the student, proposer/reflector, and judge recipients
+separately and accounts for their total work. Changing a provider, model,
+adapter, or inference strategy requires identity validation and evaluation
+for the intended scope. A signature match does not establish calibration,
+privacy equivalence, or task quality.
+
+EVAL admission can support an operator's adoption decision for an exact
+implementation. The installed pin changes atomically under that policy;
+active runs keep their original lock. Shadow traffic, canary execution, and
+rollback are separately admitted actions with their own data scope and
+budgets. Publication, a high score, or a background finding cannot activate
+a candidate by itself.
 
 ## Conformance and boundaries
 

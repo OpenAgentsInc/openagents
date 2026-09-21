@@ -138,7 +138,7 @@ implement this shared context system.
 | Capability | Designed | A granted ability. A capability that no grant declares is offered to no run. |
 | Executor | Designed | The implementation that performs an agent session, whether the built-in runner or an external agent reached through an adapter. |
 | Delegation | Implemented | One bounded task handed to one executor and recorded as an ATIF `Call` named `delegate`, in `crates/coder` (`delegate.rs`). A fan-out runs them concurrently under a stated bound. A refusal the executor declares, a bound that expired, a non-zero exit, and a process that never spawned are four outcomes rather than one. See [`coder/delegate.md`](coder/runtime/delegate.md). |
-| Program | Partial | A reusable workflow of named steps with per-step bounds, specified by [NIP-PRG](../nips/openagents/NIP-PRG.md). It references host sources, question sets, and execution bindings rather than supplying arbitrary executable code. Coder implements four step kinds; typed child composition and module execution remain proposed. Legacy delegation guidance and the target binding contract are explained in [Programs and decisions](extensions/programs.md). |
+| Program | Partial | A reusable workflow of named steps with per-step bounds, specified by [NIP-PRG](../nips/openagents/NIP-PRG.md). It references host sources, question sets, and execution bindings rather than supplying arbitrary executable code. Coder implements four step kinds; typed child composition and module execution remain proposed. The target binding contract is explained in [Programs and decisions](extensions/programs.md). |
 | Program selection | Implemented | The `openagents.program.v1` decision proposes which admissible workflow a request asks for, or `none`. Selection does not install a plugin or grant execution authority. See [the target entry path](extensions/programs.md#what-the-program-decision-decides). |
 | Step kind | Partial | What one step does: `query`, `check`, `decide`, `delegate`, `program`, `module`, or `invoke`. The baseline runtime implements the first four; the revised NIP-PRG adds native/adapted `invoke` and specifies the remaining kinds. Unsupported semantics refuse rather than being skipped. |
 | Bounds | Designed | The limits a program's step states and an executor promises to keep. A host refuses a step whose bounds it cannot enforce rather than running it unbounded. Under composition, bounds narrow and never widen. |
@@ -157,8 +157,7 @@ implement this shared context system.
 ## Extensions
 
 The [program and extension specification](extensions/README.md) defines these
-target contracts. The reference Coder implementation does not make them
-implemented in OpenAgents.
+target contracts. A design entry does not claim implementation.
 
 | Term | Status | Definition |
 | --- | --- | --- |
@@ -175,12 +174,31 @@ implemented in OpenAgents.
 | Installation lock | Designed | The exact verified component and dependency identities installed at one revision. Installation is separate from enablement, grants, and invocation admission. |
 | Run lock | Designed | The installation identities plus host bindings, policy, grants, schemas, question sets, and configuration pinned for an execution attempt. |
 
+## AI programming and optimization
+
+These designed contracts are defined in [NIP-OPT](../nips/openagents/NIP-OPT.md)
+and the [AI programming architecture](optimization/README.md).
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Semantic AI signature | Designed | Task meaning, semantic input/output schemas, abstention, and protected constraints. Distinct from a cryptographic event signature and an operation discovery descriptor. |
+| AI implementation | Designed | An immutable realization of a signature through a decision function, program, or admitted operation, with its complete functional closure. |
+| Inference strategy | Designed | A supported method for realizing AI behavior, potentially with multiple model or tool calls under host limits. |
+| Compilation | Designed | Producing a concrete implementation from semantic structure and selected configuration; it does not necessarily mean machine-code compilation or weight training. |
+| Optimization study | Designed | A frozen contract for bounded search, including task, baseline, allowed surfaces, data rights, partitions, objectives, protected evaluation, and budgets. |
+| Candidate | Designed | A proposed exact implementation and lock, with study and parent lineage. Selection does not imply confirmed quality or adoption. |
+| Materialization record | Designed | Host-attributed evidence of the functional assets, model target, configuration, and bindings actually loaded for a trial. It is not remote attestation. |
+| Confirmation | Designed | Evaluation of a committed candidate under a protected, bounded allowance that records exposure and cannot be reset by renaming data. |
+| Promotion | Designed | Independent operator-policy adoption of an eligible exact implementation for a specified workload and model scope; separate from package publication and execution grants. |
+| DSPy integration | Designed | A bounded authoring/optimization bridge from semantic contracts to supported complete implementation artifacts. No DSPy runtime is required by the wire protocol. |
+| GEPA integration | Designed | An explicitly identified reflective search procedure using authorized feedback and the same candidate, measurement, and adoption contracts as other optimizers. |
+
 ## Nostr
 
 | Term | Status | Definition |
 | --- | --- | --- |
 | Relay | Implemented | The Nostr relay in `crates/nostr-relay`: one binary and one Postgres database, serving `relay.openagents.com`. |
-| NIP-CJ | Partial | Agent jobs, retaining the historical CJ identifier. Conversation, decision, and execution families carry requests, results, and feedback with NIP-44 payloads and NIP-42 socket authentication. Decision/execution contracts are domain-independent. Conversation transport is implemented; the other network families need implementation. See [NIP-CJ](../nips/openagents/NIP-CJ.md). |
+| NIP-CJ | Partial | Agent jobs. Conversation, decision, and execution families carry requests, results, and feedback with NIP-44 payloads and NIP-42 socket authentication. Decision/execution contracts are domain-independent. Conversation transport is implemented; the other network families need implementation. See [NIP-CJ](../nips/openagents/NIP-CJ.md). |
 | NIP-PRG | Partial | Programs. Addressable `30182` events discover typed workflows with pinned dependencies and per-step bounds. The local runtime implements an earlier subset; revised v1 also defines composition, native invocation, and the plugin ABI. Unsupported semantics refuse the whole program. |
 | NIP-CAP | Partial | Capabilities. Addressable `30180` and `30181` events carry portable execution definitions and operator preferences. Revised v1 separates definitions, host bindings, and grants; the earlier local readers require migration. |
 | NIP-EXT | Designed | Extension distribution: releases, listings, descriptors, revocation checkpoints, and namespace migration. See [NIP-EXT](../nips/openagents/NIP-EXT.md). |
@@ -188,5 +206,6 @@ implemented in OpenAgents.
 | NIP-CTX | Designed | Task frames, versioned evidence representations, context selection, and bounded history expansion. See [NIP-CTX](../nips/openagents/NIP-CTX.md). |
 | NIP-POL | Designed | Scoped instructions, exact action approvals, recipient policy, and attributable routing/cost records. Hosts enforce them. See [NIP-POL](../nips/openagents/NIP-POL.md). |
 | NIP-COORD | Designed | Shared task proposals, fenced resource claims, background plans, and revision-bound findings. See [NIP-COORD](../nips/openagents/NIP-COORD.md). |
-| NIP-EVAL | Designed | Workload evaluation suites, comparable reports, optional publication, and scoped promotion evidence. See [NIP-EVAL](../nips/openagents/NIP-EVAL.md). |
+| NIP-EVAL | Designed | Workload evaluation suites, comparable reports, optimization confirmation, optional publication, and scoped promotion evidence. See [NIP-EVAL](../nips/openagents/NIP-EVAL.md). |
+| NIP-OPT | Designed | Semantic AI contracts, immutable implementations, studies, candidates, materialization, trials, accounting, and results. See [NIP-OPT](../nips/openagents/NIP-OPT.md). |
 | `nips/` | Implemented | Pinned copies of the official and Block NIPs. `nips/manifest.json` records the upstream commits. The `openagents/` lane is authored here and is not synced. |

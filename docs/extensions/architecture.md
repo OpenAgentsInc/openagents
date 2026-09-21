@@ -1,6 +1,6 @@
 # Architecture and terminology
 
-Status: target specification. See the [implementation boundary](README.md#current-implementation-boundary).
+Status: target specification. See the [delivery plan](delivery.md).
 
 ## Naming decision
 
@@ -10,24 +10,45 @@ an executable guest. In interfaces, use **Programs** for workflows and
 component type must remain visible: a program, plugin, skill, decision
 function, or adapter has a different lifecycle.
 
-This reconciles the two glossaries rather than renaming one object repeatedly:
+The component types have distinct responsibilities:
 
-| Term | Reference Coder usage | OpenAgents contract |
-| --- | --- | --- |
-| Program | Proposed Jev-selected state machine in code, itself a signature | Declarative named steps interpreted by Rust under NIP-PRG. The reusable workflow unit. |
-| Signature | Proposed common descriptor for tools, plugins, skills, and programs | Use **operation descriptor** for the selectable interface; a descriptor is metadata, not a new execution engine. |
-| Plugin | Wasm module with a manifest and bounded host imports | Retain this narrow meaning. A plugin can implement an operation or supported host role. |
-| Capability | Granted ability or guest import | A host-granted ability. A capability manifest describes availability and requirements; it grants nothing by itself. |
-| Executor | Built-in agent or external session adapter | Performs a bounded task. Native generation and external agents retain distinct configuration and evidence limits. |
-| Skill | Instructions with progressive loading | Scoped guidance; structured skills may reference supported hooks and operations under existing authority. |
-| Extension package | No single equivalent spanning these contracts | Immutable distribution bundle for components, schemas, documentation, dependencies, and evidence references. |
-| Decision function | Typed semantic function | State/question/output contract plus a consuming policy and admitted model scope; invoked by the host. |
+| Term | Contract |
+| --- | --- |
+| Program | Declarative named steps interpreted by a host under NIP-PRG. |
+| Operation descriptor | Discoverable metadata for a selectable interface; it grants no execution. |
+| Wasm plugin | Executable guest with a manifest and bounded host imports. |
+| Capability | Host-granted ability; a manifest describes requirements and grants nothing. |
+| Executor | An admitted binding that performs a bounded task. |
+| Skill | Scoped, progressively loaded guidance with optional supported hooks. |
+| Extension package | Immutable bundle of components, schemas, documentation, dependencies, and evidence. |
+| Decision function | A specialized typed state/question/output contract with a consuming policy and admitted model scope. |
+| AI signature | Semantic task contract independent of inference strategy. |
+| AI implementation | Exact realization of a signature through a supported entry and pinned dependencies. |
 
 The [repository glossary](../glossary.md) defines the adopted terms. An MCP
 server or an external agent is not a Wasm plugin merely because it adds a
 capability. Model weights remain decision artifacts served through a door;
 a plugin may prepare their input but does not load arbitrary weights into a
 Wasm host or make a model call behind the host's accounting.
+
+## Semantic AI contracts and implementations
+
+An **AI signature** defines task meaning, semantic inputs/outputs, abstention,
+and protected constraints. It differs from both a cryptographic signature
+and an operation descriptor. An **AI implementation** binds that contract to
+a pinned decision function, program, or registered operation, with complete
+functional dependencies.
+
+An optimizer can vary authorized instructions, demonstrations, questions,
+inference strategies, model targets, or bounded internal composition. It
+produces a candidate, not a grant or a deployment. Gym and domain evaluators
+measure candidate behavior; host policy adopts an exact eligible pin.
+
+Programs remain workflows; Wasm plugins remain bounded guests; extensions
+distribute their components. A DSPy module is not automatically a Wasm plugin,
+and a DSPy program needs an explicit supported export or execution binding.
+See the [optimization architecture](../optimization/architecture.md) and
+[NIP-OPT](../../nips/openagents/NIP-OPT.md).
 
 ## Component ownership
 
@@ -64,10 +85,9 @@ semantic boundaries. Generation writes patches, explanations, summaries, and
 open-ended arguments. A plugin performs its typed bounded operation. None of
 these components can edit its own permission envelope.
 
-Use the existing shared `turn::run`, program runtime, decision client,
-`supervise`, write boundary, project scheduler, ATIF, and verifier. New
-libraries may isolate responsibilities as implementation warrants; package
-loading must not introduce a second terminal-specific agent or scheduler.
+Use one host runtime, admission path, scheduler, and verifier for interactive
+and automated clients. Package loading must not introduce a second runtime
+with different authority or accounting.
 
 ## Operation descriptors
 
@@ -142,10 +162,10 @@ Known path conflicts, missing prerequisites, budget exhaustion, revoked
 releases, and denied disclosure are mechanical facts. A high Noul cannot
 override them. Semantic inspection may surface ambiguity about a script, but
 must name the script digest and cannot certify its arbitrary future behavior.
-Existing filesystem write isolation does not establish read or network
+Filesystem write isolation does not establish read or network
 confinement for external executors.
 
-A probe executes only under the approval contract in `crates/capability`.
+A probe executes only under a host approval that pins its exact binding.
 Preserve present, absent, unavailable, unprobed, and unknown states. Never
 interpret an unrun or failed probe as availability. Package trust and probe
 approval remain outside an untrusted checkout.

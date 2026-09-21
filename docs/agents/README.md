@@ -13,6 +13,24 @@ The [OpenAgents NIPs](../../nips/openagents/README.md) define shared contracts;
 the [remaining architecture work](roadmap.md) identifies what still needs
 design and implementation for broader use.
 
+## Semantic contracts and measured improvement
+
+Define the behavior an agent needs independently of the model or inference
+strategy that supplies it. The [AI programming architecture](../optimization/README.md)
+separates semantic signatures, pinned implementations, bounded optimization,
+and host enforcement. DSPy and GEPA can help author or search implementations;
+Gym and domain evaluators establish workload evidence.
+
+Typed decisions, generation, retrieval, and bounded compositions are alternative
+implementation materials. The shared infrastructure must permit measured
+replacement of those choices while protecting authority, disclosure, required
+evidence, effect confirmation, and budgets. Coding-specific question sets and
+benchmarks do not define the general semantic interface.
+
+[OPT](../../nips/openagents/NIP-OPT.md) records the lifecycle. Implementation
+is deferred; the [consolidated proposals](../optimization/proposed-issues.md)
+cover the complete integration without requiring every host to run an optimizer.
+
 ## Three layers
 
 | Layer | Responsibility | Examples |

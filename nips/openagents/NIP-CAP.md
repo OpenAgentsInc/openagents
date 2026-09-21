@@ -1,10 +1,6 @@
 # NIP-CAP — Execution capabilities
 
-`draft` `optional` — revised v1, 2026-09-21. This replaces the earlier
-executor-only draft in place. Existing repository readers cover parts of that
-earlier shape; they require updates before claiming this contract. There is
-no separate legacy publication or automatic schema conversion. See the
-[implementation plan](../../docs/protocol/implementation-plan.md).
+`draft` `optional` — v1.
 
 This NIP defines portable execution descriptions and operator preferences.
 [NIP-PRG](NIP-PRG.md) defines workflows, [NIP-EXT](NIP-EXT.md) distributes
@@ -46,7 +42,6 @@ contract. A release can carry a definition without publishing a separate head.
 A public `30180` has `t` tags `oa:cap:v1` and
 `oa:profile:<profile>`. Transport hints use `t: oa:transport:<transport>`.
 Duplicate semantic tags or disagreement with the resolved definition refuse.
-The earlier multi-letter `transport` tag is display metadata only.
 
 ## Capability body
 
@@ -90,11 +85,6 @@ a guest cannot perform unrecorded inference.
   actual binding and inputs.
 - `evidence` lists supported versioned receipt/result schema IDs.
 
-The former `enforces`/`cannot_enforce` arrays are superseded by this map.
-Revised-v1 readers MUST reject those old semantic fields rather than silently
-reinterpret them. Migrate repository manifests and readers together; retained
-historical runs keep their original bytes.
-
 ## Binding and enforcement
 
 A local binding records definition digest, implementation identity, adapters,
@@ -130,8 +120,8 @@ and argument-file identities. Resolve them again in the intended directory;
 changed bytes or retargeted paths invalidate approval.
 
 Bound probes by time, output, and effects through the host supervisor. A probe
-MUST NOT start paid or effectful task execution. Prefer typed responses. A
-legacy textual workspace probe uses declared refusal/acceptance matches, with
+MUST NOT start paid or effectful task execution. A typed response declares presence directly. A
+textual workspace probe uses declared refusal/acceptance matches, with
 refusal precedence; unexplained nonzero exit, timeout, or excess output is
 unknown. A probe approval is not approval for subsequent delegated work.
 
@@ -171,6 +161,25 @@ Private tags must not leak machine names. Sync to another principal requires
 explicit re-encryption and its own local grants; an owner signature is not
 automatic permission on every device.
 
+## Optimization and inference capabilities
+
+An optimizer, compiler/exporter, evaluator, or compiled inference operation
+uses the same native, adapter, or executor profiles. The host MUST distinguish
+the role and supported input/output schemas in its operation definitions;
+hosting an optimizer does not imply support for its compiled output.
+
+For [OPT](NIP-OPT.md), bindings record compiler/exporter identity, supported
+search surfaces, inference strategies, model recipients, and the mechanisms
+that isolate candidates from protected evaluation data. A remote declaration
+is an assurance claim to evaluate under policy, not proof of isolation.
+
+Proposal, reflection, student inference, grading, builds, and tools all use
+admitted bindings and shared reservations. An evaluation-only grant cannot
+authorize training, export, or deployment. A compiled implementation cannot
+change its model recipient, invoke an undeclared tool, or extend its effects
+because its optimizer selected it. A changed functional binding requires a
+new pin and scoped evaluation; cache/probe state cannot certify its quality.
+
 ## Relationships and conformance
 
 NIP-89 describes event handlers; NIP-AP describes personas. Neither grants
@@ -184,7 +193,4 @@ effects, host-versus-executor enforcement, private-policy ACLs, and replacement
 without automatic updates. Both interfaces must use the same admission path.
 
 Relays advertise `nip-cap-v1` only for conforming validation/discovery and
-configured privacy behavior. Host admission is separate. Earlier and revised
-drafts share `v: 1` during pre-release revision; support follows the mandatory
-shape and conformance evidence, not the number alone. Old-shaped definitions
-refuse rather than being guessed into the new shape.
+configured privacy behavior. Host admission is separate.

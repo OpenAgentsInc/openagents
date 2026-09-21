@@ -13,6 +13,15 @@ learned classes, a Noul returns a probability rather than a label, and a Score
 returns a weighted position on an ordered rubric. Calling the family
 "classifiers" would describe one third of it.
 
+## Role in programmable agents
+
+Typed decisions are one implementation material for semantic AI operations.
+The [AI programming and optimization design](../optimization/README.md)
+separates task meaning from questions, model targets, inference strategies,
+and bounded compositions. DSPy/GEPA can search supported choices; Gym and
+domain evaluators establish workload evidence before operator adoption.
+Generation and richer outputs use their own supported operation contracts.
+
 ## The three primitives
 
 | Type | Asks | Answer |

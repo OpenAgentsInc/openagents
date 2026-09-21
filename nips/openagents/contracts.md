@@ -1,8 +1,7 @@
 # Shared OpenAgents protocol contracts
 
-`draft` `optional` — normative for CAP, PRG, EXT, RUN, CTX, POL, COORD,
-and EVAL v1, and the CJ execution family. These contracts are not implemented merely
-because this document defines them. Existing CJ conversation and decision payloads retain their own rules.
+`draft` `optional` — normative for CAP, PRG, EXT, RUN, CJ, CTX, POL, COORD,
+EVAL, and OPT v1.
 
 The uppercase requirement words express conformance requirements. A reader
 MUST validate the complete required contract before any effect. Signatures
@@ -11,12 +10,12 @@ proves execution, safety, calibration, or continued availability.
 
 ## Domain scope
 
-These are general agent contracts. Coder is the first specialization, not a
+These are general agent contracts. Coding is one specialization, not a
 required runtime or data model. Tasks need an objective, scoped inputs, admitted
 operations, and acceptance criteria; they do not require a repository, shell,
 patch, or terminal. Programs and component schemas carry domain-specific
 types. A host supports only the adapters and semantics it can actually validate
-and enforce. See the [architecture](../../docs/agents/README.md).
+and enforce.
 
 A resource is a host-scoped object or effect destination: for example a file,
 document, dataset, account record, message destination, or calendar. Its scope
@@ -25,7 +24,7 @@ display IDs do not establish that two resources share identity or authority.
 Bindings define canonical identity, version/precondition checks, conflict
 scope, read consistency, and the evidence available after an operation.
 
-## Encoding and compatibility
+## Encoding and validation
 
 New bodies are UTF-8 JSON objects with a required `v`. Reject duplicate object
 keys, invalid Unicode, non-finite numbers, and integers outside
@@ -45,7 +44,7 @@ feature, semantic field, enum, step, bound, or import MUST refuse as
 MAY be ignored but MUST NOT change execution. Optional display metadata is
 not a place to hide an instruction or a required restriction. New execution
 semantics need a new version or a specified feature ID; adding a field alone
-does not establish compatibility. The initial feature list is empty.
+does not define its interpretation. The initial feature list is empty.
 
 Unqualified slugs match `^[a-z0-9][a-z0-9_-]{0,63}$`. Qualified component IDs
 are `<publisher-pubkey>:<package-slug>/<component-slug>`, using a 64-character
@@ -114,6 +113,26 @@ this digest plus exact host bindings, policy/grant references, and input
 identity. Installation locks are not grants. A catalog update cannot mutate
 an admitted run's lock. Resolver limits include total definitions, depth,
 bytes, and attempts; all must be finite and recorded.
+
+## Semantic contracts and optimization identity
+
+[OPT](NIP-OPT.md) defines semantic AI signatures, immutable implementations,
+and bounded optimization studies. An AI signature describes intended behavior;
+a Nostr signature establishes event authorship. An operation descriptor is
+discovery metadata. These three meanings MUST NOT be interchanged.
+
+A lock for an AI implementation includes the signature, executable entry,
+instructions, demonstrations, state builders, policies, model targets,
+inference settings, and complete functional dependency closure. Study,
+candidate, trial, materialization, and evaluation identities remain distinct.
+The study's evaluator must establish which bytes and target actually ran
+before attributing a candidate's result.
+
+Search may vary only declared implementation surfaces. Semantic meaning,
+protected authority, disclosure, evaluation labels, and final acceptance
+cannot change under an unchanged study. Compilation, evaluation, publication,
+installation, promotion, and invocation are separate operations. No learning
+algorithm or matching output schema proves quality or grants authority.
 
 ## Effects, requirements, and enforcement
 
@@ -270,14 +289,12 @@ Common refusal codes are `malformed`, `unsupported_version`,
 `identity_mismatch`, `incompatible`, `revoked`, `stale`, `cannot_enforce`,
 `limit_exceeded`, `idempotency_conflict`, and `conflict`. A profile can add
 versioned causes; human messages are data and MUST NOT be executed or rendered
-as terminal control sequences. Existing Decision API outcomes and refusal
-codes retain their own schema rather than being silently renamed.
+as terminal control sequences. Family-specific outcomes and refusal codes follow their declared schemas.
 
 An execution receipt binds run/step/attempt, component/lock/input/context
 digests, effective authority and enforcement plan, actual recipient, limits,
 usage (unknown values explicit), output/artifact references, outcome,
-verification, and integration. ATIF and decision receipts are linked records,
-not replaced. Offline replay reconstructs recorded inputs and transitions;
+verification, and integration. Trajectory and decision receipts can be linked as separate records. Offline replay reconstructs recorded inputs and transitions;
 re-execution is a separately admitted attempt.
 
 ## Nostr envelopes and discovery
@@ -296,7 +313,7 @@ profile defines read ACLs, retention, fanout, and COUNT/search behavior.
 ### Private artifact envelope
 
 Kind `3188` is a regular immutable declaration of one scoped artifact for
-one recipient. CTX, POL, COORD, and EVAL use it when a separately signed
+one recipient. CTX, POL, COORD, EVAL, and OPT use it when a separately signed
 artifact is needed outside a RUN controller's journal. It does not dispatch
 work. The event has exactly one `p` recipient, one `h` random 64-hex mailbox,
 and `t: oa:artifact:v1`. Mailboxes are generated per admitted sharing scope
@@ -339,8 +356,6 @@ Advertise `oa-private-artifacts-v1` in NIP-11 `supported_extensions` only for
 configured envelope validation, privacy, and retention/retrieval behavior
 supported by fixtures. Keep these draft names out of numeric `supported_nips`.
 
-The kind allocations in this lane are OpenAgents draft assignments, checked
-against the repository's pinned lanes; they are not upstream registration.
-Before implementation or public interoperation, recheck conflicts against a
-reviewed upstream snapshot. If an allocation changes, version the envelope
-mapping; do not silently reinterpret old events.
+The kind allocations in this specification set are draft assignments, not
+upstream registrations. Implementers must verify allocation availability
+before public interoperation.

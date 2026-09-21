@@ -1,390 +1,140 @@
 # NIP-CJ — Agent jobs
 
-`draft` `optional`
+`draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 
-A family of request/response protocols carried over Nostr. Conversation jobs
-retain their existing integer versions, decision jobs retain the System One
-contract, and the new execution family is `openagents.execution.v1`. The
-families have distinct kinds and MUST NOT reinterpret each other's payloads.
+This NIP defines encrypted conversation, typed-decision, and recoverable
+execution jobs. Tasks are domain-independent: document, research, coding,
+and business operations use the same transport with domain schemas and
+host admission. A relay transports requests; it grants no execution authority.
 
-`CJ` is the historical identifier from Coder, the first specialization. It is
-retained along with existing kind numbers and schema IDs. Decision and execution
-jobs are domain-independent: a compatible host can run a document, research,
-data, or business operation under the same contracts. The conversation examples
-below describe the existing Coder terminal profile; they do not require every
-agent to use a terminal, repository, or shell. Domain schemas and host admission
-determine which tasks a worker can actually accept.
+## Families and transport
 
-The relay transports encrypted traffic and does not authorize execution.
-Conversation/decision traffic remains ephemeral. Execution jobs require durable
-worker admission and [NIP-RUN](NIP-RUN.md) records; a relay may retain those
-opaque records under that separate profile without becoming the scheduler.
-The [shared contracts](contracts.md) apply to the new execution family, not
-as a silent rewrite of deployed conversation or decision payloads.
+| Family | Request/control | Result/control answer | Feedback | Payload version |
+| --- | --- | --- | --- | --- |
+| Conversation | `25900` | `26900` | `27000` | Integer `1`. |
+| Decision | `25910` | `26910` | `27010` | `openagents.systemone.v1`. |
+| Execution | `25920` | `26920` | `27020` | `openagents.execution.v1`. |
 
-NIP-90 reserves a similar shape (`5xxx`/`6xxx`/`7000`) but upstream marks it
-unrecommended, and its plaintext `i`/`output` tags and payment flow do not
-fit encrypted terminal sessions. This NIP defines its own kind family.
+All kinds are ephemeral. Relays fan them out to matching subscriptions and
+MUST NOT retain them as durable job state. Execution recovery uses durable
+worker state and [RUN](NIP-RUN.md). Each family has its own parser; a handler
+MUST reject another family's kind or payload rather than reinterpret it.
 
-## Kinds
+Every request has exactly one `p` naming the worker. Every response has
+exactly one `p` naming the caller and one `e` naming the exact request or
+control event it answers. Content is NIP-44 v2 encrypted to that recipient.
+Bodies contain required `v` and `requires`, plus optional inert `meta`.
+The caller subscribes before publishing. An optional NIP-40 `expiration`
+limits delivery; where a body declares a deadline they MUST agree.
 
-All three kinds are ephemeral (`20000`–`29999`): relays fan them out to
-open subscriptions and never persist them. Delivery depends on the connected
-sockets. Closing a socket abandons observation; it does not prove that remote
-generation or an executor stopped.
+Verify NIP-01 event ID/signature, kind, signer, recipient, and request binding
+before accepting a payload. Deduplicate verified event IDs. An unsigned
+subscription label cannot identify a job. NIP-42 authenticates a relay
+connection, not a forwarded event's execution authority. The verified request
+signer maps to host principal/tenant policy outside the payload. Payloads
+contain no bearer credential or self-asserted grant.
 
-| Kind | Name | Direction |
+Workers bound input bytes, output bytes, active jobs, spend, and elapsed time.
+They validate request freshness under a declared skew/window policy. Bodies
+with missing/unknown versions or features refuse. Display strings are data;
+clients must escape terminal controls and active markup.
+
+## Conversation jobs
+
+A request contains `v: 1`, `requires`, `task` (string), `transcript` (ordered
+array of `{role, content}`), and optional `instructions` and `client` strings.
+Role is `user` or `assistant`; content is a string. Both caller and worker
+bound the transcript. Instructions are caller-supplied guidance and cannot
+override host policy. Client is informational and conveys no authority.
+
+Feedback has `v: 1`, `requires`, `type`, and fields for that type:
+
+| Type | Fields |
+| --- | --- |
+| `judgment` | `verdict`: `respond`, `clarify`, `end_conversation`, or `unrouted`; `line`: bounded display string. It is an optional observation, not permission. |
+| `partial` | `seq`: nonnegative integer starting at zero; `delta`: string. |
+| `status` | `status`: `queued`, `processing`, or `error`; error requires `code` and `message`, with optional nonnegative `retry_after_ms`. |
+
+Workers increment `seq` once per emitted partial. After event-ID deduplication,
+a client renders only the next contiguous sequence number. A gap, repeat with
+a different event ID, or out-of-order partial ends incremental rendering;
+the client waits for the complete result. Feedback never proves completion.
+
+A result has `v: 1`, `requires`, `type: "result"`, nonempty `text`, optional
+`usage: {input, output}` (nonnegative token counts), and optional `model`
+(nonempty identifier). Missing usage is unknown, not zero. A model name is
+an attribution claim, not proof of immutable weights. The first valid result
+or terminal error ends observation; subsequent events do not change it.
+
+Conversation jobs have no durable retransmission identity. Another request is
+a new invocation. A dropped socket does not stop remote work. Effects requiring
+recovery, cancellation, or exact implementation attribution use execution jobs.
+
+## Typed decision jobs
+
+A request has `v: "openagents.systemone.v1"`, `requires`, `type: "systemone"`,
+`request` (common random ID), `attempt` (positive integer), `model` (nonempty
+host-admitted target identifier), `state` (string), `questions`, and `deadline`
+(Unix seconds). Questions is a nonempty object keyed by unique nonempty IDs.
+Each question has `type`, `instructions` (string), and the following fields:
+
+| Type | Input | Answer |
 | --- | --- | --- |
-| `25900` | Job request | Terminal → worker |
-| `26900` | Job result | Worker → terminal |
-| `27000` | Job feedback | Worker → terminal |
+| `noul` | No additional fields. | `{type: "noul", noul}` with a finite probability in `[0,1]`. |
+| `choice` | `criteria`: nonempty map of unique option IDs to description strings. | `{type: "choice", choice, confidence, probabilities}`; selected option belongs to criteria, and probabilities names exactly those options. |
+| `score` | `criteria`: ordered nonempty array of level description strings. | `{type: "score", score, confidence, legend, probabilities}`; legend maps zero-based decimal-string indexes to the requested descriptions; probabilities maps zero-based level indexes, encoded as decimal strings, to probabilities; score is their probability-weighted index. |
 
-A second, proposed family carries decision jobs on kinds `25910`,
-`26910`, and `27010`; see Decision jobs below. The families never share a
-kind, so a worker that speaks only one can never receive the other's
-payloads.
+All probabilities and confidence values are finite in `[0,1]`. Categorical
+probabilities sum to one within absolute tolerance `0.000001`. Choice confidence
+is the selected option's probability; select a maximum-probability option and
+break ties by lexicographic option ID. Score confidence is the largest level
+probability; score is within `0.000001` of the weighted index. This transport
+does not certify calibration or turn a probability into permission. Consumers
+pin any abstention, threshold, and interpretation policy separately.
 
-## Job request — kind `25900`
+The same state supplies every question; one question does not consume another
+answer from the same request. Dependent questions require separate calls.
+A result contains `v`, `requires`, `type: "result"`, request/attempt, common
+`outcome`, `dispatched`, `response`, `receipt`, and `code`. Receipt is an
+ArtifactRef to the shared execution receipt. On `completed`, response contains
+`model`, `answers` keyed exactly as requested, and `usage` (ArtifactRef or null),
+and code is null. On other outcomes, response is null and code is a bounded
+cause string or null when no more specific cause is known. Answer types must
+match the questions. Refusals, transport failure, and model answers are distinct.
 
-Published by the terminal to ask the worker for one turn of conversation.
+Progress is `type: "status"` with request/attempt and status `queued`,
+`processing`, or `error`. Error includes code/message and optional
+`retry_after_ms`; it is not evidence that an admitted call incurred no cost.
+The caller obtains the final receipt or retains an unknown outcome.
 
-```jsonc
-{
-  "kind": 25900,
-  "pubkey": "<customer x-only public key, hex>",
-  "content": "<NIP-44 payload encrypted to the worker pubkey>",
-  "tags": [
-    ["p", "<worker x-only public key, hex>"],
-    ["expiration", "<unix seconds>"]   // optional NIP-40 guard
-  ]
-}
-```
+The idempotency key is `(worker, principal, request, attempt)`. A fingerprint
+covers JCS of the complete request body. Retransmission with the same key and
+fingerprint retrieves recorded state without a second charge or model call;
+changed content is `idempotency_conflict`. Reserve quota and persist admission
+before dispatch. A new permitted attempt increments attempt under the same
+request, after preceding uncertain spend/execution is reconciled. The worker
+publishes its supported retention horizon; outside it, absence of state cannot
+justify automatic replay. Use execution jobs when a required recovery horizon
+or model-call composition is part of the task.
 
-The `p` tag names exactly one worker. The decrypted content is a JSON
-object:
+Cancellation uses `type: "cancel"`, the same version/features, request/attempt,
+and an `e` tag naming the request. Require the original signer. Before dispatch,
+resolve cancelled with `dispatched: false`; after dispatch, propagate a stop
+request and preserve unknown effects or usage until reconciliation. Receipt
+of a cancel control is not proof of stop.
 
-```jsonc
-{
-  "v": 2,
-  "task": "the user's draft text",
-  "transcript": [
-    { "role": "user", "content": "earlier turn" },
-    { "role": "assistant", "content": "earlier reply" }
-  ],
-  "instructions": "the system prompt for the turn",
-  "client": "coder 0.1.0"
-}
-```
-
-- `v` is the payload version; see Versions below.
-- `transcript` is the bounded conversation so far, oldest first. The
-  terminal bounds it; the worker bounds it again.
-- `instructions` is the system prompt for the turn; it may be absent.
-- `client` is informational.
-
-## Job feedback — kind `27000`
-
-Published by the worker, `e`-tagged to the request it answers, `p`-tagged
-to the customer. Any number may precede the result.
-
-```jsonc
-{
-  "kind": 27000,
-  "pubkey": "<worker pubkey>",
-  "content": "<NIP-44 payload encrypted to the customer pubkey>",
-  "tags": [
-    ["e", "<job request event id>"],
-    ["p", "<customer pubkey>"],
-    ["status", "processing"]          // optional coarse marker
-  ]
-}
-```
-
-The decrypted content is a JSON object with a `type` discriminator:
-
-```jsonc
-{ "v": 2, "type": "judgment", "verdict": "respond",
-  "line": "respond 1.00 · conf 1.00 · risk 0.0 · prog 0.8 · code 0.03" }
-
-{ "v": 2, "type": "partial", "seq": 0, "delta": "The borrow checker" }
-
-{ "v": 2, "type": "status", "status": "queued" }
-
-{ "v": 2, "type": "status", "status": "error",
-  "code": "quota_exhausted", "message": "free allowance used" }
-```
-
-- `judgment` — the classification verdict the worker computed for the
-  turn. `verdict` is one of `respond`, `clarify`, `end_conversation`,
-  `unrouted`. `line` is a display-ready one-line summary; terminals render
-  it verbatim.
-- `partial` — one streaming text delta of the answer. Under version 2 it
-  carries `seq`: the count of partial events the worker published before
-  this one in the same job, starting at `0`. A terminal displays a delta
-  only when `seq` equals the count it has already accepted, and the first
-  delta that is not next — early, late, or repeated — ends the stream:
-  nothing is buffered and nothing after it is rendered. A repeated delivery
-  of the same event ID is ignored before checking the sequence. The result
-  carries the full answer regardless of what the stream dropped.
-- `status` — coarse state or a terminal error. `error` ends the job;
-  `code` is a machine-readable reason (`quota_exhausted`,
-  `rate_limited`, `offline`, `not_admitted`, `unsupported_version`,
-  `internal`), `message` is display text. `not_admitted` means the worker
-  does not answer requests from the customer's pubkey; it is sent rather
-  than withheld so that a customer can tell a refusing worker from an
-  absent one.
-
-## Job result — kind `26900`
-
-The terminal event of the job: the finished answer and its accounting.
-
-```jsonc
-{
-  "kind": 26900,
-  "pubkey": "<worker pubkey>",
-  "content": "<NIP-44 payload encrypted to the customer pubkey>",
-  "tags": [
-    ["e", "<job request event id>"],
-    ["p", "<customer pubkey>"]
-  ]
-}
-```
-
-```jsonc
-{
-  "v": 2,
-  "type": "result",
-  "text": "the complete answer",
-  "usage": { "input": 554, "output": 61 },
-  "model": "google/gemini-3.8-flash"
-}
-```
-
-`usage` is optional; when absent the terminal shows no token count.
-`model` is optional too, and a worker that can name the model it used
-should: the terminal's own session record cannot name it, because the
-terminal does not choose it, so the name the worker sends is the only
-evidence of what answered. A job ends on the first result or
-`status: error` the terminal accepts; later events for the same `e` tag
-are ignored.
-
-A result must carry nonempty `text`. Partial feedback is a preview and cannot
-replace a missing final answer.
-
-## Binding
-
-The relay is transport, not authority. The subscription label a relay
-delivers an event under is an unsigned routing hint, so it never
-identifies the job. Before reading a payload the terminal checks what the
-signature covers: the kind is `26900` or `27000`, the signer is the
-worker's key, an `e` tag names the request this turn published, and a
-`p` tag names the terminal's own key. A correctly signed answer to an
-older job — relabeled onto the current subscription — fails the `e` tag
-check, and an answer meant for another customer fails the `p` tag check.
-Delivered event ids are deduplicated after those checks, so a forged
-event cannot claim a genuine event's id and suppress it.
-
-## Versions
-
-`v` names the protocol revision a payload conforms to. This document
-defines `2`; revision `1` differs only in that `partial` feedback carried
-no `seq`, so its order is the relay's word rather than the worker's.
-
-- A terminal accepts `v: 1` and `v: 2` worker payloads and rejects the
-  field's absence and every other value.
-- A worker answers at the version the request named: a `v: 1` request
-  gets `v: 1` feedback, whose partials carry no `seq` because the
-  terminal cannot check one. A request whose `v` is absent or names
-  anything else is declined with `status: error`, code
-  `unsupported_version`, rather than generated against a schema the
-  worker cannot read.
-- Under `1`, partial deltas are a liveness signal: they prove the worker
-  answered but are never rendered as text, because nothing signed their
-  order. A `v: 1` result still completes the job.
-- Under `2`, a `partial` without an integer `seq` and a string `delta` is
-  malformed and establishes nothing.
-
-## Flow
-
-1. The terminal connects to the relay and answers the NIP-42 challenge
-   with a kind-`22242` event (required when the relay demands auth;
-   recommended always — the `npub` is the billing identity).
-2. The terminal builds and signs the kind-`25900` request, opens a
-   subscription `{ "#e": [<request id>] }`, then publishes the request.
-   Subscribing before publishing avoids the race where fast feedback is
-   missed.
-3. The worker — itself an authenticated relay client subscribed to
-   `{ "kinds": [25900], "#p": [<its pubkey>] }` — receives the request,
-   decrypts it, and publishes `judgment`, `partial`, and `status`
-   feedback followed by exactly one result, all `e`-tagged to the
-   request and `p`-tagged to the customer.
-4. The terminal renders the judgment line, streams partial deltas, and
-   folds the result into the transcript.
-
-A terminal that sees no feedback within its deadline reports an unknown or
-unavailable outcome according to observed contact. This conversation family
-has no durable retry identity: another request is a new run, and MUST NOT be
-used to recover an uncertain effectful task automatically. Use the execution
-family for effectful work requiring retry identity or recovery.
-
-## Encryption
-
-All payloads use NIP-44 version-2 encryption over the sender/recipient
-conversation key, exactly as gift wraps do. On a shared relay this keeps
-tasks, transcripts, judgments, and answers visible only to the two
-parties; tags carry only routing metadata (kind, `e`, `p`).
-
-## Identity and quotas
-
-- The customer's `npub` — the NIP-42 identity — is the billing identity.
-  Anonymous usage is simply a freshly generated keypair.
-- Quotas, allowances, and rate decisions are worker policy, not relay or
-  protocol rules. The worker communicates refusal through
-  `status: error` feedback with a typed `code`.
-- An operator MAY require NIP-13 proof of work (`nonce` tag) on job
-  requests; relays already validate the tag.
-- Per-turn accounting SHOULD be emitted by the worker as a NIP-AM
-  kind-`44200` metric event encrypted to the owner (stored kind — the
-  durable ledger), separate from this ephemeral protocol.
-
-## Decision jobs (proposed)
-
-`proposed` — specified, not implemented. No decision worker or
-relay-side decision caller exists yet. The wire shapes are defined here;
-the service contract — principal mapping, admission order, quota
-settlement, deadlines, cancellation, and the test matrix — is
-[docs/decision-models/api/relay-decision-contract.md](../../docs/decision-models/api/relay-decision-contract.md).
-
-A decision job carries one `POST /v1/systemone` call — `state` plus typed
-`questions` — instead of a conversation turn. The family has its own
-kinds, all ephemeral:
-
-| Kind | Name | Direction |
-| --- | --- | --- |
-| `25910` | Decision job request | Caller → decision worker |
-| `26910` | Decision job result | Decision worker → caller |
-| `27010` | Decision job feedback | Decision worker → caller |
-
-### The envelope
-
-Every payload in the family leads with two fields:
-
-- `v` — the schema tag, the string `"openagents.systemone.v1"`. It is a
-  string, never the integer `v` of the conversation family, so the two
-  payload grammars cannot share a version check.
-- `type` — the discriminator. Requests are `systemone` or `cancel`;
-  feedback is `status`; the result is `result`.
-
-A missing `v`, any other value, or a `type` the reader does not know is a
-refusal — `unsupported_version` or `malformed` — never a guess.
-
-```jsonc
-// kind 25910, decrypted content — a decision request
-{
-  "v": "openagents.systemone.v1",
-  "type": "systemone",
-  "request": "req-9f4c2a",      // logical request id, stable across retries
-  "attempt": 1,                 // one-based; a retry bumps it
-  "model": "shared-kev",        // the door, as in POST /v1/systemone
-  "state": "I was charged twice on the March invoice.",
-  "questions": {
-    "refund": {"type": "noul", "instructions": "Does the customer ask for money back?"}
-  },
-  "deadline": 1784599800        // unix seconds, optional; mirror it in an expiration tag
-}
-
-// kind 25910, type "cancel" — best-effort cancellation, e-tagged to the request
-{ "v": "openagents.systemone.v1", "type": "cancel", "request": "req-9f4c2a" }
-
-// kind 27010 — progress or a terminal typed refusal
-{ "v": "openagents.systemone.v1", "type": "status", "request": "req-9f4c2a",
-  "attempt": 1, "status": "processing" }
-
-{ "v": "openagents.systemone.v1", "type": "status", "request": "req-9f4c2a",
-  "attempt": 1, "status": "error", "code": "quota_exhausted",
-  "message": "daily input budget spent", "retry_after_ms": 3600000 }
-
-// kind 26910 — the terminal event: outcome, the verbatim systemone
-// response, and the sealed execution receipt (transport "relay")
-{ "v": "openagents.systemone.v1", "type": "result", "request": "req-9f4c2a",
-  "attempt": 1, "outcome": "answered", "response": { "model": "shared-kev",
-  "answers": {"refund": {"type": "noul", "noul": 0.91}},
-  "usage": {"input_tokens": 412, "output_tokens": 2} },
-  "receipt": { "v": "openagents.receipt.execution.v1",
-    "transport": "relay", "digest": "sha256:…" } }
-```
-
-`request`/`attempt` are the idempotency pair `Idempotency-Key` and
-`X-Attempt` are on the HTTP lane; the request event's `id` is the
-attempt's transport identity and the receipt's `attempt_id`. The refusal
-`code` vocabulary is the gateway's plus the relay lane's own (`stale`,
-`not_admitted`, `unsupported_version`); the result embeds a sealed
-`openagents.receipt.execution.v1` receipt with `transport: "relay"`.
-
-### Binding, on this family
-
-The signature checks are the conversation family's checks with the kinds
-and the payload fields swapped in. The worker accepts a request only when
-the kind is `25910`, the signature verifies, a `p` tag names it, and
-`created_at` is inside its request window. The caller accepts feedback or
-a result only when the kind is `26910` or `27010`, the signer is the
-worker's key, an `e` tag names this attempt's request event, a `p` tag
-names the caller, and the decrypted `request` and `attempt` match the job
-in flight.
-
-The payload carries no credential: the verified event signer's pubkey is
-the principal, mapped to a tenant by an operator-provisioned binding outside
-the payload. NIP-42 controls the connection to the relay; the forwarded
-event does not attest to that connection. A field claiming to be a bearer
-secret authorizes nothing. Cancellation requires the original request signer
-and resolves the referenced request within that principal and tenant. A
-cancel before dispatch produces a terminal result with outcome `unattempted`
-and cause `cancelled`; it does not remain a progress-only state.
-
-### How an existing worker rejects this family
-
-The kind split is the compatibility mechanism, and it is deliberate, not
-cosmetic:
-
-- A Coder-only worker subscribes `{"kinds": [25900], "#p": [<its key>]}`,
-  so a kind-`25910` request never reaches it — the relay's filter is the
-  first rejection. If such an event arrived anyway, the worker's address
-  check rejects the kind before anything is decrypted. The rejection the
-  caller sees is the contact deadline expiring — `worker_absent` — which
-  is accurate: for a decision job, a worker that speaks only the
-  conversation family is absent.
-- Sharing kind `25900` would not be equivalent. A decision payload at any
-  integer `v` the worker does not know, or at the string schema tag,
-  would be refused `unsupported_version` — but only because the deployed
-  worker happens to check `v` before reading anything else. A decision
-  payload tagged `v: 2` is not refused at all: the worker reads `task`,
-  `transcript`, and `instructions`, finds them absent, and generates an
-  answer to an empty prompt. That is the silent reinterpretation the
-  envelope must make impossible, so the boundary is the kind, not the
-  payload version.
-- Symmetrically, the decision worker subscribes `{"kinds": [25910], …}`
-  and never sees a conversation request; one delivered anyway fails its
-  `v` check, since `2` is not `"openagents.systemone.v1"`.
-
-### Differences from the conversation family
-
-- One job is one decision call: no transcript, no instructions, no
-  streaming `partial` or `judgment` feedback. Progress is `status` only.
-- The result carries a typed `outcome` and a sealed execution receipt —
-  a relay call leaves the same evidence an HTTP call does.
-- `request`/`attempt` make a retried job one logical request; the
-  conversation family has no retry identity because a turn is not
-  retried, it is re-run.
-- `cancel` exists on the decision family. Dropping a conversation socket ends
-  the caller's observation but does not establish remote cancellation.
+Refusal causes include shared codes and `busy`, `quota_exhausted`,
+`rate_limited`, and `uncalibrated`. Workers admit model targets, recipients,
+capacity, and budgets under policy; a client naming a model does not authorize
+its use. Only supported families and roles may be advertised.
 
 ## Execution jobs
 
-`proposed` — v1, not implemented. This family carries an admitted operation or
+This family carries an admitted operation or
 program, typed task input, context references, and durable outcomes. It does
 not use conversation text as an executable command or require an LLM to select
 a program. CAP/PRG/EXT/RUN and the shared contracts are normative for this
-family. Existing conversation/decision handlers MUST reject these kinds.
+family. Each handler MUST validate its own kind and schema before admission.
 
 | Kind | Name | Direction |
 | --- | --- | --- |
@@ -410,7 +160,7 @@ The body contains `v: "openagents.execution.v1"`, `requires`, `type: "execute"`,
 | `request` | Random logical request ID stable across retries. |
 | `attempt` | Positive integer; retransmission preserves it, a permitted new attempt increments it. |
 | `run` | Logical remote run ID, distinct from parent run ID. |
-| `target` | Exact operation/program DefinitionRef. |
+| `target` | Exact operation, program, or OPT AI implementation DefinitionRef. |
 | `lock` | ArtifactRef of the complete dependency lock. |
 | `input` | Schema-valid bounded typed value, or `{artifact: ArtifactRef}` when the target schema specifies artifact input. |
 | `context` | ArtifactRef of a recipient-specific context manifest. |
@@ -477,7 +227,7 @@ completion. Optional view/evidence ArtifactRefs remain recipient-scoped.
 dispatch also contains a typed `code` and `message`. Refusals distinguish
 unsupported semantics, permission, stale inputs, limits, busy capacity,
 revocation, unavailable content, and identity conflict. Unknown spend is null,
-never zero. Decision subcalls retain their own sealed receipt schema.
+never zero. Decision subcalls retain separate execution receipts.
 
 Persist results before reporting them as recoverable. One logical terminal
 result can be delivered repeatedly, bound to each retransmission's event ID;
@@ -515,17 +265,26 @@ An expired/stale execute event is refused and MUST NOT recreate forgotten
 work. A new attempt after expiry requires explicit reconciliation policy;
 absence of a tombstone is not permission to repeat an effect.
 
-### Compatibility and conformance
+### Optimization and compiled execution
 
-No existing family is renumbered or implicitly upgraded. CJ conversation v1/v2
-remain their established payload versions; the decision family remains
-`openagents.systemone.v1`; this new execution contract is v1. Core kinds,
-version/type validation, and schemas provide separate rejection boundaries.
+An execution target may be an [OPT](NIP-OPT.md) AI implementation or a
+registered optimization, materialization, or evaluation operation. Its typed
+input pins study/candidate/trial references; its lock pins the complete
+functional closure. The worker verifies those identities before measuring or
+attributing a result and returns materialization and evaluation artifacts.
+A generic conversation response cannot substitute for that evidence.
 
-Required fixtures cover all three family cross-deliveries, signer/tenant
-binding, repeated and conflicting fingerprints, lost admission/result traffic,
-crashes before/after each effect boundary, restart/status/replay, retention
-expiry, cancellation races, stale bases, budget settlement, duplicate/forked
-results, and unauthorized controls. Demonstrate terminal/headless behavior
-through the same host path. Do not advertise an execution worker until this
-complete path runs; relay fanout alone is not execution support.
+The same admission, disclosure, reservations, retries, and durable recovery
+apply to proposal, reflection, student, and judge work. New candidate bytes
+require a new candidate/trial identity; retransmission cannot hot-swap them.
+No dedicated optimizer job family or arbitrary code payload is required.
+
+## Conformance
+
+Required cases cover family cross-delivery, malformed schemas, sequence gaps,
+signer/principal binding, wrong answer keys/types, invalid probability mass,
+repeated/conflicting fingerprints, lost admission/results, crash boundaries,
+restart/status/replay, retention expiry, cancellation races, stale inputs,
+unknown spend, duplicate/forked results, unauthorized controls, candidate
+substitution, and unbound reflection calls. Relay fanout alone cannot establish
+worker execution, materialization, or recovery conformance.

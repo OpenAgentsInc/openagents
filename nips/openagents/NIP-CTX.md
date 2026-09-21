@@ -1,13 +1,10 @@
 # NIP-CTX — Task state and context views
 
-`draft` `optional` — v1, 2026-09-21. This specifies exchangeable artifacts,
-not an implemented evidence service. The [shared contracts](contracts.md)
-are normative. [NIP-RUN](NIP-RUN.md) records execution; this NIP describes
-the state supplied to it. The [design addendum](../../docs/coder/design/typesafe-agent-protocol-addendum.md)
-maps the source proposal to host and protocol responsibilities.
+`draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
+[NIP-RUN](NIP-RUN.md) records execution; this NIP describes its supplied state.
 
-Task state is domain-independent. Repository evidence is Coder's specialization;
-document, dataset, conversation, and external-resource observations use the
+Task state is domain-independent. Repository, document, dataset, conversation,
+and external-resource observations use the
 same task/context lifecycle with admitted source adapters.
 
 ## Transport and authority
@@ -189,6 +186,32 @@ Binary and multimodal evidence retains its MIME type and typed schemas. The
 byte anchors above identify stored bytes; they do not define image regions,
 audio timing, spatial coordinates, or permission to send media to a model.
 Those require explicit supported domain formats and recipient capabilities.
+
+## Optimization context and derived data
+
+Context selection, representations, state extraction, and bounded expansion
+can be implementations of [OPT](NIP-OPT.md) semantic signatures. Record the
+actual selected implementation and lock through the transform/selection
+references and execution receipts. The NIP defines evidence obligations,
+not a mandatory per-item model call or retrieval algorithm.
+
+An optimizer, reflection model, student, and evaluator are separate recipients.
+Construct a scoped context manifest for each; a student grant does not disclose
+its traces to a reflector. Carry data-use and retention restrictions into
+summaries, examples, prompts, and other derivatives. Retrieved trace content
+is evidence, never an instruction to change the optimizer's authority.
+
+Search and selection context must exclude protected confirmation labels and
+grader state. Trial inputs contain only the task-visible material permitted
+by the study. Record redaction, unavailable observations, and omitted
+diagnostics without inventing complete coverage. Optimization feedback can use
+authorized observable outputs, tool results, and evaluator diagnostics; it
+does not require hidden model reasoning or access to private internal state.
+
+Mandatory constraints and source provenance survive every candidate context
+policy. Improved token counts cannot compensate for losing required evidence.
+Evaluation checks retrieval coverage, selection coverage, expansion, and
+whole-task outcomes separately.
 
 ## Conformance
 

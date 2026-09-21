@@ -1,9 +1,6 @@
 # NIP-PRG — Programs
 
-`draft` `optional` — revised v1, 2026-09-21. The earlier draft is revised
-in place. Current local programs implement a narrower shape; migrate them
-with their readers before claiming this contract. Composition, generic
-invocation, and Wasm execution are implementation work.
+`draft` `optional` — v1.
 
 A program is a typed workflow interpreted by a host. It names operations,
 sources, functions, and children by pinned identity, grants no authority,
@@ -20,7 +17,7 @@ test runs are examples, not required step semantics.
 
 ## Discovery and immutable execution
 
-Kind `30182` remains an addressable program discovery head, with one `d`
+Kind `30182` is an addressable program discovery head, with one `d`
 slug, `t: oa:program:v1`, and one `t: oa:step:<kind>` for each distinct
 step kind. Its body contains the complete definition below or
 `{v: 1, requires: [], definition: DefinitionRef}`. Tags MUST match the
@@ -119,8 +116,30 @@ Decision functions keep wording and generation guidance in separate digested
 assets. Record actual state/options, function, model, response, and consuming
 policy. Scoreability is not calibration or permission. Unavailable answers
 remain distinct from `none`. Batch independent questions only under backend
-limits; dependent questions wait for evidence. Legacy inline `briefing` and
-bare source/question slugs require explicit migration to qualified references.
+limits; dependent questions wait for evidence. All component references use
+qualified identities.
+
+## Semantic contracts and replaceable inference
+
+[OPT](NIP-OPT.md) separates a semantic AI signature from its pinned
+implementation. A program may use `invoke` with an AI implementation target.
+The host validates the signature, resolves the declared entry kind and complete
+lock, and invokes it through normal admission. Input/output schemas MUST match
+the signature; all nested calls share bounds and produce execution evidence.
+
+`decide` remains the specialized typed decision-function step. It is not the
+only way to express AI behavior. Generation, retrieval, iterative inference,
+and composed strategies can be represented by a supported operation or program
+entry. A host MUST refuse an unsupported strategy rather than interpret a
+foreign runtime serialization or invent an unbounded loop.
+
+An optimization study can search instructions, examples, model targets,
+parameters, or bounded internal composition. It produces a complete immutable
+program/implementation candidate. It MUST preserve the declared semantic
+signature and protected control constraints. Approval consumption, disclosure,
+effect checks, independent verification, and parent reservations cannot be
+optimized away. No candidate modifies an active graph or invents a new step
+kind through data. All candidates undergo the same graph/schema validation.
 
 ## Composition, fan-out, and retries
 
@@ -223,7 +242,7 @@ module SHA-256 hex without prefix. Body has `v: 1`, `requires`,
 references must agree with the pinned plugin. A program MUST NOT pin module
 bytes while letting manifest, ABI, or schema identity float.
 
-## Conformance and rollout
+## Conformance
 
 Fixtures must cover closure resolution, schemas/bindings, unsupported kinds,
 fan-out/order, shared reservations, unknown-effect retries, skipped branches,
@@ -233,5 +252,4 @@ and receipts establish attribution, not remote attestation.
 
 Relays advertise `nip-prg-v1` after conforming definition/head validation and
 indexed discovery. Runtime support separately names step/profile/ABI sets;
-serving definitions does not advertise a Wasm executor. Revised-v1 required
-fields distinguish the former draft, which is not silently upgraded.
+serving definitions does not advertise a Wasm executor.

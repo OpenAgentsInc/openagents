@@ -1,7 +1,6 @@
 # NIP-RUN — Durable runs and evidence
 
-`draft` `optional` — v1. Proposed protocol. A local run-state store already
-exists; this contract requires additional integration and network behavior.
+`draft` `optional` — v1.
 The [shared contracts](contracts.md) and [NIP-CJ](NIP-CJ.md) define payload
 identity and remote admission. Nostr transports attributable records; it does
 not provide a transactional job lock or exactly-once effects.
@@ -114,7 +113,7 @@ for reconciliation; this contract makes no exactly-once execution claim.
 
 One controller serializes a run's authoritative journal. Workers and reviewers
 return signed results/receipts that it references; they do not concurrently
-append independent authoritative branches. Purely local ATIF output and worker
+append independent authoritative branches. Local trajectory output and worker
 telemetry may have different writers and are linked rather than merged by time.
 
 Handoff requires the old controller to stop new dispatch, obtain a fencing
@@ -154,18 +153,33 @@ is not a bearer grant.
 
 Offline replay verifies retained records and reconstructs supplied context
 without running tools or inference. Re-execution is a new authorized attempt.
-The existing `openagents.runstate.v1` local store must map its states explicitly
-to this journal; neither its enum nor historical ATIF records are renamed
-implicitly. NIP-AM accounting and NIP-AO live telemetry remain complementary;
-NIP-AE mutable memory is not an immutable run journal.
-
 CTX task frames/context builds, POL approvals/routes, COORD claims/findings,
 and EVAL reports are typed artifacts linked by these records. A participant's
 separately signed private artifact uses the shared `3188` envelope; receiving
 it does not append an authoritative transition or activate a background job.
 The controller validates its authority and freshness before recording adoption.
 
-## Conformance and rollout
+## Optimization lineage and immutable execution
+
+An [OPT](NIP-OPT.md) study uses admitted runs for proposing, building,
+materializing, evaluating, and confirming candidates. Their typed input and
+observed artifacts bind study, candidate, trial, implementation, target,
+and materialization identities. The controller validates those records before
+adopting them into its journal. An optimizer cannot declare itself the
+controller of another principal's evaluation or deployment.
+
+Proposal completion, successful materialization, evaluation outcome, candidate
+selection, and operator promotion are different observations. They MUST NOT
+be collapsed into a single successful run. A candidate that builds but fails
+evaluation remains a completed build with failed quality evidence.
+
+Recovery preserves frozen study inputs, exposure/confirmation consumption,
+candidate pins, and outstanding reservations. Resume does not rerun unknown
+effects, release uncertain spending, reset a confirmation allowance, or select
+new bytes under the same attempt. Active runtime work and optimization work
+have separate locks; adopting a new implementation affects only new admissions.
+
+## Conformance
 
 Required cases include duplicate/out-of-order delivery, chain gaps, forged
 owners/controllers, recipient isolation across all query surfaces, forks,

@@ -1,48 +1,29 @@
 # TypeSafe agent: protocol, host, and client responsibilities
 
-Status: proposed architecture and implementation assessment, 2026-09-21.
-Baseline: `efbe3cfd7cc567427c385dd2cfe7050bfbc6d395`. The new NIPs below are
-v1 drafts; this document does not claim that their services are implemented.
-It interprets the [founders' brainstorming post](thoughts-on-a-typesafe-coding-agent.md),
-including all three appendices and the retained images. The source remains
-unchanged. The [analysis](typesafe-agent-analysis.md),
-[roadmap](typesafe-agent-roadmap.md), and
-[extension opportunity assessment](../../extensions/opportunities.md) provide
-the product rationale and proposed measurements.
+Status: target protocol, host, and client responsibilities. Coding is the first
+specialization of general agent infrastructure. The [source proposal](thoughts-on-a-typesafe-coding-agent.md)
+identifies opportunities; the [architecture](../../optimization/README.md)
+defines how semantic programming and bounded learning realize them.
 
-Coding is the first specialization of the [general agent architecture](../../agents/README.md).
-The shared state, permission, workflow, coordination, and evaluation contracts
-apply across domains. This document retains coding examples to explain the
-source proposal; the [general architecture notes](../../agents/roadmap.md)
-cover domain adapters and remaining gaps beyond that initial specialization.
+## Semantic programming and optimization responsibilities
 
-The main missing capability is reusable, versioned state that can serve many
-recipients and tasks. Nostr should make that state, its authority, and its
-outcomes exchangeable. Hosts must collect it, decide what to supply, enforce
-effects, and run the work. Clients must let users inspect and control it.
-Putting more intelligence into event kinds does not implement those host duties.
+[NIP-OPT](../../../nips/openagents/NIP-OPT.md) defines task signatures,
+immutable implementations, search/data plans, candidates, materialization,
+trials, accounting, and study results. EVAL supplies measurement and admission;
+EXT distributes eligible components; CAP/PRG/CJ/RUN/CTX/POL/COORD preserve the
+same authority, evidence, execution, and coordination boundaries.
 
-## What is already specified, and what this change adds
+Nostr exchanges these contracts and attributable records. Hosts isolate
+proposers and graders, enforce data rights, load the exact candidate, and
+account for every model/tool call. DSPy/GEPA bridges provide supported authoring
+and search; Gym and domain evaluators measure the complete task. Clients show
+the active pin, evidence scope, limitations, and adoption outcome.
 
-CAP describes execution interfaces and local bindings; PRG describes typed
-workflows and the Wasm ABI; EXT distributes immutable components and scoped
-skills; RUN records durable execution and recovery; CJ transports conversation,
-decision, and execution jobs. Those contracts already cover much of the post.
-They lacked interoperable detail for the state *between* invocations and for
-evaluating whether a more elaborate agent actually helps.
-
-| New specification | Missing shared contract | Placement |
-| --- | --- | --- |
-| [NIP-CTX](../../../nips/openagents/NIP-CTX.md) | Task frames, snapshots, evidence representations, context requests/selection receipts, and bounded hierarchical history expansion. | Artifact schemas carried locally, through CJ/RUN, or private envelopes. |
-| [NIP-POL](../../../nips/openagents/NIP-POL.md) | Scoped mandatory instructions, exact action approvals, recipient/disclosure policy, and route/cache/cost records. | Host-consumed policy and receipt artifacts; no universal permission server. |
-| [NIP-COORD](../../../nips/openagents/NIP-COORD.md) | Task proposals, exact reuse, fenced resource claims, background plans, findings, and integration preconditions. | Operations at an admitted coordinator through CAP/CJ, with RUN durability. |
-| [NIP-EVAL](../../../nips/openagents/NIP-EVAL.md) | Workload/suite identity, comparable reports, adverse outcomes, publication, and scoped promotion evidence. | Private artifacts by default; optional signed public evaluation declarations. |
-
-Only two additional event kinds are needed: private immutable artifact
-declarations (`3188`) and optional public evaluation declarations (`3189`).
-Their numbers are draft allocations checked against the pinned NIP lanes.
-There is no separate event kind for every question, selected span, tool,
-background feature, or model. Small local operations need no relay round trip.
+The [opportunity map](../../optimization/architecture.md#map-the-typesafe-opportunities-to-learnable-behavior)
+defines what can be learned for every recommendation. Protected authority,
+privacy, and verification are not optimization parameters. The
+[proposed-issues document](../../optimization/proposed-issues.md) is the single
+unfiled backlog for full integration.
 
 ## Recommendation-by-recommendation coverage
 
@@ -143,31 +124,20 @@ Nostr; record enough identity and measured usage to explain their effects.
 
 ## Implementation gaps and a practical order
 
-The baseline has bounded deterministic repository evidence in
-[`coder::evidence`](../../../crates/coder/src/evidence.rs), host permits,
-protected verification, a project supervisor, run-state primitives, ATIF,
-decision clients, and Gym. These are useful foundations. The evidence candidate
-builder is not yet the full persistent CTX service. Existing protocol parsers
-and local manifest readers also do not automatically implement the revised
-OpenAgents v1 drafts. Preserve their measured behavior while migrating schemas
-and consumers together.
-
 | Increment | Extend | Completion evidence |
 | --- | --- | --- |
-| 1. Protocol and artifact foundation | `crates/nostr`, scoped storage, schemas/fixtures, relay privacy, CJ/RUN integration. | Typed references survive local/remote round trips; forged issuers, oversized payloads, inaccessible content, and query ACL leaks refuse. |
-| 2. Evidence and task state | `coder::evidence`, shared turn/trace path, source adapters, task-frame storage. | A user correction survives restart; bounded originals expand; changed source/configuration invalidates stale conclusions. |
+| 1. Protocol and artifact foundation | Protocol validators, scoped storage, schemas/fixtures, relay privacy, CJ/RUN integration. | Typed references survive local/remote round trips; forged issuers, oversized payloads, inaccessible content, and query ACL leaks refuse. |
+| 2. Evidence and task state | Shared evidence and trajectory services, source adapters, task-frame storage. | A user correction survives restart; bounded originals expand; changed source/configuration invalidates stale conclusions. |
 | 3. Context and progressive operations | Shared context builder, decision-function registry, CAP/EXT catalog, native operations. | The same repair works with deterministic retrieval and typed reranking; required instructions survive both; candidate misses and selection failures are measured separately. |
 | 4. Policy and routing | Host permits/admission, recipient policy, generation/reviewer adapters, usage ledger. | Script changes invalidate approval; no fallback leaks restricted inputs; total routed cost includes rebuilds and failed attempts; uncertainty stays explicit. |
-| 5. Parallel and background work | Existing project scheduler, claims, delegate/runtime, protected integration. | Concurrent writers cannot bypass fencing; exact reads can coalesce; stale views are marked; foreground latency and total reservations remain bounded. |
+| 5. Parallel and background work | Coordinator, claims, host runtime, protected integration. | Concurrent writers cannot bypass fencing; exact reads can coalesce; stale views are marked; foreground latency and total reservations remain bounded. |
 | 6. Evaluation and promotion | Gym, workload suites, matched comparisons, optional signed publication. | Held-out complete-task benefit survives overhead and adverse cases; only exact scoped versions become defaults; publication leaks no private closure. |
-| 7. User and agent inspection | `coder-terminal`, headless structured events, source-linked views. | Both interfaces explain selected evidence, unresolved outcomes, changed approvals, rejected integration, and current budget without a second runtime. |
+| 7. User and agent inspection | Interactive views, structured events, source-linked views. | Both interfaces explain selected evidence, unresolved outcomes, changed approvals, rejected integration, and current budget without a second runtime. |
+| 8. Bounded learning and adoption | Semantic signatures, DSPy/GEPA bridges, study/data plans, materialization, and operator adoption. | The exact candidate runs under protected evaluation; all costs and exposure are recorded; active work keeps its pin. |
 
-The [protocol implementation plan](../../protocol/implementation-plan.md)
-maps the protocol work into the existing implementation queue. The
-[TypeSafe roadmap](typesafe-agent-roadmap.md#proposed-backlog-additions)
-already identifies the host evidence, context, catalog, routing, sharing,
-background, and UI slices. These new NIPs specify their interchange boundaries;
-they do not close those issues or replace the host work with a protocol rewrite.
+The [consolidated proposed issues](../../optimization/proposed-issues.md)
+define full integration. These are planning records, not filed issues or
+permission to execute paid experiments.
 
 ## A complete example
 
@@ -196,20 +166,15 @@ they do not close those issues or replace the host work with a protocol rewrite.
    measured cost. An explicitly admitted evaluation may compare the complete
    run with a deterministic baseline; it does not export the session by default.
 
-This flow uses existing execution protocols plus the new shared artifacts.
+This flow uses the shared execution, evidence, and optimization contracts.
 It remains useful entirely locally. Nostr makes the same identities, evidence,
 and authority boundaries usable across hosts when remote execution or sharing
 is warranted.
 
-## Evidence limits
+## Evaluation requirements
 
-The post supplies architectural hypotheses, not current provider prices,
-benchmark results, or evidence about a provider's handling of private data.
-Its linked tools identify techniques to investigate, not mandatory dependencies.
-The retained images' token proportions and logarithmic-search suggestion need
-local workload measurements. The new NIPs deliberately avoid those assumptions.
-
-Live TypeSafe documentation was unavailable through the research tool during
-this pass. This assessment uses the retained source, existing repository
-analysis, vendored TypeSafe guidance, and local contracts; it adds no new claim
-about current provider limits, pricing, or SDK behavior.
+Treat architectural benefits as hypotheses until measured on their workload.
+Compare whole tasks with controlled inputs, explicit partitions, and a frozen
+acceptance policy. Track missing evidence, harmful errors, uncertainty, and
+complete costs. Operator adoption requires scoped evidence; a type-correct
+result or attributable receipt alone does not establish quality.
