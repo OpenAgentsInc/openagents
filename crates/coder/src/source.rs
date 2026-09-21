@@ -83,13 +83,14 @@ const TASK_MINUTES: u64 = 5;
 
 /// Where a source's answer comes from.
 ///
-/// Both variants are reads. Neither runs anything: a source that spawned a
-/// process would need the trust and the subprocess bounds that
+/// All three variants are reads. None runs anything: a source that spawned
+/// a process would need the trust and the subprocess bounds that
 /// [#9427](https://github.com/OpenAgentsInc/openagents/issues/9427) is
 /// about, and a lookup that executed a manifest's argv on the strength of
 /// having read that manifest is the finding rather than the fix. An
-/// operator who wants the open issues writes them to a file with one
-/// command of their own, and the program names the file's source.
+/// operator who wants the open issues runs a host-owned adapter that
+/// writes a pinned snapshot — see [`crate::tracker`] — and the program
+/// names the snapshot's source.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum From {
@@ -103,6 +104,38 @@ pub enum From {
         /// place on the computer.
         path: String,
     },
+    /// A pinned tracker snapshot on disk, under the workspace.
+    ///
+    /// The snapshot is what a host-owned adapter wrote after reading the
+    /// tracker: the scope, the base revision, and every issue's identity,
+    /// state, version marker, body digest, and blocked-by dependencies.
+    /// The read validates the document and renders the existing work-list
+    /// contract from it; an item that cannot run carries its reason and
+    /// the lookup records the drop. Reading a snapshot grants nothing —
+    /// no comment, no close, no merge — because the read is the whole of
+    /// what this source does.
+    Tracker {
+        /// A relative path inside the workspace, under the same rule a
+        /// `file` source's path follows.
+        path: String,
+        /// The scope the snapshot must name. A source that states one
+        /// refuses a snapshot taken of anything else, so a stale file for
+        /// a different project is a read error rather than a different
+        /// burndown.
+        #[serde(default)]
+        scope: Option<crate::tracker::Scope>,
+    },
+}
+
+impl From {
+    /// The workspace-relative path this answer is read from, when it is
+    /// read from a file.
+    fn path(&self) -> Option<&str> {
+        match self {
+            From::Request => None,
+            From::File { path } | From::Tracker { path, .. } => Some(path),
+        }
+    }
 }
 
 /// The order a lookup puts its answer in.
@@ -241,21 +274,8 @@ impl Source {
         if !is_slug(&self.slug) {
             return Err(format!("slug {:?} is not a source slug", self.slug));
         }
-        if let From::File { path } = &self.from {
-            let candidate = Path::new(path);
-            if candidate.is_absolute() {
-                return Err(format!(
-                    "{path:?} is an absolute path, and a source names a place in the workspace"
-                ));
-            }
-            if candidate
-                .components()
-                .any(|part| part == std::path::Component::ParentDir)
-            {
-                return Err(format!(
-                    "{path:?} leaves the workspace, which a source may not"
-                ));
-            }
+        if let Some(path) = self.from.path() {
+            workspace_relative(path)?;
         }
         Ok(())
     }
@@ -267,14 +287,15 @@ impl Source {
         match &self.from {
             From::Request => "the request".to_string(),
             From::File { path } => format!("file {path}"),
+            From::Tracker { path, .. } => format!("tracker snapshot {path}"),
         }
     }
 
     /// The work this source answers with, before anything is ordered or
     /// bounded.
     ///
-    /// `workspace` is the directory a file source is read under, and
-    /// `carried` is the work the request handed in.
+    /// `workspace` is the directory a file or tracker source is read
+    /// under, and `carried` is the work the request handed in.
     ///
     /// # Errors
     ///
@@ -292,8 +313,38 @@ impl Source {
                     .map_err(|e| format!("{}: {e}", full.display()))?;
                 read_list(&text).map_err(|reason| format!("{}: {reason}", full.display()))
             }
+            From::Tracker { path, scope } => {
+                let full = workspace.join(path);
+                let snapshot = crate::tracker::Snapshot::load(&full)?;
+                if let Some(scope) = scope {
+                    snapshot
+                        .check_scope(scope)
+                        .map_err(|reason| format!("{}: {reason}", full.display()))?;
+                }
+                snapshot
+                    .work()
+                    .map_err(|reason| format!("{}: {reason}", full.display()))
+            }
         }
     }
+}
+
+/// The workspace-relative path a source reads under, when it reads a
+/// file — the one shape a `file` path and a `tracker` path share.
+fn workspace_relative(path: &str) -> Result<(), String> {
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        return Err(format!(
+            "{path:?} is an absolute path, and a source names a place in the workspace"
+        ));
+    }
+    if candidate
+        .components()
+        .any(|part| part == std::path::Component::ParentDir)
+    {
+        return Err(format!("{path:?} leaves the workspace, which a source may not"));
+    }
+    Ok(())
 }
 
 /// One work item: what a delegation is handed, and what the lookup knows
@@ -310,6 +361,13 @@ pub struct Work {
     /// The identifiers this item comes after. An item naming work that is
     /// still in the same list is dropped from this batch.
     pub after: Vec<String>,
+    /// Why this item cannot run, when it cannot. A tracker snapshot knows
+    /// an item is blocked by something outside the list — an open
+    /// dependency in no selection, a task definition nobody wrote — and
+    /// the lookup drops the item with that reason rather than guessing.
+    /// The identifier still reaches `ordered` and `dropped`, so the
+    /// record of what was found stays complete.
+    pub blocked: Option<String>,
     /// The task a delegation runs.
     pub task: Task,
 }
@@ -326,6 +384,7 @@ impl Work {
             id: format!("t{}", n + 1),
             touches: task.reads.iter().cloned().collect(),
             after: Vec::new(),
+            blocked: None,
             task: task.clone(),
         }
     }
@@ -391,6 +450,11 @@ struct Declared {
     /// `unverifiable`, never passed.
     #[serde(default, alias = "expected")]
     expects: Option<String>,
+    /// Why this item cannot run, when the list itself knows it cannot.
+    /// The lookup drops a blocked item with this reason recorded, so the
+    /// answer still says the item was found.
+    #[serde(default)]
+    blocked: Option<String>,
 }
 
 /// A work list, as a file source's document spells it.
@@ -429,6 +493,7 @@ impl Declared {
             id: self.id,
             touches,
             after: self.after,
+            blocked: self.blocked,
             task: Task {
                 prompt: self.prompt,
                 purpose,
@@ -443,7 +508,12 @@ impl Declared {
 }
 
 /// Reads a work list, refusing one this host does not read.
-fn read_list(text: &str) -> Result<Vec<Work>, String> {
+///
+/// Crate-visible because [`crate::tracker`] renders this same document
+/// from a snapshot: the file an operator inspects and the list a `query`
+/// step runs are one contract, parsed once, rather than two renderings
+/// that could drift.
+pub(crate) fn read_list(text: &str) -> Result<Vec<Work>, String> {
     let list: List = serde_json::from_str(text).map_err(|e| e.to_string())?;
     if list.v != LIST_VERSION {
         return Err(format!(
@@ -542,11 +612,13 @@ impl Selection {
     /// 1. **Order.** Whatever the source said, put in the order the source
     ///    declares, and the identifiers are recorded as
     ///    [`Selection::ordered`].
-    /// 2. **Declared order is enforced.** An item naming work that is
-    ///    still in this list is dropped, because the two cannot run at
-    ///    once and nothing here schedules a second batch. The check reads
-    ///    the whole list rather than the part already admitted, so it does
-    ///    not depend on which of the two the ordering put first.
+    /// 2. **What the list knows is enforced.** An item the source itself
+    ///    marked `blocked` is dropped with its reason, and an item naming
+    ///    work that is still in this list is dropped because the two
+    ///    cannot run at once and nothing here schedules a second batch.
+    ///    The check reads the whole list rather than the part already
+    ///    admitted, so it does not depend on which of the two the
+    ///    ordering put first.
     /// 3. **The bound.** More items than `max` either truncates or
     ///    refuses, and [`Selection::overflow`] says which.
     ///
@@ -565,16 +637,23 @@ impl Selection {
         let mut dropped = Vec::new();
         let mut kept: Vec<Work> = Vec::new();
         for work in ordered {
-            let blocked: Vec<&String> = work
+            if let Some(reason) = work.blocked.clone() {
+                dropped.push(Dropped {
+                    id: work.id.clone(),
+                    reason,
+                });
+                continue;
+            }
+            let waiting: Vec<&String> = work
                 .after
                 .iter()
                 .filter(|id| present.contains(id))
                 .collect();
-            if blocked.is_empty() {
+            if waiting.is_empty() {
                 kept.push(work);
                 continue;
             }
-            let names: Vec<String> = blocked.iter().map(|id| (*id).clone()).collect();
+            let names: Vec<String> = waiting.iter().map(|id| (*id).clone()).collect();
             dropped.push(Dropped {
                 id: work.id,
                 reason: format!(
@@ -801,6 +880,7 @@ mod tests {
             id: id.to_string(),
             touches: touches.iter().map(|path| (*path).to_string()).collect(),
             after: after.iter().map(|id| (*id).to_string()).collect(),
+            blocked: None,
             task: Task::reading(&format!("do {id}"), touches.first().unwrap_or(&"a.rs")),
         }
     }
