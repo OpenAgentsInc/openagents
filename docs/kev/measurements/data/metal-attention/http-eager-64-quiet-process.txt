@@ -1,0 +1,24 @@
+kev-serve: loading kev-4b-c4bfa11: /tmp/kev-pin-review/recovered/qwen3-4b + /tmp/kev-pin-review/recovered/kev-4b-c4bfa11
+kev-serve: 1 variants loaded, default kev-4b-c4bfa11
+kev-serve: memory budget 4096 MiB, 2 forwards at once across variants
+kev-serve: kev-4b-c4bfa11: one forward at 4096 tokens needs 3424 MiB, 1 at once
+kev-serve: listening on http://127.0.0.1:18454
+time: command terminated abnormally
+      113.83 real        15.46 user         3.36 sys
+          9800843264  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             1400191  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                 187  messages sent
+                 191  messages received
+                   0  signals received
+                   0  voluntary context switches
+               42557  involuntary context switches
+        303450993708  instructions retired
+         79821988995  cycles elapsed
+         24372321984  peak memory footprint

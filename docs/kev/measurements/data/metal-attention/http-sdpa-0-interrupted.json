@@ -1,0 +1,4186 @@
+{
+  "models": {
+    "models": [
+      {
+        "id": "kev-4b-c4bfa11",
+        "name": "kev-4b-c4bfa11",
+        "description": "kev decision model on Qwen/Qwen3-4B-Base, served by the openagents Rust port",
+        "release_date": "2026-09-19",
+        "base_model_signature": "906bfd4b4dc7f14ee4320094d8b41684abff8539",
+        "artifact_identity": {
+          "schema": "openagents.kev.artifacts.v1",
+          "digest": "sha256:5622bbba5cae1d35c4572ea382f76cbc4c4c63ef18452c916d80cf9e25a08991",
+          "files": {
+            "adapter/adapter_config.json": {
+              "sha256": "46d9f1113377e8d0032f0548ae03b270153b2b7ba6dd26b63b244d29487e00e6",
+              "bytes": 1183
+            },
+            "adapter/adapter_model.safetensors": {
+              "sha256": "3fa10d8646f567e884ea47841b2f3d5f2d135b81a4447a8ea79a6fc94e9c6ae1",
+              "bytes": 132184864
+            },
+            "adapter/head.safetensors": {
+              "sha256": "49d0cc8f2ccd6ace98be3e40fa497ee7ae9db8b1a221cd4b4a5377dc9f5beb5e",
+              "bytes": 5245232
+            },
+            "adapter/head_meta.json": {
+              "sha256": "756eee51bb981471917140e44c553d87fdb3bd336c7404ff8dd5acc437ce2f2d",
+              "bytes": 1117
+            },
+            "adapter/tokenizer.json": {
+              "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+              "bytes": 11422654
+            },
+            "base/config.json": {
+              "sha256": "304b2545a258d35620f1d4bf46940c0471d9baa00715ff8e77f84c2fca5057c1",
+              "bytes": 727
+            },
+            "base/model-00001-of-00003.safetensors": {
+              "sha256": "4c807e2503d68ae373d508689d00a41f4b33f33c2536da97ab81a20caddc1241",
+              "bytes": 3957900840
+            },
+            "base/model-00002-of-00003.safetensors": {
+              "sha256": "f4707585548b2fc75a6b1d732e8465c62040a8699903c32850781beeb9b27826",
+              "bytes": 3987450520
+            },
+            "base/model-00003-of-00003.safetensors": {
+              "sha256": "c7b1aa8fb672de2e00423c99876926022e50b18d4f0d140670788510a27f9965",
+              "bytes": 99630640
+            }
+          }
+        },
+        "execution": {
+          "attention": "metal-sdpa-block-causal-v1",
+          "backend": "metal",
+          "bucket_size": "0",
+          "dtype": "bf16",
+          "head_dtype": "f32",
+          "lora_merge": "fp32-before-cast-v1",
+          "max_branch": "8192",
+          "max_state": "8192",
+          "option_isolation": "false"
+        },
+        "aliases": [
+          "jev-latest"
+        ],
+        "run": "/tmp/kev-pin-review/recovered/kev-4b-c4bfa11",
+        "base": "Qwen/Qwen3-4B-Base"
+      }
+    ]
+  },
+  "info": {
+    "device": "metal",
+    "default": "kev-4b-c4bfa11",
+    "admission": {
+      "max_total_tokens": 4096,
+      "concurrency": 2,
+      "memory_budget_mib": 4096,
+      "memory_in_use_mib": 0
+    },
+    "variants": [
+      {
+        "model_id": "kev-4b-c4bfa11",
+        "run": "/tmp/kev-pin-review/recovered/kev-4b-c4bfa11",
+        "base": "Qwen/Qwen3-4B-Base",
+        "base_revision": "906bfd4b4dc7f14ee4320094d8b41684abff8539",
+        "lora": 16,
+        "option_isolation": false,
+        "forward_mib": 3424,
+        "concurrency": 1,
+        "in_flight": 0
+      }
+    ]
+  },
+  "concurrency": 1,
+  "repeats": 20,
+  "cases": [
+    {
+      "state": "short",
+      "copies": 2,
+      "questions": 1,
+      "mode": "repeated",
+      "p50_ms": 93.89391700000039,
+      "p95_ms": 101.56354200000007,
+      "rows": [
+        {
+          "warmup": true,
+          "http_ms": 1586.0908330000002,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 1585.3
+          }
+        },
+        {
+          "warmup": true,
+          "http_ms": 76.80166700000002,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 76.3
+          }
+        },
+        {
+          "warmup": true,
+          "http_ms": 76.58437500000015,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 76.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 77.15224999999992,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 76.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 76.75879100000004,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 76.3
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 76.89220800000007,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 76.4
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 76.74583400000002,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 76.3
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 76.7274170000003,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 76.3
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 78.16070799999997,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 77.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 84.39366700000006,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 83.9
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 87.56529199999986,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 87.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 90.213667,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 89.8
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 93.89391700000039,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 93.4
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 95.85299999999997,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 95.4
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 98.67816700000009,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 98.2
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 99.58795799999987,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 99.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 101.85012500000035,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 101.4
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 101.56354200000007,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 101.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 101.53774999999987,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 101.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 100.57274999999998,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 100.0
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 100.67341600000023,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 100.2
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 99.21166699999961,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 98.8
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 99.51012499999968,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 53
+            },
+            "latency_ms": 99.0
+          }
+        }
+      ]
+    },
+    {
+      "state": "short",
+      "copies": 2,
+      "questions": 1,
+      "mode": "new",
+      "p50_ms": 93.2146670000007,
+      "p95_ms": 97.48687499999953,
+      "rows": [
+        {
+          "warmup": true,
+          "http_ms": 95.45804199999975,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 94.9
+          }
+        },
+        {
+          "warmup": true,
+          "http_ms": 97.86929099999986,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 97.4
+          }
+        },
+        {
+          "warmup": true,
+          "http_ms": 97.22333300000008,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 96.8
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 98.12141699999977,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 97.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 97.48687499999953,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 97.0
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 96.41774999999964,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 96.0
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 96.19583300000033,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 95.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 95.91975000000019,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 95.4
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 94.35591700000057,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 93.9
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 94.96295900000007,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 94.5
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 94.71179099999993,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 94.3
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 93.43608400000036,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 93.0
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 93.88604199999939,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 93.4
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 92.99012500000003,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 92.6
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 93.2146670000007,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 92.8
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 89.08583399999958,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 88.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 86.47308299999956,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 86.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 87.26708300000041,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 86.8
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 88.97375000000008,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 88.5
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 90.46145800000005,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 90.0
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 90.08904199999978,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 89.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 90.19712500000043,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 89.8
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 90.35725000000028,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 64,
+              "output_tokens": 53
+            },
+            "latency_ms": 89.9
+          }
+        }
+      ]
+    },
+    {
+      "state": "short",
+      "copies": 2,
+      "questions": 5,
+      "mode": "repeated",
+      "p50_ms": 206.94487500000136,
+      "p95_ms": 216.7943750000001,
+      "rows": [
+        {
+          "warmup": true,
+          "http_ms": 202.94787499999956,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 202.3
+          }
+        },
+        {
+          "warmup": true,
+          "http_ms": 208.95487499999987,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 208.3
+          }
+        },
+        {
+          "warmup": true,
+          "http_ms": 215.70320800000076,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 215.0
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 216.7943750000001,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 216.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 217.34016700000058,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 216.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 216.54762500000047,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 215.9
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 216.49383300000036,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 215.8
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 214.74841700000002,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 214.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 213.9228329999998,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 213.2
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 210.60370799999984,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 209.9
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 209.07300000000006,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 208.4
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 210.03458300000057,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 209.4
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 210.65533300000004,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 210.0
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 205.12308300000015,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 204.5
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 204.81204200000036,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 204.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 205.56587499999955,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 204.9
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 201.99166699999972,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 201.3
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 206.94487500000136,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 206.3
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 202.89879199999916,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 202.3
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 202.59095800000006,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 202.0
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 202.76666700000055,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 202.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 195.49466700000016,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 194.8
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 200.59691700000036,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 171,
+              "output_tokens": 265
+            },
+            "latency_ms": 199.9
+          }
+        }
+      ]
+    },
+    {
+      "state": "short",
+      "copies": 2,
+      "questions": 5,
+      "mode": "new",
+      "p50_ms": 216.4889169999995,
+      "p95_ms": 222.20858400000054,
+      "rows": [
+        {
+          "warmup": true,
+          "http_ms": 218.60808399999954,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 217.8
+          }
+        },
+        {
+          "warmup": true,
+          "http_ms": 215.19812500000057,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 214.5
+          }
+        },
+        {
+          "warmup": true,
+          "http_ms": 214.90920799999992,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 214.2
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 219.36312499999923,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 218.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 220.5036249999992,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 219.8
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 219.69004199999986,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 219.0
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 222.20858400000054,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 221.6
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 220.8616249999995,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 220.2
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 222.18845899999985,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 221.5
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 222.31704200000024,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 221.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 216.10666700000002,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 215.5
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 214.193250000001,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 213.5
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 216.85820899999976,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 216.2
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 218.35324999999983,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 217.7
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 215.5242080000015,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 214.9
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 216.10133399999933,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 215.4
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 217.2119170000002,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 216.6
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 216.4889169999995,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 215.9
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 213.72683300000085,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 213.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 216.15125000000114,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 215.5
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 213.78320900000068,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 213.1
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 208.99595800000094,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 208.3
+          }
+        },
+        {
+          "warmup": false,
+          "http_ms": 210.99058299999916,
+          "response": {
+            "model": "kev-4b-c4bfa11",
+            "answers": {
+              "route_0": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_1": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_2": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_3": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              },
+              "route_4": {
+                "type": "choice",
+                "choice": "returns",
+                "confidence": 1.0,
+                "probabilities": {
+                  "returns": 1.0,
+                  "shipping": 0.0,
+                  "billing": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 180,
+              "output_tokens": 265
+            },
+            "latency_ms": 210.3
+          }
+        }
+      ]
+    }
+  ]
+}

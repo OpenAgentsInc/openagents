@@ -1,0 +1,309 @@
+{
+  "schema": "openagents.kev.state_reuse.v1",
+  "policy": {
+    "entries": 4,
+    "minimum_state_tokens": 384,
+    "packed_limit": 4096
+  },
+  "tokenizer_and_encoding": [
+    "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    false,
+    8192
+  ],
+  "suites": {
+    "state-reuse-control": {
+      "suite_digest": "67d9fd21732b62c416ddd8f85ee2ce7a96074fafe68fe346472d9ae0c6f39fad",
+      "question_digest": "3c6de9761bb574acbd145d1904dc6ef27fe2e3da9eeee2f732e517619a7d1a3e",
+      "all": {
+        "requests": 80,
+        "unique_encoded_states": 42,
+        "exact_repeat_requests": 38,
+        "state_tokens": {
+          "min": 26,
+          "median": 306.5,
+          "p95": 587,
+          "max": 587
+        },
+        "refused_at_packed_limit": 0,
+        "eligible": 40,
+        "lru_hits": 19,
+        "hit_rate_all_requests": 0.2375,
+        "hit_rate_eligible": 0.475,
+        "observed_distinct_state_reuse_distances": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "families": {
+        "long-new-exchange": {
+          "requests": 10,
+          "unique_encoded_states": 10,
+          "exact_repeat_requests": 0,
+          "state_tokens": {
+            "min": 587,
+            "median": 587.0,
+            "p95": 587,
+            "max": 587
+          },
+          "refused_at_packed_limit": 0,
+          "eligible": 10,
+          "lru_hits": 0,
+          "hit_rate_all_requests": 0.0,
+          "hit_rate_eligible": 0.0,
+          "observed_distinct_state_reuse_distances": []
+        },
+        "long-new-routing": {
+          "requests": 10,
+          "unique_encoded_states": 10,
+          "exact_repeat_requests": 0,
+          "state_tokens": {
+            "min": 587,
+            "median": 587.0,
+            "p95": 587,
+            "max": 587
+          },
+          "refused_at_packed_limit": 0,
+          "eligible": 10,
+          "lru_hits": 0,
+          "hit_rate_all_requests": 0.0,
+          "hit_rate_eligible": 0.0,
+          "observed_distinct_state_reuse_distances": []
+        },
+        "long-repeated-exchange": {
+          "requests": 10,
+          "unique_encoded_states": 1,
+          "exact_repeat_requests": 9,
+          "state_tokens": {
+            "min": 578,
+            "median": 578.0,
+            "p95": 578,
+            "max": 578
+          },
+          "refused_at_packed_limit": 0,
+          "eligible": 10,
+          "lru_hits": 9,
+          "hit_rate_all_requests": 0.9,
+          "hit_rate_eligible": 0.9,
+          "observed_distinct_state_reuse_distances": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "long-repeated-routing": {
+          "requests": 10,
+          "unique_encoded_states": 1,
+          "exact_repeat_requests": 9,
+          "state_tokens": {
+            "min": 578,
+            "median": 578.0,
+            "p95": 578,
+            "max": 578
+          },
+          "refused_at_packed_limit": 0,
+          "eligible": 10,
+          "lru_hits": 9,
+          "hit_rate_all_requests": 0.9,
+          "hit_rate_eligible": 0.9,
+          "observed_distinct_state_reuse_distances": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "short-new-exchange": {
+          "requests": 10,
+          "unique_encoded_states": 10,
+          "exact_repeat_requests": 0,
+          "state_tokens": {
+            "min": 35,
+            "median": 35.0,
+            "p95": 35,
+            "max": 35
+          },
+          "refused_at_packed_limit": 0,
+          "eligible": 0,
+          "lru_hits": 0,
+          "hit_rate_all_requests": 0.0,
+          "hit_rate_eligible": null,
+          "observed_distinct_state_reuse_distances": []
+        },
+        "short-new-routing": {
+          "requests": 10,
+          "unique_encoded_states": 10,
+          "exact_repeat_requests": 0,
+          "state_tokens": {
+            "min": 35,
+            "median": 35.0,
+            "p95": 35,
+            "max": 35
+          },
+          "refused_at_packed_limit": 0,
+          "eligible": 0,
+          "lru_hits": 0,
+          "hit_rate_all_requests": 0.0,
+          "hit_rate_eligible": null,
+          "observed_distinct_state_reuse_distances": []
+        },
+        "short-repeated-exchange": {
+          "requests": 10,
+          "unique_encoded_states": 1,
+          "exact_repeat_requests": 9,
+          "state_tokens": {
+            "min": 26,
+            "median": 26.0,
+            "p95": 26,
+            "max": 26
+          },
+          "refused_at_packed_limit": 0,
+          "eligible": 0,
+          "lru_hits": 0,
+          "hit_rate_all_requests": 0.0,
+          "hit_rate_eligible": null,
+          "observed_distinct_state_reuse_distances": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "short-repeated-routing": {
+          "requests": 10,
+          "unique_encoded_states": 1,
+          "exact_repeat_requests": 9,
+          "state_tokens": {
+            "min": 26,
+            "median": 26.0,
+            "p95": 26,
+            "max": 26
+          },
+          "refused_at_packed_limit": 0,
+          "eligible": 0,
+          "lru_hits": 0,
+          "hit_rate_all_requests": 0.0,
+          "hit_rate_eligible": null,
+          "observed_distinct_state_reuse_distances": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  "concatenated_suites_in_argument_order": {
+    "requests": 80,
+    "unique_encoded_states": 42,
+    "exact_repeat_requests": 38,
+    "state_tokens": {
+      "min": 26,
+      "median": 306.5,
+      "p95": 587,
+      "max": 587
+    },
+    "refused_at_packed_limit": 0,
+    "eligible": 40,
+    "lru_hits": 19,
+    "hit_rate_all_requests": 0.2375,
+    "hit_rate_eligible": 0.475,
+    "observed_distinct_state_reuse_distances": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  }
+}

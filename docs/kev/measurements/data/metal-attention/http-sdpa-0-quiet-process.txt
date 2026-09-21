@@ -1,0 +1,20 @@
+kev-serve: loading kev-4b-c4bfa11: /tmp/kev-pin-review/recovered/qwen3-4b + /tmp/kev-pin-review/recovered/kev-4b-c4bfa11
+time: command terminated abnormally
+        5.29 real         4.84 user         0.41 sys
+          4239081472  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              258911  page reclaims
+                 128  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  66  voluntary context switches
+                 765  involuntary context switches
+         90614174861  instructions retired
+         22560288141  cycles elapsed
+          4231384664  peak memory footprint

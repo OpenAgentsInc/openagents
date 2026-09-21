@@ -1,0 +1,115 @@
+{
+  "condition": "No other model measurement client or Cargo build detected during this run; normal desktop services remain.",
+  "before": {
+    "utc": "2026-09-20T23:05:37.091612+00:00",
+    "processes": [
+      {
+        "pid": 18410,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 3920,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 26904,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 20832,
+        "name": "filevaultd"
+      },
+      {
+        "pid": 30146,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 2032,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 36951,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 4768,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 39903,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 3136,
+        "name": "lev-serve"
+      },
+      {
+        "pid": 44956,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 123280,
+        "name": "TGOnDeviceInferenceProviderService"
+      },
+      {
+        "pid": 57049,
+        "ppid": 1,
+        "cpu": 45.3,
+        "rss_kib": 234240,
+        "name": "WindowServer"
+      },
+      {
+        "pid": 57758,
+        "ppid": 57424,
+        "cpu": 6.3,
+        "rss_kib": 205584,
+        "name": "Codex (Service)"
+      },
+      {
+        "pid": 59410,
+        "ppid": 1,
+        "cpu": 28.6,
+        "rss_kib": 381872,
+        "name": "droid"
+      },
+      {
+        "pid": 59420,
+        "ppid": 59410,
+        "cpu": 7.2,
+        "rss_kib": 4432,
+        "name": "zsh"
+      },
+      {
+        "pid": 60726,
+        "ppid": 57424,
+        "cpu": 5.3,
+        "rss_kib": 994944,
+        "name": "Codex (Renderer)"
+      },
+      {
+        "pid": 61263,
+        "ppid": 57405,
+        "cpu": 33.6,
+        "rss_kib": 124416,
+        "name": "Battle.net Helper"
+      },
+      {
+        "pid": 61573,
+        "ppid": 57405,
+        "cpu": 15.9,
+        "rss_kib": 451020,
+        "name": "Battle.net Helper"
+      },
+      {
+        "pid": 89623,
+        "ppid": 1,
+        "cpu": 0.0,
+        "rss_kib": 268032,
+        "name": "TGOnDeviceInferenceProviderService"
+      },
+      {
+        "pid": 73028,
+        "ppid": 57803,
+        "cpu": 21.8,
+        "rss_kib": 211184,
+        "name": "devin"
+      }
+    ]
+  },
+  "samples": [],
+  "aborted": "Another measurement or build started: [{'pid': 59870, 'ppid': 60693, 'cpu': 0.0, 'rss_kib': 78400, 'name': 'cargo'}]"
+}

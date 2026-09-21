@@ -1,0 +1,34 @@
+{
+  "host": {
+    "chip": "Apple M5 Max",
+    "memory_bytes": 137438953472,
+    "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4\nBuildVersion:\t\t25E246"
+  },
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "candle": "0.11.0",
+  "binary_sha256": "85d0739b48984efd156032c86cece380ec69eec1106cb8f7e9a6b6860d3bd95e",
+  "build": "cargo build --release --locked -p kev --features serve,metal --bin kev-serve",
+  "device": "metal",
+  "dtype": "bf16",
+  "head_dtype": "f32",
+  "cache": false,
+  "kev_source_commit": "5cc042b6d667b8e39cfdb5b00f0e305ce9521fac",
+  "matrix": [
+    {
+      "attention": "eager",
+      "bucket_size": 0
+    },
+    {
+      "attention": "eager",
+      "bucket_size": 64
+    },
+    {
+      "attention": "sdpa",
+      "bucket_size": 0
+    },
+    {
+      "attention": "sdpa",
+      "bucket_size": 64
+    }
+  ]
+}

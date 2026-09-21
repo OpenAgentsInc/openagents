@@ -101,13 +101,13 @@ The pinned manual gate with `--skip-postgres --with-metal` passed formatting,
 strict Clippy, default and runtime-feature tests, minimum compiler checks,
 dependency policy, and artifact-acquisition regressions. PostgreSQL and the
 long-running relay soak were explicitly skipped. Model-free gate results
-do not substitute for the real-weight run above.
+do not substitute for the real-weight run above. The complete gate output
+is retained as `data/metal-attention/manual-gate.txt`.
 
-A quiet-host HTTP comparison, including load/serving memory, warm-up, and
-p50/p95 for all four attention/padding combinations, is pending while the
-other task performs Lev measurements. Until it completes, the supported
-conclusion is the negative bf16 parity result and retention of the eager
-exact default, not a production latency claim.
+The quiet HTTP matrix is recorded separately from the contended profiler.
+Its eager configurations completed; an SDPA attempt stopped when the monitor
+detected a build. That interrupted attempt is excluded, and fresh SDPA
+measurements are pending. The eager exact default remains unchanged.
 
 Reproduce the correctness run:
 
