@@ -480,6 +480,212 @@ complete retained inventory and measured time accounting.
    overwrote failed attempts. Some records lacked terminal measurements. This
    makes exact accounting harder and obscures retry cost.
 
+## How a TypeSafe-native Coder could prevent this failure
+
+This recommendation applies the founder's
+[original coding-agent document](../coder/thoughts-on-a-typesafe-coding-agent.md),
+the [Coder architecture analysis](../coder/typesafe-agent-analysis.md), and the
+[delivery roadmap](../coder/typesafe-agent-roadmap.md) to the failures measured
+above. The founder's relevant ideas are query-specific context, explicit shared
+state, subgoal deduplication, and background consumers of existing observations.
+The roadmap supplies the crucial implementation boundary: Rust owns authority,
+state transitions, freshness, and resource limits; typed judgments supply narrow
+semantic assessments; generation proposes code and explanations.
+
+These are proposed prevention mechanisms, not features added by this audit or a
+measured claim that Jev would have completed these issues faster. The analysis
+was checked against `9dd4ddab67`; its implementation inventory is historical.
+For example, its description of unfinished classification modes predates the
+#9482 completion recorded here. The proposal IDs and issue numbers below identify
+roadmap ownership, not a fresh assertion that every named issue is still open.
+
+### The missing control was an evidence-backed completion loop
+
+My effective loop was: find a useful slice, implement or recover it, run checks,
+publish progress, and find another slice. Coder should instead retain the current
+issue's acceptance state and construct each next action around the oldest
+unresolved requirement. A successful commit or test changes only the requirements
+it supplies evidence for. It cannot erase unrelated missing requirements or
+release the issue's work-in-progress slot.
+
+The founder's meta-attention idea makes this practical: each context request asks
+what is needed to resolve a particular remaining requirement. It need not replay
+every earlier log, delegate transcript, and product plan. But context selection
+alone would not have stopped my scope switching. The controller must also enforce
+the selected completion unit, review capacity, and stop instruction.
+
+| Observed failure | State Coder should retain | Proposed prevention and exact host action | Roadmap connection |
+| --- | --- | --- | --- |
+| #9482 gained request schemas, native response schemas, review schemas, and cancellation evidence in separate increments | One versioned acceptance matrix, including missing response and disconnect evidence | Build the next context from unresolved rows. Keep the issue active until each row has current supporting evidence; require an explicit scope transition before starting another host implementation | Phase 1 `CTX-1`/`CTX-2`; #9513, #9505; requirement review under #9503 |
+| G37/G38 and G43/G44/G45 checked adjacent partial implementations | Candidate tree identity, pending edits, required checks, prior results, and reason for each rerun | Review the assembled acceptance candidate and run focused checks before admitting a full gate. Coalesce identical pending gate requests; invalidate results when tested inputs change | Phase 2 `OPS-1`; #9509; Phase 5 recovery/accounting |
+| Gate failures led to rereading logs and repairing unrelated fixtures | Addressable failure output, exact diagnostic spans, command/environment identity, previous attempted repairs | Retrieve the failure, relevant code, fixture, and rejected approach as a bundle. Generate an anchored repair and check it locally before paying the full gate cost again | Phase 1 `CTX-1`/`CTX-2`; Phase 2 `OPS-1` |
+| Timeout or answered status still left unfinished delegated work | Parent requirement IDs, pinned snapshot, returned artifact digest, actual checks, and unresolved findings | Validate the structured result, then independently review it. An executor answer moves to review, never directly to accepted or done; missing artifacts remain incomplete | Phase 4 `SHARE-1`; #9508, #9509, #9514 |
+| Available executor slots encouraged more work while host review accumulated | Separate execution, review, integration, and exclusive-measurement capacity, plus the age of pending results | Reserve review capacity at dispatch and stop refill when review is full. Prioritize completing the existing candidate over starting another issue | Phase 4 shared work and resource policy; #9514 |
+| Similar recovery or verification actions could be proposed again after a long session or restart | Attempt identity, outcome, input/base digests, invalidation reasons, and the criterion the action serves | Reuse an exactly compatible completed observation or join an existing running operation. Retrieve similar failed attempts for context; do not retry an unknown write or cancel a merely similar task | Phase 4 duplicate suggestions; Phase 5 durable recovery; #9510, #9514 |
+| Updates emphasized commits and passing checks while issue throughput stayed low | Verified acceptance transitions, issue age, gate time, recovery count, queue depth, and closed issues | Render progress from recorded events. When a configured no-progress or recovery bound is reached, block new dispatch and expose the unresolved requirement | Phase 0 observability; `UI-1`; #9505, #9506 |
+| The user had to say “one issue, then stop” to regain control | A new task-frame revision that supersedes the broad project goal | Narrow dispatch authority immediately, stop refill, cancel expendable background work, and stop after the named completion. Mandatory instructions cannot be filtered out by relevance | `CTX-1`/`CTX-2`; Phase 4 preemption; Phase 5 cancellation |
+| Reused log filenames obscured failed-run timing | Immutable run records and source-linked summaries, separate from controller claims | Allocate one log per attempt, preserve terminal or unknown status, and compute duration/overlap mechanically. Missing logs remain visible gaps | `CTX-1`, #9505, #9510; evidence retention and recovery |
+
+### What the task frame and evidence store need to contain
+
+Extend the roadmap's task frame with a small, explicit completion contract:
+
+- The user objective and correction revision, selected issue, accepted scope,
+  binding instructions, and stop condition. Distinguish user requirements from
+  inferred subgoals. The selected issue must survive context rebuilding.
+- Stable acceptance IDs with the original text, required artifact/check types,
+  evidence references, unresolved questions, and state. Useful states are
+  `missing`, `candidate`, `verified`, `invalidated`, and `unknown`; a delegate may
+  submit candidate evidence but cannot set the parent's verified state.
+- Current repository/base and candidate-tree digests, allowed read/write
+  footprint, attempts already made, failed approaches, and outstanding effects.
+- Known elapsed time and usage by decision, generation, executor, review, and
+  verification, plus resource reservations and unknown costs. Expected future
+  cost is an estimate with its source; it is not recorded spend.
+
+Store observations independently of their summaries. A check record needs the
+artifact it tested, command and adapter identity, toolchain, features, relevant
+environment/configuration identity, start/end and elapsed time, exit status,
+coverage, and output references. A pass with missing prerequisites is partial
+evidence. Key a cached result by all inputs that can affect its validity, not
+just a commit message or an unchanged issue number. If the system cannot establish
+freshness or relevant external-state equivalence, the result is not reusable.
+
+Keep the three roles from the analysis separate: ATIF records what happened;
+the evidence store supplies inspectable observations and derived context; the
+durable controller decides which effects may run or resume. An evidence-store
+entry is not a lease or permission. A model judgment is not a controller
+transition. Summary construction uses available observations and explicit model
+output, not inaccessible internal reasoning.
+
+### Where Jev judgments help, and where they do not
+
+Start with the analysis's proposed functions, each registered under #9503 with
+versioned state, question, policy, model identity, and a consuming action. Do not
+add an unbounded agent that asks whether the project is “making progress.” The
+analysis explicitly warns against reviving retired progress/risk questions
+without evidence. Count elapsed time, retries, missing checks, and accepted
+transitions directly in Rust.
+
+| Narrow semantic function | Relevant input | Proposed typed result and consumer | Failure behavior |
+| --- | --- | --- | --- |
+| Evidence relevance | One unresolved criterion and candidate bundles containing code, diagnostic, test, and previous attempt references | Independent Noul judgments or comparable rubric Scores help the context builder select useful bundles within its budget | Mandatory requirements remain included. Missing answers do not exclude candidates; use deterministic retrieval or expand within bounds |
+| Remaining requirement review | One criterion, its claimed implementation, attributable tests, and known coverage gaps | A Choice among supported, contradicted, or insufficient evidence becomes a review finding alongside mechanical checks | Insufficient, refused, or unavailable remains unresolved. Even a supported judgment cannot waive required tests or independently close the issue |
+| Summary sufficiency | The next task, retained source evidence, and a proposed summary | A Noul helps decide whether to use that representation or expand its sources | Preserve missing diagnostics and constraints as coverage gaps. Do not silently use a summary that omits a required item |
+| Duplicate-task suggestion | A proposed action and retrieved prior attempts, with objectives, inputs, bases, and acceptance IDs | A typed suggestion directs the host to compare a prior attempt | Only exact compatible identity and current evidence permit reuse. Semantic similarity alone cannot suppress requested work or authorize retry |
+
+No production question wording or confidence thresholds are prescribed here.
+These functions need their own development cases and held-out evaluations;
+existing action, shell-outcome, or program-selection results do not admit a
+model for acceptance review. Choice/Score confidence describes the returned
+distribution, not a guarantee that an issue is complete. This distinction is
+consistent with the current [TypeSafe confidence documentation](https://docs.typesafe.ai/confidence).
+
+Reuse eligible judgments only under their complete input and policy identities.
+Run semantic checks at an evidence-changing boundary, not on every timer tick.
+If deterministic retrieval supplies the needed evidence adequately, another
+judgment has no demonstrated value. Counting the cost of summary checks, retries,
+and context rebuilding prevents meta-attention from becoming another source of
+unproductive work.
+
+### How the #9482 sequence should have differed
+
+At the request-schema stage (`3268508946`), the task frame would still have shown
+missing response/cancellation corpus coverage and total backend context bounds.
+The next generator context would have included those acceptance rows, native
+answer types, existing gateway tests, and the current limit enforcement. Passing
+request-schema tests would support only the request-schema row.
+
+The controller would keep #9482 as the host completion candidate. Before a final
+full gate, the host would assemble and review native responses, nested
+review/fallback responses, disconnect behavior, and complete expanded-context
+bounds together. Focused checks would expose fixture and lint errors before the
+workspace run. A semantic requirement review could help identify a missing edge
+case; the actual TCP-disconnect test and accounting assertions would still be
+required evidence.
+
+That arrangement could have reduced the successive full gates for related
+schema and transport changes. It would not justify reusing an old pass after
+behavior changed, nor guarantee that one gate would succeed. G19's backup race,
+for example, still needed investigation when encountered; better context could
+make its repair more directed but cannot make a real defect disappear. The
+recorded 2h 19m of five-hour gate runtime is not a measured savings estimate.
+
+For the worker recovery, the returned `artifact_verified: false` result would
+remain a review item tied to its parent requirement and pinned base. Dispatching
+another issue would depend on remaining review capacity, not the worker's
+answered status. The parent would read the patch, failed checks, and unresolved
+findings through their references instead of reconstructing the whole session.
+Routing to Devin would still leave Devin's internal agent loop outside Coder's
+control; the contract governs the handoff and acceptance, not its hidden internals.
+
+### Parallelism should optimize accepted delivery
+
+The founder's shared-state proposal could reduce duplicated repository searches
+and context preparation across delegates and reviewers. It would not multiply
+integration capacity. Use immutable snapshots and declared write footprints;
+recheck changed bases and conflicts on return. Keep one integration lane and an
+exclusive lease for measurements that require an uncontested machine. Derive
+refill eligibility from dependencies, claims, resource leases, and review slots.
+
+Use historical process and gate records to estimate workload durations, with
+uncertainty and failures retained. A model may help classify an ambiguous task's
+likely resource needs, but the host must conservatively enforce declared resource
+classes. Do not infer that eight tasks are safe because a model predicts they are
+“software only.” Nor should a cheaper generator be preferred from token price
+alone: include context loading, failed escalation, review, and repair costs, as
+the founder's cache example motivates without establishing current prices.
+
+Start background work with one evidence-derived progress or diff view. It should
+reuse the same observations, debounce changes, cancel superseded work, and run
+below foreground priority. A progress view should expose the outstanding
+acceptance rows and aging review queue during a long gate. It should not trigger
+another repository exploration, test run, or autonomous product workstream just
+to make the agent appear busy.
+
+### Smallest implementation and proof that would be worth doing
+
+Follow the roadmap's order instead of turning this audit into another large
+orchestration project:
+
+1. **Phases 0–1:** give one pinned issue an explicit task frame, acceptance IDs,
+   immutable command evidence, and a deterministic context manifest. Expose the
+   remaining gaps through `UI-1` and headless events. This baseline should already
+   preserve corrections and prevent exact duplicate gate dispatch without Jev.
+2. **Phase 2:** use `OPS-1` to complete a representative failing-test repair with
+   retained diagnostics, anchored edits, focused checks, and the required manual
+   gate. Add one evidence-relevance or remaining-requirement function only where
+   the deterministic baseline exposes a specific gap.
+3. **Phase 4:** give a bounded delegate and an independent reviewer the same
+   snapshot and requirement references through `SHARE-1`. Demonstrate useful
+   shared reads and enforced review backpressure before raising concurrency.
+4. **Phase 5:** test restart, cancellation, unknown effects, and stop-after-one
+   behavior against the same task and attempt identities. Resume valid work
+   rather than asking a new generator to infer orchestration state from prose.
+
+Use this incident as a development replay, with observations revealed in their
+original order so the policy cannot see the eventual fix. Include a stale green
+check, an answered but incomplete delegate, a needed diagnostic after the initial
+output excerpt, an overwritten/missing log, an uncertain requirement judgment,
+and the user correction to finish one issue and stop. Fault-injection fixtures
+can establish host invariants without paying for another large delegation run.
+
+Then compare on separate held-out repair tasks, keeping the generator, repository
+snapshots, acceptance criteria, required verification, and resource allowance
+fixed: deterministic task/evidence state first, then the same system with typed
+relevance or requirement review. Measure verified issue completion, false
+acceptance, time to a completed artifact, full-gate launches, repair cycles,
+context preparation, review backlog, operator corrections, and total known cost.
+Include refused, missing, timed-out, and incomplete outcomes in the denominator.
+
+The proposal earns adoption only if it reduces avoidable work or improves
+completion without increasing false acceptance or weakening required checks.
+The deterministic stop condition, evidence freshness, and resource boundaries
+must pass even when every optional semantic call refuses. That is the specific
+way the founder's architecture could prevent this incident from recurring:
+useful judgments over retained state, inside a controller that makes unfinished
+acceptance work and the user's actual objective impossible to lose.
+
 ## Rules for future agents
 
 These are recommended operating rules, not newly implemented scheduler features.
