@@ -27,6 +27,7 @@
 //! schemas, not fields grafted onto this one.
 
 pub mod execution;
+pub mod export;
 pub mod join;
 pub mod validate;
 
