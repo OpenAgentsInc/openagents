@@ -198,6 +198,9 @@ pub fn call(name: &str, arguments: Value) -> Result<Value, Error> {
     if object.keys().any(|key| !allowed.contains(&key.as_str())) {
         return Err(invalid("this tool does not accept the supplied argument"));
     }
+    if object.values().any(Value::is_null) {
+        return Err(invalid("omit optional arguments instead of supplying null"));
+    }
     let args: Args = serde_json::from_value(arguments)
         .map_err(|_| invalid("invalid documentation arguments"))?;
     if name == "read_doc" {
@@ -384,6 +387,8 @@ mod tests {
             ("search_docs", json!({"query":"x".repeat(257)})),
             ("list_docs", json!({"api_key":"forbidden"})),
             ("list_docs", json!({"id":null})),
+            ("list_docs", json!({"cursor":null})),
+            ("list_docs", json!({"limit":null})),
             ("get_examples", json!({"query":null})),
             ("read_doc", json!({"id":"caller","limit":null})),
             (
