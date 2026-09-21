@@ -17,7 +17,7 @@
 //! `unresolved`, not rounded to a verdict. Mechanical failure comes first in
 //! the program and cannot be overridden by anything this module reports.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use coder_boundary::{Boundary, Snapshot};
@@ -115,16 +115,16 @@ impl Policy {
             && self.dismiss_below < self.confirm_at;
         match valid {
             true => Ok(()),
-            false => {
-                Err("finding policy requires 0 <= dismiss_below < confirm_at <= 1".into())
-            }
+            false => Err("finding policy requires 0 <= dismiss_below < confirm_at <= 1".into()),
         }
     }
 
     /// The disposition a probability earns under this policy.
     #[must_use]
     pub fn judge(&self, probability: f64) -> Disposition {
-        if probability >= self.confirm_at {
+        if !probability.is_finite() || !(0.0..=1.0).contains(&probability) {
+            Disposition::Unanswered
+        } else if probability >= self.confirm_at {
             Disposition::Confirmed
         } else if probability <= self.dismiss_below {
             Disposition::Dismissed
@@ -184,7 +184,6 @@ pub struct Doc {
     /// The inspected artifact digest, echoed.
     pub input_digest: String,
     /// The findings, each anchored against the captured diff.
-    #[serde(default)]
     pub findings: Vec<Finding>,
 }
 
@@ -235,75 +234,119 @@ pub struct FileDiff {
     pub truncated: bool,
 }
 
-/// One line range a `@@ -a,b +c,d @@` header adds on the new side.
-fn hunk_range(line: &str) -> Option<(u32, u32)> {
-    let mut parts = line.strip_prefix("@@ ")?.split_whitespace();
-    parts.next()?;
-    let new = parts.next()?.strip_prefix('+')?;
-    let (start, count) = match new.split_once(',') {
-        Some((start, count)) => (start.parse().ok()?, count.parse::<u32>().ok()?),
-        None => (new.parse().ok()?, 1),
-    };
-    if count == 0 {
-        return None;
+/// Parse a complete unified hunk header into old and new line counts.
+fn hunk(line: &str) -> Option<(u32, u32, u32)> {
+    fn range(value: &str, prefix: char) -> Option<(u32, u32)> {
+        let value = value.strip_prefix(prefix)?;
+        let (start, count) = value.split_once(',').unwrap_or((value, "1"));
+        let start: u32 = start.parse().ok()?;
+        let count: u32 = count.parse().ok()?;
+        start.checked_add(count)?;
+        Some((start, count))
     }
-    Some((start, start.saturating_add(count - 1)))
+    let mut parts = line.strip_prefix("@@ ")?.split_whitespace();
+    let (_, old_count) = range(parts.next()?, '-')?;
+    let (new_start, new_count) = range(parts.next()?, '+')?;
+    (parts.next()? == "@@").then_some((old_count, new_start, new_count))
 }
 
-/// The path a diff line names, with Git's quoting removed.
-fn unquote(path: &str) -> String {
-    path.strip_prefix('"')
-        .and_then(|rest| rest.strip_suffix('"'))
-        .unwrap_or(path)
-        .to_string()
+/// Keep only complete UTF-8 characters within the per-file evidence bound.
+fn append_line(file: &mut FileDiff, line: &str) {
+    for part in [line, "\n"] {
+        let available = FILE_TEXT_CAP.saturating_sub(file.text.len());
+        let mut end = available.min(part.len());
+        while !part.is_char_boundary(end) {
+            end -= 1;
+        }
+        file.text.push_str(&part[..end]);
+        if end < part.len() {
+            file.truncated = true;
+            return;
+        }
+    }
 }
 
 /// Parse a unified diff into one section per file.
 ///
-/// The parser reads the `diff --git` and `+++` headers and the hunk line
-/// ranges; it does not interpret content. A binary or mode-only section has
-/// no added ranges, so a finding that names lines in one is unanchored.
+/// Only added lines anchor line findings. Context lines do not. Quoted Git
+/// paths remain unsupported and cannot anchor line findings; the host's
+/// changed-path inventory still supports findings for those files as a whole.
 #[must_use]
 pub fn parse_diff(diff: &str) -> Vec<FileDiff> {
-    let mut files: Vec<FileDiff> = Vec::new();
+    let mut files = Vec::new();
     let mut current: Option<FileDiff> = None;
+    let mut remaining: Option<(u32, u32, u32)> = None;
     for line in diff.lines() {
+        if let Some((old, next, new)) = remaining.as_mut() {
+            if *old > 0 || *new > 0 {
+                if let Some(file) = current.as_mut() {
+                    append_line(file, line);
+                    match line.as_bytes().first() {
+                        Some(b'+') if *new > 0 => {
+                            if let Some((_, end)) = file
+                                .added
+                                .last_mut()
+                                .filter(|(_, end)| end.checked_add(1) == Some(*next))
+                            {
+                                *end = *next;
+                            } else {
+                                file.added.push((*next, *next));
+                            }
+                            *next += 1;
+                            *new -= 1;
+                        }
+                        Some(b'-') if *old > 0 => *old -= 1,
+                        Some(b' ') if *old > 0 && *new > 0 => {
+                            *old -= 1;
+                            *new -= 1;
+                            *next += 1;
+                        }
+                        Some(b'\\') => {}
+                        _ => {
+                            file.added.clear();
+                            remaining = None;
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+        remaining = None;
         if let Some(rest) = line.strip_prefix("diff --git ") {
             if let Some(file) = current.take() {
                 files.push(file);
             }
-            let path = rest
-                .rsplit_once(" b/")
-                .map(|(_, path)| unquote(path))
-                .unwrap_or_default();
-            current = Some(FileDiff {
+            let path = if rest.starts_with('"') {
+                String::new()
+            } else {
+                rest.split_once(" b/")
+                    .map(|(_, path)| path.to_owned())
+                    .unwrap_or_default()
+            };
+            let mut file = FileDiff {
                 path,
                 added: Vec::new(),
-                text: format!("{line}\n"),
+                text: String::new(),
                 truncated: false,
-            });
+            };
+            append_line(&mut file, line);
+            current = Some(file);
             continue;
         }
         let Some(file) = current.as_mut() else {
             continue;
         };
-        if file.text.len() < FILE_TEXT_CAP {
-            file.text.push_str(line);
-            file.text.push('\n');
-            if file.text.len() > FILE_TEXT_CAP {
-                file.text.truncate(FILE_TEXT_CAP);
-                file.truncated = true;
-            }
-        } else {
-            file.truncated = true;
-        }
+        append_line(file, line);
         if let Some(path) = line.strip_prefix("+++ b/") {
-            file.path = unquote(path);
-        } else if let Some(range) = hunk_range(line) {
-            file.added.push(range);
+            file.path = path.to_owned();
+        } else if let Some(header) = hunk(line) {
+            remaining = Some(header);
         }
     }
-    if let Some(file) = current.take() {
+    if let Some(mut file) = current {
+        if remaining.is_some_and(|(old, _, new)| old > 0 || new > 0) {
+            file.added.clear();
+        }
         files.push(file);
     }
     files
@@ -673,7 +716,7 @@ pub async fn collect(context: &Context) -> Result<Evidence, String> {
     if !before.is_complete() {
         return Err("candidate snapshot is incomplete; the reviewer did not run".into());
     }
-    let mut evidence = |outcome: Outcome, reason: String| Evidence {
+    let evidence = |outcome: Outcome, reason: String| Evidence {
         schema: EVIDENCE_SCHEMA.into(),
         base: context.scope.base.clone(),
         tip: context.scope.tip.clone(),
@@ -765,7 +808,10 @@ pub async fn collect(context: &Context) -> Result<Evidence, String> {
         stdout_digest: atif::digest(&json!(ended.stdout.text)),
         stderr_digest: atif::digest(&json!(ended.stderr.text)),
         output_truncated: ended.truncated(),
-        ..evidence(Outcome::Failed, "the reviewer did not produce a document".into())
+        ..evidence(
+            Outcome::Failed,
+            "the reviewer did not produce a document".into(),
+        )
     };
     if !after.is_complete() || coder_boundary::compare(&before, &after).is_unverifiable() {
         evidence.outcome = Outcome::Unverifiable;
@@ -799,7 +845,10 @@ pub async fn collect(context: &Context) -> Result<Evidence, String> {
         return Ok(evidence);
     }
     evidence.outcome = Outcome::Answered;
-    evidence.reason = format!("reviewer answered with {} findings", document.findings.len());
+    evidence.reason = format!(
+        "reviewer answered with {} findings",
+        document.findings.len()
+    );
     evidence.findings = document
         .findings
         .iter()
@@ -811,4 +860,68 @@ pub async fn collect(context: &Context) -> Result<Evidence, String> {
         })
         .collect();
     Ok(evidence)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anchors_added_lines_without_treating_content_as_headers() {
+        let files = parse_diff(
+            "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -1,3 +1,4 @@\n context\n-old\n+new\n+++ b/spoof.rs\n tail\n",
+        );
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.rs");
+        assert_eq!(files[0].added, vec![(2, 3)]);
+    }
+
+    #[test]
+    fn truncates_multibyte_evidence_and_headers_without_panicking() {
+        let text = "é".repeat(FILE_TEXT_CAP);
+        let files = parse_diff(&format!("diff --git a/a b/a\n@@ -0,0 +1 @@\n+{text}\n"));
+        assert!(files[0].truncated);
+        assert!(files[0].text.len() <= FILE_TEXT_CAP);
+        assert_eq!(files[0].added, vec![(1, 1)]);
+        let files = parse_diff(&format!("diff --git a/{text} b/{text}\n"));
+        assert!(files[0].truncated);
+        assert!(files[0].text.len() <= FILE_TEXT_CAP);
+    }
+
+    #[test]
+    fn incomplete_or_overflowing_hunks_cannot_anchor_lines() {
+        for header in [
+            "@@ -0,0 +1,3 @@\n+only-one\n",
+            "@@ -0,0 +4294967295,2 @@\n+overflow\n",
+        ] {
+            let files = parse_diff(&format!("diff --git a/a b/a\n{header}"));
+            assert!(files[0].added.is_empty());
+        }
+    }
+
+    #[test]
+    fn invalid_probabilities_do_not_become_verdicts() {
+        let policy = Policy {
+            confirm_at: 0.8,
+            dismiss_below: 0.2,
+        };
+        for value in [f64::NAN, f64::INFINITY, -0.1, 1.1] {
+            assert_eq!(policy.judge(value), Disposition::Unanswered);
+        }
+        assert_eq!(policy.judge(0.5), Disposition::Unresolved);
+    }
+
+    #[test]
+    fn missing_findings_is_not_an_empty_review() {
+        let missing = serde_json::json!({"schema": FINDINGS_SCHEMA, "base": "b", "tip": "t", "input_digest": "d"});
+        assert!(serde_json::from_value::<Doc>(missing.clone()).is_err());
+        let mut explicit = missing;
+        explicit["findings"] = serde_json::json!([]);
+        assert!(
+            serde_json::from_value::<Doc>(explicit)
+                .unwrap()
+                .findings
+                .is_empty()
+        );
+    }
 }

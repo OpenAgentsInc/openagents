@@ -819,7 +819,8 @@ impl Runtime {
         if per_finding && self.review.is_none() {
             return refuse(
                 "review_unavailable",
-                "no host-pinned review is installed, and a per-finding step runs against one".to_string(),
+                "no host-pinned review is installed, and a per-finding step runs against one"
+                    .to_string(),
             );
         }
         if set.supplies_options() {
@@ -1617,7 +1618,10 @@ impl Runtime {
         run: &mut Run,
         mut trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
-        let context = self.review.as_ref().expect("admission installed the review");
+        let context = self
+            .review
+            .as_ref()
+            .expect("admission installed the review");
         let evidence = crate::review::collect(context)
             .await
             .map_err(|reason| Refused::at(&step.name, "review_unverifiable", reason))?;
@@ -1689,16 +1693,41 @@ impl Runtime {
                 findings: judged,
                 evidence,
             };
-            let output = format!("0 of {} findings anchored for review", reviewed.findings.len());
+            let output = format!(
+                "0 of {} findings anchored for review",
+                reviewed.findings.len()
+            );
             run.review = Some(reviewed);
             return Ok(output);
         }
         let ids: Vec<String> = askable.iter().map(|finding| finding.id.clone()).collect();
         let state = context.state(&askable);
-        let response = self
-            .ask(set, &step.name, &state, &Fill::Findings(ids), trace, |read| read)
+        let response = match self
+            .ask(
+                set,
+                &step.name,
+                &state,
+                &Fill::Findings(ids),
+                trace,
+                |read| read,
+            )
             .await
-            .map_err(|reason| Refused::at(&step.name, "door_unavailable", reason))?;
+        {
+            Ok(response) => response,
+            Err(reason) => {
+                run.review = Some(crate::review::Reviewed {
+                    asked: askable.len(),
+                    confirmed: 0,
+                    dismissed: 0,
+                    unresolved: 0,
+                    unanswered: askable.len(),
+                    model: String::new(),
+                    findings: judged,
+                    evidence,
+                });
+                return Err(Refused::at(&step.name, "door_unavailable", reason));
+            }
+        };
         run.answers
             .insert(step.name.clone(), answers_value(&response.answers));
         for finding in judged
