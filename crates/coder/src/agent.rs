@@ -22,6 +22,7 @@ use crate::classify::{
 };
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
 use crate::permit::Permit;
+use crate::program_authority::Grant;
 use crate::repo::Repo;
 use crate::runtime::{Inputs, Run, Runtime, Selected};
 use crate::shell::{self, Outcome, Reply, ShellEvent};
@@ -189,6 +190,10 @@ pub struct Agent {
     /// What this machine can reach and what it could run, once something
     /// has asked.
     survey: Option<Survey>,
+    /// The program slugs the command line granted this session, when it
+    /// named any — merged with `CODER_PROGRAMS` each time a program runs,
+    /// so a grant withdrawn between turns is not handed out anyway.
+    program_grant: Option<String>,
 }
 
 impl Agent {
@@ -256,6 +261,7 @@ impl Agent {
             trace,
             trace_error,
             survey: None,
+            program_grant: None,
         })
     }
 
@@ -271,6 +277,7 @@ impl Agent {
             trace: None,
             trace_error: None,
             survey: None,
+            program_grant: None,
         }
     }
 
@@ -313,6 +320,17 @@ impl Agent {
     /// and handing the survey over is how it says which machine that is.
     pub fn with_survey(mut self, survey: Survey) -> Self {
         self.survey = Some(survey);
+        self
+    }
+
+    /// The program slugs this session may run, as `--programs` spells
+    /// them — merged with `CODER_PROGRAMS` when a program is selected.
+    ///
+    /// With neither set, no program a turn selects may run: a selection
+    /// is a proposal, and this is the grant it is proposed under. See
+    /// `docs/coder/program-authority.md`.
+    pub fn with_program_grant(mut self, spec: Option<&str>) -> Self {
+        self.program_grant = spec.map(str::to_string);
         self
     }
 
@@ -374,14 +392,23 @@ impl Agent {
         };
         let program = runtime.survey().programs.get(&slug)?.clone();
         selected(&slug);
+        // The grant is the operator's, read fresh from this session's
+        // settings on every run: a selection is a proposal, and the grant
+        // is the authority it is proposed under. Neither the selection
+        // nor any judgment the program records widens it.
+        let grant = Grant::operator(self.program_grant.as_deref());
         // A relay capability is probed only now, once a program is going
         // to run, because the probe is a round trip to a worker and an
-        // ordinary turn should not pay for it.
-        runtime.probe_relays().await;
-        if let Some(trace) = &mut self.trace {
-            for found in &runtime.survey().capabilities {
-                if found.manifest.transport == capability::RELAY {
-                    trace.check(&found.message(), found.call());
+        // ordinary turn should not pay for it — and neither should a
+        // program the grant does not cover, since a probe spends the
+        // network the session never allowed.
+        if grant.authorizes(&slug) && grant.effects().network {
+            runtime.probe_relays().await;
+            if let Some(trace) = &mut self.trace {
+                for found in &runtime.survey().capabilities {
+                    if found.manifest.transport == capability::RELAY {
+                        trace.check(&found.message(), found.call());
+                    }
                 }
             }
         }
@@ -404,7 +431,11 @@ impl Agent {
                     .unwrap_or_default()
             });
         let inputs = Inputs::read(&self.task, &executor);
-        Some(runtime.run(&program, &inputs, self.trace.as_mut()).await)
+        Some(
+            runtime
+                .run(&program, &inputs, &grant, self.trace.as_mut())
+                .await,
+        )
     }
 
     /// Where this session is being recorded, when it is.

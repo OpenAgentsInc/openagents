@@ -61,6 +61,7 @@ use crate::delegate::{
     Bounds, Delegation, Delegator, Isolation, Task, Verdict, boundary_supported,
 };
 use crate::program::{Kind, Program, Step};
+use crate::program_authority::{self, Effects, Grant};
 use crate::questions::{self, Fill, Set};
 use crate::relay::RelayDoor;
 use crate::source::{self, OnOverflow, Overflow, Selection, Source};
@@ -862,15 +863,185 @@ impl Runtime {
         }
     }
 
+    /// Whether the operator's grant covers this program, and why not when
+    /// it does not.
+    ///
+    /// The grant is the operator's, built from the session's settings
+    /// before the selection question was asked. A selection is a
+    /// proposal — the answer a decision model gave — and this is where
+    /// the proposal is held to the authority it was made under. Two
+    /// checks, in order: the grant has to name the program, and every
+    /// effect a step declares has to be one the grant allows.
+    ///
+    /// What is not checked here: which items the `query` step's source
+    /// will answer with. A work item's `writes` is read at dispatch, off
+    /// the item itself, because a source answers after admission ran —
+    /// see [`Runtime::delegate`].
+    pub fn authorize(&self, program: &Program, inputs: &Inputs, grant: &Grant) -> Result<(), Refused> {
+        if !grant.authorizes(&program.slug) {
+            return Err(Refused::at(
+                "",
+                program_authority::UNAUTHORIZED,
+                format!(
+                    "the operator's grant does not name {}, and a selection is a proposal rather than a grant — {} or --programs says which programs a session may run",
+                    program.slug,
+                    program_authority::PROGRAMS_ENV
+                ),
+            ));
+        }
+        for (step, declared) in self.declared_effects(program, inputs) {
+            let missing = grant.missing(declared);
+            if !missing.is_empty() {
+                return Err(Refused::at(
+                    &step.name,
+                    program_authority::UNAUTHORIZED,
+                    format!(
+                        "{} declares {} and this session's grant does not allow it — {} bounds what an authorized program may do",
+                        step.name,
+                        missing.join(", "),
+                        program_authority::EFFECTS_ENV
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The effects each step of a program declares, derived from what the
+    /// step does rather than stated in the program — a program's own
+    /// words are a claim, and the grant is held against what the step
+    /// will do.
+    fn declared_effects<'a>(
+        &self,
+        program: &'a Program,
+        inputs: &Inputs,
+    ) -> Vec<(&'a Step, Effects)> {
+        program
+            .steps
+            .iter()
+            .map(|step| (step, self.step_effects(step, inputs)))
+            .collect()
+    }
+
+    /// The effects one step declares, given the executor the run names.
+    ///
+    /// A `decide` step discloses its state to a decision door and can bill
+    /// an account; this host cannot tell a local door from a billed one,
+    /// so both axes are declared rather than assumed. A `delegate` step
+    /// reads and discloses by construction — the task carries what to
+    /// read and everything about it crosses to the executor — and the
+    /// executor's manifest adds the rest: `subprocesses` for any
+    /// transport that is not the relay, `spend` for any cost that is not
+    /// `local`. An executor this host cannot resolve declares the wider
+    /// set, because the refusal that names it reads the same survey.
+    fn step_effects(&self, step: &Step, inputs: &Inputs) -> Effects {
+        let mut effects = match step.kind {
+            Kind::Query => Effects {
+                reads: true,
+                ..Effects::none()
+            },
+            Kind::Decide => Effects {
+                network: true,
+                spend: true,
+                ..Effects::none()
+            },
+            Kind::Check => Effects::none(),
+            Kind::Delegate => Effects {
+                delegation: true,
+                reads: true,
+                network: true,
+                ..Effects::none()
+            },
+            // These kinds are refused at admission and never reach a grant.
+            Kind::Program | Kind::Module => Effects::none(),
+        };
+        if step.kind == Kind::Delegate {
+            match self.survey.capability(&inputs.executor) {
+                Some(found) => {
+                    if found.manifest.transport != capability::RELAY {
+                        effects.subprocesses = true;
+                    }
+                    if found.manifest.cost != "local" {
+                        effects.spend = true;
+                    }
+                }
+                None => {
+                    effects.subprocesses = true;
+                    effects.spend = true;
+                }
+            }
+        }
+        effects
+    }
+
+    /// The grant decision, recorded the way every other check is: what
+    /// was asked, what it answered, and what the grant and the program
+    /// each declared.
+    fn record_grant(
+        &self,
+        program: &Program,
+        inputs: &Inputs,
+        grant: &Grant,
+        refused: Option<&Refused>,
+        trace: Option<&mut Recorder>,
+    ) {
+        let declared: Map<String, Value> = self
+            .declared_effects(program, inputs)
+            .into_iter()
+            .map(|(step, effects)| (step.name.clone(), json!(effects.words())))
+            .collect();
+        let mut extra = Map::new();
+        extra.insert("grant".to_string(), grant.value());
+        extra.insert("declared".to_string(), Value::Object(declared));
+        if let Some(refused) = refused {
+            extra.insert(
+                "refused".to_string(),
+                json!({ "step": refused.step, "code": refused.code }),
+            );
+        }
+        if !grant.notes().is_empty() {
+            extra.insert("notes".to_string(), json!(grant.notes()));
+        }
+        self.record(
+            trace,
+            &format!("Held {} to the operator's grant.", program.slug),
+            Call {
+                id: String::new(),
+                name: program_authority::AUTHORITY_CALL.to_string(),
+                arguments: json!({
+                    "program": program.slug,
+                    "executor": inputs.executor,
+                }),
+                output: match refused {
+                    Some(refused) => refused.to_string(),
+                    None => "authorized".to_string(),
+                },
+                outcome: match refused {
+                    Some(_) => Outcome::Cancelled,
+                    None => Outcome::Completed,
+                },
+                milliseconds: 0,
+                purpose: Some(
+                    "Run a selected program only under the authority the operator granted."
+                        .to_string(),
+                ),
+                extra,
+            },
+        );
+    }
+
     /// Runs one program, step by step, from its definition.
     ///
     /// Admission comes first, so a program this host cannot hold to fails
-    /// before it has done anything. After that each step runs in the order
+    /// before it has done anything — and the operator's grant is held
+    /// against the program at the same point, so a program nobody
+    /// authorized fails there too. After that each step runs in the order
     /// the program lists, and the first refusal stops the rest.
     pub async fn run(
         &self,
         program: &Program,
         inputs: &Inputs,
+        grant: &Grant,
         mut trace: Option<&mut Recorder>,
     ) -> Run {
         let started = Instant::now();
@@ -882,6 +1053,15 @@ impl Runtime {
             run.stopped = Some(refused);
             self.report(&run, started, trace.as_deref_mut());
             return run;
+        }
+        match self.authorize(program, inputs, grant) {
+            Ok(()) => self.record_grant(program, inputs, grant, None, trace.as_deref_mut()),
+            Err(refused) => {
+                self.record_grant(program, inputs, grant, Some(&refused), trace.as_deref_mut());
+                run.stopped = Some(refused);
+                self.report(&run, started, trace.as_deref_mut());
+                return run;
+            }
         }
         let mut selection = Selection::default();
         for step in &program.steps {
@@ -907,8 +1087,15 @@ impl Runtime {
                 }
                 Kind::Check => self.check(step, program, inputs, trace.as_deref_mut()),
                 Kind::Delegate => {
-                    self.delegate(step, inputs, &selection, &mut run, trace.as_deref_mut())
-                        .await
+                    self.delegate(
+                        step,
+                        inputs,
+                        &selection,
+                        &mut run,
+                        grant,
+                        trace.as_deref_mut(),
+                    )
+                    .await
                 }
                 // Admission refused these before the first step ran.
                 Kind::Program | Kind::Module => Err(Refused::at(
@@ -933,13 +1120,19 @@ impl Runtime {
         run
     }
 
-    /// Selects the program a request asks for and runs it.
+    /// Selects the program a request asks for and runs it, under the
+    /// operator's grant.
     ///
     /// A request that asks for no program stops here, reported the way any
     /// other run that did nothing is. A caller that has an ordinary turn to
     /// fall back on wants [`Runtime::select`] instead, so it can tell
     /// `none` from a refusal.
-    pub async fn apply(&self, inputs: &Inputs, mut trace: Option<&mut Recorder>) -> Run {
+    pub async fn apply(
+        &self,
+        inputs: &Inputs,
+        grant: &Grant,
+        mut trace: Option<&mut Recorder>,
+    ) -> Run {
         let slug = match self.select(&inputs.request, trace.as_deref_mut()).await {
             Ok(Selected::Program(slug)) => slug,
             Ok(Selected::None) => {
@@ -969,7 +1162,7 @@ impl Runtime {
                 ..Run::default()
             };
         };
-        self.run(&program, inputs, trace).await
+        self.run(&program, inputs, grant, trace).await
     }
 
     /// A `query` step: the structured lookup that produces the work.
@@ -1315,6 +1508,7 @@ impl Runtime {
         inputs: &Inputs,
         selection: &Selection,
         run: &mut Run,
+        grant: &Grant,
         trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
         // A step that hands over nothing did not run: it reported "0 of 0
@@ -1327,6 +1521,24 @@ impl Runtime {
                 &step.name,
                 "no_tasks",
                 "there is no work to hand over, and a delegation of nothing is not a delegation",
+            ));
+        }
+        // A work item's `writes` is read off the item itself, here at
+        // dispatch rather than at admission, because a `query` step's
+        // source answers after admission ran. The work list is data and
+        // data cannot widen the grant: an item that says it writes under
+        // a grant that does not allow writes refuses the step rather than
+        // handing over what it was never authorized to do.
+        if !grant.effects().writes
+            && let Some(work) = selection.work.iter().find(|work| work.task.writes)
+        {
+            return Err(Refused::at(
+                &step.name,
+                program_authority::UNAUTHORIZED,
+                format!(
+                    "work item {} declares it writes, and this session's grant does not allow writes",
+                    work.id
+                ),
             ));
         }
         let relayed = self
@@ -1830,5 +2042,61 @@ mod tests {
             Selected::Program("delegate-fan-out".to_string()).program(),
             Some("delegate-fan-out")
         );
+    }
+
+    /// A program the grant does not name refuses before its first step,
+    /// and one whose declared effects exceed the grant's ceiling names
+    /// the step and the missing effect. An undeclared executor is the
+    /// wider set — subprocesses and spend — because the refusal that
+    /// names it reads the same survey.
+    #[test]
+    fn a_program_is_held_to_the_operators_grant() {
+        let runtime = empty_runtime();
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "work", "kind": "delegate", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let refused = runtime
+            .authorize(&program, &inputs, &Grant::none())
+            .expect_err("a grant of nothing runs nothing");
+        assert_eq!(refused.code, program_authority::UNAUTHORIZED);
+        assert!(refused.reason.contains("burn-down"), "{refused}");
+
+        let grant = Grant::selected(Some("burn-down"), Some("reads"));
+        let refused = runtime
+            .authorize(&program, &inputs, &grant)
+            .expect_err("reads alone does not delegate");
+        assert_eq!(refused.step, "work");
+        assert_eq!(refused.code, program_authority::UNAUTHORIZED);
+        assert!(refused.reason.contains("delegation"), "{refused}");
+
+        runtime
+            .authorize(&program, &inputs, &Grant::all())
+            .expect("a full grant admits what the host admitted");
+    }
+
+    /// An unauthorized run stops before the first step — and before the
+    /// lookup that would read the request — and the record says the grant
+    /// was the reason.
+    #[tokio::test]
+    async fn an_ungranted_program_stops_before_it_reads_anything() {
+        let runtime = empty_runtime();
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&program, &inputs, &Grant::none(), None).await;
+        assert!(run.steps.is_empty(), "{:?}", run.step_names());
+        let stopped = run.stopped.expect("nothing was granted");
+        assert_eq!(stopped.code, program_authority::UNAUTHORIZED);
     }
 }

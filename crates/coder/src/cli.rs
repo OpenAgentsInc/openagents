@@ -6,6 +6,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use coder::program_authority;
+
 /// The exit code a usage error takes. It sits outside the codes a turn
 /// produces, so a script can tell "you called me wrong" from "the turn
 /// declined".
@@ -18,6 +20,9 @@ pub enum Invocation {
     Interactive {
         /// Where this session's trace lands, when the caller named a file.
         trace: Option<PathBuf>,
+        /// The program slugs this session may run, when `--programs`
+        /// granted any.
+        programs: Option<String>,
     },
     /// Run one turn without a terminal.
     Print(Print),
@@ -34,6 +39,8 @@ pub struct Print {
     pub trace: Option<PathBuf>,
     /// Report the turn as one JSON object rather than as the reply text.
     pub json: bool,
+    /// The program slugs this turn may run, when `--programs` granted any.
+    pub programs: Option<String>,
 }
 
 /// The usage text, printed for `--help` and after a usage error.
@@ -52,6 +59,11 @@ Options:
                          named file outranks CODER_TRACE.
       --json             With --print, report the turn as one JSON object:
                          the reply, the trace path, and how it finished.
+      --programs <SPEC>  Grant the named programs this session's runs, as
+                         CODER_PROGRAMS does: a comma-separated slug list
+                         or `all`. With neither set, a program a turn
+                         selects is refused rather than run — see
+                         docs/coder/program-authority.md.
   -h, --help             Show this text.
 
 Exit codes with --print:
@@ -64,8 +76,9 @@ The environment picks the door. TYPESAFE_API_KEY turns classify on;
 CODER_DOOR_KEY, CODER_DOOR_URL, and CODER_MODEL name an own-key door;
 CODER_WORKER and CODER_RELAY route the turn through the relay; with none
 of them set the stub door answers. CODER_SHELL=off runs no commands.
-CODER_MODEL takes a lane — gemini or glm — or any model id the gateway
-serves.";
+CODER_PROGRAMS names the programs a session may run and
+CODER_PROGRAM_EFFECTS bounds what they may do. CODER_MODEL takes a lane —
+gemini or glm — or any model id the gateway serves.";
 
 /// Reads the command line.
 ///
@@ -81,6 +94,7 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
     let mut trace: Option<PathBuf> = None;
     let mut prompt: Option<String> = None;
     let mut prompt_file: Option<PathBuf> = None;
+    let mut programs: Option<String> = None;
 
     // Everything after a bare `--` is a prompt, whatever it starts with.
     let mut literal = false;
@@ -122,6 +136,17 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
             "--json" => json = true,
             "--trace" => trace = Some(PathBuf::from(value("--trace")?)),
             "--prompt-file" => prompt_file = Some(PathBuf::from(value("--prompt-file")?)),
+            "--programs" => {
+                let spec = value("--programs")?;
+                // A spec that names nothing grants nothing: say so at the
+                // command line rather than as a session that refuses
+                // every program it is asked about.
+                let (_, notes) = program_authority::parse_programs(&spec);
+                if !notes.is_empty() {
+                    return Err(format!("--programs: {}", notes.join("; ")));
+                }
+                programs = Some(spec);
+            }
             "--" => literal = true,
             other if other.starts_with('-') && other.len() > 1 => {
                 return Err(format!("unknown option {other}"));
@@ -146,7 +171,7 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
         if let Some(prompt) = prompt {
             return Err(format!("a prompt needs --print: coder -p \"{prompt}\""));
         }
-        return Ok(Invocation::Interactive { trace });
+        return Ok(Invocation::Interactive { trace, programs });
     }
 
     let prompt = match (prompt, prompt_file) {
@@ -163,6 +188,7 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
         prompt,
         trace,
         json,
+        programs,
     }))
 }
 
@@ -180,7 +206,10 @@ mod tests {
     fn nothing_is_the_terminal() {
         assert_eq!(
             parse_of(&[]).unwrap(),
-            Invocation::Interactive { trace: None }
+            Invocation::Interactive {
+                trace: None,
+                programs: None
+            }
         );
     }
 
@@ -191,6 +220,7 @@ mod tests {
             prompt: "count the crates".to_string(),
             trace: Some(PathBuf::from("/tmp/one.jsonl")),
             json: true,
+            programs: None,
         });
         for arguments in [
             vec![
@@ -256,7 +286,30 @@ mod tests {
             parse_of(&["--trace", "/tmp/session.jsonl"]).unwrap(),
             Invocation::Interactive {
                 trace: Some(PathBuf::from("/tmp/session.jsonl")),
+                programs: None,
             }
         );
+    }
+
+    /// The program grant is the same word in both modes, and a spec that
+    /// grants nothing is a usage error rather than a session that refuses
+    /// every program it meets.
+    #[test]
+    fn a_program_grant_reads_the_same_in_both_modes() {
+        let Invocation::Print(print) =
+            parse_of(&["-p", "run the list", "--programs", "burn-down"]).unwrap()
+        else {
+            panic!("expected print mode");
+        };
+        assert_eq!(print.programs.as_deref(), Some("burn-down"));
+        assert_eq!(
+            parse_of(&["--programs", "all"]).unwrap(),
+            Invocation::Interactive {
+                trace: None,
+                programs: Some("all".to_string()),
+            }
+        );
+        let error = parse_of(&["-p", "a", "--programs", "burn down"]).unwrap_err();
+        assert!(error.contains("--programs"), "{error}");
     }
 }

@@ -30,8 +30,12 @@
 //!
 //! The two errors here are not the same size. A missed program is a turn
 //! that answers normally, which costs an operator one retry. A program
-//! selected for a request that did not ask for one starts subprocesses
-//! nobody asked for. `docs/decision-models/2026-09-19-program-selection.md`
+//! selected for a request that did not ask for one proposes subprocesses
+//! nobody asked for — and stops there, because a selection is a proposal
+//! rather than a grant: [`crate::program_authority`] is the operator's
+//! answer to whether a selected program may run, and a run the grant
+//! does not cover is refused before its first step.
+//! `docs/decision-models/2026-09-19-program-selection.md`
 //! measures them apart, against the baseline of answering `none` every
 //! time.
 

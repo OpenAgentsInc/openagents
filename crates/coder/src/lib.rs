@@ -28,6 +28,10 @@
 //!   or unknown.
 //! - [`program`] reads the programs a run can take, each a state machine of
 //!   named steps with per-step bounds.
+//! - [`program_authority`] is the operator's answer to whether a selected
+//!   program may run at all: which programs a session granted, and the
+//!   effects a run under the grant may have. A selection is a proposal,
+//!   and the grant is the authority it is proposed under.
 //! - [`questions`] holds the wording a `decide` step names and must not
 //!   carry, addressed by identifier and digested as a whole.
 //! - [`source`] holds the work a `query` step names and must not carry:
@@ -47,6 +51,7 @@ pub mod executor_door;
 pub mod generate;
 pub mod permit;
 pub mod program;
+pub mod program_authority;
 pub mod questions;
 pub mod relay;
 pub mod repo;
@@ -70,6 +75,7 @@ pub use generate::{
 };
 pub use permit::Permit;
 pub use program::Program;
+pub use program_authority::{Effects, Grant, Programs};
 pub use relay::{Identity, RelayDoor};
 pub use repo::Repo;
 pub use runtime::{Enforcement, Host, Inputs, Refused, Run, Runtime, Selected};

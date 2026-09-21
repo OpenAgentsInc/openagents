@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use coder::capability::Trust;
 use coder::delegate::{Verdict, WORKTREE_DIR, boundary_supported};
 use coder::program::Program;
+use coder::program_authority::Grant;
 use coder::questions;
 use coder::runtime::{Host, Inputs, Runtime};
 use coder::survey::Survey;
@@ -388,7 +389,7 @@ async fn the_first_program_runs_from_its_definition() {
     let root = machine.path();
     let run = runtime(root)
         .await
-        .run(&fan_out(root), &inputs(), None)
+        .run(&fan_out(root), &inputs(), &Grant::all(), None)
         .await;
 
     assert_eq!(run.stopped, None, "{:?}", run.stopped);
@@ -457,7 +458,7 @@ async fn a_request_selects_its_program_and_runs_it() {
     }
     let machine = machine();
     let root = machine.path();
-    let run = runtime(root).await.apply(&inputs(), None).await;
+    let run = runtime(root).await.apply(&inputs(), &Grant::all(), None).await;
 
     assert_eq!(run.program.as_deref(), Some("delegate-fan-out"));
     assert_eq!(run.stopped, None, "{:?}", run.stopped);
@@ -491,7 +492,7 @@ async fn the_recorded_run_is_the_path_the_task_expects() {
     recorder.user(&inputs.request);
     let runtime = runtime(root).await;
     runtime.survey().record(&mut recorder, None);
-    let run = runtime.apply(&inputs, Some(&mut recorder)).await;
+    let run = runtime.apply(&inputs, &Grant::all(), Some(&mut recorder)).await;
     // A session that ran to the end closes itself, and the grade reads
     // the end record: a trace without one is a session that stopped.
     recorder.finish(atif::log::ENDED);
@@ -512,6 +513,7 @@ async fn the_recorded_run_is_the_path_the_task_expects() {
             "capability_probe",
             "program_registry",
             "program",
+            "program_authority",
             "task_select",
             "independence",
             "admission_check",
@@ -619,7 +621,7 @@ async fn a_bound_this_host_cannot_enforce_refuses_before_anything_runs() {
         assert_eq!(refused.code, "bound_unenforceable");
         assert!(refused.reason.contains(expected), "{refused}");
 
-        let run = runtime.run(&program, &inputs(), None).await;
+        let run = runtime.run(&program, &inputs(), &Grant::all(), None).await;
         assert!(run.steps.is_empty(), "nothing ran: {:?}", run.step_names());
         assert!(run.delegations.is_empty());
         assert_eq!(run.stopped, Some(refused));
@@ -678,7 +680,7 @@ async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
     assert_eq!(refused.step, "two");
     assert_eq!(refused.code, "step_kind_unavailable");
 
-    let run = runtime.run(&program, &inputs(), None).await;
+    let run = runtime.run(&program, &inputs(), &Grant::all(), None).await;
     assert!(
         run.steps.is_empty(),
         "the query step in front of it did not run either: {:?}",
@@ -702,7 +704,7 @@ async fn an_executor_claim_does_not_establish_enforcement() {
         .unwrap();
     delegate.bounds.insert("memory_mb".to_string(), json!(128));
     let delegate_name = delegate.name.clone();
-    let run = runtime(root).await.run(&program, &inputs(), None).await;
+    let run = runtime(root).await.run(&program, &inputs(), &Grant::all(), None).await;
     let stopped = run
         .stopped
         .expect("an unsupported bound refuses before any step runs");
@@ -727,7 +729,7 @@ async fn the_host_holds_minutes_even_when_the_executor_does_not() {
         redeclare(root, &manifest);
         let run = runtime(root)
             .await
-            .run(&fan_out(root), &inputs(), None)
+            .run(&fan_out(root), &inputs(), &Grant::all(), None)
             .await;
         assert!(run.finished(), "{:?}", run.stopped);
         assert_eq!(run.answered(), 6);
@@ -754,7 +756,7 @@ async fn the_check_records_who_holds_each_bound() {
     let path = recorder.path().to_path_buf();
     runtime(root)
         .await
-        .run(&fan_out(root), &inputs(), Some(&mut recorder))
+        .run(&fan_out(root), &inputs(), &Grant::all(), Some(&mut recorder))
         .await;
     drop(recorder);
 
@@ -784,7 +786,7 @@ async fn an_absent_executor_refuses_the_delegate_step() {
     let mut inputs = inputs();
     inputs.executor = "not-a-capability-here".to_string();
 
-    let run = runtime(root).await.run(&fan_out(root), &inputs, None).await;
+    let run = runtime(root).await.run(&fan_out(root), &inputs, &Grant::all(), None).await;
 
     let stopped = run.stopped.expect("there is no executor");
     assert_eq!(stopped.step, "admit", "the check names it first");
@@ -803,7 +805,7 @@ async fn a_lookup_that_found_no_work_refuses() {
     let mut inputs = inputs();
     inputs.tasks.clear();
 
-    let run = runtime(root).await.run(&fan_out(root), &inputs, None).await;
+    let run = runtime(root).await.run(&fan_out(root), &inputs, &Grant::all(), None).await;
     let stopped = run.stopped.expect("nothing to delegate");
     assert_eq!(stopped.step, "select");
     assert_eq!(stopped.code, "no_tasks");
@@ -839,7 +841,7 @@ async fn the_lookup_holds_to_its_own_bound() {
     let path = recorder.path().to_path_buf();
     let run = runtime(root)
         .await
-        .run(&program, &inputs, Some(&mut recorder))
+        .run(&program, &inputs, &Grant::all(), Some(&mut recorder))
         .await;
     drop(recorder);
 
@@ -905,7 +907,7 @@ async fn a_lookup_over_its_bound_refuses_rather_than_choosing() {
     let path = recorder.path().to_path_buf();
     let run = runtime(root)
         .await
-        .run(&program, &inputs, Some(&mut recorder))
+        .run(&program, &inputs, &Grant::all(), Some(&mut recorder))
         .await;
     drop(recorder);
 
@@ -938,7 +940,7 @@ async fn a_source_this_host_does_not_resolve_refuses_the_program() {
     assert_eq!(refused.code, "source_unresolved");
     assert!(refused.reason.contains("the-open-backlog"), "{refused}");
 
-    let run = runtime.run(&program, &inputs(), None).await;
+    let run = runtime.run(&program, &inputs(), &Grant::all(), None).await;
     assert!(run.steps.is_empty(), "{:?}", run.step_names());
     assert_eq!(run.stopped, Some(refused));
 }
@@ -1005,7 +1007,7 @@ async fn a_file_source_is_the_path_an_explicit_list_takes() {
     let path = recorder.path().to_path_buf();
     let run = runtime(root)
         .await
-        .run(&program, &inputs(), Some(&mut recorder))
+        .run(&program, &inputs(), &Grant::all(), Some(&mut recorder))
         .await;
     drop(recorder);
 
@@ -1122,7 +1124,7 @@ async fn the_burn_down_briefs_its_delegates_and_judges_what_each_item_expects() 
     let path = recorder.path().to_path_buf();
     let run = runtime(root)
         .await
-        .run(&program, &inputs(), Some(&mut recorder))
+        .run(&program, &inputs(), &Grant::all(), Some(&mut recorder))
         .await;
     drop(recorder);
 
@@ -1190,7 +1192,7 @@ async fn a_plan_with_no_collisions_says_nothing_about_collisions() {
     let path = recorder.path().to_path_buf();
     runtime(root)
         .await
-        .run(&fan_out(root), &inputs(), Some(&mut recorder))
+        .run(&fan_out(root), &inputs(), &Grant::all(), Some(&mut recorder))
         .await;
     drop(recorder);
 
@@ -1227,7 +1229,7 @@ async fn the_fan_out_runs_at_the_width_the_step_states() {
         .bounds
         .insert("concurrent_max".to_string(), json!(1));
 
-    let run = runtime(root).await.run(&program, &inputs(), None).await;
+    let run = runtime(root).await.run(&program, &inputs(), &Grant::all(), None).await;
     assert_eq!(run.stopped, None, "{:?}", run.stopped);
     assert!(
         run.delegations
@@ -1275,7 +1277,7 @@ async fn an_answer_below_the_floor_stops_the_program() {
         .unwrap();
     step.bounds.insert("refuse_below".to_string(), json!(0.95));
 
-    let run = runtime(root).await.run(&program, &inputs(), None).await;
+    let run = runtime(root).await.run(&program, &inputs(), &Grant::all(), None).await;
     assert_eq!(run.step_names(), ["select"]);
     let stopped = run.stopped.expect("0.93 is below 0.95");
     assert_eq!(stopped.step, "independence");
@@ -1310,6 +1312,7 @@ async fn agent(root: &Path, program: &'static str) -> Agent {
     Agent::new(Some(client), Door::Stub(StubGenerate::default()))
         .with_repo(Repo::discover(root))
         .with_survey(Survey::read_with(Some(root), root, &Trust::everything()))
+        .with_program_grant(Some("all"))
 }
 
 /// The operator's sentence reaches the runtime, through the turn the
@@ -1475,7 +1478,7 @@ async fn the_first_program_runs_live() {
         .collect();
     recorder.user(&inputs.request);
     runtime.survey().record(&mut recorder, None);
-    let run = runtime.apply(&inputs, Some(&mut recorder)).await;
+    let run = runtime.apply(&inputs, &Grant::all(), Some(&mut recorder)).await;
     drop(recorder);
 
     for step in &run.steps {

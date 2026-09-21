@@ -49,7 +49,7 @@ pub async fn print(options: Print) -> u8 {
     // wrong thing, so it ends the run before a trace is opened rather than
     // after one has recorded which door it picked.
     let mut agent = match opened {
-        Ok(agent) => agent,
+        Ok(agent) => agent.with_program_grant(options.programs.as_deref()),
         Err(why) => return fail(&options, None, &Failure::host("config", why)),
     };
     // A caller that named a file is going to read it back, so a trace that

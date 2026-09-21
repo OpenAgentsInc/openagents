@@ -302,13 +302,15 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(cli::Invocation::Print(options)) => ExitCode::from(headless::print(options).await),
-        Ok(cli::Invocation::Interactive { trace }) => match interactive(trace.as_deref()).await {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("coder: {error}");
-                ExitCode::from(headless::EXIT_FAILED)
+        Ok(cli::Invocation::Interactive { trace, programs }) => {
+            match interactive(trace.as_deref(), programs.as_deref()).await {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("coder: {error}");
+                    ExitCode::from(headless::EXIT_FAILED)
+                }
             }
-        },
+        }
         Err(why) => {
             eprintln!("coder: {why}\n\n{}", cli::USAGE);
             ExitCode::from(cli::EXIT_USAGE)
@@ -319,11 +321,11 @@ async fn main() -> ExitCode {
 /// The terminal: the guard takes raw mode, the alternate screen, and the
 /// cursor, the draw loop runs, and the guard hands them back however the
 /// loop ends — a setup step that fails, a quit, an error, or a panic.
-async fn interactive(trace: Option<&Path>) -> io::Result<()> {
+async fn interactive(trace: Option<&Path>, programs: Option<&str>) -> io::Result<()> {
     let guard = Guard::full_screen()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    let result = run(&mut terminal, trace).await;
+    let result = run(&mut terminal, trace, programs).await;
 
     // Restoring by hand reports what dropping the guard would swallow.
     let restored = guard.restore();
@@ -361,10 +363,12 @@ async fn work_turn(agent: &mut Agent, draft: String, feed: &Feed<Work>) {
 }
 
 /// The draw loop. `trace` is the file the session records to when the
-/// command line named one.
+/// command line named one, and `programs` the program grant `--programs`
+/// spelled, when it did.
 async fn run(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     trace: Option<&Path>,
+    programs: Option<&str>,
 ) -> io::Result<()> {
     let ladder = Ladder::from_environment();
     let mut app = App {
@@ -391,7 +395,11 @@ async fn run(
         Some(path) => Agent::recording_to(path),
         None => Agent::from_env(),
     };
-    let mut agent_slot = Some(opened.map_err(io::Error::other)?);
+    let mut agent_slot = Some(
+        opened
+            .map(|agent| agent.with_program_grant(programs))
+            .map_err(io::Error::other)?,
+    );
     let mut turn: Option<tokio::task::JoinHandle<Agent>> = None;
     // The door's model name rides the composer's location rail, or the
     // door's own name when the model is not known until a worker answers.

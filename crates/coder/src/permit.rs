@@ -17,6 +17,14 @@
 //! A deny list reads command text and decides whether this command is the
 //! kind that ends a machine. A permit is prior to that: it says whether
 //! this turn runs commands at all.
+//!
+//! A program run is a different question, answered elsewhere. Whether a
+//! turn may run a reply's command plan is this permit's; whether a
+//! selected program may run at all is the operator's grant in
+//! [`crate::program_authority`], held against the program before its
+//! first step. The two are separate on purpose: `CODER_SHELL` governs
+//! the command loop and says nothing about delegation, and a program's
+//! own selection is a proposal, never a grant.
 
 use std::env;
 
