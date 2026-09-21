@@ -341,6 +341,7 @@ mod tests {
                 credential: "key-ref:acme".to_string(),
                 principals: vec![],
                 doors: BTreeMap::new(),
+                quota: None,
             },
         );
         tenants.insert(
@@ -349,6 +350,7 @@ mod tests {
                 credential: "key-ref:globex".to_string(),
                 principals: vec![],
                 doors: BTreeMap::new(),
+                quota: None,
             },
         );
         Manifest {

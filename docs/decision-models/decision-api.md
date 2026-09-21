@@ -404,6 +404,30 @@ Quota accounting controls resource admission. It does not collect payment
 or establish a price. Preserve [#9467](https://github.com/OpenAgentsInc/openagents/issues/9467)'s durable reservation,
 idempotency, crash recovery, and unknown-completion semantics.
 
+The durable half of that contract is landed in `tenancy::quota`. A
+tenant's `quota` field names its budget in resources — requests,
+questions, input bytes per day, and a concurrency bound — plus a
+versioned settlement policy (`quota-v1`). The ledger is an append-only
+`quota-ledger.jsonl` beside the registry, opened under an exclusive
+lock file so one writer owns it at a time. A reservation is durable
+before dispatch: `reserve` writes the `reserved` event before the work
+it pays for begins, and `(request, attempt)` is the idempotency pair —
+the same pair reserved again with the same request digest returns the
+reservation that exists, while the same pair with different content is
+refused as a conflict. `settle` records the attempt's outcome and
+measured units once; a second settle is the same record, never a second
+charge. Every reservation carries a deadline: a writer that dies
+mid-flight leaves a reservation recovery marks `orphaned` with outcome
+`unknown`, counted rather than silently freed, and work that was never
+dispatched is `released` back to the budget. Under `quota-v1` an
+answered, refused, or unavailable outcome counts against the budget —
+the compute ran whether or not the caller received an answer — and
+`unknown` counts conservatively because the ledger cannot prove it did
+not. Budgets bind to the stable tenant identity, so a rotated key keeps
+spending against the same position. The `tenant-usage` binary is the
+operator view: each tenant's settled, outstanding, and orphaned counts,
+and the reservations still held.
+
 Add a distinct monetary ledger using fixed-point units and versioned price
 schedules. Define billable resources for each model, capacity, and review
 policy, including input, cached input, output, reasoning, or compute units
