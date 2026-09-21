@@ -1,0 +1,120 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "acme-kev",
+  "capacity": "dedicated",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "filter",
+    "select": {
+      "binary": {
+        "threshold": 0.5,
+        "uncertain_below": 0.75
+      }
+    }
+  },
+  "served": {
+    "model": "kev-0.6b",
+    "artifact_signature": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "outcome": "mixed",
+  "outcomes": {
+    "answered": 2,
+    "refused": 1,
+    "unavailable": 0,
+    "unattempted": 0
+  },
+  "results": [
+    {
+      "input": "a",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "binary",
+          "outcome": "answered",
+          "raw": {
+            "type": "noul",
+            "noul": 0.9
+          },
+          "selected": "keep"
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": null,
+      "review_status": "not-reviewed"
+    },
+    {
+      "input": "b",
+      "outcome": "refused",
+      "cause": "too_many_options",
+      "units": [
+        {
+          "mode": "binary",
+          "outcome": "refused",
+          "cause": "too_many_options",
+          "selected": null
+        }
+      ],
+      "latency_ms": 0
+    },
+    {
+      "input": "c",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "binary",
+          "no_match": true,
+          "uncertain": true,
+          "outcome": "answered",
+          "raw": {
+            "type": "noul",
+            "noul": 0.4
+          },
+          "selected": null
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": null,
+      "review_status": "not-reviewed"
+    }
+  ],
+  "selections": [
+    {
+      "mode": "binary",
+      "label": "keep",
+      "selected": [
+        "a"
+      ],
+      "unevaluated": [
+        "b"
+      ]
+    }
+  ],
+  "aggregates": [
+    {
+      "mode": "binary",
+      "outcomes": {
+        "answered": 2,
+        "refused": 1,
+        "unavailable": 0,
+        "unattempted": 0
+      },
+      "no_match": 1,
+      "labels": {
+        "keep": 1
+      },
+      "uncertain": [
+        "c"
+      ]
+    }
+  ],
+  "usage": {
+    "forwards": 3,
+    "input_tokens_complete": false,
+    "output_tokens_complete": false
+  },
+  "timing": {
+    "latency_ms": 0
+  }
+}

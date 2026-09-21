@@ -52,6 +52,12 @@ static DOCUMENTS: &[Document] = &[
         false
     ),
     document!(
+        "classification-response-schema",
+        "Classification response schema",
+        "schemas/classify-response-v1.json",
+        false
+    ),
+    document!(
         "candidate-admission",
         "Candidate admission",
         "candidate-admission.md",

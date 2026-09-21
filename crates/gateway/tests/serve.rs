@@ -874,6 +874,45 @@ fn classify_call() -> Value {
     })
 }
 
+/// Compare a public response fixture with a real HTTP result. Only elapsed
+/// times are normalized; identities, scores, outcomes, and usage stay intact.
+fn classification_response_fixture(name: &str, body: &Value) {
+    fn normalize(value: &mut Value) {
+        match value {
+            Value::Object(fields) => {
+                for (key, value) in fields {
+                    if key == "latency_ms" {
+                        assert!(value.as_u64().is_some());
+                        *value = json!(0);
+                    } else {
+                        normalize(value);
+                    }
+                }
+            }
+            Value::Array(values) => values.iter_mut().for_each(normalize),
+            _ => {}
+        }
+    }
+    let mut actual = body.clone();
+    normalize(&mut actual);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/decision-models/fixtures/classify-v1/responses")
+        .join(format!("{name}.json"));
+    if std::env::var("UPDATE_CLASSIFY_FIXTURES").as_deref() == Ok("1") {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            format!("{}\n", serde_json::to_string_pretty(&actual).unwrap()),
+        )
+        .unwrap();
+    }
+    let expected: Value = serde_json::from_slice(
+        &std::fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display())),
+    )
+    .unwrap();
+    assert_eq!(actual, expected, "{}", path.display());
+}
+
 #[tokio::test]
 async fn classify_preserves_input_order_and_records_verified_native_answers() {
     let (endpoint, forwards) = backend(honest(artifact('b'), json!({
@@ -897,6 +936,7 @@ async fn classify_preserves_input_order_and_records_verified_native_answers() {
     let status = response.status();
     let body: Value = response.json().await.unwrap();
     assert_eq!(status, StatusCode::OK, "{body}");
+    classification_response_fixture("single-label", &body);
     assert_eq!(forwards.load(Ordering::SeqCst), 2);
     assert_eq!(body["results"][0]["input"], "second");
     assert_eq!(body["results"][1]["input"], "first");
@@ -990,6 +1030,7 @@ async fn classify_retains_partial_outcomes_and_does_not_invent_complete_usage() 
         .push(json!({"id":"third","text":"three"}));
     let (status, body) = send_classification(&deployment, &call).await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    classification_response_fixture("mixed", &body);
     assert_eq!(body["outcome"], "mixed");
     assert_eq!(
         body["outcomes"],
@@ -1345,6 +1386,7 @@ async fn classify_multi_label_counts_overlapping_labels_and_flags_uncertainty() 
     });
     let (status, body) = send_classification(&deployment, &call).await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    classification_response_fixture("multi-label", &body);
 
     // Per-item: overlapping selection, a weak-label uncertainty flag,
     // and the empty selection's explicit no-match marker.
@@ -1402,6 +1444,7 @@ async fn classify_binary_aggregate_counts_rejection_and_unevaluated_work() {
     });
     let (status, body) = send_classification(&deployment, &call).await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    classification_response_fixture("binary-refusal", &body);
     assert_eq!(body["outcome"], "mixed");
 
     // The refused input is named under its outcome — never folded into
@@ -1502,6 +1545,7 @@ async fn classify_score_aggregate_tallies_levels_and_flags_the_uncertain() {
     });
     let (status, body) = send_classification(&deployment, &call).await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    classification_response_fixture("score", &body);
     assert_eq!(body["results"][0]["units"][0]["uncertain"], true);
     assert!(body["results"][1]["units"][0].get("uncertain").is_none());
     assert_eq!(
@@ -4002,5 +4046,34 @@ async fn classify_review_bounds_identity_reads_before_inference() {
     for item in body["results"].as_array().unwrap() {
         assert!(item["units"][0]["selected"].is_null(), "{body}");
         assert_eq!(item["units"][0]["original"]["selected"], "a", "{body}");
+    }
+}
+
+#[tokio::test]
+async fn classify_public_failure_fixtures_match_runtime() {
+    for (name, status, answer) in [
+        (
+            "refusal",
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({"error":{"code":"unsupported_primitive","message":"fixture refusal"}}),
+        ),
+        (
+            "unavailable",
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({"error":{"code":"busy","message":"fixture saturation"}}),
+        ),
+    ] {
+        let stub = Backend {
+            answer_status: status,
+            ..honest(artifact('b'), answer)
+        };
+        let (endpoint, forwards) = backend(stub).await;
+        let deployment = classification_deployment(endpoint).await;
+        let mut call = classify_call();
+        call["inputs"].as_array_mut().unwrap().truncate(1);
+        let (actual_status, body) = send_classification(&deployment, &call).await;
+        assert_eq!(actual_status, status, "{body}");
+        assert_eq!(forwards.load(Ordering::SeqCst), 1);
+        classification_response_fixture(name, &body);
     }
 }

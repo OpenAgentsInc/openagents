@@ -1,0 +1,111 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "acme-kev",
+  "capacity": "dedicated",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "test-policy",
+    "select": {
+      "single_label": {
+        "ties": "first-declared",
+        "no_match": {
+          "kind": "null"
+        }
+      }
+    }
+  },
+  "served": {
+    "model": "kev-0.6b",
+    "artifact_signature": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "outcome": "answered",
+  "outcomes": {
+    "answered": 2,
+    "refused": 0,
+    "unavailable": 0,
+    "unattempted": 0
+  },
+  "results": [
+    {
+      "input": "second",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "single-label",
+          "outcome": "answered",
+          "raw": {
+            "type": "choice",
+            "choice": "a",
+            "confidence": 0.8,
+            "probabilities": {
+              "a": 0.8,
+              "b": 0.2
+            }
+          },
+          "selected": "a"
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": {
+        "input_tokens": 3,
+        "output_tokens": 1
+      },
+      "review_status": "not-reviewed"
+    },
+    {
+      "input": "first",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "single-label",
+          "outcome": "answered",
+          "raw": {
+            "type": "choice",
+            "choice": "a",
+            "confidence": 0.8,
+            "probabilities": {
+              "a": 0.8,
+              "b": 0.2
+            }
+          },
+          "selected": "a"
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": {
+        "input_tokens": 3,
+        "output_tokens": 1
+      },
+      "review_status": "not-reviewed"
+    }
+  ],
+  "selections": [],
+  "aggregates": [
+    {
+      "mode": "single-label",
+      "outcomes": {
+        "answered": 2,
+        "refused": 0,
+        "unavailable": 0,
+        "unattempted": 0
+      },
+      "no_match": 0,
+      "labels": {
+        "a": 2,
+        "b": 0
+      }
+    }
+  ],
+  "usage": {
+    "forwards": 2,
+    "input_tokens_complete": true,
+    "output_tokens_complete": true,
+    "input_tokens": 6,
+    "output_tokens": 2
+  },
+  "timing": {
+    "latency_ms": 0
+  }
+}

@@ -23,8 +23,34 @@ The schema's `$id` identifies the document; it is not a hosted discovery route.
 Thresholds in these fixtures are synthetic selection inputs, not calibrated
 recommendations. Fixture text does not establish multilingual model support.
 
-Runtime refusals, unavailable results, cancellation, and mixed outcomes need
-an executing service. The gateway HTTP tests in `crates/gateway/tests/serve.rs`
-and caller subprocess tests in `crates/oak/tests/cli.rs` exercise those
-boundaries. This request corpus does not replace them or assert that every
-runtime outcome has a standalone response fixture.
+## Runtime response fixtures
+
+`responses/` contains reports produced by real gateway HTTP tests against
+bounded synthetic backends: categorical, independent multi-label, binary with
+refusal, score, full refusal, unavailable, and mixed completion. The mixed
+report includes queued work that never dispatched. Only elapsed `latency_ms`
+values are normalized to zero; this is not latency evidence. Native scores,
+usage completeness, input order, and served identity must match exactly.
+
+Run `cargo test --locked -p gateway --test serve` to compare the reports with
+the executing gateway. Run the Oak corpus test above to decode every answered
+primitive through the existing Jev SDK. After reviewing an intentional wire
+change, regenerate the response files with:
+
+```sh
+UPDATE_CLASSIFY_FIXTURES=1 cargo test --locked -p gateway --test serve classify_
+```
+
+The [response JSON Schema](../../schemas/classify-response-v1.json) constrains
+native item, unit, aggregate, selection, identity, and usage shapes. Distribution
+mass, label membership, aggregate arithmetic, and policy semantics still need
+runtime checks. Review extension objects are not yet fully constrained.
+A disconnected caller receives no cancellation response; transport cancellation
+and durable settlement need their own runtime evidence, not a fabricated JSON
+report. This corpus does not yet establish that cancellation requirement.
+
+To validate both JSON Schemas and reject malformed response mutations, install
+`jsonschema==4.25.1` in an isolated Python environment and run
+`python scripts/check-classification-schemas.py`. This additional schema check
+is separate from the Rust manual gate; report both results when changing the
+published contract.

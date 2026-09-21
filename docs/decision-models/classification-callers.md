@@ -59,6 +59,7 @@ unattempted request.
 ## Contract files
 
 See the [OpenAPI contract](openapi.yaml), [request schema](schemas/classify-request-v1.json),
+[response schema](schemas/classify-response-v1.json),
 and [request fixture corpus](fixtures/classify-v1/README.md) for machine-readable
 shapes and validation examples. Schema validation does not replace admission.
 

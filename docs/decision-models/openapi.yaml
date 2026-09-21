@@ -229,44 +229,7 @@ components:
       description: The sealed execution receipt's digest.
   schemas:
     ClassificationReport:
-      type: object
-      description: >-
-        Common report fields. Mode-specific result, selection, aggregate,
-        usage, and served-identity objects are preserved without reducing
-        them to a single score. This schema does not fully constrain those
-        nested contracts. Missing usage is unknown, not zero.
-      required: [v, model, capacity, policy, served, outcome, outcomes, results, selections, aggregates, usage, timing]
-      properties:
-        v:
-          const: openagents.classify.v1
-        model:
-          type: string
-        capacity:
-          type: string
-        policy:
-          type: object
-        served:
-          type: object
-        outcome:
-          type: string
-        outcomes:
-          type: object
-        results:
-          type: array
-          items:
-            type: object
-        selections:
-          type: array
-          items:
-            type: object
-        aggregates:
-          type: array
-          items:
-            type: object
-        usage:
-          type: object
-        timing:
-          type: object
+      $ref: "./schemas/classify-response-v1.json"
     ModelCard:
       type: object
       required: [name]

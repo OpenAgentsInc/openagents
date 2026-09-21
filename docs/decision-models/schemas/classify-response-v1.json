@@ -1,0 +1,770 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/classify-response-v1.json",
+  "title": "Classification response v1",
+  "description": "Native and reviewed classification reports. Enforces nested native result shapes and usage completeness. Cross-field label/rubric membership, distribution mass, aggregate arithmetic, and review policy semantics are checked by runtime conformance tests. Review and attempt records remain additive objects pending their complete schema.",
+  "type": "object",
+  "required": [
+    "v",
+    "model",
+    "capacity",
+    "policy",
+    "served",
+    "outcome",
+    "outcomes",
+    "results",
+    "selections",
+    "aggregates",
+    "usage",
+    "timing"
+  ],
+  "properties": {
+    "v": {
+      "const": "openagents.classify.v1"
+    },
+    "model": {
+      "type": "string"
+    },
+    "capacity": {
+      "type": "string"
+    },
+    "policy": {
+      "type": "object"
+    },
+    "served": {
+      "$ref": "#/$defs/served"
+    },
+    "outcome": {
+      "enum": [
+        "answered",
+        "mixed",
+        "refused",
+        "unavailable",
+        "unattempted"
+      ]
+    },
+    "outcomes": {
+      "$ref": "#/$defs/counts"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      },
+      "minItems": 1
+    },
+    "selections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/selection"
+      }
+    },
+    "aggregates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/aggregate"
+      }
+    },
+    "usage": {
+      "$ref": "#/$defs/usage"
+    },
+    "timing": {
+      "type": "object",
+      "required": [
+        "latency_ms"
+      ],
+      "properties": {
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "review": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "required": [
+        "answered",
+        "refused",
+        "unavailable",
+        "unattempted"
+      ],
+      "properties": {
+        "answered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "refused": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unavailable": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unattempted": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "served": {
+      "type": "object",
+      "required": [
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string"
+        },
+        "artifact_signature": {
+          "type": "string"
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "noul": {
+      "type": "object",
+      "required": [
+        "type",
+        "noul"
+      ],
+      "properties": {
+        "type": {
+          "const": "noul"
+        },
+        "noul": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "selected": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "choice": {
+      "type": "object",
+      "required": [
+        "type",
+        "choice",
+        "confidence",
+        "probabilities"
+      ],
+      "properties": {
+        "type": {
+          "const": "choice"
+        },
+        "choice": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "probabilities": {
+          "type": "object",
+          "minProperties": 2,
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "score": {
+      "type": "object",
+      "required": [
+        "type",
+        "score",
+        "confidence",
+        "legend"
+      ],
+      "properties": {
+        "type": {
+          "const": "score"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "selected": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "legend": {
+          "type": "object",
+          "minProperties": 2
+        },
+        "probabilities": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "unit": {
+      "type": "object",
+      "required": [
+        "mode",
+        "outcome",
+        "selected"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "single-label",
+            "multi-label",
+            "binary",
+            "score"
+          ]
+        },
+        "dimension": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "answered",
+            "refused",
+            "unavailable",
+            "unattempted"
+          ]
+        },
+        "cause": {
+          "type": "string"
+        },
+        "selected": {},
+        "raw": {},
+        "uncertain": {
+          "type": "boolean"
+        },
+        "no_match": {
+          "type": "boolean"
+        },
+        "original": {
+          "$ref": "#/$defs/unit"
+        },
+        "review": {
+          "type": "object"
+        },
+        "final_source": {
+          "enum": [
+            "primary",
+            "reviewer"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "single-label"
+              },
+              "outcome": {
+                "const": "answered"
+              }
+            },
+            "required": [
+              "mode",
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "raw"
+            ],
+            "properties": {
+              "raw": {
+                "$ref": "#/$defs/choice"
+              },
+              "selected": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "multi-label"
+              },
+              "outcome": {
+                "const": "answered"
+              }
+            },
+            "required": [
+              "mode",
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "raw"
+            ],
+            "properties": {
+              "raw": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/noul"
+                }
+              },
+              "selected": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "binary"
+              },
+              "outcome": {
+                "const": "answered"
+              }
+            },
+            "required": [
+              "mode",
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "raw"
+            ],
+            "properties": {
+              "raw": {
+                "$ref": "#/$defs/noul"
+              },
+              "selected": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "score"
+              },
+              "outcome": {
+                "const": "answered"
+              }
+            },
+            "required": [
+              "mode",
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "raw"
+            ],
+            "properties": {
+              "raw": {
+                "$ref": "#/$defs/score"
+              },
+              "selected": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "refused",
+                  "unavailable",
+                  "unattempted"
+                ]
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "cause"
+            ],
+            "properties": {
+              "selected": {
+                "type": "null"
+              }
+            },
+            "not": {
+              "required": [
+                "raw"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "item": {
+      "type": "object",
+      "required": [
+        "input",
+        "outcome",
+        "units"
+      ],
+      "properties": {
+        "input": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "answered",
+            "mixed",
+            "refused",
+            "unavailable",
+            "unattempted"
+          ]
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/unit"
+          },
+          "minItems": 1
+        },
+        "cause": {
+          "type": "string"
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "model": {
+          "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "review_status": {
+          "enum": [
+            "not-reviewed",
+            "reviewed",
+            "review-incomplete"
+          ]
+        },
+        "original": {
+          "$ref": "#/$defs/item"
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "fallback": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "selection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "mode",
+            "label",
+            "selected",
+            "unevaluated"
+          ],
+          "properties": {
+            "mode": {
+              "const": "binary"
+            },
+            "label": {
+              "type": "string"
+            },
+            "selected": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "unevaluated": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "dimension": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "mode",
+            "ranking",
+            "unevaluated"
+          ],
+          "properties": {
+            "mode": {
+              "const": "score"
+            },
+            "ranking": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "unevaluated": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "dimension": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "aggregate": {
+      "type": "object",
+      "required": [
+        "mode",
+        "outcomes",
+        "no_match"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "single-label",
+            "multi-label",
+            "binary",
+            "score"
+          ]
+        },
+        "dimension": {
+          "type": "string"
+        },
+        "outcomes": {
+          "$ref": "#/$defs/counts"
+        },
+        "no_match": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "levels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "uncertain": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "score"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "levels"
+            ]
+          },
+          "else": {
+            "required": [
+              "labels"
+            ]
+          }
+        }
+      ]
+    },
+    "usage": {
+      "type": "object",
+      "required": [
+        "forwards",
+        "input_tokens_complete",
+        "output_tokens_complete"
+      ],
+      "properties": {
+        "forwards": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "input_tokens_complete": {
+          "type": "boolean"
+        },
+        "output_tokens_complete": {
+          "type": "boolean"
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "review": {
+          "type": "object"
+        },
+        "fallback": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "input_tokens_complete": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "input_tokens"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "input_tokens"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_tokens_complete": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "output_tokens"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "output_tokens"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

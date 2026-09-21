@@ -47,3 +47,50 @@ fn published_maximum_does_not_override_a_backend_limit() {
     };
     assert_eq!(request.plan(&limits).unwrap_err().code(), "too_many_inputs");
 }
+
+#[test]
+fn published_response_primitives_decode_with_the_native_sdk() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/decision-models/fixtures/classify-v1");
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    let mut decoded = 0;
+    for case in manifest["responses"].as_array().unwrap() {
+        let name = case["file"].as_str().unwrap();
+        let report: Value =
+            serde_json::from_slice(&std::fs::read(root.join(name)).unwrap()).unwrap();
+        assert_eq!(report["outcome"], case["outcome"], "{name}");
+        for item in report["results"].as_array().unwrap() {
+            for unit in item["units"].as_array().unwrap() {
+                if unit["outcome"] != "answered" {
+                    assert!(unit["selected"].is_null());
+                    assert!(unit.get("raw").is_none());
+                    continue;
+                }
+                let answers: Vec<&Value> = if unit["mode"] == "multi-label" {
+                    unit["raw"].as_object().unwrap().values().collect()
+                } else {
+                    vec![&unit["raw"]]
+                };
+                for answer in answers {
+                    let bytes = serde_json::to_vec(&serde_json::json!({
+                        "model": report["served"]["model"], "answers": {"q": answer}
+                    }))
+                    .unwrap();
+                    let response = jev::SystemOneResponse::decode(jev::RawResponse {
+                        status: 200,
+                        headers: Default::default(),
+                        bytes,
+                    })
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                    assert_eq!(response.answers.len(), 1);
+                    decoded += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        decoded >= 10,
+        "the corpus must exercise native answer decoding"
+    );
+}

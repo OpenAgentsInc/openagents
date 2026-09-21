@@ -80,5 +80,63 @@
         "judgments": 1
       }
     }
+  ],
+  "responses": [
+    {
+      "file": "responses/single-label.json",
+      "status": 200,
+      "outcome": "answered",
+      "normalization": [
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "responses/multi-label.json",
+      "status": 200,
+      "outcome": "answered",
+      "normalization": [
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "responses/binary-refusal.json",
+      "status": 200,
+      "outcome": "mixed",
+      "normalization": [
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "responses/score.json",
+      "status": 200,
+      "outcome": "answered",
+      "normalization": [
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "responses/refusal.json",
+      "status": 422,
+      "outcome": "refused",
+      "normalization": [
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "responses/unavailable.json",
+      "status": 503,
+      "outcome": "unavailable",
+      "normalization": [
+        "latency_ms"
+      ]
+    },
+    {
+      "file": "responses/mixed.json",
+      "status": 200,
+      "outcome": "mixed",
+      "normalization": [
+        "latency_ms"
+      ]
+    }
   ]
 }

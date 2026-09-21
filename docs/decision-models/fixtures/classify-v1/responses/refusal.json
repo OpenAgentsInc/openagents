@@ -1,0 +1,69 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "acme-kev",
+  "capacity": "dedicated",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "test-policy",
+    "select": {
+      "single_label": {
+        "ties": "first-declared",
+        "no_match": {
+          "kind": "null"
+        }
+      }
+    }
+  },
+  "served": {
+    "model": "kev-0.6b",
+    "artifact_signature": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "outcome": "refused",
+  "outcomes": {
+    "answered": 0,
+    "refused": 1,
+    "unavailable": 0,
+    "unattempted": 0
+  },
+  "results": [
+    {
+      "input": "second",
+      "outcome": "refused",
+      "cause": "unsupported_primitive",
+      "units": [
+        {
+          "mode": "single-label",
+          "outcome": "refused",
+          "cause": "unsupported_primitive",
+          "selected": null
+        }
+      ],
+      "latency_ms": 0
+    }
+  ],
+  "selections": [],
+  "aggregates": [
+    {
+      "mode": "single-label",
+      "outcomes": {
+        "answered": 0,
+        "refused": 1,
+        "unavailable": 0,
+        "unattempted": 0
+      },
+      "no_match": 0,
+      "labels": {
+        "a": 0,
+        "b": 0
+      }
+    }
+  ],
+  "usage": {
+    "forwards": 1,
+    "input_tokens_complete": false,
+    "output_tokens_complete": false
+  },
+  "timing": {
+    "latency_ms": 0
+  }
+}

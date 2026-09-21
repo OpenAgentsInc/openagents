@@ -1,0 +1,129 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "acme-kev",
+  "capacity": "dedicated",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "rubric",
+    "select": {
+      "score": {
+        "order": "descending",
+        "uncertain_below": 0.9
+      }
+    }
+  },
+  "served": {
+    "model": "kev-0.6b",
+    "artifact_signature": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "outcome": "answered",
+  "outcomes": {
+    "answered": 2,
+    "refused": 0,
+    "unavailable": 0,
+    "unattempted": 0
+  },
+  "results": [
+    {
+      "input": "a",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "score",
+          "uncertain": true,
+          "outcome": "answered",
+          "raw": {
+            "type": "score",
+            "score": 1.8,
+            "confidence": 0.7,
+            "legend": {
+              "0": "weak",
+              "1": "fair",
+              "2": "strong"
+            },
+            "selected": "2",
+            "probabilities": {
+              "0": 0.1,
+              "1": 0.1,
+              "2": 0.8
+            }
+          },
+          "selected": 2
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": null,
+      "review_status": "not-reviewed"
+    },
+    {
+      "input": "b",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "score",
+          "outcome": "answered",
+          "raw": {
+            "type": "score",
+            "score": 1.8,
+            "confidence": 0.7,
+            "legend": {
+              "0": "weak",
+              "1": "fair",
+              "2": "strong"
+            },
+            "selected": "2",
+            "probabilities": {
+              "0": 0.0,
+              "1": 0.0,
+              "2": 1.0
+            }
+          },
+          "selected": 2
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": null,
+      "review_status": "not-reviewed"
+    }
+  ],
+  "selections": [
+    {
+      "mode": "score",
+      "ranking": [
+        "a",
+        "b"
+      ],
+      "unevaluated": []
+    }
+  ],
+  "aggregates": [
+    {
+      "mode": "score",
+      "outcomes": {
+        "answered": 2,
+        "refused": 0,
+        "unavailable": 0,
+        "unattempted": 0
+      },
+      "no_match": 0,
+      "levels": {
+        "0": 0,
+        "1": 0,
+        "2": 2
+      },
+      "uncertain": [
+        "a"
+      ]
+    }
+  ],
+  "usage": {
+    "forwards": 2,
+    "input_tokens_complete": false,
+    "output_tokens_complete": false
+  },
+  "timing": {
+    "latency_ms": 0
+  }
+}

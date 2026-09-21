@@ -1,0 +1,151 @@
+{
+  "v": "openagents.classify.v1",
+  "model": "acme-kev",
+  "capacity": "dedicated",
+  "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "tags",
+    "select": {
+      "multi_label": {
+        "threshold": 0.5,
+        "ties": "include-all",
+        "no_match": "empty",
+        "uncertain_below": 0.7
+      }
+    }
+  },
+  "served": {
+    "model": "kev-0.6b",
+    "artifact_signature": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "outcome": "answered",
+  "outcomes": {
+    "answered": 3,
+    "refused": 0,
+    "unavailable": 0,
+    "unattempted": 0
+  },
+  "results": [
+    {
+      "input": "a",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "multi-label",
+          "outcome": "answered",
+          "raw": {
+            "x": {
+              "type": "noul",
+              "noul": 0.9
+            },
+            "y": {
+              "type": "noul",
+              "noul": 0.8
+            }
+          },
+          "selected": [
+            "x",
+            "y"
+          ]
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": {
+        "input_tokens": 5,
+        "output_tokens": 2
+      },
+      "review_status": "not-reviewed"
+    },
+    {
+      "input": "b",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "multi-label",
+          "uncertain": true,
+          "outcome": "answered",
+          "raw": {
+            "x": {
+              "type": "noul",
+              "noul": 0.6
+            },
+            "y": {
+              "type": "noul",
+              "noul": 0.4
+            }
+          },
+          "selected": [
+            "x"
+          ]
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": {
+        "input_tokens": 5,
+        "output_tokens": 2
+      },
+      "review_status": "not-reviewed"
+    },
+    {
+      "input": "c",
+      "outcome": "answered",
+      "units": [
+        {
+          "mode": "multi-label",
+          "no_match": true,
+          "outcome": "answered",
+          "raw": {
+            "x": {
+              "type": "noul",
+              "noul": 0.2
+            },
+            "y": {
+              "type": "noul",
+              "noul": 0.3
+            }
+          },
+          "selected": []
+        }
+      ],
+      "latency_ms": 0,
+      "model": "kev-0.6b",
+      "usage": {
+        "input_tokens": 5,
+        "output_tokens": 2
+      },
+      "review_status": "not-reviewed"
+    }
+  ],
+  "selections": [],
+  "aggregates": [
+    {
+      "mode": "multi-label",
+      "outcomes": {
+        "answered": 3,
+        "refused": 0,
+        "unavailable": 0,
+        "unattempted": 0
+      },
+      "no_match": 1,
+      "labels": {
+        "x": 2,
+        "y": 1
+      },
+      "uncertain": [
+        "b"
+      ]
+    }
+  ],
+  "usage": {
+    "forwards": 3,
+    "input_tokens_complete": true,
+    "output_tokens_complete": true,
+    "input_tokens": 15,
+    "output_tokens": 6
+  },
+  "timing": {
+    "latency_ms": 0
+  }
+}
