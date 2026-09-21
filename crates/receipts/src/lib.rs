@@ -27,5 +27,6 @@
 //! schemas, not fields grafted onto this one.
 
 pub mod execution;
+pub mod join;
 
 pub use execution::{Evaluation, ExecutionReceipt, Outcome, ReceiptError, SCHEMA, Served, Timing};
