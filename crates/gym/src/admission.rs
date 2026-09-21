@@ -638,6 +638,21 @@ impl Plan {
             self.workload.question_digest.as_deref(),
         ));
         for family in &self.scope {
+            for (phase, partitions) in [
+                ("development", self.workload.partitions.as_slice()),
+                ("locked", &[Partition::Locked][..]),
+            ] {
+                if !evidence
+                    .suite
+                    .items
+                    .iter()
+                    .any(|item| &item.family == family && partitions.contains(&item.partition))
+                {
+                    refusals.push(format!(
+                        "admitted family `{family}` has no items in the declared {phase} selection"
+                    ));
+                }
+            }
             if !evidence.suite.families().contains(family) {
                 refusals.push(format!(
                     "the scope names `{family}`, which suite `{}` does not hold; an admission \

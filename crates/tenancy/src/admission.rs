@@ -726,6 +726,50 @@ mod tests {
     }
 
     #[test]
+    fn scope_cannot_include_a_family_absent_from_locked_confirmation() {
+        let mut suite = Suite::load(include_str!(
+            "../../gym/tests/fixtures/caller-v1/suite.json"
+        ))
+        .unwrap();
+        let family = suite
+            .items
+            .iter()
+            .find(|item| item.partition == Partition::Locked)
+            .unwrap()
+            .family
+            .clone();
+        for item in &mut suite.items {
+            if item.family == family && item.partition == Partition::Locked {
+                item.partition = Partition::Development;
+            }
+        }
+        suite.digest = suite.compute_digest().unwrap();
+        let plan = plan(&suite);
+        let evidence = Evidence {
+            reports: Reports::default(),
+            suite: &suite,
+            development: Side {
+                base: &[],
+                candidate: &[],
+                store_head: None,
+            },
+            locked: None,
+            transfer: None,
+            deployment: None,
+            decided_at: "fixture".into(),
+            commitment: None,
+        };
+        let decision = plan.decide(&evidence).unwrap();
+        assert_eq!(decision.ruling, gym::admission::Ruling::Refused);
+        assert!(
+            decision
+                .refusals
+                .iter()
+                .any(|r| r.contains("has no items in the declared locked selection"))
+        );
+    }
+
+    #[test]
     fn replay_rejects_a_resealed_success_claim_over_missing_evidence() {
         let suite = Suite::load(include_str!(
             "../../gym/tests/fixtures/caller-v1/suite.json"
