@@ -78,7 +78,9 @@ Exit codes with --print:
   2   The turn finished and the router declined it.
   64  The command line was wrong.
 
-The environment picks the door. TYPESAFE_API_KEY turns classify on;
+The environment picks the door. CODER_DECISION_PROFILE and the
+CODER_DECISION_* settings name the decision profile classify asks
+through, falling back to the hosted door TYPESAFE_API_KEY opens;
 CODER_DOOR_KEY, CODER_DOOR_URL, and CODER_MODEL name an own-key door;
 CODER_WORKER and CODER_RELAY route the turn through the relay; with none
 of them set the stub door answers. CODER_SHELL=off runs no commands.

@@ -197,9 +197,10 @@ pub struct Agent {
 }
 
 impl Agent {
-    /// An agent from the environment: `TYPESAFE_API_KEY` builds the
-    /// classifier, the door builds itself. A missing key degrades — the
-    /// conversation still runs, without judgments.
+    /// An agent from the environment: the active decision profile
+    /// builds the classifier, the door builds itself. An unconfigured
+    /// profile degrades — the conversation still runs, without
+    /// judgments. A malformed one is an error, not an absence.
     ///
     /// The session's trace opens here, so a conversation is recorded without
     /// anybody asking it to be. A trace that cannot be opened is reported
@@ -373,9 +374,9 @@ impl Agent {
     /// The caller then does what it has always done, and nothing about the
     /// turn changes.
     ///
-    /// The door is the classifier's, so a machine with no
-    /// `TYPESAFE_API_KEY` asks nothing, probes nothing, and answers
-    /// exactly as before. `selected` hears the program's slug before it
+    /// The door is the classifier's, so a machine with no decision door
+    /// asks nothing, probes nothing, and answers exactly as before.
+    /// `selected` hears the program's slug before it
     /// runs, because a fan-out takes minutes and a terminal that said
     /// nothing until it finished would look wedged.
     ///
@@ -529,7 +530,7 @@ impl Agent {
     /// says what one door answered, and this says what the agent did next.
     pub async fn classify(&mut self) -> Classified {
         let Some(classify) = self.classify.clone() else {
-            let note = "no TYPESAFE_API_KEY — generating unrouted".to_string();
+            let note = "no decision door is configured — generating unrouted".to_string();
             if let Some(trace) = &mut self.trace {
                 trace.note(&note);
             }
@@ -1270,7 +1271,7 @@ mod tests {
         let Classified::Skipped(note) = agent.classify().await else {
             panic!("expected a skipped classify");
         };
-        assert!(note.contains("TYPESAFE_API_KEY"));
+        assert!(note.contains("decision door"));
     }
 
     #[tokio::test]

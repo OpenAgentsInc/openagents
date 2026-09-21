@@ -256,6 +256,88 @@ impl Profile {
         lines.push(format!("local: {}", self.is_local()));
         lines
     }
+
+    /// The client this profile's calls travel over.
+    ///
+    /// A profile names where a judgment goes; the judgment itself does
+    /// not change with the door, so every call site that asks builds
+    /// through this one path rather than carrying a resolver of its
+    /// own. Building the client is still not a call: no socket opens,
+    /// no request flies.
+    ///
+    /// A local endpoint never invents a credential: `direct_local` and a
+    /// keyless `own_provider` build on the SDK's credential-free
+    /// transport, which takes a loopback IP literal and nothing wider.
+    /// A keyless door beyond loopback is refused rather than lent the
+    /// hosted credential another variable on this machine may hold.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Refusal::Unsupported`] when the profile names a door no
+    /// System One client carries — a relay's decisions travel the relay
+    /// itself — or one that cannot be built without inventing a
+    /// credential. A resolved value the SDK cannot build from is
+    /// [`Refusal::Malformed`] naming the setting that held it.
+    pub fn client(&self) -> Result<jev::Client, Refusal> {
+        let (url, config) = match self {
+            Self::HostedHttp { url, model, key, .. } => (
+                url,
+                jev::Config::new()
+                    .base_url(url.value.as_str())
+                    .default_model(model.value.as_str())
+                    .api_key(key.value.clone()),
+            ),
+            Self::DirectLocal { url, model, .. } => {
+                if !loopback_ip(&url.value) {
+                    return Err(Refusal::Unsupported {
+                        profile: "direct_local",
+                        reason: "the credential-free transport takes a loopback IP \
+                                 literal, and this endpoint names another local address"
+                            .to_string(),
+                    });
+                }
+                (
+                    url,
+                    jev::Config::local(url.value.as_str(), model.value.as_str()),
+                )
+            }
+            Self::OwnProvider { url, model, key, .. } => (
+                url,
+                match key {
+                    Some(key) => jev::Config::new()
+                        .base_url(url.value.as_str())
+                        .default_model(model.value.as_str())
+                        .api_key(key.value.clone()),
+                    None if loopback_ip(&url.value) => {
+                        jev::Config::local(url.value.as_str(), model.value.as_str())
+                    }
+                    None => {
+                        return Err(Refusal::Unsupported {
+                            profile: "own_provider",
+                            reason: "names no credential, and a credential-free door \
+                                     builds only on a loopback address"
+                                .to_string(),
+                        });
+                    }
+                },
+            ),
+            Self::Relay { .. } => {
+                return Err(Refusal::Unsupported {
+                    profile: "relay",
+                    reason: "its decisions travel the relay, not the System One \
+                             HTTP door"
+                        .to_string(),
+                });
+            }
+        };
+        jev::Client::new(config).map_err(|error| Refusal::Malformed {
+            variable: match url.source {
+                Source::Env(name) => name,
+                Source::Flag | Source::Default => URL_VAR,
+            },
+            reason: error.to_string(),
+        })
+    }
 }
 
 /// Flag-supplied settings, the strongest source resolution consults.
@@ -632,6 +714,16 @@ pub enum Refusal {
         /// The profile that refuses it.
         profile: &'static str,
     },
+    /// The profile resolved, but no System One client carries its
+    /// calls: a relay's decisions travel the relay itself, and a
+    /// credential-free door beyond a loopback address has no boundary
+    /// to build under.
+    Unsupported {
+        /// The profile that cannot build the client.
+        profile: &'static str,
+        /// Why no client can carry it.
+        reason: String,
+    },
 }
 
 impl fmt::Display for Refusal {
@@ -646,6 +738,9 @@ impl fmt::Display for Refusal {
             ),
             Self::Unexpected { variable, profile } => {
                 write!(f, "the {profile} profile does not take {variable}")
+            }
+            Self::Unsupported { profile, reason } => {
+                write!(f, "the {profile} profile builds no System One client: {reason}")
             }
         }
     }
@@ -706,6 +801,26 @@ fn door_url(
         });
     }
     Ok(parsed.as_str().trim_end_matches('/').to_string())
+}
+
+/// Whether `url` names a loopback IP literal — `127.*` or `[::1]` — the
+/// only destination the SDK's credential-free transport takes. A
+/// hostname or a private address may be local, but it is not this.
+fn loopback_ip(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    host.parse::<IpAddr>()
+        .ok()
+        .or_else(|| {
+            host.strip_prefix('[')
+                .and_then(|inner| inner.strip_suffix(']'))
+                .and_then(|inner| inner.parse::<IpAddr>().ok())
+        })
+        .is_some_and(|ip| ip.is_loopback())
 }
 
 /// Whether `url` names an endpoint on this machine or network: a loopback

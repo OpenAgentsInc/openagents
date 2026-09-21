@@ -15,14 +15,18 @@ use serde_json::Value;
 
 /// The variables that would otherwise let one machine's environment decide
 /// what these tests measure.
-const CREDENTIALS: [&str; 13] = [
+const CREDENTIALS: [&str; 17] = [
     "TYPESAFE_API_KEY",
     "TYPESAFE_BASE_URL",
     "TYPESAFE_DEFAULT_MODEL",
+    "OPENAGENTS_API_KEY",
+    "OPENAGENTS_BASE_URL",
     "CODER_DECISION_PROFILE",
     "CODER_DECISION_URL",
     "CODER_DECISION_MODEL",
     "CODER_DECISION_KEY",
+    "CODER_DECISION_RELAY",
+    "CODER_DECISION_WORKER",
     "CODER_DOOR_KEY",
     "CODER_AI_GATEWAY_KEY",
     "CODER_DOOR_URL",
@@ -85,7 +89,7 @@ fn a_headless_turn_prints_a_reply_and_records_it() {
         steps[1]["message"]
             .as_str()
             .unwrap()
-            .contains("TYPESAFE_API_KEY")
+            .contains("decision door")
     );
     assert_eq!(steps[2]["extra"]["kind"], "instructions");
     assert_eq!(steps[3]["source"], "agent");
@@ -333,7 +337,7 @@ fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
         .current_dir(dir.path())
         .env("HOME", dir.path())
         .env("CODER_TRACE", "off")
-        .env("CODER_DECISION_PROFILE", "local")
+        .env("CODER_DECISION_PROFILE", "direct_local")
         .env("CODER_DECISION_URL", url)
         .env("CODER_DECISION_MODEL", "local-model")
         .env("TYPESAFE_API_KEY", "fixture-must-not-be-forwarded")
