@@ -270,10 +270,7 @@ pub fn read_bounded(mut reader: impl Read, limit: u64, what: &str) -> Result<Vec
         .read_to_end(&mut bytes)
         .map_err(|error| format!("cannot read {what}: {error}"))?;
     if bytes.len() as u64 > limit {
-        return Err(format!(
-            "the {what} exceeds the {}-byte bound",
-            limit
-        ));
+        return Err(format!("the {what} exceeds the {}-byte bound", limit));
     }
     Ok(bytes)
 }
@@ -602,8 +599,8 @@ pub mod mcp {
     use serde_json::{Value, json};
 
     use super::{
-        CallOpts, CLASSIFY_SCHEMA, MAX_ENVELOPE_BYTES, MAX_MCP_MESSAGE_BYTES,
-        MAX_REQUEST_ID_CHARS, Reply, Settings, Transport,
+        CLASSIFY_SCHEMA, CallOpts, MAX_ENVELOPE_BYTES, MAX_MCP_MESSAGE_BYTES, MAX_REQUEST_ID_CHARS,
+        Reply, Settings, Transport,
     };
 
     /// The protocol version this build reports when it cannot answer the
@@ -671,7 +668,11 @@ pub mod mcp {
                 Ok(Line::Oversize) => {
                     if !emit(
                         &mut output,
-                        &error(Value::Null, INVALID_REQUEST, "the message exceeds the byte bound"),
+                        &error(
+                            Value::Null,
+                            INVALID_REQUEST,
+                            "the message exceeds the byte bound",
+                        ),
                     ) {
                         return 0;
                     }
@@ -750,7 +751,10 @@ pub mod mcp {
     fn emit(output: &mut impl Write, message: &Value) -> bool {
         let mut bytes = serde_json::to_vec(message).unwrap_or_default();
         bytes.push(b'\n');
-        output.write_all(&bytes).and_then(|()| output.flush()).is_ok()
+        output
+            .write_all(&bytes)
+            .and_then(|()| output.flush())
+            .is_ok()
     }
 
     /// One JSON-RPC error response.
@@ -824,7 +828,9 @@ pub mod mcp {
             "initialize" => initialize(phase, &id, message.get("params")),
             "ping" => Some(result(&id, json!({}))),
             "tools/list" if *phase == Phase::Ready => Some(result(&id, tool_list())),
-            "tools/call" if *phase == Phase::Ready => call_tool(options, &id, message.get("params")),
+            "tools/call" if *phase == Phase::Ready => {
+                call_tool(options, &id, message.get("params"))
+            }
             "tools/list" | "tools/call" => Some(error(
                 id,
                 INVALID_PARAMS,
@@ -963,7 +969,9 @@ pub mod mcp {
                             return Some(error(
                                 id.clone(),
                                 INVALID_PARAMS,
-                                &format!("unknown argument `{key}` — the endpoint and credential come from operator configuration"),
+                                &format!(
+                                    "unknown argument `{key}` — the endpoint and credential come from operator configuration"
+                                ),
                             ));
                         }
                     }
@@ -1086,10 +1094,7 @@ pub mod mcp {
                 if let Some(request_id) = request_id {
                     detail["request_id"] = json!(request_id);
                 }
-                tool_error(
-                    format!("oak-mcp: {status} {code}: {message}"),
-                    detail,
-                )
+                tool_error(format!("oak-mcp: {status} {code}: {message}"), detail)
             }
         }
     }

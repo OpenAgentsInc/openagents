@@ -26,9 +26,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use jev::{
-    Entry, Question, Questions, ResponseBody, SystemOneRequest,
-};
+use jev::{Entry, Question, Questions, ResponseBody, SystemOneRequest};
 use oak::{
     CALLER_FAULTS, CLASSIFY_ENVELOPE_FAULTS, CLASSIFY_SCHEMA, CallOpts, MAX_ENVELOPE_BYTES,
     MAX_RETRY_AFTER, Reply, Settings, read_bounded,
@@ -152,11 +150,7 @@ impl Common {
             "--config" => self.config = Some(PathBuf::from(value(args))),
             "--timeout" => self.timeout = Some(seconds(Some(value(args)))),
             "--retries" => {
-                self.retries = Some(
-                    value(args)
-                        .parse::<u32>()
-                        .unwrap_or_else(|_| usage()),
-                );
+                self.retries = Some(value(args).parse::<u32>().unwrap_or_else(|_| usage()));
             }
             "--request-id" => self.request_id = Some(value(args)),
             "--quiet" => self.quiet = true,
@@ -334,7 +328,10 @@ fn models(common: &Common) -> i32 {
             EXIT_ANSWERED
         }
         Ok(Reply::Refused {
-            code, message, request_id, ..
+            code,
+            message,
+            request_id,
+            ..
         }) => {
             if let Some(request_id) = request_id {
                 eprintln!("oak: {code}: {message} (request_id={request_id})");
