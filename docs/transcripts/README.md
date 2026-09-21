@@ -26,7 +26,7 @@ using agents to control WoW and identifies gamers who want AI to automate their
 business as a target market. Episode [`284`](284.md), *Coding Agents as an
 MMORPG*, develops the related ideas of coding-agent XP, unlockable rewards,
 operator classes, agentic markets, and a 3D Verse for productive work.
-Episode [`286`](286.md), *The Agentic NPM*, explores KV-cache-aware agents,
+Episode [`286`](286.md), *System One in Coding Agents*, explores KV-cache-aware agents,
 dynamic context, reusable tools and skills, background processing, and open
 protocols for a shared agentic package ecosystem.
 Episode [`262`](262.md) is a final Sarah script (required Acting-as-Sarah
@@ -524,7 +524,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`281` Coder OS Across Devices](281.md) | Extends Coder OS to Android and iOS, syncing chats across terminal and mobile while agents build the emulator, delegation, and trusted-device workflows. |
 | [`283` Coder OS Plays World of Warcraft](283.md) | Experiments with agent control of World of Warcraft and frames gamers who want AI to automate their businesses as a target market. |
 | [`284` Coding Agents as an MMORPG](284.md) | Brainstorms coding-agent XP, public leaderboards, unlockable rewards, operator classes, agentic markets, and the 3D Verse. |
-| [`286` The Agentic NPM](286.md) | Explores KV-cache-aware agents, dynamic context, reusable tools and skills, background processing, and open protocols for an agentic package ecosystem. |
+| [`286` System One in Coding Agents](286.md) | Explores KV-cache-aware agents, dynamic context, reusable tools and skills, background processing, and open protocols for an agentic package ecosystem. |
 | [`26X` Omega Agent, unscheduled](26X-omega-agent.md) | Displaced Sarah harness draft formerly assigned to slot 263. It introduces Omega Agent's tools, disclosed delegation, and a future plugin revenue-share direction. It is not recorded or scheduled. |
 | [`26X` Forking Zed, unscheduled](26X-forkingzed.md) | Opens the public Omega fork and tours its current Zed-derived Rust workspace, GPUI, editor and project graph, Git, terminal, remote and agent foundations, then maps the branding, release, Rust-and-Effect, Desktop-port, and native-workroom insertion points without claiming those future features are already implemented. |
 | [`26X` Making Full Auto Agents Reliable, unscheduled](26X-fullauto.md) | Two-part draft, not scheduled for recording, moved off slot 263 on 2026-07-27. Part one is the recorded 2026-07-17 session where the founder starts a Full Auto repair, describes the failures that make unattended agents unreliable, and steps away unfinished. Part two is an aspirational Sarah script for the demonstration we want once the capability works: the Omega workroom with Full Auto running unattended, multi-account handoff, real OpenAgents objectives, and end-to-end receipts, while the founder is away. A truth ledger gates every spoken line against shipped capability, and recording waits on the ledger. |
