@@ -378,6 +378,18 @@ mod tests {
     }
 
     #[test]
+    fn failed_release_does_not_claim_funds_were_returned() {
+        let root = tempfile::tempdir().unwrap();
+        let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
+        let hold = Hold {
+            workspace: "missing-workspace".into(),
+            attempt: "missing-attempt".into(),
+            price: priced().price,
+        };
+        assert_eq!(release(&mut ledger, &hold), Settlement::Outstanding);
+    }
+
+    #[test]
     fn observed_reads_exactly_the_priced_resources() {
         let priced = priced();
         let body = serde_json::json!({

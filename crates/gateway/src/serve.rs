@@ -918,8 +918,7 @@ async fn verified(
             Ok(published) => published,
             Err(message) => {
                 state.release(naming.request, naming.attempt).await;
-                money_release(state, hold).await;
-                ctx.settlement = hold.as_ref().map(|_| money::Settlement::Released.label());
+                ctx.settlement = money_release(state, hold).await;
                 return Err(Verdict::Refused {
                     status: StatusCode::SERVICE_UNAVAILABLE,
                     code: "door_unavailable",
@@ -931,8 +930,7 @@ async fn verified(
         };
     if let Err(fault) = admission.verify(&published) {
         state.release(naming.request, naming.attempt).await;
-        money_release(state, hold).await;
-        ctx.settlement = hold.as_ref().map(|_| money::Settlement::Released.label());
+        ctx.settlement = money_release(state, hold).await;
         return Err(Verdict::Refused {
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "identity_mismatch",
@@ -980,6 +978,7 @@ async fn money_hold(
         });
     };
     let Some(priced) = config.doors.get(door) else {
+        state.release(naming.request, naming.attempt).await;
         return Err(Verdict::Refused {
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "unpriced",
@@ -1031,10 +1030,12 @@ async fn money_hold(
 }
 
 /// Release a monetary hold whose work was never dispatched.
-async fn money_release(state: &ServeState, hold: &Option<money::Hold>) {
+async fn money_release(state: &ServeState, hold: &Option<money::Hold>) -> Option<&'static str> {
     if let (Some(ledger), Some(hold)) = (&state.money, hold) {
         let mut ledger = ledger.lock().await;
-        money::release(&mut ledger, hold);
+        Some(money::release(&mut ledger, hold).label())
+    } else {
+        None
     }
 }
 
@@ -1501,8 +1502,7 @@ async fn classify_admitted(
         ctx.settlement = if forwards == 0 {
             // Nothing dispatched — the one release the ledger accepts
             // without further evidence.
-            money_release(state, &hold).await;
-            Some(money::Settlement::Released.label())
+            money_release(state, &hold).await
         } else {
             // Every dispatched item must report every priced resource;
             // one silent item leaves the whole hold outstanding.
