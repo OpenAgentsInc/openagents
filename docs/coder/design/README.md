@@ -18,4 +18,5 @@ discovery, and package distribution.
 | [service-spec](service-spec.md) | Coder service: Nostr auth, free usage, and deployment |
 | [thoughts-on-a-typesafe-coding-agent](thoughts-on-a-typesafe-coding-agent.md) | [public] thoughts on a typesafe coding agent |
 | [typesafe-agent-analysis](typesafe-agent-analysis.md) | A TypeSafe-native Coder |
+| [typesafe-agent-protocol-addendum](typesafe-agent-protocol-addendum.md) | Complete proposal coverage: Nostr specifications and host/client implementation responsibilities |
 | [typesafe-agent-roadmap](typesafe-agent-roadmap.md) | Roadmap for a TypeSafe-native Coder |

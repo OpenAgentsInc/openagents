@@ -12,6 +12,9 @@ The [program and extension specification](../../extensions/README.md) defines
 how programs, Wasm plugins, skills, and packages participate in this design.
 Its [opportunity analysis](../../extensions/opportunities.md) maps the source
 proposal to concrete behavior and the evidence needed to evaluate it.
+The [protocol addendum](typesafe-agent-protocol-addendum.md) maps the complete
+source, including its appendices, to Nostr contracts and host/client duties.
+It adds CTX, POL, COORD, and EVAL v1 drafts without claiming implementation.
 
 ## The main opportunity
 

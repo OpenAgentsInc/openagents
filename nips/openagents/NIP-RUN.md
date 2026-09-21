@@ -153,6 +153,12 @@ to this journal; neither its enum nor historical ATIF records are renamed
 implicitly. NIP-AM accounting and NIP-AO live telemetry remain complementary;
 NIP-AE mutable memory is not an immutable run journal.
 
+CTX task frames/context builds, POL approvals/routes, COORD claims/findings,
+and EVAL reports are typed artifacts linked by these records. A participant's
+separately signed private artifact uses the shared `3188` envelope; receiving
+it does not append an authoritative transition or activate a background job.
+The controller validates its authority and freshness before recording adoption.
+
 ## Conformance and rollout
 
 Required cases include duplicate/out-of-order delivery, chain gaps, forged

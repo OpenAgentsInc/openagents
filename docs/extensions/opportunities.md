@@ -5,6 +5,9 @@ Status: design analysis and evaluation hypotheses. The source is
 including its [original exports and six images](../coder/thoughts-on-a-typesafe-coding-agent/).
 The proposal identifies costs and possible improvements; its illustrative
 percentages, cost examples, and asymptotic claims are not Coder measurements.
+The [protocol addendum](../coder/design/typesafe-agent-protocol-addendum.md)
+maps every source recommendation to the NIPs and the host/client implementation
+needed to deliver it, including context, policy, coordination, and evaluation.
 
 ## Make extensions part of explicit state
 

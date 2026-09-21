@@ -36,6 +36,11 @@ fixtures remain required before advertisement. Unsupported execution semantics
 refuse. The existing [Decision API](../decision-models/api/decision-api.md)
 is unchanged.
 
+The [TypeSafe protocol addendum](../coder/design/typesafe-agent-protocol-addendum.md)
+extends this mapping with CTX task/context artifacts, POL instruction and routing
+records, COORD task/background coordination, and EVAL workload evidence. It
+separates shared records from the behavior hosts and clients must implement.
+
 ## How this fits the Coder plan
 
 The [source proposal](../coder/design/thoughts-on-a-typesafe-coding-agent.md)

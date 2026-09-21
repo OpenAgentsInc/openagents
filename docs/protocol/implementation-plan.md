@@ -6,6 +6,12 @@ as v1 and add EXT, RUN, shared artifact contracts, and execution jobs as v1.
 This change defines specifications and work; it does not implement or advertise
 those new runtime/relay paths.
 
+The subsequent [TypeSafe agent addendum](../coder/design/typesafe-agent-protocol-addendum.md)
+adds CTX, POL, COORD, and EVAL v1, the shared private artifact envelope `3188`,
+and public evaluation declaration `3189`. These extend the target backlog;
+the earlier issue descriptions and baseline below are not proof that the new
+contracts are implemented.
+
 ## Scope and baseline
 
 The baseline is repository revision `fdfe937d51b743d8bf6967423d34616b429da33b`.
@@ -68,6 +74,21 @@ Existing work retains its owner:
 | [#9512](https://github.com/OpenAgentsInc/openagents/issues/9512) | Coder's portable resolver/trust/installation consumer using EXT and exact locks. |
 
 ## Order and definition of done
+
+The additional protocol work fits the following existing workstreams. This
+mapping adds acceptance scope to this plan; it does not assert that GitHub
+issue bodies or completed implementations already include it.
+
+| Additional contract | Protocol workstream | Host/client work that remains |
+| --- | --- | --- |
+| CTX task frames, representations, context requests, and history | [#9516](https://github.com/OpenAgentsInc/openagents/issues/9516) shared contracts; [#9523](https://github.com/OpenAgentsInc/openagents/issues/9523) private envelopes. | Evidence/context storage, instruction-aware selection, expansion, and invalidation from the TypeSafe roadmap's CTX slices. |
+| POL instruction, approval, disclosure, and routing records | [#9516](https://github.com/OpenAgentsInc/openagents/issues/9516) artifacts; [#9517](https://github.com/OpenAgentsInc/openagents/issues/9517) bindings. | Trusted policy resolution, atomic approval consumption, provider adapters, confinement, and complete-task cost accounting. |
+| COORD claims, reuse, and background findings | [#9521](https://github.com/OpenAgentsInc/openagents/issues/9521) journal/fencing; [#9522](https://github.com/OpenAgentsInc/openagents/issues/9522) execution transport. | Transactional coordinator, alias-aware resource scopes, scheduler priorities, stale-result checks, and protected integration. |
+| EVAL reports and publication | [#9516](https://github.com/OpenAgentsInc/openagents/issues/9516) typed artifacts; [#9523](https://github.com/OpenAgentsInc/openagents/issues/9523) publication profiles; [#9526](https://github.com/OpenAgentsInc/openagents/issues/9526) interoperation. | Gym adapters, workload/partition evidence, independent comparisons, disclosure review, and explicit promotion. |
+
+Include all four in schema fixtures and end-to-end acceptance. Keeping a
+contract in an artifact rather than a new event kind does not remove its
+parser, authority, or failure-case requirements.
 
 1. Implement shared references, canonical digests, schemas, effects, evidence,
    context, and refusal fixtures. Establish the complete pinned-spec ledger.

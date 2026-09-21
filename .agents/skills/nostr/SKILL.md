@@ -50,8 +50,14 @@ Read the spec before the code. The files you need most often:
 - `nips/openagents/NIP-PRG.md` — programs.
 - `nips/openagents/NIP-EXT.md` — extension releases, discovery, and revocation.
 - `nips/openagents/NIP-RUN.md` — encrypted durable journals and recovery.
+- `nips/openagents/NIP-CTX.md` — task frames, evidence views, and expansion.
+- `nips/openagents/NIP-POL.md` — instructions, approvals, disclosure, and routing records.
+- `nips/openagents/NIP-COORD.md` — task claims, fencing, and background findings.
+- `nips/openagents/NIP-EVAL.md` — attributable workload evaluation and promotion evidence.
 - `nips/openagents/contracts.md` — pinned identities, schemas, locks, evidence,
-  context, effects, and outcomes for the revised v1 contracts.
+  context, effects, outcomes, and private artifact envelopes for the v1 contracts.
+- `docs/coder/design/typesafe-agent-protocol-addendum.md` — what belongs in
+  Nostr and what hosts/clients must implement; complete source-proposal coverage.
 - `docs/protocol/implementation-plan.md` — implementation across all lanes.
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.

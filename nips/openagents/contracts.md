@@ -1,7 +1,7 @@
 # Shared OpenAgents protocol contracts
 
-`draft` `optional` — normative for CAP v1, PRG v1, EXT v1, RUN v1,
-and the CJ execution family. These contracts are not implemented merely
+`draft` `optional` — normative for CAP, PRG, EXT, RUN, CTX, POL, COORD,
+and EVAL v1, and the CJ execution family. These contracts are not implemented merely
 because this document defines them. Existing CJ conversation and decision payloads retain their own rules.
 
 The uppercase requirement words express conformance requirements. A reader
@@ -209,6 +209,52 @@ authenticates a relay connection; the verified event signer is the forwarded
 request's principal. Never infer the sender's grants from another socket.
 Encryption hides content, not visible tags or traffic patterns. Each private
 profile defines read ACLs, retention, fanout, and COUNT/search behavior.
+
+### Private artifact envelope
+
+Kind `3188` is a regular immutable declaration of one scoped artifact for
+one recipient. CTX, POL, COORD, and EVAL use it when a separately signed
+artifact is needed outside a RUN controller's journal. It does not dispatch
+work. The event has exactly one `p` recipient, one `h` random 64-hex mailbox,
+and `t: oa:artifact:v1`. Mailboxes are generated per admitted sharing scope
+and recipient, never derived from a source path, plaintext digest, or task name.
+
+Content is NIP-44 v2 encrypted to that recipient. The decrypted body is
+`{v: "openagents.artifact-envelope.v1", requires: [], artifact, inline,
+issued_at, retain_until}`. Artifact is an ArtifactRef; inline is null or a
+JSON object whose JCS bytes MUST exactly match the ArtifactRef's digest and
+size. Binary/noncanonical payloads require separately admitted artifact
+storage and `inline: null`. The artifact's schema is mandatory. `issued_at`
+is observational Unix seconds; `retain_until` is a later retention request,
+not a promise by a relay. It does not establish application freshness or
+override an approval/lease expiry inside the artifact.
+
+Event ID and signer authenticate this exact declaration. Embedding a foreign
+ArtifactRef without its original signed declaration does not adopt its claimed
+authority. Each consuming NIP defines which issuer is trusted and for what
+purpose. Copies for different recipients have different event IDs and retain
+the same artifact bytes only when their disclosure policy permits. A redacted
+copy has a new digest and explicit derivation; it is not the original record.
+
+A conforming relay requires author authentication at publication, restricts
+all reads, ID lookups, COUNT, and live fanout to the authenticated author or
+exact recipient, and excludes these events from search. Apply visibility before
+limits/counting. Do not log plaintext or ciphertext bodies. NIP-42 authentication
+does not substitute for event-signature verification. Envelope validation does
+not validate encrypted artifact semantics. Plaintext must fit both the common
+bound and NIP-44's smaller payload bound; use an ArtifactRef when it does not.
+
+Consumers resolve references only under fetch/disclosure authority, verify
+content and retained provenance, and report unavailable/deleted bytes explicitly.
+Do not use EOSE, the newest timestamp, or absence of a record as proof of
+current authorization, completeness, or nonexecution. Required durable retention
+is agreed with storage separately. Deleting an envelope cannot revoke a grant
+already consumed or erase remote copies. Source hashes and private relationships
+stay encrypted. Visible tags still reveal traffic and recipient relationships.
+
+Advertise `oa-private-artifacts-v1` in NIP-11 `supported_extensions` only for
+configured envelope validation, privacy, and retention/retrieval behavior
+supported by fixtures. Keep these draft names out of numeric `supported_nips`.
 
 The kind allocations in this lane are OpenAgents draft assignments, checked
 against the repository's pinned lanes; they are not upstream registration.

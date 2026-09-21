@@ -176,4 +176,8 @@ implemented in OpenAgents.
 | NIP-CAP | Partial | Capabilities. Addressable `30180` and `30181` events carry portable execution definitions and operator preferences. Revised v1 separates definitions, host bindings, and grants; the earlier local readers require migration. |
 | NIP-EXT | Designed | Extension distribution: releases, listings, descriptors, revocation checkpoints, and namespace migration. See [NIP-EXT](../nips/openagents/NIP-EXT.md). |
 | NIP-RUN | Designed | Encrypted durable records, evidence, controller fencing, recovery, and retention. See [NIP-RUN](../nips/openagents/NIP-RUN.md); the local run-state store alone does not implement it. |
+| NIP-CTX | Designed | Task frames, versioned evidence representations, context selection, and bounded history expansion. See [NIP-CTX](../nips/openagents/NIP-CTX.md). |
+| NIP-POL | Designed | Scoped instructions, exact action approvals, recipient policy, and attributable routing/cost records. Hosts enforce them. See [NIP-POL](../nips/openagents/NIP-POL.md). |
+| NIP-COORD | Designed | Shared task proposals, fenced resource claims, background plans, and revision-bound findings. See [NIP-COORD](../nips/openagents/NIP-COORD.md). |
+| NIP-EVAL | Designed | Workload evaluation suites, comparable reports, optional publication, and scoped promotion evidence. See [NIP-EVAL](../nips/openagents/NIP-EVAL.md). |
 | `nips/` | Implemented | Pinned copies of the official and Block NIPs. `nips/manifest.json` records the upstream commits. The `openagents/` lane is authored here and is not synced. |
