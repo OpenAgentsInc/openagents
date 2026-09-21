@@ -33,6 +33,8 @@ versions, dependency policy, and disposable PostgreSQL acceptance. It stops
 on the first failed command; later commands have not run when that happens.
 It also runs the small Python artifact-acquisition regression suite before
 Rust checks; this suite needs Python 3 and no model weights or network.
+It also checks the delegation-result validator against completed, refused,
+incomplete, and inconsistent execution records before the Rust checks.
 
 The PostgreSQL script needs `initdb`, `pg_ctl`, `createdb`, `curl`, Python 3,
 and ordinary shell tools on PATH. It creates disposable local databases;

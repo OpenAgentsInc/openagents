@@ -825,9 +825,76 @@ fn raw_http(address: SocketAddr, head: &str, body: &[u8]) -> Vec<u8> {
         .unwrap();
     stream.write_all(head.as_bytes()).unwrap();
     stream.write_all(body).unwrap();
+    let method = head.split_whitespace().next().unwrap_or_default();
     let mut response = Vec::new();
-    stream.read_to_end(&mut response).unwrap();
+    let mut buffer = [0_u8; 8_192];
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => response.extend_from_slice(&buffer[..read]),
+            // The relay answers a refused upload and closes without
+            // draining the body it never read, and macOS reports that
+            // close as ECONNRESET rather than EOF. Tolerate the reset
+            // only when the whole response has already arrived.
+            Err(error)
+                if error.kind() == ErrorKind::ConnectionReset
+                    && http_response_complete(method, &response) =>
+            {
+                break;
+            }
+            Err(error) => panic!(
+                "raw HTTP read failed ({error}); received: {}",
+                String::from_utf8_lossy(&response)
+            ),
+        }
+    }
     response
+}
+
+/// Whether `bytes` holds a whole `Connection: close` response: a
+/// terminated header block with an HTTP status line and, except for
+/// `HEAD`, every body byte its `Content-Length` declares.
+fn http_response_complete(method: &str, bytes: &[u8]) -> bool {
+    let Some(boundary) = bytes.windows(4).position(|window| window == b"\r\n\r\n") else {
+        return false;
+    };
+    let Ok(head) = std::str::from_utf8(&bytes[..boundary]) else {
+        return false;
+    };
+    let mut lines = head.split("\r\n");
+    let mut status = lines.next().unwrap_or_default().split_whitespace();
+    if !matches!(status.next(), Some("HTTP/1.0" | "HTTP/1.1"))
+        || !status.next().is_some_and(|code| {
+            code.len() == 3
+                && code
+                    .parse::<u16>()
+                    .is_ok_and(|code| (100..600).contains(&code))
+        })
+    {
+        return false;
+    }
+    let mut declared = None;
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else {
+            return false;
+        };
+        if name.is_empty() || name.eq_ignore_ascii_case("transfer-encoding") {
+            return false;
+        }
+        if name.eq_ignore_ascii_case("content-length") {
+            let Ok(length) = value.trim().parse::<usize>() else {
+                return false;
+            };
+            if declared.replace(length).is_some() {
+                return false;
+            }
+        }
+    }
+    let received = bytes.len() - boundary - 4;
+    if method == "HEAD" {
+        return received == 0;
+    }
+    declared == Some(received)
 }
 
 fn http_body(response: &[u8]) -> &[u8] {
@@ -836,6 +903,60 @@ fn http_body(response: &[u8]) -> &[u8] {
         .position(|window| window == b"\r\n\r\n")
         .unwrap();
     &response[boundary + 4..]
+}
+
+#[test]
+fn http_response_complete_accepts_full_responses() {
+    assert!(http_response_complete(
+        "PUT",
+        b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: 4\r\nConnection: close\r\n\r\nbody"
+    ));
+    // Header names are case-insensitive, and a zero-length body completes
+    // at the header boundary.
+    assert!(http_response_complete(
+        "DELETE",
+        b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n"
+    ));
+    // A HEAD answer declares a length it never sends, so its headers alone
+    // complete it.
+    assert!(http_response_complete(
+        "HEAD",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 40\r\n\r\n"
+    ));
+}
+
+#[test]
+fn http_response_complete_rejects_truncated_and_malformed() {
+    // A body short of the declared Content-Length.
+    assert!(!http_response_complete(
+        "PUT",
+        b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 4\r\n\r\nbod"
+    ));
+    // A header block that never terminates.
+    assert!(!http_response_complete(
+        "PUT",
+        b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 4\r\n"
+    ));
+    // No Content-Length to complete against.
+    assert!(!http_response_complete("PUT", b"HTTP/1.1 200 OK\r\n\r\n"));
+    // A Content-Length that does not parse.
+    assert!(!http_response_complete(
+        "PUT",
+        b"HTTP/1.1 200 OK\r\nContent-Length: lots\r\n\r\nbody"
+    ));
+    // A header block that is not an HTTP response.
+    assert!(!http_response_complete("PUT", b"garbage\r\n\r\n"));
+    for malformed in [
+        b"HTTP/bogus 200 OK\r\nContent-Length: 0\r\n\r\n".as_slice(),
+        b"HTTP/1.1 nope\r\nContent-Length: 0\r\n\r\n",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nContent-Length: 4\r\n\r\n",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nextra",
+        b"HTTP/1.1 200 OK\r\nnot-a-header\r\nContent-Length: 0\r\n\r\n",
+    ] {
+        assert!(!http_response_complete("PUT", malformed));
+    }
+    // Nothing received at all.
+    assert!(!http_response_complete("PUT", b""));
 }
 
 fn temporary_media_root() -> PathBuf {

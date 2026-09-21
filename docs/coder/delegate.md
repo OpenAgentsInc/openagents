@@ -1,5 +1,8 @@
 # Delegation
 
+For setup, batch operation, and integration, use the
+[Devin delegation runbook](devin-delegation-runbook.md).
+
 Coder hands one bounded task to one executor, runs several at once under a
 stated bound, and records each as an ATIF `Call` named `delegate`.
 

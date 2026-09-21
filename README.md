@@ -143,6 +143,10 @@ report.
 defines the flagship product vision, the existing implementation, and the
 issues that connect typed decisions to bounded programs and verified work.
 
+[Delegate work to Devin with Coder](docs/coder/devin-delegation-runbook.md)
+is the operator runbook for local setup, six-session batches, remote workers,
+result checks, and supervised integration.
+
 Keys in the environment decide the door: `TYPESAFE_API_KEY` turns
 classify on; `CODER_DOOR_KEY`/`CODER_DOOR_URL`/`CODER_MODEL` take an
 own-key door; `CODER_WORKER` + `CODER_RELAY` route the turn through the

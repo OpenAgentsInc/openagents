@@ -1,0 +1,59 @@
+{
+  "v": 1,
+  "work": [
+    {
+      "id": "01-document-structs",
+      "prompt": "Read crates/atif/src/document.rs. Count top-level pub struct declarations. End with Final answer: followed by the integer only.",
+      "reads": "crates/atif/src/document.rs",
+      "writes": false,
+      "touches": [],
+      "after": [],
+      "expects": "5"
+    },
+    {
+      "id": "02-partition-labels",
+      "prompt": "Read Partition::as_str in crates/gym/src/suite.rs. End with Final answer: followed by its three wire labels as a comma-separated list in declaration order.",
+      "reads": "crates/gym/src/suite.rs",
+      "writes": false,
+      "touches": [],
+      "after": [],
+      "expects": "calibration, development, locked"
+    },
+    {
+      "id": "03-estimator-variants",
+      "prompt": "Read the Estimator enum in crates/lev/src/estimator.rs. End with Final answer: followed by its variant names as a comma-separated list in declaration order.",
+      "reads": "crates/lev/src/estimator.rs",
+      "writes": false,
+      "touches": [],
+      "after": [],
+      "expects": "L1, L2, L3"
+    },
+    {
+      "id": "04-rust-edition",
+      "prompt": "Read workspace.package.edition in Cargo.toml. End with Final answer: followed by the edition number only.",
+      "reads": "Cargo.toml",
+      "writes": false,
+      "touches": [],
+      "after": [],
+      "expects": "2024"
+    },
+    {
+      "id": "05-program-event-kind",
+      "prompt": "Read nips/openagents/NIP-PRG.md. Which event kind identifies a program definition, rather than a module announcement? End with Final answer: followed by the integer only.",
+      "reads": "nips/openagents/NIP-PRG.md",
+      "writes": false,
+      "touches": [],
+      "after": [],
+      "expects": "30182"
+    },
+    {
+      "id": "06-shell-rounds",
+      "prompt": "Read the ROUNDS_MAX constant in crates/coder/src/shell.rs. End with Final answer: followed by the integer only.",
+      "reads": "crates/coder/src/shell.rs",
+      "writes": false,
+      "touches": [],
+      "after": [],
+      "expects": "3"
+    }
+  ]
+}

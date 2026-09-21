@@ -6,6 +6,9 @@ executor: a capability under `capabilities/` that the operator approved with
 `capability-trust`. Set `CODER_EXECUTOR=<slug>` and leave `CODER_DOOR_KEY`
 unset; setting both is refused.
 
+For the complete workstation and batch procedure, use the
+[Devin delegation runbook](devin-delegation-runbook.md).
+
 The executor door builds one bounded `delegate::Task` per job and runs it
 through `Delegator`, so every job runs under the same capability approval
 and filesystem boundary as a `coder` fan-out. There is no unrestricted
@@ -48,18 +51,26 @@ the run and for that path only. Read
 [The worktree is trusted for the run, and no wider](delegate.md#the-worktree-is-trusted-for-the-run-and-no-wider).
 
 ```sh
-mkdir -p ~/worker-exec ~/worker-jobs/xdg/devin/cli
+umask 077
+mkdir -p ~/worker-exec ~/worker-jobs/xdg/devin/cli ~/worker-approvals
 cp ~/.local/share/devin/credentials.toml ~/worker-jobs/xdg/devin/
-cp ~/.local/share/devin/cli/{installation_id,trusted_workspaces.json} \
-  ~/worker-jobs/xdg/devin/cli/
+for file in installation_id trusted_workspaces.json; do
+  if [ -f "$HOME/.local/share/devin/cli/$file" ]; then
+    cp "$HOME/.local/share/devin/cli/$file" "$HOME/worker-jobs/xdg/devin/cli/$file"
+  fi
+done
+chmod 700 ~/worker-jobs ~/worker-approvals
 chmod 600 ~/worker-jobs/xdg/devin/credentials.toml
-(cd ~/worker-exec && devin)   # answer "Yes, trust", then quit
+(cd ~/worker-exec && XDG_DATA_HOME=$HOME/worker-jobs/xdg devin)
+# Answer "Yes, trust", then quit. Use the worker's data directory.
 
+CODER_CAPABILITY_TRUST=$HOME/worker-approvals/trust.json \
 ./target/debug/capability-trust approve devin-local \
   --in ~/repos/openagents --writable ~/worker-jobs
 
 cd ~/worker-exec
 XDG_DATA_HOME=$HOME/worker-jobs/xdg \
+CODER_CAPABILITY_TRUST=$HOME/worker-approvals/trust.json \
 CODER_CAPABILITY_DIR=$HOME/repos/openagents/capabilities \
 CODER_EXECUTOR=devin-local \
 CODER_EXECUTOR_WORKDIR=$HOME/worker-exec \
@@ -68,6 +79,12 @@ CODER_RELAY=ws://127.0.0.1:7447 \
 CODER_WORKER_SECRET="$(cat ~/.openagents/worker-secret)" \
   ~/repos/openagents/target/debug/coder-worker
 ```
+
+Sign in to the CLI before copying `credentials.toml`, or sign in under the
+isolated `XDG_DATA_HOME`. Keep the approval store's parent directory separate
+from writable state: the boundary protects that whole directory. Use the same
+`CODER_CAPABILITY_TRUST` for approval and execution. When building with a separate
+`CARGO_TARGET_DIR`, substitute its `debug` directory for `target/debug` above.
 
 The worker prints `door executor (devin-local)`. Drive it from the terminal
 with `CODER_WORKER=<worker pubkey>` and `CODER_RELAY`; the trace's `Agent`

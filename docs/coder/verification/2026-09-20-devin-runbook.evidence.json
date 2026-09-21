@@ -1,0 +1,573 @@
+{
+  "schema": "openagents.delegation-runbook-observation.v1",
+  "date": "2026-09-20",
+  "runtime_base": "db22fead007a3bffd43842bdd7639b270da4b732",
+  "host": "macOS, Apple silicon",
+  "devin_cli": "3000.10.31 (b98cc431)",
+  "boundary": "sandbox-exec",
+  "runs": [
+    {
+      "name": "six-read-1",
+      "program": "delegate-fan-out",
+      "outcome": "answered",
+      "trace_sha256": "c8ee5d4402144561667a7a48538a6c89c4179e5e326df13e511d61d51053cd1a",
+      "wall_seconds": 44.21,
+      "observed_peak_direct_devin_processes": null,
+      "delegations": [
+        {
+          "capability": "devin-local",
+          "status": "refused: boundary_unavailable",
+          "answer": null,
+          "expected": null,
+          "correct": null,
+          "milliseconds": 36731,
+          "boundary": false,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "refused: boundary_unavailable",
+          "answer": null,
+          "expected": null,
+          "correct": null,
+          "milliseconds": 35943,
+          "boundary": false,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "refused: boundary_unavailable",
+          "answer": null,
+          "expected": null,
+          "correct": null,
+          "milliseconds": 36573,
+          "boundary": false,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "refused: boundary_unavailable",
+          "answer": null,
+          "expected": null,
+          "correct": null,
+          "milliseconds": 35715,
+          "boundary": false,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "refused: boundary_unavailable",
+          "answer": null,
+          "expected": null,
+          "correct": null,
+          "milliseconds": 36132,
+          "boundary": false,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "refused: boundary_unavailable",
+          "answer": null,
+          "expected": null,
+          "correct": null,
+          "milliseconds": 36377,
+          "boundary": false,
+          "relayed": false
+        }
+      ]
+    },
+    {
+      "name": "six-read-2",
+      "program": "delegate-fan-out",
+      "outcome": "answered",
+      "trace_sha256": "e0c0997bdee99badbfbf28b4b9b8756c82778e8851087a6a063237380469076d",
+      "wall_seconds": 74.55,
+      "observed_peak_direct_devin_processes": null,
+      "delegations": [
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "5",
+          "expected": null,
+          "correct": null,
+          "milliseconds": 45666,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "calibration, development, locked",
+          "expected": null,
+          "correct": null,
+          "milliseconds": 52310,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "L1, L2, L3",
+          "expected": null,
+          "correct": null,
+          "milliseconds": 44056,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "7",
+          "expected": null,
+          "correct": null,
+          "milliseconds": 67509,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "30182",
+          "expected": null,
+          "correct": null,
+          "milliseconds": 53958,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "3",
+          "expected": null,
+          "correct": null,
+          "milliseconds": 44823,
+          "boundary": true,
+          "relayed": false
+        }
+      ]
+    },
+    {
+      "name": "six-write",
+      "program": "burn-down",
+      "outcome": "declined",
+      "trace_sha256": "abcf7750725f328c98749cc23037b5353435d9a1ba8f79752eb59d8d5ac166f4",
+      "wall_seconds": 6.91,
+      "observed_peak_direct_devin_processes": 0,
+      "delegations": []
+    },
+    {
+      "name": "six-write-2",
+      "program": "burn-down",
+      "outcome": "answered",
+      "trace_sha256": "560c6338ec5fb4e8370d5e1504fa5ce1e03265c94a82636fa5e41833f85c23db",
+      "wall_seconds": 807.15,
+      "observed_peak_direct_devin_processes": 6,
+      "delegations": [
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "done",
+          "expected": "done",
+          "correct": true,
+          "milliseconds": 798636,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "done",
+          "expected": "done",
+          "correct": true,
+          "milliseconds": 415476,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "done",
+          "expected": "done",
+          "correct": true,
+          "milliseconds": 624376,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "done",
+          "expected": "done",
+          "correct": true,
+          "milliseconds": 420964,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "done",
+          "expected": "done",
+          "correct": true,
+          "milliseconds": 619962,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "done",
+          "expected": "done",
+          "correct": true,
+          "milliseconds": 629355,
+          "boundary": true,
+          "relayed": false
+        }
+      ]
+    },
+    {
+      "name": "gateway-fix",
+      "program": "burn-down",
+      "outcome": "answered",
+      "trace_sha256": "c90daed97ef7a7e88a011ff40c39641b0b64f5125df048f8a0ce12e80a4e5f88",
+      "wall_seconds": null,
+      "observed_peak_direct_devin_processes": null,
+      "delegations": [
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "done",
+          "expected": "done",
+          "correct": true,
+          "milliseconds": 319130,
+          "boundary": true,
+          "relayed": false
+        }
+      ]
+    },
+    {
+      "name": "relay-two",
+      "program": "burn-down",
+      "outcome": "answered",
+      "trace_sha256": "a92eaedb79b1144fb3e5b8306b40fb9ee8f0cb1f5294cf0b2a097148022ce61b",
+      "wall_seconds": 22.22,
+      "observed_peak_direct_devin_processes": null,
+      "delegations": [
+        {
+          "capability": "devin-relay",
+          "status": "answered",
+          "answer": "5",
+          "expected": "5",
+          "correct": true,
+          "milliseconds": 21003,
+          "boundary": false,
+          "relayed": true
+        },
+        {
+          "capability": "devin-relay",
+          "status": "answered",
+          "answer": "calibration, development, locked",
+          "expected": "calibration, development, locked",
+          "correct": true,
+          "milliseconds": 15944,
+          "boundary": false,
+          "relayed": true
+        }
+      ]
+    },
+    {
+      "name": "local-smoke-1",
+      "program": "burn-down",
+      "outcome": "answered",
+      "trace_sha256": "5436f823b0dfb6d40d491c171a99a4acb084ca82a22652b3a1d4b54c6a7f09ef",
+      "wall_seconds": 67.13,
+      "observed_peak_direct_devin_processes": 6,
+      "delegations": [
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "5",
+          "expected": "5",
+          "correct": true,
+          "milliseconds": 59861,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "calibration, development, locked",
+          "expected": "calibration, development, locked",
+          "correct": true,
+          "milliseconds": 53237,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "L1, L2, L3",
+          "expected": "L1, L2, L3",
+          "correct": true,
+          "milliseconds": 50995,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "2024",
+          "expected": "2024",
+          "correct": true,
+          "milliseconds": 48351,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "30182",
+          "expected": "30182",
+          "correct": true,
+          "milliseconds": 49179,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "3",
+          "expected": "3",
+          "correct": true,
+          "milliseconds": 49813,
+          "boundary": true,
+          "relayed": false
+        }
+      ],
+      "input_files_unchanged": true,
+      "input_sha256": {
+        "crates/atif/src/document.rs": "133234ece9e73a75b3d5572eae57c1889b47eaa758db45e84b8eb3c206a6b4bb",
+        "crates/gym/src/suite.rs": "12d5543030d8fc48b41c8161ee24c30a5dd6f55a3ef390dc84c94265b1348fde",
+        "crates/lev/src/estimator.rs": "4a33dc8bb9efd355331a8e45cdd8c3a0bc6be1f9d4eacc16477c7143eba12df5",
+        "Cargo.toml": "37eab6ed4eb60c60626fcc4915e713d5c8c45fd645a8a1b3d5a21615ad4c1122",
+        "nips/openagents/NIP-PRG.md": "220c75947161a71b37527d67ba5c38edcee7578e001a51059e4d4ca903e771fd",
+        "crates/coder/src/shell.rs": "fe8f3cd6b46218792daa705b769229032f6739574fb76f123b0b5784e1a560b7"
+      }
+    },
+    {
+      "name": "local-smoke-2",
+      "program": "burn-down",
+      "outcome": "answered",
+      "trace_sha256": "8c622b324ef77517a2b4b2439a6df1592330ca73615ac956f7fe3349ea2051d2",
+      "wall_seconds": 57.39,
+      "observed_peak_direct_devin_processes": 6,
+      "delegations": [
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "5",
+          "expected": "5",
+          "correct": true,
+          "milliseconds": 49765,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "calibration, development, locked",
+          "expected": "calibration, development, locked",
+          "correct": true,
+          "milliseconds": 46866,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "L1, L2, L3",
+          "expected": "L1, L2, L3",
+          "correct": true,
+          "milliseconds": 49488,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "2024",
+          "expected": "2024",
+          "correct": true,
+          "milliseconds": 45498,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "30182",
+          "expected": "30182",
+          "correct": true,
+          "milliseconds": 50314,
+          "boundary": true,
+          "relayed": false
+        },
+        {
+          "capability": "devin-local",
+          "status": "answered",
+          "answer": "3",
+          "expected": "3",
+          "correct": true,
+          "milliseconds": 43337,
+          "boundary": true,
+          "relayed": false
+        }
+      ],
+      "input_files_unchanged": true,
+      "input_sha256": {
+        "crates/atif/src/document.rs": "133234ece9e73a75b3d5572eae57c1889b47eaa758db45e84b8eb3c206a6b4bb",
+        "crates/gym/src/suite.rs": "12d5543030d8fc48b41c8161ee24c30a5dd6f55a3ef390dc84c94265b1348fde",
+        "crates/lev/src/estimator.rs": "4a33dc8bb9efd355331a8e45cdd8c3a0bc6be1f9d4eacc16477c7143eba12df5",
+        "Cargo.toml": "37eab6ed4eb60c60626fcc4915e713d5c8c45fd645a8a1b3d5a21615ad4c1122",
+        "nips/openagents/NIP-PRG.md": "220c75947161a71b37527d67ba5c38edcee7578e001a51059e4d4ca903e771fd",
+        "crates/coder/src/shell.rs": "fe8f3cd6b46218792daa705b769229032f6739574fb76f123b0b5784e1a560b7"
+      }
+    },
+    {
+      "name": "relay-six",
+      "program": "burn-down",
+      "outcome": "answered",
+      "trace_sha256": "e4c9a009e7be643ba12fc2030bc5eb96635ef9c7e9b7cab9b5eafc0f40a225e1",
+      "wall_seconds": 20.42,
+      "observed_peak_worker_devin_processes": 6,
+      "delegations": [
+        {
+          "capability": "devin-relay",
+          "status": "answered",
+          "answer": "5",
+          "expected": "5",
+          "correct": true,
+          "milliseconds": 19173,
+          "boundary": false,
+          "relayed": true
+        },
+        {
+          "capability": "devin-relay",
+          "status": "answered",
+          "answer": "calibration, development, locked",
+          "expected": "calibration, development, locked",
+          "correct": true,
+          "milliseconds": 15176,
+          "boundary": false,
+          "relayed": true
+        },
+        {
+          "capability": "devin-relay",
+          "status": "answered",
+          "answer": "L1, L2, L3",
+          "expected": "L1, L2, L3",
+          "correct": true,
+          "milliseconds": 14464,
+          "boundary": false,
+          "relayed": true
+        },
+        {
+          "capability": "devin-relay",
+          "status": "answered",
+          "answer": "2024",
+          "expected": "2024",
+          "correct": true,
+          "milliseconds": 14462,
+          "boundary": false,
+          "relayed": true
+        },
+        {
+          "capability": "devin-relay",
+          "status": "answered",
+          "answer": "30182",
+          "expected": "30182",
+          "correct": true,
+          "milliseconds": 16274,
+          "boundary": false,
+          "relayed": true
+        },
+        {
+          "capability": "devin-relay",
+          "status": "answered",
+          "answer": "3",
+          "expected": "3",
+          "correct": true,
+          "milliseconds": 11805,
+          "boundary": false,
+          "relayed": true
+        }
+      ]
+    }
+  ],
+  "manual_gate": {
+    "integrated_main_base": "82cafc0bbb",
+    "command": "./scripts/verify-rust.sh",
+    "log_sha256": "a82442be063d47281da6bac27862122e251f810f351169bccff38d26a65db6f8",
+    "phases": [
+      {
+        "phase": "Artifact acquisition tests",
+        "seconds": 0.1,
+        "exit": 0
+      },
+      {
+        "phase": "Delegation evidence checks",
+        "seconds": 0.6,
+        "exit": 0
+      },
+      {
+        "phase": "Workspace formatting",
+        "seconds": 0.6,
+        "exit": 0
+      },
+      {
+        "phase": "Default workspace Clippy",
+        "seconds": 6.1,
+        "exit": 0
+      },
+      {
+        "phase": "Feature workspace Clippy",
+        "seconds": 0.7,
+        "exit": 0
+      },
+      {
+        "phase": "Default workspace tests",
+        "seconds": 107.8,
+        "exit": 0
+      },
+      {
+        "phase": "Feature workspace tests",
+        "seconds": 70.5,
+        "exit": 0
+      },
+      {
+        "phase": "Rust 1.95 workspace check",
+        "seconds": 0.9,
+        "exit": 0
+      },
+      {
+        "phase": "Rust 1.94 Kev check",
+        "seconds": 0.2,
+        "exit": 0
+      },
+      {
+        "phase": "Dependency policy",
+        "seconds": 1.0,
+        "exit": 0
+      },
+      {
+        "phase": "PostgreSQL acceptance",
+        "seconds": 55.9,
+        "exit": 0
+      }
+    ],
+    "optional_not_run": [
+      "Metal",
+      "relay soak"
+    ]
+  }
+}
