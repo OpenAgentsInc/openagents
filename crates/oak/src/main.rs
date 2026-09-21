@@ -3,16 +3,22 @@
 //! `oak ask` sends one state, or a bounded batch of them, through
 //! `POST /v1/systemone` and writes one JSON object per row to standard
 //! output. `oak models` lists the doors the credential can reach.
+//! `oak classify` sends one `openagents.classify.v1` envelope through
+//! `POST /v1/classify` and writes the report it answers.
 //!
 //! ```text
 //! oak ask --questions PATH [--input state|lines|ndjson] [STATE] [FLAGS]
 //! oak models [FLAGS]
+//! oak classify --envelope PATH [FLAGS]
 //! ```
 //!
 //! Credentials come from `OPENAGENTS_API_KEY` or the `api_key` field of a
 //! protected config file — never a flag, so a key never lands in a process
 //! list. The endpoint comes from `--url`, `OPENAGENTS_BASE_URL`, or the
-//! file's `base_url`. Read `docs/decision-models/caller.md`.
+//! file's `base_url`; the workspace from `--workspace`,
+//! `OPENAGENTS_WORKSPACE`, or the file's `workspace`. Read
+//! `docs/decision-models/caller.md` and
+//! `docs/decision-models/classification-callers.md`.
 
 use std::io::{BufWriter, IsTerminal, Read, Write};
 use std::path::PathBuf;
@@ -21,50 +27,43 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use jev::{
-    BlockingClient, Config, Entry, Question, Questions, ResponseBody, RetryPolicy, SystemOneRequest,
+    Entry, Question, Questions, ResponseBody, SystemOneRequest,
+};
+use oak::{
+    CALLER_FAULTS, CLASSIFY_ENVELOPE_FAULTS, CLASSIFY_SCHEMA, CallOpts, MAX_ENVELOPE_BYTES,
+    MAX_RETRY_AFTER, Reply, Settings, read_bounded,
 };
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::{Map, Value, json};
 
 /// Every row answered.
-const EXIT_ANSWERED: i32 = 0;
+const EXIT_ANSWERED: i32 = oak::EXIT_ANSWERED;
 /// The run itself failed: bad credentials, an unbound door, a malformed
 /// envelope — the fix is the caller's, not a retry's.
-const EXIT_FAILURE: i32 = 1;
+const EXIT_FAILURE: i32 = oak::EXIT_FAILURE;
 /// The command line or its inputs did not parse.
-const EXIT_USAGE: i32 = 2;
+const EXIT_USAGE: i32 = oak::EXIT_USAGE;
 /// No row answered and at least one was refused.
-const EXIT_REFUSED: i32 = 3;
+const EXIT_REFUSED: i32 = oak::EXIT_REFUSED;
 /// No row answered or refused and at least one was unavailable or invalid.
-const EXIT_UNAVAILABLE: i32 = 4;
+const EXIT_UNAVAILABLE: i32 = oak::EXIT_UNAVAILABLE;
 /// Some mix of the above.
-const EXIT_MIXED: i32 = 5;
-
-/// A response error the caller must fix rather than retry: credentials,
-/// bindings, and envelope shape apply to every row identically, so the run
-/// stops on the first.
-const CALLER_FAULTS: &[&str] = &[
-    "unauthenticated",
-    "door_not_bound",
-    "malformed",
-    "invalid_request",
-    "too_many_questions",
-    "too_many_options",
-];
-
-/// The longest a `Retry-After` is honored before the attempt goes anyway.
-const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
+const EXIT_MIXED: i32 = oak::EXIT_MIXED;
 
 fn usage() -> ! {
     eprintln!(
         "usage:\n  \
          oak ask --questions PATH [--input state|lines|ndjson] [STATE] [FLAGS]\n  \
-         oak models [FLAGS]\n\n  \
+         oak models [FLAGS]\n  \
+         oak classify --envelope PATH [FLAGS]\n\n  \
          flags:\n    \
          --url URL              service root (OPENAGENTS_BASE_URL, or `base_url` in the file)\n    \
          --model DOOR           door to ask (OPENAGENTS_MODEL, or `model` in the file)\n    \
+         --workspace ID         workspace for X-Workspace-Id (OPENAGENTS_WORKSPACE,\n    \
+         \x20                       or `workspace` in the file)\n    \
          --config PATH          credential file (OPENAGENTS_CONFIG,\n    \
          \x20                       default ~/.config/openagents/oak.json)\n    \
+         --envelope PATH        the openagents.classify.v1 envelope; `-` reads stdin\n    \
          --input MODE           state | lines | ndjson (default: state)\n    \
          --concurrency N        in-flight calls for batch input (default: 4)\n    \
          --retries N            retries per call, honoring Retry-After (default: 3)\n    \
@@ -75,15 +74,6 @@ fn usage() -> ! {
          --quiet                no progress on standard error"
     );
     std::process::exit(EXIT_USAGE);
-}
-
-/// Settings from the flag, the environment, or the config file, in that
-/// order. `api_key` is never a flag.
-#[derive(Debug, Default, serde::Deserialize)]
-struct FileConfig {
-    api_key: Option<String>,
-    base_url: Option<String>,
-    model: Option<String>,
 }
 
 struct Ask {
@@ -98,6 +88,7 @@ struct Ask {
     uncertain_below: Option<f64>,
     url: Option<String>,
     model: Option<String>,
+    workspace: Option<String>,
     config: Option<PathBuf>,
     quiet: bool,
 }
@@ -138,31 +129,95 @@ impl Outcome {
     }
 }
 
+/// The shared flags every verb reads: endpoint, workspace, credential
+/// file, timeout, and retries.
+#[derive(Default)]
+struct Common {
+    url: Option<String>,
+    workspace: Option<String>,
+    config: Option<PathBuf>,
+    timeout: Option<Duration>,
+    retries: Option<u32>,
+    request_id: Option<String>,
+    quiet: bool,
+}
+
+impl Common {
+    /// Read one flag into the shared set; `true` when it took it.
+    fn flag(&mut self, name: &str, args: &mut impl Iterator<Item = String>) -> bool {
+        let value = |args: &mut dyn Iterator<Item = String>| args.next().unwrap_or_else(|| usage());
+        match name {
+            "--url" => self.url = Some(value(args)),
+            "--workspace" => self.workspace = Some(value(args)),
+            "--config" => self.config = Some(PathBuf::from(value(args))),
+            "--timeout" => self.timeout = Some(seconds(Some(value(args)))),
+            "--retries" => {
+                self.retries = Some(
+                    value(args)
+                        .parse::<u32>()
+                        .unwrap_or_else(|_| usage()),
+                );
+            }
+            "--request-id" => self.request_id = Some(value(args)),
+            "--quiet" => self.quiet = true,
+            _ => return false,
+        }
+        true
+    }
+
+    fn opts(&self) -> CallOpts {
+        CallOpts {
+            timeout: self.timeout.unwrap_or(Duration::from_secs(60)),
+            retries: self.retries.unwrap_or(3),
+            request_id: self.request_id.clone(),
+        }
+    }
+
+    fn settings(&self) -> Result<Settings, String> {
+        Settings::resolve(
+            self.url.clone(),
+            None,
+            self.workspace.clone(),
+            self.config.clone(),
+        )
+    }
+}
+
 fn main() {
-    let mut args = std::env::args().skip(1);
+    let mut args = std::env::args().skip(1).peekable();
     let Some(verb) = args.next() else {
         usage();
     };
-    let mut url = None;
-    let mut config = None;
-    let mut quiet = false;
-    let mut timeout = Duration::from_secs(60);
     match verb.as_str() {
         "version" | "--version" => {
             println!("oak {}", env!("CARGO_PKG_VERSION"));
             std::process::exit(EXIT_ANSWERED);
         }
         "models" => {
+            let mut common = Common::default();
             while let Some(flag) = args.next() {
+                if !common.flag(&flag, &mut args) {
+                    usage();
+                }
+            }
+            std::process::exit(models(&common));
+        }
+        "classify" => {
+            let mut common = Common::default();
+            let mut envelope = None;
+            while let Some(flag) = args.next() {
+                if common.flag(&flag, &mut args) {
+                    continue;
+                }
                 match flag.as_str() {
-                    "--url" => url = args.next(),
-                    "--config" => config = args.next().map(PathBuf::from),
-                    "--timeout" => timeout = seconds(args.next()),
-                    "--quiet" => quiet = true,
+                    "--envelope" => {
+                        envelope = Some(args.next().unwrap_or_else(|| usage()));
+                    }
                     _ => usage(),
                 }
             }
-            std::process::exit(models(url, config, timeout, quiet));
+            let Some(envelope) = envelope else { usage() };
+            std::process::exit(classify(&envelope, &common));
         }
         "ask" => {}
         _ => usage(),
@@ -174,12 +229,13 @@ fn main() {
         state_arg: None,
         concurrency: 4,
         retries: 3,
-        timeout,
+        timeout: Duration::from_secs(60),
         request_id: None,
         select: Vec::new(),
         uncertain_below: None,
         url: None,
         model: None,
+        workspace: None,
         config: None,
         quiet: false,
     };
@@ -225,6 +281,7 @@ fn main() {
             }
             "--url" => ask.url = args.next(),
             "--model" => ask.model = args.next(),
+            "--workspace" => ask.workspace = args.next(),
             "--config" => ask.config = args.next().map(PathBuf::from),
             "--quiet" => ask.quiet = true,
             _ if flag.starts_with('-') => usage(),
@@ -249,127 +306,171 @@ fn seconds(value: Option<String>) -> Duration {
         .unwrap_or_else(|| usage())
 }
 
-/// Endpoint and credential, resolved.
-struct Settings {
-    api_key: String,
-    base_url: String,
-    model: Option<String>,
-}
-
-impl Settings {
-    fn resolve(
-        url: Option<String>,
-        model: Option<String>,
-        config: Option<PathBuf>,
-    ) -> Result<Self, String> {
-        let file = load_config(config)?;
-        let base_url = url
-            .or_else(|| env("OPENAGENTS_BASE_URL"))
-            .or(file.base_url)
-            .ok_or_else(|| {
-                "no service root: pass --url, set OPENAGENTS_BASE_URL, or name \
-                 `base_url` in the config file"
-                    .to_string()
-            })?;
-        let api_key = env("OPENAGENTS_API_KEY").or(file.api_key).ok_or_else(|| {
-            "no credential: set OPENAGENTS_API_KEY or name `api_key` in the config \
-             file — a key never goes on the command line"
-                .to_string()
-        })?;
-        let model = model.or_else(|| env("OPENAGENTS_MODEL")).or(file.model);
-        Ok(Self {
-            api_key,
-            base_url,
-            model,
-        })
-    }
-
-    fn client(&self, timeout: Duration) -> Result<BlockingClient, String> {
-        // Retries are oak's own loop: the service settles quota by
-        // (request, attempt), and only oak can bump `x-attempt`.
-        BlockingClient::new(
-            Config::new()
-                .api_key(self.api_key.clone())
-                .base_url(self.base_url.clone())
-                .timeout(timeout)
-                .retry(RetryPolicy {
-                    max_retries: 0,
-                    ..RetryPolicy::default()
-                }),
-        )
-        .map_err(|error| error.to_string())
-    }
-}
-
-/// One environment value, trimmed; an empty one reads as unset.
-fn env(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-/// Read the config file. A file that does not exist is no file; a file a
-/// group or world permission can read is refused rather than trusted.
-fn load_config(path: Option<PathBuf>) -> Result<FileConfig, String> {
-    let path = path
-        .or_else(|| env("OPENAGENTS_CONFIG").map(PathBuf::from))
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|home| PathBuf::from(home).join(".config/openagents/oak.json"))
-        });
-    let Some(path) = path else {
-        return Ok(FileConfig::default());
-    };
-    if !path.exists() {
-        return Ok(FileConfig::default());
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(&path)
-            .map_err(|error| format!("cannot stat {}: {error}", path.display()))?
-            .permissions()
-            .mode();
-        if mode & 0o077 != 0 {
-            return Err(format!(
-                "{} is readable by group or others; run `chmod 600 {}`",
-                path.display(),
-                path.display()
-            ));
-        }
-    }
-    let text = std::fs::read_to_string(&path)
-        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
-    serde_json::from_str(&text)
-        .map_err(|error| format!("{} does not parse: {error}", path.display()))
-}
-
 /// The `models` verb: the doors this credential is authorized for, one card
-/// per line.
-fn models(url: Option<String>, config: Option<PathBuf>, timeout: Duration, quiet: bool) -> i32 {
-    let settings = match Settings::resolve(url, None, config) {
+/// per line, as the service wrote them.
+fn models(common: &Common) -> i32 {
+    let settings = match common.settings() {
         Ok(settings) => settings,
         Err(message) => return fatal(&message),
     };
-    let client = match settings.client(timeout) {
-        Ok(client) => client,
+    let transport = match settings.transport() {
+        Ok(transport) => transport,
         Err(message) => return fatal(&message),
     };
-    match client.list_models(jev::ListOptions::new()) {
-        Ok(cards) => {
+    match transport.get_models(&common.opts()) {
+        Ok(Reply::Document { body, .. }) => {
             let mut out = BufWriter::new(std::io::stdout().lock());
-            for card in &cards {
+            let Some(cards) = body.get("models").and_then(Value::as_array) else {
+                return fatal("the listing did not carry a `models` array");
+            };
+            for card in cards {
                 if writeln!(out, "{}", serde_json::to_string(card).unwrap_or_default()).is_err() {
                     return EXIT_ANSWERED;
                 }
             }
-            if !quiet {
+            if !common.quiet {
                 eprintln!("oak: {} doors", cards.len());
             }
             EXIT_ANSWERED
         }
+        Ok(Reply::Refused {
+            code, message, request_id, ..
+        }) => {
+            if let Some(request_id) = request_id {
+                eprintln!("oak: {code}: {message} (request_id={request_id})");
+            } else {
+                eprintln!("oak: {code}: {message}");
+            }
+            EXIT_FAILURE
+        }
         Err(error) => fatal(&error.to_string()),
+    }
+}
+
+/// The `classify` verb: one envelope in, one report out — the gateway's
+/// document verbatim, ordered results, aggregates, selections, and usage
+/// included.
+fn classify(envelope: &str, common: &Common) -> i32 {
+    let bytes = if envelope == "-" {
+        if std::io::stdin().is_terminal() {
+            eprintln!("oak: --envelope - reads the envelope from standard input");
+            return EXIT_USAGE;
+        }
+        match read_bounded(std::io::stdin().lock(), MAX_ENVELOPE_BYTES, "envelope") {
+            Ok(bytes) => bytes,
+            Err(message) => {
+                eprintln!("oak: {message}");
+                return EXIT_USAGE;
+            }
+        }
+    } else {
+        let file = match std::fs::File::open(envelope) {
+            Ok(file) => file,
+            Err(error) => {
+                eprintln!("oak: cannot read {envelope}: {error}");
+                return EXIT_USAGE;
+            }
+        };
+        match read_bounded(file, MAX_ENVELOPE_BYTES, "envelope") {
+            Ok(bytes) => bytes,
+            Err(message) => {
+                eprintln!("oak: {message}");
+                return EXIT_USAGE;
+            }
+        }
+    };
+    let parsed: Value = match serde_json::from_slice(&bytes) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("oak: the envelope does not parse as JSON: {error}");
+            return EXIT_USAGE;
+        }
+    };
+    if !parsed.is_object() || parsed.get("v").and_then(Value::as_str) != Some(CLASSIFY_SCHEMA) {
+        eprintln!("oak: the envelope is not a `{CLASSIFY_SCHEMA}` document");
+        return EXIT_USAGE;
+    }
+    let settings = match common.settings() {
+        Ok(settings) => settings,
+        Err(message) => return fatal(&message),
+    };
+    let transport = match settings.transport() {
+        Ok(transport) => transport,
+        Err(message) => return fatal(&message),
+    };
+    let started = Instant::now();
+    match transport.post_classify(&bytes, &common.opts()) {
+        Ok(Reply::Document {
+            status,
+            body,
+            request_id,
+        }) => {
+            let mut out = BufWriter::new(std::io::stdout().lock());
+            let _ = writeln!(out, "{body}");
+            let _ = out.flush();
+            if !common.quiet {
+                let outcomes = &body["outcomes"];
+                eprintln!(
+                    "oak: {} ({} answered, {} refused, {} unavailable, {} unattempted) in {:.1}s",
+                    body["outcome"].as_str().unwrap_or("unknown"),
+                    outcomes["answered"].as_u64().unwrap_or(0),
+                    outcomes["refused"].as_u64().unwrap_or(0),
+                    outcomes["unavailable"].as_u64().unwrap_or(0),
+                    outcomes["unattempted"].as_u64().unwrap_or(0),
+                    started.elapsed().as_secs_f64(),
+                );
+                if let Some(request_id) = request_id {
+                    eprintln!("oak: request_id={request_id}");
+                }
+            }
+            match body["outcome"].as_str() {
+                Some("answered") => EXIT_ANSWERED,
+                Some("mixed") => EXIT_MIXED,
+                Some("refused") => EXIT_REFUSED,
+                Some("unavailable") | Some("unattempted") => EXIT_UNAVAILABLE,
+                _ if (200..300).contains(&status) => EXIT_ANSWERED,
+                _ => EXIT_FAILURE,
+            }
+        }
+        Ok(Reply::Refused {
+            status,
+            code,
+            message,
+            request_id,
+            body,
+        }) => {
+            // The typed refusal is the run's answer — print it so a pipe
+            // still reads one JSON document.
+            let mut out = BufWriter::new(std::io::stdout().lock());
+            let _ = writeln!(out, "{body}");
+            let _ = out.flush();
+            if let Some(request_id) = request_id {
+                eprintln!("oak: {code}: {message} (request_id={request_id})");
+            } else {
+                eprintln!("oak: {code}: {message}");
+            }
+            if CALLER_FAULTS.contains(&code.as_str())
+                || CLASSIFY_ENVELOPE_FAULTS.contains(&code.as_str())
+            {
+                EXIT_FAILURE
+            } else if status >= 500 || status == 429 || status == 408 {
+                EXIT_UNAVAILABLE
+            } else {
+                match code.as_str() {
+                    "rate_limited" | "busy" | "overloaded" | "unavailable" | "door_unavailable" => {
+                        EXIT_UNAVAILABLE
+                    }
+                    _ => EXIT_REFUSED,
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("oak: {error}");
+            match error.code {
+                "unavailable" => EXIT_UNAVAILABLE,
+                _ => EXIT_FAILURE,
+            }
+        }
     }
 }
 
@@ -380,7 +481,12 @@ fn fatal(message: &str) -> i32 {
 
 fn run(ask: Ask) -> i32 {
     let started = Instant::now();
-    let settings = match Settings::resolve(ask.url.clone(), ask.model.clone(), ask.config.clone()) {
+    let settings = match Settings::resolve(
+        ask.url.clone(),
+        ask.model.clone(),
+        ask.workspace.clone(),
+        ask.config.clone(),
+    ) {
         Ok(settings) => settings,
         Err(message) => return fatal(&message),
     };
@@ -641,7 +747,7 @@ fn read_items(ask: &Ask) -> Result<Vec<Item>, i32> {
 /// bumps `x-attempt` — the client-level retry cannot express that and
 /// stays off.
 fn call(
-    client: &BlockingClient,
+    client: &jev::BlockingClient,
     model: &str,
     questions: &Questions,
     ask: &Ask,

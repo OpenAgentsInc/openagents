@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::extract::State;
@@ -17,12 +17,58 @@ use serde_json::{Value, json};
 /// The credential the stub accepts.
 const KEY: &str = "oak_test.secret";
 
+/// The workspace the stub accepts when it requires membership.
+const WORKSPACE: &str = "ws_test";
+
 /// What the stub counts and remembers.
 #[derive(Default)]
 struct Stub {
     calls: AtomicUsize,
     flaky: AtomicUsize,
     keys: Mutex<HashMap<String, String>>,
+    /// When set, every route demands `X-Workspace-Id: ws_test`.
+    require_workspace: AtomicBool,
+    /// The workspace header each call carried, in arrival order.
+    workspaces: Mutex<Vec<Option<String>>>,
+    /// The `x-attempt` header each classify call carried.
+    classify_attempts: Mutex<Vec<String>>,
+    /// The classify calls seen.
+    classify_calls: AtomicUsize,
+}
+
+/// The typed refusal envelope the gateway writes.
+fn typed(status: u16, code: &str, message: &str) -> Response {
+    (
+        StatusCode::from_u16(status).unwrap(),
+        [("x-request-id", "req-stub")],
+        Json(json!({"error": {"code": code, "message": message}})),
+    )
+        .into_response()
+}
+
+/// The shared admission check: the bearer key, then the workspace when
+/// the stub requires membership.
+fn admitted(stub: &Stub, headers: &HeaderMap) -> Result<(), Response> {
+    stub.workspaces.lock().unwrap().push(
+        headers
+            .get("x-workspace-id")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string),
+    );
+    if headers.get("authorization").and_then(|v| v.to_str().ok()) != Some(&format!("Bearer {KEY}"))
+    {
+        return Err(typed(401, "unauthenticated", "the credential was refused"));
+    }
+    if stub.require_workspace.load(Ordering::SeqCst)
+        && headers.get("x-workspace-id").and_then(|v| v.to_str().ok()) != Some(WORKSPACE)
+    {
+        return Err(typed(
+            400,
+            "workspace_required",
+            "one X-Workspace-Id header is required",
+        ));
+    }
+    Ok(())
 }
 
 async fn systemone(
@@ -31,16 +77,8 @@ async fn systemone(
     body: axum::body::Bytes,
 ) -> Response {
     stub.calls.fetch_add(1, Ordering::SeqCst);
-    let typed = |status: u16, code: &str, message: &str| {
-        (
-            StatusCode::from_u16(status).unwrap(),
-            Json(json!({"error": {"code": code, "message": message}})),
-        )
-            .into_response()
-    };
-    if headers.get("authorization").and_then(|v| v.to_str().ok()) != Some(&format!("Bearer {KEY}"))
-    {
-        return typed(401, "unauthenticated", "the credential was refused");
+    if let Err(refusal) = admitted(&stub, &headers) {
+        return refusal;
     }
     // A settled idempotency key rejects changed content.
     if let Some(key) = headers.get("idempotency-key").and_then(|v| v.to_str().ok()) {
@@ -92,12 +130,373 @@ async fn systemone(
     }
 }
 
-async fn models() -> impl IntoResponse {
+async fn models(State(stub): State<Arc<Stub>>, headers: HeaderMap) -> Response {
+    if let Err(refusal) = admitted(&stub, &headers) {
+        return refusal;
+    }
     Json(json!({"models": [{
         "name": "stub-v1",
         "description": "the test door",
         "release_date": "2026-01-01",
+        "classification": {
+            "supported": true,
+            "max_inputs": 4,
+            "max_labels": 8,
+        },
     }]}))
+    .into_response()
+}
+
+/// The answer probabilities each input id earns, by mode.
+fn answered_unit(mode: &str, unit: &Value, id: &str) -> Value {
+    let mut base = json!({"mode": mode, "outcome": "answered"});
+    if let Some(dimension) = unit.get("dimension") {
+        base["dimension"] = dimension.clone();
+    }
+    match mode {
+        "single-label" => {
+            let (probabilities, selected) = if id == "WEAK" {
+                (json!({"a": 0.5, "b": 0.5}), Value::Null)
+            } else {
+                (json!({"a": 0.8, "b": 0.2}), json!("a"))
+            };
+            base["raw"] = json!({
+                "type": "choice",
+                "choice": "a",
+                "confidence": 0.5,
+                "probabilities": probabilities,
+            });
+            if selected.is_null() {
+                base["no_match"] = json!(true);
+            }
+            base["selected"] = selected;
+        }
+        "multi-label" => {
+            let mut raw = serde_json::Map::new();
+            let mut selected = Vec::new();
+            for label in unit["labels"].as_array().unwrap() {
+                let label = label["id"].as_str().unwrap();
+                let probability = match (id, label) {
+                    ("NONE", _) => 0.1,
+                    ("WEAK", _) => 0.5,
+                    ("ONE", "b") => 0.2,
+                    _ => 0.9,
+                };
+                raw.insert(label.to_string(), json!({"type": "noul", "noul": probability}));
+                if probability >= 0.5 && id != "WEAK" {
+                    selected.push(json!(label));
+                }
+            }
+            base["raw"] = Value::Object(raw);
+            if selected.is_empty() {
+                base["no_match"] = json!(true);
+            }
+            base["selected"] = Value::Array(selected);
+        }
+        "binary" => {
+            let probability = if id == "NOPE" { 0.1 } else { 0.9 };
+            base["raw"] = json!({"type": "noul", "noul": probability});
+            if probability >= 0.5 {
+                base["selected"] = unit["labels"][0]["id"].clone();
+            } else {
+                base["no_match"] = json!(true);
+                base["selected"] = Value::Null;
+            }
+        }
+        _ => {
+            let score = match id {
+                "HIGH" => 2.6,
+                "LOW" => 0.4,
+                _ => 1.5,
+            };
+            let levels = unit["levels"].as_array().map_or(3, |levels| levels.len());
+            let probabilities: serde_json::Map<String, Value> = (0..levels)
+                .map(|level| {
+                    let weight = if level as f64 == score.round() { 0.8 } else { 0.1 };
+                    (level.to_string(), json!(weight))
+                })
+                .collect();
+            base["raw"] = json!({
+                "type": "score",
+                "score": score,
+                "confidence": 0.9,
+                "probabilities": probabilities,
+                "legend": (0..levels).map(|level| level.to_string()).collect::<Vec<_>>(),
+            });
+            base["selected"] = json!(score.round() as u64);
+        }
+    }
+    if id == "WEAK" {
+        base["uncertain"] = json!(true);
+    }
+    base
+}
+
+/// One plan unit's report for an input, honoring the stub outcome ids.
+fn unit_report(unit: &Value, id: &str, outcome: &str) -> Value {
+    if outcome == "answered" {
+        return answered_unit(unit["mode"].as_str().unwrap(), unit, id);
+    }
+    let mut failed = json!({
+        "mode": unit["mode"],
+        "outcome": outcome,
+        "cause": format!("the {outcome} stub"),
+        "selected": Value::Null,
+    });
+    if let Some(dimension) = unit.get("dimension") {
+        failed["dimension"] = dimension.clone();
+    }
+    failed
+}
+
+/// The plan the request declared: the top-level unit or the dimensions.
+fn plan_units(request: &Value) -> Vec<Value> {
+    if let Some(dimensions) = request["dimensions"].as_array() {
+        return dimensions
+            .iter()
+            .map(|dimension| {
+                json!({
+                    "mode": dimension["mode"],
+                    "dimension": dimension["id"],
+                    "labels": dimension.get("labels").cloned().unwrap_or(json!([])),
+                    "levels": dimension.get("levels").cloned().unwrap_or(json!([])),
+                })
+            })
+            .collect();
+    }
+    vec![json!({
+        "mode": request["mode"],
+        "labels": request.get("labels").cloned().unwrap_or(json!([])),
+        "levels": request.get("levels").cloned().unwrap_or(json!([])),
+    })]
+}
+
+/// The outcome an input id earns in the stub.
+fn stub_outcome(id: &str, force: Option<&str>) -> &'static str {
+    match force.or(match id {
+        "REFUSE" => Some("refused"),
+        "DROP" => Some("unavailable"),
+        "PENDING" => Some("unattempted"),
+        _ => None,
+    }) {
+        Some("refused") => "refused",
+        Some("unavailable") => "unavailable",
+        Some("unattempted") => "unattempted",
+        _ => "answered",
+    }
+}
+
+/// The classification document the gateway would return for the request.
+fn classify_doc(request: &Value, force: Option<&str>) -> Value {
+    let units = plan_units(request);
+    let mut outcome_counts = serde_json::Map::new();
+    let mut results = Vec::new();
+    let mut per_unit_outcomes: Vec<serde_json::Map<String, Value>> =
+        units.iter().map(|_| serde_json::Map::new()).collect();
+    let mut per_unit_labels: Vec<serde_json::Map<String, Value>> =
+        units.iter().map(|_| serde_json::Map::new()).collect();
+    let mut per_unit_no_match = vec![0u64; units.len()];
+    let mut per_unit_uncertain: Vec<Vec<Value>> = units.iter().map(|_| Vec::new()).collect();
+    let mut binary_selected = Vec::new();
+    let mut binary_unevaluated = Vec::new();
+    let mut ranking: Vec<(String, f64)> = Vec::new();
+    let mut score_unevaluated = Vec::new();
+    let mut usage_complete = true;
+    for input in request["inputs"].as_array().unwrap() {
+        let id = input["id"].as_str().unwrap().to_string();
+        let outcome = stub_outcome(&id, force);
+        let entry = outcome_counts
+            .entry(outcome.to_string())
+            .or_insert(json!(0));
+        *entry = json!(entry.as_u64().unwrap() + 1);
+        let reports: Vec<Value> = units
+            .iter()
+            .map(|unit| unit_report(unit, &id, outcome))
+            .collect();
+        for (index, report) in reports.iter().enumerate() {
+            let key = report["outcome"].as_str().unwrap().to_string();
+            let entry = per_unit_outcomes[index].entry(key).or_insert(json!(0));
+            *entry = json!(entry.as_u64().unwrap() + 1);
+            if report["no_match"].as_bool().unwrap_or(false) {
+                per_unit_no_match[index] += 1;
+            }
+            if report["uncertain"].as_bool().unwrap_or(false) {
+                per_unit_uncertain[index].push(json!(id));
+            }
+            match report["mode"].as_str().unwrap() {
+                "single-label" | "binary" => {
+                    if let Some(label) = report["selected"].as_str() {
+                        let entry = per_unit_labels[index]
+                            .entry(label.to_string())
+                            .or_insert(json!(0));
+                        *entry = json!(entry.as_u64().unwrap() + 1);
+                    }
+                }
+                "multi-label" => {
+                    for label in report["selected"].as_array().into_iter().flatten() {
+                        let entry = per_unit_labels[index]
+                            .entry(label.as_str().unwrap().to_string())
+                            .or_insert(json!(0));
+                        *entry = json!(entry.as_u64().unwrap() + 1);
+                    }
+                }
+                _ => {
+                    if let Some(level) = report["selected"].as_u64() {
+                        let entry = per_unit_labels[index]
+                            .entry(level.to_string())
+                            .or_insert(json!(0));
+                        *entry = json!(entry.as_u64().unwrap() + 1);
+                    }
+                }
+            }
+            if report["mode"] == "binary" {
+                if report["selected"].is_string() {
+                    binary_selected.push(json!(id));
+                } else {
+                    binary_unevaluated.push(json!(id));
+                }
+            }
+            if report["mode"] == "score" {
+                match report["raw"]["score"].as_f64() {
+                    Some(score) if outcome == "answered" => ranking.push((id.clone(), score)),
+                    _ => score_unevaluated.push(json!(id)),
+                }
+            }
+        }
+        if outcome != "answered" && units.iter().any(|unit| unit["mode"] == "score") {
+            score_unevaluated.push(json!(id));
+        }
+        if outcome != "answered" && units.iter().any(|unit| unit["mode"] == "binary") {
+            binary_unevaluated.push(json!(id));
+        }
+        let usage = if id == "NOUSAGE" {
+            usage_complete = false;
+            Value::Null
+        } else {
+            json!({"input_tokens": 3, "output_tokens": 1})
+        };
+        results.push(json!({
+            "input": id,
+            "outcome": outcome,
+            "units": reports,
+            "latency_ms": 1,
+            "model": "stub-v1",
+            "usage": usage,
+            "review_status": "not-reviewed",
+        }));
+    }
+    ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    let mut selections = Vec::new();
+    if units.iter().any(|unit| unit["mode"] == "binary") {
+        let label = units
+            .iter()
+            .find(|unit| unit["mode"] == "binary")
+            .map(|unit| unit["labels"][0]["id"].clone())
+            .unwrap_or(Value::Null);
+        selections.push(json!({
+            "mode": "binary",
+            "label": label,
+            "selected": binary_selected,
+            "unevaluated": binary_unevaluated,
+        }));
+    }
+    if units.iter().any(|unit| unit["mode"] == "score") {
+        selections.push(json!({
+            "mode": "score",
+            "ranking": ranking.iter().map(|(id, _)| json!(id)).collect::<Vec<_>>(),
+            "unevaluated": score_unevaluated,
+        }));
+    }
+    let aggregates: Vec<Value> = units
+        .iter()
+        .enumerate()
+        .map(|(index, unit)| {
+            let mut aggregate = json!({"mode": unit["mode"], "outcomes": per_unit_outcomes[index]});
+            if let Some(dimension) = unit.get("dimension") {
+                aggregate["dimension"] = dimension.clone();
+            }
+            let counts_key = if unit["mode"] == "score" { "levels" } else { "labels" };
+            aggregate[counts_key] = Value::Object(per_unit_labels[index].clone());
+            if per_unit_no_match[index] > 0 {
+                aggregate["no_match"] = json!(per_unit_no_match[index]);
+            }
+            if !per_unit_uncertain[index].is_empty() {
+                aggregate["uncertain"] = Value::Array(per_unit_uncertain[index].clone());
+            }
+            aggregate
+        })
+        .collect();
+    let outcome = match force {
+        Some("refused") => "refused",
+        _ => {
+            if outcome_counts.len() == 1 && outcome_counts.contains_key("answered") {
+                "answered"
+            } else {
+                "mixed"
+            }
+        }
+    };
+    let mut usage = json!({
+        "forwards": results.len(),
+        "input_tokens_complete": usage_complete,
+        "output_tokens_complete": usage_complete,
+    });
+    if usage_complete {
+        usage["input_tokens"] = json!(3 * results.len());
+        usage["output_tokens"] = json!(results.len());
+    }
+    json!({
+        "v": "openagents.classify.v1",
+        "model": request["model"],
+        "capacity": request["capacity"],
+        "policy": {"v": request["policy"]["v"], "name": request["policy"]["name"]},
+        "served": {"model": "stub-v1", "capacity": request["capacity"]},
+        "outcome": outcome,
+        "outcomes": outcome_counts,
+        "results": results,
+        "selections": selections,
+        "aggregates": aggregates,
+        "usage": usage,
+        "timing": {"queued_ms": 0, "run_ms": 2},
+    })
+}
+
+async fn classify(
+    State(stub): State<Arc<Stub>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    stub.classify_calls.fetch_add(1, Ordering::SeqCst);
+    stub.classify_attempts.lock().unwrap().push(
+        headers
+            .get("x-attempt")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string(),
+    );
+    if let Err(refusal) = admitted(&stub, &headers) {
+        return refusal;
+    }
+    let request: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    match request["model"].as_str().unwrap_or("") {
+        "flaky-door" if stub.flaky.fetch_add(1, Ordering::SeqCst) == 0 => (
+            StatusCode::TOO_MANY_REQUESTS,
+            [("retry-after-ms", "1")],
+            Json(json!({"error": {"code": "rate_limited", "message": "come back shortly"}})),
+        )
+            .into_response(),
+        "typed-refuse" => typed(422, "invalid_request", "the envelope is invalid"),
+        "refused-door" => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(classify_doc(&request, Some("refused"))),
+        )
+            .into_response(),
+        "slow-door" => {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            Json(classify_doc(&request, None)).into_response()
+        }
+        _ => Json(classify_doc(&request, None)).into_response(),
+    }
 }
 
 /// The stub's listen address, once per test.
@@ -108,6 +507,7 @@ async fn stub() -> (String, Arc<Stub>) {
     let router = Router::new()
         .route("/v1/systemone", post(systemone))
         .route("/v1/models", get(models))
+        .route("/v1/classify", post(classify))
         .with_state(shared.clone());
     tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
