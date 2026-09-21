@@ -304,7 +304,12 @@ git diff --stat "$ROOT" "$TIP"
 git diff "$ROOT" "$TIP"
 git log --oneline "$ROOT..$TIP"
 # After review, select the task commit IDs from that log, oldest first.
-git cherry-pick <reviewed-task-commit>
+# Scratch commits are authored by the delegate's `coder` identity; that
+# name resolves to no GitHub account. Reset the author to the integrator
+# so the shared branch keeps a linked author; the task's own
+# Co-Authored-By trailer still credits the delegate.
+git cherry-pick -n <reviewed-task-commit>
+git commit -C <reviewed-task-commit> --reset-author
 ```
 
 Require one expected seeded root and inspect merges or unexpected ancestry
