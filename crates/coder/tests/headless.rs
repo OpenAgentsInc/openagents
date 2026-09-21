@@ -97,15 +97,18 @@ fn a_headless_turn_prints_a_reply_and_records_it() {
     assert_eq!(document["extra"]["directive"], "what crates are here");
 }
 
-/// With `--json` the whole report is one object on standard output: the
-/// reply, the trace it came from, and how the turn finished.
+/// With `--json` the stream ends with the report as one object on
+/// standard output: the reply, the trace it came from, and how the turn
+/// finished.
 #[test]
 fn a_headless_turn_reports_one_json_object() {
     let dir = tempfile::tempdir().unwrap();
     let output = coder(&["-p", "--json", "count the crates"], dir.path());
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
-    let report: Value = serde_json::from_slice(&output.stdout).expect("one JSON object");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let last = stdout.lines().last().expect("a report line");
+    let report: Value = serde_json::from_str(last).expect("one JSON object");
     assert!(stub_answer(report["reply"].as_str().unwrap()));
     assert_eq!(report["outcome"], "answered");
     assert_eq!(report["route"], "respond");
@@ -133,7 +136,9 @@ fn a_prompt_reads_from_a_file() {
     );
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let last = stdout.lines().last().expect("a report line");
+    let report: Value = serde_json::from_str(last).unwrap();
     let trace = report["trace"].as_str().expect("a trace path");
     let recording = atif::log::read(Path::new(trace)).unwrap();
     assert_eq!(
