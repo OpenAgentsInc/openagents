@@ -268,3 +268,7 @@ memory with kernel quotas, reconnect to an external Devin after coordinator
 loss, choose measured semantic admission policies, or integrate and close issues
 without supervision. Unknown provider cost remains unknown. These gaps remain
 tracked under #9503, #9504, #9508, #9509, #9510, and #9514.
+
+The [2026-09-21 verification record](verification/2026-09-21-project-supervisor.md)
+contains the passing manual gate, scheduling comparisons, live queue results,
+restart checks, and timed-out implementation jobs.

@@ -1,0 +1,141 @@
+{
+  "schema": "openagents.project-supervisor-verification.v1",
+  "revision": "b5a70217515a33bb91771fea7aaade4b72209551",
+  "manual_gate": {
+    "command": "./scripts/verify-rust.sh",
+    "cargo_build_jobs": 4,
+    "rust_test_threads": 2,
+    "phases": [
+      "PHASE END: Artifact acquisition tests; elapsed 0.1s; exit 0",
+      "PHASE END: Delegation evidence checks; elapsed 0.6s; exit 0",
+      "PHASE END: Workspace formatting; elapsed 0.6s; exit 0",
+      "PHASE END: Default workspace Clippy; elapsed 0.7s; exit 0",
+      "PHASE END: Feature workspace Clippy; elapsed 2.4s; exit 0",
+      "PHASE END: Default workspace tests; elapsed 97.1s; exit 0",
+      "PHASE END: Feature workspace tests; elapsed 99.6s; exit 0",
+      "PHASE END: Rust 1.95 workspace check; elapsed 2.2s; exit 0",
+      "PHASE END: Rust 1.94 Kev check; elapsed 0.1s; exit 0",
+      "PHASE END: Dependency policy; elapsed 0.9s; exit 0",
+      "PHASE END: PostgreSQL acceptance; elapsed 18.7s; exit 0",
+      "SKIPPED: Metal checks; use --with-metal on a supported Apple host.",
+      "SKIPPED: long-running relay soak; use --with-soak."
+    ],
+    "log_sha256": "7bc7175d664e9b5eddba03584ba36d4cfa1ce349bdb90cd768dfd0fecffeab05"
+  },
+  "live_queue": {
+    "kind": "functional smoke, not a throughput benchmark",
+    "capacity": 4,
+    "external_reserved_slots": 2,
+    "managed_slots": 2,
+    "excluded_issues": [
+      9476
+    ],
+    "runs": [
+      {
+        "run": "queue-smoke-1",
+        "results": [
+          {
+            "task_id": "queue-authority",
+            "input_digest": "d5568db81b3f22758ad687b31f7eb89ee026d95b512c2a1a29b3e5133b2713f7",
+            "base": "b4cc74a736c0f26242fb2e1fc052244c0d6176ce",
+            "program_digest": "5e7376306463d008c02d3ccc581a40207eea341c76aa8403025f60ab421eb0c4",
+            "answered": true,
+            "text_matched": false,
+            "elapsed_ms": 35519,
+            "executor_cost_usd": null,
+            "artifact_verified": false,
+            "trace_sha256": "b98e6c3ae0a8bb61ca08fb126511df9cf2ae412d291e47529c0f0dae29d005c4"
+          },
+          {
+            "task_id": "queue-effects",
+            "input_digest": "d547dbcc29fdb1300de6ba1a7a55e63c3ee9377f6fd53c3786398bd75f215ae8",
+            "base": "b4cc74a736c0f26242fb2e1fc052244c0d6176ce",
+            "program_digest": "5e7376306463d008c02d3ccc581a40207eea341c76aa8403025f60ab421eb0c4",
+            "answered": true,
+            "text_matched": true,
+            "elapsed_ms": 26706,
+            "executor_cost_usd": null,
+            "artifact_verified": false,
+            "trace_sha256": "1a315c65103d2216e280573db5dc99e53425d7cfbfc25ce8bbd561f5db917552"
+          },
+          {
+            "task_id": "queue-tracker",
+            "input_digest": "daeba9df42f002f14a30753b82acc9915b65d6d79e18a9d4a9c7df50923046d8",
+            "base": "b4cc74a736c0f26242fb2e1fc052244c0d6176ce",
+            "program_digest": "5e7376306463d008c02d3ccc581a40207eea341c76aa8403025f60ab421eb0c4",
+            "answered": true,
+            "text_matched": false,
+            "elapsed_ms": 25501,
+            "executor_cost_usd": null,
+            "artifact_verified": false,
+            "trace_sha256": "eb51219eb2c57f915439e925bebf3964986056f0f0f0c4f6fb42da69dda1c7b1"
+          }
+        ],
+        "peak_managed_active": 2,
+        "refilled_while_prior_task_active": false,
+        "task_states": {
+          "queue-authority": "review",
+          "queue-effects": "review",
+          "queue-tracker": "review"
+        },
+        "attempt_directories": 3
+      },
+      {
+        "run": "queue-smoke-2",
+        "results": [
+          {
+            "task_id": "queue-authority",
+            "input_digest": "cf8e0ad368c70809e45af6096b8e7800be09aa2f5c738f82ab0118b7fd60d088",
+            "base": "b5a70217515a33bb91771fea7aaade4b72209551",
+            "program_digest": "5e7376306463d008c02d3ccc581a40207eea341c76aa8403025f60ab421eb0c4",
+            "answered": true,
+            "text_matched": true,
+            "elapsed_ms": 23885,
+            "executor_cost_usd": null,
+            "artifact_verified": false,
+            "trace_sha256": "2a060f4a49e1ba014b5b9365f0118b8c465ba7ef540676f4b1f5248a66727433"
+          },
+          {
+            "task_id": "queue-effects",
+            "input_digest": "8160880b74803ed09da182d50d014631f050bc59819673632390cedc98a82edc",
+            "base": "b5a70217515a33bb91771fea7aaade4b72209551",
+            "program_digest": "5e7376306463d008c02d3ccc581a40207eea341c76aa8403025f60ab421eb0c4",
+            "answered": true,
+            "text_matched": true,
+            "elapsed_ms": 26952,
+            "executor_cost_usd": null,
+            "artifact_verified": false,
+            "trace_sha256": "3e2f44670c4b01ffe0a856b7981559cf8b815bf2dea6159fb2df4a67cf76ee25"
+          },
+          {
+            "task_id": "queue-tracker",
+            "input_digest": "c4a830ead60a07584e50560d0ee4c71e74dfe3ec75799cb25a002928abb55ac8",
+            "base": "b5a70217515a33bb91771fea7aaade4b72209551",
+            "program_digest": "5e7376306463d008c02d3ccc581a40207eea341c76aa8403025f60ab421eb0c4",
+            "answered": true,
+            "text_matched": true,
+            "elapsed_ms": 24979,
+            "executor_cost_usd": null,
+            "artifact_verified": false,
+            "trace_sha256": "2af096e1732b1974a6b2ab0b35bf70a637a80d1d832eee57d6068e6e66d94e0f"
+          }
+        ],
+        "peak_managed_active": 2,
+        "refilled_while_prior_task_active": false,
+        "task_states": {
+          "queue-authority": "completed",
+          "queue-effects": "completed",
+          "queue-tracker": "completed"
+        },
+        "attempt_directories": 3
+      }
+    ]
+  },
+  "implementation_delegations": {
+    "completed_committed_core": 1,
+    "timed_out_initial_drafts": 2,
+    "timed_out_narrow_followups": 2,
+    "automatic_issue_closure": false,
+    "notes": "The supervisor reviewed and repaired drafts before integration. Timeouts did not pass acceptance."
+  }
+}
