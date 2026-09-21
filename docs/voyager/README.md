@@ -69,6 +69,7 @@ response or event object per line on stdout:
 {"id": 4, "op": "goto", "args": {"x": 12, "z": -40, "seconds": 60}}
 {"id": 5, "op": "explore", "args": {"direction": "north", "distance": 96, "seconds": 30}}
 {"id": 6, "op": "mine", "args": {"names": ["oak_log"], "count": 2, "radius": 32, "seconds": 120}}
+{"id": 6, "op": "mine", "args": {"positions": [[-24, 0, -1]], "names": ["iron_ore"], "count": 1}}
 {"id": 7, "op": "wait", "args": {"seconds": 2}}
 {"id": 8, "op": "disconnect"}
 {"id": 9, "op": "shutdown"}
@@ -78,6 +79,7 @@ Answers:
 
 ```jsonc
 {"id": 1, "ok": true, "result": {...}}
+{"id": 6, "ok": true, "result": {"mined": 5, "attempted": 6, "dug": [[-24, 0, -1], ...]}}
 {"id": 6, "ok": false, "code": "no_blocks", "error": "..."}
 {"event": "chat", "text": "<voyager> hello"}
 {"event": "feedback", "text": "mining oak_log at (12, 64, -40)"}
@@ -92,11 +94,72 @@ vocabulary, never text that runs itself.
 
 ## World manifests
 
-`worlds/meadow.json` is the example: Minecraft version, seed,
+`worlds/meadow.json` is the solo example: Minecraft version, seed,
 difficulty, gamerules as console commands, and the episode bounds
 (`max_actions`, `max_seconds`). A manifest's SHA-256 is the world's
 identity, so a custom world or ruleset is a new file — `voyager worlds`
 lists what a directory holds with digests.
+
+A manifest can go further and enroll a roster. The optional sections:
+
+- `agents` — the members of an ensemble episode: an offline username, a
+  guild, the Nostr pubkey the member signs under, and an optional camp
+  position. The loader refuses duplicate usernames.
+- `deposits` — registered ore: an id, an optional owning guild (absent
+  means contested), the block kind, the per-block award, and the exact
+  block positions. A position may sit in only one deposit.
+- `economy` — starting credits per guild and the largest hold one quest
+  may place.
+- `effects` — named console commands a verified quest may run, such as
+  `open_bridge`. A quest names an effect; it never supplies commands.
+- `minecraft.generator_settings` — flat or custom world generation, as
+  the JSON string `server.properties` reads.
+- `minecraft.setup_commands` — console commands run once after the
+  gamerules: world edits, `forceload`, `setworldspawn`. Gamerule names
+  are the 1.21.11 snake_case forms (`advance_time`, `spawn_mobs`), and
+  edits outside the spawn chunks need `forceload` first.
+
+## The arena
+
+`worlds/arena.json` enrolls four members in two guilds — `ferro_1`,
+`ferro_2`, `lumen_1`, `lumen_2` — on a flat world: a wool camp per
+guild, a private iron deposit per guild, a contested diamond deposit,
+an emerald deposit across a trench, forges, and a quest board.
+`voyager run --world arena` picks the ensemble runner instead of the
+solo curriculum: one `mc-bridge` child per member, all in one world.
+
+Every member joins under its enrolled username, walks to camp, digs its
+guild's deposit, and then one member per guild swings at each contested
+deposit. The award path is the attribution claim: the host only sends
+manifest-registered positions, the bridge refuses a position whose block
+is no longer the declared kind, only positions the helper reports `dug`
+are proposed to the ledger, and the ledger dedupes `(deposit, pos)` — a
+contested block pays once. Gifts and replays never enter the path.
+
+The ledger is `ledger.jsonl` in the run directory: append-only events
+(`award`, `reserve`, `settle`, `release`), replayed into per-guild
+balances of available, reserved, and spent credits. A reservation that
+was never settled stays reserved across a crash — unknown work keeps
+its hold rather than freeing capacity it may still consume.
+
+Ore dug without a pickaxe drops nothing, so arena agents earn credits
+rather than items — the ledger, not the inventory, is the award.
+
+## Agent keys
+
+An enrolled member signs as the username it joined under. The secret is
+`sha256("voyager-agent-key:" + username)`, re-derived at run time, so no
+private key sits in a manifest, a run directory, or this repository.
+`voyager keys <username>...` prints the pubkeys a manifest binds:
+
+```sh
+cargo run -p voyager --bin voyager -- keys ferro_1 ferro_2
+```
+
+Deterministic derivation is the enrollment: two runs name the same
+identities, and a trace can verify a signature without a keystore. This
+is the arena's key story, not a production one — outside operators need
+real key custody, a later NIP-CAP question.
 
 ## What phase 1 does not do
 

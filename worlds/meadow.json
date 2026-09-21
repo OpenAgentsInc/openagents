@@ -9,10 +9,10 @@
     "gamemode": "survival",
     "view_distance": 10,
     "gamerules": {
-      "doDaylightCycle": "false",
-      "doWeatherCycle": "false",
-      "keepInventory": "true",
-      "mobGriefing": "false"
+      "advance_time": "false",
+      "advance_weather": "false",
+      "keep_inventory": "true",
+      "mob_griefing": "false"
     },
     "setup_commands": ["time set day", "weather clear"]
   },

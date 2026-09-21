@@ -561,6 +561,25 @@ async fn mine(
             .map(|name| vec![name.to_string()])
             .unwrap_or_default(),
     };
+    // `positions` names exact blocks to dig — a registered deposit — and
+    // beats `names`: the host has already decided what may be dug. When
+    // both are given the dug block must still be a listed kind.
+    let explicit: Vec<BlockPos> = args
+        .get("positions")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(Value::as_array)
+                .filter_map(|pos| {
+                    Some(BlockPos::new(
+                        pos.first()?.as_i64()? as i32,
+                        pos.get(1)?.as_i64()? as i32,
+                        pos.get(2)?.as_i64()? as i32,
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let mut kinds = HashSet::<BlockKind>::new();
     for name in &names {
         let name = name.strip_prefix("minecraft:").unwrap_or(name);
@@ -571,23 +590,25 @@ async fn mine(
             Err(_) => return err(id, "bad_request", format!("unknown block {name:?}")),
         }
     }
-    if kinds.is_empty() {
-        return err(id, "bad_request", "mine needs \"name\" or \"names\"");
+    if kinds.is_empty() && explicit.is_empty() {
+        return err(id, "bad_request", "mine needs \"name\", \"names\", or \"positions\"");
     }
     let states = BlockStates::from(&kinds);
     let deadline = tokio::time::Instant::now() + seconds;
     let mut mined = 0i64;
     let mut attempted = 0i64;
+    let mut dug = Vec::<[i32; 3]>::new();
     let mut tried = HashSet::<BlockPos>::new();
     while mined < want {
         if tokio::time::Instant::now() >= deadline {
             break;
         }
-        // The nearest matching block the bot has not already failed on,
-        // preferring the one closest to the bot's own height — the base of
-        // a trunk is both reachable and drops its item onto ground the
+        // Explicit positions are consumed in order; otherwise the nearest
+        // matching block the bot has not already failed on, preferring
+        // the one closest to the bot's own height — the base of a trunk
+        // is both reachable and drops its item onto ground the
         // pathfinder can walk, while a canopy log does neither.
-        let target = {
+        let target = if explicit.is_empty() {
             let world = client.world();
             let instance = world.read();
             let center = BlockPos::from(client.position());
@@ -597,13 +618,15 @@ async fn mine(
                 .filter(|pos| pos.y <= center.y + MINE_MAX_ABOVE)
                 .filter(|pos| !tried.contains(pos))
                 .min_by_key(|pos| ((pos.y - center.y).abs(), pos.distance_to(center) as i64))
+        } else {
+            explicit.iter().find(|pos| !tried.contains(pos)).copied()
         };
         let Some(target) = target else {
             return if mined > 0 {
                 ok(
                     id,
-                    json!({"mined": mined, "attempted": attempted,
-                           "note": format!("no more matching blocks within {radius}")}),
+                    json!({"mined": mined, "attempted": attempted, "dug": dug,
+                           "note": "no more candidates"}),
                 )
             } else {
                 err(
@@ -615,10 +638,31 @@ async fn mine(
         };
         attempted += 1;
         tried.insert(target);
+        // An explicit position earns only if the block still holds a
+        // listed kind — a deposit's ore cannot be pre-broken or swapped.
+        if !explicit.is_empty() && !kinds.is_empty() {
+            let matches = {
+                let world = client.world();
+                let instance = world.read();
+                instance
+                    .get_block_state(target)
+                    .is_some_and(|state| states.contains(&state))
+            };
+            if !matches {
+                let _ = events.send(feedback(format!(
+                    "{target:?} is not a listed kind; skipping"
+                )));
+                continue;
+            }
+        }
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         let _ = events.send(feedback(format!(
             "mining {} at {target:?}",
-            names.join("/")
+            if names.is_empty() {
+                "a listed block".to_string()
+            } else {
+                names.join("/")
+            }
         )));
         // Stand near it, then dig.
         if timed(
@@ -646,13 +690,14 @@ async fn mine(
             continue;
         }
         mined += 1;
+        dug.push([target.x, target.y, target.z]);
         let _ = events.send(feedback(format!("dug {target:?}")));
         // The drop falls where the block was and the pickup radius is
         // under a block — chase the item entity itself rather than the
         // block position, which can sit inside the next trunk segment.
         pickup_drops(client, deadline, events, target).await;
     }
-    ok(id, json!({"mined": mined, "attempted": attempted}))
+    ok(id, json!({"mined": mined, "attempted": attempted, "dug": dug}))
 }
 
 /// Walk onto dropped-item entities near `near` until none are left or the

@@ -31,6 +31,7 @@ const USAGE: &str = "usage:
   voyager run --world <manifest-or-name> [--jar PATH] [--bridge PATH]
               [--java PATH] [--runs DIR] [--port N]
   voyager worlds [DIR]
+  voyager keys <username>...
   voyager paths";
 
 fn main() -> ExitCode {
@@ -51,6 +52,13 @@ fn main() -> ExitCode {
             }
         },
         Some("paths") => match paths() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("voyager: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Some("keys") => match keys(&args[1..]) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("voyager: {error}");
@@ -109,7 +117,13 @@ fn run(args: &[String]) -> Result<()> {
         runs,
         port,
     };
-    let report = episode::run(&world, &plan, |line| eprintln!("voyager: {line}"))?;
+    // A world that enrolls agents runs the guild loop; a world with a
+    // single `agent` runs the solo curriculum.
+    let report = if world.agents.is_empty() {
+        episode::run(&world, &plan, |line| eprintln!("voyager: {line}"))?
+    } else {
+        voyager::ensemble::run_ensemble(&world, &plan, |line| eprintln!("voyager: {line}"))?
+    };
     eprintln!();
     for task in &report.tasks {
         eprintln!(
@@ -131,6 +145,19 @@ fn run(args: &[String]) -> Result<()> {
     } else {
         Err(Error::episode("one or more tasks failed (see above)"))
     }
+}
+
+/// `voyager keys`: the Nostr pubkey each enrolled username derives. The
+/// manifest records pubkeys; secrets are re-derived at run time and
+/// never written.
+fn keys(args: &[String]) -> Result<()> {
+    if args.is_empty() {
+        return Err(Error::episode(format!("keys needs usernames\n{USAGE}")));
+    }
+    for username in args {
+        println!("{}\t{}", username, voyager::keys::agent_pubkey(username)?);
+    }
+    Ok(())
 }
 
 /// `voyager worlds`: the manifests in a directory and their digests.

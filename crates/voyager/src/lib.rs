@@ -34,8 +34,11 @@
 //! where `docs/voyager/` says they are.
 
 pub mod bridge;
+pub mod ensemble;
 pub mod episode;
 pub mod error;
+pub mod keys;
+pub mod ledger;
 pub mod server;
 pub mod state;
 pub mod world;
