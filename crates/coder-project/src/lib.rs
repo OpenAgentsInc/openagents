@@ -15,6 +15,7 @@ pub mod controller;
 pub mod discovery;
 pub mod github;
 pub mod gym_suite;
+pub mod poll;
 pub mod reservations;
 
 /// An operator-prepared task. Tracker text cannot populate its authority.
