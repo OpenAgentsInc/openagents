@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "openagents.review-finding.v1",
+  "name": "Whether a review finding is genuine",
+  "summary": "Asks, once per finding the pinned reviewer emitted, whether the finding describes a real problem the pinned change introduces.",
+  "per_finding": {
+    "type": "noul",
+    "instructions": "The finding the state lists under {finding} describes a genuine problem this change introduces: the recorded diff contains what it describes, the path and span it names are where the problem is, and the problem is this change's rather than the base's. Judge only the recorded evidence."
+  }
+}

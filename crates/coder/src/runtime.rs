@@ -245,6 +245,7 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
             "refuse_below",
             "requires_scorable_answer",
             "per_requirement",
+            "per_finding",
         ],
         Kind::Check => &["refuse_on", "acceptance", "max_tests"],
         Kind::Delegate => &["concurrent_max", "isolation", "minutes"],
@@ -351,6 +352,10 @@ pub struct Run {
     pub answers: BTreeMap<String, Value>,
     /// Independently executed host checks, separate from delegate answers.
     pub verification: Vec<crate::verification::Report>,
+    /// The collected review evidence and per-finding dispositions, when a
+    /// `per_finding` decide step ran. `None` is unreviewed — a run whose
+    /// review never happened — which an empty findings list would hide.
+    pub review: Option<crate::review::Reviewed>,
 }
 
 impl Run {
@@ -479,6 +484,7 @@ pub struct Runtime {
     repository: Option<PathBuf>,
     host: Host,
     verification: Option<(PathBuf, crate::verification::Plan, capability::Trust)>,
+    review: Option<crate::review::Context>,
 }
 
 impl Runtime {
@@ -512,6 +518,7 @@ impl Runtime {
             door_error,
             relay: None,
             verification: None,
+            review: None,
             repository: repository.map(Path::to_path_buf),
             host: match repository {
                 Some(_) => Host::with_repository(),
@@ -536,6 +543,7 @@ impl Runtime {
             door_error,
             relay: None,
             verification: None,
+            review: None,
             host,
         }
     }
@@ -550,6 +558,22 @@ impl Runtime {
     ) -> Self {
         self.verification = Some((workspace, plan, trust));
         self
+    }
+
+    /// Install an operator-prepared review: the pinned reviewer, the
+    /// captured diff scope, the disposition policy, and the trust that
+    /// approves. Program text cannot set it, and a `per_finding` decide
+    /// step refuses at admission without one.
+    #[must_use]
+    pub fn with_review(mut self, context: crate::review::Context) -> Self {
+        self.review = Some(context);
+        self
+    }
+
+    /// The review the operator installed, when one is.
+    #[must_use]
+    pub fn review(&self) -> Option<&crate::review::Context> {
+        self.review.as_ref()
     }
 
     /// Answers the decision questions through this door rather than the
@@ -723,12 +747,14 @@ impl Runtime {
                     "refuse_below is a probability, and this step names {value}"
                 )),
             },
-            "requires_scorable_answer" | "per_requirement" => match value.is_boolean() {
-                true => Ok(()),
-                false => refuse(format!(
-                    "{bound} is true or false, and this step names {value}"
-                )),
-            },
+            "requires_scorable_answer" | "per_requirement" | "per_finding" => {
+                match value.is_boolean() {
+                    true => Ok(()),
+                    false => refuse(format!(
+                        "{bound} is true or false, and this step names {value}"
+                    )),
+                }
+            }
             // Unreachable: the key was checked against the table above.
             _ => refuse(format!("{bound} is not a bound this host keeps")),
         }
@@ -754,17 +780,46 @@ impl Runtime {
             .get("per_requirement")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        if per_requirement != set.templated() {
+        let per_finding = step
+            .bounds
+            .get("per_finding")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let wanted = match (per_requirement, per_finding) {
+            (true, true) => {
+                return refuse(
+                    "bound_unenforceable",
+                    "a step is asked once per requirement or once per finding, and this step claims both".to_string(),
+                );
+            }
+            (true, false) => Some(questions::Template::Requirement),
+            (false, true) => Some(questions::Template::Finding),
+            (false, false) => None,
+        };
+        if wanted != set.template() {
             return refuse(
                 "bound_unenforceable",
-                match per_requirement {
-                    true => format!(
-                        "{id} is one fixed set of questions, so it cannot be asked once per requirement"
+                match (wanted, set.template()) {
+                    (Some(questions::Template::Requirement), _) => format!(
+                        "{id} is not asked once per requirement, so this step cannot ask it that way"
                     ),
-                    false => {
+                    (Some(questions::Template::Finding), _) => format!(
+                        "{id} is not asked once per finding, so this step cannot ask it that way"
+                    ),
+                    (None, Some(questions::Template::Requirement)) => {
                         format!("{id} is asked once per requirement, and this step did not say to")
                     }
+                    (None, Some(questions::Template::Finding)) => {
+                        format!("{id} is asked once per finding, and this step did not say to")
+                    }
+                    (None, None) => unreachable!("a set's template is one of these"),
                 },
+            );
+        }
+        if per_finding && self.review.is_none() {
+            return refuse(
+                "review_unavailable",
+                "no host-pinned review is installed, and a per-finding step runs against one".to_string(),
             );
         }
         if set.supplies_options() {
@@ -1465,6 +1520,9 @@ impl Runtime {
         // Admission established both of these.
         let id = step.question.clone().unwrap_or_default();
         let set = self.questions.get(&id).expect("admission resolved the set");
+        if step.bounds.get("per_finding").and_then(Value::as_bool) == Some(true) {
+            return self.review_findings(step, set, run, trace).await;
+        }
         let (state, fill) = match set.templated() {
             true => {
                 let requirements = requirement_names(run);
@@ -1534,6 +1592,152 @@ impl Runtime {
             ));
         }
         Ok(format!("{gate} {read:.2} clears {floor}"))
+    }
+
+    /// A `per_finding` decide step: collect the pinned reviewer's evidence,
+    /// then judge each anchored finding against it.
+    ///
+    /// The reviewer is a checker capability, run here rather than before
+    /// the program so a mechanical gate that fails first never pays for a
+    /// review the run cannot use. The evidence is recorded either way, and
+    /// an outcome that is not `answered` refuses the step — refused,
+    /// failed, and unverifiable are kept apart, and none of them reads as
+    /// a review that found nothing.
+    ///
+    /// Findings the host anchored as `excluded` or `unanchored` are never
+    /// asked about and never confirmed: their dispositions are mechanical
+    /// facts about the captured diff, which a door cannot overturn. Each
+    /// anchored finding's raw probability stays beside the disposition the
+    /// operator's policy gave it; a probability between the thresholds is
+    /// `unresolved`, not rounded.
+    async fn review_findings(
+        &self,
+        step: &Step,
+        set: &Set,
+        run: &mut Run,
+        mut trace: Option<&mut Recorder>,
+    ) -> Result<String, Refused> {
+        let context = self.review.as_ref().expect("admission installed the review");
+        let evidence = crate::review::collect(context)
+            .await
+            .map_err(|reason| Refused::at(&step.name, "review_unverifiable", reason))?;
+        let outcome = evidence.outcome;
+        let mut extra = self.step_extra(step);
+        extra.insert("review".to_string(), json!(&evidence));
+        self.record(
+            trace.as_deref_mut(),
+            "Collected the pinned reviewer's findings.",
+            Call {
+                id: String::new(),
+                name: crate::review::REVIEW_CALL.into(),
+                arguments: json!({
+                    "base": context.scope.base,
+                    "tip": context.scope.tip,
+                    "input_digest": context.scope.input_digest,
+                    "diff_digest": context.scope.diff_digest,
+                }),
+                output: format!("{}: {}", outcome.word(), evidence.reason),
+                outcome: match outcome {
+                    crate::review::Outcome::Answered => Outcome::Completed,
+                    _ => Outcome::Cancelled,
+                },
+                milliseconds: 0,
+                purpose: Some(
+                    "Run the approved reviewer over the read-only candidate and anchor what it reports."
+                        .to_string(),
+                ),
+                extra,
+            },
+        );
+        if outcome != crate::review::Outcome::Answered {
+            run.review = Some(crate::review::Reviewed::unreviewed(evidence));
+            return Err(Refused::at(
+                &step.name,
+                outcome.refusal(),
+                "the reviewer produced no usable evidence, and missing evidence never passes",
+            ));
+        }
+        let mut judged: Vec<crate::review::Judged> = evidence
+            .findings
+            .iter()
+            .map(|anchored| crate::review::Judged {
+                id: anchored.id.clone(),
+                anchor: anchored.anchor,
+                disposition: match anchored.anchor {
+                    crate::review::Anchor::Anchored => crate::review::Disposition::Unanswered,
+                    crate::review::Anchor::Excluded => crate::review::Disposition::Excluded,
+                    crate::review::Anchor::Unanchored => crate::review::Disposition::Unanchored,
+                },
+                probability: None,
+                finding: anchored.finding.clone(),
+            })
+            .collect();
+        let askable: Vec<crate::review::AnchoredFinding> = evidence
+            .findings
+            .iter()
+            .filter(|finding| finding.anchor == crate::review::Anchor::Anchored)
+            .cloned()
+            .collect();
+        if askable.is_empty() {
+            let reviewed = crate::review::Reviewed {
+                asked: 0,
+                confirmed: 0,
+                dismissed: 0,
+                unresolved: 0,
+                unanswered: 0,
+                model: String::new(),
+                findings: judged,
+                evidence,
+            };
+            let output = format!("0 of {} findings anchored for review", reviewed.findings.len());
+            run.review = Some(reviewed);
+            return Ok(output);
+        }
+        let ids: Vec<String> = askable.iter().map(|finding| finding.id.clone()).collect();
+        let state = context.state(&askable);
+        let response = self
+            .ask(set, &step.name, &state, &Fill::Findings(ids), trace, |read| read)
+            .await
+            .map_err(|reason| Refused::at(&step.name, "door_unavailable", reason))?;
+        run.answers
+            .insert(step.name.clone(), answers_value(&response.answers));
+        for finding in judged
+            .iter_mut()
+            .filter(|finding| finding.anchor == crate::review::Anchor::Anchored)
+        {
+            match response.answers.get(&finding.id).and_then(probability) {
+                Some(read) => {
+                    finding.probability = Some(read);
+                    finding.disposition = context.policy.judge(read);
+                }
+                None => finding.disposition = crate::review::Disposition::Unanswered,
+            }
+        }
+        let reviewed = crate::review::Reviewed {
+            asked: askable.len(),
+            confirmed: judged
+                .iter()
+                .filter(|f| f.disposition == crate::review::Disposition::Confirmed)
+                .count(),
+            dismissed: judged
+                .iter()
+                .filter(|f| f.disposition == crate::review::Disposition::Dismissed)
+                .count(),
+            unresolved: judged
+                .iter()
+                .filter(|f| f.disposition == crate::review::Disposition::Unresolved)
+                .count(),
+            unanswered: judged
+                .iter()
+                .filter(|f| f.disposition == crate::review::Disposition::Unanswered)
+                .count(),
+            model: response.model.clone(),
+            findings: judged,
+            evidence,
+        };
+        let output = reviewed.output();
+        run.review = Some(reviewed);
+        Ok(output)
     }
 
     async fn verify_step(
@@ -2090,6 +2294,7 @@ mod tests {
             door_error: None,
             relay: None,
             verification: None,
+            review: None,
             repository: None,
             host: Host::without_repository(),
         }
@@ -2131,6 +2336,7 @@ mod tests {
             ],
             answers: BTreeMap::new(),
             verification: vec![],
+            review: None,
         };
 
         assert_eq!(

@@ -55,6 +55,9 @@ const SUPPLIED: &str = "supplied";
 /// What a per-requirement template writes the requirement's name into.
 const REQUIREMENT: &str = "{requirement}";
 
+/// What a per-finding template writes the finding's name into.
+const FINDING: &str = "{finding}";
+
 /// One question set: the wording behind one identifier.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Set {
@@ -75,6 +78,23 @@ pub struct Set {
     /// The template a `per_requirement` step asks once per requirement.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub per_requirement: Option<Value>,
+    /// The template a `per_finding` step asks once per review finding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub per_finding: Option<Value>,
+}
+
+/// Which template a set is, when it is one.
+///
+/// A `decide` step's `per_requirement` or `per_finding` bound has to match
+/// the set's template: a fixed set cannot be asked per item, and a
+/// templated set cannot be asked once. Both bounds on one step refuse at
+/// admission rather than guessing which the step meant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Template {
+    /// One question per requirement.
+    Requirement,
+    /// One question per review finding.
+    Finding,
 }
 
 /// What a run supplies to a set before it goes out.
@@ -86,6 +106,8 @@ pub enum Fill {
     Options(Vec<(String, String)>),
     /// The requirements a per-requirement set asks about, in order.
     Requirements(Vec<String>),
+    /// The findings a per-finding set asks about, in order.
+    Findings(Vec<String>),
 }
 
 impl Set {
@@ -121,13 +143,21 @@ impl Set {
         if !is_question_id(&self.id) {
             return Err(format!("{:?} is not a question-set identifier", self.id));
         }
-        if self.questions.is_empty() && self.per_requirement.is_none() {
+        if self.questions.is_empty()
+            && self.per_requirement.is_none()
+            && self.per_finding.is_none()
+        {
             return Err("a question set with no questions asks nothing".to_string());
         }
-        if !self.questions.is_empty() && self.per_requirement.is_some() {
+        if self.per_requirement.is_some() && self.per_finding.is_some() {
             return Err(
-                "a set is a fixed set or a per-requirement template, and this one is both"
+                "a set is asked once per requirement or once per finding, and this one claims both"
                     .to_string(),
+            );
+        }
+        if !self.questions.is_empty() && self.template().is_some() {
+            return Err(
+                "a set is a fixed set or a template, and this one is both".to_string(),
             );
         }
         let named: Vec<(&str, &Value)> = self
@@ -138,6 +168,11 @@ impl Set {
                 self.per_requirement
                     .iter()
                     .map(|template| (REQUIREMENT, template)),
+            )
+            .chain(
+                self.per_finding
+                    .iter()
+                    .map(|template| (FINDING, template)),
             )
             .collect();
         for (id, question) in named {
@@ -167,6 +202,13 @@ impl Set {
                 "the per-requirement template writes no {REQUIREMENT}, so every requirement would be asked the same question under a different name"
             ));
         }
+        if let Some(template) = &self.per_finding
+            && !instructions_of(template).contains(FINDING)
+        {
+            return Err(format!(
+                "the per-finding template writes no {FINDING}, so every finding would be asked the same question under a different name"
+            ));
+        }
         Ok(())
     }
 
@@ -174,6 +216,16 @@ impl Set {
     #[must_use]
     pub fn templated(&self) -> bool {
         self.per_requirement.is_some()
+    }
+
+    /// Which template this set is, when it is one.
+    #[must_use]
+    pub fn template(&self) -> Option<Template> {
+        match (&self.per_requirement, &self.per_finding) {
+            (Some(_), _) => Some(Template::Requirement),
+            (None, Some(_)) => Some(Template::Finding),
+            (None, None) => None,
+        }
     }
 
     /// Whether a question in this set takes its options from the run.
@@ -192,8 +244,8 @@ impl Set {
     /// supplied Choice question with no options to offer, a template with
     /// no requirements, or either one given the other's fill.
     pub fn build(&self, fill: &Fill) -> Result<Questions, String> {
-        let questions = match (&self.per_requirement, fill) {
-            (Some(template), Fill::Requirements(requirements)) => {
+        let questions = match (&self.per_requirement, &self.per_finding, fill) {
+            (Some(template), _, Fill::Requirements(requirements)) => {
                 if requirements.is_empty() {
                     return Err(format!("{} has nothing to ask about", self.id));
                 }
@@ -202,21 +254,41 @@ impl Set {
                     .map(|requirement| {
                         (
                             requirement.clone(),
-                            Question::Raw(written(template, requirement)),
+                            Question::Raw(written(template, REQUIREMENT, requirement)),
                         )
                     })
                     .collect()
             }
-            (Some(_), _) => {
+            (Some(_), _, _) => {
                 return Err(format!(
                     "{} is asked once per requirement and this call named none",
                     self.id
                 ));
             }
-            (None, Fill::Requirements(_)) => {
-                return Err(format!("{} is not asked per requirement", self.id));
+            (None, Some(template), Fill::Findings(findings)) => {
+                if findings.is_empty() {
+                    return Err(format!("{} has nothing to ask about", self.id));
+                }
+                findings
+                    .iter()
+                    .map(|finding| {
+                        (
+                            finding.clone(),
+                            Question::Raw(written(template, FINDING, finding)),
+                        )
+                    })
+                    .collect()
             }
-            (None, fill) => self
+            (None, Some(_), _) => {
+                return Err(format!(
+                    "{} is asked once per finding and this call named none",
+                    self.id
+                ));
+            }
+            (None, None, Fill::Requirements(_)) | (None, None, Fill::Findings(_)) => {
+                return Err(format!("{} is not asked per item", self.id));
+            }
+            (None, None, fill) => self
                 .questions
                 .iter()
                 .map(|(id, question)| {
@@ -241,9 +313,10 @@ impl Set {
     /// different options in.
     #[must_use]
     pub fn digest(&self) -> String {
-        let body = match &self.per_requirement {
-            Some(template) => json!({ "per_requirement": template }),
-            None => json!({ "questions": self.questions }),
+        let body = match (&self.per_requirement, &self.per_finding) {
+            (Some(template), _) => json!({ "per_requirement": template }),
+            (None, Some(template)) => json!({ "per_finding": template }),
+            (None, None) => json!({ "questions": self.questions }),
         };
         atif::digest(&body)
     }
@@ -405,12 +478,12 @@ fn filled(id: &str, question: &Value, fill: &Fill) -> Result<Value, String> {
     Ok(Value::Object(body))
 }
 
-/// One question of a per-requirement set, named for its requirement.
-fn written(template: &Value, requirement: &str) -> Value {
+/// One question of a templated set, named for the item it asks about.
+fn written(template: &Value, marker: &str, item: &str) -> Value {
     let mut body = template.as_object().cloned().unwrap_or_default();
     body.insert(
         "instructions".to_string(),
-        json!(instructions_of(template).replace(REQUIREMENT, requirement)),
+        json!(instructions_of(template).replace(marker, item)),
     );
     Value::Object(body)
 }
@@ -444,7 +517,8 @@ mod tests {
                 "openagents.completion.v1",
                 "openagents.independence.v1",
                 "openagents.independence.v2",
-                "openagents.program.v1"
+                "openagents.program.v1",
+                "openagents.review-finding.v1"
             ]
         );
     }
@@ -523,6 +597,30 @@ mod tests {
         );
         assert!(set.build(&Fill::Requirements(Vec::new())).is_err());
         assert!(set.build(&Fill::None).is_err());
+    }
+
+    #[test]
+    fn a_finding_template_asks_once_per_finding_and_names_each_one() {
+        let set = repository_questions()
+            .get("openagents.review-finding.v1")
+            .cloned()
+            .unwrap();
+        assert_eq!(set.template(), Some(Template::Finding));
+        assert!(!set.templated());
+        let questions = set
+            .build(&Fill::Findings(vec!["f1".to_string(), "f2".to_string()]))
+            .unwrap();
+        assert_eq!(questions.len(), 2);
+        let Some(Question::Raw(body)) = questions.get("f2") else {
+            panic!("one question per finding, named for it");
+        };
+        assert!(
+            body["instructions"].as_str().unwrap().contains("f2"),
+            "a question that did not name its finding would be its siblings' twin"
+        );
+        assert!(set.build(&Fill::Findings(Vec::new())).is_err());
+        assert!(set.build(&Fill::None).is_err());
+        assert!(set.build(&Fill::Requirements(vec!["t1".into()])).is_err());
     }
 
     #[test]

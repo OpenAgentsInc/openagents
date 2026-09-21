@@ -2,11 +2,13 @@
   "v": 1,
   "slug": "review-changes",
   "name": "Review a diff and report problems",
-  "summary": "Reads a diff and reports what is wrong with it.",
+  "summary": "Captures the pinned diff, requires the host's mechanical checks, and judges each finding a pinned reviewer reported.",
   "inputs": {"revision": "string"},
   "outputs": {"findings": "list"},
   "steps": [
-    {"name": "diff", "kind": "query", "bounds": {"max_results": 200}},
+    {"name": "diff", "kind": "query", "bounds": {"max_results": 200, "on_overflow": "refuse"}},
+    {"name": "mechanical", "kind": "check",
+     "bounds": {"refuse_on": "gate_not_met", "max_tests": 16}},
     {"name": "review", "kind": "decide",
      "question": "openagents.review-finding.v1",
      "bounds": {"per_finding": true}}
