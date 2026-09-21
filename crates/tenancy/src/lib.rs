@@ -44,6 +44,7 @@
 //! contract. And a verified binding still cannot attest remote weights —
 //! it proves the serving process claims the identity the registry bound.
 
+pub mod backend;
 pub mod keys;
 mod manifest;
 pub mod quota;
