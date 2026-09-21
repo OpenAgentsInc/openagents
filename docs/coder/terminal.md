@@ -6,7 +6,8 @@ the draw loop, and how much transcript the loop keeps. All three live in
 them; the composer example in `crates/coder-terminal/examples/shell.rs`
 uses the first.
 
-Status: implemented. Source: `crates/coder-terminal/src/guard.rs`,
+Status: lifecycle, events, and scrollback implemented; evidence/task views
+below are proposed. Source: `crates/coder-terminal/src/guard.rs`,
 `events.rs`, and `scrollback.rs`.
 
 ## Why
@@ -125,6 +126,51 @@ line, resize the window, quit once with `Ctrl-C` and once with an empty
 `Ctrl-D`, and confirm with `stty -a` that the shell is back in cooked mode
 with echo on. The `2026-09-20-terminal-lifecycle.md` record under
 [`verification/`](verification/) holds one such run.
+
+## Planned evidence and task views
+
+The [TypeSafe-native roadmap](typesafe-agent-roadmap.md) adds a shared
+evidence store and task-specific context to the agent. The views below are
+a product contract for #9506, not implemented terminal controls.
+
+Keep the conversation and framed composer primary. Use the existing amber
+intensity ladder, frame, and rails. Secondary detail expands on demand and
+must remain readable without color. Do not require a developer to inspect
+probabilities before asking a repository question or repairing a test.
+
+| View | Normal presentation | Expanded evidence |
+| --- | --- | --- |
+| Task | Current objective, active operation, and useful progress | Binding constraints, attempted approaches, unresolved requirements, and task/base identity |
+| Context | Sources used and whether needed evidence is missing | Included spans, source versions, summaries and their originals, omissions, truncation, and selection policy |
+| Decision | What the judgment changed in the workflow | Question, alternatives, raw answer, model/artifact, review, receipt availability, and host-consumed outcome |
+| Work | Queued/running/completed work and retained artifacts | Dependencies, conflicts, limits, cancellation, unknown attempts, changed paths, and independent checks |
+| Background | A quiet indicator when a useful result is ready | Revision-bound explanation/review, source references, staleness, and additional time or known cost |
+
+For example, a repaired test should show the failing diagnostic, the source
+spans used for the patch, and the independent check on the resulting
+artifact. A test that did not run must appear as missing evidence. A
+background explanation of an earlier revision must appear stale, even when
+its prose still sounds plausible.
+
+The host emits typed lifecycle and evidence-reference events. Terminal and
+headless consumers render those same events; the terminal must not own
+retrieval, decisions, authorization, or a second task scheduler. Provide a
+stable final outcome for scripts, including available artifact/context
+references and unresolved evidence.
+
+The existing text preview limit does not bound control-event memory: control
+events use an unbounded queue. Before adding high-volume evidence and
+background updates, aggregate replaceable progress at the producer and
+measure queue pressure. Preserve authoritative transitions and their trace
+references; do not drop a refusal or final verification result to keep an
+animation smooth. Repeated progress can be coalesced without emitting every
+candidate score as a control event.
+
+Validate keyboard-only expansion and navigation, narrow widths, resize,
+Unicode, `NO_COLOR`, cancellation while streaming, stale findings, and
+terminal/headless outcome parity as these views are implemented. Ordinary
+status lines expose useful identities and data destinations without
+credentials or raw private context.
 
 ## Related
 

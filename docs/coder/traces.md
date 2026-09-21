@@ -214,3 +214,25 @@ seconds, and the repeated-work table.
   trace from a script rather than from a person at a keyboard.
 - [`docs/coder/relay-transport.md`](relay-transport.md) — what the
   session header's `door` field is for, read across two transports.
+
+## Proposed working-state references
+
+The [TypeSafe-native analysis](typesafe-agent-analysis.md) proposes an
+evidence store, task frames, and per-recipient context manifests. These are
+not implemented by the existing trace format. A trace explains an observed
+sequence; the working store retrieves still-valid evidence; the durable
+controller decides which effects may resume.
+
+Extend trace metadata additively with evidence item, snapshot, task-frame,
+context-manifest, and derived-source references when those contracts land.
+Record selection/omission reasons and decision identities without treating
+a selected excerpt as the complete captured source. Process capture limits
+still apply before tracing; a trace cannot recover output the collector
+already discarded.
+
+Keep evidence retention and export explicit. A summary can contain private
+source information even when its original artifact is omitted, and a digest
+alone does not anonymize predictable content. Deletion should invalidate or
+mark unavailable the affected derived references. Offline inspection must
+not rerun tools, generation, or decisions; a new comparison is a separately
+identified execution with its own budget.

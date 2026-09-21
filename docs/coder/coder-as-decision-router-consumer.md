@@ -12,10 +12,18 @@ interface do not establish that result. Every production decision must earn
 its place against a simpler baseline.
 
 Status: target vision and delivery contract. The implementation inventory
-below was checked against repository revision `5db52998ff` on 2026-09-20.
+below was checked against repository revision `9dd4ddab67` on 2026-09-21.
 Existing components do not imply that the full consumer integration is
 shipped. Consumer delivery is tracked in [#9501](https://github.com/OpenAgentsInc/openagents/issues/9501); the shared service
 roadmap is [#9481](https://github.com/OpenAgentsInc/openagents/issues/9481).
+
+The [TypeSafe-native agent analysis](typesafe-agent-analysis.md) applies the
+founder's coding-agent proposal to this architecture. Its
+[delivery roadmap](typesafe-agent-roadmap.md) defines the current implementation
+order: shared evidence, task-specific context, a useful native coding loop,
+then progressive tools, routing, parallel/background work, and durable
+composition. The [project snapshot](2026-09-21-project-roadmap-snapshot.md)
+records the two boards and their status discrepancies.
 
 ## What Decision Router means here
 
@@ -66,8 +74,9 @@ question that needs no semantic prefilter takes the simpler path.
 For a request to work through issues, Coder resolves the authorized source
 into a pinned task list, identifies dependencies and conflicts, and shows
 the proposed program. The host establishes what the request and session
-policy permit. It runs independent work in bounded waves, with one isolated
-checkout per writing delegate. The terminal shows queued, running, refused,
+policy permit. It schedules independent work under declared capacity and
+conflict bounds, with one isolated checkout per writing delegate. The terminal
+shows queued, running, refused,
 unverified, and verified work as different states.
 
 An uncertain judgment can be reviewed under a declared policy with a spend
@@ -90,19 +99,28 @@ renders a shared event stream; it does not implement a second agent.
 | --- | --- | --- |
 | Shared turn | `coder::turn::run` drives terminal and headless modes | Preserve this single path through all router integrations |
 | Decision calls | `Agent` asks turn action and shell outcome; `Runtime` asks program selection and program questions through `jev::Client` | One explicit router profile/client, structured failure policy, and receipt consumption: [#9502](https://github.com/OpenAgentsInc/openagents/issues/9502) |
-| Program runtime | File-defined `query`, `decide`, `check`, and `delegate` steps; unsupported kinds refuse | Program-wide authority, typed composition, durable state, and additional verified checks |
+| Program runtime | File-defined `query`, `decide`, `check`, and `delegate` steps, explicit host grants, and a typed `run-suite` host path; unsupported kinds refuse | Typed composition, full durable program state, a real suite adapter, and additional review contracts |
 | Local executor | Approved `devin-local`, resolved executable, bounded subprocesses, worktrees, and filesystem write boundary | Broader workflow verification and recovery; no general arbitrary-backlog safety claim |
 | Remote executor | Encrypted Coder jobs reach a worker running its own approved Devin CLI | Separate decision-job transport depends on [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469)/[#9470](https://github.com/OpenAgentsInc/openagents/issues/9470) |
-| Task sources | Request lists and file-backed `.coder/work-list.json`; declared dependencies and path collisions are recorded | Scoped tracker adapters, fresh source snapshots, and enforced conflict-aware waves |
-| Completion | Per-requirement judgments and expected-text verdicts | Independent code/artifact acceptance, usable review/suite programs, and verified outcome semantics |
-| Evidence | ATIF decision records, CoderBench, Gym suites, coverage, and retained report commitments | Join runtime traces to service receipts, costs, redacted exports, and consumer release gates |
-| Service libraries | `crates/tenancy` has registry, key, and quota components; `crates/receipts` defines execution receipts | Libraries are not a wired hosted gateway or a working Coder consumer |
+| Task sources | Request/file lists and scoped GitHub tracker snapshots with dependency and freshness checks | Broader source coverage and integration into complete recoverable workflows |
+| Scheduling | Prepared task mappings, deterministic conflict/resource admission, refill scheduling, and durable claims in the project supervisor | General semantic task preparation, whole-run accounting, and complete recovery/integration: [#9514](https://github.com/OpenAgentsInc/openagents/issues/9514) |
+| Completion | Per-requirement judgments and text checks, plus independent committed-artifact inspection and protected bounded checks | Real suite adapters, complete review programs, and unified consumer outcome semantics |
+| Evidence | ATIF decision records, CoderBench, Gym suites, coverage, and retained report commitments | Versioned evidence store, task frames, context manifests, receipt/cost joins, and redacted exports |
+| Shared service | Keyed HTTP gateway, partial classification route, tenant registry/keys/quota, execution receipts, caller CLI, backend capabilities, pure relay decision protocol, and monetary ledger foundations | Full Coder consumption, networked relay decisions, remaining classification modes, packed inference, and money/account enforcement |
 
 Registry and quota foundations landed under [#9474](https://github.com/OpenAgentsInc/openagents/issues/9474) and
-[#9467](https://github.com/OpenAgentsInc/openagents/issues/9467). Key and receipt code also exists, while their wider
-transport/integration contracts in [#9466](https://github.com/OpenAgentsInc/openagents/issues/9466) and [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471)
-remain work to verify. The gateway is [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468). Follow code and
-acceptance scope, not just an issue's open/closed marker.
+[#9467](https://github.com/OpenAgentsInc/openagents/issues/9467). Authentication
+[#9466](https://github.com/OpenAgentsInc/openagents/issues/9466), gateway
+[#9468](https://github.com/OpenAgentsInc/openagents/issues/9468), and caller
+[#9476](https://github.com/OpenAgentsInc/openagents/issues/9476) are closed.
+The broader cross-transport receipt contract in
+[#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) remains open.
+The [snapshot](2026-09-21-project-roadmap-snapshot.md) distinguishes landed
+classification, capability, and money foundations from their unfinished
+service integration. The partial [classification HTTP route](../decision-models/classification-http.md)
+now serves Choice, multi-label Noul, and named dimensions serially through
+native inference. Additional modes and packing remain open. Follow code and
+acceptance scope as well as issue state.
 
 The [observed local episode](measurements/2026-09-20-observed-fanout.md)
 and [deployed relay episode](relay-transport.md#deployed) prove specific
@@ -122,11 +140,15 @@ reference, workspace, allowed models/artifacts, capacity, policy, disclosure
 rules, deadlines, and retry/spend limits. Configuration must distinguish
 missing, intentionally disabled, unsupported, and invalid settings.
 The current `Client::from_env().ok()` construction loses that distinction.
+The SDK's `Config::local(url, model)` now supports explicit loopback without
+provider credentials, proxies, or redirects; Coder profile integration is
+still pending. Loopback identifies a transport destination, not proof that
+the receiving server performs inference locally.
 
 | Profile | Behavior | Service dependencies |
 | --- | --- | --- |
 | Hosted HTTP | Use the public gateway, tenant key, model authorization, quota, and receipts | [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468), [#9466](https://github.com/OpenAgentsInc/openagents/issues/9466), [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) |
-| Direct local | Reach a caller-controlled Kev/Lev-compatible endpoint without a fabricated provider key; preserve available identity evidence | Existing serving binaries; client adaptation in [#9502](https://github.com/OpenAgentsInc/openagents/issues/9502) |
+| Direct local | Reach an explicit loopback Kev/Lev-compatible endpoint without a fabricated provider key; preserve available identity evidence | SDK configuration exists; Coder profile integration remains in [#9502](https://github.com/OpenAgentsInc/openagents/issues/9502) |
 | Own provider | Preserve explicit direct-provider configuration and its real evidence limits | Existing Jev client; client compatibility in [#9489](https://github.com/OpenAgentsInc/openagents/issues/9489) |
 | Relay decisions | Authenticate and encrypt the versioned decision contract to a trusted worker | [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469), [#9470](https://github.com/OpenAgentsInc/openagents/issues/9470), [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) |
 
@@ -204,8 +226,25 @@ bytes/tokens disclosed, latency, total cost, refusals, and confident errors.
 A fast filter that drops the needed evidence is a failed optimization.
 
 The host's read permissions and disclosure profile constrain candidate
-collection and every inference call. Repository text remains data, including
-instructions embedded in documents or issue bodies.
+collection and every inference call. Retrieved repository text remains data.
+The host separately resolves
+applicable repository instructions by scope and precedence; a relevance
+filter must not remove binding instructions or promote an issue body to
+execution authority.
+
+Extend this selection path into the proposed [evidence and context
+architecture](typesafe-agent-analysis.md#proposed-architecture-state-that-can-answer-many-questions):
+immutable source observations, explicit task frames, derived summaries with
+source links, and a context manifest per recipient. The current classifier
+slices and generator transcript are not yet that shared substrate. Preserve
+captured diagnostics before choosing excerpts, and keep capture truncation
+visible. ATIF records history; it does not replace this working state.
+
+The first useful slice uses deterministic candidate retrieval and one
+measured relevance function. Small native calls can precede the completed
+bulk service surface. Later slices add hierarchical retrieval, progressive
+operation/instruction catalogs, context-aware generation routing, and
+snapshot sharing for delegates and background views.
 
 ## Programs as the application structure
 
@@ -219,11 +258,11 @@ The existing programs become a coherent product library:
 
 | Program | Today | Target |
 | --- | --- | --- |
-| `delegate-fan-out` | Request-list fan-out, up to 12 tasks, width 6, separate worktrees | General-count questions, explicit effects/authority, enforced dependencies, verified outcomes |
-| `burn-down` | File work list, up to 6 tasks, width 6, retained writing worktrees and scratch commits | Trusted tracker intake, bounded waves, recovery, verification, and reviewable delivery |
+| `delegate-fan-out` | Request-list fan-out, up to 12 tasks, width 6, separate worktrees | General-count questions, integrated conflict scheduling, and verified outcomes |
+| `burn-down` | Bounded work-list execution with retained writing worktrees; scoped tracker and project-supervisor foundations also exist | Integrated task preparation, conflict scheduling, recovery, verification, and reviewable delivery |
 | `answer-question` | A bounded delegation program; input comes through current task handling | Typed question/evidence bindings and measured source-grounded answers |
 | `review-changes` | Manifest present, unsupported question/bounds path | Pinned diff source, admitted review function, structured findings, and evidence references |
-| `run-suite` | Manifest present, unsupported `gate_not_met` check | Bounded Gym execution and independently verified suite/gate outcomes |
+| `run-suite` | Host-bound `gate_not_met` check with typed evidence, one suite identity, and at most 16 checks; protected artifact inspection in the CLI | Shipped Gym/suite adapter, metrics output, and complete consumer integration |
 
 Manifests on disk do not establish that every program runs. Unsupported
 checks, questions, kinds, or bounds continue to refuse at admission.
@@ -232,9 +271,11 @@ checks, questions, kinds, or bounds continue to refuse at admission.
 
 Owner: [#9504](https://github.com/OpenAgentsInc/openagents/issues/9504).
 
-The current program branch executes before the ordinary route-derived
-`Permit` is constructed. Preserve the established shell permit and extend
-explicit host authority over the whole program path.
+Implemented under #9504: the program branch still precedes the ordinary
+route-derived `Permit`, but now requires its own explicit host grant.
+`CODER_PROGRAMS` or `--programs` names eligible programs; absence grants none.
+Effect ceilings narrow that grant. Preserve both paths and the documented
+limits in [program authority](program-authority.md).
 
 A selected program proposes work within the operator's authorized scope.
 A host permit covers relevant reads, writes, subprocesses, delegation,
@@ -259,10 +300,12 @@ acceptance alongside the happy-path demonstration.
 
 Owner: [#9507](https://github.com/OpenAgentsInc/openagents/issues/9507).
 
-Support scoped read-only tracker adapters that produce a pinned work list:
-repository/base revision, issue IDs and versions, stable ordering,
-dependencies, declared paths/effects, and acceptance references. A
-`query` names the source; it does not embed a shell command.
+Implemented under #9507: the [scoped GitHub adapter](tracker-intake.md)
+produces bounded, pinned work from approved queries. Issue/base freshness,
+native blockers, pagination completeness, and prepared task mappings feed
+the project controller's admission. Extend this contract for other trackers
+and complete workflow integration. A `query` names the source; it does not
+embed a shell command.
 
 Bound fetches, pagination, credentials, subprocesses, and output under
 host-approved adapters. Refuse or refresh stale work before dispatch.
@@ -271,16 +314,21 @@ A tracker read grants no permission to post a comment or close an issue.
 
 ### Independence and scheduling
 
-Owner: [#9508](https://github.com/OpenAgentsInc/openagents/issues/9508).
+Owners: [#9508](https://github.com/OpenAgentsInc/openagents/issues/9508) and
+[#9514](https://github.com/OpenAgentsInc/openagents/issues/9514).
 
 Compute the conflict facts that are available: dependency order, declared
 write/write conflicts, and relevant write/read conflicts. Shared reads
 alone do not require serialization. Unknown effect footprints need an
 explicit conservative policy.
 
-Build stable, bounded waves from those facts. Ask a semantic independence
-question only about uncertainty the mechanical checks cannot settle.
-A high model probability cannot override a known conflicting write.
+The [project supervisor](project-supervision.md) already admits prepared
+work against dependency/path conflicts and declared resource capacity,
+refilling on completion. Extend that scheduler rather than rebuilding a
+fixed-wave controller. Ask a semantic independence question only about
+uncertainty the mechanical checks cannot settle. A high model probability
+cannot override a known conflicting write. Resource declarations are
+accounting, not kernel-enforced CPU or memory quotas.
 
 The current fan-out uses v1 wording that names six tasks even though its
 input bound allows twelve. `burn-down` uses the generalized v2 wording.
@@ -302,16 +350,19 @@ includes expected text, changed-file/diff scope, independent workspace
 snapshots, bounded tests/builds, artifact checks, and semantic review.
 Mechanical failures cannot be overruled by a model's completion judgment.
 
-Today, a delegation's concrete verdict compares its returned text with
-`expects`; without an expectation it is unverifiable. A program that ran
-all its steps can still contain failed or unverifiable task verdicts.
-The target exposes that distinction in program state, headless results,
-terminal presentation, and exit behavior.
+A delegation's text verdict still compares its returned text with `expects`;
+without an expectation it is unverifiable. The separate
+[artifact verifier](artifact-verification.md) now inspects committed work
+and runs protected bounded host checks. The `run-suite` host path requires
+typed evidence for one pinned suite and refuses exit-status-only plans.
+A passing verification report still has `integration_accepted: false`.
 
-Implement the bounded checks and question contracts needed by
-`review-changes` and `run-suite`. An executor's statement that it tested
-a change is not an independent test result. A scratch commit saying
-`done` does not prove the code meets its acceptance criteria.
+Complete a real suite adapter, metrics output, `review-changes` contracts,
+and consumer outcome integration. A program that ran all its steps can
+still contain failed or unverifiable task verdicts. Preserve that distinction
+in program state, headless results, terminal presentation, and exit behavior.
+An executor's statement that it tested a change is not an independent test
+result.
 
 Retain writing worktrees and scratch commits for review. Applying them,
 merging, pushing, or closing issues is a separate authorized effect with
@@ -322,9 +373,13 @@ authority; it does not execute arbitrary instructions from a model review.
 
 Owner: [#9510](https://github.com/OpenAgentsInc/openagents/issues/9510).
 
-Persist program, step, task, and attempt state with source, base, question,
-policy, artifact, authority, and retained-worktree references. ATIF records
-what happened; durable orchestration also owns what can resume.
+The project supervisor already persists claims and attempts, locks its
+single writer, and retains interrupted running claims as unknown. Extend
+that foundation to complete program/step/task recovery with source, base,
+question, policy, artifact, authority, context, and retained-worktree
+references. ATIF records what happened; durable orchestration also owns what
+can resume. An evidence store supplies working context and is distinct
+from both.
 
 Reconnect to existing decision jobs or executor sessions where supported.
 If an executor cannot resume, say so. Never blindly replay an ambiguous
@@ -419,7 +474,10 @@ that answers:
 - What time, quota, and known cost did the full workflow consume?
 
 Show live program/task states, dependencies, progress, cancellation,
-retained worktrees, and acceptance failures. Keep decision latency separate
+retained worktrees, and acceptance failures. Add selected evidence and
+omissions, source freshness, and revision-bound background findings through
+the [planned terminal views](terminal.md#planned-evidence-and-task-views).
+A normal turn should remain readable without expanding decision details. Keep decision latency separate
 from queueing, generation, and delegate time. Distinguish a simulator from
 a live metered request.
 
@@ -436,7 +494,7 @@ ordinary status line or public issue.
 
 | Service work | What it enables in Coder | Consumer owner or condition |
 | --- | --- | --- |
-| [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468) gateway; [#9466](https://github.com/OpenAgentsInc/openagents/issues/9466) auth; [#9474](https://github.com/OpenAgentsInc/openagents/issues/9474) registry; [#9467](https://github.com/OpenAgentsInc/openagents/issues/9467) quota | Authorized, bounded shared inference | [#9502](https://github.com/OpenAgentsInc/openagents/issues/9502); foundation code already exists in part |
+| [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468) gateway; [#9466](https://github.com/OpenAgentsInc/openagents/issues/9466) auth; [#9474](https://github.com/OpenAgentsInc/openagents/issues/9474) registry; [#9467](https://github.com/OpenAgentsInc/openagents/issues/9467) quota | Authorized, bounded shared inference | [#9502](https://github.com/OpenAgentsInc/openagents/issues/9502); gateway, auth, registry, quota, and CLI foundations exist |
 | [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) receipts | Per-attempt evidence and attribution across transports | [#9505](https://github.com/OpenAgentsInc/openagents/issues/9505) |
 | [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469) decision jobs; [#9470](https://github.com/OpenAgentsInc/openagents/issues/9470) discovery | Router decisions through the relay, separate from current Devin/generation jobs | [#9502](https://github.com/OpenAgentsInc/openagents/issues/9502), [#9512](https://github.com/OpenAgentsInc/openagents/issues/9512) |
 | [#9482](https://github.com/OpenAgentsInc/openagents/issues/9482) classification; [#9483](https://github.com/OpenAgentsInc/openagents/issues/9483) inference batching | Bulk evidence filtering, ranking, and multidimensional review | [#9513](https://github.com/OpenAgentsInc/openagents/issues/9513) |
@@ -456,12 +514,24 @@ ordinary status line or public issue.
 
 ## Delivery sequence and acceptance
 
-| Release | Consumer work | Evidence required |
+Use the [TypeSafe-native roadmap](typesafe-agent-roadmap.md) as the current
+sequence. It replaces the earlier four-release grouping with independently
+useful increments:
+
+| Phase | Product increment | Main owners |
 | --- | --- | --- |
-| 1. Real router consumer | [#9502](https://github.com/OpenAgentsInc/openagents/issues/9502), [#9503](https://github.com/OpenAgentsInc/openagents/issues/9503), [#9504](https://github.com/OpenAgentsInc/openagents/issues/9504), [#9505](https://github.com/OpenAgentsInc/openagents/issues/9505); minimal [#9506](https://github.com/OpenAgentsInc/openagents/issues/9506) | All existing decision sites use the public contract; HTTP/local profile parity, refusal/degradation policy, identity/receipt checks, and negative authorization cases |
-| 2. Useful repository workflows | [#9513](https://github.com/OpenAgentsInc/openagents/issues/9513), [#9507](https://github.com/OpenAgentsInc/openagents/issues/9507), [#9508](https://github.com/OpenAgentsInc/openagents/issues/9508), [#9509](https://github.com/OpenAgentsInc/openagents/issues/9509) | A repository-answer flow and a selected writing-backlog flow with pinned inputs, enforced conflicts, bounded execution, independent checks, and reviewable artifacts |
-| 3. Recoverable reusable programs | [#9510](https://github.com/OpenAgentsInc/openagents/issues/9510), [#9511](https://github.com/OpenAgentsInc/openagents/issues/9511), [#9512](https://github.com/OpenAgentsInc/openagents/issues/9512) | Interrupted/restarted runs, safe ambiguous-effect handling, typed composition, package trust, and offline resolution |
-| 4. Flagship release | [#9501](https://github.com/OpenAgentsInc/openagents/issues/9501) and remaining [#9506](https://github.com/OpenAgentsInc/openagents/issues/9506) polish | Terminal/headless parity, reproducible demos, workload improvements or honest negative findings, consumer conformance, and published evidence |
+| 0 | Explicit client/function outcomes and a complete workflow baseline | #9502, #9503, #9505, #9506 |
+| 1 | Shared evidence, context manifests, and source-grounded repository answers | #9513, #9505, #9506 |
+| 2 | Native coding operations, task-specific generation context, and independent repair checks | #9513, #9509, #9503 |
+| 3 | Progressive tools/instructions and measured context-aware generation routing | #9503, #9513, #9512 |
+| 4 | Shared task context, conflict-aware parallel work, and bounded background views | #9508, #9514, #9506, #9509 |
+| 5 | Complete recovery, whole-run accounting, typed composition, and portable workflows | #9510, #9511, #9512, #9514 |
+
+#9501 owns the complete consumer release. Existing authority and tracker
+contracts from #9504/#9507 support these phases. Their completed original
+scope is not new work. Hosted commercial capabilities and additional
+transports are required for their respective release profiles, not every
+local prototype.
 
 The release suite includes program `none`, a wrong program choice,
 unavailable/abstaining judgments, revoked credentials, exhausted quotas,

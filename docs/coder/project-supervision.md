@@ -277,3 +277,29 @@ tracked under #9503, #9504, #9508, #9509, #9510, and #9514.
 The [2026-09-21 verification record](verification/2026-09-21-project-supervisor.md)
 contains the passing manual gate, scheduling comparisons, live queue results,
 restart checks, and timed-out implementation jobs.
+
+## Proposed shared context and background work
+
+The [TypeSafe-native roadmap](typesafe-agent-roadmap.md#phase-4-share-context-across-parallel-and-background-work)
+extends this controller with immutable evidence snapshots, task-specific
+context manifests, and structured findings. The current prepared-task
+scheduler and durable claims are foundations; they do not yet provide that
+shared working state or a general background-assistance system.
+
+Bind each task's context to the base, issue version, and evidence digests
+it read. Share valid read observations across tasks. Recheck affected
+references after a writing task completes and before integrating another
+artifact. A returned finding should name its sources and verification;
+combining findings should not concatenate every delegate transcript.
+
+A first background feature can explain a diff using observations the
+foreground task already collected. Give it a lower priority, an explicit
+resource/disclosure allowance, changed-input debounce, cancellation, and
+revision-bound results. Coalesce obsolete work and reserve foreground
+capacity. Read-only tasks still consume resources and may disclose source
+to a provider; existing session policy applies.
+
+Extend #9508/#9514 for these scheduling behaviors and #9510 for complete
+recovery and whole-run accounting. Do not infer execution authority from
+model-selected relevance, duplicate-task similarity, project membership,
+or an available scheduler slot.

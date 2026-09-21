@@ -103,6 +103,21 @@ from the reference material in `~/work/coder`.
 | Trace | Implemented | One Coder session as an ATIF document, written to `~/.openagents/traces/` as the session runs. A session is one terminal invocation. Steps append and the document is rendered on read, so a session that is killed still reads back. `CODER_TRACE=off` turns recording off. See [`coder/traces.md`](coder/traces.md). |
 | Decision call | Implemented | A question put to a door, recorded in a trace as a `Call` carrying `openagents.decision-call.v1`: which door answered, the state and questions that went out, the typed answers, the digest of that state, and the route the host made of them. |
 
+### Proposed working state
+
+These terms belong to the [TypeSafe-native Coder design](coder/typesafe-agent-analysis.md).
+The existing transcript, ATIF trace, and project claim ledger do not yet
+implement this shared context system.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Evidence item | Designed | An addressable observation or derived artifact with source, content version, scope, capture limits, and provenance. Summaries retain references to their sources. |
+| Evidence snapshot | Designed | An immutable set of evidence versions a task or decision reads. Shared snapshots permit reuse without assuming the working tree remains unchanged. |
+| Task frame | Designed | The current objective, binding constraints, acceptance references, attempted approaches, and unresolved questions, with observed instructions distinguished from inferred subgoals. |
+| Context request | Designed | A recipient-specific request for evidence under task, input-size, and disclosure constraints. |
+| Context manifest | Designed | The included evidence and representation versions, omissions, unresolved coverage, and selection identities used to build one model or delegate input. It does not attest a provider cache hit. |
+| Background view | Designed | An optional explanation or finding derived from a pinned evidence snapshot under its own resource allowance; it becomes stale when its relevant sources change. |
+
 ## Capabilities and programs
 
 | Term | Status | Definition |
