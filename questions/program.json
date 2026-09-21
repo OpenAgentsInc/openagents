@@ -13,5 +13,12 @@
         "none": "This request asks for no program. It is an ordinary turn - a question, an instruction, or a remark - and the agent answers it itself."
       }
     }
+  },
+  "policy": {
+    "v": 1,
+    "evidence": [
+      "docs/decision-models/measurements/2026-09-19-program-selection.md",
+      "docs/decision-models/measurements/2026-09-20-program-selection-v2.md"
+    ]
   }
 }
