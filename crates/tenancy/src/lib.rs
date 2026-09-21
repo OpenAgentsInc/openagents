@@ -66,6 +66,7 @@ mod manifest;
 pub mod money;
 pub mod quota;
 mod registry;
+pub mod sessions;
 pub mod workspaces;
 
 pub use accounts::{
