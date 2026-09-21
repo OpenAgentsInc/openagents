@@ -1400,10 +1400,7 @@ fn corpus_aggregates(plan: &classify::Plan, items: &[Value]) -> Vec<Value> {
             .map(|level| (level.to_string(), json!(0)))
             .collect();
         for item in items {
-            let Some(result) = item
-                .get("units")
-                .and_then(|units| units.get(unit_index))
-            else {
+            let Some(result) = item.get("units").and_then(|units| units.get(unit_index)) else {
                 continue;
             };
             match result.get("outcome").and_then(Value::as_str) {
@@ -1429,9 +1426,7 @@ fn corpus_aggregates(plan: &classify::Plan, items: &[Value]) -> Vec<Value> {
                     }
                 }
                 Mode::MultiLabel => {
-                    if let Some(selected) =
-                        result.get("selected").and_then(Value::as_array)
-                    {
+                    if let Some(selected) = result.get("selected").and_then(Value::as_array) {
                         for label in selected.iter().filter_map(Value::as_str) {
                             bump(&mut labels, label);
                         }
@@ -1695,9 +1690,7 @@ fn unit_result(
             // Each label's Noul stands alone — an empty selection is
             // the no-match outcome, and a weak label anywhere flags the
             // input for review when the policy declares a cut.
-            if selected.is_null()
-                || selected.as_array().is_some_and(|labels| labels.is_empty())
-            {
+            if selected.is_null() || selected.as_array().is_some_and(|labels| labels.is_empty()) {
                 base["no_match"] = json!(true);
             }
             if rule.uncertain_below.is_some_and(|cut| {
@@ -2272,20 +2265,34 @@ mod classification_accounting_tests {
             "labels": [{"id": "x"}, {"id": "y"}],
         }));
         let items = vec![
-            item("a", "answered", vec![answered_unit("multi-label", json!(["x", "y"]))]),
-            item("b", "answered", vec![{
-                let mut unit = answered_unit("multi-label", json!(["x"]));
-                unit["uncertain"] = json!(true);
-                unit
-            }]),
-            item("c", "answered", vec![{
-                let mut unit = answered_unit("multi-label", json!([]));
-                unit["no_match"] = json!(true);
-                unit
-            }]),
-            item("d", "refused", vec![
-                json!({"mode": "multi-label", "outcome": "refused", "selected": null}),
-            ]),
+            item(
+                "a",
+                "answered",
+                vec![answered_unit("multi-label", json!(["x", "y"]))],
+            ),
+            item(
+                "b",
+                "answered",
+                vec![{
+                    let mut unit = answered_unit("multi-label", json!(["x"]));
+                    unit["uncertain"] = json!(true);
+                    unit
+                }],
+            ),
+            item(
+                "c",
+                "answered",
+                vec![{
+                    let mut unit = answered_unit("multi-label", json!([]));
+                    unit["no_match"] = json!(true);
+                    unit
+                }],
+            ),
+            item(
+                "d",
+                "refused",
+                vec![json!({"mode": "multi-label", "outcome": "refused", "selected": null})],
+            ),
         ];
         let aggregates = corpus_aggregates(&plan, &items);
         assert_eq!(
@@ -2316,13 +2323,25 @@ mod classification_accounting_tests {
             "labels": [{"id": "a"}, {"id": "other"}],
         }));
         let items = vec![
-            item("a", "answered", vec![{
-                let mut unit = answered_unit("single-label", json!("other"));
-                unit["no_match"] = json!(true);
-                unit
-            }]),
-            item("b", "answered", vec![answered_unit("single-label", json!("other"))]),
-            item("c", "answered", vec![answered_unit("single-label", json!("a"))]),
+            item(
+                "a",
+                "answered",
+                vec![{
+                    let mut unit = answered_unit("single-label", json!("other"));
+                    unit["no_match"] = json!(true);
+                    unit
+                }],
+            ),
+            item(
+                "b",
+                "answered",
+                vec![answered_unit("single-label", json!("other"))],
+            ),
+            item(
+                "c",
+                "answered",
+                vec![answered_unit("single-label", json!("a"))],
+            ),
         ];
         let aggregates = corpus_aggregates(&plan, &items);
         assert_eq!(aggregates[0]["labels"], json!({"a": 1, "other": 1}));
@@ -2347,14 +2366,20 @@ mod classification_accounting_tests {
         }));
         let items = vec![
             item("a", "answered", vec![answered_unit("score", json!(1))]),
-            item("b", "answered", vec![{
-                let mut unit = answered_unit("score", json!(0));
-                unit["uncertain"] = json!(true);
-                unit
-            }]),
-            item("c", "unattempted", vec![
-                json!({"mode": "score", "outcome": "unattempted", "selected": null}),
-            ]),
+            item(
+                "b",
+                "answered",
+                vec![{
+                    let mut unit = answered_unit("score", json!(0));
+                    unit["uncertain"] = json!(true);
+                    unit
+                }],
+            ),
+            item(
+                "c",
+                "unattempted",
+                vec![json!({"mode": "score", "outcome": "unattempted", "selected": null})],
+            ),
         ];
         let aggregates = corpus_aggregates(&plan, &items);
         assert_eq!(
@@ -2388,19 +2413,30 @@ mod classification_accounting_tests {
             ],
         }));
         let items = vec![
-            item("a", "answered", vec![
-                answered_unit("binary", json!("keep")),
-                answered_unit("single-label", json!("t2")),
-            ]),
-            item("b", "answered", vec![{
-                let mut gate = answered_unit("binary", Value::Null);
-                gate["no_match"] = json!(true);
-                gate
-            }, {
-                let mut topic = answered_unit("single-label", Value::Null);
-                topic["no_match"] = json!(true);
-                topic
-            }]),
+            item(
+                "a",
+                "answered",
+                vec![
+                    answered_unit("binary", json!("keep")),
+                    answered_unit("single-label", json!("t2")),
+                ],
+            ),
+            item(
+                "b",
+                "answered",
+                vec![
+                    {
+                        let mut gate = answered_unit("binary", Value::Null);
+                        gate["no_match"] = json!(true);
+                        gate
+                    },
+                    {
+                        let mut topic = answered_unit("single-label", Value::Null);
+                        topic["no_match"] = json!(true);
+                        topic
+                    },
+                ],
+            ),
         ];
         let aggregates = corpus_aggregates(&plan, &items);
         assert_eq!(

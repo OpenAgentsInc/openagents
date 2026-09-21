@@ -1133,6 +1133,213 @@ async fn classify_refuses_invalid_rubrics_and_undeclared_rules() {
 }
 
 #[tokio::test]
+async fn classify_multi_label_counts_overlapping_labels_and_flags_uncertainty() {
+    // Three inputs over a two-label set: one selects both labels, one
+    // selects one with a weak second judgment, one selects nothing.
+    // The counts overlap by design — each label's Noul stands alone.
+    let stub = per_input_backend(|body| {
+        let (x, y) = match body["state"].as_str().unwrap_or_default() {
+            "both" => (0.9, 0.8),
+            "one-weak" => (0.6, 0.4),
+            _ => (0.2, 0.3),
+        };
+        (
+            StatusCode::OK,
+            json!({"model":"kev-0.6b",
+                   "answers":{"q0":{"type":"noul","noul":x},
+                              "q1":{"type":"noul","noul":y}},
+                   "usage":{"input_tokens":5,"output_tokens":2}}),
+        )
+    });
+    let (endpoint, _) = backend(stub).await;
+    let deployment = classification_deployment(endpoint).await;
+    let call = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"tags",
+          "select":{"multi_label":{"threshold":0.5,"ties":"include-all",
+                                   "no_match":"empty","uncertain_below":0.7}}},
+        "inputs":[{"id":"a","text":"both"},{"id":"b","text":"one-weak"},{"id":"c","text":"none"}],
+        "mode":"multi-label","labels":[{"id":"x"},{"id":"y"}]
+    });
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // Per-item: overlapping selection, a weak-label uncertainty flag,
+    // and the empty selection's explicit no-match marker.
+    assert_eq!(
+        body["results"][0]["units"][0]["selected"],
+        json!(["x", "y"])
+    );
+    assert_eq!(body["results"][0]["units"][0]["raw"]["x"]["noul"], 0.9);
+    assert_eq!(body["results"][1]["units"][0]["selected"], json!(["x"]));
+    assert_eq!(body["results"][1]["units"][0]["uncertain"], true);
+    assert_eq!(body["results"][2]["units"][0]["selected"], json!([]));
+    assert_eq!(body["results"][2]["units"][0]["no_match"], true);
+
+    // The aggregate counts what the policy selected — overlapping
+    // labels both count — names the no-match and the uncertain inputs,
+    // and reports each label's declared zero.
+    assert_eq!(
+        body["aggregates"],
+        json!([{
+            "mode":"multi-label",
+            "outcomes":{"answered":3,"refused":0,"unavailable":0,"unattempted":0},
+            "no_match":1,
+            "labels":{"x":2,"y":1},
+            "uncertain":["b"],
+        }])
+    );
+}
+
+#[tokio::test]
+async fn classify_binary_aggregate_counts_rejection_and_unevaluated_work() {
+    // One input selected, one refused by the backend, one declined by
+    // the threshold and flagged under the declared review cut.
+    let stub = per_input_backend(|body| match body["state"].as_str().unwrap_or_default() {
+        "keep" => (
+            StatusCode::OK,
+            json!({"model":"kev-0.6b","answers":{"q0":{"type":"noul","noul":0.9}}}),
+        ),
+        "refuse" => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({"error":{"code":"too_many_options","message":"…"}}),
+        ),
+        _ => (
+            StatusCode::OK,
+            json!({"model":"kev-0.6b","answers":{"q0":{"type":"noul","noul":0.4}}}),
+        ),
+    });
+    let (endpoint, _) = backend(stub).await;
+    let deployment = classification_deployment(endpoint).await;
+    let call = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"filter",
+          "select":{"binary":{"threshold":0.5,"uncertain_below":0.75}}},
+        "inputs":[{"id":"a","text":"keep"},{"id":"b","text":"refuse"},{"id":"c","text":"drop"}],
+        "mode":"binary","labels":[{"id":"keep"}]
+    });
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "mixed");
+
+    // The refused input is named under its outcome — never folded into
+    // the label count or the no-match total. The declined input counts
+    // as no-match, and its weak winning side flags it for review.
+    assert_eq!(
+        body["aggregates"],
+        json!([{
+            "mode":"binary",
+            "outcomes":{"answered":2,"refused":1,"unavailable":0,"unattempted":0},
+            "no_match":1,
+            "labels":{"keep":1},
+            "uncertain":["c"],
+        }])
+    );
+    assert_eq!(
+        body["selections"],
+        json!([{"mode":"binary","label":"keep","selected":["a"],"unevaluated":["b"]}])
+    );
+    assert_eq!(body["results"][2]["units"][0]["uncertain"], true);
+}
+
+#[tokio::test]
+async fn classify_single_label_no_match_label_counts_only_when_routed() {
+    // A designated no-match label can win outright or be routed to by
+    // the abstention cut — the tally keeps the two apart.
+    let stub = per_input_backend(|body| {
+        let (choice, probabilities) = match body["state"].as_str().unwrap_or_default() {
+            "clear" => ("billing", json!({"billing":0.95,"other":0.05})),
+            "genuine-other" => ("other", json!({"billing":0.1,"other":0.9})),
+            _ => ("billing", json!({"billing":0.5,"other":0.5})),
+        };
+        (
+            StatusCode::OK,
+            json!({"model":"kev-0.6b",
+                   "answers":{"q0":{"type":"choice","choice":choice,"confidence":0.8,
+                                   "probabilities":probabilities}}}),
+        )
+    });
+    let (endpoint, _) = backend(stub).await;
+    let deployment = classification_deployment(endpoint).await;
+    let call = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"route",
+          "select":{"single_label":{"ties":"first-declared","min_probability":0.6,
+                                    "no_match":{"kind":"label","label":"other"},
+                                    "uncertain_below":0.9}}},
+        "inputs":[{"id":"a","text":"clear"},{"id":"b","text":"genuine-other"},{"id":"c","text":"weak"}],
+        "mode":"single-label","labels":[{"id":"billing"},{"id":"other"}]
+    });
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // The weak input's `selected` still shows the designated label,
+    // marked as the no-match outcome; only the routed input counts
+    // under `no_match` — the genuine "other" win counts under the label.
+    assert_eq!(body["results"][2]["units"][0]["selected"], "other");
+    assert_eq!(body["results"][2]["units"][0]["no_match"], true);
+    assert_eq!(body["results"][2]["units"][0]["uncertain"], true);
+    assert!(body["results"][0]["units"][0].get("no_match").is_none());
+    assert_eq!(
+        body["aggregates"],
+        json!([{
+            "mode":"single-label",
+            "outcomes":{"answered":3,"refused":0,"unavailable":0,"unattempted":0},
+            "no_match":1,
+            "labels":{"billing":1,"other":1},
+            "uncertain":["c"],
+        }])
+    );
+}
+
+#[tokio::test]
+async fn classify_score_aggregate_tallies_levels_and_flags_the_uncertain() {
+    // Two scored inputs, one concentrated and one diffuse: the level
+    // tally counts both, and only the diffuse one flags for review.
+    let stub = per_input_backend(|body| {
+        let probabilities = match body["state"].as_str().unwrap_or_default() {
+            "diffuse" => json!({"0":0.1,"1":0.1,"2":0.8}),
+            _ => json!({"0":0.0,"1":0.0,"2":1.0}),
+        };
+        (
+            StatusCode::OK,
+            json!({"model":"kev-0.6b",
+                   "answers":{"q0":{"type":"score","score":1.8,"confidence":0.7,
+                                   "legend":{"0":"weak","1":"fair","2":"strong"},
+                                   "selected":"2","probabilities":probabilities}}}),
+        )
+    });
+    let (endpoint, _) = backend(stub).await;
+    let deployment = classification_deployment(endpoint).await;
+    let call = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"rubric",
+          "select":{"score":{"order":"descending","uncertain_below":0.9}}},
+        "inputs":[{"id":"a","text":"diffuse"},{"id":"b","text":"sharp"}],
+        "mode":"score","levels":["weak","fair","strong"]
+    });
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["results"][0]["units"][0]["uncertain"], true);
+    assert!(body["results"][1]["units"][0].get("uncertain").is_none());
+    assert_eq!(
+        body["aggregates"],
+        json!([{
+            "mode":"score",
+            "outcomes":{"answered":2,"refused":0,"unavailable":0,"unattempted":0},
+            "no_match":0,
+            "levels":{"0":0,"1":0,"2":2},
+            "uncertain":["a"],
+        }])
+    );
+    // The corpus ranking is unchanged — counts sit beside it.
+    assert_eq!(
+        body["selections"],
+        json!([{"mode":"score","ranking":["a","b"],"unevaluated":[]}])
+    );
+}
+
+#[tokio::test]
 async fn classify_score_keeps_outcome_order_when_forwards_fail() {
     // One input answers, one is refused by the backend, one is
     // unavailable: the corpus ranking names only the scored input and
