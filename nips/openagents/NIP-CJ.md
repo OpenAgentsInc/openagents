@@ -25,6 +25,11 @@ two connected sockets that speak it.
 | `26900` | Job result | Worker → terminal |
 | `27000` | Job feedback | Worker → terminal |
 
+A second, proposed family carries decision jobs on kinds `25910`,
+`26910`, and `27010`; see Decision jobs below. The families never share a
+kind, so a worker that speaks only one can never receive the other's
+payloads.
+
 ## Job request — kind `25900`
 
 Published by the terminal to ask the worker for one turn of conversation.
@@ -225,3 +230,129 @@ parties; tags carry only routing metadata (kind, `e`, `p`).
 - Per-turn accounting SHOULD be emitted by the worker as a NIP-AM
   kind-`44200` metric event encrypted to the owner (stored kind — the
   durable ledger), separate from this ephemeral protocol.
+
+## Decision jobs (proposed)
+
+`proposed` — specified, not implemented. No decision worker or
+relay-side decision caller exists yet. The wire shapes are defined here;
+the service contract — principal mapping, admission order, quota
+settlement, deadlines, cancellation, and the test matrix — is
+[docs/decision-models/relay-decision-contract.md](../../docs/decision-models/relay-decision-contract.md).
+
+A decision job carries one `POST /v1/systemone` call — `state` plus typed
+`questions` — instead of a conversation turn. The family has its own
+kinds, all ephemeral:
+
+| Kind | Name | Direction |
+| --- | --- | --- |
+| `25910` | Decision job request | Caller → decision worker |
+| `26910` | Decision job result | Decision worker → caller |
+| `27010` | Decision job feedback | Decision worker → caller |
+
+### The envelope
+
+Every payload in the family leads with two fields:
+
+- `v` — the schema tag, the string `"openagents.systemone.v1"`. It is a
+  string, never the integer `v` of the conversation family, so the two
+  payload grammars cannot share a version check.
+- `type` — the discriminator. Requests are `systemone` or `cancel`;
+  feedback is `status`; the result is `result`.
+
+A missing `v`, any other value, or a `type` the reader does not know is a
+refusal — `unsupported_version` or `malformed` — never a guess.
+
+```jsonc
+// kind 25910, decrypted content — a decision request
+{
+  "v": "openagents.systemone.v1",
+  "type": "systemone",
+  "request": "req-9f4c2a",      // logical request id, stable across retries
+  "attempt": 1,                 // one-based; a retry bumps it
+  "model": "shared-kev",        // the door, as in POST /v1/systemone
+  "state": "I was charged twice on the March invoice.",
+  "questions": {
+    "refund": {"type": "noul", "instructions": "Does the customer ask for money back?"}
+  },
+  "deadline": 1784599800        // unix seconds, optional; mirror it in an expiration tag
+}
+
+// kind 25910, type "cancel" — best-effort cancellation, e-tagged to the request
+{ "v": "openagents.systemone.v1", "type": "cancel", "request": "req-9f4c2a" }
+
+// kind 27010 — progress or a terminal typed refusal
+{ "v": "openagents.systemone.v1", "type": "status", "request": "req-9f4c2a",
+  "attempt": 1, "status": "processing" }
+
+{ "v": "openagents.systemone.v1", "type": "status", "request": "req-9f4c2a",
+  "attempt": 1, "status": "error", "code": "quota_exhausted",
+  "message": "daily input budget spent", "retry_after_ms": 3600000 }
+
+// kind 26910 — the terminal event: outcome, the verbatim systemone
+// response, and the sealed execution receipt (transport "relay")
+{ "v": "openagents.systemone.v1", "type": "result", "request": "req-9f4c2a",
+  "attempt": 1, "outcome": "answered", "response": { "model": "shared-kev",
+  "answers": {"refund": {"type": "noul", "noul": 0.91}},
+  "usage": {"input_tokens": 412, "output_tokens": 2} },
+  "receipt": { "v": "openagents.receipt.execution.v1",
+    "transport": "relay", "digest": "sha256:…" } }
+```
+
+`request`/`attempt` are the idempotency pair `Idempotency-Key` and
+`X-Attempt` are on the HTTP lane; the request event's `id` is the
+attempt's transport identity and the receipt's `attempt_id`. The refusal
+`code` vocabulary is the gateway's plus the relay lane's own (`stale`,
+`not_admitted`, `unsupported_version`); the result embeds a sealed
+`openagents.receipt.execution.v1` receipt with `transport: "relay"`.
+
+### Binding, on this family
+
+The signature checks are the conversation family's checks with the kinds
+and the payload fields swapped in. The worker accepts a request only when
+the kind is `25910`, the signature verifies, a `p` tag names it, and
+`created_at` is inside its request window. The caller accepts feedback or
+a result only when the kind is `26910` or `27010`, the signer is the
+worker's key, an `e` tag names this attempt's request event, a `p` tag
+names the caller, and the decrypted `request` and `attempt` match the job
+in flight.
+
+The payload carries no credential: the caller's NIP-42 pubkey is the
+principal, mapped to a tenant by an operator-provisioned binding outside
+the payload. A field claiming to be a bearer secret authorizes nothing.
+
+### How an existing worker rejects this family
+
+The kind split is the compatibility mechanism, and it is deliberate, not
+cosmetic:
+
+- A Coder-only worker subscribes `{"kinds": [25900], "#p": [<its key>]}`,
+  so a kind-`25910` request never reaches it — the relay's filter is the
+  first rejection. If such an event arrived anyway, the worker's address
+  check rejects the kind before anything is decrypted. The rejection the
+  caller sees is the contact deadline expiring — `worker_absent` — which
+  is accurate: for a decision job, a worker that speaks only the
+  conversation family is absent.
+- Sharing kind `25900` would not be equivalent. A decision payload at any
+  integer `v` the worker does not know, or at the string schema tag,
+  would be refused `unsupported_version` — but only because the deployed
+  worker happens to check `v` before reading anything else. A decision
+  payload tagged `v: 2` is not refused at all: the worker reads `task`,
+  `transcript`, and `instructions`, finds them absent, and generates an
+  answer to an empty prompt. That is the silent reinterpretation the
+  envelope must make impossible, so the boundary is the kind, not the
+  payload version.
+- Symmetrically, the decision worker subscribes `{"kinds": [25910], …}`
+  and never sees a conversation request; one delivered anyway fails its
+  `v` check, since `2` is not `"openagents.systemone.v1"`.
+
+### Differences from the conversation family
+
+- One job is one decision call: no transcript, no instructions, no
+  streaming `partial` or `judgment` feedback. Progress is `status` only.
+- The result carries a typed `outcome` and a sealed execution receipt —
+  a relay call leaves the same evidence an HTTP call does.
+- `request`/`attempt` make a retried job one logical request; the
+  conversation family has no retry identity because a turn is not
+  retried, it is re-run.
+- `cancel` exists because a decision call is worth aborting; a
+  conversation turn ends by dropping the socket.
