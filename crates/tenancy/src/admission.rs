@@ -859,5 +859,70 @@ mod tests {
             .find(|criterion| criterion.name == "the_transfer_selection_is_covered")
             .unwrap();
         assert_eq!(coverage.verdict, gym::gate::Verdict::Unverifiable);
+
+        // Complete transfer evidence must use transfer variance, even when
+        // the development variance would excuse every possible loss.
+        let synthetic = |value| Bound {
+            value: Some(value),
+            basis: Basis::Derived,
+            evidence: vec![],
+            why: "Synthetic variance fixture, not a deployment threshold.".into(),
+        };
+        plan.rule.metric_order[0].block_sigma = synthetic(10.0);
+        plan.guards.transfer.max_regression_sigmas = synthetic(1.0);
+        plan.guards.transfer.block_sigma = synthetic(0.01);
+        plan.seal();
+        let base_rows: Vec<_> = transfer
+            .partition(Partition::Development)
+            .unwrap()
+            .iter()
+            .map(|item| {
+                let mut row = base.clone();
+                row.item_id = item.id.clone();
+                row.family = item.family.clone();
+                row
+            })
+            .collect();
+        let candidate_rows: Vec<_> = base_rows
+            .iter()
+            .cloned()
+            .map(|mut row| {
+                row.door = plan.candidate.door.clone();
+                row.door_identity = plan.candidate.identity.clone();
+                row.correct = Some(false);
+                row
+            })
+            .collect();
+        let evidence = Evidence {
+            transfer: Some(Transfer {
+                suite: &transfer,
+                base: &base_rows,
+                candidate: &candidate_rows,
+                store_head: None,
+            }),
+            ..evidence
+        };
+        let decision = plan.decide(&evidence).unwrap();
+        assert_ne!(
+            decision.ruling,
+            gym::admission::Ruling::Refused,
+            "{:?}",
+            decision.refusals
+        );
+        let criterion = decision
+            .phases
+            .iter()
+            .find(|p| p.phase == TRANSFER_PHASE)
+            .unwrap()
+            .criteria
+            .iter()
+            .find(|c| c.name == "the_candidate_holds_on_transfer")
+            .unwrap();
+        assert_eq!(
+            criterion.verdict,
+            gym::gate::Verdict::Failed,
+            "{}",
+            criterion.detail
+        );
     }
 }
