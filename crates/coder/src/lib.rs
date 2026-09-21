@@ -72,6 +72,7 @@ pub mod shell;
 pub mod sites;
 pub mod source;
 pub mod spend;
+pub mod store;
 pub mod survey;
 pub mod trace;
 pub mod tracker;

@@ -302,9 +302,16 @@ pub enum Trust {
 }
 
 /// A resolved dependency and the trust it carries.
+///
+/// `record` pins the package file the dependency resolved from — its
+/// digest and where it was found — so a lock holds not only what the
+/// dependency resolved to but which record said so, and an offline
+/// rebuild can put that record back beside everything else.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Locked {
     pub trust: Trust,
+    /// The package record this dependency resolved from, pinned.
+    pub record: Pin,
     pub lock: Box<Lock>,
 }
 
@@ -639,20 +646,24 @@ fn depend(
     let Some(path) = find(&root.join("packages"), "slug", &dep.package) else {
         return Err(Refusal::Unresolved { component });
     };
-    if let Some(stated) = &dep.digest {
-        let bytes = std::fs::read_to_string(&path).map_err(|_| Refusal::Unresolved {
-            component: component.clone(),
-        })?;
-        let found = digest(&bytes);
-        if found != *stated {
-            return Err(Refusal::Digest {
-                component,
-                stated: stated.clone(),
-                found,
-            });
-        }
+    let bytes = std::fs::read_to_string(&path).map_err(|_| Refusal::Unresolved {
+        component: component.clone(),
+    })?;
+    let record_digest = digest(&bytes);
+    if let Some(stated) = &dep.digest
+        && record_digest != *stated
+    {
+        return Err(Refusal::Digest {
+            component,
+            stated: stated.clone(),
+            found: record_digest.clone(),
+        });
     }
-    let needed = Package::load(&path).map_err(|reason| Refusal::Record {
+    let needed: Package = serde_json::from_str(&bytes).map_err(|reason| Refusal::Record {
+        source: component.clone(),
+        reason: reason.to_string(),
+    })?;
+    needed.validate().map_err(|reason| Refusal::Record {
         source: component.clone(),
         reason,
     })?;
@@ -683,6 +694,14 @@ fn depend(
     };
     Ok(Locked {
         trust,
+        record: Pin {
+            digest: record_digest,
+            found: path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .display()
+                .to_string(),
+        },
         lock: Box::new(lock),
     })
 }
