@@ -219,6 +219,11 @@ pub struct TransferGuard {
     pub suite: String,
     /// The transfer suite's content digest.
     pub suite_digest: String,
+    /// The complete non-locked selection required on the transfer suite.
+    pub partitions: Vec<Partition>,
+    /// The transfer question set and exact wording digest.
+    pub question_set: Option<String>,
+    pub question_digest: Option<String>,
     /// How many standard deviations of the winning metric's spread the
     /// transfer comparison may lose before the admission fails.
     pub max_regression_sigmas: Bound,
@@ -455,6 +460,17 @@ impl Plan {
         {
             return Err(PlanError::UndeclaredDifference { field });
         }
+        if self.guards.transfer.partitions.is_empty()
+            || self.guards.transfer.partitions.contains(&Partition::Locked)
+        {
+            return Err(PlanError::BadPartitions);
+        }
+        if self.guards.transfer.suite_digest == self.workload.suite_digest {
+            return Err(PlanError::Bound {
+                name: "guards.transfer.suite_digest".into(),
+                problem: "transfer requires a distinct pinned suite".into(),
+            });
+        }
         self.rule.validate()?;
         if self.rule.metric_order.len() != 1 {
             return Err(PlanError::Bound {
@@ -598,6 +614,9 @@ impl Plan {
             match locked.ledger.reads_of(&self.workload.suite_digest) {
                 Err(error) => refusals.push(format!("the locked ledger cannot be read: {error}")),
                 Ok(reads) => {
+                    if reads.len() != 1 || reads.iter().any(|read| read.overrides.is_some()) {
+                        refusals.push("locked confirmation requires exactly one original read; overridden or repeated exposure cannot confirm admission".into());
+                    }
                     let subject = self.ledger_subject();
                     match reads.iter().find(|read| read.subject == subject) {
                         Some(read) => {
@@ -638,7 +657,9 @@ impl Plan {
 
         // The transfer suite must be the one the plan froze.
         if let Some(transfer) = &evidence.transfer {
-            if transfer.suite.digest != self.guards.transfer.suite_digest {
+            if transfer.suite.digest != self.guards.transfer.suite_digest
+                || transfer.suite.name != self.guards.transfer.suite
+            {
                 refusals.push(format!(
                     "the transfer evidence ran `{}` at digest {}, which is not the transfer \
                      suite the plan froze (`{}` at {})",
@@ -751,6 +772,11 @@ impl Plan {
     ) -> Vec<String> {
         let mut refusals = Vec::new();
         for row in rows {
+            if let Err(error) = row.check() {
+                refusals.push(format!(
+                    "{side} evidence contains an invalid native row: {error}"
+                ));
+            }
             let at = format!("{side} row for item `{}`", row.item_id);
             if row.door != pinned.door {
                 refusals.push(format!(
@@ -790,9 +816,12 @@ impl Plan {
                 ));
             }
             let (suite_digest, question_set, question_digest, splits) = match kind {
-                EvidenceKind::Transfer => {
-                    (self.guards.transfer.suite_digest.as_str(), None, None, None)
-                }
+                EvidenceKind::Transfer => (
+                    self.guards.transfer.suite_digest.as_str(),
+                    self.guards.transfer.question_set.as_deref(),
+                    self.guards.transfer.question_digest.as_deref(),
+                    Some(self.guards.transfer.partitions.as_slice()),
+                ),
                 EvidenceKind::Development => (
                     self.workload.suite_digest.as_str(),
                     self.workload.question_set.as_deref(),
@@ -812,9 +841,8 @@ impl Plan {
                     row.suite_digest,
                 ));
             }
-            if kind != EvidenceKind::Transfer
-                && (row.question_set.as_deref() != question_set
-                    || row.question_digest.as_deref() != question_digest)
+            if row.question_set.as_deref() != question_set
+                || row.question_digest.as_deref() != question_digest
             {
                 refusals.push(format!(
                     "{at} was served different question text than the plan froze; reworded \
@@ -1357,7 +1385,32 @@ impl Plan {
         let base = measure(transfer.base);
         let candidate = measure(transfer.candidate);
         let mut criteria = Vec::new();
-        let blocked = if base.asked == candidate.asked && !base.asked.is_empty() {
+        let expected = Expected::of(
+            transfer.suite,
+            &guard.partitions,
+            None,
+            None,
+            vec![self.base.door.clone(), self.candidate.door.clone()],
+        );
+        let covered = expected.as_ref().is_ok_and(|expected| {
+            Coverage::of(transfer.base, expected.items()).complete()
+                && Coverage::of(transfer.candidate, expected.items()).complete()
+        });
+        criteria.push(Criterion {
+            name: "the_transfer_selection_is_covered".into(),
+            rank: 1,
+            verdict: if covered {
+                Verdict::Passed
+            } else {
+                Verdict::Unverifiable
+            },
+            detail: if covered {
+                "both transfer sides cover the complete declared selection".into()
+            } else {
+                "missing, duplicate, or unexpected transfer rows cannot establish transfer".into()
+            },
+        });
+        let blocked = if covered && base.asked == candidate.asked && !base.asked.is_empty() {
             criteria.push(passed(
                 "the_transfer_sides_asked_the_same_items",
                 1,

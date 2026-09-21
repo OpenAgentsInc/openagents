@@ -401,8 +401,11 @@ mod tests {
                     .map(floor)
                     .collect(),
                 transfer: TransferGuard {
-                    suite: suite.name.clone(),
-                    suite_digest: suite.digest.clone(),
+                    suite: "fixture-transfer".into(),
+                    suite_digest: format!("sha256:{}", "c".repeat(64)),
+                    partitions: vec![Partition::Development],
+                    question_set: None,
+                    question_digest: None,
                     max_regression_sigmas: unknown.clone(),
                 },
                 deployment: DeploymentGuard {
@@ -471,10 +474,134 @@ mod tests {
         plan.seal();
         assert!(plan.validate().is_err());
         let mut plan = self::plan(&suite);
-        plan.rule
-            .metric_order
-            .push(plan.rule.metric_order[0].clone());
+        let mut alternative = plan.rule.metric_order[0].clone();
+        alternative.metric = Metric::Brier;
+        plan.rule.metric_order.push(alternative);
         plan.seal();
         assert!(plan.validate().is_err());
+    }
+    #[test]
+    fn overridden_locked_exposure_cannot_confirm_a_candidate() {
+        use gym::suite::{LockedLedger, Spend};
+        let suite = Suite::load(include_str!(
+            "../../gym/tests/fixtures/caller-v1/suite.json"
+        ))
+        .unwrap();
+        let plan = plan(&suite);
+        let dir = tempfile::tempdir().unwrap();
+        let ledger = LockedLedger::at(dir.path().join("locked.jsonl"));
+        let subject = plan.ledger_subject();
+        let spend = Spend {
+            subject: &subject,
+            reason: "Fixture confirmation",
+            at: "2026-09-21T00:00:00Z",
+            adapter: "",
+        };
+        ledger.read_locked(&suite, &spend).unwrap();
+        let evidence = Evidence {
+            suite: &suite,
+            development: Side {
+                base: &[],
+                candidate: &[],
+                store_head: None,
+            },
+            locked: Some(Locked {
+                base: &[],
+                candidate: &[],
+                ledger: &ledger,
+                store_head: None,
+            }),
+            transfer: None,
+            deployment: None,
+            decided_at: "fixture".into(),
+            commitment: None,
+        };
+        assert_ne!(
+            plan.decide(&evidence).unwrap().ruling,
+            gym::admission::Ruling::Refused
+        );
+        ledger
+            .read_locked_again(
+                &suite,
+                &spend,
+                "fixture-operator",
+                "Test repeat exposure refusal",
+            )
+            .unwrap();
+        let decision = plan.decide(&evidence).unwrap();
+        assert_eq!(decision.ruling, gym::admission::Ruling::Refused);
+        assert!(
+            decision
+                .refusals
+                .iter()
+                .any(|reason| reason.contains("exactly one original read"))
+        );
+    }
+    #[test]
+    fn matching_transfer_subsets_do_not_establish_declared_coverage() {
+        let suite = Suite::load(include_str!(
+            "../../gym/tests/fixtures/caller-v1/suite.json"
+        ))
+        .unwrap();
+        let mut transfer = suite.clone();
+        transfer.name = "fixture-transfer".into();
+        transfer.items[0].state = serde_json::json!("Different transfer state");
+        transfer.digest = transfer.compute_digest().unwrap();
+        let mut plan = plan(&suite);
+        plan.guards.transfer.suite_digest = transfer.digest.clone();
+        plan.seal();
+        let item = transfer.partition(Partition::Development).unwrap()[0];
+        let mut base =
+            gym::row::Row::new(&transfer.name, &transfer.digest, &item.id, &plan.base.door).scored(
+                [("yes".into(), 0.8), ("no".into(), 0.2)]
+                    .into_iter()
+                    .collect(),
+                true,
+            );
+        base.recorded_at = "2026-09-21T00:00:00Z".into();
+        base.split = "development".into();
+        base.family = item.family.clone();
+        base.estimator = plan.instrument.estimator.clone();
+        base.door_identity = plan.base.identity.clone();
+        base.check().unwrap();
+        let mut candidate = base.clone();
+        candidate.door = plan.candidate.door.clone();
+        candidate.door_identity = plan.candidate.identity.clone();
+        let evidence = Evidence {
+            suite: &suite,
+            development: Side {
+                base: &[],
+                candidate: &[],
+                store_head: None,
+            },
+            locked: None,
+            transfer: Some(Transfer {
+                suite: &transfer,
+                base: std::slice::from_ref(&base),
+                candidate: std::slice::from_ref(&candidate),
+                store_head: None,
+            }),
+            deployment: None,
+            decided_at: "fixture".into(),
+            commitment: None,
+        };
+        let decision = plan.decide(&evidence).unwrap();
+        assert_ne!(
+            decision.ruling,
+            gym::admission::Ruling::Refused,
+            "{:?}",
+            decision.refusals
+        );
+        let phase = decision
+            .phases
+            .iter()
+            .find(|phase| phase.phase == TRANSFER_PHASE)
+            .unwrap();
+        let coverage = phase
+            .criteria
+            .iter()
+            .find(|criterion| criterion.name == "the_transfer_selection_is_covered")
+            .unwrap();
+        assert_eq!(coverage.verdict, gym::gate::Verdict::Unverifiable);
     }
 }
