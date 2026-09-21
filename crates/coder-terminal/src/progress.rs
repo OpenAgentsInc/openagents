@@ -27,6 +27,12 @@
 //!   rather than passing for a zero, and [`Origin`] rides both
 //!   presentations so a demonstrated view can never pass for metered
 //!   work.
+//! - **The host's own record says what it says.** The authority a run
+//!   ran under, the bounds it ran within, the worktrees its record
+//!   retains, and what verification came to are the record's claims: a
+//!   bound nobody set is `unbounded`, a worktree nobody claims is not
+//!   shown, and a run the host left mid-flight is `interrupted`, never
+//!   a failure the work reported.
 //!
 //! Like [`crate::decision`], the view is pure: it reads nothing, writes
 //! nothing, and holds no style. Elapsed and durations are what the
@@ -58,6 +64,11 @@ const NAME: usize = 20;
 /// The column a step's mark takes in the expanded view — the width of
 /// the longest mark word, so the six marks line up under themselves.
 const MARK: usize = 9;
+
+/// The widest column a retained worktree's path takes in the expanded
+/// view — a longer path clips with `...` rather than pushing the
+/// owning task's mark off the row.
+const PATH: usize = 32;
 
 /// What the host marked on one step.
 ///
@@ -225,6 +236,82 @@ pub struct StepView {
     pub duration_ms: Option<u64>,
 }
 
+/// The caller's bound on a run, as the record states it.
+///
+/// Every half is optional because the caller's bound is optional: a
+/// bound nobody set renders `unbounded`, and the view never invents a
+/// number the host did not state.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Bounds {
+    /// The most tasks the run may have in flight at once.
+    pub max_concurrency: Option<usize>,
+    /// The run's deadline in milliseconds, measured from when it
+    /// started.
+    pub deadline_ms: Option<u64>,
+    /// The most the run may spend.
+    pub spend_limit: Option<f64>,
+}
+
+/// A worktree the run's record retains: the checkout's path, the task
+/// that owns it, and the mark on that task's record.
+///
+/// A retained worktree outlives the process — it is where a reconciler
+/// finds the checkout a crash left. What the view shows is the
+/// record's claim: the mark is the owning task's, never a guess at
+/// what the disk holds, and a worktree no record claims is not shown
+/// at all.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WorktreeRef {
+    /// The checkout's path, as the record kept it.
+    pub path: String,
+    /// The task whose record retains the worktree.
+    pub task: String,
+    /// The mark on the owning task's record.
+    pub mark: Mark,
+}
+
+/// What the run's verification came to.
+///
+/// Four states, four words — kept apart the way the record keeps them.
+/// `Passed` is the plan's own verdict. `Refused` is a decline with the
+/// refusal code the record kept beside it — a failed review is its own
+/// word next to the run's outcome, never a smudged pass. `Unavailable`
+/// is a service the host could not reach: no answer, which is not a
+/// refusal. `Unknown` is what is left when verification was expected
+/// and nobody recorded what it came to.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum VerificationView {
+    /// The verification plan ran and passed.
+    Passed,
+    /// Verification declined the work, with the record's refusal code.
+    Refused {
+        /// The code the record kept — `verification_unverifiable`, a
+        /// review's own code, whatever the host wrote down.
+        code: String,
+    },
+    /// The verification service could not be reached.
+    Unavailable,
+    /// Verification was expected and nothing recorded what it came to.
+    #[default]
+    Unknown,
+}
+
+impl VerificationView {
+    /// The outcome's text and the step it draws at — a refusal keeps
+    /// its code beside its word.
+    fn shown(&self) -> (String, Intensity) {
+        match self {
+            VerificationView::Passed => ("passed".to_owned(), Intensity::ThreeQuarters),
+            VerificationView::Refused { code } => {
+                let (code, _) = shown(code, Intensity::Quarter);
+                (format!("refused {code}"), Intensity::Full)
+            }
+            VerificationView::Unavailable => ("unavailable".to_owned(), Intensity::Half),
+            VerificationView::Unknown => ("unknown".to_owned(), Intensity::Quarter),
+        }
+    }
+}
+
 /// What one program run's record claims, filled in by the caller.
 ///
 /// Every field is supplied: the caller maps runstate and trace data
@@ -232,7 +319,9 @@ pub struct StepView {
 /// The [`collapsed`][RunView::collapsed] line keeps the origin, the run
 /// id, the program, the count of steps done, the step in flight, and
 /// the run's state word; [`expanded`][RunView::expanded] shows
-/// everything the view holds.
+/// everything the view holds — the authority and the bounds the run
+/// ran under and what verification came to, beside the steps, the
+/// retained worktrees, and the marks.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RunView {
     /// Simulated or metered — carried on both presentations.
@@ -254,6 +343,22 @@ pub struct RunView {
     /// What the run cost, when it was metered — `None` renders
     /// `unknown`, never a fabricated zero.
     pub cost: Option<f64>,
+    /// The caller's bound on the run — `None` when the run carried no
+    /// budget, which renders `unbounded`, never a fabricated number.
+    pub bounds: Option<Bounds>,
+    /// The permit or program-authority digest the run ran under —
+    /// `None` renders `unknown`, an authority the record did not keep.
+    pub authorization: Option<String>,
+    /// The worktrees the run's record retains, each under its owning
+    /// task's mark. A worktree nobody claimed is not shown.
+    pub worktrees: Vec<WorktreeRef>,
+    /// What verification came to — `None` when no verification ran,
+    /// which is not the `unknown` a missed record leaves.
+    pub verification: Option<VerificationView>,
+    /// The caller ended the run: `true` renders `cancelled`, whatever
+    /// the folded state last said — the end someone asked for is never
+    /// a refusal the work gave.
+    pub cancelled: bool,
 }
 
 impl RunView {
@@ -280,6 +385,20 @@ impl RunView {
     /// stated twice — once because every field draws in full, and once
     /// in the `elided` row that names what the summary hid.
     pub fn expanded(&self, width: usize) -> Vec<Line> {
+        self.detail(width, self.steps.len())
+    }
+
+    /// The full detail with the step list held to `height` rows: a
+    /// program with more steps than the bound shows the first `height`
+    /// and then a `N more` row that says what it hid — a cut is marked,
+    /// never silent.
+    pub fn expanded_within(&self, width: usize, height: usize) -> Vec<Line> {
+        self.detail(width, self.steps.len().min(height))
+    }
+
+    /// The expanded render behind both presentations, with at most
+    /// `step_rows` step rows before the `N more` summary.
+    fn detail(&self, width: usize, step_rows: usize) -> Vec<Line> {
         let mut lines = vec![clip(
             vec![
                 Span::new("run", Intensity::Full),
@@ -294,20 +413,29 @@ impl RunView {
         let (program, tone) = shown(&self.program, Intensity::Half);
         field(&mut lines, width, "program", &program, tone);
 
-        let mut state = String::from(self.state.word());
-        if self.state == State::Settled
-            && let Some(outcome) = self.outcome
-        {
+        let (authority, tone) = match &self.authorization {
+            Some(authority) => shown(authority, Intensity::Half),
+            None => ("unknown".to_owned(), Intensity::Quarter),
+        };
+        field(&mut lines, width, "authority", &authority, tone);
+        field(
+            &mut lines,
+            width,
+            "bounds",
+            &bounds_text(self.bounds.unwrap_or_default()),
+            Intensity::Half,
+        );
+
+        let (word, tone) = self.state_view();
+        let mut state = String::from(word);
+        if self.state == State::Settled && (self.outcome.is_some() || self.cancelled) {
             state.push(' ');
-            state.push_str(outcome.word());
+            state.push_str(self.outcome_view().0);
         }
-        field(&mut lines, width, "state", &state, self.state.tone());
+        field(&mut lines, width, "state", &state, tone);
 
         if self.state == State::Settled {
-            let (word, tone) = match self.outcome {
-                Some(outcome) => (outcome.word(), outcome.tone()),
-                None => ("unknown", Intensity::Quarter),
-            };
+            let (word, tone) = self.outcome_view();
             field(&mut lines, width, "outcome", word, tone);
         }
 
@@ -325,8 +453,53 @@ impl RunView {
             .max()
             .unwrap_or(0)
             .min(NAME);
-        for step in &self.steps {
+        for step in self.steps.iter().take(step_rows) {
             lines.push(step_line(step, name_width, width));
+        }
+        let hidden = self.steps.len() - step_rows;
+        if hidden > 0 {
+            let noun = if hidden == 1 { "step" } else { "steps" };
+            lines.push(clip(
+                vec![
+                    Span::new("  ", Intensity::Half),
+                    Span::new(format!("{hidden} more {noun}"), Intensity::Quarter),
+                ],
+                width,
+            ));
+        }
+
+        if !self.worktrees.is_empty() {
+            let count = self.worktrees.len();
+            let noun = if count == 1 { "worktree" } else { "worktrees" };
+            field(
+                &mut lines,
+                width,
+                "worktrees",
+                &format!("{count} {noun} retained"),
+                Intensity::Half,
+            );
+            let path_width = self
+                .worktrees
+                .iter()
+                .map(|worktree| worktree.path.width())
+                .max()
+                .unwrap_or(0)
+                .min(PATH);
+            let task_width = self
+                .worktrees
+                .iter()
+                .map(|worktree| worktree.task.width())
+                .max()
+                .unwrap_or(0)
+                .min(NAME);
+            for worktree in &self.worktrees {
+                lines.push(worktree_line(worktree, path_width, task_width, width));
+            }
+        }
+
+        if let Some(verification) = &self.verification {
+            let (word, tone) = verification.shown();
+            field(&mut lines, width, "verification", &word, tone);
         }
 
         let (elapsed, tone) = match self.elapsed_ms {
@@ -352,6 +525,35 @@ impl RunView {
             );
         }
         lines
+    }
+
+    /// The run's state word and tone: `cancelled` when the caller
+    /// ended the record — whatever the folded state last said — and
+    /// `interrupted` when recovery marked the run `unknown`, a run the
+    /// host left mid-flight, which is no failure the work reported and
+    /// no decline anyone gave.
+    fn state_view(&self) -> (&'static str, Intensity) {
+        if self.cancelled {
+            ("cancelled", Intensity::Half)
+        } else if self.state == State::Unknown {
+            ("interrupted", Intensity::Half)
+        } else {
+            (self.state.word(), self.state.tone())
+        }
+    }
+
+    /// The settled run's outcome word and tone: `cancelled` when the
+    /// caller ended the record, else the outcome's own — `unknown`
+    /// when a settled run carries none.
+    fn outcome_view(&self) -> (&'static str, Intensity) {
+        if self.cancelled {
+            ("cancelled", Intensity::Half)
+        } else {
+            match self.outcome {
+                Some(outcome) => (outcome.word(), outcome.tone()),
+                None => ("unknown", Intensity::Quarter),
+            }
+        }
     }
 
     /// The steps the host marked `done`, over the steps the program
@@ -390,12 +592,12 @@ impl RunView {
         } else {
             format!("{done}/{total} steps done")
         };
-        let mut state = vec![Span::new(self.state.word(), self.state.tone())];
-        if self.state == State::Settled
-            && let Some(outcome) = self.outcome
-        {
+        let (word, tone) = self.state_view();
+        let mut state = vec![Span::new(word, tone)];
+        if self.state == State::Settled && (self.outcome.is_some() || self.cancelled) {
+            let (word, tone) = self.outcome_view();
             state.push(Span::new(" ", Intensity::Half));
-            state.push(Span::new(outcome.word(), outcome.tone()));
+            state.push(Span::new(word, tone));
         }
         let mut parts = vec![
             (
@@ -492,6 +694,45 @@ fn step_line(step: &StepView, name_width: usize, width: usize) -> Line {
         ],
         width,
     )
+}
+
+/// One retained worktree's row in the expanded view: the path the
+/// record kept, the task that owns it, and the mark on that task's
+/// record.
+fn worktree_line(
+    worktree: &WorktreeRef,
+    path_width: usize,
+    task_width: usize,
+    width: usize,
+) -> Line {
+    let (path, path_tone) = shown(&worktree.path, Intensity::ThreeQuarters);
+    let (task, task_tone) = shown(&worktree.task, Intensity::Half);
+    clip(
+        vec![
+            Span::new("  ", Intensity::Half),
+            Span::new(left(&path, path_width), path_tone),
+            Span::new("  ", Intensity::Half),
+            Span::new(left(&task, task_width), task_tone),
+            Span::new("  ", Intensity::Half),
+            Span::new(worktree.mark.word(), worktree.mark.tone()),
+        ],
+        width,
+    )
+}
+
+/// The bounds line: each bound the caller stated beside each it did
+/// not — `unbounded` is the honest word, never a fabricated number.
+fn bounds_text(bounds: Bounds) -> String {
+    let concurrency = bounds
+        .max_concurrency
+        .map_or_else(|| "unbounded".to_owned(), |count| count.to_string());
+    let deadline = bounds
+        .deadline_ms
+        .map_or_else(|| "unbounded".to_owned(), |ms| format!("{ms} ms"));
+    let spend = bounds
+        .spend_limit
+        .map_or_else(|| "unbounded".to_owned(), |limit| format!("${limit:.4}"));
+    format!("concurrency {concurrency}, deadline {deadline}, spend {spend}")
 }
 
 /// One field in the expanded view: `name` quiet on the left, `value`
@@ -646,6 +887,7 @@ mod tests {
             outcome: None,
             elapsed_ms: Some(812),
             cost: Some(0.0021),
+            ..RunView::default()
         }
     }
 
@@ -656,6 +898,16 @@ mod tests {
             .map(Line::text)
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    /// One labelled field's row out of the expanded view, by the
+    /// field's name.
+    fn field_row(view: &RunView, name: &str) -> String {
+        expanded_text(view, 120)
+            .lines()
+            .find(|line| line.starts_with(name))
+            .unwrap_or_else(|| panic!("a row for {name}"))
+            .to_owned()
     }
 
     /// One step's row out of the expanded view, by the step's name.
@@ -940,5 +1192,229 @@ mod tests {
             runs: vec![running_view(), running_view()],
         };
         assert_eq!(board.lines(60), board.lines(60));
+    }
+
+    #[test]
+    fn a_twenty_column_terminal_keeps_ordered_lines_with_marked_cuts() {
+        let view = running_view();
+        // Every line fits the terminal, and the fields keep their order
+        // even as every value wraps.
+        let lines = view.expanded(20);
+        for line in &lines {
+            assert!(
+                line.width() <= 20,
+                "{} is {} cells",
+                line.text(),
+                line.width()
+            );
+        }
+        let text: Vec<String> = lines.iter().map(Line::text).collect();
+        let at = |name: &str| {
+            text.iter()
+                .position(|line| line.starts_with(name))
+                .unwrap_or_else(|| panic!("a line for {name}"))
+        };
+        let program = at("program");
+        let authority = at("authority");
+        let bounds = at("bounds");
+        let state = at("state");
+        let steps = at("steps");
+        let elapsed = at("elapsed");
+        let cost = at("cost");
+        assert!(
+            program < authority
+                && authority < bounds
+                && bounds < state
+                && state < steps
+                && steps < elapsed
+                && elapsed < cost,
+            "{}",
+            text.join("\n")
+        );
+
+        // The summary still ends in a marked cut, and the detail names
+        // what it dropped.
+        let line = view.collapsed(20);
+        assert!(line.width() <= 20, "{} cells", line.width());
+        assert!(line.text().ends_with("..."), "{}", line.text());
+        assert!(at("elided") > cost, "{}", text.join("\n"));
+    }
+
+    #[test]
+    fn a_step_list_past_the_height_names_what_it_hid() {
+        let mut view = running_view();
+        view.steps = (0..6)
+            .map(|index| StepView {
+                name: format!("step-{index}"),
+                mark: Mark::Done,
+                duration_ms: Some(10),
+            })
+            .collect();
+        let text = view
+            .expanded_within(120, 2)
+            .iter()
+            .map(Line::text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("step-0"), "{text}");
+        assert!(text.contains("step-1"), "{text}");
+        for index in 2..6 {
+            assert!(!text.contains(&format!("step-{index}")), "{text}");
+        }
+        assert!(text.contains("4 more steps"), "{text}");
+
+        // A list that fits the bound shows no summary at all.
+        let text = view
+            .expanded_within(120, 6)
+            .iter()
+            .map(Line::text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("step-5"), "{text}");
+        assert!(!text.contains("more step"), "{text}");
+    }
+
+    #[test]
+    fn an_unavailable_service_is_not_a_refusal() {
+        let mut view = running_view();
+        view.verification = Some(VerificationView::Unavailable);
+        let row = field_row(&view, "verification");
+        assert!(row.contains("unavailable"), "{row}");
+        assert!(!row.contains("refused"), "{row}");
+        assert!(!row.contains("unknown"), "{row}");
+
+        view.verification = Some(VerificationView::Refused {
+            code: "verification_unverifiable".to_owned(),
+        });
+        let row = field_row(&view, "verification");
+        assert!(row.contains("refused"), "{row}");
+        assert!(row.contains("verification_unverifiable"), "{row}");
+        assert!(!row.contains("unavailable"), "{row}");
+
+        // And a run with no verification shows no row at all.
+        let text = expanded_text(&running_view(), 120);
+        assert!(!text.contains("verification"), "{text}");
+    }
+
+    #[test]
+    fn a_failed_review_keeps_the_outcome_and_its_own_word() {
+        let mut view = running_view();
+        view.state = State::Settled;
+        view.outcome = Some(Outcome::Answered);
+        view.verification = Some(VerificationView::Refused {
+            code: "review_failed".to_owned(),
+        });
+        let outcome = field_row(&view, "outcome");
+        assert!(outcome.contains("answered"), "{outcome}");
+        let row = field_row(&view, "verification");
+        assert!(row.contains("refused"), "{row}");
+        assert!(row.contains("review_failed"), "{row}");
+        assert!(!row.contains("passed"), "{row}");
+        assert!(!row.contains("answered"), "{row}");
+    }
+
+    #[test]
+    fn unmetered_spend_is_unknown_and_an_unset_bound_is_unbounded() {
+        let mut view = running_view();
+        view.cost = None;
+        let cost = field_row(&view, "cost");
+        assert!(cost.contains("unknown"), "{cost}");
+        assert!(!cost.contains("$0"), "{cost}");
+        let bounds = field_row(&view, "bounds");
+        assert!(bounds.contains("unbounded"), "{bounds}");
+        assert!(!bounds.contains("$0"), "{bounds}");
+
+        // A bound the caller stated shows its number; the halves it
+        // left unstated still say unbounded.
+        view.bounds = Some(Bounds {
+            max_concurrency: Some(4),
+            ..Bounds::default()
+        });
+        let bounds = field_row(&view, "bounds");
+        assert!(bounds.contains("concurrency 4"), "{bounds}");
+        assert!(bounds.contains("deadline unbounded"), "{bounds}");
+        assert!(bounds.contains("spend unbounded"), "{bounds}");
+    }
+
+    #[test]
+    fn an_interrupted_run_is_not_a_failure() {
+        let mut view = running_view();
+        view.state = State::Unknown;
+        view.steps[1].mark = Mark::Unknown;
+        let state = field_row(&view, "state");
+        assert!(state.contains("interrupted"), "{state}");
+        assert!(!state.contains("failed"), "{state}");
+        assert!(!state.contains("refused"), "{state}");
+        // The collapsed line carries the same word.
+        let line = view.collapsed(120);
+        assert!(line.text().contains("interrupted"), "{}", line.text());
+        assert!(!line.text().contains("refused"), "{}", line.text());
+        // The step the host never marked still says unknown — the
+        // record's own gap, not a failure either.
+        let row = step_row(&view, "rank");
+        assert!(row.contains("unknown"), "{row}");
+        assert!(!row.contains("failed"), "{row}");
+    }
+
+    #[test]
+    fn a_cancelled_run_is_the_end_someone_asked_for() {
+        let mut view = running_view();
+        view.cancelled = true;
+        let state = field_row(&view, "state");
+        assert!(state.contains("cancelled"), "{state}");
+        assert!(!state.contains("refused"), "{state}");
+        let line = view.collapsed(120);
+        assert!(line.text().contains("cancelled"), "{}", line.text());
+        assert!(!line.text().contains("refused"), "{}", line.text());
+
+        // Even beside a folded state that says otherwise, the recorded
+        // end keeps its own word.
+        view.state = State::Refused;
+        let state = field_row(&view, "state");
+        assert!(state.contains("cancelled"), "{state}");
+        assert!(!state.contains("refused"), "{state}");
+    }
+
+    #[test]
+    fn a_retained_worktree_shows_its_owner_and_mark() {
+        let mut view = running_view();
+        view.worktrees = vec![
+            WorktreeRef {
+                path: "/tmp/run-7f3a/fix-tests".to_owned(),
+                task: "fix-tests".to_owned(),
+                mark: Mark::Running,
+            },
+            WorktreeRef {
+                path: "/tmp/run-7f3a/add-docs".to_owned(),
+                task: "add-docs".to_owned(),
+                mark: Mark::Unknown,
+            },
+        ];
+        let text = expanded_text(&view, 120);
+        let row = field_row(&view, "worktrees");
+        assert!(row.contains("2 worktrees retained"), "{row}");
+        assert!(text.contains("/tmp/run-7f3a/fix-tests"), "{text}");
+        assert!(text.contains("add-docs"), "{text}");
+        let unclaimed = text
+            .lines()
+            .find(|line| line.contains("add-docs"))
+            .expect("a row for the second worktree");
+        assert!(unclaimed.contains("unknown"), "{unclaimed}");
+
+        // A worktree nobody claims is not shown at all.
+        let text = expanded_text(&running_view(), 120);
+        assert!(!text.contains("worktree"), "{text}");
+    }
+
+    #[test]
+    fn the_authority_a_run_ran_under_is_the_records() {
+        let mut view = running_view();
+        view.authorization = Some("sha256:9f4c".to_owned());
+        let row = field_row(&view, "authority");
+        assert!(row.contains("sha256:9f4c"), "{row}");
+
+        // An authority the record did not keep says unknown.
+        let row = field_row(&running_view(), "authority");
+        assert!(row.contains("unknown"), "{row}");
     }
 }
