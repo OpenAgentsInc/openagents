@@ -262,7 +262,7 @@ The existing programs become a coherent product library:
 | `burn-down` | Bounded work-list execution with retained writing worktrees; scoped tracker and project-supervisor foundations also exist | Integrated task preparation, conflict scheduling, recovery, verification, and reviewable delivery |
 | `answer-question` | A bounded delegation program; input comes through current task handling | Typed question/evidence bindings and measured source-grounded answers |
 | `review-changes` | Manifest present, unsupported question/bounds path | Pinned diff source, admitted review function, structured findings, and evidence references |
-| `run-suite` | Host-bound `gate_not_met` check with typed evidence, one suite identity, and at most 16 checks; protected artifact inspection in the CLI | Shipped Gym/suite adapter, metrics output, and complete consumer integration |
+| `run-suite` | Host-bound `gate_not_met` check with typed evidence, one suite identity, and at most 16 checks; protected artifact inspection and a local Gym adapter with retained measurement details | Dedicated metrics/gate output bindings and complete consumer integration |
 
 Manifests on disk do not establish that every program runs. Unsupported
 checks, questions, kinds, or bounds continue to refuse at admission.

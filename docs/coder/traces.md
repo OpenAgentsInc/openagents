@@ -77,6 +77,14 @@ run on a machine separates them on one field. That is the point of using
 ATIF rather than a format written here: a Jev, Kev, or Lev call is not a
 foreign object in it.
 
+When a generation uses repository context, its instruction step also retains
+`repository_context` with schema `openagents.repository-context.v1`. The host
+collects this metadata together with the prompt: source paths and line references,
+content and excerpt digests, search terms, and coverage diagnostics all describe
+the same observation. The recorder does not reread files or interpret quoted
+source text as metadata. See [repository source references](repository-evidence.md)
+for bounds, digest encoding, and the remaining coverage limits.
+
 ### The step names the model, when the session header cannot
 
 A session header carries the model the door serves, and it is written when
