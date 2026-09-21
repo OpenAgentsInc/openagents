@@ -269,8 +269,9 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
         Kind::Check => &["refuse_on", "acceptance", "max_tests"],
         Kind::Delegate => &["concurrent_max", "isolation", "minutes"],
         // The bounds a `program` step may declare for its child, each a
-        // narrowing of what the composition has left.
-        Kind::Program => &["depth", "steps", "calls"],
+        // narrowing of what the composition has left: `spend` is the
+        // child's ceiling in USD micros and `minutes` its own deadline.
+        Kind::Program => &["depth", "steps", "calls", "spend", "minutes"],
         // WebAssembly is specified and not built. A host that met one and
         // ran the rest would be running a different program.
         Kind::Module => &[],
@@ -377,6 +378,10 @@ pub struct Run {
     /// `per_finding` decide step ran. `None` is unreviewed — a run whose
     /// review never happened — which an empty findings list would hide.
     pub review: Option<crate::review::Reviewed>,
+    /// What the run's priced lanes held when it settled, one book per
+    /// lane — the spend record a bounded run leaves behind. Empty when
+    /// the caller stated no spend bound.
+    pub spend: Vec<crate::spend::Book>,
 }
 
 impl Run {
@@ -490,6 +495,17 @@ enum StepsEnd {
     Cancelled(Refused),
 }
 
+/// Whose bound spent at a step boundary — the distinction between the
+/// run's own budget, which cancels the run, and a `minutes` a `program`
+/// step declared for its child, which is the child's refusal and the
+/// propagation table's to map.
+enum Spent {
+    /// The run's step budget or deadline — the caller's end.
+    Run(Refused),
+    /// A child's declared deadline — the child's refusal.
+    Child(Refused),
+}
+
 /// The state one [`Runtime::run_steps`] borrows for the whole run, shared
 /// by every nested list it expands.
 ///
@@ -504,8 +520,15 @@ struct StepRun<'a> {
     /// The grant the whole run answers to; a child runs under it, never
     /// a wider one.
     grant: &'a Grant,
-    /// When the run began, for the deadline.
-    started: Instant,
+    /// The deadline this step list answers to: the run's own, narrowed
+    /// by any `minutes` a `program` step declared for this child. An
+    /// expiry against `run_until` is the caller's cancellation; an
+    /// expiry against a tighter `until` is the child's own bound ending
+    /// it, which the step's propagation table decides.
+    until: Option<Instant>,
+    /// The run's own deadline, constant across the composition — the
+    /// mark an expiry compares `until` against to say whose bound spent.
+    run_until: Option<Instant>,
     /// The work the `query` step selected, when one ran.
     selection: &'a mut Selection,
     /// The run being recorded.
@@ -520,8 +543,47 @@ struct StepRun<'a> {
     /// name — what a `program` step's binding reads when it projects
     /// inputs for its child.
     produced: &'a mut BTreeMap<String, Value>,
+    /// The spend scopes the composition is inside: the run's own book
+    /// first, then one per child that declared a `spend` ceiling. A
+    /// charge walks them all — the child's ceiling answers for the
+    /// child and the run's for the run, so a child spends the parent's
+    /// room and never its own copy of it.
+    scopes: &'a mut Vec<Scope>,
     /// The session's trace, when one is being kept.
     trace: Option<&'a mut Recorder>,
+}
+
+/// One level's spend ledger — the run's own book or a child's declared
+/// ceiling — and the lane books opened under it.
+struct Scope {
+    /// Whether this scope is the run's own: its bound spending cancels
+    /// the run, where a child's bound spending is the child's refusal —
+    /// an outcome the propagation table decides.
+    run: bool,
+    /// The bound the level runs under. A child's declared `spend` is a
+    /// hard ceiling: a bound that does not stop is not a bound, and a
+    /// lane that cannot price itself cannot hold one.
+    bound: crate::spend::Bound,
+    /// Lane books opened under the bound, as the work first charges
+    /// them.
+    books: BTreeMap<crate::spend::Lane, crate::spend::Book>,
+}
+
+impl Scope {
+    /// The room this scope still promises one lane: its ceiling less
+    /// what the lane's book already holds, when the scope has a ceiling
+    /// and a book at all. `None` is "no ceiling stated", the room a
+    /// child may always ask into.
+    fn room(&self, lane: crate::spend::Lane) -> Option<u64> {
+        let ceiling = self.bound.ceiling()?;
+        Some(
+            ceiling.saturating_sub(
+                self.books
+                    .get(&lane)
+                    .map_or(0, crate::spend::Book::metered_micros),
+            ),
+        )
+    }
 }
 
 /// A run's completion verdicts, counted.
@@ -568,6 +630,11 @@ pub struct Budget {
     /// How many steps the run may dispatch. The step past the count
     /// cancels rather than dispatching.
     pub max_steps: Option<usize>,
+    /// What the run may spend, in the book's own terms: a hard ceiling
+    /// holds only where the work prices itself, a soft one records and
+    /// flags, and `None` keeps the ledger without promising anything.
+    /// [`crate::spend`] carries the rules.
+    pub spend: Option<crate::spend::Bound>,
 }
 
 /// One machine, running programs.
@@ -761,7 +828,56 @@ impl Runtime {
         {
             return Err(Refused::at("", "composition_refused", problem.to_string()));
         }
+        // A spend ceiling holds only where the work prices itself: a
+        // hard bound over a lane this host cannot meter is refused here,
+        // at the same door every other unenforceable bound answers at,
+        // rather than discovered at the first charge.
+        if let Some(bound) = self.budget.and_then(|budget| budget.spend) {
+            let mut lanes = Vec::new();
+            self.spend_lanes(program, "", &mut lanes);
+            for (step, lane) in lanes {
+                if crate::spend::Book::open(lane, bound, false).is_err() {
+                    return Err(Refused::at(
+                        &step,
+                        "bound_unenforceable",
+                        format!(
+                            "the run's spend bound is a hard ceiling and this host cannot price {} work, so it cannot hold the ceiling",
+                            lane.name()
+                        ),
+                    ));
+                }
+            }
+        }
         self.admit_tree(program)
+    }
+
+    /// The priced lanes a program's steps will charge, with the step
+    /// that charges each — recursively, so a child's `decide` is as
+    /// visible to a spend bound as the parent's own.
+    fn spend_lanes<'a>(
+        &'a self,
+        program: &'a Program,
+        prefix: &str,
+        lanes: &mut Vec<(String, crate::spend::Lane)>,
+    ) {
+        for step in &program.steps {
+            match step.kind {
+                Kind::Decide => lanes.push((
+                    format!("{prefix}{}", step.name),
+                    crate::spend::Lane::Decision,
+                )),
+                Kind::Delegate => lanes.push((
+                    format!("{prefix}{}", step.name),
+                    crate::spend::Lane::Delegate,
+                )),
+                Kind::Program => {
+                    if let Some(child) = self.resolve_child(step) {
+                        self.spend_lanes(child, &format!("{prefix}{}/", step.name), lanes);
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Whether this host would run every step of a program and of every
@@ -906,6 +1022,12 @@ impl Runtime {
                     )),
                 }
             }
+            "spend" => match value.as_u64() {
+                Some(micros) if micros > 0 => Ok(()),
+                _ => refuse(format!(
+                    "spend is a ceiling in USD micros above zero, and this step names {value}"
+                )),
+            },
             "max_results" | "concurrent_max" | "max_tests" => match value.as_u64() {
                 Some(count) if count > 0 && usize::try_from(count).is_ok() => Ok(()),
                 _ => refuse(format!(
@@ -1480,15 +1602,29 @@ impl Runtime {
         let mut selection = Selection::default();
         let mut dispatched = 0usize;
         let mut produced = BTreeMap::new();
+        let until = self
+            .budget
+            .and_then(|budget| budget.deadline)
+            .and_then(|deadline| started.checked_add(deadline));
+        let mut scopes = Vec::new();
+        if let Some(bound) = self.budget.and_then(|budget| budget.spend) {
+            scopes.push(Scope {
+                run: true,
+                bound,
+                books: BTreeMap::new(),
+            });
+        }
         let mut steps = StepRun {
             inputs,
             grant,
-            started,
+            until,
+            run_until: until,
             selection: &mut selection,
             run: &mut run,
             record: &mut record,
             dispatched: &mut dispatched,
             produced: &mut produced,
+            scopes: &mut scopes,
             trace: trace.as_deref_mut(),
         };
         match self.run_steps(&mut steps, program, "", 1).await {
@@ -1498,6 +1634,11 @@ impl Runtime {
                 self.record_claims(&mut record, &run, trace.as_deref_mut());
                 run.stopped = Some(refused);
             }
+        }
+        if let Some(scope) = scopes.first()
+            && scope.run
+        {
+            run.spend = scope.books.values().cloned().collect();
         }
         self.settle_runstate(&mut record, &run, trace.as_deref_mut());
         self.report(&run, started, trace);
@@ -1525,23 +1666,65 @@ impl Runtime {
     ) -> StepsEnd {
         for (position, step) in program.steps.iter().enumerate() {
             let name = format!("{prefix}{}", step.name);
-            if let Some(refused) = self.budget_spent(&name, *ctx.dispatched, ctx.started) {
-                self.cancel_pending(
+            match self.budget_spent(&name, *ctx.dispatched, ctx) {
+                Some(Spent::Run(refused)) => {
+                    self.cancel_pending(
+                        ctx.record,
+                        &program.steps,
+                        position,
+                        prefix,
+                        depth,
+                        ctx.trace.as_deref_mut(),
+                    );
+                    return StepsEnd::Cancelled(refused);
+                }
+                Some(Spent::Child(refused)) => {
+                    self.advance_runstate(
+                        ctx.record,
+                        Mark::step(&name, refusal_state(&refused)),
+                        ctx.trace.as_deref_mut(),
+                    );
+                    self.cancel_pending(
+                        ctx.record,
+                        &program.steps,
+                        position + 1,
+                        prefix,
+                        depth,
+                        ctx.trace.as_deref_mut(),
+                    );
+                    return StepsEnd::Ended(refused);
+                }
+                None => {}
+            }
+            // The spend books answer before the step dispatches: the
+            // run's bound spending is the run's cancellation, and a
+            // child's declared ceiling failing is the child's refusal —
+            // which ends this list so the propagation table decides.
+            if let Some((run_scope, refused)) = self.charge(ctx, step, &name) {
+                if run_scope {
+                    self.cancel_pending(
+                        ctx.record,
+                        &program.steps,
+                        position,
+                        prefix,
+                        depth,
+                        ctx.trace.as_deref_mut(),
+                    );
+                    return StepsEnd::Cancelled(refused);
+                }
+                self.advance_runstate(
                     ctx.record,
-                    &program.steps,
-                    position,
-                    prefix,
-                    depth,
+                    Mark::step(&name, refusal_state(&refused)),
                     ctx.trace.as_deref_mut(),
                 );
-                return StepsEnd::Cancelled(refused);
+                return StepsEnd::Ended(refused);
             }
             self.advance_runstate(
                 ctx.record,
                 Mark::step(&name, State::Dispatched),
                 ctx.trace.as_deref_mut(),
             );
-            let remaining = self.remaining(ctx.started);
+            let remaining = Self::remaining(ctx.until);
             let outcome = match step.kind {
                 Kind::Query => self
                     .look_up(step, ctx.inputs, ctx.trace.as_deref_mut())
@@ -1585,7 +1768,7 @@ impl Runtime {
                         ctx.selection,
                         ctx.run,
                         ctx.grant,
-                        ctx.started,
+                        ctx.until,
                         ctx.trace.as_deref_mut(),
                     )
                     .await
@@ -1603,12 +1786,36 @@ impl Runtime {
             // For delegate work the tightened bound already stopped
             // the subprocess group — supervise's own cancel path —
             // and a dispatch `within` timed out was dropped the same
-            // way. The step marks `cancelled`, the end the caller
-            // chose, never `refused` for an end it did not give and
-            // never `unknown`, which is a crash's mark.
-            if self.deadline_spent(ctx.started)
+            // way. Whose deadline spent decides the end: the run's own
+            // is the caller's cancellation — the step marks `cancelled`,
+            // never `refused` for an end it did not give and never
+            // `unknown`, which is a crash's mark — and a child's declared
+            // `minutes` is the child's refusal, which the propagation
+            // table decides.
+            if self.deadline_spent(ctx.until)
                 || matches!(&outcome, Err(refused) if refused.code == BUDGET_EXCEEDED)
             {
+                if ctx.until != ctx.run_until {
+                    let refused = Refused::at(
+                        &name,
+                        "child_bound_spent",
+                        "the deadline this step's parent declared for the child passed while the step was dispatched".to_string(),
+                    );
+                    self.advance_runstate(
+                        ctx.record,
+                        Mark::step(&name, refusal_state(&refused)),
+                        ctx.trace.as_deref_mut(),
+                    );
+                    self.cancel_pending(
+                        ctx.record,
+                        &program.steps,
+                        position + 1,
+                        prefix,
+                        depth,
+                        ctx.trace.as_deref_mut(),
+                    );
+                    return StepsEnd::Ended(refused);
+                }
                 self.cancel_pending(
                     ctx.record,
                     &program.steps,
@@ -1713,20 +1920,76 @@ impl Runtime {
         };
         let child_inputs = child_inputs(ctx.inputs, &binding, ctx.produced, prefix, &name)?;
         let child_prefix = format!("{name}/");
-        let mut child_ctx = StepRun {
-            inputs: &child_inputs,
-            grant: ctx.grant,
-            started: ctx.started,
-            selection: &mut *ctx.selection,
-            run: &mut *ctx.run,
-            record: &mut *ctx.record,
-            dispatched: &mut *ctx.dispatched,
-            produced: &mut *ctx.produced,
-            trace: ctx.trace.as_deref_mut(),
+        // A `minutes` bound narrows the child's deadline to the tighter
+        // of its declaration and what the run has left — never wider.
+        let until = [
+            ctx.until,
+            step.bounds
+                .get("minutes")
+                .and_then(Value::as_u64)
+                .and_then(|count| Instant::now().checked_add(Bounds::minutes(count).wall())),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
+        // A declared `spend` is the child's hard ceiling, opened against
+        // the room the scopes above it still promise. Opening answers
+        // before a child step marks: a bound wider than the room, or a
+        // ceiling over lanes nobody can price, is the child's refusal —
+        // an `Ended` the table below decides, never the run's
+        // cancellation.
+        let mut pushed = false;
+        let mut early = None;
+        if let Some(micros) = step.bounds.get("spend").and_then(Value::as_u64) {
+            let mut scope = Scope {
+                run: false,
+                bound: crate::spend::Bound::Hard(micros),
+                books: BTreeMap::new(),
+            };
+            let mut lanes = Vec::new();
+            self.spend_lanes(child, &child_prefix, &mut lanes);
+            for (step_name, lane) in lanes {
+                let room = room_left(ctx.scopes, lane);
+                match open_book(scope.bound, lane, room, &step_name) {
+                    Ok(book) => {
+                        scope.books.insert(lane, book);
+                    }
+                    Err(refused) => {
+                        early = Some(StepsEnd::Ended(refused));
+                        break;
+                    }
+                }
+            }
+            if early.is_none() {
+                ctx.scopes.push(scope);
+                pushed = true;
+            }
+        }
+        let end = match early {
+            Some(end) => end,
+            None => {
+                let mut child_ctx = StepRun {
+                    inputs: &child_inputs,
+                    grant: ctx.grant,
+                    until,
+                    run_until: ctx.run_until,
+                    selection: &mut *ctx.selection,
+                    run: &mut *ctx.run,
+                    record: &mut *ctx.record,
+                    dispatched: &mut *ctx.dispatched,
+                    produced: &mut *ctx.produced,
+                    scopes: &mut *ctx.scopes,
+                    trace: ctx.trace.as_deref_mut(),
+                };
+                // `run_steps` and `nested` recurse through each other, so
+                // this call is boxed to keep the future a size the
+                // compiler can name.
+                Box::pin(self.run_steps(&mut child_ctx, child, &child_prefix, depth + 1)).await
+            }
         };
-        // `run_steps` and `nested` recurse through each other, so this
-        // call is boxed to keep the future a size the compiler can name.
-        let end = Box::pin(self.run_steps(&mut child_ctx, child, &child_prefix, depth + 1)).await;
+        if pushed {
+            ctx.scopes.pop();
+        }
         let (outcome, detail) = match end {
             StepsEnd::Finished => (Outcome::Completed, String::new()),
             // The caller's bound spent inside the child is the run's own
@@ -1964,47 +2227,107 @@ impl Runtime {
     /// budget at the second step, and the deadline compares against when
     /// the run began. A runtime carrying no budget answers `None` at
     /// every boundary — the check is the budget's, not the run's.
-    fn budget_spent(&self, step: &str, dispatched: usize, started: Instant) -> Option<Refused> {
-        let budget = self.budget?;
-        if let Some(max) = budget.max_steps
+    fn budget_spent(&self, step: &str, dispatched: usize, ctx: &StepRun<'_>) -> Option<Spent> {
+        if let Some(max) = self.budget.and_then(|budget| budget.max_steps)
             && dispatched >= max
         {
-            return Some(Refused::at(
+            return Some(Spent::Run(Refused::at(
                 step,
                 BUDGET_EXCEEDED,
                 format!("the run's step budget of {max} is spent"),
-            ));
+            )));
         }
-        if let Some(deadline) = budget.deadline
-            && started.elapsed() >= deadline
-        {
-            return Some(Refused::at(
+        if ctx.until.is_some_and(|until| Instant::now() >= until) {
+            // Whose deadline spent decides the end: the run's own is
+            // the caller's cancellation; a `minutes` a `program` step
+            // declared is the child's refusal, which its table decides.
+            if ctx.until == ctx.run_until {
+                return Some(Spent::Run(Refused::at(
+                    step,
+                    BUDGET_EXCEEDED,
+                    "the run's deadline has passed".to_string(),
+                )));
+            }
+            return Some(Spent::Child(Refused::at(
                 step,
-                BUDGET_EXCEEDED,
-                "the run's deadline has passed".to_string(),
-            ));
+                "child_bound_spent",
+                "the deadline this step's parent declared for the child has passed".to_string(),
+            )));
         }
         None
     }
 
-    /// What the run's deadline still leaves, when it carries one.
+    /// What the effective deadline still leaves, when there is one.
     ///
     /// A step bounds the work it spawns by the tighter of its own bound
-    /// and this, so a step never outlives the run. The answer saturates
-    /// at zero: a step dispatching past the deadline hands its work a
-    /// bound of nothing, and the check after dispatch cancels the step.
-    fn remaining(&self, started: Instant) -> Option<Duration> {
-        let deadline = self.budget?.deadline?;
-        Some(deadline.saturating_sub(started.elapsed()))
+    /// and this, so a step never outlives the deadline it runs under.
+    /// The answer saturates at zero: a step dispatching past the
+    /// deadline hands its work a bound of nothing, and the check after
+    /// dispatch ends the step.
+    fn remaining(until: Option<Instant>) -> Option<Duration> {
+        until.map(|until| until.saturating_duration_since(Instant::now()))
     }
 
-    /// Whether the run's deadline passed while a step dispatched — the
-    /// mid-step half of [`Runtime::budget_spent`], which sees only the
-    /// boundary.
-    fn deadline_spent(&self, started: Instant) -> bool {
-        self.budget
-            .and_then(|budget| budget.deadline)
-            .is_some_and(|deadline| started.elapsed() >= deadline)
+    /// Whether the effective deadline passed while a step dispatched —
+    /// the mid-step half of [`Runtime::budget_spent`], which sees only
+    /// the boundary.
+    fn deadline_spent(&self, until: Option<Instant>) -> bool {
+        until.is_some_and(|until| Instant::now() >= until)
+    }
+
+    /// Charges the step's priced lane in every spend scope the
+    /// composition is inside, innermost first, so a child's ceiling
+    /// answers before the run's. The charge books before the work
+    /// runs — `Price::Unknown`, because no executor here prices a call
+    /// yet, recorded as unknown rather than estimated.
+    ///
+    /// The answer says whose bound refused: `(true, _)` is the run's
+    /// own, the caller's cancellation; `(false, _)` is a child's
+    /// declared ceiling, the child's refusal. `None` is nothing owed.
+    fn charge(&self, ctx: &mut StepRun<'_>, step: &Step, name: &str) -> Option<(bool, Refused)> {
+        let lane = match step.kind {
+            Kind::Decide => crate::spend::Lane::Decision,
+            Kind::Delegate => crate::spend::Lane::Delegate,
+            _ => return None,
+        };
+        for index in (0..ctx.scopes.len()).rev() {
+            if !ctx.scopes[index].books.contains_key(&lane) {
+                let room = room_left(&ctx.scopes[..index], lane);
+                match open_book(ctx.scopes[index].bound, lane, room, name) {
+                    Ok(book) => {
+                        ctx.scopes[index].books.insert(lane, book);
+                    }
+                    Err(refused) => return Some((ctx.scopes[index].run, refused)),
+                }
+            }
+            let Some(book) = ctx.scopes[index].books.get_mut(&lane) else {
+                continue;
+            };
+            match book.charge(crate::spend::Price::Unknown) {
+                crate::spend::Charge::Recorded { .. } | crate::spend::Charge::OverSoft { .. } => {}
+                crate::spend::Charge::OverBound { bound_micros, .. } => {
+                    return Some((
+                        ctx.scopes[index].run,
+                        Refused::at(
+                            name,
+                            BUDGET_EXCEEDED,
+                            format!("the spend ceiling of {bound_micros} micros is spent"),
+                        ),
+                    ));
+                }
+                crate::spend::Charge::Unguaranteeable => {
+                    return Some((
+                        ctx.scopes[index].run,
+                        Refused::at(
+                            name,
+                            BUDGET_EXCEEDED,
+                            "a charge reported no price under a hard spend ceiling".to_string(),
+                        ),
+                    ));
+                }
+            }
+        }
+        None
     }
 
     /// Runs one step's dispatch under what the run's deadline leaves.
@@ -2826,7 +3149,7 @@ impl Runtime {
         selection: &Selection,
         run: &mut Run,
         grant: &Grant,
-        started: Instant,
+        until: Option<Instant>,
         trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
         // A step that hands over nothing did not run: it reported "0 of 0
@@ -2912,11 +3235,11 @@ impl Runtime {
             .map(str::trim)
             .filter(|briefing| !briefing.is_empty());
         // Each delegation's wall is the tighter of the step's stated
-        // bound and what the run's deadline leaves: supervise holds the
-        // bound against the process group, so threading the run's
+        // bound and what the deadline it runs under leaves: supervise
+        // holds the bound against the process group, so threading the
         // remaining budget into it is what stops the step's subprocesses
-        // when the caller's bound expires mid-step.
-        let remaining = self.remaining(started);
+        // when the bound expires mid-step.
+        let remaining = Self::remaining(until);
         let bounded: Vec<Task> = selection
             .tasks()
             .into_iter()
@@ -3096,6 +3419,49 @@ fn refusal_state(refused: &Refused) -> State {
         true => State::Unverifiable,
         false => State::Refused,
     }
+}
+
+/// The tightest room the enclosing scopes still promise one lane — the
+/// smallest ceiling-minus-held among them, `None` when none of them
+/// states a ceiling.
+fn room_left(scopes: &[Scope], lane: crate::spend::Lane) -> Option<u64> {
+    scopes.iter().filter_map(|scope| scope.room(lane)).min()
+}
+
+/// Opens one lane's book under a scope's bound, checked against the
+/// room the enclosing scopes have left.
+///
+/// Asking for more than the room is the widening the composition
+/// forbids — refused, never silently clamped — and a hard ceiling over
+/// a lane nobody can price is refused for what it is: a guarantee the
+/// host cannot give. `step` is who the refusal names.
+fn open_book(
+    bound: crate::spend::Bound,
+    lane: crate::spend::Lane,
+    room: Option<u64>,
+    step: &str,
+) -> Result<crate::spend::Book, Refused> {
+    if let (Some(room), Some(ask)) = (room, bound.ceiling())
+        && ask > room
+    {
+        return Err(Refused::at(
+            step,
+            "bound_widens",
+            format!(
+                "a spend ceiling of {ask} micros is wider than the {room} the composition has left"
+            ),
+        ));
+    }
+    crate::spend::Book::open(lane, bound, false).map_err(|_| {
+        Refused::at(
+            step,
+            "spend_unguaranteeable",
+            format!(
+                "a spend ceiling is a hard bound and this host cannot price {} work, so it cannot hold one",
+                lane.name()
+            ),
+        )
+    })
 }
 
 /// Records one answered step's output for the steps that read it later:
@@ -3440,6 +3806,7 @@ mod tests {
             answers: BTreeMap::new(),
             verification: vec![],
             review: None,
+            spend: Vec::new(),
         };
 
         assert_eq!(
@@ -3580,6 +3947,19 @@ mod tests {
             value: value.to_string(),
             source: crate::profiles::Source::Flag,
         }
+    }
+
+    /// A door admission accepts and dispatch cannot reach — the
+    /// loopback profile pointed at a closed port, for tests that need a
+    /// configured door but never a live answer.
+    fn dead_door() -> jev::Client {
+        crate::profiles::Profile::DirectLocal {
+            url: flagged("http://127.0.0.1:1"),
+            model: flagged("kev-local"),
+            picked: crate::profiles::Source::Flag,
+        }
+        .client()
+        .unwrap()
     }
 
     /// Every profile kind that builds a System One door.
@@ -3952,6 +4332,7 @@ mod tests {
             .with_budget(Budget {
                 deadline: None,
                 max_steps: Some(1),
+                spend: None,
             });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -4012,6 +4393,7 @@ mod tests {
             .with_budget(Budget {
                 deadline: Some(Duration::ZERO),
                 max_steps: None,
+                spend: None,
             });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -4062,6 +4444,7 @@ mod tests {
             .with_budget(Budget {
                 deadline: None,
                 max_steps: Some(0),
+                spend: None,
             });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -4143,6 +4526,7 @@ mod tests {
             .with_budget(Budget {
                 deadline: Some(Duration::ZERO),
                 max_steps: None,
+                spend: None,
             });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -4334,6 +4718,7 @@ mod tests {
             .with_budget(Budget {
                 deadline: Some(Duration::from_secs(3)),
                 max_steps: None,
+                spend: None,
             });
         runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
         runtime.door = Some(door);
@@ -4400,6 +4785,7 @@ mod tests {
         let runtime = stub_runtime(repo.path(), &binary, dir.path()).with_budget(Budget {
             deadline: Some(Duration::from_secs(3)),
             max_steps: None,
+            spend: None,
         });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -4467,6 +4853,7 @@ mod tests {
         let runtime = stub_runtime(repo.path(), &binary, dir.path()).with_budget(Budget {
             deadline: Some(Duration::from_secs(3)),
             max_steps: None,
+            spend: None,
         });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -4646,7 +5033,7 @@ mod tests {
         assert_eq!(output["child"], "child-program");
         assert_eq!(output["outcome"], "completed");
 
-        let mut store = Store::open(dir.path()).unwrap();
+        let store = Store::open(dir.path()).unwrap();
         let ids = claimed(dir.path());
         assert_eq!(ids.len(), 1, "{ids:?}");
         let record = store.get(&ids[0]).unwrap().unwrap();
@@ -4890,6 +5277,7 @@ mod tests {
         let runtime = runtime.with_runstate(dir.path()).with_budget(Budget {
             max_steps: Some(1),
             deadline: None,
+            spend: None,
         });
         let parent: Program = serde_json::from_value(json!({
             "v": 1, "slug": "parent-program",
@@ -4902,7 +5290,7 @@ mod tests {
         let stopped = run.stopped.as_ref().expect("the run cancelled");
         assert_eq!(stopped.code, BUDGET_EXCEEDED);
 
-        let mut store = Store::open(dir.path()).unwrap();
+        let store = Store::open(dir.path()).unwrap();
         let ids = claimed(dir.path());
         let record = store.get(&ids[0]).unwrap().unwrap();
         assert_eq!(record.outcome, Some(runstate::Outcome::Cancelled));
@@ -4917,6 +5305,214 @@ mod tests {
                 .find(|step| step.step == name)
                 .unwrap_or_else(|| panic!("no step record for {name}"));
             assert_eq!(step.state, state, "{name}");
+        }
+    }
+
+    /// A spend ceiling holds only where the work prices itself: a hard
+    /// bound over lanes this host cannot meter refuses at admission,
+    /// before a step marks anything — the same door every other
+    /// unenforceable bound answers at.
+    #[tokio::test]
+    async fn a_hard_spend_ceiling_over_unpriced_lanes_refuses_at_admission() {
+        let (dir, program) = asked();
+        let mut runtime = empty_runtime().with_budget(Budget {
+            deadline: None,
+            max_steps: None,
+            spend: Some(crate::spend::Bound::Hard(1_000_000)),
+        });
+        runtime.questions = questions::Registry::open(&[dir.path().to_path_buf()]);
+        let refused = runtime.admit(&program).unwrap_err();
+        assert_eq!(refused.step, "judge");
+        assert_eq!(refused.code, "bound_unenforceable");
+        assert!(refused.reason.contains("cannot price"), "{refused}");
+    }
+
+    /// A soft bound asks for nothing it cannot get: the book opens,
+    /// each priced step's charge records `unknown` — never zero, never
+    /// an estimate — and the run keeps what the ledger held even when
+    /// the step itself could not answer.
+    #[tokio::test]
+    async fn a_soft_spend_bound_records_what_nobody_could_price() {
+        let (dir, program) = asked();
+        let mut runtime = empty_runtime()
+            .asking(Some(dead_door()))
+            .with_budget(Budget {
+                deadline: None,
+                max_steps: None,
+                spend: Some(crate::spend::Bound::Soft(1_000_000)),
+            });
+        runtime.questions = questions::Registry::open(&[dir.path().to_path_buf()]);
+        let run = runtime
+            .run(
+                &program,
+                &Inputs::read("judge it", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        // The door at 127.0.0.1:1 never answers, but the charge was
+        // booked before the step dispatched.
+        let book = run
+            .spend
+            .iter()
+            .find(|book| book.lane() == crate::spend::Lane::Decision)
+            .expect("a decision lane's book");
+        assert_eq!(book.unknown_charges(), 1);
+        assert_eq!(book.metered_micros(), 0);
+        assert!(!book.over_soft());
+    }
+
+    /// A child's declared ceiling answers before one of its steps
+    /// marks: an ask wider than the room the run's bound leaves is the
+    /// child's refusal — the propagation table's `refused` row —
+    /// never a silent clamp.
+    #[tokio::test]
+    async fn a_child_spend_ceiling_wider_than_the_room_is_the_childs_refusal() {
+        let (questions_dir, _) = asked();
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "priced-child",
+            r#"[{"name": "judge", "kind": "decide", "question": "test.profile-door.v1", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime()
+            .asking(Some(dead_door()))
+            .with_budget(Budget {
+                deadline: None,
+                max_steps: None,
+                spend: Some(crate::spend::Bound::Soft(100)),
+            });
+        runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "priced-child@1.0.0",
+                 "bounds": {"spend": 200},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"}}
+            ]
+        }))
+        .unwrap();
+
+        let run = runtime
+            .run(
+                &parent,
+                &Inputs::read("do it", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        let stopped = run.stopped.expect("the widened ask stops the run");
+        assert_eq!(stopped.code, "child_refused");
+        assert!(stopped.reason.contains("wider than"), "{stopped}");
+    }
+
+    /// A ceiling over lanes nobody can price is a guarantee the host
+    /// cannot give: the child's declared spend refuses before a child
+    /// step marks, and the table's `refused` row decides what the run
+    /// does with that answer.
+    #[tokio::test]
+    async fn a_child_spend_ceiling_over_unpriced_lanes_is_refused() {
+        let (questions_dir, _) = asked();
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "priced-child",
+            r#"[{"name": "judge", "kind": "decide", "question": "test.profile-door.v1", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime().asking(Some(dead_door()));
+        runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "priced-child@1.0.0",
+                 "bounds": {"spend": 50},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"}}
+            ]
+        }))
+        .unwrap();
+
+        let run = runtime
+            .run(
+                &parent,
+                &Inputs::read("do it", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        let stopped = run.stopped.expect("the unpriceable ceiling refuses");
+        assert_eq!(stopped.code, "child_refused");
+        assert!(stopped.reason.contains("cannot price"), "{stopped}");
+    }
+
+    /// A spend ceiling over steps that price nothing holds vacuously:
+    /// no lane opens, nothing is refused, and the child runs.
+    #[tokio::test]
+    async fn a_spend_ceiling_over_steps_that_price_nothing_holds() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "free-child",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "free-child@1.0.0",
+                 "bounds": {"spend": 100},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"}}
+            ]
+        }))
+        .unwrap();
+
+        let run = runtime
+            .run(
+                &parent,
+                &Inputs::read("do the list\n- one", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+    }
+
+    /// `spend` and `minutes` are bounds a `program` step may declare —
+    /// a ceiling in micros and the child's own deadline — each a count,
+    /// and anything else refuses at admission.
+    #[test]
+    fn a_program_step_admits_spend_and_minutes_bounds() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent = |bounds: Value| -> Program {
+            serde_json::from_value(json!({
+                "v": 1, "slug": "parent-program",
+                "steps": [
+                    {"name": "call", "kind": "program", "program": "child-program@1.0.0",
+                     "bounds": bounds,
+                     "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"}}
+                ]
+            }))
+            .unwrap()
+        };
+        runtime
+            .admit(&parent(json!({"spend": 500, "minutes": 5})))
+            .unwrap();
+        for bad in [
+            json!({"spend": "lots"}),
+            json!({"spend": 0}),
+            json!({"minutes": "soon"}),
+        ] {
+            let refused = runtime.admit(&parent(bad)).unwrap_err();
+            assert_eq!(refused.code, "bound_unenforceable", "{refused}");
         }
     }
 
