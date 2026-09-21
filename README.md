@@ -151,6 +151,10 @@ bounded parallel/background work. The
 [project snapshot](docs/coder/design/2026-09-21-project-roadmap-snapshot.md) maps
 that plan to the consumer and Decision Router work in flight.
 
+The [program and extension specification](docs/extensions/README.md) defines
+how reusable workflows, bounded Wasm plugins, scoped skills, progressive
+discovery, and packages fit that architecture.
+
 [Delegate work to Devin with Coder](docs/coder/guides/devin-delegation-runbook.md)
 is the operator runbook for local setup, six-session batches, remote workers,
 result checks, and supervised integration.

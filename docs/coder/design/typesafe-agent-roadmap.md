@@ -7,6 +7,10 @@ consumer work. It supersedes the earlier four-release ordering in the
 [consumer contract](coder-as-decision-router-consumer.md). It does not
 change the status of an issue or claim these features are implemented.
 
+The [program and extension specification](../../extensions/README.md) supplies
+the target component contracts. Its [delivery sequence](../../extensions/delivery.md#delivery-sequence)
+maps plugin, discovery, package, and composition work to the phases below.
+
 Use [project 16](https://github.com/orgs/OpenAgentsInc/projects/16) for Coder
 delivery and [project 15](https://github.com/orgs/OpenAgentsInc/projects/15/views/1)
 for shared Decision Router capabilities. The

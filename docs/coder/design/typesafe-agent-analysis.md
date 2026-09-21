@@ -8,6 +8,11 @@ the proposals into implementation slices. The
 [project snapshot](2026-09-21-project-roadmap-snapshot.md) records the work
 already in flight and the differences between the boards.
 
+The [program and extension specification](../../extensions/README.md) defines
+how programs, Wasm plugins, skills, and packages participate in this design.
+Its [opportunity analysis](../../extensions/opportunities.md) maps the source
+proposal to concrete behavior and the evidence needed to evaluate it.
+
 ## The main opportunity
 
 The founder's [coding-agent document](thoughts-on-a-typesafe-coding-agent.md)

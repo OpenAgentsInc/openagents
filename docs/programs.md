@@ -1,8 +1,13 @@
 # Capabilities, executors, and programs
 
 How a Coder instance learns what it can hand work to, how the decision
-engine chooses, and why the reusable component is a **program** rather than
-a plugin.
+engine chooses, and how a **program** defines a reusable workflow.
+
+The [program and extension specification](extensions/README.md) defines the
+target integration of programs, Wasm plugins, skills, operation discovery,
+and packages. This guide retains the original rationale and operational
+history; the new specification distinguishes implemented behavior from
+proposed composition and distribution.
 
 The worked case throughout is delegating to the Devin CLI, because it is the
 one an operator here actually has and wants used. It is a row in a table,
@@ -28,10 +33,13 @@ runtime.
 
 ## The word
 
-"Plugin" is the wrong word, and the reasons are not stylistic.
+Use **program** for a workflow and **plugin** for a bounded Wasm guest. Call
+the combined product surface **programs and extensions**. Selecting a program
+answers which workflow the request asks for; it does not select a package to
+install or grant permission to execute it.
 
 The glossary in the reference implementation already allocates the terms,
-and three of them matter:
+and four of them matter:
 
 | Term | What it already means there |
 | --- | --- |
@@ -55,20 +63,21 @@ network access **never loads**. A Devin delegation spawns a process, reaches
 the internet, writes files, and is not deterministic. It is the tier that
 never loads.
 
-This is the second time the same boundary has appeared this week from a
-different direction. The
+The
 [capability-sockets review](decision-models/research/2026-09-19-capability-sockets.md)
-asked whether a trained adapter could move through the plugin socket and
-found the same split: the **manifest** half of that system generalizes and
-the **sandbox** half does not. Two payloads, two independent analyses, one
-conclusion — "plugin" was always two things wearing one name, and the part
-worth keeping is the declaration.
+found the same boundary for trained adapters: the manifest contract can
+generalize beyond Wasm, while the sandbox applies to eligible guests.
+Retain the bounded guest host for those operations and keep effectful
+executors behind native adapters. A common operation descriptor supports
+discovery without merging their execution contracts.
 
-**A program is the composable unit.** Programs compose because a step's
-output is the next step's input and every step carries bounds. Plugins
-compose badly even in the reference implementation, where two members
-eligible for the same call would race and the rule table exists to forbid
-it.
+**A program is the workflow composition unit.** The target composition
+contract connects typed step outputs to inputs under narrowed bounds. Two
+automatic plugins eligible to replace the same call's output need explicit
+host ownership so completion order cannot choose the result. Plugins can
+also compose through declared program dataflow once module steps and typed
+bindings are implemented. See [Programs and decisions](extensions/programs.md)
+and [plugin host roles](extensions/plugins.md#host-roles).
 
 ## The three layers
 
@@ -126,8 +135,8 @@ operator overrides a checkout without editing it.
 
 ### A `decide` step names a question, and the wording lives elsewhere
 
-A program carries no prompts, and that includes the wording of the
-questions it asks. A `decide` step names an identifier such as
+A program keeps decision-question wording outside its steps. A `decide`
+step names an identifier such as
 `openagents.independence.v1`; the text behind it is a file in `questions/`,
 digested as a whole, and the digest is recorded beside every answer.
 
@@ -136,6 +145,12 @@ wording could not say which version produced a result, so `Program::load`
 refuses a `decide` step carrying `instructions`, `criteria`, `questions`,
 `text`, or `prompt`, and `Runtime::admit` refuses one whose identifier this
 host has no wording for.
+
+Some existing delegation programs have a `briefing` field for execution
+guidance. That legacy field is not decision-question wording or authority.
+The [portable program contract](extensions/programs.md#program-definitions-and-bindings)
+separates guidance assets and requires an explicit migration rather than
+changing the identity of historical programs.
 
 A set fills in exactly two things at run time, and both are bounded fields
 chosen after the route was:

@@ -6,11 +6,15 @@ code or a document in this repository defines it.
 **Status** tells you what backs the term:
 
 - **Implemented**: code in `crates/` defines it, and tests cover it.
+- **Partial**: code implements part of the contract; the entry names the
+  remaining boundary.
 - **Designed**: a document or a NIP in this repository specifies it, and no
   code implements it yet.
 
-Terms that belong to other repositories are out of scope, including terms
-from the reference material in `~/work/coder`.
+Terms defined only in other repositories are out of scope. Designs adapted
+from reference material enter this glossary when an OpenAgents specification
+defines them, as the [program and extension specification](extensions/README.md)
+does for plugins and packages.
 
 ## The contract
 
@@ -125,19 +129,42 @@ implement this shared context system.
 | Capability | Designed | A granted ability. A capability that no grant declares is offered to no run. |
 | Executor | Designed | The implementation that performs an agent session, whether the built-in runner or an external agent reached through an adapter. |
 | Delegation | Implemented | One bounded task handed to one executor and recorded as an ATIF `Call` named `delegate`, in `crates/coder` (`delegate.rs`). A fan-out runs them concurrently under a stated bound. A refusal the executor declares, a bound that expired, a non-zero exit, and a process that never spawned are four outcomes rather than one. See [`coder/delegate.md`](coder/runtime/delegate.md). |
-| Program | Designed | A state machine of named steps with per-step bounds, specified by [NIP-PRG](../nips/openagents/NIP-PRG.md). A program carries no code, commands, or prompts, composes by reference under bounds that narrow and never widen, and says nothing about where it runs. It is a general primitive and is not specific to an agent or a product. |
-| Step kind | Designed | What one step of a program does: `query`, `check`, `decide`, `delegate`, `program`, or `module`. The registry is open. A host that does not recognize a kind refuses the program, because a program whose unknown steps are skipped is a different program. |
+| Program | Partial | A reusable workflow of named steps with per-step bounds, specified by [NIP-PRG](../nips/openagents/NIP-PRG.md). It references host sources, question sets, and execution bindings rather than supplying arbitrary executable code. Coder implements four step kinds; typed child composition and module execution remain proposed. Legacy delegation guidance and the target binding contract are explained in [Programs and decisions](extensions/programs.md). |
+| Program selection | Implemented | The `openagents.program.v1` decision proposes which admissible workflow a request asks for, or `none`. Selection does not install a plugin or grant execution authority. See [the target entry path](extensions/programs.md#what-the-program-decision-decides). |
+| Step kind | Partial | What one step does: `query`, `check`, `decide`, `delegate`, `program`, or `module`. Coder implements the first four and refuses the last two. A host refuses unsupported semantics rather than skipping steps. |
 | Bounds | Designed | The limits a program's step states and an executor promises to keep. A host refuses a step whose bounds it cannot enforce rather than running it unbounded. Under composition, bounds narrow and never widen. |
 | Module | Designed | A WebAssembly module a program's `module` step runs, named by content hash. The hash is required and the sources are hints, so the place bytes come from cannot decide what runs. |
 | Module announcement | Designed | An optional `30183` event saying where a module's bytes can be found and what it requires. A locator, not an authority: it cannot change what a program runs, because the program names a hash. |
 | Capability manifest | Implemented | A document that says how to drive an executor: transport, detection, bounds it enforces, bounds it ignores, whether it sees the repository, and who pays. Read from `capabilities/` today and published as Nostr `kind:30180` later. |
-| Capability probe | Implemented | Running a manifest's `detect` on this machine, in `crates/coder`'s `capability` module. It resolves an absolute path rather than trusting `PATH`, and answers in three states. |
-| Presence | Implemented | What a probe found: **present**, **absent**, or **present and unavailable**. Absence is not an error — the capability is not an option. The third state is an executor that is installed, detected, and refusing this context. |
+| Capability probe | Implemented | Running a manifest's `detect` through `crates/capability` under a recorded approval that pins the manifest and executable identity. The probe is bounded; reading a registry does not execute it. |
+| Presence | Implemented | Capability status: **present**, **absent**, **present and unavailable**, **unprobed**, or **unknown**. A missing approval leaves a capability unprobed; a failed or incomplete probe cannot manufacture availability. |
 | Program registry | Implemented | The programs a host resolved, read from `programs/` in `crates/coder`'s `program` module. The read records the Nostr filter it would have sent beside the answer it got from disk. |
+| Run-state store | Partial | The standalone `coder::runstate` store records pinned run, step, and task-attempt identities with retained worktree/result references. Recovery marks unfinished records unknown and does not replay effects. Runtime integration and full reconciliation remain proposed. |
 | Task source | Implemented | Where a `query` step's work comes from, named in the program by slug and resolved from `sources/` in `crates/coder`'s `source` module. A program names a source and never a command, so a machine decides what the lookup reads. `request`, the work the request carried, is built in. |
 | Selection | Implemented | What one `query` step looked up: the work that runs, the order it is in, what was dropped and why, and every path more than one selected item touches. A lookup answering with more than `max_results` truncates or refuses, as the step's `on_overflow` says, and the trace records which. |
 | `cannot_enforce` | Designed | The bounds an executor accepts and silently ignores. A host refuses a delegation whose requirements intersect this list, because an executor that drops a bound is more dangerous than one that refuses it. |
 | Operator policy | Designed | A signed document that says which capabilities an operator prefers, how wide a fan-out may go, and what to never use. Published as Nostr `kind:30181`. |
+
+## Extensions
+
+The [program and extension specification](extensions/README.md) defines these
+target contracts. The reference Coder implementation does not make them
+implemented in OpenAgents.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Wasm plugin | Designed | A content-addressed WebAssembly guest with a manifest, typed operations, and bounded host imports. It can implement a program's module operation or a supported host role; it is not an executor or workflow. |
+| Plugin host | Designed | The trusted Rust boundary that validates guest content and packets, admits invocations, exposes granted imports, enforces limits, and records outcomes. |
+| Operation descriptor | Designed | A digested discovery interface containing identity, purpose, typed schemas, execution binding, preconditions, effects, resources, and evidence references. It describes a component without replacing its execution contract. |
+| Progressive discovery | Designed | Bounded retrieval and eligibility filtering followed, when useful, by semantic selection and loading of only the selected schemas or guidance. Discovery is inert and grants no authority. |
+| Decision function | Partial | A typed semantic input/question/output contract with a consuming policy, limits, and admitted model scope. Coder has existing decision sites and question sets; the unified extensible function registry remains proposed. |
+| Scoped skill | Designed | Digested guidance activated for a bounded operation, task, or explicit session. It may reference supported hooks and narrow allowed operations; it cannot grant authority or remove mandatory instructions. |
+| Host role | Designed | An approved activation path for a plugin, such as evidence preparation or output processing. Installing a plugin does not activate its roles. |
+| Extension package | Designed | An immutable distribution bundle of components, schemas, documentation, dependencies, and evidence references. Its components retain separate execution and permission contracts. |
+| Package listing | Designed | Mutable catalog presentation, discovery state, and release pointers for a publisher-qualified package. It cannot rewrite a release's bytes. |
+| Package release | Designed | An immutable manifest and content closure identified by verified digests. A version label cannot be rebound to different content. |
+| Installation lock | Designed | The exact verified component and dependency identities installed at one revision. Installation is separate from enablement, grants, and invocation admission. |
+| Run lock | Designed | The installation identities plus host bindings, policy, grants, schemas, question sets, and configuration pinned for an execution attempt. |
 
 ## Nostr
 

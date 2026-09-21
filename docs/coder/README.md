@@ -8,6 +8,7 @@ approved work through a shared terminal and headless runtime.
 | [Guides](guides/) | Configuration, headless use, delegation, project supervision, and artifact verification. |
 | [Runtime](runtime/) | Execution contracts, subprocesses, terminal behavior, traces, and repository evidence. |
 | [Design](design/) | Product direction, architecture analysis, roadmap, and historical proposals. |
+| [Programs and extensions](../extensions/) | Target specification for programs, Wasm plugins, skills, discovery, and packages. |
 | [Measurements](measurements/) | Observed fan-out and relay transport results. |
 | [Verification](verification/) | Dated acceptance records and supporting evidence. |
 | [Examples](examples/) | Work lists and project supervisor configuration. |

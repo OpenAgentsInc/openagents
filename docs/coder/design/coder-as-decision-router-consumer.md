@@ -25,6 +25,10 @@ then progressive tools, routing, parallel/background work, and durable
 composition. The [project snapshot](2026-09-21-project-roadmap-snapshot.md)
 records the two boards and their status discrepancies.
 
+The [program and extension specification](../../extensions/README.md) defines
+the target workflow, plugin, skill, discovery, and package contracts, with a
+separate baseline for the behavior already implemented.
+
 ## What Decision Router means here
 
 The Decision Router is the shared decision service and its contracts,

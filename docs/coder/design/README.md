@@ -4,6 +4,10 @@ Product direction, architecture proposals, and implementation plans.
 
 [Documentation index](../README.md)
 
+The [program and extension specification](../../extensions/README.md) applies
+these plans to workflow selection, Wasm plugins, scoped skills, progressive
+discovery, and package distribution.
+
 | Document | Topic |
 | --- | --- |
 | [2026-09-21-project-roadmap-snapshot](2026-09-21-project-roadmap-snapshot.md) | Decision Router and Coder project snapshot |
