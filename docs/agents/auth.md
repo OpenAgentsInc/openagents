@@ -1,0 +1,116 @@
+# Authenticate to the decision API
+
+Every call to the gateway authenticates with a bearer credential. This
+page covers what the credential looks like, where it may live, what a
+rejected call returns, and how keys come into existence. It describes
+what `crates/gateway` and the `oak` caller implement today — nothing
+more.
+
+## The credential
+
+A key has the shape `oak_<id>.<secret>`. Send it in the `Authorization`
+header and nowhere else:
+
+```http
+Authorization: Bearer oak_acme.9f…c4
+```
+
+An operator issues keys with the `tenant-keys` binary against the
+deployment's registry; the service stores only a digest of each key.
+There is no signup, self-serve issuance, or key-creation endpoint — if
+you need a key, ask the operator of the deployment you are calling.
+
+## Where the key may live
+
+`oak` and `oak-mcp` resolve the credential from exactly two places:
+
+1. The `OPENAGENTS_API_KEY` environment variable.
+2. The `api_key` field of a config file — by default
+   `~/.config/openagents/oak.json`, overridable with `OPENAGENTS_CONFIG`
+   or `--config`. The file must be mode `0600`; `oak` refuses a config
+   file that group or others can read.
+
+```json
+{"api_key": "oak_acme.9f…c4", "base_url": "https://gateway.example.com",
+ "model": "acme-kev", "workspace": "ws_…"}
+```
+
+The key never goes on the command line — there is no flag for it — never
+in a URL or query string, never in a log line, never in a source file,
+and never in an MCP tool argument; `oak-mcp` accepts no credential in
+tool input.
+
+## Workspace membership
+
+A deployment that sets `require_workspace_membership` also requires
+exactly one `X-Workspace-Id` header per call. The workspace comes from
+`--workspace`, `OPENAGENTS_WORKSPACE`, or the config file's `workspace`
+field. A call without it is refused `400 workspace_required`; a
+credential with no active membership in the named workspace and tenant
+is refused `403 workspace_forbidden`. Monetary admission requires this
+mode: a charge binds an authenticated workspace, never an anonymous or
+bearer-only call.
+
+## Anonymous calls
+
+A request with no `Authorization` header is anonymous. Anonymous callers
+reach only the deployment's `shared` doors — a tenant's dedicated doors
+are invisible to them, not merely unreachable. When the deployment
+requires workspace membership, an anonymous call is refused
+`401 unauthenticated` outright.
+
+## What a rejected call gets
+
+Refusals are typed JSON, not bare status codes:
+
+```json
+{"error": {"code": "unauthenticated",
+           "message": "the credential was refused: unknown key",
+           "request": "req-…", "attempt": 1}}
+```
+
+The authentication-adjacent codes:
+
+| Status | Code | Cause |
+| --- | --- | --- |
+| `400` | `malformed` | The `Authorization` header is not text. |
+| `400` | `workspace_required` | Membership mode is on and no single `X-Workspace-Id` arrived. |
+| `401` | `unauthenticated` | No `Bearer` shape, an unknown, revoked, or wrong key, or a membership-mode call with no credential. |
+| `403` | `door_not_bound` | The credential holds no binding for the door the request named, and the door is not shared. |
+| `403` | `workspace_forbidden` | The key has no active membership in the named workspace and tenant. |
+
+Calls that pass through the owned admission path — `POST /v1/systemone`
+and `POST /v1/classify` — also carry `x-request-id` and `x-attempt`
+response headers; quote the request id when you report a call. The full
+refusal-code table lives in the
+[gateway service document](../decision-models/service/gateway.md) and the
+[catalog](api-catalog.json).
+
+## Rotation and revocation
+
+Key lifecycle — issue, rotate, revoke — is an operator act on the
+registry directory with `tenant-keys`. A rotated key authenticates the
+same tenant under a new secret; a revoked key fails `unauthenticated`.
+Under monetary admission, balance belongs to the workspace, so rotating
+a key changes nothing the account holds.
+
+## Compatible doors
+
+The native `POST /v1/systemone` contract is also served by compatible
+backends directly — a local `kev-serve`, or TypeSafe's hosted
+`api.typesafe.ai`, which takes its own `ts-` credential
+(`TYPESAFE_API_KEY` in `crates/jev`). The gateway's own routes —
+`/v1/classify`, `/v1/balance`, and the keyed `GET /v1/models` view —
+exist only on the gateway.
+
+## Related documents
+
+- [skills.md](skills.md) — how to make a call once you hold a key.
+- [api-catalog.json](api-catalog.json) — the routes a key can reach.
+- [Caller guide](../decision-models/guides/caller.md) — the end-to-end caller contract.
+- [Monetary accounting](../decision-models/service/monetary-accounting.md) — workspace membership and the conditional balance route.
+
+---
+Version 1.0.0 · generated-by: hand-maintained · 2026-09-21
+
+VALIDATED: JSON examples parse; internal links resolve to repo paths. Exact commands are in the commit message.

@@ -1,0 +1,78 @@
+{
+  "v": "openagents.agents-index.v1",
+  "version": "1.0.0",
+  "generated_by": "hand-maintained",
+  "generated_on": "2026-09-21",
+  "directory": "docs/agents",
+  "description": "The machine-readable discovery document set for agents calling the OpenAgents decision API. Every document describes implemented behavior only; api-catalog.json's unimplemented list names advertised surfaces that do not exist.",
+  "documents": [
+    {
+      "path": "docs/agents/llms.txt",
+      "kind": "llms.txt",
+      "version": "1.0.0",
+      "generated_by": "hand-maintained",
+      "content": "llms.txt-convention entry point: the project one-liner and links to every discovery document."
+    },
+    {
+      "path": "docs/agents/auth.md",
+      "kind": "guide",
+      "version": "1.0.0",
+      "generated_by": "hand-maintained",
+      "content": "Authentication contract: oak_ bearer keys via OPENAGENTS_API_KEY or a mode-0600 config file, workspace membership, anonymous access, the typed refusal shape, and operator-side provisioning."
+    },
+    {
+      "path": "docs/agents/api-catalog.json",
+      "kind": "catalog",
+      "version": "1.0.0",
+      "generated_by": "hand-maintained",
+      "content": "Versioned route catalog: every implemented route with method, path, request and response shape references, the complete refusal-code map, and an explicit unimplemented list."
+    },
+    {
+      "path": "docs/agents/openapi.yaml",
+      "kind": "openapi-3.1-fragment",
+      "version": "1.0.0",
+      "generated_by": "hand-maintained",
+      "content": "OpenAPI 3.1 fragment covering exactly the implemented routes with real request/response schemas and the documented refusal codes."
+    },
+    {
+      "path": "docs/agents/skills.md",
+      "kind": "skill",
+      "version": "1.0.0",
+      "generated_by": "hand-maintained",
+      "content": "What an agent needs to call the API — the oak CLI, the oak-mcp MCP server, or raw HTTP — supported versions, and honest limits."
+    },
+    {
+      "path": "docs/agents/index.json",
+      "kind": "index",
+      "version": "1.0.0",
+      "generated_by": "hand-maintained",
+      "content": "This file — the versioned index of the discovery document set."
+    },
+    {
+      "path": "docs/agents/README.md",
+      "kind": "architecture",
+      "version": null,
+      "generated_by": "hand-maintained",
+      "content": "General agent infrastructure: target architecture, the three layers, and what remains coding-specific. Predates this index and carries no version field."
+    },
+    {
+      "path": "docs/agents/roadmap.md",
+      "kind": "roadmap",
+      "version": null,
+      "generated_by": "hand-maintained",
+      "content": "Remaining design and implementation work for general agents. Predates this index and carries no version field."
+    }
+  ],
+  "related": [
+    {"path": "docs/decision-models/guides/caller.md", "content": "The end-to-end caller's guide: credentials, asking, batching, exit codes, retries, and receipts."},
+    {"path": "docs/decision-models/guides/classification-callers.md", "content": "The oak classify and oak-mcp caller contract."},
+    {"path": "docs/decision-models/service/gateway.md", "content": "The implemented admission path, bounds, refusal-code table, and retention rules."},
+    {"path": "docs/decision-models/service/monetary-accounting.md", "content": "Optional monetary admission, settlement rules, and the conditional balance route."},
+    {"path": "docs/decision-models/api/decision-api.md", "content": "The target product contract — specifies surfaces that are not implemented; the catalog's unimplemented list names them."},
+    {"path": "docs/decision-models/api/openapi.yaml", "content": "The API group's own OpenAPI document; this set's fragment stays scoped to implemented routes."},
+    {"path": "docs/decision-models/api/classification-http.md", "content": "The classify route's contract, bounds, and verification record."},
+    {"path": "docs/decision-models/schemas/classify-request-v1.json", "content": "The classify request JSON Schema (openagents.classify.v1)."},
+    {"path": "docs/decision-models/schemas/classify-response-v1.json", "content": "The classify response JSON Schema."},
+    {"path": "docs/decision-models/examples/README.md", "content": "Runnable curl and oak examples."}
+  ]
+}

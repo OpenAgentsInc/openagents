@@ -1,0 +1,284 @@
+{
+  "v": "openagents.api-catalog.v1",
+  "version": "1.0.0",
+  "generated_by": "hand-maintained",
+  "generated_on": "2026-09-21",
+  "service": {
+    "name": "openagents-decision-gateway",
+    "implementation": "crates/gateway",
+    "base_url": null,
+    "base_url_note": "No public endpoint is published in this repository. The base URL is operator configuration: --url, OPENAGENTS_BASE_URL, or the config file's base_url.",
+    "description": "The keyed HTTP front of the decision service. Every decision call runs one admission path: authenticate, authorize the named door, bound declared capacity, reserve quota durably, verify the backend's published identity, forward, settle, and receipt."
+  },
+  "authentication": {
+    "scheme": "http-bearer",
+    "credential_shape": "oak_<id>.<secret>",
+    "header": "Authorization: Bearer oak_<id>.<secret>",
+    "sources": ["OPENAGENTS_API_KEY", "api_key field of a mode-0600 config file"],
+    "provisioning": "Operator-issued through the tenant-keys binary against the registry; there is no signup, self-serve issuance, or key-creation endpoint.",
+    "anonymous": "A call with no Authorization header reaches only the manifest's shared doors; when the deployment sets require_workspace_membership it is refused 401 unauthenticated.",
+    "workspace_header": "X-Workspace-Id: required exactly once per call when the deployment sets require_workspace_membership; mandatory under monetary admission.",
+    "guide": "docs/agents/auth.md"
+  },
+  "request_conventions": {
+    "idempotency": "Idempotency-Key plus X-Attempt identify a (request, attempt) pair the quota ledger settles under. A retry keeps the key and bumps the attempt; a settled pair, or the pair reused against changed content, answers 409 idempotency_conflict. Without a key the gateway mints a request id.",
+    "batch": "There is no batch endpoint. The oak CLI's --input lines|ndjson is a client-side loop that issues one POST /v1/systemone per input row and preserves input order in its NDJSON output.",
+    "content_type": "application/json; the gateway parses the body as JSON regardless of the declared type.",
+    "body_limit": "max_body_bytes is operator configuration (default 1048576); an oversized body is refused 413."
+  },
+  "response_conventions": {
+    "refusal_shape": {
+      "error": {
+        "code": "a stable snake_case string; the gateway-owned set is enumerated under refusal_codes, and a backend may pass through its own codes",
+        "message": "human-readable detail",
+        "request": "the request identity, present on refusals raised inside the owned admission path",
+        "attempt": "the attempt number, present on refusals raised inside the owned admission path"
+      },
+      "settlement": "optional on gateway refusals under monetary admission: the hold's resolution — settled, outstanding, or released"
+    },
+    "post_route_headers": {
+      "x-request-id": "the request identity — the Idempotency-Key when sent, else minted",
+      "x-attempt": "the attempt that produced this response",
+      "x-outcome": "answered | refused | unavailable | unattempted, plus mixed on POST /v1/classify",
+      "x-receipt": "the digest of the sealed ExecutionReceipt appended to receipts.jsonl",
+      "x-settlement": "the monetary hold's resolution — settled | outstanding | released — only under monetary admission",
+      "retry-after": "seconds to wait before retrying; present on 429 responses",
+      "scope": "These headers are emitted on POST /v1/systemone and POST /v1/classify only. The GET routes do not carry them."
+    }
+  },
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/v1/systemone",
+      "status": "implemented",
+      "summary": "Answer typed questions about one state.",
+      "request": {
+        "content_type": "application/json",
+        "shape": {
+          "model": "string — the door name, resolved against the caller's bindings",
+          "state": "any JSON value or string — the document every question reads",
+          "questions": "object of question-id to question; ids are caller-side and never reach the model"
+        },
+        "question": {
+          "type": "noul | choice | score",
+          "instructions": "the judgment to make — a string or structured object",
+          "criteria": "noul: optional {true:…, false:…}; choice: object of option to description; score: array of 2–10 ordered level descriptions"
+        },
+        "bounds": {
+          "max_questions": "configurable, default 256 — over it answers 422 too_many_questions",
+          "max_options": "configurable, default 4096 — over it answers 422 too_many_options",
+          "max_body_bytes": "configurable, default 1048576 — over it answers 413"
+        },
+        "schema_ref": "docs/agents/openapi.yaml#/components/schemas/Call"
+      },
+      "responses": {
+        "200": {
+          "shape": {
+            "model": "the served identity that answered",
+            "answers": "one typed answer per question id: {type:'noul',noul,selected?} | {type:'choice',choice,confidence,probabilities} | {type:'score',score,confidence,selected?,legend,probabilities}",
+            "usage": "{input_tokens?, output_tokens?} — either absent when the backend does not count it"
+          },
+          "note": "The backend's answer arrives verbatim with the backend's status; a backend may add fields or its own typed refusal codes."
+        }
+      },
+      "refusal_statuses": {
+        "400": ["malformed", "invalid_request", "workspace_required"],
+        "401": ["unauthenticated"],
+        "402": ["insufficient_funds — monetary admission only"],
+        "403": ["door_not_bound", "workspace_forbidden"],
+        "409": ["idempotency_conflict"],
+        "413": ["body over max_body_bytes — the platform refusal may not carry the typed error shape"],
+        "422": ["invalid_request", "too_many_questions", "too_many_options"],
+        "429": ["rate_limited", "busy", "overloaded", "quota_exhausted"],
+        "500": ["registry_unavailable", "ledger_unavailable"],
+        "503": ["door_unavailable", "identity_mismatch", "unavailable", "membership_unavailable", "unpriced", "price_invalid — last two monetary admission only"]
+      },
+      "notes": [
+        "Independent questions over one state belong in one request; questions cannot read each other's answers.",
+        "The gateway verifies the backend's published model card against the binding before forwarding; a disagreement is identity_mismatch and never bills the caller.",
+        "oak's --input lines|ndjson issues one of these calls per row; there is no bulk request shape."
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/classify",
+      "status": "implemented",
+      "summary": "Classify ordered inputs under an explicit selection policy — a facade over per-input systemone calls.",
+      "request": {
+        "content_type": "application/json",
+        "schema": "openagents.classify.v1",
+        "schema_ref": "docs/decision-models/schemas/classify-request-v1.json",
+        "required_fields": ["v", "model", "capacity", "policy", "inputs"],
+        "modes": ["single-label", "multi-label", "binary", "score"],
+        "notes": [
+          "capacity names the binding's lane — shared, dedicated, trained, or on-device; anything else is 422 unsupported_capacity.",
+          "The door must declare classify limits in the gateway configuration; undeclared support is 422 unsupported_limits, never an inferred product maximum.",
+          "Review and fallback are opt-in sub-documents of the policy (openagents.classify-review.v1), not separate routes."
+        ]
+      },
+      "responses": {
+        "200": {
+          "shape": "openagents.classify.v1 report: v, model, capacity, policy, served, outcome (answered|mixed), outcomes{answered,refused,unavailable,unattempted}, results[] in input order, selections[], aggregates[], usage{forwards,input_tokens_complete,output_tokens_complete,input_tokens?,output_tokens?,review?,fallback?}, timing{latency_ms}, review?",
+          "schema_ref": "docs/decision-models/schemas/classify-response-v1.json"
+        },
+        "422": "Either a typed refusal (envelope rejected before dispatch) or a report whose dispatched units were all refused.",
+        "503": "Either a typed refusal or a report carrying unavailable or unattempted work — a completed report is still a report; inspect it rather than retrying it as unattempted."
+      },
+      "refusal_statuses": {
+        "400": ["invalid_request — the envelope did not parse", "malformed", "workspace_required"],
+        "401": ["unauthenticated"],
+        "402": ["insufficient_funds — monetary admission only"],
+        "403": ["door_not_bound", "workspace_forbidden"],
+        "409": ["idempotency_conflict"],
+        "413": ["body over max_body_bytes"],
+        "422": ["invalid_request", "unsupported_schema", "unsupported_mode", "unsupported_limits", "unsupported_capacity", "invalid_id", "duplicate_id", "too_many_inputs", "too_many_labels", "too_many_levels", "too_many_dimensions", "too_many_judgments", "content_too_large", "overflow", "context_limit"],
+        "429": ["rate_limited", "busy", "overloaded", "quota_exhausted"],
+        "500": ["registry_unavailable", "ledger_unavailable"],
+        "503": ["door_unavailable", "identity_mismatch", "unavailable", "membership_unavailable", "unpriced", "price_invalid — last two monetary admission only"]
+      },
+      "notes": [
+        "One native request is forwarded per input under a bounded scheduler; results reassemble in input order.",
+        "Discovery of each door's declared bounds is the classification object on its GET /v1/models card.",
+        "Partial outcomes are preserved: refused, unavailable, and unattempted items are named, never dropped."
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": "implemented",
+      "summary": "List the doors the caller's credential may name, with the identity each is bound to.",
+      "request": {
+        "headers": ["Authorization (optional — anonymous sees shared doors only)", "X-Workspace-Id (required under require_workspace_membership)"]
+      },
+      "responses": {
+        "200": {
+          "shape": {
+            "models": [
+              {
+                "id": "the door name a request uses in model",
+                "model": "the artifact id the binding expects the backend to publish",
+                "artifact_signature": "the content digest the binding pins, when it pins one",
+                "lane": "shared | dedicated | trained | on-device",
+                "admission": {
+                  "scope": "the question families an admission record covered — trained lane only",
+                  "record": "the admission record's digest — trained lane only",
+                  "registry_digest": "the manifest revision that authorized this card",
+                  "registry_sequence": "the manifest's sequence number"
+                },
+                "classification": "the openagents.classify-discovery.v1 card: status configured | unsupported | unavailable | invalid-limits, plus declared limits, modes, admission ceilings, and execution shape when configured"
+              }
+            ]
+          },
+          "note": "This is the registry's claim — which doors exist for this caller and what they are pinned to — not a statement about backend health, and never remote attestation. A listed door can still refuse at identity check."
+        }
+      },
+      "refusal_statuses": {
+        "400": ["malformed", "workspace_required"],
+        "401": ["unauthenticated"],
+        "403": ["workspace_forbidden"],
+        "500": ["registry_unavailable"],
+        "503": ["membership_unavailable"]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "status": "implemented",
+      "summary": "Process liveness — nothing more.",
+      "request": {"headers": []},
+      "responses": {
+        "200": {
+          "shape": {"status": "ok"},
+          "note": "Liveness for a load balancer. It is not readiness and reveals nothing about doors or backends; identity verification runs per request."
+        }
+      },
+      "refusal_statuses": {}
+    },
+    {
+      "method": "GET",
+      "path": "/v1/balance",
+      "status": "implemented",
+      "condition": "Routed only when the deployment configures monetary admission (a money document in gateway.json, which itself requires require_workspace_membership). Under a configuration without money the route does not exist at all.",
+      "summary": "Read the caller's workspace account position and the configured doors' price versions.",
+      "request": {
+        "headers": ["Authorization: Bearer oak_<id>.<secret>", "X-Workspace-Id (required — the account the read is scoped to)"]
+      },
+      "responses": {
+        "200": {
+          "shape": {
+            "workspace": "the workspace the read is scoped to",
+            "balance": "{currency, credited, reserved, settled, refunded, available, spend_remaining}",
+            "prices": "object of door name to {version, policy, currency} — the price versions the configured doors charge under"
+          }
+        }
+      },
+      "refusal_statuses": {
+        "400": ["workspace_required"],
+        "401": ["unauthenticated"],
+        "403": ["workspace_forbidden"],
+        "404": ["account_missing — the workspace holds no monetary account", "unmetered — defensive; unreachable in practice because the route is registered only when monetary admission is configured"],
+        "500": ["registry_unavailable"],
+        "503": ["membership_unavailable"]
+      },
+      "notes": [
+        "There is no top-up, payment, or credit mutation over HTTP — POST, PUT, and DELETE on this route are refused; funding is an operator act on the ledger.",
+        "See docs/decision-models/service/monetary-accounting.md."
+      ]
+    }
+  ],
+  "refusal_codes": {
+    "malformed": {"status": 400, "meaning": "the Authorization header is not text", "retryable": false},
+    "invalid_request": {"status": "400 or 422", "meaning": "the body is not a JSON envelope, the envelope names no model door, or a classify envelope failed schema or plan validation", "retryable": false},
+    "workspace_required": {"status": 400, "meaning": "membership mode requires exactly one X-Workspace-Id header", "retryable": false},
+    "unauthenticated": {"status": 401, "meaning": "no Bearer shape, or an unknown, revoked, or wrong credential", "retryable": false},
+    "insufficient_funds": {"status": 402, "meaning": "monetary admission: no provisioned account, or the hold exceeds the available balance or remaining authorized spend", "retryable": false},
+    "door_not_bound": {"status": 403, "meaning": "the tenant holds no binding for the named door and the door is not shared", "retryable": false},
+    "workspace_forbidden": {"status": 403, "meaning": "the credential has no active membership in the named workspace and tenant", "retryable": false},
+    "account_missing": {"status": 404, "meaning": "the workspace holds no monetary account", "retryable": false},
+    "unmetered": {"status": 404, "meaning": "the gateway does not run monetary admission — defensive; the balance route is not registered in that configuration", "retryable": false},
+    "idempotency_conflict": {"status": 409, "meaning": "the (request, attempt) pair is taken — already resolved, or held for different content", "retryable": false},
+    "too_many_questions": {"status": 422, "meaning": "the request carries more questions than the gateway admits (default bound 256)", "retryable": false},
+    "too_many_options": {"status": 422, "meaning": "the request totals more options than the gateway admits (default bound 4096)", "retryable": false},
+    "unsupported_schema": {"status": 422, "meaning": "the classify envelope's v is not openagents.classify.v1", "retryable": false},
+    "unsupported_mode": {"status": 422, "meaning": "the classify envelope plans a mode the door does not serve", "retryable": false},
+    "unsupported_limits": {"status": 422, "meaning": "the door declares no classify bounds, or bounds the facade cannot serve", "retryable": false},
+    "unsupported_capacity": {"status": 422, "meaning": "the request names a capacity lane other than the binding's", "retryable": false},
+    "invalid_id": {"status": 422, "meaning": "a classify input, label, or dimension id is empty, over-long, or otherwise invalid", "retryable": false},
+    "duplicate_id": {"status": 422, "meaning": "a classify id appears twice", "retryable": false},
+    "too_many_inputs": {"status": 422, "meaning": "the classify envelope carries more inputs than the door's declared bound", "retryable": false},
+    "too_many_labels": {"status": 422, "meaning": "the classify envelope carries more labels than the door's declared bound", "retryable": false},
+    "too_many_levels": {"status": 422, "meaning": "a score unit's rubric exceeds the door's declared levels bound", "retryable": false},
+    "too_many_dimensions": {"status": 422, "meaning": "the classify envelope carries more dimensions than the door's declared bound", "retryable": false},
+    "too_many_judgments": {"status": 422, "meaning": "the classify envelope plans more total judgments than the door's declared bound", "retryable": false},
+    "content_too_large": {"status": 422, "meaning": "a classify field exceeds the door's declared byte bound", "retryable": false},
+    "overflow": {"status": 422, "meaning": "the classify plan's judgment arithmetic overflowed", "retryable": false},
+    "context_limit": {"status": 422, "meaning": "an expanded classify request exceeds the door's declared max_forward_bytes; the gateway never truncates", "retryable": false},
+    "rate_limited": {"status": 429, "meaning": "the door's declared calls-per-minute window is full", "retryable": true},
+    "busy": {"status": 429, "meaning": "the door's declared forward slots are full", "retryable": true},
+    "overloaded": {"status": 429, "meaning": "the gateway's process-wide forward bound is full", "retryable": true},
+    "quota_exhausted": {"status": 429, "meaning": "the tenant's daily budget is spent — retrying cannot fix a spent allowance", "retryable": false},
+    "registry_unavailable": {"status": 500, "meaning": "the registry could not be read", "retryable": true},
+    "ledger_unavailable": {"status": 500, "meaning": "the quota or monetary ledger refused or failed a write", "retryable": true},
+    "membership_unavailable": {"status": 503, "meaning": "the workspace membership store is unavailable", "retryable": true},
+    "door_unavailable": {"status": 503, "meaning": "the door is bound but no backend is configured, or its identity could not be read", "retryable": true},
+    "identity_mismatch": {"status": 503, "meaning": "the backend's published card disagrees with the binding — the caller is never billed for it", "retryable": false},
+    "unavailable": {"status": 503, "meaning": "the forward failed — transport, a 5xx, a redirect, or an oversized response", "retryable": true},
+    "unpriced": {"status": 503, "meaning": "monetary admission: the door has no configured price", "retryable": false},
+    "price_invalid": {"status": 503, "meaning": "monetary admission: the configured price disagrees with the binding", "retryable": false},
+    "backend_passthrough": {"status": "the backend's", "meaning": "a door may pass through its own typed refusal with a code outside the gateway-owned set (for example guardrail or uncalibrated)", "retryable": "depends on the code — treat as refused, not transient"}
+  },
+  "unimplemented": [
+    {"surface": "durable job API — submit, status, cancellation, and result export", "advertised_in": "docs/decision-models/api/decision-api.md", "note": "Specified for work that outlives a request; no job route exists today. A relay event or an in-memory queue is not durable job storage."},
+    {"surface": "packed or batched model inference", "advertised_in": "docs/decision-models/api/decision-api.md", "note": "Classification discovery reports model_packing: false; execution is one native forward per input."},
+    {"surface": "standalone review route", "advertised_in": "docs/decision-models/guides/caller.md", "note": "Review and fallback exist only as opt-in policy sub-documents inside POST /v1/classify."},
+    {"surface": "GET classification endpoints or compatibility aliases", "advertised_in": "docs/decision-models/guides/classification-callers.md", "note": "The gateway serves classification only through POST /v1/classify; any future alias must run the same admission path before it is advertised."},
+    {"surface": "Streamable HTTP MCP server", "advertised_in": "docs/decision-models/api/decision-api.md", "note": "Only the stdio oak-mcp binary exists; there is no MCP-over-HTTP surface."},
+    {"surface": "packaged SDKs and installers (Python, Go)", "advertised_in": "docs/decision-models/guides/caller.md", "note": "Proposed and tracked under packaging work; oak and crates/jev are the callers today."},
+    {"surface": "hosted public endpoint and self-serve signup", "advertised_in": "none — do not assume one", "note": "No public base URL is published; keys are operator-issued."},
+    {"surface": "account mutations — top-up, payment, or credit over HTTP", "advertised_in": "docs/decision-models/service/monetary-accounting.md", "note": "POST, PUT, and DELETE on /v1/balance are refused; funding is an operator act on the ledger."},
+    {"surface": "free simulator or labeled test mode", "advertised_in": "docs/decision-models/api/decision-api.md", "note": "A deterministic free simulator is a stated target; it does not exist."},
+    {"surface": "streaming responses and webhooks", "advertised_in": "docs/decision-models/api/decision-api.md", "note": "Named as job-API delivery targets; no streaming or webhook surface exists."},
+    {"surface": "decision calls over the Nostr relay", "advertised_in": "docs/decision-models/api/relay-decision-contract.md", "note": "A proposed transport contract, not a serving route."},
+    {"surface": "OAuth, image or multimodal input, paid-plan tiers", "advertised_in": "none — never specified", "note": "The service has no OAuth flow, accepts JSON-or-text state only, and publishes no pricing tiers."}
+  ]
+}

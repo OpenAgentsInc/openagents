@@ -1,0 +1,624 @@
+openapi: 3.1.0
+info:
+  title: OpenAgents decision API — implemented routes
+  version: "1.0.0"
+  x-generated-by: hand-maintained
+  description: >-
+    An OpenAPI 3.1 fragment scoped to the routes `crates/gateway` serves
+    today: `POST /v1/systemone`, `POST /v1/classify`, `GET /v1/models`,
+    `GET /healthz`, and — only under monetary admission — `GET
+    /v1/balance`. It claims nothing else: no OAuth flow, no streaming, no
+    image or multimodal input, no batch or job endpoints, no hosted
+    public origin, and no pricing tiers. `docs/agents/api-catalog.json`
+    enumerates the advertised surfaces that remain unimplemented, and
+    `docs/decision-models/api/openapi.yaml` is the API group's own
+    contract document.
+servers:
+  - url: http://127.0.0.1:8080
+    description: A locally deployed gateway. Deployments choose their origin; no public endpoint is published.
+paths:
+  /healthz:
+    get:
+      summary: Process liveness
+      description: >-
+        The process is up. Liveness only — it is not readiness and says
+        nothing about doors or backends; identity verification runs per
+        request.
+      security: []
+      responses:
+        "200":
+          description: The process is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+  /v1/models:
+    get:
+      summary: List the caller's doors
+      description: >-
+        The doors this credential may name in a request's `model` field,
+        with the identity each is bound to. Anonymous callers see only
+        `shared` doors; a tenant sees its bound doors plus the shared
+        lane. This is the registry's claim — not a statement about
+        backend health, and never remote attestation. A listed door can
+        still refuse at identity check.
+      responses:
+        "200":
+          description: The visible door cards.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [models]
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModelCard"
+        "400":
+          $ref: "#/components/responses/TypedError"
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "403":
+          $ref: "#/components/responses/TypedError"
+        "500":
+          $ref: "#/components/responses/TypedError"
+        "503":
+          $ref: "#/components/responses/TypedError"
+  /v1/systemone:
+    post:
+      summary: Answer typed questions about one state
+      description: >-
+        One state, one set of typed questions, one typed answer per
+        question with probabilities. The `model` field names a door the
+        credential is bound to; the gateway verifies the backend's
+        published identity against the binding before a byte is
+        forwarded, and a forwarded answer arrives verbatim with the
+        backend's status. Independent questions over one state belong in
+        one request; questions cannot read each other's answers.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: >-
+            The request's stable identity. Retries repeat it with an
+            incrementing `X-Attempt`; a settled pair refuses reuse, and
+            a pair reused against different content is `409
+            idempotency_conflict`.
+        - name: X-Attempt
+          in: header
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: The attempt number of this request; `1` when absent.
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema:
+            type: string
+          description: >-
+            Exactly one is required when the deployment enforces
+            workspace membership — always the case under monetary
+            admission.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Call"
+      responses:
+        "200":
+          description: The door answered — the backend's document verbatim.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/RequestId"
+            x-attempt:
+              $ref: "#/components/headers/Attempt"
+            x-outcome:
+              $ref: "#/components/headers/Outcome"
+            x-receipt:
+              $ref: "#/components/headers/Receipt"
+            x-settlement:
+              $ref: "#/components/headers/Settlement"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Result"
+        "400":
+          $ref: "#/components/responses/TypedError"
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "402":
+          description: >-
+            Monetary admission only — `insufficient_funds`: no
+            provisioned account, or the hold exceeds the available
+            balance or remaining authorized spend.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypedError"
+        "403":
+          $ref: "#/components/responses/TypedError"
+        "409":
+          $ref: "#/components/responses/TypedError"
+        "413":
+          description: >-
+            The body exceeded the configured `max_body_bytes` (default
+            1048576). This platform refusal may not carry the typed
+            error shape.
+        "422":
+          $ref: "#/components/responses/TypedError"
+        "429":
+          description: >-
+            Rate, concurrency, or daily-quota bound — `rate_limited`,
+            `busy`, `overloaded`, or `quota_exhausted`. `Retry-After`
+            accompanies the response; `quota_exhausted` is a spent
+            budget that retrying cannot fix.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying.
+            x-request-id:
+              $ref: "#/components/headers/RequestId"
+            x-attempt:
+              $ref: "#/components/headers/Attempt"
+            x-outcome:
+              $ref: "#/components/headers/Outcome"
+            x-receipt:
+              $ref: "#/components/headers/Receipt"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypedError"
+        "500":
+          $ref: "#/components/responses/TypedError"
+        "503":
+          $ref: "#/components/responses/TypedError"
+  /v1/classify:
+    post:
+      summary: Classify ordered inputs under an explicit selection policy
+      description: >-
+        A facade over per-input `systemone` calls: single-label Choice,
+        independent multi-label Noul, binary Noul filtering, and Score
+        ranking, including named dimensions and opt-in review/fallback
+        policies. The door must declare classify limits in the gateway
+        configuration — undeclared support is refused, never inferred.
+        Results reassemble in input order and preserve refused,
+        unavailable, and unattempted items rather than dropping them.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Caller-owned request identity; retain it across retry attempts.
+        - name: X-Attempt
+          in: header
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Attempt number, defaulting to 1; increment for a new attempt.
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Required when the deployment enforces workspace membership.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../decision-models/schemas/classify-request-v1.json"
+      responses:
+        "200":
+          description: >-
+            An ordered classification report — `answered` when every
+            dispatched unit answered, `mixed` when some did not.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/RequestId"
+            x-attempt:
+              $ref: "#/components/headers/Attempt"
+            x-outcome:
+              $ref: "#/components/headers/Outcome"
+            x-receipt:
+              $ref: "#/components/headers/Receipt"
+            x-settlement:
+              $ref: "#/components/headers/Settlement"
+          content:
+            application/json:
+              schema:
+                $ref: "../decision-models/schemas/classify-response-v1.json"
+        "400":
+          $ref: "#/components/responses/TypedError"
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "402":
+          description: Monetary admission only — `insufficient_funds`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypedError"
+        "403":
+          $ref: "#/components/responses/TypedError"
+        "409":
+          $ref: "#/components/responses/TypedError"
+        "413":
+          description: >-
+            The body exceeded the configured `max_body_bytes`. This
+            platform refusal may not carry the typed error shape.
+        "422":
+          description: >-
+            A typed envelope refusal, or a report whose dispatched units
+            were all refused.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/TypedError"
+                  - $ref: "../decision-models/schemas/classify-response-v1.json"
+        "429":
+          description: Rate, concurrency, or daily-quota bound. `Retry-After` accompanies the response.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying.
+            x-request-id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypedError"
+        "500":
+          $ref: "#/components/responses/TypedError"
+        "503":
+          description: >-
+            An admission failure, or a report carrying unavailable or
+            unattempted work. A completed report is still a report —
+            inspect it rather than retrying it as unattempted.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/TypedError"
+                  - $ref: "../decision-models/schemas/classify-response-v1.json"
+  /v1/balance:
+    get:
+      summary: Read the caller's workspace account position
+      description: >-
+        The workspace's exact monetary position — credited, reserved,
+        settled, refunded, available, and remaining authorized spend —
+        plus the price versions the configured doors charge under. A
+        caller can only ever read a workspace it belongs to. There is no
+        top-up, payment, or credit mutation over HTTP.
+      x-conditional: >-
+        This route exists only when the deployment configures monetary
+        admission (a `money` document in `gateway.json`, which requires
+        `require_workspace_membership`). Under a configuration without
+        `money` the route is not registered at all.
+      parameters:
+        - name: X-Workspace-Id
+          in: header
+          required: true
+          schema:
+            type: string
+          description: The workspace account the read is scoped to.
+      responses:
+        "200":
+          description: The account position and configured door prices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Balance"
+        "400":
+          $ref: "#/components/responses/TypedError"
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "403":
+          $ref: "#/components/responses/TypedError"
+        "404":
+          description: "`account_missing` — the workspace holds no monetary account."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypedError"
+        "500":
+          $ref: "#/components/responses/TypedError"
+        "503":
+          $ref: "#/components/responses/TypedError"
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: >-
+        An issued key: `oak_<id>.<secret>`. Omitted entirely for
+        anonymous access to shared doors, which a
+        `require_workspace_membership` deployment refuses outright.
+  headers:
+    RequestId:
+      schema:
+        type: string
+      description: The request's identity — the `Idempotency-Key` when sent, else minted.
+    Attempt:
+      schema:
+        type: integer
+      description: The attempt that produced this response.
+    Outcome:
+      schema:
+        type: string
+        enum: [answered, mixed, refused, unavailable, unattempted]
+      description: How the settled attempt ended; `mixed` only on `POST /v1/classify`.
+    Receipt:
+      schema:
+        type: string
+      description: The sealed execution receipt's digest, resolving to a line in the service's `receipts.jsonl`.
+    Settlement:
+      schema:
+        type: string
+        enum: [settled, outstanding, released]
+      description: The monetary hold's resolution — present only under monetary admission.
+  schemas:
+    Call:
+      type: object
+      required: [model, state, questions]
+      properties:
+        model:
+          type: string
+          description: The door to answer through, resolved against the caller's bindings.
+        state:
+          description: The JSON value or text the questions read.
+        questions:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Question"
+          description: Question id to question. Ids are caller-side and are not sent to the model.
+    Question:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [noul, choice, score]
+        instructions:
+          description: The judgment to make — a string or a structured object.
+        criteria:
+          description: >-
+            `noul`: optional `{"true": …, "false": …}`. `choice`: object
+            of option to description. `score`: array of 2–10 ordered
+            level descriptions.
+    Result:
+      type: object
+      required: [model, answers]
+      properties:
+        model:
+          type: string
+          description: The served identity that answered.
+        answers:
+          type: object
+          additionalProperties:
+            oneOf:
+              - $ref: "#/components/schemas/NoulAnswer"
+              - $ref: "#/components/schemas/ChoiceAnswer"
+              - $ref: "#/components/schemas/ScoreAnswer"
+        usage:
+          $ref: "#/components/schemas/Usage"
+      description: >-
+        The backend's document arrives verbatim; a door may add fields
+        beyond this minimum shape.
+    NoulAnswer:
+      type: object
+      required: [type, noul]
+      properties:
+        type:
+          const: noul
+        noul:
+          type: number
+          description: The probability of yes, from 0 to 1.
+        selected:
+          type: string
+          description: The estimator's own pick, when the door reports one.
+    ChoiceAnswer:
+      type: object
+      required: [type, choice, confidence, probabilities]
+      properties:
+        type:
+          const: choice
+        choice:
+          type: string
+        confidence:
+          type: number
+          description: How concentrated the distribution is — not a correctness guarantee.
+        probabilities:
+          type: object
+          additionalProperties:
+            type: number
+    ScoreAnswer:
+      type: object
+      required: [type, score, confidence, legend]
+      properties:
+        type:
+          const: score
+        score:
+          type: number
+          description: The probability-weighted mean level.
+        confidence:
+          type: number
+        selected:
+          type: string
+        legend:
+          type: object
+        probabilities:
+          type: object
+          additionalProperties:
+            type: number
+    Usage:
+      type: object
+      properties:
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+      description: Either field is absent when the backend does not count it.
+    ModelCard:
+      type: object
+      required: [id, model, artifact_signature, lane, admission, classification]
+      properties:
+        id:
+          type: string
+          description: The door name a request uses in `model`.
+        model:
+          type: string
+          description: The artifact id the binding expects the backend to publish.
+        artifact_signature:
+          type: string
+          description: The content digest the binding pins; empty when the binding pins a name only.
+        lane:
+          type: string
+          enum: [shared, dedicated, trained, on-device]
+        admission:
+          type: object
+          properties:
+            scope:
+              type: array
+              items:
+                type: string
+              description: The question families an admission record covered — trained lane only.
+            record:
+              type: string
+              description: The admission record's digest — trained lane only.
+            registry_digest:
+              type: string
+            registry_sequence:
+              type: integer
+        classification:
+          type: object
+          description: >-
+            The `openagents.classify-discovery.v1` card: `status` is
+            `configured`, `unsupported`, `unavailable`, or
+            `invalid-limits`; a configured card carries the door's
+            declared limits, supported modes, admission ceilings, and
+            execution shape.
+    Balance:
+      type: object
+      required: [workspace, balance, prices]
+      properties:
+        workspace:
+          type: string
+        balance:
+          type: object
+          properties:
+            currency:
+              type: string
+            credited:
+              type: integer
+            reserved:
+              type: integer
+            settled:
+              type: integer
+            refunded:
+              type: integer
+            available:
+              type: integer
+            spend_remaining:
+              type: integer
+        prices:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              version:
+                type: string
+              policy:
+                type: string
+              currency:
+                type: string
+    TypedError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - malformed
+                - invalid_request
+                - workspace_required
+                - unauthenticated
+                - insufficient_funds
+                - door_not_bound
+                - workspace_forbidden
+                - account_missing
+                - unmetered
+                - idempotency_conflict
+                - too_many_questions
+                - too_many_options
+                - unsupported_schema
+                - unsupported_mode
+                - unsupported_limits
+                - unsupported_capacity
+                - invalid_id
+                - duplicate_id
+                - too_many_inputs
+                - too_many_labels
+                - too_many_levels
+                - too_many_dimensions
+                - too_many_judgments
+                - content_too_large
+                - overflow
+                - context_limit
+                - rate_limited
+                - busy
+                - overloaded
+                - quota_exhausted
+                - registry_unavailable
+                - ledger_unavailable
+                - membership_unavailable
+                - door_unavailable
+                - identity_mismatch
+                - unavailable
+                - unpriced
+                - price_invalid
+              description: >-
+                The gateway-owned codes, complete. A backend may pass
+                through its own typed refusal with a code outside this
+                set — treat an unknown code as refused, not transient.
+            message:
+              type: string
+            request:
+              type: string
+              description: The request identity — present on refusals raised inside the owned admission path.
+            attempt:
+              type: integer
+              description: The attempt number — present on refusals raised inside the owned admission path.
+        settlement:
+          type: string
+          enum: [settled, outstanding, released]
+          description: The monetary hold's resolution, on gateway refusals under monetary admission.
+  responses:
+    TypedError:
+      description: >-
+        A typed refusal — see the `refusal_codes` map in
+        `docs/agents/api-catalog.json` and the code table in
+        `docs/decision-models/service/gateway.md`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TypedError"
+security:
+  - bearer: []

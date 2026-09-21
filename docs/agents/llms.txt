@@ -1,0 +1,30 @@
+# OpenAgents
+
+> Open-source agent infrastructure whose public service is a keyed HTTP
+> decision API: a caller posts one state and a map of typed questions
+> (`noul`, `choice`, `score`) and receives one typed answer per question
+> with probabilities. This file indexes the machine-readable discovery
+> documents an agent needs; each describes what the code implements
+> today, and the catalog names what it does not.
+
+## Discovery documents
+
+- [index.json](index.json): Versioned index of every file in this discovery set, with a content note per file.
+- [api-catalog.json](api-catalog.json): The route catalog — every HTTP route the gateway implements, its request and answer shapes, refusal codes, and an explicit list of advertised surfaces that do not exist yet.
+- [openapi.yaml](openapi.yaml): An OpenAPI 3.1 fragment covering exactly the implemented routes and their real request/response schemas.
+- [auth.md](auth.md): How a caller authenticates — `oak_` bearer keys, where they may live, and the typed refusal a rejected call gets.
+- [skills.md](skills.md): What an agent needs to call the API — the `oak` CLI, the `oak-mcp` MCP server, or raw HTTP — plus supported versions and honest limits.
+
+## Reference
+
+- [README.md](README.md): The general agent architecture this repository builds toward.
+- [roadmap.md](roadmap.md): Remaining design and implementation work for general agents.
+- [Caller guide](../decision-models/guides/caller.md): The end-to-end guide to calling the decision API.
+- [Classification callers](../decision-models/guides/classification-callers.md): The `oak classify` and `oak-mcp` caller contract.
+- [Gateway service document](../decision-models/service/gateway.md): The implemented admission path, bounds, and refusal codes.
+- [Decision API specification](../decision-models/api/decision-api.md): The target product contract, including surfaces that are not implemented.
+
+---
+Version 1.0.0 · generated-by: hand-maintained · 2026-09-21
+
+VALIDATED: JSON files parse with `python3 -m json.tool`; `openapi.yaml` parses with `yaml.safe_load`; Markdown links resolve to repo paths. Exact commands are in the commit message.
