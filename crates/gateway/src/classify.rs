@@ -216,6 +216,13 @@ pub struct SingleSelect {
     /// no implicit confidence threshold.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_probability: Option<f64>,
+    /// An explicit review cut: when the distribution's top probability
+    /// is below it, the unit reports `uncertain`. Absent means the call
+    /// reports no uncertainty flag — the contract does not invent one.
+    /// Selection is unchanged; the flag is a reading of the raw
+    /// distribution, independent of `min_probability`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uncertain_below: Option<f64>,
     /// What an unmatched unit selects.
     pub no_match: NoMatch,
 }
@@ -237,6 +244,12 @@ pub struct MultiSelect {
     pub ties: BoundaryTies,
     /// What an input with no selected label reports.
     pub no_match: EmptySelection,
+    /// An explicit review cut: when any label's winning side — the
+    /// greater of its Noul and one minus it — is below it, the unit
+    /// reports `uncertain`. Absent means the call reports no
+    /// uncertainty flag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uncertain_below: Option<f64>,
 }
 
 /// The selection rule for a binary unit: the cut the filter's one Noul
@@ -248,6 +261,12 @@ pub struct MultiSelect {
 pub struct BinarySelect {
     /// The probability at or above which an input is selected.
     pub threshold: f64,
+    /// An explicit review cut: when the answered Noul's winning side —
+    /// the greater of the probability and one minus it — is below it,
+    /// the unit reports `uncertain`. Absent means the call reports no
+    /// uncertainty flag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uncertain_below: Option<f64>,
 }
 
 impl BinarySelect {
@@ -281,6 +300,12 @@ pub struct ScoreSelect {
     /// A cap on the ranking's length, when the caller declares one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_n: Option<u64>,
+    /// An explicit review cut: when the top level of the answered
+    /// distribution is below it, the unit reports `uncertain`. Absent
+    /// means the call reports no uncertainty flag; an answer that
+    /// carries no distribution is never flagged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uncertain_below: Option<f64>,
 }
 
 /// The selection rules a policy declares, one entry per mode.
@@ -428,13 +453,19 @@ impl Policy {
     /// validated against them: a declared cut is a probability and a
     /// declared cap admits at least one label.
     fn check(&self) -> Result<(), Refusal> {
-        if let Some(rule) = &self.select.single_label
-            && let Some(cut) = rule.min_probability
-        {
-            check_probability("min_probability", cut)?;
+        if let Some(rule) = &self.select.single_label {
+            if let Some(cut) = rule.min_probability {
+                check_probability("min_probability", cut)?;
+            }
+            if let Some(cut) = rule.uncertain_below {
+                check_probability("uncertain_below", cut)?;
+            }
         }
         if let Some(rule) = &self.select.multi_label {
             check_probability("threshold", rule.threshold)?;
+            if let Some(cut) = rule.uncertain_below {
+                check_probability("uncertain_below", cut)?;
+            }
             if rule.top_n == Some(0) {
                 return Err(Refusal::InvalidRequest(
                     "the policy's `top_n` of 0 selects no labels".to_string(),
@@ -443,16 +474,37 @@ impl Policy {
         }
         if let Some(rule) = &self.select.binary {
             check_probability("threshold", rule.threshold)?;
+            if let Some(cut) = rule.uncertain_below {
+                check_probability("uncertain_below", cut)?;
+            }
         }
-        if let Some(rule) = &self.select.score
-            && rule.top_n == Some(0)
-        {
-            return Err(Refusal::InvalidRequest(
-                "the policy's `top_n` of 0 ranks no inputs".to_string(),
-            ));
+        if let Some(rule) = &self.select.score {
+            if let Some(cut) = rule.uncertain_below {
+                check_probability("uncertain_below", cut)?;
+            }
+            if rule.top_n == Some(0) {
+                return Err(Refusal::InvalidRequest(
+                    "the policy's `top_n` of 0 ranks no inputs".to_string(),
+                ));
+            }
         }
         Ok(())
     }
+}
+
+/// What a single-label selection resolved to: the wire output plus
+/// whether the no-match rule produced it. The distinction matters
+/// whenever `no_match` names a designated label — that label is a
+/// genuine selection when it wins the distribution outright and the
+/// no-match outcome only when an abstention cut or tie rule routed the
+/// unit there.
+#[derive(Clone, Debug)]
+pub struct Selection {
+    /// The unit's `selected` value on the wire.
+    pub output: Value,
+    /// Whether the no-match outcome fired: an abstention cut, a
+    /// declared tie, or a distribution with no top to name.
+    pub no_match: bool,
 }
 
 impl SingleSelect {
@@ -463,7 +515,7 @@ impl SingleSelect {
     /// `probabilities` pairs each declared label with its answered
     /// probability, in declared order — the order `first-declared`
     /// tie-breaking reads.
-    pub fn select(&self, probabilities: &[(String, f64)]) -> Value {
+    pub fn resolve(&self, probabilities: &[(String, f64)]) -> Selection {
         let top = probabilities
             .iter()
             .map(|(_, probability)| *probability)
@@ -475,15 +527,30 @@ impl SingleSelect {
         let abstained = self.min_probability.is_some_and(|cut| top < cut);
         let tied_out = tied > 1 && self.ties == SingleTies::NoMatch;
         if abstained || tied_out {
-            return self.unmatched();
+            return Selection {
+                output: self.unmatched(),
+                no_match: true,
+            };
         }
         probabilities
             .iter()
             .find(|(_, probability)| *probability == top)
             .map_or_else(
-                || self.unmatched(),
-                |(label, _)| Value::String(label.clone()),
+                || Selection {
+                    output: self.unmatched(),
+                    no_match: true,
+                },
+                |(label, _)| Selection {
+                    output: Value::String(label.clone()),
+                    no_match: false,
+                },
             )
+    }
+
+    /// The selected output alone — [`SingleSelect::resolve`] without
+    /// its resolution record.
+    pub fn select(&self, probabilities: &[(String, f64)]) -> Value {
+        self.resolve(probabilities).output
     }
 
     /// What the unit selects when nothing matched.
@@ -1727,6 +1794,7 @@ mod tests {
         let rule = SingleSelect {
             ties: SingleTies::FirstDeclared,
             min_probability: None,
+            uncertain_below: None,
             no_match: NoMatch::Null,
         };
         let probabilities = |entries: &[(&str, f64)]| -> Vec<(String, f64)> {
@@ -1750,6 +1818,7 @@ mod tests {
         let rule = SingleSelect {
             ties: SingleTies::NoMatch,
             min_probability: None,
+            uncertain_below: None,
             no_match: NoMatch::Label {
                 label: "other".to_string(),
             },
@@ -1768,6 +1837,7 @@ mod tests {
         let rule = SingleSelect {
             ties: SingleTies::FirstDeclared,
             min_probability: Some(0.6),
+            uncertain_below: None,
             no_match: NoMatch::Null,
         };
         assert_eq!(
@@ -1789,6 +1859,7 @@ mod tests {
             top_n: None,
             ties: BoundaryTies::IncludeAll,
             no_match: EmptySelection::Empty,
+            uncertain_below: None,
         };
         assert_eq!(
             rule.select(&probabilities(&[("a", 0.9), ("b", 0.4), ("c", 0.7)])),
@@ -2013,6 +2084,70 @@ mod tests {
         value["policy"]["select"]["score"]["top_n"] = json!(3);
         let refusal = plan(&value).unwrap_err();
         assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn an_uncertainty_cut_is_a_probability_the_caller_declares() {
+        // Every mode's review cut is optional and validated as a
+        // probability — the contract invents none.
+        for (mode, key) in [
+            ("single-label", "single_label"),
+            ("multi-label", "multi_label"),
+            ("binary", "binary"),
+            ("score", "score"),
+        ] {
+            let mut value = envelope();
+            value["mode"] = json!(mode);
+            if mode == "binary" {
+                value["labels"] = json!([{"id": "keep"}]);
+            }
+            if mode == "score" {
+                value["labels"] = json!([]);
+                value["levels"] = json!(["low", "high"]);
+            }
+            for cut in [-0.1, 1.1] {
+                let mut declared = value.clone();
+                declared["policy"]["select"][key]["uncertain_below"] = json!(cut);
+                let refusal = plan(&declared).unwrap_err();
+                assert_eq!(code(&refusal), "invalid_request", "{mode} cut {cut}");
+            }
+            let mut declared = value.clone();
+            declared["policy"]["select"][key]["uncertain_below"] = json!(0.7);
+            assert!(plan(&declared).is_ok(), "{mode}");
+        }
+        // Undeclared means no uncertainty reporting at all.
+        let plan = plan(&envelope()).unwrap();
+        assert_eq!(
+            plan.policy.select.single_label.unwrap().uncertain_below,
+            None
+        );
+    }
+
+    #[test]
+    fn a_designated_no_match_label_counts_as_no_match_only_when_routed() {
+        let probabilities = |entries: &[(&str, f64)]| -> Vec<(String, f64)> {
+            entries
+                .iter()
+                .map(|(label, p)| (label.to_string(), *p))
+                .collect()
+        };
+        let rule = SingleSelect {
+            ties: SingleTies::FirstDeclared,
+            min_probability: Some(0.6),
+            uncertain_below: None,
+            no_match: NoMatch::Label {
+                label: "other".to_string(),
+            },
+        };
+        // The designated label winning outright is a genuine selection.
+        let resolved = rule.resolve(&probabilities(&[("a", 0.2), ("other", 0.8)]));
+        assert_eq!(resolved.output, json!("other"));
+        assert!(!resolved.no_match);
+        // The same output routed through abstention is the no-match
+        // outcome, not a vote for the label.
+        let resolved = rule.resolve(&probabilities(&[("a", 0.55), ("other", 0.45)]));
+        assert_eq!(resolved.output, json!("other"));
+        assert!(resolved.no_match);
     }
 
     #[test]

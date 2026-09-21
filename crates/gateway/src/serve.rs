@@ -1079,8 +1079,9 @@ async fn classify_admitted(
     }
     // The corpus views the binary and score units produce — built from
     // the assembled items so a failed input is named rather than
-    // silently absent.
+    // silently absent — and the per-unit tallies every unit reports.
     let selections = corpus_selections(&plan, &items);
+    let aggregates = corpus_aggregates(&plan, &items);
     let response = json!({
         "v": classify::SCHEMA,
         "model": request.model,
@@ -1096,6 +1097,7 @@ async fn classify_admitted(
         },
         "results": items,
         "selections": selections,
+        "aggregates": aggregates,
         "usage": usage,
         "timing": {"latency_ms": started.elapsed().as_millis() as u64},
     });
@@ -1353,6 +1355,124 @@ fn corpus_selections(plan: &classify::Plan, items: &[Value]) -> Vec<Value> {
     selections
 }
 
+/// Increment one counter in a count map.
+fn bump(counts: &mut serde_json::Map<String, Value>, key: &str) {
+    let next = counts.get(key).and_then(Value::as_u64).unwrap_or(0) + 1;
+    counts.insert(key.to_string(), json!(next));
+}
+
+/// The per-unit tallies a call reports, one entry per unit in plan
+/// order: the unit's own outcome counts, how many answered inputs each
+/// label or rubric level was selected for, how many answered inputs
+/// resolved to no-match, and the inputs a declared `uncertain_below`
+/// cut flagged.
+///
+/// Every figure derives from the assembled per-item results: a count
+/// is a policy selection that actually happened, so an input no
+/// judgment answered is named under its outcome and never reads as a
+/// zero, a label a `top_n` cap excluded is not counted, and a
+/// designated no-match label counts under `no_match` when the policy
+/// routed the input there rather than under its own id. A multi-label
+/// input counts under every label it selected — independent Nouls are
+/// not a distribution and the counts need not sum to `answered`.
+fn corpus_aggregates(plan: &classify::Plan, items: &[Value]) -> Vec<Value> {
+    /// The `uncertain_below` cut a unit's mode declares, if any.
+    fn uncertainty_cut(plan: &classify::Plan, mode: Mode) -> Option<f64> {
+        let select = &plan.policy.select;
+        match mode {
+            Mode::SingleLabel => select.single_label.as_ref()?.uncertain_below,
+            Mode::MultiLabel => select.multi_label.as_ref()?.uncertain_below,
+            Mode::Binary => select.binary.as_ref()?.uncertain_below,
+            Mode::Score => select.score.as_ref()?.uncertain_below,
+        }
+    }
+    let mut aggregates = Vec::new();
+    for (unit_index, unit) in plan.units.iter().enumerate() {
+        let mut counts = Counts::default();
+        let mut no_match = 0_u64;
+        let mut uncertain = Vec::new();
+        let mut labels: serde_json::Map<String, Value> = unit
+            .labels
+            .iter()
+            .map(|label| (label.id.clone(), json!(0)))
+            .collect();
+        let mut levels: serde_json::Map<String, Value> = (0..unit.levels.len())
+            .map(|level| (level.to_string(), json!(0)))
+            .collect();
+        for item in items {
+            let Some(result) = item
+                .get("units")
+                .and_then(|units| units.get(unit_index))
+            else {
+                continue;
+            };
+            match result.get("outcome").and_then(Value::as_str) {
+                Some("answered") => counts.answered += 1,
+                Some("refused") => counts.refused += 1,
+                Some("unavailable") => counts.unavailable += 1,
+                _ => counts.unattempted += 1,
+            }
+            if result.get("outcome").and_then(Value::as_str) != Some("answered") {
+                continue;
+            }
+            if result.get("uncertain").and_then(Value::as_bool) == Some(true) {
+                uncertain.push(item["input"].clone());
+            }
+            if result.get("no_match").and_then(Value::as_bool) == Some(true) {
+                no_match += 1;
+                continue;
+            }
+            match unit.mode {
+                Mode::Score => {
+                    if let Some(level) = result.get("selected").and_then(Value::as_u64) {
+                        bump(&mut levels, &level.to_string());
+                    }
+                }
+                Mode::MultiLabel => {
+                    if let Some(selected) =
+                        result.get("selected").and_then(Value::as_array)
+                    {
+                        for label in selected.iter().filter_map(Value::as_str) {
+                            bump(&mut labels, label);
+                        }
+                    }
+                }
+                Mode::SingleLabel | Mode::Binary => {
+                    if let Some(label) = result.get("selected").and_then(Value::as_str) {
+                        bump(&mut labels, label);
+                    }
+                }
+            }
+        }
+        let mut entry = json!({
+            "mode": unit.mode.name(),
+            "outcomes": {
+                "answered": counts.answered,
+                "refused": counts.refused,
+                "unavailable": counts.unavailable,
+                "unattempted": counts.unattempted,
+            },
+            "no_match": no_match,
+        });
+        if let Some(dimension) = &unit.dimension {
+            entry["dimension"] = json!(dimension);
+        }
+        match unit.mode {
+            Mode::Score => {
+                entry["levels"] = Value::Object(levels);
+            }
+            _ => {
+                entry["labels"] = Value::Object(labels);
+            }
+        }
+        if uncertainty_cut(plan, unit.mode).is_some() {
+            entry["uncertain"] = json!(uncertain);
+        }
+        aggregates.push(entry);
+    }
+    aggregates
+}
+
 /// One input's assembled result when its forward answered: each unit's
 /// outcome, raw answers, and policy-selected output.
 fn served_item(
@@ -1529,9 +1649,22 @@ fn unit_result(
                     }
                 }
             }
+            let selection = rule.resolve(&pairs);
             base["outcome"] = json!("answered");
             base["raw"] = answer.clone();
-            base["selected"] = rule.select(&pairs);
+            base["selected"] = selection.output;
+            if selection.no_match {
+                base["no_match"] = json!(true);
+            }
+            if rule.uncertain_below.is_some_and(|cut| {
+                pairs
+                    .iter()
+                    .map(|(_, probability)| *probability)
+                    .fold(f64::NEG_INFINITY, f64::max)
+                    < cut
+            }) {
+                base["uncertain"] = json!(true);
+            }
             base
         }
         Mode::MultiLabel => {
@@ -1558,9 +1691,25 @@ fn unit_result(
                 raw.insert(label.clone(), answer.clone());
                 pairs.push((label.clone(), probability));
             }
+            let selected = rule.select(&pairs);
+            // Each label's Noul stands alone — an empty selection is
+            // the no-match outcome, and a weak label anywhere flags the
+            // input for review when the policy declares a cut.
+            if selected.is_null()
+                || selected.as_array().is_some_and(|labels| labels.is_empty())
+            {
+                base["no_match"] = json!(true);
+            }
+            if rule.uncertain_below.is_some_and(|cut| {
+                pairs
+                    .iter()
+                    .any(|(_, probability)| probability.max(1.0 - *probability) < cut)
+            }) {
+                base["uncertain"] = json!(true);
+            }
             base["outcome"] = json!("answered");
             base["raw"] = Value::Object(raw);
-            base["selected"] = rule.select(&pairs);
+            base["selected"] = selected;
             base
         }
         Mode::Binary => {
@@ -1578,6 +1727,15 @@ fn unit_result(
             };
             if !(0.0..=1.0).contains(&probability) {
                 return unit_failure(unit, "unavailable", "a noul answer is not a probability");
+            }
+            if !rule.selects(probability) {
+                base["no_match"] = json!(true);
+            }
+            if rule
+                .uncertain_below
+                .is_some_and(|cut| probability.max(1.0 - probability) < cut)
+            {
+                base["uncertain"] = json!(true);
             }
             base["outcome"] = json!("answered");
             base["raw"] = answer.clone();
@@ -1599,9 +1757,31 @@ fn unit_result(
                     "the answer is not a score on this rubric",
                 );
             };
+            let selected = selected_level(&scored).map_or(Value::Null, |level| json!(level));
+            if selected.is_null() {
+                base["no_match"] = json!(true);
+            }
+            if let Some(cut) = plan
+                .policy
+                .select
+                .score
+                .as_ref()
+                .and_then(|rule| rule.uncertain_below)
+            {
+                // An answer with no distribution has no top level to
+                // compare, so the declared cut cannot flag it.
+                let top = scored
+                    .probabilities
+                    .values()
+                    .copied()
+                    .fold(f64::NEG_INFINITY, f64::max);
+                if !scored.probabilities.is_empty() && top < cut {
+                    base["uncertain"] = json!(true);
+                }
+            }
             base["outcome"] = json!("answered");
             base["raw"] = answer.clone();
-            base["selected"] = selected_level(&scored).map_or(Value::Null, |level| json!(level));
+            base["selected"] = selected;
             base
         }
     }
@@ -2022,8 +2202,9 @@ fn unix_now() -> u64 {
 
 #[cfg(test)]
 mod classification_accounting_tests {
-    use super::{CompleteCounter, valid_primitive};
-    use serde_json::json;
+    use super::{CompleteCounter, corpus_aggregates, valid_primitive};
+    use crate::classify;
+    use serde_json::{Value, json};
 
     #[test]
     fn choice_mass_and_answer_types_follow_the_native_contract() {
@@ -2055,5 +2236,183 @@ mod classification_accounting_tests {
         counter.add(Some(0));
         counter.add(Some(3));
         assert_eq!(counter.total(), Some(3));
+    }
+
+    /// Plan a classification envelope against the product limits.
+    fn plan(value: &Value) -> classify::Plan {
+        classify::Request::parse(&serde_json::to_vec(value).unwrap())
+            .unwrap()
+            .plan(&classify::BackendLimits::product())
+            .unwrap()
+    }
+
+    /// One assembled item result, as `classify_admitted` builds it.
+    fn item(input: &str, outcome: &str, units: Vec<Value>) -> Value {
+        json!({"input": input, "outcome": outcome, "units": units})
+    }
+
+    /// One answered unit result carrying the given selection.
+    fn answered_unit(mode: &str, selected: Value) -> Value {
+        json!({"mode": mode, "outcome": "answered", "selected": selected})
+    }
+
+    #[test]
+    fn aggregates_count_overlapping_labels_and_name_unevaluated_work() {
+        // Two inputs, one selecting both labels — the counts overlap
+        // rather than summing to the answered count, because each
+        // label's Noul stands alone.
+        let plan = plan(&json!({
+            "v": classify::SCHEMA, "model": "m", "capacity": "c",
+            "policy": {"v": classify::POLICY_SCHEMA, "name": "p",
+                "select": {"multi_label": {"threshold": 0.5, "ties": "include-all",
+                                         "no_match": "empty", "uncertain_below": 0.7}}},
+            "inputs": [{"id": "a", "text": "x"}, {"id": "b", "text": "x"},
+                       {"id": "c", "text": "x"}, {"id": "d", "text": "x"}],
+            "mode": "multi-label",
+            "labels": [{"id": "x"}, {"id": "y"}],
+        }));
+        let items = vec![
+            item("a", "answered", vec![answered_unit("multi-label", json!(["x", "y"]))]),
+            item("b", "answered", vec![{
+                let mut unit = answered_unit("multi-label", json!(["x"]));
+                unit["uncertain"] = json!(true);
+                unit
+            }]),
+            item("c", "answered", vec![{
+                let mut unit = answered_unit("multi-label", json!([]));
+                unit["no_match"] = json!(true);
+                unit
+            }]),
+            item("d", "refused", vec![
+                json!({"mode": "multi-label", "outcome": "refused", "selected": null}),
+            ]),
+        ];
+        let aggregates = corpus_aggregates(&plan, &items);
+        assert_eq!(
+            Value::Array(aggregates),
+            json!([{
+                "mode": "multi-label",
+                "outcomes": {"answered": 3, "refused": 1, "unavailable": 0, "unattempted": 0},
+                "no_match": 1,
+                "labels": {"x": 2, "y": 1},
+                "uncertain": ["b"],
+            }])
+        );
+    }
+
+    #[test]
+    fn aggregates_tell_a_routed_no_match_from_a_genuine_label() {
+        // The designated no-match label counts under `no_match` only
+        // when the policy routed the input there; winning the
+        // distribution outright is a selection like any other.
+        let plan = plan(&json!({
+            "v": classify::SCHEMA, "model": "m", "capacity": "c",
+            "policy": {"v": classify::POLICY_SCHEMA, "name": "p",
+                "select": {"single_label": {"ties": "first-declared",
+                            "min_probability": 0.6,
+                            "no_match": {"kind": "label", "label": "other"}}}},
+            "inputs": [{"id": "a", "text": "x"}, {"id": "b", "text": "x"}, {"id": "c", "text": "x"}],
+            "mode": "single-label",
+            "labels": [{"id": "a"}, {"id": "other"}],
+        }));
+        let items = vec![
+            item("a", "answered", vec![{
+                let mut unit = answered_unit("single-label", json!("other"));
+                unit["no_match"] = json!(true);
+                unit
+            }]),
+            item("b", "answered", vec![answered_unit("single-label", json!("other"))]),
+            item("c", "answered", vec![answered_unit("single-label", json!("a"))]),
+        ];
+        let aggregates = corpus_aggregates(&plan, &items);
+        assert_eq!(aggregates[0]["labels"], json!({"a": 1, "other": 1}));
+        assert_eq!(aggregates[0]["no_match"], 1);
+        // No review cut was declared, so no uncertainty list appears.
+        assert!(aggregates[0].get("uncertain").is_none());
+    }
+
+    #[test]
+    fn aggregates_tally_levels_and_never_count_unattempted_work() {
+        // A score unit's `levels` counts each answered input's
+        // categorical level; inputs no judgment answered are named
+        // under their outcome, never folded into a zero.
+        let plan = plan(&json!({
+            "v": classify::SCHEMA, "model": "m", "capacity": "c",
+            "policy": {"v": classify::POLICY_SCHEMA, "name": "p",
+                "select": {"score": {"order": "descending", "top_n": 1,
+                            "uncertain_below": 0.9}}},
+            "inputs": [{"id": "a", "text": "x"}, {"id": "b", "text": "x"}, {"id": "c", "text": "x"}],
+            "mode": "score",
+            "levels": ["low", "high"],
+        }));
+        let items = vec![
+            item("a", "answered", vec![answered_unit("score", json!(1))]),
+            item("b", "answered", vec![{
+                let mut unit = answered_unit("score", json!(0));
+                unit["uncertain"] = json!(true);
+                unit
+            }]),
+            item("c", "unattempted", vec![
+                json!({"mode": "score", "outcome": "unattempted", "selected": null}),
+            ]),
+        ];
+        let aggregates = corpus_aggregates(&plan, &items);
+        assert_eq!(
+            Value::Array(aggregates),
+            json!([{
+                "mode": "score",
+                "outcomes": {"answered": 2, "refused": 0, "unavailable": 0, "unattempted": 1},
+                "no_match": 0,
+                "levels": {"0": 1, "1": 1},
+                "uncertain": ["b"],
+            }])
+        );
+    }
+
+    #[test]
+    fn aggregates_report_binary_rejection_and_each_dimension_on_its_own() {
+        // A binary unit counts the inputs its threshold declined as
+        // `no_match`; a dimensional request tallies each unit against
+        // its own label set.
+        let plan = plan(&json!({
+            "v": classify::SCHEMA, "model": "m", "capacity": "c",
+            "policy": {"v": classify::POLICY_SCHEMA, "name": "p",
+                "select": {"binary": {"threshold": 0.5},
+                           "single_label": {"ties": "first-declared",
+                              "no_match": {"kind": "null"}}}},
+            "inputs": [{"id": "a", "text": "x"}, {"id": "b", "text": "x"}],
+            "dimensions": [
+                {"id": "gate", "mode": "binary", "labels": [{"id": "keep"}]},
+                {"id": "topic", "mode": "single-label",
+                 "labels": [{"id": "t1"}, {"id": "t2"}]},
+            ],
+        }));
+        let items = vec![
+            item("a", "answered", vec![
+                answered_unit("binary", json!("keep")),
+                answered_unit("single-label", json!("t2")),
+            ]),
+            item("b", "answered", vec![{
+                let mut gate = answered_unit("binary", Value::Null);
+                gate["no_match"] = json!(true);
+                gate
+            }, {
+                let mut topic = answered_unit("single-label", Value::Null);
+                topic["no_match"] = json!(true);
+                topic
+            }]),
+        ];
+        let aggregates = corpus_aggregates(&plan, &items);
+        assert_eq!(
+            Value::Array(aggregates),
+            json!([
+                {"dimension": "gate", "mode": "binary",
+                 "outcomes": {"answered": 2, "refused": 0, "unavailable": 0, "unattempted": 0},
+                 "no_match": 1, "labels": {"keep": 1}},
+                {"dimension": "topic", "mode": "single-label",
+                 "outcomes": {"answered": 2, "refused": 0, "unavailable": 0, "unattempted": 0},
+                 "no_match": 1, "labels": {"t1": 0, "t2": 1}},
+            ])
+        );
     }
 }
