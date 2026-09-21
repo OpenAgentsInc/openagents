@@ -454,23 +454,36 @@ spending against the same position. The `tenant-usage` binary is the
 operator view: each tenant's settled, outstanding, and orphaned counts,
 and the reservations still held.
 
-Add a distinct monetary ledger using fixed-point units and versioned price
-schedules. Define billable resources for each model, capacity, and review
-policy, including input, cached input, output, reasoning, or compute units
-where the backend exposes them. Do not invent token counts for an opaque
-provider or equate one question with constant compute.
+The monetary half is landed in `tenancy::money`, separate from quota.
+Amounts are fixed-point millionths of an explicitly named currency; a
+price is a versioned schedule binding a model, capacity, review policy,
+currency, and rational rates over the billable resources — input, cached
+input, output, and reasoning tokens plus compute milliseconds — with
+input excluding cached input and output excluding reasoning. Usage must
+name every priced resource explicitly; missing usage is unknown, not
+zero, and a provider adapter resolves overlapping counters rather than
+inventing token counts for an opaque provider.
 
-Record grants, credits, holds, charges, releases, adjustments, and refunds
-with idempotent sources and audit references. Reserve authorized worst-case
-spend before dispatch and settle known usage. Unknown completion and cost
-remain unresolved until reconciled; they do not become zero.
-
-Enforce hard workspace spend limits and explicit opt-in top-ups. State the
-billing treatment of refusals, retries, cancellation, reviewer/fallback
-attempts, and failures. Distinguish customer retail charge, provider-reported
-cost, and allocated GPU/local hosting cost. Free retail usage may still
-consume operator funds. Expose exact available, reserved, and settled
-balances. Owner: [#9491](https://github.com/OpenAgentsInc/openagents/issues/9491).
+The ledger is a private append-only `money.jsonl` held under an exclusive
+lock, each accepted mutation a digest-linked record carrying an
+idempotent source and an audit reference. It records account creation,
+grants, top-ups, and adjustments; reserves authorized worst-case spend
+under a pinned price before dispatch; settles known usage with a receipt
+reference; and keeps unknown completion at full reservation until a later
+settlement or an explicitly evidenced release reconciles it — never a
+quiet zero. Refunds and their reversals bind to a settled retail charge.
+A workspace account carries a hard lifetime spending ceiling and an
+explicit top-up opt-in, and binds to the stable workspace rather than a
+key, so rotation cannot reset a grant or budget. Retail charge,
+provider-reported cost, and allocated hosting cost are separate amounts —
+free retail inference still consumes operator funds. `Balance` exposes
+exact credited, reserved, settled, refunded, available, and remaining
+authorized spend plus the price versions the account transacted under;
+`tenant-money` is the operator's view of the same state, and `gateway`'s
+monetary admission (`docs/decision-models/monetary-accounting.md`)
+charges dispatched work under an explicit opt-in.
+`docs/decision-models/monetary-ledger.md` covers the ledger contract.
+Owner: [#9491](https://github.com/OpenAgentsInc/openagents/issues/9491).
 
 ## Plans, payments, and entitlements
 

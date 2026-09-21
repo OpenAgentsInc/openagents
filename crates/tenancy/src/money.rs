@@ -174,6 +174,12 @@ pub struct Balance {
     pub refunded: u64,
     pub available: u64,
     pub spend_remaining: u64,
+    /// Every price version the account has transacted under, sorted.
+    ///
+    /// An account API serves the versions beside the amounts so a caller
+    /// can name the terms a charge was quoted under rather than inferring
+    /// them from a current price list.
+    pub price_versions: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -220,6 +226,7 @@ impl Account {
                 .spend_limit
                 .checked_sub(used)
                 .ok_or("workspace spend limit exceeded")?,
+            price_versions: self.prices.keys().cloned().collect(),
         })
     }
 }
@@ -564,6 +571,32 @@ impl Ledger {
     pub fn hold(&self, workspace: &str, attempt: &str) -> Option<&Hold> {
         self.state.accounts.get(workspace)?.holds.get(attempt)
     }
+
+    /// Every workspace with an account, sorted — the set an account API
+    /// enumerates. Read-only; opening the ledger is still the writer's
+    /// exclusive lock, so a reader takes its own open of the file.
+    #[must_use]
+    pub fn workspaces(&self) -> Vec<&str> {
+        self.state.accounts.keys().map(String::as_str).collect()
+    }
+
+    /// One workspace's holds, ordered by attempt — the open and terminal
+    /// positions an account view lists. The hold carries its phase, so a
+    /// reader tells an outstanding liability from settled history.
+    #[must_use]
+    pub fn holds(&self, workspace: &str) -> Vec<(&str, &Hold)> {
+        self.state
+            .accounts
+            .get(workspace)
+            .map(|account| {
+                account
+                    .holds
+                    .iter()
+                    .map(|(attempt, hold)| (attempt.as_str(), hold))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -883,5 +916,38 @@ mod tests {
         )
         .unwrap();
         assert!(Ledger::open(&path).is_err());
+    }
+
+    #[test]
+    fn the_balance_names_its_price_versions_and_readers_enumerate_accounts() {
+        let (_root, mut ledger) = funded(100);
+        ledger
+            .apply(mutation("reserve", reserve("one", 20)))
+            .unwrap();
+        let balance = ledger.balance("workspace-a").unwrap();
+        assert_eq!(balance.price_versions, ["synthetic-v1".to_string()]);
+
+        // A second price version transacted under is a second version the
+        // account API must serve, not a relabeling of the first.
+        let mut second = reserve("two", 10);
+        if let Operation::Reserve { price, .. } = &mut second {
+            price.version = "synthetic-v2".into();
+        }
+        ledger.apply(mutation("reserve-two", second)).unwrap();
+        assert_eq!(
+            ledger.balance("workspace-a").unwrap().price_versions,
+            ["synthetic-v1".to_string(), "synthetic-v2".to_string()]
+        );
+
+        assert_eq!(ledger.workspaces(), ["workspace-a"]);
+        let holds = ledger.holds("workspace-a");
+        assert_eq!(
+            holds
+                .iter()
+                .map(|(attempt, _)| *attempt)
+                .collect::<Vec<_>>(),
+            ["one", "two"]
+        );
+        assert!(ledger.holds("workspace-none").is_empty());
     }
 }

@@ -2,8 +2,10 @@
 
 `tenancy::money` implements the local accounting foundation for #9491. It is
 separate from resource quota and does not enable paid inference, collect a
-payment, or choose launch prices. The gateway and account APIs do not yet call
-this ledger.
+payment, or choose launch prices. `gateway`'s monetary admission calls it —
+`monetary-accounting.md` covers that opt-in — and the `tenant-money` binary
+is the operator's account view. No HTTP balance route or customer-facing
+usage API exists yet; that surface is #9493's.
 
 ## Prices and balances
 
@@ -81,14 +83,31 @@ payment reconciliation, and external commitment publication are not implemented.
 The hash chain detects altered linked records; it is not an external commitment
 that proves a privileged operator did not replace or truncate the entire log.
 
+## The account view
+
+The balance an account API serves is `Balance`: the account's currency,
+credited, reserved, settled, refunded, available, and remaining authorized
+spend, plus `price_versions` — every price version the account has
+transacted under, so a caller can name the terms a charge was quoted under
+rather than inferring them from a current price list. `Ledger::workspaces`
+enumerates accounts and `Ledger::holds` lists a workspace's holds with
+their phases, so an outstanding liability reads as outstanding.
+
+`tenant-money --ledger PATH [--workspace NAME]` is the operator's read of
+the same state: one balance line per workspace and one line per hold —
+phase, reserved, retail, refunded, provider and hosting cost, price
+version, and receipt — in the ledger's own millionths, unscaled.
+
 ## Verification and remaining integration
 
 Synthetic tests exercise fractional rounding, overflow, missing usage, repeated
 and changed-content mutations, overlapping holds, spend limits, refunds and
-reversals, recovery, writer exclusion, workspace separation, and damaged logs.
-They use no launch price and make no live payment or model call.
+reversals, recovery, writer exclusion, workspace separation, price-version
+reporting, and damaged logs. They use no launch price and make no live
+payment or model call.
 
-Remaining #9491 work includes gateway reservation/settlement, authorized account
-APIs, authenticated price publication, provider counter mapping, integration with
-quota and execution receipts, and an explicit commercial launch-price decision.
-This library alone does not establish end-to-end spending enforcement.
+Remaining #9491 work includes authorized customer-facing account APIs
+(#9493), authenticated price publication, provider counter mapping,
+integration with quota and execution receipts, and an explicit commercial
+launch-price decision. Gateway reservation and settlement are landed in
+`gateway::money` under an explicit operator opt-in.
