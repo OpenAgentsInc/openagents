@@ -36,6 +36,7 @@ mod intensity;
 mod keys;
 mod ladder;
 pub mod markdown;
+pub mod progress;
 mod scrollback;
 mod spinner;
 mod wrap;
