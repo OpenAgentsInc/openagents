@@ -685,6 +685,12 @@ mod tests {
                 .admitted()
                 .is_err()
         );
+        let mut wrong_workload = evidence.clone();
+        wrong_workload.deployment.as_mut().unwrap().group = "another-workload".into();
+        assert_eq!(
+            plan.decide(&wrong_workload).unwrap().ruling,
+            gym::admission::Ruling::Refused
+        );
         let mut expensive = evidence.clone();
         expensive.deployment.as_mut().unwrap().candidate.cost = Some(Cost::Metered {
             usd_per_decision: 2.0,

@@ -609,6 +609,13 @@ impl Plan {
 
         let mut refusals: Vec<String> = Vec::new();
         let mut refs = EvidenceRefs::default();
+        if let Some(deployment) = &evidence.deployment
+            && deployment.group != self.guards.deployment.budget.workload
+        {
+            refusals.push(
+                "deployment evidence names a different workload from the frozen budget".into(),
+            );
+        }
 
         // The suite the evidence was measured on must be the suite the plan
         // froze, by digest: a same-named suite with moved items is a

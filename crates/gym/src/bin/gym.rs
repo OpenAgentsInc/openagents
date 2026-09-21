@@ -150,6 +150,8 @@ struct Options {
     questions_out: Option<String>,
     /// The frozen admission plan `admit` judges.
     plan: Option<String>,
+    /// Explicit measured deployment profiles for admission.
+    deployment_evidence: Option<String>,
     /// The store `admit` reads the locked-confirmation rows from.
     locked: Option<String>,
     /// Retained report for the locked store.
@@ -248,6 +250,9 @@ gym admit    judge a frozen admission plan against recorded evidence and
   --timeout seconds   how long one call to a `--door` may take; the client's
                       ten seconds by default, and worth raising on a busy
                       machine, because a timeout loses the item entirely
+  --deployment-evidence p  explicit deployment profiles for admission
+  --locked-commitment p    separately retained locked report
+  --transfer-commitment p  separately retained transfer report
   --plan path         the frozen admission plan `admit` judges
   --locked path       the store `admit` reads the locked-confirmation rows
                       from; with --ledger
@@ -299,6 +304,7 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--items" => options.items = args.next(),
             "--from" => options.from.extend(args.next()),
             "--expect" => options.expect.extend(args.next()),
+            "--deployment-evidence" => options.deployment_evidence = args.next(),
             "--commitment" => options.commitment = args.next(),
             "--locked-commitment" => options.locked_commitment = args.next(),
             "--transfer-commitment" => options.transfer_commitment = args.next(),
@@ -2953,11 +2959,19 @@ fn admit_command(options: &Options) -> Result<(), String> {
                     store_head: head.clone(),
                 },
             ),
-        deployment: Some(gym::gate::Deployment::new(
-            plan.guards.deployment.budget.workload.clone(),
-            profile_of(&dev_base),
-            profile_of(&dev_candidate),
-        )),
+        deployment: match options.deployment_evidence.as_deref() {
+            Some(path) => Some(
+                serde_json::from_str::<gym::gate::Deployment>(
+                    &std::fs::read_to_string(path).map_err(|error| format!("{path}: {error}"))?,
+                )
+                .map_err(|error| format!("{path}: invalid deployment evidence: {error}"))?,
+            ),
+            None => Some(gym::gate::Deployment::new(
+                plan.guards.deployment.budget.workload.clone(),
+                profile_of(&dev_base),
+                profile_of(&dev_candidate),
+            )),
+        },
         decided_at: options.at.clone().unwrap_or_else(eval::now_utc),
         commitment: Some(commitment.digest.clone()),
     };
