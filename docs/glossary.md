@@ -131,6 +131,17 @@ implement this shared context system.
 | Context manifest | Designed | The included evidence and representation versions, omissions, unresolved coverage, and selection identities used to build one model or delegate input. It does not attest a provider cache hit. |
 | Background view | Designed | An optional explanation or finding derived from a pinned evidence snapshot under its own resource allowance; it becomes stale when its relevant sources change. |
 
+## Voyager
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Voyager | Partial | The open-ended agent program after arXiv:2305.16291: an agent lives in an open-ended environment, proposes its own tasks, acts, verifies, and banks what worked as skills. `crates/voyager` runs bounded episodes; curriculum, critic, and skill library are mechanical or absent for now. See [voyager](voyager/README.md). |
+| World manifest | Implemented | A `voyager.world/v1` document in `worlds/` naming a Minecraft version, seed, difficulty, gamerules, and episode bounds. Its SHA-256 is the world's identity. |
+| `mc-bridge` | Implemented | The nightly-built helper in `mc-bridge/` that plays the game through azalea and speaks one JSON object per line on stdin and stdout. A supervised child process, never a dependency — the `swift/lev-bridge` precedent. |
+| Episode | Partial | One bounded run of a world: server up, bot in, tasks attempted, every exchange and event in an ATIF trace under the run directory. |
+| Curriculum | Partial | What proposes the next task. Phase 1 is a fixed program — survey, explore, gather; a model-driven curriculum is proposed, not implemented. |
+| Skill library | Designed | Reusable behavior banked between episodes. Nothing is banked yet; retrieval and storage are proposed. |
+
 ## Capabilities and programs
 
 | Term | Status | Definition |

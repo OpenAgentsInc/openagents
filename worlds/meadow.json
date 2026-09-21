@@ -1,0 +1,26 @@
+{
+  "kind": "voyager.world/v1",
+  "name": "meadow",
+  "minecraft": {
+    "version": "1.21.11",
+    "seed": "openagents",
+    "level_type": "minecraft:normal",
+    "difficulty": "peaceful",
+    "gamemode": "survival",
+    "view_distance": 10,
+    "gamerules": {
+      "doDaylightCycle": "false",
+      "doWeatherCycle": "false",
+      "keepInventory": "true",
+      "mobGriefing": "false"
+    },
+    "setup_commands": ["time set day", "weather clear"]
+  },
+  "agent": {
+    "username": "voyager"
+  },
+  "episode": {
+    "max_actions": 24,
+    "max_seconds": 600
+  }
+}

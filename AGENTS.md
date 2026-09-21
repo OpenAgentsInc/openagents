@@ -173,6 +173,13 @@ uses, and marks which are implemented and which are only specified.
   model, through the in-repo Swift helper in `swift/lev-bridge`. Build the
   helper with `./scripts/build-lev-bridge.sh`; the crate builds and tests
   without it. Read `docs/lev/` before changing an estimator or the door.
+- `crates/voyager` — open-ended agent episodes in a Minecraft world: a
+  supervised local server, a world-manifest registry under `worlds/`, and
+  the bot side through the nightly-built helper in `mc-bridge/`, built by
+  `./scripts/build-mc-bridge.sh` and driven as a child process speaking
+  line-delimited JSON — the `swift/lev-bridge` precedent in Rust. The crate
+  builds and tests without the helper. Read `docs/voyager/` before
+  changing an episode, a world manifest, or the bridge protocol.
 - `crates/nostr` — pure Nostr protocol and verification primitives
   (events, filters, signatures, NIP-19/NIP-44, replacement and deletion,
   Block NIP validators). No storage, no network, no third-party Nostr
