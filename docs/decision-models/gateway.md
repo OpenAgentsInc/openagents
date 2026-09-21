@@ -49,6 +49,8 @@ Every `POST /v1/systemone` runs the same sequence:
   "forward_timeout_ms": 120000,
   "reservation_ttl_secs": 300,
   "max_in_flight": 64,
+  "max_questions": 256,
+  "max_options": 4096,
   "doors": {
     "shared-kev": {"endpoint": "http://127.0.0.1:9080"},
     "acme-kev": {"endpoint": "http://10.0.1.7:9080"}
@@ -97,7 +99,7 @@ status. The gateway's own refusals are typed JSON:
 | 401 | `unauthenticated` | The credential is missing its `Bearer` shape, unknown, revoked, or wrong. |
 | 403 | `door_not_bound` | The tenant holds no binding for the door, and the door is not shared. |
 | 409 | `idempotency_conflict` | The `(request, attempt)` pair is taken — resolved, or held for different content. |
-| 422 | `invalid_request` | The envelope names no `model` door. |
+| 422 | `invalid_request`, `too_many_questions`, `too_many_options` | The envelope names no `model` door, or carries more questions or options than `max_questions`/`max_options` admit — refused before the door is consulted. |
 | 429 | `rate_limited`, `busy`, `overloaded`, `quota_exhausted` | Capacity, or a spent budget — `Retry-After` accompanies the refusal. |
 | 503 | `door_unavailable`, `identity_mismatch`, `unavailable` | No backend is configured, the backend's card disagrees with the binding, or the forward failed. |
 

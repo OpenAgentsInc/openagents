@@ -57,6 +57,15 @@ pub struct Config {
     /// starving the process.
     #[serde(default = "default_in_flight")]
     pub max_in_flight: usize,
+    /// The most questions one request may carry. Default 256 — the
+    /// backend's own bounds are tighter still, but a request this shape
+    /// is refused before it is authorized or reserved.
+    #[serde(default = "default_questions")]
+    pub max_questions: u64,
+    /// The most options one request may total across its `choice` and
+    /// `score` questions. Default 4096.
+    #[serde(default = "default_options")]
+    pub max_options: u64,
     /// Door name to its backend. A bound door missing here is a
     /// misconfiguration the gateway reports as `door_unavailable`
     /// rather than guessing an address.
@@ -82,6 +91,14 @@ fn default_ttl_secs() -> u64 {
 
 fn default_in_flight() -> usize {
     64
+}
+
+fn default_questions() -> u64 {
+    256
+}
+
+fn default_options() -> u64 {
+    4096
 }
 
 impl Config {

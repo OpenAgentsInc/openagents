@@ -452,6 +452,44 @@ async fn admitted(
             ctx,
         };
     }
+    // Shape bounds, before a door is consulted: the question count and
+    // the option total a `choice`/`score` request would pay to read out.
+    if let Some(questions) = envelope.get("questions").and_then(Value::as_object) {
+        let options: u64 = questions
+            .values()
+            .map(|question| {
+                question
+                    .get("options")
+                    .and_then(Value::as_array)
+                    .map_or(0, |options| options.len() as u64)
+            })
+            .sum();
+        if questions.len() as u64 > state.config.max_questions {
+            return Verdict::Refused {
+                status: StatusCode::UNPROCESSABLE_ENTITY,
+                code: "too_many_questions",
+                message: format!(
+                    "the request carries {} questions; this gateway admits {}",
+                    questions.len(),
+                    state.config.max_questions
+                ),
+                outcome: Outcome::Refused,
+                ctx,
+            };
+        }
+        if options > state.config.max_options {
+            return Verdict::Refused {
+                status: StatusCode::UNPROCESSABLE_ENTITY,
+                code: "too_many_options",
+                message: format!(
+                    "the request carries {options} options; this gateway admits {}",
+                    state.config.max_options
+                ),
+                outcome: Outcome::Refused,
+                ctx,
+            };
+        }
+    }
     let admission = match registry.authorize(caller.tenant.as_deref(), door) {
         Ok(admission) => admission,
         Err(refusal) => {

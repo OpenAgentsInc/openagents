@@ -192,6 +192,8 @@ async fn deploy(manifest: Manifest, endpoints: BTreeMap<String, String>) -> Depl
         forward_timeout_ms: 10_000,
         reservation_ttl_secs: 300,
         max_in_flight: 8,
+        max_questions: 256,
+        max_options: 4096,
         doors,
     };
     let state = ServeState::open(config).unwrap();
@@ -572,6 +574,36 @@ async fn a_registry_update_names_its_revision_and_rebinds_the_next_call() {
         records[0].registry.as_ref().unwrap().digest,
         records[1].registry.as_ref().unwrap().digest
     );
+}
+
+#[tokio::test]
+async fn an_oversized_envelope_is_refused_before_a_door_is_consulted() {
+    let (endpoint, forwards) = backend(honest(artifact('a'), json!({"answers": {}}))).await;
+    let deployment = deploy(
+        manifest(None),
+        [("shared-kev".to_string(), endpoint)].into_iter().collect(),
+    )
+    .await;
+
+    // 300 questions over a 256-question bound — refused at 422 with no
+    // forward and no reservation taken.
+    let mut questions = serde_json::Map::new();
+    for index in 0..300 {
+        questions.insert(
+            format!("q{index}"),
+            json!({"type": "noul", "instructions": "…", "criteria": "…"}),
+        );
+    }
+    let response = send_call(
+        &deployment,
+        &json!({"model": "shared-kev", "state": "…", "questions": questions}),
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(response.status(), 422);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["error"]["code"], "too_many_questions");
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
