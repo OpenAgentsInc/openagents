@@ -569,6 +569,9 @@ pub struct BackendLimits {
     /// The most levels the backend takes in one rubric — a bound below
     /// the two-level minimum admits no score work at all.
     pub max_levels: u64,
+    /// The most serialized UTF-8 bytes in one complete native request.
+    /// Operators must include model framing headroom in this declared bound.
+    pub max_forward_bytes: u64,
 }
 
 impl BackendLimits {
@@ -586,6 +589,7 @@ impl BackendLimits {
             max_instructions_bytes: MAX_INSTRUCTIONS_BYTES,
             max_label_bytes: MAX_LABEL_BYTES,
             max_levels: MAX_LEVELS,
+            max_forward_bytes: 1_048_576,
         }
     }
 
@@ -620,6 +624,11 @@ impl BackendLimits {
                 product.max_label_bytes,
             ),
             ("max_levels", self.max_levels, product.max_levels),
+            (
+                "max_forward_bytes",
+                self.max_forward_bytes,
+                product.max_forward_bytes,
+            ),
         ];
         for (name, declared, maximum) in fields {
             if declared == 0 {

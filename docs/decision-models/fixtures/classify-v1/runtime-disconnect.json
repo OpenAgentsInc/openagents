@@ -1,0 +1,56 @@
+{
+  "v": "openagents.classify-runtime-fixture.v1",
+  "scenario": "disconnect-after-first-forward",
+  "request": {
+    "v": "openagents.classify.v1",
+    "model": "acme-kev",
+    "capacity": "dedicated",
+    "policy": {
+      "v": "openagents.classify-policy.v1",
+      "name": "fixture-only",
+      "select": {
+        "single_label": {
+          "ties": "no-match",
+          "no_match": {
+            "kind": "null"
+          }
+        }
+      }
+    },
+    "inputs": [
+      {
+        "id": "i0",
+        "text": "input 0"
+      },
+      {
+        "id": "i1",
+        "text": "input 1"
+      },
+      {
+        "id": "i2",
+        "text": "input 2"
+      }
+    ],
+    "mode": "single-label",
+    "labels": [
+      {
+        "id": "refund"
+      },
+      {
+        "id": "other"
+      }
+    ]
+  },
+  "backend": {
+    "item_concurrency": 1,
+    "response_delay_ms": 250,
+    "gateway_deadline_ms": 600
+  },
+  "expected": {
+    "backend_forwards": 1,
+    "receipt_outcome": "unavailable",
+    "receipt_cause": "caller_disconnected",
+    "settled_questions": 1
+  },
+  "note": "An executing HTTP test closes the caller socket after the first backend forward starts. No response is fabricated for the disconnected caller. A sealed receipt and quota settlement must survive."
+}

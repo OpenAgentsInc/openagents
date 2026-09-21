@@ -2031,6 +2031,7 @@ async fn discovery_reports_classify_limits_without_inventing_backend_support() {
         limits.max_inputs = 5;
         limits.max_labels = 7;
         limits.max_input_bytes = 100;
+        limits.max_forward_bytes = 4096;
     })
     .await;
     let cards: Value = reqwest::Client::new()
@@ -2053,6 +2054,7 @@ async fn discovery_reports_classify_limits_without_inventing_backend_support() {
     assert_eq!(contract["limits"]["max_inputs"], 3);
     assert_eq!(contract["limits"]["max_labels"], 7);
     assert_eq!(contract["limits"]["max_input_bytes"], 100);
+    assert_eq!(contract["limits"]["max_forward_bytes"], 4096);
     assert_eq!(contract["execution"]["max_item_concurrency"], 2);
     assert_eq!(contract["execution"]["model_packing"], false);
     assert!(contract["admission"]["context_tokens"].is_null());
@@ -4245,4 +4247,385 @@ async fn oversized_identity_bodies_refuse_before_inference_or_read_to_end() {
         );
         server.abort();
     }
+}
+
+#[tokio::test]
+async fn disconnected_inference_retains_a_bounded_settlement() {
+    use tokio::io::AsyncWriteExt;
+    let fixture: Value = serde_json::from_slice(include_bytes!(
+        "../../../docs/decision-models/fixtures/classify-v1/runtime-disconnect.json"
+    ))
+    .unwrap();
+    assert_eq!(fixture["v"], "openagents.classify-runtime-fixture.v1");
+    for classification in [true, false] {
+        let stub = Backend {
+            delay_ms: fixture["backend"]["response_delay_ms"].as_u64().unwrap(),
+            ..honest(artifact('b'), choice_answer())
+        };
+        let (endpoint, forwards) = backend(stub).await;
+        let deployment = classification_deployment_tuned(
+            endpoint,
+            fixture["backend"]["item_concurrency"].as_u64().unwrap(),
+            |config| {
+                config.forward_timeout_ms =
+                    fixture["backend"]["gateway_deadline_ms"].as_u64().unwrap();
+            },
+        )
+        .await;
+        let body = serde_json::to_vec(&if classification {
+            fixture["request"].clone()
+        } else {
+            call("acme-kev")
+        })
+        .unwrap();
+        let route = if classification {
+            "classify"
+        } else {
+            "systemone"
+        };
+        let address = deployment.address.strip_prefix("http://").unwrap();
+        let mut socket = tokio::net::TcpStream::connect(address).await.unwrap();
+        let header = format!(
+            "POST /v1/{route} HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {}\r\nIdempotency-Key: disconnected-fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            deployment.tokens["acme"],
+            body.len()
+        );
+        socket.write_all(header.as_bytes()).await.unwrap();
+        socket.write_all(&body).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while forwards.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the first forward must start");
+        drop(socket);
+        let receipts = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let receipts = receipt_log(&deployment.dir);
+                if !receipts.is_empty() {
+                    break receipts;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("caller disconnection must not lose terminal settlement evidence");
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].request, "disconnected-fixture");
+        assert_eq!(
+            receipts[0].outcome,
+            receipts::execution::Outcome::Unavailable
+        );
+        assert_eq!(
+            json!(receipts[0].cause),
+            fixture["expected"]["receipt_cause"]
+        );
+        assert_eq!(
+            json!(receipts[0].outcome),
+            fixture["expected"]["receipt_outcome"]
+        );
+        assert_eq!(
+            json!(forwards.load(Ordering::SeqCst)),
+            fixture["expected"]["backend_forwards"]
+        );
+        let ledger =
+            std::fs::read_to_string(deployment.dir.path().join("quota-ledger.jsonl")).unwrap();
+        let settlements: Vec<Value> = ledger
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .filter(|row| row["event"] == "settled")
+            .collect();
+        assert_eq!(settlements.len(), 1);
+        assert_eq!(
+            settlements[0]["units"]["questions"],
+            fixture["expected"]["settled_questions"]
+        );
+    }
+}
+
+/// Open a request whose caller can disconnect at a chosen backend boundary.
+async fn disconnect_socket(
+    deployment: &Deployment,
+    route: &str,
+    body: &Value,
+    workspace: Option<&str>,
+) -> tokio::net::TcpStream {
+    use tokio::io::AsyncWriteExt;
+    let bytes = serde_json::to_vec(body).unwrap();
+    let address = deployment.address.strip_prefix("http://").unwrap();
+    let mut socket = tokio::net::TcpStream::connect(address).await.unwrap();
+    let workspace = workspace.map_or(String::new(), |id| format!("X-Workspace-Id: {id}\r\n"));
+    let header = format!(
+        "POST /v1/{route} HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {}\r\n{workspace}Idempotency-Key: disconnect-boundary\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+        deployment.tokens["acme"],
+        bytes.len()
+    );
+    socket.write_all(header.as_bytes()).await.unwrap();
+    socket.write_all(&bytes).await.unwrap();
+    socket
+}
+
+async fn wait_for_dispatch(counter: &AtomicUsize) {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while counter.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the selected backend boundary must be reached");
+}
+
+/// Wait for the sealed parent receipt, allowing an append to be in progress.
+async fn wait_for_disconnect_receipts(
+    deployment: &Deployment,
+) -> Vec<receipts::execution::ExecutionReceipt> {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let text = std::fs::read_to_string(deployment.dir.path().join("receipts.jsonl"))
+                .unwrap_or_default();
+            if text.ends_with('\n') {
+                let receipts = text
+                    .lines()
+                    .map(receipts::execution::ExecutionReceipt::parse)
+                    .collect::<Result<Vec<_>, _>>();
+                if let Ok(receipts) = receipts
+                    && receipts
+                        .iter()
+                        .any(|receipt| receipt.request == "disconnect-boundary")
+                {
+                    break receipts;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("disconnection must retain terminal receipt evidence")
+}
+
+/// Hold identity verification open without ever requiring inference.
+async fn slow_identity_backend() -> (String, Arc<AtomicUsize>, Arc<AtomicUsize>) {
+    let reads = Arc::new(AtomicUsize::new(0));
+    let forwards = Arc::new(AtomicUsize::new(0));
+    let read = reads.clone();
+    let forward = forwards.clone();
+    let router = axum::Router::new()
+        .route("/v1/models", get(move || {
+            read.fetch_add(1, Ordering::SeqCst);
+            async {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                Json(json!({"models":[{"id":"kev-0.6b","artifact_identity":{"digest":artifact('b')}}]}))
+            }
+        }))
+        .route("/v1/systemone", post(move || {
+            forward.fetch_add(1, Ordering::SeqCst);
+            async { Json(choice_answer()) }
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(axum::serve(listener, router).into_future());
+    (endpoint, reads, forwards)
+}
+
+#[tokio::test]
+async fn disconnect_releases_only_provably_undispatched_monetary_holds() {
+    for before_inference in [true, false] {
+        for classification in [true, false] {
+            let (endpoint, observed, forwards) = if before_inference {
+                slow_identity_backend().await
+            } else {
+                let (endpoint, forwards) = backend(Backend {
+                    delay_ms: 10_000,
+                    ..honest(artifact('b'), choice_answer())
+                })
+                .await;
+                (endpoint, forwards.clone(), forwards)
+            };
+            let (mut doors, priced) = money_doors(endpoint);
+            doors.get_mut("acme-kev").unwrap().classify =
+                Some(gateway::classify::BackendLimits::product());
+            let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+                provision_account(ledger, workspace, Some(2 * HOLD));
+            })
+            .await;
+            let (route, body) = if classification {
+                ("classify", classify_batch(3))
+            } else {
+                ("systemone", call("acme-kev"))
+            };
+            let socket = disconnect_socket(
+                &deployment.deployment,
+                route,
+                &body,
+                Some(&deployment.workspace),
+            )
+            .await;
+            wait_for_dispatch(&observed).await;
+            drop(socket);
+            let receipts = wait_for_disconnect_receipts(&deployment.deployment).await;
+            assert_eq!(receipts.len(), 1);
+            assert_eq!(
+                forwards.load(Ordering::SeqCst),
+                usize::from(!before_inference)
+            );
+            assert_eq!(
+                receipts[0].outcome,
+                if before_inference {
+                    receipts::execution::Outcome::Unattempted
+                } else {
+                    receipts::execution::Outcome::Unavailable
+                }
+            );
+            let (_, balance) = get_balance(
+                &deployment,
+                Some(&deployment.deployment.tokens["acme"]),
+                Some(&deployment.workspace),
+            )
+            .await;
+            assert_eq!(balance["balance"]["settled"], 0, "{balance}");
+            assert_eq!(
+                balance["balance"]["reserved"],
+                if before_inference { 0 } else { HOLD },
+                "{balance}"
+            );
+            assert_eq!(
+                balance["balance"]["available"],
+                if before_inference { 2 * HOLD } else { HOLD },
+                "{balance}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn disconnect_during_review_keeps_its_hold_and_stops_remaining_reviews() {
+    for before_inference in [true, false] {
+        let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+        let (reviewer, observed, forwards) = if before_inference {
+            slow_identity_backend().await
+        } else {
+            let (reviewer, forwards) = backend(Backend {
+                delay_ms: 10_000,
+                ..honest(artifact('c'), corrected_answer())
+            })
+            .await;
+            (reviewer, forwards.clone(), forwards)
+        };
+        let doors = [
+            ("acme-kev".into(), classify_door(primary, 1)),
+            (
+                "acme-kev-review".into(),
+                Door {
+                    endpoint: reviewer,
+                    classify: None,
+                    classify_item_concurrency: 1,
+                },
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let priced = [
+            ("acme-kev".into(), fixture_priced()),
+            ("acme-kev-review".into(), fixture_priced()),
+        ]
+        .into_iter()
+        .collect();
+        let deployment = deploy_money(review_manifest(), doors, priced, |ledger, workspace| {
+            provision_account(ledger, workspace, Some(8 * HOLD));
+        })
+        .await;
+        let socket = disconnect_socket(
+            &deployment.deployment,
+            "classify",
+            &review_call(review_policy("acme-kev-review", "uncertain", "strict")),
+            Some(&deployment.workspace),
+        )
+        .await;
+        wait_for_dispatch(&observed).await;
+        drop(socket);
+        let receipts = wait_for_disconnect_receipts(&deployment.deployment).await;
+        assert_eq!(
+            forwards.load(Ordering::SeqCst),
+            usize::from(!before_inference)
+        );
+        assert_eq!(receipts.len(), 2);
+        for receipt in &receipts {
+            let expected = if before_inference && receipt.request != "disconnect-boundary" {
+                receipts::execution::Outcome::Unattempted
+            } else {
+                receipts::execution::Outcome::Unavailable
+            };
+            assert_eq!(receipt.outcome, expected);
+        }
+        let (_, balance) = get_balance(
+            &deployment,
+            Some(&deployment.deployment.tokens["acme"]),
+            Some(&deployment.workspace),
+        )
+        .await;
+        assert_eq!(
+            balance["balance"]["reserved"],
+            if before_inference { 0 } else { HOLD },
+            "{balance}"
+        );
+        assert_eq!(balance["balance"]["settled"], 2 * CHARGE, "{balance}");
+        assert_eq!(
+            balance["balance"]["available"],
+            if before_inference {
+                8 * HOLD - 2 * CHARGE
+            } else {
+                7 * HOLD - 2 * CHARGE
+            },
+            "{balance}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn classify_rejects_expanded_context_before_dispatch_or_reservation() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment_tuned(endpoint, 1, |config| {
+        config
+            .doors
+            .get_mut("acme-kev")
+            .unwrap()
+            .classify
+            .as_mut()
+            .unwrap()
+            .max_forward_bytes = 128;
+    })
+    .await;
+    assert!(!deployment.dir.path().join("quota-ledger.jsonl").exists());
+    let (status, body) = send_classification(&deployment, &classify_call()).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "context_limit");
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+    assert!(!deployment.dir.path().join("quota-ledger.jsonl").exists());
+}
+
+#[tokio::test]
+async fn classify_checks_later_context_before_forwarding_any_input() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment_tuned(endpoint, 1, |config| {
+        config
+            .doors
+            .get_mut("acme-kev")
+            .unwrap()
+            .classify
+            .as_mut()
+            .unwrap()
+            .max_forward_bytes = 4096;
+    })
+    .await;
+    let mut call = classify_call();
+    call["inputs"][1]["text"] = json!("界".repeat(1400));
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "context_limit");
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+    assert!(!deployment.dir.path().join("quota-ledger.jsonl").exists());
+    let (status, body) = send_classification(&deployment, &classify_call()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(forwards.load(Ordering::SeqCst), 2);
 }

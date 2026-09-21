@@ -169,3 +169,21 @@ single writer behind a failover pair. Provisioning is `tenant-keys`
 reads the ledger's position. A registry update lands on the next
 request — the gateway rereads the manifest per call — while a call in
 flight keeps the admission it was served under.
+
+## Caller disconnect cleanup
+
+Native and classification handlers retain ownership of bounded cleanup after a
+caller disconnects. Queued classification work stops; completed work remains
+accounted for. A forwarded parent call records `caller_disconnected`; a call
+stopped before dispatch records `cancelled`. A canceled identity
+lookup releases a provably undispatched reservation and monetary hold. A canceled
+inference dispatch has unknown completion and retains its monetary hold until
+reconciliation. HTTP cancellation does not establish remote computation stopped.
+
+Classification doors also declare `max_forward_bytes`, a bound on each complete
+serialized native request. Discovery advertises this byte limit. Primary
+classification validates all expanded envelopes before reserving usage; secondary
+review and fallback calls validate their own envelopes against classification
+bounds when their doors declare them, before reservation.
+Oversized envelopes receive `context_limit` without truncation. Token capacity
+remains unknown unless a backend-specific mechanism establishes it.

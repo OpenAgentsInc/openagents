@@ -4,13 +4,13 @@ The gateway exposes `POST /v1/classify` with schema
 `openagents.classify.v1`. It supports single-label Choice questions,
 independent multi-label Noul questions, binary filtering as one Noul per
 input, rubric scoring as one Score per input, and named dimensions using
-those modes. This is a partial implementation of #9482. Semantic review,
-caller-declared exclusions, and richer item metadata remain required.
+those modes. Review and fallback policies use separately admitted native calls;
+see the policy sections below.
 
 A configured door must explicitly declare `classify` limits in its gateway
 configuration. The fields are `max_inputs`, `max_labels`, `max_dimensions`,
 `max_judgments`, `max_id_chars`, `max_input_bytes`, `max_instructions_bytes`,
-`max_label_bytes`, and `max_levels`. Missing declarations refuse
+`max_label_bytes`, `max_levels`, and `max_forward_bytes`. Missing declarations refuse
 classification. A `max_levels` below two admits no rubric at all and is
 refused as `unsupported_limits`. Use measured backend limits; the product
 maxima are not evidence of backend support.
@@ -166,3 +166,47 @@ guarantee. `context_tokens: null` explicitly leaves token-context support unknow
 byte, count, and wire limits are not token estimates. Execution remains native
 per-input forwarding with `model_packing: false`. Discovery has the same tenant
 and optional workspace admission as the decision routes.
+
+## Complete context bounds and disconnects
+
+`max_forward_bytes` bounds the serialized UTF-8 JSON bytes in each complete
+native request, including state, expanded questions, model identity, and JSON
+framing. Its product ceiling is 1,048,576 bytes. Operators must declare a lower
+bound appropriate to the backend, with headroom for its prompt framing and
+context window. Existing configuration documents must add this required field.
+`GET /v1/models` advertises it with the other classification limits. This is a
+byte bound, not a tokenizer estimate: `context_tokens` remains null because the
+gateway cannot establish that backend-specific value.
+
+The gateway constructs and checks every primary envelope before queue admission
+or quota reservation. An oversized envelope returns HTTP 422 `context_limit`;
+it never truncates input. Review and fallback envelopes are checked against their
+own door's classification bound, when declared, before reservation or dispatch.
+Native-only reviewer doors retain the native API contract. Per-field limits still
+apply independently. These declarations are operator configuration, not evidence
+that a model achieves a particular classification quality or supports all product
+maxima.
+
+Request cleanup belongs to the gateway even when the caller disconnects. A
+disconnect stops queued classification work and prevents subsequent review or
+fallback dispatch. Cleanup records a sealed receipt and settles attempted usage.
+A forwarded parent records `caller_disconnected`; a call canceled before dispatch
+records `cancelled`. A hold is released only when inference provably did
+not dispatch; an interrupted dispatch retains unknown monetary liability for
+reconciliation. Canceling the HTTP request cannot prove that an upstream model
+stopped computing. The disconnected caller receives no fabricated JSON response.
+
+## Classification contract verification, September 21, 2026
+
+The manual `./scripts/verify-rust.sh` gate passed all 12 required phases,
+including default and runtime-feature workspace tests, strict Clippy, minimum
+compiler checks, dependency policy, and disposable PostgreSQL acceptance.
+Both test configurations passed all 79 gateway HTTP tests. The three Oak
+classification-corpus tests checked planner fixtures, tighter backend refusal,
+and decoding answered primitives through the existing Jev SDK.
+
+The separate JSON Schema check passed seven valid requests, ten response
+fixtures, seven rejected response mutations, and the disconnect fixture's request.
+These tests establish the bounded synchronous contract in #9482. They do not
+establish model quality, token capacity, efficient model packing (#9483), durable
+jobs (#9484), Metal inference, or long-running soak behavior.

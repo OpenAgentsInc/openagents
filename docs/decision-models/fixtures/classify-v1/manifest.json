@@ -171,5 +171,11 @@
         "usage_ref"
       ]
     }
+  ],
+  "runtime": [
+    {
+      "file": "runtime-disconnect.json",
+      "test": "disconnected_inference_retains_a_bounded_settlement"
+    }
   ]
 }

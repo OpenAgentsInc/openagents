@@ -42,6 +42,12 @@ def main():
             validators["request"].validate(read(corpus / case["file"]))
             requests += 1
 
+    for case in read(corpus / "manifest.json").get("runtime", []):
+        fixture = read(corpus / case["file"])
+        if fixture["v"] != "openagents.classify-runtime-fixture.v1":
+            raise SystemExit("The runtime fixture version is unsupported.")
+        validators["request"].validate(fixture["request"])
+
     responses = sorted((corpus / "responses").glob("*.json"))
     if len(responses) < 10:
         raise SystemExit("The runtime response corpus is incomplete.")

@@ -52,7 +52,10 @@ runtime checks. Nested review records, attempts, fallback, and secondary usage
 are covered structurally too; schema validation does not verify a receipt hash.
 A disconnected caller receives no cancellation response; transport cancellation
 and durable settlement need their own runtime evidence, not a fabricated JSON
-report. This corpus does not yet establish that cancellation requirement.
+report. The `runtime` entry in `manifest.json` supplies a real TCP disconnect scenario.
+The gateway test reads its request, concurrency, deadline, and expected receipt
+outcome. Additional disconnect tests cover native calls, identity lookup,
+review dispatch, and monetary holds before and after dispatch.
 
 To validate both JSON Schemas and reject malformed response mutations, install
 `jsonschema==4.25.1` in an isolated Python environment and run

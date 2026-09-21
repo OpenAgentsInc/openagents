@@ -41,7 +41,7 @@ use receipts::execution::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, watch};
 
 use tenancy::{Admission, Capacity, Published, Registry, keys, lane_name, quota};
 
@@ -583,62 +583,94 @@ struct Naming<'a> {
     request_digest: &'a str,
 }
 
-/// `POST /v1/systemone`: the whole admission path, end to end.
+/// A dropped HTTP handler signals cancellation without dropping durable cleanup.
+struct OnDisconnect(watch::Sender<bool>);
+
+impl Drop for OnDisconnect {
+    fn drop(&mut self) {
+        let _ = self.0.send(true);
+    }
+}
+
+#[derive(Clone)]
+struct Cancellation(watch::Receiver<bool>);
+
+impl Cancellation {
+    fn stopped(&self) -> bool {
+        *self.0.borrow()
+    }
+
+    async fn wait(&self) {
+        let mut receiver = self.0.clone();
+        let _ = receiver.wait_for(|stopped| *stopped).await;
+    }
+}
+
 async fn systemone(
     State(state): State<Arc<ServeState>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let started = Instant::now();
-
-    // A parseable envelope is the smallest thing a receipt can bind.
-    let Ok(envelope) = serde_json::from_slice::<Value>(&body) else {
-        return gateway_error(
-            400,
-            "invalid_request",
-            "the body is not a JSON request envelope",
-        );
-    };
-    let request_digest = digest_request(&envelope);
-    let request = request_id(&state, &headers);
-    let naming = Naming {
-        request: &request,
-        attempt: attempt_of(&headers),
-        attempt_id: format!("{request}-{}-{}", attempt_of(&headers), state.mint()),
-        request_digest: &request_digest,
-    };
-
-    let verdict = admitted(&state, &headers, &envelope, &body, &naming).await;
-    conclude(&state, &naming, started, verdict).await
+    owned_request(state, headers, body, false).await
 }
 
-/// `POST /v1/classify`: the classification facade — the same admission
-/// path, then one `systemone` forward per input.
 async fn classify(
     State(state): State<Arc<ServeState>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let started = Instant::now();
+    owned_request(state, headers, body, true).await
+}
 
-    let Ok(envelope) = serde_json::from_slice::<Value>(&body) else {
-        return gateway_error(
-            400,
-            "invalid_request",
-            "the body is not a JSON request envelope",
-        );
-    };
-    let request_digest = digest_request(&envelope);
-    let request = request_id(&state, &headers);
-    let naming = Naming {
-        request: &request,
-        attempt: attempt_of(&headers),
-        attempt_id: format!("{request}-{}-{}", attempt_of(&headers), state.mint()),
-        request_digest: &request_digest,
-    };
-
-    let verdict = classify_admitted(&state, &headers, &body, &naming).await;
-    conclude(&state, &naming, started, verdict).await
+/// Connection loss cancels work, but the owned task retains its reservations
+/// until settlement and receipt recording finish. It never retries a forward.
+async fn owned_request(
+    state: Arc<ServeState>,
+    headers: HeaderMap,
+    body: Bytes,
+    classification: bool,
+) -> Response {
+    let (sender, receiver) = watch::channel(false);
+    let _on_disconnect = OnDisconnect(sender);
+    let cancellation = Cancellation(receiver);
+    match tokio::spawn(async move {
+        let started = Instant::now();
+        let Ok(envelope) = serde_json::from_slice::<Value>(&body) else {
+            return gateway_error(
+                400,
+                "invalid_request",
+                "the body is not a JSON request envelope",
+            );
+        };
+        let request_digest = digest_request(&envelope);
+        let request = request_id(&state, &headers);
+        let naming = Naming {
+            request: &request,
+            attempt: attempt_of(&headers),
+            attempt_id: format!("{request}-{}-{}", attempt_of(&headers), state.mint()),
+            request_digest: &request_digest,
+        };
+        let mut verdict = if classification {
+            classify_admitted(&state, &headers, &body, &naming, &cancellation).await
+        } else {
+            admitted(&state, &headers, &envelope, &body, &naming, &cancellation).await
+        };
+        if cancellation.stopped()
+            && let Verdict::Forwarded { cause, .. } = &mut verdict
+        {
+            *cause = Some("caller_disconnected".into());
+        }
+        conclude(&state, &naming, started, verdict).await
+    })
+    .await
+    {
+        Ok(response) => response,
+        Err(_) => gateway_error(
+            503,
+            "unavailable",
+            "request execution stopped; completion requires reconciliation",
+        ),
+    }
 }
 
 /// The shared tail every attempt ends with: a sealed receipt, then the
@@ -1080,6 +1112,54 @@ async fn settled(state: &ServeState, naming: &Naming<'_>, outcome: Outcome, unit
         .ok();
 }
 
+async fn cancelled_before_dispatch(
+    state: &ServeState,
+    naming: &Naming<'_>,
+    ctx: &mut Context,
+    hold: &Option<money::Hold>,
+) -> Verdict {
+    state.release(naming.request, naming.attempt).await;
+    ctx.settlement = money_release(state, hold).await;
+    Verdict::Refused {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        code: "cancelled",
+        message: "caller disconnected before inference dispatch".into(),
+        outcome: Outcome::Unattempted,
+        ctx: ctx.clone(),
+    }
+}
+
+async fn verified_cancellable(
+    state: &ServeState,
+    endpoint: &str,
+    admission: &Admission,
+    naming: &Naming<'_>,
+    ctx: &mut Context,
+    hold: &Option<money::Hold>,
+    cancellation: &Cancellation,
+) -> Result<(), Verdict> {
+    tokio::select! {
+        biased;
+        _ = cancellation.wait() => Err(cancelled_before_dispatch(state, naming, ctx, hold).await),
+        result = verified(state, endpoint, admission, naming, ctx, hold) => result,
+    }
+}
+
+async fn forward_cancellable(
+    state: &ServeState,
+    endpoint: &str,
+    body: &Bytes,
+    cancellation: &Cancellation,
+) -> Forwarded {
+    tokio::select! {
+        biased;
+        _ = cancellation.wait() => Forwarded::Unavailable {
+            message: "caller disconnected after dispatch; completion is unknown".into(),
+        },
+        result = forward(state, endpoint, body) => result,
+    }
+}
+
 /// The request's full passage through admission — one function so the
 /// steps read in the order they run.
 async fn admitted(
@@ -1088,6 +1168,7 @@ async fn admitted(
     envelope: &Value,
     body: &Bytes,
     naming: &Naming<'_>,
+    cancellation: &Cancellation,
 ) -> Verdict {
     // 1. Authenticate.
     let (registry, caller, mut ctx) = match authenticated(state, headers) {
@@ -1166,30 +1247,44 @@ async fn admitted(
         Ok(hold) => hold,
         Err(verdict) => return verdict,
     };
-    if let Err(verdict) = verified(state, &endpoint, &admission, naming, &mut ctx, &hold).await {
+    if let Err(verdict) = verified_cancellable(
+        state,
+        &endpoint,
+        &admission,
+        naming,
+        &mut ctx,
+        &hold,
+        cancellation,
+    )
+    .await
+    {
         return verdict;
     }
 
     // 6. Forward, then settle from the recorded outcome.
-    let (status, outcome, body_out, cause) = match forward(state, &endpoint, body).await {
-        Forwarded::Served { status, body } => (status, Outcome::Answered, body, None),
-        Forwarded::Refused {
-            status,
-            body,
-            cause,
-        } => (status, Outcome::Refused, body, Some(cause)),
-        Forwarded::Unavailable { message } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Outcome::Unavailable,
-            Bytes::from(
-                serde_json::to_vec(&json!({
-                    "error": {"code": "unavailable", "message": message},
-                }))
-                .unwrap_or_default(),
+    if cancellation.stopped() {
+        return cancelled_before_dispatch(state, naming, &mut ctx, &hold).await;
+    }
+    let (status, outcome, body_out, cause) =
+        match forward_cancellable(state, &endpoint, body, cancellation).await {
+            Forwarded::Served { status, body } => (status, Outcome::Answered, body, None),
+            Forwarded::Refused {
+                status,
+                body,
+                cause,
+            } => (status, Outcome::Refused, body, Some(cause)),
+            Forwarded::Unavailable { message } => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Outcome::Unavailable,
+                Bytes::from(
+                    serde_json::to_vec(&json!({
+                        "error": {"code": "unavailable", "message": message},
+                    }))
+                    .unwrap_or_default(),
+                ),
+                Some("unavailable".to_string()),
             ),
-            Some("unavailable".to_string()),
-        ),
-    };
+        };
     ctx.result_digest = Some(digest_bytes(&body_out));
     settled(state, naming, outcome, &units).await;
     if hold.is_some() {
@@ -1218,6 +1313,7 @@ async fn classify_admitted(
     headers: &HeaderMap,
     body: &Bytes,
     naming: &Naming<'_>,
+    cancellation: &Cancellation,
 ) -> Verdict {
     let started = Instant::now();
     // 1. Authenticate, then the typed envelope — a malformed envelope
@@ -1296,6 +1392,23 @@ async fn classify_admitted(
             };
         }
     };
+    // Check the complete expanded context before queueing or reserving usage.
+    // Per-field bounds alone cannot bound repeated question text or JSON framing.
+    for input in &request.inputs {
+        let (body, _) = forward_body(&request, &plan, input, &admission.binding.artifact.model);
+        if body.len() as u64 > limits.max_forward_bytes {
+            return Verdict::Refused {
+                status: StatusCode::UNPROCESSABLE_ENTITY,
+                code: "context_limit",
+                message: format!(
+                    "input `{}` exceeds the door's native request byte limit of {}",
+                    input.id, limits.max_forward_bytes
+                ),
+                outcome: Outcome::Refused,
+                ctx,
+            };
+        }
+    }
     let endpoint = backend.endpoint.clone();
     let _queued = match classify_queue(state, &caller, plan.inputs as u32, &ctx).await {
         Ok(permits) => permits,
@@ -1333,7 +1446,17 @@ async fn classify_admitted(
         Ok(hold) => hold,
         Err(verdict) => return verdict,
     };
-    if let Err(verdict) = verified(state, &endpoint, &admission, naming, &mut ctx, &hold).await {
+    if let Err(verdict) = verified_cancellable(
+        state,
+        &endpoint,
+        &admission,
+        naming,
+        &mut ctx,
+        &hold,
+        cancellation,
+    )
+    .await
+    {
         return verdict;
     }
 
@@ -1371,6 +1494,7 @@ async fn classify_admitted(
             halt: halt.clone(),
             deadline,
             attempt_id: format!("{}:{index}", naming.attempt_id),
+            cancellation: cancellation.clone(),
         }));
     }
     let mut done: Vec<Option<ItemResult>> = (0..request.inputs.len()).map(|_| None).collect();
@@ -1456,6 +1580,7 @@ async fn classify_admitted(
                 plan: &plan,
                 artifact: &artifact,
                 naming,
+                cancellation,
                 call_deadline: deadline,
             },
             review,
@@ -1700,6 +1825,7 @@ struct ItemWork {
     /// This forward's recorded identity within the call's attempt —
     /// the attempt chain's name for it when a review policy runs.
     attempt_id: String,
+    cancellation: Cancellation,
 }
 
 /// What one scheduled input produced.
@@ -1723,6 +1849,32 @@ struct ItemResult {
 /// `unattempted` and spends nothing; a door that stops answering halts
 /// the call rather than letting queued work pretend it ran.
 async fn classify_item(work: ItemWork) -> ItemResult {
+    let cancellation = work.cancellation.clone();
+    let dispatched = Arc::new(AtomicBool::new(false));
+    let index = work.index;
+    let input = work.input.clone();
+    let plan = work.plan.clone();
+    let attempt_id = work.attempt_id.clone();
+    tokio::select! {
+        biased;
+        _ = cancellation.wait() => {
+            let attempted = dispatched.load(Ordering::SeqCst);
+            ItemResult {
+                index,
+                dispatched: attempted,
+                item: failed_item(&input, &plan,
+                    if attempted { "unavailable" } else { "unattempted" },
+                    if attempted { "caller disconnected after dispatch; completion is unknown" }
+                    else { "caller disconnected before dispatch" }, None),
+                usage: None,
+                attempt_id,
+            }
+        }
+        result = classify_item_running(work, dispatched.clone()) => result,
+    }
+}
+
+async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> ItemResult {
     let ItemWork {
         index,
         input,
@@ -1737,6 +1889,7 @@ async fn classify_item(work: ItemWork) -> ItemResult {
         halt,
         deadline,
         attempt_id,
+        cancellation: _,
     } = work;
     let unattempted = |cause: &'static str| ItemResult {
         index,
@@ -1786,6 +1939,7 @@ async fn classify_item(work: ItemWork) -> ItemResult {
     if Instant::now() >= deadline {
         return unattempted("the call's execution deadline passed before dispatch");
     }
+    dispatched.store(true, Ordering::SeqCst);
     let forwarded = tokio::time::timeout_at(cutoff, forward(&state, &endpoint, &body))
         .await
         .unwrap_or_else(|_| Forwarded::Unavailable {
@@ -1858,6 +2012,7 @@ struct SubCall {
     units: quota::Units,
     /// The dispatch's deadline — the phase's, inside the call's own.
     deadline: Instant,
+    cancellation: Cancellation,
 }
 
 /// Why a sub-dispatch could not dispatch — the admission step's own
@@ -2028,6 +2183,21 @@ async fn dispatch_admitted(
     // Authorize the named door — a reviewer or fallback the caller's
     // bindings do not name is refused here, never dispatched.
     let (admission, backend) = authorized(state, registry, caller, &sub.door, ctx).map_err(fail)?;
+    if let Some(limits) = backend.classify {
+        limits.check().map_err(|error| Fail {
+            outcome: Outcome::Refused,
+            code: error.code().to_string(),
+            message: error.to_string(),
+        })?;
+        if sub.body.len() as u64 > limits.max_forward_bytes {
+            return Err(Fail {
+                outcome: Outcome::Refused,
+                code: "context_limit".to_string(),
+                message: "the secondary request exceeds the door's native request byte limit"
+                    .to_string(),
+            });
+        }
+    }
     if sub.expected.as_ref() != Some(&admission.binding.artifact) {
         return Err(Fail {
             outcome: Outcome::Unattempted,
@@ -2076,7 +2246,15 @@ async fn dispatch_admitted(
         .map_err(fail)?;
     match tokio::time::timeout_at(
         cutoff,
-        verified(state, &backend.endpoint, &admission, naming, ctx, &hold),
+        verified_cancellable(
+            state,
+            &backend.endpoint,
+            &admission,
+            naming,
+            ctx,
+            &hold,
+            &sub.cancellation,
+        ),
     )
     .await
     {
@@ -2091,6 +2269,11 @@ async fn dispatch_admitted(
             ));
         }
     }
+    if sub.cancellation.stopped() {
+        return Err(fail(
+            cancelled_before_dispatch(state, naming, ctx, &hold).await,
+        ));
+    }
     if Instant::now() >= sub.deadline {
         state.release(naming.request, naming.attempt).await;
         ctx.settlement = money_release(state, &hold).await;
@@ -2098,11 +2281,14 @@ async fn dispatch_admitted(
             "the secondary dispatch deadline passed before forwarding",
         ));
     }
-    let forwarded = tokio::time::timeout_at(cutoff, forward(state, &backend.endpoint, &sub.body))
-        .await
-        .unwrap_or_else(|_| Forwarded::Unavailable {
-            message: "the dispatch exceeded the review phase's deadline".to_string(),
-        });
+    let forwarded = tokio::time::timeout_at(
+        cutoff,
+        forward_cancellable(state, &backend.endpoint, &sub.body, &sub.cancellation),
+    )
+    .await
+    .unwrap_or_else(|_| Forwarded::Unavailable {
+        message: "the dispatch exceeded the review phase's deadline".to_string(),
+    });
     let outcome = match &forwarded {
         Forwarded::Served { .. } => Outcome::Answered,
         Forwarded::Refused { .. } => Outcome::Refused,
@@ -2189,7 +2375,11 @@ fn phase_stop(
     policy: &classify::Review,
     deadline: Instant,
     quote: Option<u64>,
+    cancellation: &Cancellation,
 ) -> Option<&'static str> {
+    if cancellation.stopped() {
+        return Some("caller disconnected before secondary dispatch");
+    }
     if book.attempts >= policy.max_attempts {
         return Some("the review policy's `max_attempts` bound is spent");
     }
@@ -2335,6 +2525,7 @@ struct PhaseContext<'a> {
     artifact: &'a str,
     naming: &'a Naming<'a>,
     call_deadline: Instant,
+    cancellation: &'a Cancellation,
 }
 
 /// The review and fallback phase a declared review policy runs after
@@ -2360,6 +2551,7 @@ async fn review_phase(
         artifact,
         naming,
         call_deadline,
+        cancellation,
     } = *ctx;
     let deadline = call_deadline.min(Instant::now() + Duration::from_millis(policy.latency_ms));
     let mut book = ReviewBook::default();
@@ -2399,7 +2591,7 @@ async fn review_phase(
             continue;
         }
         let quote = spend_quote(state, &entry.model);
-        if let Some(stop) = phase_stop(&book, policy, deadline, quote) {
+        if let Some(stop) = phase_stop(&book, policy, deadline, quote, cancellation) {
             item["fallback"] = json!({
                 "on": class.name(),
                 "door": entry.model,
@@ -2423,6 +2615,7 @@ async fn review_phase(
         let body = Bytes::from(serde_json::to_vec(&envelope).unwrap_or_default());
         book.seq += 1;
         let sub = SubCall {
+            cancellation: cancellation.clone(),
             expected,
             door: entry.model.clone(),
             request: format!("{}:fb:{}", naming.request, book.seq),
@@ -2576,6 +2769,7 @@ async fn review_phase(
                     policy,
                     deadline,
                     spend_quote(state, &policy.reviewer),
+                    cancellation,
                 )
             };
             if let Some(stop) = stop {
@@ -2617,6 +2811,7 @@ async fn review_phase(
             let body = Bytes::from(serde_json::to_vec(&envelope).unwrap_or_default());
             book.seq += 1;
             let sub = SubCall {
+                cancellation: cancellation.clone(),
                 expected,
                 door: policy.reviewer.clone(),
                 request: format!("{}:rev:{}", naming.request, book.seq),
