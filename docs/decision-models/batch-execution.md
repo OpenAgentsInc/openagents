@@ -82,7 +82,10 @@ Both runs completed every item in input order. The concurrent run's
 peak was two, not the configured four — the binding's declared
 concurrency clamped it, which is the coverage invariant working. The
 figures are a local fixture's record of what the scheduler did, not a
-latency promise for a real backend.
+latency promise for a real backend. `batch_ms` measures the complete fixture
+call; `per_item_ms` measures each dispatched forward and excludes its queue
+wait. Queue time is not separately retained yet. Neither figure is an
+amortized per-item latency claim.
 
 ## Limits and unmet acceptance
 
