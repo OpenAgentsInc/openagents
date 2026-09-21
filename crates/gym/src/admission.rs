@@ -254,6 +254,9 @@ pub struct TransferGuard {
     pub question_digest: Option<String>,
     /// How many standard deviations of the winning metric's spread the
     /// transfer comparison may lose before the admission fails.
+    /// Measured spread of the winning metric on this transfer suite.
+    /// Development-suite spread cannot stand in for this measurement.
+    pub block_sigma: Bound,
     pub max_regression_sigmas: Bound,
 }
 
@@ -550,6 +553,10 @@ impl Plan {
                 &format!("guards.calibration.{} block_sigma", floor.metric),
             )?;
         }
+        check_bound(
+            &self.guards.transfer.block_sigma,
+            "guards.transfer.block_sigma",
+        )?;
         check_bound(
             &self.guards.transfer.max_regression_sigmas,
             "guards.transfer.max_regression_sigmas",
@@ -1508,9 +1515,9 @@ impl Plan {
                 (Some(before), Some(after)) => {
                     let gain = metric.gain(before, after);
                     let moved = format!("{metric} {before:.3} to {after:.3}, a move of {gain:+.3}");
-                    let allowance = self
-                        .rule
-                        .block_sigma(metric)
+                    let allowance = guard
+                        .block_sigma
+                        .value()
                         .zip(guard.max_regression_sigmas.value())
                         .map(|(sigma, sigmas)| {
                             sigmas

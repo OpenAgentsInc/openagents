@@ -412,6 +412,7 @@ mod tests {
                         .questions
                         .as_ref()
                         .map(|_| "fixture-question-digest".into()),
+                    block_sigma: unknown.clone(),
                     max_regression_sigmas: unknown.clone(),
                 },
                 deployment: DeploymentGuard {
@@ -512,6 +513,109 @@ mod tests {
                     .admitted()
                     .is_err()
             );
+        }
+    }
+
+    #[test]
+    fn frozen_metric_distinguishes_winner_underpowered_tie_and_loser() {
+        let suite = Suite::load(include_str!(
+            "../../gym/tests/fixtures/caller-v1/suite.json"
+        ))
+        .unwrap();
+        let mut plan = plan(&suite);
+        let synthetic = |value| Bound {
+            value: Some(value),
+            basis: Basis::Derived,
+            evidence: vec![],
+            why: "Synthetic arithmetic fixture; not a deployment threshold.".into(),
+        };
+        plan.rule.min_blocks_per_side = synthetic(1.0);
+        plan.rule.metric_order[0].block_sigma = synthetic(0.1);
+        plan.rule.effect_size_sigmas = synthetic(1.0);
+        plan.seal();
+        let items = suite.partition(Partition::Development).unwrap();
+        let rows = |pin: &Pinned, correct_count: usize| -> Vec<_> {
+            items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| {
+                    let mut row =
+                        gym::row::Row::new(&suite.name, &suite.digest, &item.id, &pin.door).scored(
+                            [("yes".into(), 0.8), ("no".into(), 0.2)]
+                                .into_iter()
+                                .collect(),
+                            index < correct_count,
+                        );
+                    row.recorded_at = "2026-09-21T00:00:00Z".into();
+                    row.split = "development".into();
+                    row.family = item.family.clone();
+                    row.estimator = plan.instrument.estimator.clone();
+                    row.door_identity = pin.identity.clone();
+                    row.question_set = plan.workload.question_set.clone();
+                    row.question_digest = plan.workload.question_digest.clone();
+                    row.check().unwrap();
+                    row
+                })
+                .collect()
+        };
+        let base = rows(&plan.base, items.len() / 2);
+        for (correct, sigma, expected) in [
+            (items.len(), 0.1, gym::gate::Verdict::Passed),
+            (items.len(), 1.0, gym::gate::Verdict::Unverifiable),
+            (items.len() / 2, 0.1, gym::gate::Verdict::Failed),
+            (0, 0.1, gym::gate::Verdict::Failed),
+        ] {
+            let candidate = rows(&plan.candidate, correct);
+            let mut comparison = plan.clone();
+            comparison.rule.metric_order[0].block_sigma = synthetic(sigma);
+            comparison.seal();
+            let evidence = Evidence {
+                suite: &suite,
+                development: Side {
+                    base: &base,
+                    candidate: &candidate,
+                    store_head: None,
+                },
+                locked: None,
+                transfer: None,
+                deployment: None,
+                decided_at: "fixture".into(),
+                commitment: None,
+            };
+            let decision = comparison.decide(&evidence).unwrap();
+            let phase = decision
+                .phases
+                .iter()
+                .find(|p| p.phase == DEVELOPMENT_PHASE)
+                .unwrap();
+            let win = phase
+                .criteria
+                .iter()
+                .find(|c| c.name == "the_candidate_earns_the_win")
+                .unwrap();
+            assert_eq!(win.verdict, expected, "{}", win.detail);
+            // A winning metric alone never authorizes activation without
+            // locked confirmation, transfer, deployment, and every guard.
+            assert!(
+                Record::evaluate(&comparison, &evidence)
+                    .unwrap()
+                    .admitted()
+                    .is_err()
+            );
+            for name in [
+                "confident_errors_do_not_rise",
+                "the_candidate_declines_no_new_items",
+            ] {
+                assert_eq!(
+                    phase
+                        .criteria
+                        .iter()
+                        .find(|c| c.name == name)
+                        .unwrap()
+                        .verdict,
+                    gym::gate::Verdict::Unverifiable
+                );
+            }
         }
     }
 
