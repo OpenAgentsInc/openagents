@@ -47,6 +47,7 @@
 pub mod backend;
 pub mod keys;
 mod manifest;
+pub mod money;
 pub mod quota;
 mod registry;
 
