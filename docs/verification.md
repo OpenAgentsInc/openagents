@@ -1,13 +1,31 @@
 # Rust verification
 
-Run the manual gate from a contributor machine or non-GitHub infrastructure:
+## Choose checks for the change
+
+Documentation-only changes do not require the Rust verification gate, including
+before a commit or push. Do not run the full gate for prose edits, documentation
+moves, navigation changes, or documentation references in code comments.
+
+For documentation reorganizations, check local links, referenced paths, and
+preservation of retained artifacts. If moving a document requires updating an
+embedded-document path such as `include_str!`, check only the affected consumer
+and any relevant formatting. A documentation path update does not justify
+workspace-wide Clippy, tests, compiler compatibility checks, or PostgreSQL
+acceptance. Unrelated test failures do not block a documentation-only push.
+
+## Run the Rust gate
+
+For Rust behavior changes, run the manual gate from a contributor machine or
+non-GitHub infrastructure:
 
 ```sh
 ./scripts/verify-rust.sh
 ```
 
-A bare run is the full gate and the evidence a push needs. While iterating,
-scope the run instead of paying full-workspace cost for every check:
+A bare run is the full Rust gate. The documentation-only guidance above is an
+explicit exception; a full gate is not a prerequisite for every push. While
+iterating on Rust changes, scope the run instead of paying full-workspace cost
+for every check:
 
 ```sh
 ./scripts/verify-rust.sh --list                    # phase slugs

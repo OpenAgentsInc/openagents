@@ -7,10 +7,17 @@ repo script and supervised as a child process. Retained Python training and
 acceptance tooling and shell orchestration are infrastructure exceptions,
 not permission to add another product implementation language.
 
-Use the pinned toolchain and `./scripts/verify-rust.sh` for the manual gate.
-Read `docs/verification.md` for minimum compiler versions, feature coverage,
-and external prerequisites. Use a separate Cargo target directory per
-worktree. Keep workspace formatting changes separate from behavior changes.
+Documentation-only changes do not require the Rust verification gate, including
+before a push. Check links, paths, and retained artifacts for documentation
+reorganizations. Comment edits and documentation path updates do not require
+workspace-wide tests; if an embedded document's loading path changes, check only
+the affected consumer.
+
+For Rust behavior changes, use the pinned toolchain and
+`./scripts/verify-rust.sh` for the manual gate. Read `docs/verification.md`
+for verification scope, minimum compiler versions, feature coverage, and
+external prerequisites. Use a separate Cargo target directory per worktree.
+Keep workspace formatting changes separate from behavior changes.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
