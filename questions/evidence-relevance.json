@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "id": "openagents.evidence-relevance.v1",
+  "name": "Which observed evidence helps the task",
+  "summary": "Picks the evidence candidate most relevant to a stated task, from the ones the host observed, or none, and asks whether the set plausibly covers the task's needs.",
+  "gate": "most_relevant",
+  "questions": {
+    "most_relevant": {
+      "type": "choice",
+      "instructions": "Which candidate is most relevant to the task the state describes? Choose only among the listed options - every one is a path the host already observed, listed with the line span it covers when it covers one, how much of its content was admitted, and its size in bytes. A refused candidate is a name the host recorded without reading a byte of it, so its path and span are all there is to judge. Judge only what the state shows and never assume content a candidate does not carry. Answer none when no listed candidate would help the task.",
+      "options": "supplied",
+      "criteria": {
+        "none": "No listed candidate is relevant to this task. The paths the host observed do not reach what the task turns on."
+      }
+    },
+    "any_relevant": {
+      "type": "noul",
+      "instructions": "At least one of the listed candidates is relevant evidence for the task the state describes."
+    },
+    "coverage": {
+      "type": "noul",
+      "instructions": "The listed candidates plausibly cover the task's needs: the state names no region or kind of evidence the task turns on that the list misses."
+    }
+  }
+}
