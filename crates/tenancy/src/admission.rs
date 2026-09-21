@@ -516,6 +516,104 @@ mod tests {
     }
 
     #[test]
+    fn repeated_blocks_require_complete_comparable_coverage() {
+        let suite = Suite::load(include_str!(
+            "../../gym/tests/fixtures/caller-v1/suite.json"
+        ))
+        .unwrap();
+        let mut plan = plan(&suite);
+        plan.instrument.seed_blocks = vec![11, 29];
+        plan.seal();
+        let mut base = Vec::new();
+        for seed in &plan.instrument.seed_blocks {
+            for item in suite.partition(Partition::Development).unwrap() {
+                let mut row =
+                    gym::row::Row::new(&suite.name, &suite.digest, &item.id, &plan.base.door)
+                        .scored(
+                            [("yes".into(), 0.8), ("no".into(), 0.2)]
+                                .into_iter()
+                                .collect(),
+                            true,
+                        );
+                row.recorded_at = "2026-09-21T00:00:00Z".into();
+                row.split = "development".into();
+                row.family = item.family.clone();
+                row.estimator = plan.instrument.estimator.clone();
+                row.door_identity = plan.base.identity.clone();
+                row.question_set = plan.workload.question_set.clone();
+                row.question_digest = plan.workload.question_digest.clone();
+                row.seed_base = Some(*seed);
+                row.check().unwrap();
+                base.push(row);
+            }
+        }
+        let candidate: Vec<_> = base
+            .iter()
+            .cloned()
+            .map(|mut row| {
+                row.door = plan.candidate.door.clone();
+                row.door_identity = plan.candidate.identity.clone();
+                row
+            })
+            .collect();
+        for mutation in 0..4 {
+            let mut candidate = candidate.clone();
+            match mutation {
+                1 => {
+                    candidate.pop();
+                }
+                2 => candidate.push(candidate[0].clone()),
+                3 => candidate[0].seed_base = Some(99),
+                _ => {}
+            }
+            let evidence = Evidence {
+                suite: &suite,
+                development: Side {
+                    base: &base,
+                    candidate: &candidate,
+                    store_head: None,
+                },
+                locked: None,
+                transfer: None,
+                deployment: None,
+                decided_at: "fixture".into(),
+                commitment: None,
+            };
+            let decision = plan.decide(&evidence).unwrap();
+            if mutation == 3 {
+                assert_eq!(decision.ruling, gym::admission::Ruling::Refused);
+            } else {
+                assert_ne!(
+                    decision.ruling,
+                    gym::admission::Ruling::Refused,
+                    "{:?}",
+                    decision.refusals
+                );
+                let coverage = decision
+                    .phases
+                    .iter()
+                    .find(|p| p.phase == DEVELOPMENT_PHASE)
+                    .unwrap()
+                    .criteria
+                    .iter()
+                    .find(|c| c.name == "the_declared_selection_is_covered")
+                    .unwrap();
+                assert_eq!(
+                    coverage.verdict,
+                    if mutation == 0 {
+                        gym::gate::Verdict::Passed
+                    } else {
+                        gym::gate::Verdict::Unverifiable
+                    }
+                );
+            }
+        }
+        plan.instrument.seed_blocks.push(11);
+        plan.seal();
+        assert!(plan.validate().is_err());
+    }
+
+    #[test]
     fn frozen_plan_cannot_omit_calibration_or_change_winning_metric_between_phases() {
         let suite = Suite::load(include_str!(
             "../../gym/tests/fixtures/caller-v1/suite.json"

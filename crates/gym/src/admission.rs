@@ -205,9 +205,37 @@ pub struct Instrument {
     /// The seed block drawn. `None` pins a door that takes no seed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed_base: Option<u64>,
+    /// Distinct seed blocks for a repeated comparison. When present, this
+    /// replaces `seed_base`; every block must cover the full selection.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seed_blocks: Vec<u64>,
     /// The option order served. `None` pins the suite's own order.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permutation: Option<Vec<usize>>,
+}
+
+impl Instrument {
+    fn blocks(&self) -> Vec<Option<u64>> {
+        if self.seed_blocks.is_empty() {
+            vec![self.seed_base]
+        } else {
+            self.seed_blocks.iter().copied().map(Some).collect()
+        }
+    }
+
+    fn coverage(&self, rows: &[Row], expected: &Expected) -> Vec<Coverage> {
+        self.blocks()
+            .iter()
+            .map(|seed| {
+                let block: Vec<Row> = rows
+                    .iter()
+                    .filter(|row| row.seed_base == *seed)
+                    .cloned()
+                    .collect();
+                Coverage::of(&block, expected.items())
+            })
+            .collect()
+    }
 }
 
 /// The candidate must hold on a second suite, named and digested here, so
@@ -469,6 +497,21 @@ impl Plan {
             return Err(PlanError::Bound {
                 name: "guards.transfer.suite_digest".into(),
                 problem: "transfer requires a distinct pinned suite".into(),
+            });
+        }
+        if !self.instrument.seed_blocks.is_empty()
+            && (self.instrument.seed_base.is_some()
+                || self
+                    .instrument
+                    .seed_blocks
+                    .iter()
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    != self.instrument.seed_blocks.len())
+        {
+            return Err(PlanError::Bound {
+                name: "instrument.seed_blocks".into(),
+                problem: "declare distinct blocks without a separate seed_base".into(),
             });
         }
         self.rule.validate()?;
@@ -805,7 +848,7 @@ impl Plan {
             }
             if row.estimator != self.instrument.estimator
                 || row.samples != self.instrument.samples
-                || row.seed_base != self.instrument.seed_base
+                || !self.instrument.blocks().contains(&row.seed_base)
                 || row.permutation != self.instrument.permutation
             {
                 refusals.push(format!(
@@ -932,22 +975,23 @@ impl Plan {
 
         // Coverage: the declared selection, recorded once per side.
         let (base_cov, cand_cov) = (
-            Coverage::of(base_rows, expected.items()),
-            Coverage::of(candidate_rows, expected.items()),
+            self.instrument.coverage(base_rows, &expected),
+            self.instrument.coverage(candidate_rows, &expected),
         );
-        let covered = base_cov.complete() && cand_cov.complete();
+        let covered = base_cov.iter().chain(&cand_cov).all(Coverage::complete);
         criteria.push(if covered {
             passed(
                 "the_declared_selection_is_covered",
                 1,
                 format!(
-                    "both sides recorded all {} expected items exactly once",
+                    "both sides recorded all {} expected items exactly once per declared seed block",
                     expected.items().len()
                 ),
             )
         } else {
             let mut detail = String::new();
-            for (side, coverage) in [("base", &base_cov), ("candidate", &cand_cov)] {
+            for (side, coverage) in base_cov.iter().map(|c| ("base", c))
+                .chain(cand_cov.iter().map(|c| ("candidate", c))) {
                 if !coverage.complete() {
                     let _ = write!(
                         detail,
@@ -1237,7 +1281,9 @@ impl Plan {
                         .to_string(),
             };
         };
-        let bound = self.guards.max_new_confident_errors.count().unwrap_or(0);
+        let Some(bound) = self.guards.max_new_confident_errors.count() else {
+            return not_judged(name, 2, "the guard limit has not been established");
+        };
         let rise = after.saturating_sub(before);
         if rise > bound {
             return Criterion {
@@ -1270,13 +1316,15 @@ impl Plan {
         if let Some(reason) = blocked {
             return not_judged(name, 2, reason);
         }
-        let new_refusals: Vec<String> = base
+        let new_refusals: Vec<_> = base
             .answered
             .iter()
             .filter(|item| candidate.refused.contains(*item))
             .cloned()
             .collect();
-        let bound = self.guards.max_new_refusals.count().unwrap_or(0);
+        let Some(bound) = self.guards.max_new_refusals.count() else {
+            return not_judged(name, 2, "the guard limit has not been established");
+        };
         if new_refusals.len() > bound {
             return Criterion {
                 name: name.to_string(),
@@ -1403,8 +1451,15 @@ impl Plan {
             vec![self.base.door.clone(), self.candidate.door.clone()],
         );
         let covered = expected.as_ref().is_ok_and(|expected| {
-            Coverage::of(transfer.base, expected.items()).complete()
-                && Coverage::of(transfer.candidate, expected.items()).complete()
+            self.instrument
+                .coverage(transfer.base, expected)
+                .iter()
+                .all(Coverage::complete)
+                && self
+                    .instrument
+                    .coverage(transfer.candidate, expected)
+                    .iter()
+                    .all(Coverage::complete)
         });
         criteria.push(Criterion {
             name: "the_transfer_selection_is_covered".into(),
@@ -1576,9 +1631,9 @@ struct Measured {
     /// Every item the side recorded a row for.
     asked: BTreeSet<String>,
     /// Every item the door answered.
-    answered: BTreeSet<String>,
+    answered: BTreeSet<(Option<u64>, String)>,
     /// Every item the door declined.
-    refused: BTreeSet<String>,
+    refused: BTreeSet<(Option<u64>, String)>,
     /// How many distinct seed blocks the rows drew.
     blocks: usize,
     /// The panel of measures over the answered items.
@@ -1593,12 +1648,12 @@ fn measure(rows: &[Row]) -> Measured {
         answered: rows
             .iter()
             .filter(|row| row.is_scored())
-            .map(|row| row.item_id.clone())
+            .map(|row| (row.seed_base, row.item_id.clone()))
             .collect(),
         refused: rows
             .iter()
             .filter(|row| row.is_refused())
-            .map(|row| row.item_id.clone())
+            .map(|row| (row.seed_base, row.item_id.clone()))
             .collect(),
         blocks: rows
             .iter()
