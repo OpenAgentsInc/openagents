@@ -43,6 +43,8 @@ pub struct World {
     /// Named console commands a verified quest may run — the allowlisted
     /// world effects. A quest names an effect; it never writes commands.
     pub effects: BTreeMap<String, String>,
+    /// Guild channels and the decision door. `None` means no relay runs.
+    pub relay: Option<RelaySection>,
     /// How long one episode may run.
     pub episode: Bounds,
 }
@@ -143,6 +145,23 @@ pub struct Economy {
     pub max_reservation: u64,
 }
 
+/// The `relay` section: guild channels and a decision door. Present
+/// means the episode spawns a local `nostr-relay` and the members speak
+/// in NIP-29 groups.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct RelaySection {
+    /// The port the episode's relay listens on.
+    #[serde(default = "default_relay_port")]
+    pub port: u16,
+    /// The `POST /v1/systemone` endpoint for decisions — a local
+    /// `kev-serve`, or a live door. Absent means no model calls.
+    #[serde(default)]
+    pub decision_url: Option<String>,
+    /// The model decision requests name, such as `kev-latest`.
+    #[serde(default)]
+    pub decision_model: Option<String>,
+}
+
 /// The `episode` section: the bounds an episode may not cross.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Bounds {
@@ -178,6 +197,9 @@ fn default_max_seconds() -> u64 {
 fn default_award() -> u64 {
     1
 }
+fn default_relay_port() -> u16 {
+    7447
+}
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -194,6 +216,8 @@ struct Manifest {
     economy: Economy,
     #[serde(default)]
     effects: BTreeMap<String, String>,
+    #[serde(default)]
+    relay: Option<RelaySection>,
     #[serde(default)]
     episode: Bounds,
 }
@@ -248,6 +272,7 @@ impl World {
             deposits: manifest.deposits,
             economy: manifest.economy,
             effects: manifest.effects,
+            relay: manifest.relay,
             episode: manifest.episode,
         };
         world.check()?;

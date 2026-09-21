@@ -116,6 +116,9 @@ fn run(args: &[String]) -> Result<()> {
         bridge,
         runs,
         port,
+        relay_bin: relay_bin(),
+        relay_database: std::env::var("VOYAGER_RELAY_DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://127.0.0.1:5432/voyager_relay".to_string()),
     };
     // A world that enrolls agents runs the guild loop; a world with a
     // single `agent` runs the solo curriculum.
@@ -236,6 +239,15 @@ fn minecraft_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     home.join(".openagents").join("voyager").join("minecraft")
+}
+
+/// The `nostr-relay` binary: `VOYAGER_RELAY_BIN`, or the workspace's
+/// own debug build.
+fn relay_bin() -> PathBuf {
+    if let Some(path) = std::env::var_os("VOYAGER_RELAY_BIN") {
+        return PathBuf::from(path);
+    }
+    repo_root().join("target").join("debug").join("nostr-relay")
 }
 
 /// `~/.openagents/voyager/runs`, where episodes leave their evidence.

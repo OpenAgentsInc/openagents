@@ -108,6 +108,11 @@
   "effects": {
     "open_bridge": "fill -1 0 -11 1 0 -10 minecraft:oak_planks"
   },
+  "relay": {
+    "port": 7447,
+    "decision_url": "http://127.0.0.1:8009",
+    "decision_model": "kev-latest"
+  },
   "episode": {
     "max_actions": 80,
     "max_seconds": 900

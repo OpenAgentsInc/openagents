@@ -63,6 +63,11 @@ pub struct Plan {
     pub runs: PathBuf,
     /// The port the server listens on.
     pub port: u16,
+    /// The `nostr-relay` binary an ensemble world with guild channels
+    /// spawns.
+    pub relay_bin: PathBuf,
+    /// The Postgres URL the relay stores into.
+    pub relay_database: String,
 }
 
 /// How one task ended.

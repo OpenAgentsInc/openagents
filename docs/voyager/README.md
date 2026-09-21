@@ -110,6 +110,9 @@ A manifest can go further and enroll a roster. The optional sections:
   block positions. A position may sit in only one deposit.
 - `economy` — starting credits per guild and the largest hold one quest
   may place.
+- `relay` — guild communication and, optionally, a decision door:
+  `port` for the supervised `nostr-relay`, `decision_url` for a
+  `POST /v1/systemone` endpoint, and `decision_model`.
 - `effects` — named console commands a verified quest may run, such as
   `open_bridge`. A quest names an effect; it never supplies commands.
 - `minecraft.generator_settings` — flat or custom world generation, as
@@ -145,6 +148,52 @@ its hold rather than freeing capacity it may still consume.
 Ore dug without a pickaxe drops nothing, so arena agents earn credits
 rather than items — the ledger, not the inventory, is the award.
 
+## Guild channels
+
+A world with a `relay` section runs the episode's Nostr relay too: a
+supervised `nostr-relay` child against a local Postgres database
+(`VOYAGER_RELAY_DATABASE_URL`, default `postgres://127.0.0.1:5432/
+voyager_relay`; the binary is `VOYAGER_RELAY_BIN` or the workspace's
+debug build). Before the first agent joins, the runner creates one
+closed NIP-29 group per guild through the NIP-86 management endpoint
+and enrolls each member's manifest pubkey.
+
+Each member then holds a websocket as its own derived key, answers the
+relay's NIP-42 challenge, and speaks in its guild with C7 `kind:9`
+chat events carrying the `h` tag. The episode demonstrates the
+boundary rather than asserting it: a member's write to another guild's
+channel is refused `restricted:` and recorded as a passing task, and
+an unaffiliated observer reads both guilds' histories afterward —
+public read, restricted write. The relay's own key and the management
+key are derived like the agents' (`voyager-relay-key:` roles); this is
+a demo relay whose groups live for one episode, so the runner deletes
+any stale group before creating its own.
+
+## The decision door
+
+A `relay.decision_url` adds one `POST /v1/systemone` call per guild:
+when a member faces more than one contested deposit, a typed `choice`
+question asks which to work first, and the answer orders the mining
+pass. The model picks among admitted work only — the deposit set, the
+positions, and the awards all stay manifest-bounded.
+
+Every call writes `decisions/decision-N.json` under the run directory:
+the exact state, the typed questions, the model identity, the raw
+response body, and the transport (`local-http`; the NIP-CJ relay
+family carries the same request body once a decision worker is
+deployed). NIP-CJ normalizes `confidence` to the picked option's
+probability, but the SDK accepts any in-range value, so the runner
+recomputes confidence from the returned distribution rather than
+trusting the field.
+
+A local door is `kev-serve` — for example
+`./target/debug/kev-serve --adapter-dir ~/work/kev-artifacts/kev-0.6b
+--base-dir ~/work/kev-artifacts/qwen3-0.6b --port 8009`, which serves
+the model as `kev-latest`. Inference on CPU runs tens of seconds, so
+the door call carries a 120-second timeout and a patient retry policy:
+a `busy` answer means a forward is computing, not that the door is
+down.
+
 ## Agent keys
 
 An enrolled member signs as the username it joined under. The secret is
@@ -163,11 +212,11 @@ real key custody, a later NIP-CAP question.
 
 ## What phase 1 does not do
 
-- **No model in the loop.** The curriculum is a fixed program and the
-  critic is mechanical: exploration must move the bot, gathering must
-  change the inventory. The task list, the action vocabulary, and the
-  checks are where `coder::generate` and `POST /v1/systemone` plug in
-  later.
+- **The model orders work; it does not choose it.** Where a decision
+  door answers, a `choice` question picks among already-admitted
+  deposits; the task list, the action vocabulary, and the mechanical
+  critic stay the host's. `coder::generate`-driven task proposals come
+  with the curriculum phase.
 - **No skill library.** `seen` block names are remembered inside an
   episode; nothing is banked between episodes yet.
 - **No Gym suite.** The trace is the evidence; the suites that score it
