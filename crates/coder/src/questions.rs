@@ -118,6 +118,13 @@ pub struct Policy {
     /// declares, not a read a caller treats as an answer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub abstain_below: Option<f64>,
+    /// The evaluation and calibration evidence the function is bound
+    /// to — the measurement references its claims rest on, recorded in
+    /// the decision's provenance so a trace can say which evidence a
+    /// run's answers were judged under. A set that names none is
+    /// unmeasured, and the record says so by saying nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<String>,
 }
 
 impl Policy {
@@ -129,6 +136,7 @@ impl Policy {
             && self.models.is_empty()
             && self.state_max_bytes.is_none()
             && self.abstain_below.is_none()
+            && self.evidence.is_empty()
     }
 }
 
@@ -212,6 +220,14 @@ impl Set {
         }
         if self.policy.models.iter().any(|model| model.is_empty()) {
             return Err("policy names an empty model identity".to_string());
+        }
+        if self
+            .policy
+            .evidence
+            .iter()
+            .any(|reference| reference.trim().is_empty())
+        {
+            return Err("policy names an empty evidence reference".to_string());
         }
         if !self.questions.is_empty() && self.template().is_some() {
             return Err("a set is a fixed set or a template, and this one is both".to_string());
@@ -377,27 +393,32 @@ impl Set {
     /// answer.
     #[must_use]
     pub fn provenance(&self) -> Value {
-        record(&self.id, &self.gate, self.digest(), self.policy.v)
+        record(&self.id, &self.gate, self.digest(), &self.policy)
     }
 }
 
 /// The record a trace carries about the wording a decision asked from:
 /// the function's identity, the wording's digest, the gate that read
-/// it, and the policy revision that bound it. One shape for a set the
-/// host read from a file and a function it builds in code.
-fn record(id: &str, gate: &str, digest: String, policy: u32) -> Value {
-    json!({
+/// it, and the policy that bound it — its revision and the evidence
+/// the function's claims rest on. One shape for a set the host read
+/// from a file and a function it builds in code.
+fn record(id: &str, gate: &str, digest: String, policy: &Policy) -> Value {
+    let mut provenance = json!({
         "question_set": id,
         "set_digest": digest,
         "gate": match gate.is_empty() {
             true => Value::Null,
             false => json!(gate),
         },
-        "policy_version": match policy {
+        "policy_version": match policy.v {
             0 => Value::Null,
             v => json!(v),
         },
-    })
+    });
+    if !policy.evidence.is_empty() {
+        provenance["evidence"] = json!(policy.evidence);
+    }
+    provenance
 }
 
 /// The same record for a function the host builds in code rather than
@@ -407,7 +428,7 @@ fn record(id: &str, gate: &str, digest: String, policy: u32) -> Value {
 /// policy field and this record.
 #[must_use]
 pub fn function(id: &str, gate: &str, digest: String) -> Value {
-    record(id, gate, digest, 0)
+    record(id, gate, digest, &Policy::default())
 }
 
 /// The digest of the wording a host asks from, for a function it
@@ -726,7 +747,8 @@ mod tests {
         let set: Set = serde_json::from_str(
             r#"{"v":1,"id":"openagents.bound.v1","gate":"q",
                 "questions":{"q":{"type":"noul"}},
-                "policy":{"v":3,"models":["kev-0.5b"],"abstain_below":0.6}}"#,
+                "policy":{"v":3,"models":["kev-0.5b"],"abstain_below":0.6,
+                    "evidence":["docs/coder/measurements/eval.md"]}}"#,
         )
         .unwrap();
         set.validate().unwrap();
@@ -734,6 +756,11 @@ mod tests {
         assert_eq!(provenance["policy_version"], 3);
         assert_eq!(provenance["question_set"], "openagents.bound.v1");
         assert!(provenance["set_digest"].is_string());
+        assert_eq!(
+            provenance["evidence"],
+            json!(["docs/coder/measurements/eval.md"]),
+            "the evidence a function's claims rest on travels with its record"
+        );
 
         // An unbound set records no revision — a trace cannot invent a
         // policy the wording never declared.
@@ -742,6 +769,10 @@ mod tests {
         )
         .unwrap();
         assert!(unbound.provenance()["policy_version"].is_null());
+        assert!(
+            unbound.provenance().get("evidence").is_none(),
+            "an unmeasured function names no evidence"
+        );
     }
 
     #[test]
@@ -782,6 +813,10 @@ mod tests {
             (
                 r#"{"v":1,"id":"openagents.a.v1","questions":{"q":{"type":"noul"}},"policy":{"models":[""]}}"#,
                 "empty model identity",
+            ),
+            (
+                r#"{"v":1,"id":"openagents.a.v1","questions":{"q":{"type":"noul"}},"policy":{"evidence":["  "]}}"#,
+                "empty evidence reference",
             ),
         ] {
             let set: Set = serde_json::from_str(body).unwrap();

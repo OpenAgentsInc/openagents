@@ -44,8 +44,13 @@ execution permits, and scheduler resource constraints. A model judgment cannot
 add an executor, override an operator pin, or increase a granted write scope.
 
 `requires_scorable_answer` asks for a usable typed score. It does not claim
-calibration. Existing program thresholds require their own development and
-held-out evidence before they can support a quality claim.
+calibration. A set's `policy.evidence` names the measurement references its
+claims rest on — `openagents.program.v1`, `openagents.independence.v2`, and
+`openagents.evidence-relevance.v1` declare theirs, and the decision's
+provenance records them beside the wording digest. A set that names none is
+unmeasured, and the record says so by saying nothing. Existing program
+thresholds require their own development and held-out evidence before they
+can support a quality claim.
 
 ## Remaining integration
 

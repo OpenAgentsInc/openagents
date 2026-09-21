@@ -17,5 +17,11 @@
       "type": "noul",
       "instructions": "At least one listed task requires restricting which tools the delegate may use."
     }
+  },
+  "policy": {
+    "v": 1,
+    "evidence": [
+      "docs/coder/measurements/2026-09-21-independence-v2-eval.md"
+    ]
   }
 }

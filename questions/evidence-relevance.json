@@ -21,5 +21,11 @@
       "type": "noul",
       "instructions": "The listed candidates plausibly cover the task's needs: the state names no region or kind of evidence the task turns on that the list misses."
     }
+  },
+  "policy": {
+    "v": 1,
+    "evidence": [
+      "docs/coder/measurements/2026-09-21-evidence-select.md"
+    ]
   }
 }
