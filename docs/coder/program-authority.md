@@ -34,8 +34,8 @@ Capability approval is revalidated by the existing executor boundary. Runtime
 program composition remains unsupported and refused; `Grant::meets` implements
 the narrowing operation future composition must use. Dynamic Decision Router
 tenant/model authorization is not implemented by this local grant. It remains
-part of [#9504](https://github.com/OpenAgentsInc/openagents/issues/9504) and the
-shared client integration.
+part of [#9502](https://github.com/OpenAgentsInc/openagents/issues/9502), the
+shared client integration. The local host-authority foundation in #9504 is complete.
 
 Tests cover missing grants, effect ceilings, child-grant intersection, unsupported
 bounds, a spurious program selection from bullet prose, and writing work-list
