@@ -11,6 +11,7 @@ use coder_project::{Assignment, artifact, dispatch};
 const USAGE: &str = "Usage:
   coder-project run-one REPOSITORY ASSIGNMENT.json NEW_OUTPUT_DIRECTORY
   coder-project inspect REPOSITORY WORKTREE BASE OWNED_PATH...
+  coder-project verify REPOSITORY WORKTREE PLAN.json NEW_OUTPUT_DIRECTORY
   coder-project project CONFIGURATION.json STATE_DIRECTORY [--watch]
   coder-project snapshot REPOSITORY OWNER REPO PROJECT_NUMBER
   coder-project pin-config TEMPLATE.json NEW_CONFIGURATION.json
@@ -94,11 +95,78 @@ async fn execute(args: &[String]) -> Result<u8, String> {
                 &args[4..],
             )
             .await?;
+            let mut value = serde_json::to_value(&result).map_err(|e| e.to_string())?;
+            value
+                .as_object_mut()
+                .ok_or("artifact result is not an object")?
+                .insert("digest".into(), serde_json::json!(result.digest()));
             println!(
                 "{}",
-                serde_json::to_string_pretty(&result).map_err(|e| e.to_string())?
+                serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?
             );
             Ok(0)
+        }
+        Some("verify") if args.len() == 5 => {
+            let repository = Path::new(&args[1])
+                .canonicalize()
+                .map_err(|e| e.to_string())?;
+            let worktree = Path::new(&args[2]);
+            let plan_path = Path::new(&args[3]);
+            let output = Path::new(&args[4]);
+            let survey = Survey::read(Some(&repository), &repository);
+            coder_project::protect_evidence(&repository, plan_path, &survey)?;
+            coder_project::protect_evidence(&repository, output, &survey)?;
+            let mut bytes = Vec::new();
+            File::open(plan_path)
+                .map_err(|e| e.to_string())?
+                .take(1024 * 1024 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| e.to_string())?;
+            if bytes.len() > 1024 * 1024 {
+                return Err("verification plan exceeds 1 MiB".into());
+            }
+            let plan: artifact::Verification =
+                serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            plan.plan.validate()?;
+            std::fs::DirBuilder::new()
+                .mode(0o700)
+                .create(output)
+                .map_err(|e| e.to_string())?;
+            record(&output.join("plan.json"), &plan)?;
+            let mut trace = coder::Recorder::at(
+                &output.join("trace.atif.jsonl"),
+                "host-verification",
+                "none",
+                &repository.display().to_string(),
+            )?;
+            let result = artifact::verify(
+                &repository,
+                worktree,
+                &plan,
+                &coder::Grant::operator(Some("verify-artifact")),
+                &mut trace,
+            )
+            .await;
+            trace.finish("ended");
+            if let Some(error) = trace.failure() {
+                return Err(format!("verification trace is incomplete: {error}"));
+            }
+            let (value, code) = match result {
+                Ok(run) => (
+                    serde_json::json!({"summary":run.summary(),"verification":run.verification,"refusal":run.stopped.as_ref().map(ToString::to_string),"integration_accepted":false}),
+                    if run.finished() { 0 } else { 3 },
+                ),
+                Err(error) => (
+                    serde_json::json!({"error":error,"integration_accepted":false}),
+                    2,
+                ),
+            };
+            record(&output.join("result.json"), &value)?;
+            println!(
+                "{}",
+                serde_json::to_string(&value).map_err(|e| e.to_string())?
+            );
+            Ok(code)
         }
         Some("project") if args.len() == 3 || (args.len() == 4 && args[3] == "--watch") => {
             coder_project::controller::run(

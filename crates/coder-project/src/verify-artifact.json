@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "slug": "verify-artifact",
+  "name": "Verify a pinned retained artifact",
+  "summary": "Runs operator-prepared checks against an independently inspected artifact.",
+  "steps": [
+    {"name": "verify", "kind": "check", "bounds": {"refuse_on": "gate_not_met"}}
+  ]
+}

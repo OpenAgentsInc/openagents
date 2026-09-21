@@ -18,6 +18,70 @@ pub struct Artifact {
     pub tests_verified: bool,
 }
 
+impl Artifact {
+    #[must_use]
+    pub fn digest(&self) -> String {
+        atif::digest(&serde_json::json!(self))
+    }
+}
+
+/// Protected host requirements for independently checking a retained artifact.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Verification {
+    pub base: String,
+    pub tip: String,
+    pub owned_paths: Vec<String>,
+    pub plan: coder::verification::Plan,
+}
+
+/// Bind host checks to the exact independently inspected patch before running them.
+pub async fn verify(
+    repository: &Path,
+    worktree: &Path,
+    requirements: &Verification,
+    grant: &coder::Grant,
+    trace: &mut coder::Recorder,
+) -> Result<coder::Run, String> {
+    let before = inspect(
+        repository,
+        worktree,
+        &requirements.base,
+        &requirements.owned_paths,
+    )
+    .await?;
+    if before.tip != requirements.tip || before.digest() != requirements.plan.input_digest {
+        return Err("verification plan does not bind the inspected artifact".into());
+    }
+    let program: coder::Program =
+        serde_json::from_str(include_str!("verify-artifact.json")).map_err(|e| e.to_string())?;
+    let survey = coder::Survey::read(Some(repository), repository);
+    let runtime = coder::Runtime::using(survey, Some(repository)).with_verification(
+        worktree.into(),
+        requirements.plan.clone(),
+        coder::capability::Trust::operator(),
+    );
+    let run = runtime
+        .run(
+            &program,
+            &coder::Inputs::read("Verify the pinned retained artifact.", ""),
+            grant,
+            Some(trace),
+        )
+        .await;
+    let after = inspect(
+        repository,
+        worktree,
+        &requirements.base,
+        &requirements.owned_paths,
+    )
+    .await?;
+    if after.digest() != before.digest() {
+        return Err("candidate changed during verification".into());
+    }
+    Ok(run)
+}
+
 /// Require normalized repository-relative paths before comparing ownership.
 pub fn relative(path: &str) -> Result<(), String> {
     let p = Path::new(path);

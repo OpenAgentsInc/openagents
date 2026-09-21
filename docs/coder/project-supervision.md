@@ -233,6 +233,11 @@ never declares code correctness. Review the patch, run appropriate bounded
 checks, integrate accepted changes through the manual gate, and retain the
 evidence. A text marker alone is insufficient.
 
+For an approved host checker, use the separate
+[artifact verification command](artifact-verification.md) to bind bounded checks
+to the inspected commit and artifact digest. A passing report does not accept the
+scheduler result or publish the patch.
+
 To accept or reject the result, the supervising operator writes a new JSON file
 under `state/control/` with these fields:
 

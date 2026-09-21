@@ -338,6 +338,8 @@ pub struct Run {
     pub delegations: Vec<Delegation>,
     /// The typed answers each `decide` step got, by step name.
     pub answers: BTreeMap<String, Value>,
+    /// Independently executed host checks, separate from delegate answers.
+    pub verification: Vec<crate::verification::Report>,
 }
 
 impl Run {
@@ -405,6 +407,13 @@ impl Run {
     pub fn summary(&self) -> String {
         let program = self.program.as_deref().unwrap_or("no program");
         let Some(stopped) = &self.stopped else {
+            if !self.verification.is_empty() {
+                return format!(
+                    "{program} ran {} steps and passed {} independent verification plans.",
+                    self.steps.len(),
+                    self.verification.len()
+                );
+            }
             let tally = self.tally();
             let wall: f64 = self
                 .delegations
@@ -457,6 +466,7 @@ pub struct Runtime {
     relay: Option<RelayDoor>,
     repository: Option<PathBuf>,
     host: Host,
+    verification: Option<(PathBuf, crate::verification::Plan, capability::Trust)>,
 }
 
 impl Runtime {
@@ -484,6 +494,7 @@ impl Runtime {
             questions: questions::Registry::open(&questions::search(repository)),
             door: jev::Client::from_env().ok(),
             relay: None,
+            verification: None,
             repository: repository.map(Path::to_path_buf),
             host: match repository {
                 Some(_) => Host::with_repository(),
@@ -502,8 +513,21 @@ impl Runtime {
             questions,
             door: jev::Client::from_env().ok(),
             relay: None,
+            verification: None,
             host,
         }
+    }
+
+    /// Install an operator-prepared verification plan. Program text cannot set it.
+    #[must_use]
+    pub fn with_verification(
+        mut self,
+        workspace: PathBuf,
+        plan: crate::verification::Plan,
+        trust: capability::Trust,
+    ) -> Self {
+        self.verification = Some((workspace, plan, trust));
+        self
     }
 
     /// Answers the decision questions through this door rather than the
@@ -632,7 +656,7 @@ impl Runtime {
                 )),
             },
             "refuse_on" => match value.as_str() {
-                Some(INTERSECTION) => Ok(()),
+                Some(INTERSECTION | "gate_not_met") => Ok(()),
                 other => refuse(format!(
                     "this host runs no check that refuses on {}",
                     other.unwrap_or("that")
@@ -738,6 +762,25 @@ impl Runtime {
 
     /// Whether this host can run what a `check` step names.
     fn admit_check(&self, program: &Program, step: &Step) -> Result<(), Refused> {
+        if step.bounds.get("refuse_on").and_then(Value::as_str) == Some("gate_not_met") {
+            let (_, plan, _) = self.verification.as_ref().ok_or_else(|| {
+                Refused::at(
+                    &step.name,
+                    "check_unavailable",
+                    "no host-prepared verification plan is installed",
+                )
+            })?;
+            plan.validate()
+                .map_err(|reason| Refused::at(&step.name, "bound_unenforceable", reason))?;
+            if !boundary_supported() {
+                return Err(Refused::at(
+                    &step.name,
+                    "boundary_unavailable",
+                    "verification requires an enforcing filesystem boundary",
+                ));
+            }
+            return Ok(());
+        }
         if step.bounds.get("refuse_on").and_then(Value::as_str) != Some(INTERSECTION) {
             return Err(Refused::at(
                 &step.name,
@@ -950,6 +993,17 @@ impl Runtime {
                 spend: true,
                 ..Effects::none()
             },
+            Kind::Check
+                if step.bounds.get("refuse_on").and_then(Value::as_str) == Some("gate_not_met") =>
+            {
+                Effects {
+                    reads: true,
+                    network: true,
+                    subprocesses: true,
+                    spend: true,
+                    ..Effects::none()
+                }
+            }
             Kind::Check => Effects::none(),
             Kind::Delegate => Effects {
                 delegation: true,
@@ -1089,6 +1143,12 @@ impl Runtime {
                         trace.as_deref_mut(),
                     )
                     .await
+                }
+                Kind::Check
+                    if step.bounds.get("refuse_on").and_then(Value::as_str)
+                        == Some("gate_not_met") =>
+                {
+                    self.verify_step(step, &mut run, trace.as_deref_mut()).await
                 }
                 Kind::Check => self.check(step, program, inputs, trace.as_deref_mut()),
                 Kind::Delegate => {
@@ -1376,6 +1436,53 @@ impl Runtime {
             ));
         }
         Ok(format!("{gate} {read:.2} clears {floor}"))
+    }
+
+    async fn verify_step(
+        &self,
+        step: &Step,
+        run: &mut Run,
+        trace: Option<&mut Recorder>,
+    ) -> Result<String, Refused> {
+        let (workspace, plan, trust) = self
+            .verification
+            .as_ref()
+            .expect("admission resolved verification");
+        let report = crate::verification::run(workspace, plan, trust)
+            .await
+            .map_err(|reason| Refused::at(&step.name, "verification_unverifiable", reason))?;
+        let passed = report.verdict == crate::verification::Verdict::Passed;
+        let output = format!(
+            "verification {:?}: {} bounded checks",
+            report.verdict,
+            report.checks.len()
+        );
+        let mut extra = self.step_extra(step);
+        extra.insert("verification".into(), json!(report));
+        self.record(
+            trace,
+            "Checked independent host evidence.",
+            Call {
+                id: String::new(),
+                name: "program_verification".into(),
+                arguments: json!({"plan_digest":plan.digest(),"input_digest":plan.input_digest}),
+                output: output.clone(),
+                outcome: if passed {
+                    Outcome::Completed
+                } else {
+                    Outcome::Cancelled
+                },
+                milliseconds: 0,
+                purpose: Some("Require pinned mechanical evidence before accepting work.".into()),
+                extra,
+            },
+        );
+        run.verification.push(report);
+        if passed {
+            Ok(output)
+        } else {
+            Err(Refused::at(&step.name, "gate_not_met", output))
+        }
     }
 
     /// A `check` step: the deterministic admission test.
@@ -1883,6 +1990,7 @@ mod tests {
             questions: questions::Registry::open(&[]),
             door: None,
             relay: None,
+            verification: None,
             repository: None,
             host: Host::without_repository(),
         }
@@ -1923,6 +2031,7 @@ mod tests {
                 delegation(Task::reading("describe it", "c.rs"), "a module that counts"),
             ],
             answers: BTreeMap::new(),
+            verification: vec![],
         };
 
         assert_eq!(

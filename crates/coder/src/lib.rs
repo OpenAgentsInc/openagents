@@ -62,6 +62,7 @@ pub mod survey;
 pub mod trace;
 pub mod tracker;
 pub mod turn;
+pub mod verification;
 mod worktree;
 
 pub use crate::capability::{Found, Manifest, Presence};
