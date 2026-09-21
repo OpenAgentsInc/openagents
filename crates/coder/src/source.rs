@@ -57,8 +57,29 @@
 //! 0.97, with the wrong answers sitting above the right ones. A gate in
 //! that state is not the place to put a fact that can be computed, so the
 //! fact is computed and recorded whether or not the gate reads it.
+//!
+//! # A selection can partition into waves
+//!
+//! One [`Selection`] answers which work may run beside itself, and a
+//! drop is a dead end: the item is out of the batch and the run moves
+//! on. [`Selection::waves`] asks what the drops were for. A drop that
+//! was ordering — the item comes after work an earlier wave admitted,
+//! it writes a path an already-kept item holds, or it fell off the
+//! wave's bound — is a place in line rather than a ruling, so the item
+//! is a candidate again next wave. A drop that was a verdict — the
+//! source blocked the item, or it waits on work no wave will ever
+//! admit — is **unscheduled**, recorded once with its reason and never
+//! asked again.
+//!
+//! Waves are scheduling shape, not a concurrency promise. The
+//! partition says only that everything inside one wave may run beside
+//! everything else in it, and that a later wave's work does not sit
+//! beside the work it was dropped behind. Whether a runner takes the
+//! waves back to back or days apart, in one process or in many, is the
+//! runner's business rather than this lookup's.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -715,6 +736,96 @@ impl Selection {
         }
     }
 
+    /// Partitions one source's answer into waves: the same lookup asked
+    /// of what is left until nothing is left to ask.
+    ///
+    /// Wave one is [`Selection::of`] over the whole list. Each drop it
+    /// records is then read for whether it was a verdict or a place in
+    /// line. An item dropped for ordering alone is asked again next
+    /// wave: it came after work an earlier wave admitted, it wrote a
+    /// path an already-kept item holds, or it fell off this wave's
+    /// `max_per_wave` — truncation shaped the wave rather than ruling
+    /// on the item. An item dropped for anything else is unscheduled
+    /// where it falls and never asked again: the source blocked it, or
+    /// it waits on work no wave will admit. A drop's own reason travels
+    /// with it either way.
+    ///
+    /// The partition stops when no candidates remain or a wave admits
+    /// nothing — the next wave would be empty — and `max_waves` caps
+    /// it. Candidates still waiting at the cap are unscheduled with the
+    /// bound named. [`OnOverflow::Refuse`] refuses the whole call from
+    /// the wave that overflows, the same answer [`Selection::of`] gives
+    /// today.
+    ///
+    /// A wave is a batch that may run beside itself, nothing more. The
+    /// partition orders the batches; whether a runner executes them
+    /// back to back or days apart, in one process or in many, is its
+    /// business. What is promised is the ordering: nothing in a later
+    /// wave ran beside the work it was dropped behind.
+    #[must_use]
+    pub fn waves(
+        source: &Source,
+        found: Vec<Work>,
+        max_per_wave: usize,
+        max_waves: usize,
+        on_overflow: OnOverflow,
+    ) -> Waves {
+        let mut done = Waves::default();
+        let mut candidates = found;
+        let mut stalled = false;
+        while !candidates.is_empty() && done.waves.len() < max_waves {
+            let by_id: BTreeMap<String, Work> = candidates
+                .iter()
+                .map(|work| (work.id.clone(), work.clone()))
+                .collect();
+            let selection = Selection::of(
+                source,
+                std::mem::take(&mut candidates),
+                max_per_wave,
+                on_overflow,
+            );
+            if selection.overflow == Overflow::Refused {
+                done.waves.push(selection);
+                return done;
+            }
+            let present: BTreeSet<String> = selection.ordered.iter().cloned().collect();
+            let mut fates: BTreeMap<String, Fate> = selection
+                .work
+                .iter()
+                .map(|work| (work.id.clone(), Fate::Scheduled))
+                .collect();
+            for dropped in &selection.dropped {
+                let mut visiting = Vec::new();
+                fate(&dropped.id, &by_id, &present, &mut fates, &mut visiting);
+            }
+            let admitted = !selection.work.is_empty();
+            for dropped in &selection.dropped {
+                match fates[&dropped.id] {
+                    Fate::Candidate => candidates.push(by_id[&dropped.id].clone()),
+                    Fate::Unscheduled => done.unscheduled.push(dropped.clone()),
+                    Fate::Scheduled => {}
+                }
+            }
+            done.waves.push(selection);
+            if !admitted {
+                stalled = true;
+                break;
+            }
+        }
+        for work in candidates {
+            let reason = if stalled {
+                "a wave admitted nothing, and nothing behind it can run".to_string()
+            } else {
+                format!("over the run's max_waves of {max_waves}")
+            };
+            done.unscheduled.push(Dropped {
+                id: work.id,
+                reason,
+            });
+        }
+        done
+    }
+
     /// The tasks a `delegate` step hands over, in the recorded order.
     #[must_use]
     pub fn tasks(&self) -> Vec<Task> {
@@ -772,6 +883,90 @@ impl Selection {
                 .collect::<Vec<_>>()
         )
     }
+}
+
+/// What a work list becomes when one batch is not the whole answer:
+/// the bounded waves that run in order, and what no wave could take.
+#[derive(Clone, Debug, Default)]
+pub struct Waves {
+    /// The waves in the order they run. Each is a full [`Selection`]
+    /// over the candidates that remained, so its `ordered`, `work`,
+    /// `dropped`, and `collisions` read the way one lookup's do — and
+    /// its `dropped` names what this wave left out whether or not a
+    /// later wave took it.
+    pub waves: Vec<Selection>,
+    /// What no wave admitted, each with why. An item lands here when
+    /// its drop was a verdict rather than a place in line — blocked by
+    /// the source, waiting on work no wave will admit — or when the
+    /// wave bound ran out with it still waiting.
+    pub unscheduled: Vec<Dropped>,
+}
+
+/// What a dropped item's drop was, read for whether a later wave may
+/// ask again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Fate {
+    /// Kept into a wave: it runs.
+    Scheduled,
+    /// Dropped for ordering alone: a place in line, asked again next
+    /// wave.
+    Candidate,
+    /// Dropped by a verdict: recorded once and never asked again.
+    Unscheduled,
+}
+
+/// One dropped item's fate, resolved against what its wave decided.
+///
+/// A kept item is [`Fate::Scheduled`]. A dropped item that names work
+/// still in its wave's list comes after that work, so its fate is its
+/// dependencies': every one of them scheduled or still a candidate
+/// leaves it a candidate, and any one of them unscheduled takes it with
+/// them — an item cannot run after work that will never run. A drop
+/// with no dependency in the list was a write conflict or the bound,
+/// both ordering, so it is a candidate. A blocked item is unscheduled
+/// whatever else is true. An `after` cycle resolves unscheduled: each
+/// side waits on the other, so neither ever runs.
+fn fate(
+    id: &str,
+    by_id: &BTreeMap<String, Work>,
+    present: &BTreeSet<String>,
+    fates: &mut BTreeMap<String, Fate>,
+    visiting: &mut Vec<String>,
+) -> Fate {
+    if let Some(fate) = fates.get(id) {
+        return *fate;
+    }
+    if visiting.iter().any(|item| item == id) {
+        return Fate::Unscheduled;
+    }
+    let item = &by_id[id];
+    let waiting: Vec<String> = item
+        .after
+        .iter()
+        .filter(|dep| present.contains(*dep))
+        .cloned()
+        .collect();
+    let fate = if item.blocked.is_some() {
+        Fate::Unscheduled
+    } else if waiting.is_empty() {
+        Fate::Candidate
+    } else {
+        visiting.push(id.to_string());
+        let all_in_line = waiting.iter().all(|dep| {
+            matches!(
+                fate(dep, by_id, present, fates, visiting),
+                Fate::Scheduled | Fate::Candidate
+            )
+        });
+        visiting.pop();
+        if all_in_line {
+            Fate::Candidate
+        } else {
+            Fate::Unscheduled
+        }
+    };
+    fates.insert(id.to_string(), fate);
+    fate
 }
 
 /// Every path more than one item touches, by path.
@@ -920,6 +1115,28 @@ mod tests {
 
     fn list(work: Vec<Work>, max: usize, on_overflow: OnOverflow) -> Selection {
         Selection::of(&Source::request(), work, max, on_overflow)
+    }
+
+    fn waves(
+        work: Vec<Work>,
+        max_per_wave: usize,
+        max_waves: usize,
+        on_overflow: OnOverflow,
+    ) -> Waves {
+        Selection::waves(
+            &Source::request(),
+            work,
+            max_per_wave,
+            max_waves,
+            on_overflow,
+        )
+    }
+
+    /// A work item the source itself marked as unable to run.
+    fn blocked(id: &str, reason: &str) -> Work {
+        let mut item = work(id, &[], &[]);
+        item.blocked = Some(reason.to_string());
+        item
     }
 
     #[test]
@@ -1314,5 +1531,236 @@ mod tests {
             "the built-in source answers whatever is on disk"
         );
         assert!(registry.get("no-such-source").is_none());
+    }
+
+    /// The declared order becomes the wave order: each item waits one
+    /// wave behind the work it comes after, so a chain of three runs
+    /// one item per wave.
+    #[test]
+    fn an_after_chain_partitions_into_one_item_waves() {
+        let partition = waves(
+            vec![
+                work("a", &["a.rs"], &[]),
+                work("b", &["b.rs"], &["a"]),
+                work("c", &["c.rs"], &["b"]),
+            ],
+            6,
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(partition.waves.len(), 3);
+        assert_eq!(partition.waves[0].selected(), ["a"]);
+        assert_eq!(partition.waves[1].selected(), ["b"]);
+        assert_eq!(partition.waves[2].selected(), ["c"]);
+        assert!(
+            partition.unscheduled.is_empty(),
+            "every drop was a place in line, and the line moved"
+        );
+    }
+
+    /// The write-conflict drop was ordering: the second writer waits
+    /// one wave behind the item that holds the path.
+    #[test]
+    fn two_writers_sharing_a_path_land_in_different_waves() {
+        let partition = waves(
+            vec![
+                writes("a", &["src/shared.rs"]),
+                writes("b", &["src/shared.rs"]),
+            ],
+            6,
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(partition.waves.len(), 2);
+        assert_eq!(partition.waves[0].selected(), ["a"]);
+        assert_eq!(partition.waves[1].selected(), ["b"]);
+        assert!(partition.unscheduled.is_empty());
+    }
+
+    /// A writer dropped behind a kept reader is a place in line too:
+    /// the reader's wave answers first, the writer's wave edits after.
+    #[test]
+    fn a_reader_and_a_writer_on_one_path_land_in_different_waves() {
+        let partition = waves(
+            vec![
+                work("read", &["src/lib.rs"], &[]),
+                writes("edit", &["src/lib.rs"]),
+            ],
+            6,
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(partition.waves.len(), 2);
+        assert_eq!(partition.waves[0].selected(), ["read"]);
+        assert_eq!(partition.waves[1].selected(), ["edit"]);
+        assert!(partition.unscheduled.is_empty());
+    }
+
+    /// Two reads of one path share freely, so they share a wave: the
+    /// partition only separates what cannot run beside itself.
+    #[test]
+    fn two_readers_sharing_a_path_share_a_wave() {
+        let partition = waves(
+            vec![
+                work("a", &["src/lib.rs"], &[]),
+                work("b", &["src/lib.rs"], &[]),
+            ],
+            6,
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(partition.waves.len(), 1);
+        assert_eq!(partition.waves[0].selected(), ["a", "b"]);
+        assert!(partition.unscheduled.is_empty());
+    }
+
+    /// A blocked drop is a verdict, not a place in line: the item is
+    /// recorded once and never asked again, and work that comes after
+    /// it goes with it — nothing can run behind work that never runs.
+    #[test]
+    fn a_blocked_item_is_unscheduled_and_never_returns() {
+        let partition = waves(
+            vec![
+                work("ok", &["a.rs"], &[]),
+                blocked("held", "blocked by #9999, which is still open"),
+                work("behind", &["b.rs"], &["held"]),
+            ],
+            6,
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(partition.waves.len(), 1);
+        assert_eq!(partition.waves[0].selected(), ["ok"]);
+        assert_eq!(
+            partition
+                .unscheduled
+                .iter()
+                .map(|dropped| dropped.id.as_str())
+                .collect::<Vec<_>>(),
+            ["held", "behind"]
+        );
+        assert_eq!(
+            partition.unscheduled[0].reason, "blocked by #9999, which is still open",
+            "the verdict travels with the item"
+        );
+    }
+
+    /// The wave bound is a bound: candidates still standing in line
+    /// when it is reached are unscheduled, each naming what ran out.
+    #[test]
+    fn max_waves_bounds_the_partition_and_reports_the_remainder() {
+        let partition = waves(
+            vec![
+                work("a", &["a.rs"], &[]),
+                work("b", &["b.rs"], &["a"]),
+                work("c", &["c.rs"], &["b"]),
+            ],
+            6,
+            2,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(partition.waves.len(), 2);
+        assert_eq!(partition.waves[0].selected(), ["a"]);
+        assert_eq!(partition.waves[1].selected(), ["b"]);
+        assert_eq!(partition.unscheduled.len(), 1);
+        assert_eq!(partition.unscheduled[0].id, "c");
+        assert!(
+            partition.unscheduled[0].reason.contains("max_waves of 2"),
+            "{}",
+            partition.unscheduled[0].reason
+        );
+    }
+
+    /// Truncation shaped the wave rather than ruling on the item: what
+    /// fell off one wave's bound is asked again in the next.
+    #[test]
+    fn overflow_truncation_re_candidates_into_the_next_wave() {
+        let partition = waves(
+            vec![
+                work("a", &["a.rs"], &[]),
+                work("b", &["b.rs"], &[]),
+                work("c", &["c.rs"], &[]),
+            ],
+            2,
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(partition.waves.len(), 2);
+        assert_eq!(partition.waves[0].selected(), ["a", "b"]);
+        assert_eq!(partition.waves[0].overflow, Overflow::Truncated);
+        assert_eq!(partition.waves[1].selected(), ["c"]);
+        assert!(partition.unscheduled.is_empty());
+    }
+
+    /// A refusal is still a refusal: the wave that overflowed records
+    /// what it refused over and the whole call stops, as `of` does
+    /// today.
+    #[test]
+    fn a_wave_that_overflows_can_refuse_the_whole_call() {
+        let partition = waves(
+            vec![work("a", &["a.rs"], &[]), work("b", &["b.rs"], &[])],
+            1,
+            6,
+            OnOverflow::Refuse,
+        );
+
+        assert_eq!(partition.waves.len(), 1);
+        assert_eq!(partition.waves[0].overflow, Overflow::Refused);
+        assert_eq!(partition.waves[0].selected(), ["a", "b"]);
+        assert!(partition.unscheduled.is_empty());
+    }
+
+    /// An empty list has nothing to order and nothing to leave out.
+    #[test]
+    fn an_empty_list_partitions_into_no_waves() {
+        let partition = waves(Vec::new(), 6, 6, OnOverflow::Truncate);
+
+        assert!(partition.waves.is_empty());
+        assert!(partition.unscheduled.is_empty());
+    }
+
+    /// A mixed list partitions deterministically: the two after-deps
+    /// trail their work by one wave each, the second writer trails the
+    /// first, the blocked item leaves the run entirely, and what runs
+    /// keeps its own identifier in whichever wave admits it.
+    #[test]
+    fn a_mixed_list_partitions_deterministically() {
+        let partition = waves(
+            vec![
+                work("a", &["a.rs"], &[]),
+                work("b", &["b.rs"], &["a"]),
+                work("c", &["c.rs"], &["b"]),
+                writes("d", &["d.rs"]),
+                writes("e", &["d.rs"]),
+                blocked("held", "blocked by #9999, which is still open"),
+            ],
+            6,
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(partition.waves.len(), 3);
+        assert_eq!(
+            partition.waves[0].selected(),
+            ["a", "d"],
+            "the first wave is one Selection::of over the whole list"
+        );
+        assert_eq!(partition.waves[1].selected(), ["b", "e"]);
+        assert_eq!(partition.waves[2].selected(), ["c"]);
+        assert_eq!(
+            partition
+                .unscheduled
+                .iter()
+                .map(|dropped| dropped.id.as_str())
+                .collect::<Vec<_>>(),
+            ["held"]
+        );
     }
 }
