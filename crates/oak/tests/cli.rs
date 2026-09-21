@@ -934,6 +934,56 @@ fn messages(values: &[Value]) -> String {
     values.iter().map(|value| format!("{value}\n")).collect()
 }
 
+#[test]
+fn documentation_tools_work_without_inference_configuration() {
+    for version in ["2025-11-25", "2025-06-18"] {
+        let mut input = initialized();
+        input[0]["params"]["protocolVersion"] = json!(version);
+        input.push(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
+        for (id, name, arguments) in [
+            (3, "list_docs", json!({"limit":2})),
+            (
+                4,
+                "read_doc",
+                json!({"id":"classification", "max_bytes":64}),
+            ),
+            (5, "search_docs", json!({"query":"POST", "limit":2})),
+            (6, "get_examples", json!({"limit":2})),
+            (7, "read_doc", json!({"id":"../../.secrets/key"})),
+            (8, "list_models", json!({})),
+        ] {
+            input.push(json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":arguments}}));
+        }
+        let mut command = Command::new(env!("CARGO_BIN_EXE_oak-mcp"));
+        command.env_clear();
+        let output = spawn(command, Some(&messages(&input)));
+        assert!(output.status.success());
+        let replies = rows(&output);
+        assert_eq!(replies[0]["result"]["protocolVersion"], version);
+        let tools = replies[1]["result"]["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 6);
+        let classify = tools
+            .iter()
+            .find(|tool| tool["name"] == "classify")
+            .unwrap();
+        assert_eq!(classify["annotations"]["readOnlyHint"], false);
+        for reply in &replies[2..6] {
+            let result = &reply["result"];
+            assert_eq!(result["isError"], false, "{reply}");
+            assert_eq!(result["structuredContent"]["v"], "openagents.docs.v1");
+            let text: Value =
+                serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(text, result["structuredContent"]);
+            assert!(serde_json::to_vec(result).unwrap().len() < 16_384);
+        }
+        assert_eq!(
+            replies[6]["result"]["structuredContent"]["error"]["code"],
+            "document_not_found"
+        );
+        assert_eq!(replies[7]["result"]["isError"], true);
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn classification_cli_and_mcp_preserve_all_gateway_fields() {
     let dir = tempfile::tempdir().unwrap();
@@ -980,7 +1030,7 @@ async fn classification_cli_and_mcp_preserve_all_gateway_fields() {
         let replies = rows(&output);
         assert_eq!(replies.len(), 3);
         assert_eq!(replies[0]["result"]["protocolVersion"], "2025-06-18");
-        assert_eq!(replies[1]["result"]["tools"].as_array().unwrap().len(), 2);
+        assert_eq!(replies[1]["result"]["tools"].as_array().unwrap().len(), 6);
         assert_eq!(replies[2]["result"]["structuredContent"], expected);
         let text: Value =
             serde_json::from_str(replies[2]["result"]["content"][0]["text"].as_str().unwrap())

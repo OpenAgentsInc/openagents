@@ -9,6 +9,8 @@
 //! `docs/decision-models/caller.md` and
 //! `docs/decision-models/classification-callers.md`.
 
+pub mod docs;
+
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -924,7 +926,7 @@ pub mod mcp {
                     "title": "oak — the decision API caller",
                     "version": env!("CARGO_PKG_VERSION"),
                 },
-                "instructions": "Tools call the configured decision service. `list_models` lists the doors the configured credential may name; `classify` posts an openagents.classify.v1 envelope to /v1/classify and returns the report.",
+                "instructions": "Documentation tools read the versioned bundled corpus without credentials. Inference may consume quota or money. `list_models` lists the doors the configured credential may name; `classify` posts an openagents.classify.v1 envelope to /v1/classify and returns the report.",
             }),
         ))
     }
@@ -932,7 +934,7 @@ pub mod mcp {
     /// The tools this server serves. Neither schema accepts a credential
     /// or an endpoint: those stay in operator configuration.
     fn tool_list() -> Value {
-        json!({
+        let mut list = json!({
             "tools": [
                 {
                     "name": "list_models",
@@ -947,7 +949,7 @@ pub mod mcp {
                 {
                     "name": "classify",
                     "title": "Classify inputs through a door",
-                    "description": "POST an openagents.classify.v1 envelope to the configured gateway's /v1/classify and return the report verbatim: ordered per-input results, selections, per-unit aggregates, and usage.",
+                    "description": "POST an openagents.classify.v1 envelope to the configured gateway's /v1/classify and return the report verbatim: ordered per-input results, selections, per-unit aggregates, and usage. This can consume quota or money even if no content changes.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -966,7 +968,12 @@ pub mod mcp {
                     },
                 },
             ],
-        })
+        });
+        let tools = list["tools"].as_array_mut().expect("tool list is an array");
+        tools[0]["annotations"] = json!({"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true,"openWorldHint":true});
+        tools[1]["annotations"] = json!({"readOnlyHint":false,"destructiveHint":false,"idempotentHint":false,"openWorldHint":true});
+        tools.extend(super::docs::tools());
+        list
     }
 
     /// One `tools/call`: the tool's name and bounded arguments, then the
@@ -993,6 +1000,16 @@ pub mod mcp {
                 "tool `arguments` must be an object",
             ));
         };
+        if super::docs::handles(name) {
+            let reply = match super::docs::call(name, Value::Object(arguments.clone())) {
+                Ok(document) => tool_result(&document),
+                Err(problem) => tool_error(
+                    problem.message.to_string(),
+                    json!({"error":{"code":problem.code,"message":problem.message}}),
+                ),
+            };
+            return Some(result(id, reply));
+        }
         let reply = match name {
             "list_models" => {
                 if !arguments.is_empty() {

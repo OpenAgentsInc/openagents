@@ -102,6 +102,13 @@ The tools are:
 - `classify`: `request` is the complete classification envelope; optional
   `request_id` supplies an idempotency key. Endpoint, credentials, and workspace
   are operator configuration and are refused as tool arguments.
+- `list_docs`, `read_doc`, `search_docs`, and `get_examples`: read the versioned
+  public documentation bundled into the binary without resolving inference
+  configuration or contacting a service. See the [documentation tools](mcp-documentation.md).
+
+Inference can consume quota or money. Its tool annotation does not claim a
+read-only or idempotent effect. Documentation tools are read-only, idempotent,
+and limited to their bundled corpus; annotations do not grant execution authority.
 
 Tool results carry both `structuredContent` and the same JSON serialized as a
 text content block. A reported partial classification stays a report. HTTP

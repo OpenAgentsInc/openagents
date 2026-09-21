@@ -3,7 +3,8 @@
 //! The client launches this binary as a subprocess and speaks newline-
 //! delimited JSON-RPC 2.0 on standard input and output: `initialize`,
 //! `notifications/initialized`, then `tools/list` and `tools/call`. The
-//! tools are `list_models` and `classify`; credentials, the endpoint,
+//! Inference tools are `list_models` and `classify`; documentation tools
+//! read a bounded, versioned corpus without credentials. Credentials, the endpoint,
 //! and the workspace come from operator configuration — the same
 //! `OPENAGENTS_API_KEY`, `OPENAGENTS_BASE_URL`, `OPENAGENTS_WORKSPACE`,
 //! and config file `oak` reads — never from tool arguments.
