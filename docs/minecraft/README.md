@@ -36,6 +36,10 @@ integration beneath it.
 | [Evaluation](evaluation.md) | Throughput, learning, economics, and failure experiments |
 | [Delivery and sources](delivery-and-sources.md) | Implementation slices, current gaps, source inventory, and design provenance |
 
+[Watch a Voyager episode live](voyager-runbook.md) is the operational
+runbook for the shipped `crates/voyager` slice; the documents above are
+the proposed profile.
+
 ## The loop
 
 ```mermaid
