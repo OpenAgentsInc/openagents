@@ -2832,6 +2832,48 @@ fn admit_command(options: &Options) -> Result<(), String> {
         "admit reads the development rows from a store; pass --store path".to_string()
     })?;
     let development = read_rows(store_path)?;
+    let commitment_path = options.commitment.as_deref().ok_or_else(|| {
+        "admit requires a separately retained development report; pass --commitment path"
+            .to_string()
+    })?;
+    let commitment = gym::commitment::Commitment::load(commitment_path)?;
+    let faults = gym::commitment::check(&commitment, &development);
+    if !faults.is_empty() {
+        return Err(format!(
+            "development evidence does not match its retained commitment: {}",
+            faults.join("; ")
+        ));
+    }
+    if commitment.rows != development.len()
+        || commitment.suite_digest != plan.workload.suite_digest
+        || commitment.question_set != plan.workload.question_set
+        || commitment.question_digest != plan.workload.question_digest
+        || commitment.gate_digest != plan.workload.gate_digest
+    {
+        return Err("development commitment does not bind the complete frozen workload".into());
+    }
+    let expected = gym::coverage::Expected::of(
+        &suite,
+        &plan.workload.partitions,
+        None,
+        None,
+        vec![plan.base.door.clone(), plan.candidate.door.clone()],
+    )?;
+    if commitment.expected_set() != *expected.items()
+        || commitment
+            .selection
+            .doors
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            != expected
+                .doors
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+    {
+        return Err(
+            "development commitment selects different items or doors from the frozen plan".into(),
+        );
+    }
     let development_head = Store::at(store_path)
         .head()
         .map_err(|error| error.to_string())?;
@@ -2918,7 +2960,7 @@ fn admit_command(options: &Options) -> Result<(), String> {
             profile_of(&dev_candidate),
         )),
         decided_at: options.at.clone().unwrap_or_else(eval::now_utc),
-        commitment: None,
+        commitment: Some(commitment.digest.clone()),
     };
     let decision = plan.decide(&evidence).map_err(|error| error.to_string())?;
 
