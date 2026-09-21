@@ -3,9 +3,11 @@
 `coder-project verify` runs operator-prepared checks against a retained Coder
 scratch worktree. It records mechanical evidence separately from the delegate's
 answer and from the operator's decision to integrate. This is the first host
-verification layer for #9509. The `run-suite` program's host path now runs
-through it under the bounds described below; `review-changes` remains
-unimplemented.
+verification layer for #9509. Both `run-suite` and `review-changes` use this
+host path. The [suite adapter](#measure-a-gym-suite-through-the-adapter) retains
+measurement evidence; [diff review](#review-a-pinned-diff) adds separately
+recorded findings after mechanical checks pass. Neither workflow accepts an
+artifact for integration.
 
 ## Prepare the check
 
@@ -201,7 +203,6 @@ it still requires the plan's explicit unrestricted-read and network grants.
 A local endpoint is a transport restriction, not a filesystem read sandbox or
 proof that a model process cannot make its own network calls. Hosted suite
 execution and verified model-artifact attestation remain separate work.
-
 
 ## Review a pinned diff
 
