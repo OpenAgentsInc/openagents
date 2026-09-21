@@ -1347,7 +1347,7 @@ impl Runtime {
                 |read| format!("program {read}"),
             )
             .await
-            .map_err(|reason| Refused::at("", "door_unavailable", reason))?;
+            .map_err(|error| door_refused("", &error))?;
         let choice = answers
             .answers
             .get(&set.gate)
@@ -2905,7 +2905,7 @@ impl Runtime {
         let response = self
             .ask(set, &step.name, &state, &fill, trace, route)
             .await
-            .map_err(|reason| Refused::at(&step.name, "door_unavailable", reason))?;
+            .map_err(|error| door_refused(&step.name, &error))?;
         run.answers
             .insert(step.name.clone(), answers_value(&response.answers));
 
@@ -3087,7 +3087,7 @@ impl Runtime {
                     findings: judged,
                     evidence,
                 });
-                return Err(Refused::at(&step.name, "door_unavailable", reason));
+                return Err(door_refused(&step.name, &reason));
             }
         };
         run.answers
@@ -3461,16 +3461,21 @@ impl Runtime {
         fill: &Fill,
         trace: Option<&mut Recorder>,
         route: impl FnOnce(String) -> String,
-    ) -> Result<jev::SystemOneResponse, String> {
+    ) -> Result<jev::SystemOneResponse, jev::Error> {
         let door = self.door.as_ref().ok_or_else(|| {
             // A resolution that failed keeps its reason: the refusal a
             // caller surfaces is the one the resolver named, not a
             // quieter "nothing configured".
-            self.door_error
-                .clone()
-                .unwrap_or_else(|| "no decision door is configured".to_string())
+            jev::Error::Config(
+                self.door_error
+                    .clone()
+                    .unwrap_or_else(|| "no decision door is configured".to_string()),
+            )
         })?;
-        let questions = set.build(fill)?;
+        let questions = set.build(fill).map_err(|message| jev::Error::Question {
+            id: set.id.clone(),
+            message,
+        })?;
         let request = SystemOneRequest::new(state.clone(), questions);
         // The body is what goes on the wire; reading it here is what a
         // recorded exchange means.
@@ -3502,7 +3507,7 @@ impl Runtime {
             Err(error) => {
                 decision.error = Some(error.to_string());
                 self.record_decision(trace, set, decision);
-                Err(error.to_string())
+                Err(error)
             }
         }
     }
@@ -3585,6 +3590,27 @@ fn refusal_state(refused: &Refused) -> State {
         true => State::Unverifiable,
         false => State::Refused,
     }
+}
+
+/// A decision door's failure as a step's refusal. Authorization and
+/// quota name themselves rather than wearing `door_unavailable`: a key
+/// the door stopped accepting (`unauthenticated`) and a door the key
+/// no longer reaches (`unauthorized`) are the revocation and
+/// changed-access signals #9502 keeps distinct from transport failure,
+/// and a rate limit is quota exhaustion, not absence. Every other
+/// failure — transport, timeout, an unreadable answer — is
+/// `door_unavailable` as before.
+fn door_refused(step: &str, error: &jev::Error) -> Refused {
+    let code = match error {
+        jev::Error::Api(api) => match api.kind {
+            jev::ApiErrorKind::Authentication => "door_unauthenticated",
+            jev::ApiErrorKind::PermissionDenied => "door_unauthorized",
+            jev::ApiErrorKind::RateLimit { .. } => "door_rate_limited",
+            _ => "door_unavailable",
+        },
+        _ => "door_unavailable",
+    };
+    Refused::at(step, code, error.to_string())
 }
 
 /// The tightest room the enclosing scopes still promise one lane — the
@@ -4246,6 +4272,83 @@ mod tests {
             refused.reason,
             "CODER_DECISION_URL is not an http or https URL"
         );
+    }
+
+    /// A door that reads each request and answers `status` with a small
+    /// error body — enough for a caller's failure mapping to see the
+    /// status the API returned.
+    async fn serve_status(status: u16) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 1 << 16];
+                let _ = socket.read(&mut buf).await;
+                let body = br#"{"error":{"message":"denied"}}"#;
+                let head = format!(
+                    "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = socket.write_all(head.as_bytes()).await;
+                let _ = socket.write_all(body).await;
+            }
+        });
+        port
+    }
+
+    /// A decision door's authorization and quota answers keep their own
+    /// refusal codes: the status the door returned — not a flattened
+    /// "unavailable" — is what a revocation, a narrowed permission, and
+    /// an exhausted quota look like to a caller that acts on them.
+    #[tokio::test]
+    async fn a_door_refusing_authorization_names_itself() {
+        let questions_dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            questions_dir.path().join("program.json"),
+            serde_json::to_string(&json!({
+                "v": 1,
+                "id": PROGRAM_QUESTION,
+                "name": "Which program applies",
+                "gate": "program",
+                "questions": {
+                    "program": {
+                        "type": "choice",
+                        "instructions": "Which program does this request ask for?",
+                        "options": "supplied",
+                        "criteria": {"none": "This request asks for no program."}
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "ask-only",
+            r#"[{"name": "look", "kind": "query", "bounds": {}}]"#,
+        );
+        for (status, code) in [
+            (401u16, "door_unauthenticated"),
+            (403, "door_unauthorized"),
+            (429, "door_rate_limited"),
+        ] {
+            let port = serve_status(status).await;
+            let mut runtime = empty_runtime();
+            runtime.survey.programs =
+                crate::program::Registry::open(&[programs.path().to_path_buf()]);
+            runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
+            runtime.door = Some(
+                jev::Client::new(jev::Config::local(
+                    format!("http://127.0.0.1:{port}"),
+                    "stub",
+                ))
+                .unwrap(),
+            );
+            let refused = runtime.select("run it", None).await.unwrap_err();
+            assert_eq!(refused.code, code, "status {status}");
+        }
     }
 
     /// The work is the list the sentence carries, in the order it was
