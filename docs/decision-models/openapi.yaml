@@ -110,7 +110,13 @@ paths:
         "413":
           $ref: "#/components/responses/TypedError"
         "422":
-          $ref: "#/components/responses/TypedError"
+          description: Envelope refusal or a report whose attempted units were all refused.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/TypedError"
+                  - $ref: "#/components/schemas/ClassificationReport"
         "429":
           $ref: "#/components/responses/TypedError"
         "503":
