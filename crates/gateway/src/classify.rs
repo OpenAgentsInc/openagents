@@ -139,11 +139,10 @@ pub struct Policy {
 /// product maxima.
 ///
 /// Every field is an upper bound the backend declares for itself. A
-/// field left out of a deserialized limits document takes the product
-/// maximum — a backend that says nothing is held to the facade's own
-/// ceiling, and a declaration above that ceiling is refused.
+/// field must be present in a deserialized limits document. Missing
+/// declarations cannot establish support for the product maximum.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct BackendLimits {
     /// The most inputs the backend takes in one call.
     pub max_inputs: u64,
@@ -161,12 +160,6 @@ pub struct BackendLimits {
     pub max_instructions_bytes: u64,
     /// The most bytes the backend takes in a label description.
     pub max_label_bytes: u64,
-}
-
-impl Default for BackendLimits {
-    fn default() -> Self {
-        Self::product()
-    }
 }
 
 impl BackendLimits {
@@ -194,16 +187,28 @@ impl BackendLimits {
         let fields = [
             ("max_inputs", self.max_inputs, product.max_inputs),
             ("max_labels", self.max_labels, product.max_labels),
-            ("max_dimensions", self.max_dimensions, product.max_dimensions),
+            (
+                "max_dimensions",
+                self.max_dimensions,
+                product.max_dimensions,
+            ),
             ("max_judgments", self.max_judgments, product.max_judgments),
             ("max_id_chars", self.max_id_chars, product.max_id_chars),
-            ("max_input_bytes", self.max_input_bytes, product.max_input_bytes),
+            (
+                "max_input_bytes",
+                self.max_input_bytes,
+                product.max_input_bytes,
+            ),
             (
                 "max_instructions_bytes",
                 self.max_instructions_bytes,
                 product.max_instructions_bytes,
             ),
-            ("max_label_bytes", self.max_label_bytes, product.max_label_bytes),
+            (
+                "max_label_bytes",
+                self.max_label_bytes,
+                product.max_label_bytes,
+            ),
         ];
         for (name, declared, maximum) in fields {
             if declared == 0 {
@@ -535,11 +540,7 @@ impl Request {
                 Mode::MultiLabel => labels.len() as u64,
             };
             judgments = judgments
-                .checked_add(
-                    inputs
-                        .checked_mul(per_input)
-                        .ok_or(Refusal::Overflow)?,
-                )
+                .checked_add(inputs.checked_mul(per_input).ok_or(Refusal::Overflow)?)
                 .ok_or(Refusal::Overflow)?;
         }
         if judgments > limits.max_judgments {
@@ -632,11 +633,7 @@ impl Request {
 
 /// A label set's checks: bounded, unique, valid ids, and at least two
 /// labels where the mode is a categorical choice.
-fn check_labels(
-    labels: &[Label],
-    mode: Mode,
-    limits: &BackendLimits,
-) -> Result<(), Refusal> {
+fn check_labels(labels: &[Label], mode: Mode, limits: &BackendLimits) -> Result<(), Refusal> {
     let minimum = match mode {
         Mode::SingleLabel => MIN_SINGLE_LABELS,
         Mode::MultiLabel => 1,
@@ -663,11 +660,7 @@ fn check_labels(
     for label in labels {
         check_id("label", &label.id, limits.max_id_chars)?;
         if let Some(description) = &label.description {
-            check_bytes(
-                "label",
-                description.len() as u64,
-                limits.max_label_bytes,
-            )?;
+            check_bytes("label", description.len() as u64, limits.max_label_bytes)?;
         }
     }
     Ok(())
@@ -708,7 +701,8 @@ fn bidirectional_or_invisible(c: char) -> bool {
             c,
             '\u{200B}'..='\u{200F}'
                 | '\u{202A}'..='\u{202E}'
-                | '\u{2060}'..='\u{2064}'
+                | '\u{2060}'..='\u{206F}'
+                | '\u{061C}'
                 | '\u{FEFF}'
                 | '\u{FFF9}'..='\u{FFFB}'
                 | '\u{1D173}'..='\u{1D17A}'
@@ -930,7 +924,14 @@ mod tests {
         assert!(plan(&value).is_ok());
 
         // A bidi override, a zero-width space, a newline, and a BOM are not.
-        for bad in ["a\u{202E}b", "a\u{200B}b", "a\nb", "\u{FEFF}a"] {
+        for bad in [
+            "a\u{202E}b",
+            "a\u{200B}b",
+            "a\nb",
+            "\u{FEFF}a",
+            "a\u{2066}b",
+            "a\u{061C}b",
+        ] {
             let mut value = envelope();
             value["inputs"] = json!([{"id": bad, "text": "x"}]);
             let refusal = plan(&value).unwrap_err();
@@ -1039,6 +1040,20 @@ mod tests {
         ]);
         let plan = plan(&value).unwrap();
         assert_eq!(plan.judgments, MAX_JUDGMENTS);
+    }
+
+    #[test]
+    fn missing_backend_limits_never_imply_support() {
+        assert!(serde_json::from_str::<BackendLimits>("{}").is_err());
+        let complete = serde_json::to_value(BackendLimits::product()).unwrap();
+        for key in complete.as_object().unwrap().keys() {
+            let mut partial = complete.clone();
+            partial.as_object_mut().unwrap().remove(key);
+            assert!(
+                serde_json::from_value::<BackendLimits>(partial).is_err(),
+                "{key}"
+            );
+        }
     }
 
     #[test]

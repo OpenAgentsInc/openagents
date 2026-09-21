@@ -129,8 +129,8 @@ impl From<Identity> for Expected {
 /// zero is not a bound, it is a refusal to say. `context_tokens` is
 /// required: every backend has a window, and an undeclared one is a gap
 /// rather than an absence of limit. The optional bounds are declared only
-/// where the backend enforces them; an absent bound defers to the
-/// contract's own ceiling rather than claiming none.
+/// where the backend enforces them. An absent bound is unknown; a caller
+/// must resolve it through an explicit admission policy before dispatch.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Limits {
@@ -392,7 +392,14 @@ impl Record {
                 ));
             }
         }
-        unique(&self.languages, "language")?;
+        unique(
+            &self
+                .languages
+                .iter()
+                .map(|tag| tag.to_ascii_lowercase())
+                .collect::<Vec<_>>(),
+            "language",
+        )?;
         if self.capacity.is_empty() {
             return Err(invalid(
                 "the record names no capacity it may be bound under",
@@ -420,12 +427,7 @@ impl Record {
                 }
             }
             AvailabilityState::Unavailable => {
-                if self
-                    .availability
-                    .cause
-                    .as_deref()
-                    .is_none_or(str::is_empty)
-                {
+                if self.availability.cause.as_deref().is_none_or(str::is_empty) {
                     return Err(invalid(
                         "an unavailable backend names its cause — `unavailable` without \
                          a cause is a claim that cannot be checked",
@@ -468,9 +470,15 @@ fn unique<T: PartialEq>(items: &[T], what: &str) -> Result<(), Rejection> {
 /// registry: non-empty, ASCII letters and digits, hyphen-separated.
 fn valid_language_tag(tag: &str) -> bool {
     !tag.is_empty()
+        && tag.split('-').all(|part| {
+            !part.is_empty()
+                && part.len() <= 8
+                && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
         && tag
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            .split('-')
+            .next()
+            .is_some_and(|part| part.bytes().all(|byte| byte.is_ascii_alphabetic()))
 }
 
 /// The checks `Limits` must pass: every declared bound admits work.
@@ -524,8 +532,7 @@ fn check_batching(batching: &Batching) -> Result<(), Rejection> {
         BatchKind::CallerLoop => {
             if batching.max_items.is_some() {
                 return Err(Rejection::Invalid(
-                    "a caller loop carries no `max_items` — there is no batch to bound"
-                        .to_string(),
+                    "a caller loop carries no `max_items` — there is no batch to bound".to_string(),
                 ));
             }
         }
@@ -545,7 +552,10 @@ fn check_identity(identity: &Identity, which: &str) -> Result<(), Rejection> {
             .artifact_signature
             .strip_prefix("sha256:")
             .is_some_and(|digest| {
-                digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                digest.len() == 64
+                    && digest
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
             })
     {
         return Err(Rejection::Invalid(format!(
@@ -680,7 +690,9 @@ mod tests {
 
     #[test]
     fn a_tampered_record_refuses() {
-        let text = valid_record().to_json().replacen("example-1", "example-9", 1);
+        let text = valid_record()
+            .to_json()
+            .replacen("example-1", "example-9", 1);
         assert!(matches!(Record::parse(&text), Err(Rejection::Tampered)));
     }
 
@@ -761,13 +773,29 @@ mod tests {
     }
 
     #[test]
+    fn malformed_language_labels_and_noncanonical_signatures_refuse() {
+        for tag in ["--", "en--US", "-en", "en-", "123", "toolonglanguage"] {
+            let mut record = valid_record();
+            record.languages = vec![tag.into()];
+            record.seal();
+            assert!(record.validate().is_err(), "{tag}");
+        }
+        let mut record = valid_record();
+        record.languages = vec!["en-US".into(), "EN-us".into()];
+        record.seal();
+        assert!(record.validate().is_err());
+        let mut record = valid_record();
+        record.requested.artifact_signature = digest_of('A');
+        record.seal();
+        assert!(record.validate().is_err());
+    }
+
+    #[test]
     fn invalid_bounds_are_refused() {
         for mutate in [
             (|record: &mut Record| record.limits.context_tokens = 0) as fn(&mut Record),
-            (|record: &mut Record| record.limits.questions_per_call = Some(0))
-                as fn(&mut Record),
-            (|record: &mut Record| record.limits.options_per_choice = Some(1))
-                as fn(&mut Record),
+            (|record: &mut Record| record.limits.questions_per_call = Some(0)) as fn(&mut Record),
+            (|record: &mut Record| record.limits.options_per_choice = Some(1)) as fn(&mut Record),
             (|record: &mut Record| record.limits.score_levels = Some(11)) as fn(&mut Record),
             (|record: &mut Record| record.limits.label_chars = Some(0)) as fn(&mut Record),
         ] {

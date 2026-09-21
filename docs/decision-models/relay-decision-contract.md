@@ -46,8 +46,9 @@ The flow mirrors the conversation family:
 All payloads use NIP-44 version-2 encryption over the sender/recipient
 conversation key, as the conversation family does. The relay sees the
 routing metadata only — kind, `e`, `p`, `expiration` — and the NIP-42
-authentication is the caller's identity for admission, not part of the
-payload.
+authentication controls each connection to the relay. The worker derives
+the request principal from the verified event signer, not from a claim about
+another connection's authentication.
 
 ## The envelope
 
@@ -116,11 +117,14 @@ the same `request`, and the next `attempt`.
 ```
 
 A cancel event is `e`-tagged to the request event it cancels and names
-the logical `request`. Cancellation is best-effort, never guaranteed:
+the logical `request`. The worker requires the cancel event signer to equal
+the original request signer and resolves the event reference within that
+principal and tenant. Neither a guessed request ID nor an `e` tag grants
+cancellation authority. Cancellation is best-effort, never guaranteed:
 
 - The job was admitted but not dispatched: the worker answers
-  `status: cancelled`, releases the reservation, and settles outcome
-  `unattempted`. A cancellation is not a spend.
+  a terminal result with outcome `unattempted` and cause `cancelled`,
+  releases the reservation, and settles without a spend.
 - The job is running: the worker may abort it and settle `unavailable`
   with cause `cancelled`, or let it finish — the caller ignores a late
   result for a job it cancelled.
@@ -142,8 +146,8 @@ the logical `request`. Cancellation is best-effort, never guaranteed:
 }
 ```
 
-`status` is `queued`, `processing`, `cancelled`, or `error`. The first
-three are progress; `error` is terminal and carries the typed refusal:
+`status` is `queued`, `processing`, or `error`. The first two are
+progress; `error` is terminal and carries the typed refusal:
 
 ```json
 {
@@ -171,7 +175,7 @@ congestion codes, the same role `Retry-After` plays on HTTP.
 | `unauthenticated` | The signer maps to no tenant and the door is not shared. | no |
 | `not_admitted` | This worker does not answer requests from the caller's pubkey. | no |
 | `door_not_bound` | The tenant holds no binding for the named door. | no |
-| `idempotency_conflict` | The `(request, attempt)` pair is taken by different content or already resolved. | no |
+| `idempotency_conflict` | The `(request, attempt)` pair is taken by different execution-affecting content. | no |
 | `stale` | `created_at` is older than the worker's request window, or `deadline` passed before admission. | no |
 | `rate_limited`, `busy`, `overloaded` | Capacity pressure; `retry_after_ms` says when. | yes |
 | `quota_exhausted` | The tenant's budget is spent; retrying cannot fix it. | no |
@@ -217,16 +221,19 @@ congestion codes, the same role `Retry-After` plays on HTTP.
 }
 ```
 
-- `outcome` — `answered`, `refused`, or `unavailable`, the receipt's
-  vocabulary. A `refused` result carries `error` shaped like the
-  feedback refusal instead of `response`.
+- `outcome` — `answered`, `refused`, `unattempted`, `unavailable`, or `unknown`,
+  the receipt's vocabulary. Every non-answered result carries `error`
+  shaped like the feedback refusal instead of `response`. An `unknown`
+  outcome is an explicit inability to establish completion, never a
+  successful answer or evidence that retrying is free.
 - `response` — the `POST /v1/systemone` response body verbatim when the
   outcome is `answered`: model identity, named typed answers, usage.
 - `receipt` — the sealed `ExecutionReceipt` (`openagents.receipt.execution.v1`)
   with `transport: "relay"`. Its `digest` is the identity a caller quotes
   for the call, the same role `x-receipt` plays on HTTP. `request_digest`
-  is the canonical digest of `{model, state, questions, request, attempt}`
-  so caller and worker digest the same envelope. `tenant` is the resolved
+  is the canonical digest of `{model, state, questions, request, attempt, deadline}`
+  with an absent deadline represented as null, so caller and worker digest
+  the same execution-affecting envelope. `tenant` is the resolved
   tenant reference — never a credential.
 
 ## What a signature must cover
@@ -258,7 +265,9 @@ The caller accepts feedback or a result only when all of these hold:
 
 ## Principals, authorization, and quota
 
-The caller's NIP-42-authenticated pubkey is the principal. The worker —
+The verified request event's signing pubkey is the principal. NIP-42
+authenticates a connection to the relay; a forwarded event does not prove
+which connection published it. The worker —
 or the admission front it runs behind — maps that pubkey to a tenant
 through an operator-provisioned npub-to-tenant binding, so one binding
 decides the door and the budget on either transport. A signer that maps
@@ -271,7 +280,8 @@ does not authorize anything and a worker SHOULD refuse a payload that
 carries one, because a caller that pastes its key into job content has
 already leaked it to the worker. Authorization is the registry's
 `authorize` against the named `model` door; quota is `tenancy::quota`'s
-durable reservation settled once by `(request, attempt)`:
+durable reservation settled once by `(principal, tenant, request, attempt)`:
+The following pair comparisons always occur within that principal and tenant.
 
 - The same pair reserved again with the same request digest returns the
   in-flight or settled reservation — a retry is not a second spend. If
@@ -352,7 +362,8 @@ worker.
 | Unknown signer, door not shared | `unauthenticated` or `not_admitted` refusal |
 | Tenant not bound to `model` | `door_not_bound` refusal |
 | Quota spent | `quota_exhausted` refusal |
-| `cancel` before dispatch | `status: cancelled`, outcome `unattempted`, reservation released |
+| `cancel` before dispatch | Terminal result with outcome `unattempted` and cause `cancelled`; reservation released |
+| Cancel signed by another principal | Refused; original job remains active |
 | `cancel` mid-run | Best-effort abort or normal completion; late result ignored |
 | Socket lost mid-job | Caller outcome `unknown`; ledger reconciles the reservation |
 | Payload carrying a credential field | Refused `malformed`; the credential is treated as leaked |

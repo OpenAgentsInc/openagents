@@ -316,9 +316,14 @@ worker's key, an `e` tag names this attempt's request event, a `p` tag
 names the caller, and the decrypted `request` and `attempt` match the job
 in flight.
 
-The payload carries no credential: the caller's NIP-42 pubkey is the
-principal, mapped to a tenant by an operator-provisioned binding outside
-the payload. A field claiming to be a bearer secret authorizes nothing.
+The payload carries no credential: the verified event signer's pubkey is
+the principal, mapped to a tenant by an operator-provisioned binding outside
+the payload. NIP-42 controls the connection to the relay; the forwarded
+event does not attest to that connection. A field claiming to be a bearer
+secret authorizes nothing. Cancellation requires the original request signer
+and resolves the referenced request within that principal and tenant. A
+cancel before dispatch produces a terminal result with outcome `unattempted`
+and cause `cancelled`; it does not remain a progress-only state.
 
 ### How an existing worker rejects this family
 
