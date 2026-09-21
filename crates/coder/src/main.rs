@@ -22,8 +22,9 @@
 //! scrollback, `Ctrl-C` or an empty `Ctrl-D` quits. `Alt-V` or the
 //! `/verbose` command toggles the detail lines — classify verdicts,
 //! command whys, exit codes, shell judgments — off by default, so a turn
-//! shows only what ran and what answered. The env reads
-//! `TYPESAFE_API_KEY` for Classify and `CODER_DOOR_KEY` (or
+//! shows only what ran and what answered. The env reads the
+//! `CODER_DECISION_*` profile — or the hosted default `TYPESAFE_API_KEY`
+//! resolves — for Classify, and `CODER_DOOR_KEY` (or
 //! `CODER_AI_GATEWAY_KEY`), `CODER_DOOR_URL`, and `CODER_MODEL` for
 //! Generate; with no key set, `CODER_WORKER` + `CODER_RELAY` route the
 //! turn through the NIP-CJ job protocol on the relay; otherwise the stub

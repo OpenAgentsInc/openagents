@@ -2600,7 +2600,14 @@ impl Runtime {
         trace: Option<&mut Recorder>,
         route: impl FnOnce(String) -> String,
     ) -> Result<jev::SystemOneResponse, String> {
-        let door = self.door.as_ref().ok_or("no decision door is configured")?;
+        let door = self.door.as_ref().ok_or_else(|| {
+            // A resolution that failed keeps its reason: the refusal a
+            // caller surfaces is the one the resolver named, not a
+            // quieter "nothing configured".
+            self.door_error
+                .clone()
+                .unwrap_or_else(|| "no decision door is configured".to_string())
+        })?;
         let questions = set.build(fill)?;
         let request = SystemOneRequest::new(state.clone(), questions);
         // The body is what goes on the wire; reading it here is what a
@@ -3017,6 +3024,158 @@ mod tests {
                 "bound_unenforceable"
             );
         }
+    }
+
+    /// A question set the `decide` steps below name, in a registry of
+    /// its own.
+    fn asked() -> (tempfile::TempDir, Program) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("asked.json"),
+            serde_json::to_string(&json!({
+                "v": 1,
+                "id": "test.profile-door.v1",
+                "name": "A profile door",
+                "questions": {
+                    "q": {"type": "noul", "instructions": "Whether the step ran."}
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "judge",
+            "steps": [{"name": "judge", "kind": "decide",
+                       "question": "test.profile-door.v1", "bounds": {}}]
+        }))
+        .unwrap();
+        (dir, program)
+    }
+
+    /// A flag-sourced setting, for a profile a test constructs.
+    fn flagged(value: &str) -> crate::profiles::Sourced<String> {
+        crate::profiles::Sourced {
+            value: value.to_string(),
+            source: crate::profiles::Source::Flag,
+        }
+    }
+
+    /// Every profile kind that builds a System One door.
+    fn http_profiles() -> [crate::profiles::Profile; 4] {
+        use crate::profiles::{Profile, Source, Sourced};
+        [
+            Profile::HostedHttp {
+                url: flagged("https://decisions.example.com"),
+                model: flagged("jev"),
+                key: Sourced {
+                    value: jev::ApiKey::new("oak_test.secret"),
+                    source: Source::Flag,
+                },
+                picked: Source::Flag,
+            },
+            Profile::DirectLocal {
+                url: flagged("http://127.0.0.1:1"),
+                model: flagged("kev-local"),
+                picked: Source::Flag,
+            },
+            Profile::OwnProvider {
+                url: flagged("https://doors.example.com"),
+                model: flagged("kev-shared"),
+                key: Some(Sourced {
+                    value: jev::ApiKey::new("oak_test.secret"),
+                    source: Source::Flag,
+                }),
+                picked: Source::Flag,
+            },
+            Profile::OwnProvider {
+                url: flagged("http://[::1]:9"),
+                model: flagged("kev-own"),
+                key: None,
+                picked: Source::Flag,
+            },
+        ]
+    }
+
+    /// The door a `decide` step asks is the one the resolved profile
+    /// built: every profile kind's client admits the step, and none of
+    /// them needed a construction of its own.
+    #[test]
+    fn a_decide_step_asks_whichever_profile_built_the_door() {
+        let (dir, program) = asked();
+        for profile in http_profiles() {
+            let door = profile
+                .client()
+                .unwrap_or_else(|refusal| panic!("{} builds a door: {refusal}", profile.name()));
+            let mut runtime = empty_runtime().asking(Some(door));
+            runtime.questions = questions::Registry::open(&[dir.path().to_path_buf()]);
+            runtime.admit(&program).unwrap_or_else(|refused| {
+                panic!("{} admits the step: {refused}", profile.name())
+            });
+        }
+    }
+
+    /// A resolution that failed stops the path that needed the door:
+    /// admission refuses the `decide` step before it is ever asked, and
+    /// the reason it surfaces is the resolver's own.
+    #[test]
+    fn a_failed_door_resolution_refuses_the_step_that_needed_it() {
+        let (dir, program) = asked();
+        let mut runtime = empty_runtime();
+        runtime.questions = questions::Registry::open(&[dir.path().to_path_buf()]);
+        runtime.door_error = Some(
+            "CODER_DECISION_PROFILE must be hosted_http, direct_local, own_provider, or relay"
+                .to_string(),
+        );
+        let refused = runtime.admit(&program).unwrap_err();
+        assert_eq!(refused.step, "judge");
+        assert_eq!(refused.code, "door_configuration");
+        assert!(refused.reason.contains("CODER_DECISION_PROFILE"));
+    }
+
+    /// The same failure reaches the turn's selection question: a
+    /// resolution that erred refuses `select` with the resolver's
+    /// reason, never a quieter nothing-configured.
+    #[tokio::test]
+    async fn a_failed_door_resolution_refuses_selection_with_its_reason() {
+        let programs = tempfile::tempdir().unwrap();
+        std::fs::write(
+            programs.path().join("ask-only.json"),
+            serde_json::to_string(&json!({
+                "v": 1, "slug": "ask-only",
+                "steps": [{"name": "look", "kind": "query", "bounds": {}}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let questions_dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            questions_dir.path().join("program.json"),
+            serde_json::to_string(&json!({
+                "v": 1,
+                "id": PROGRAM_QUESTION,
+                "name": "Which program applies",
+                "gate": "program",
+                "questions": {
+                    "program": {
+                        "type": "choice",
+                        "instructions": "Which program does this request ask for?",
+                        "options": "supplied",
+                        "criteria": {"none": "This request asks for no program."}
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let mut runtime = empty_runtime();
+        runtime.survey.programs =
+            crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
+        runtime.door_error = Some("CODER_DECISION_URL is not an http or https URL".to_string());
+
+        let refused = runtime.select("run it", None).await.unwrap_err();
+        assert_eq!(refused.code, "door_unavailable");
+        assert_eq!(refused.reason, "CODER_DECISION_URL is not an http or https URL");
     }
 
     /// The work is the list the sentence carries, in the order it was

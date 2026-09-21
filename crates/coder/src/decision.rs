@@ -1,81 +1,98 @@
 //! Decision configuration shared by conversation and program callers.
 //!
-//! Profiles select the existing Rust SDK transport. They do not configure
-//! generation or executors, and do not add an inference implementation.
+//! A profile names where a judgment goes; the judgment itself does not
+//! change with the door. [`crate::profiles`] resolves the active one —
+//! a flag, the environment, or the default, in that order — and this
+//! module turns it into the one client every decision call site asks
+//! through: the turn's routing, the shell judge, program selection, and
+//! each `decide` step's question set. Profiles select the existing Rust
+//! SDK transport; they do not configure generation or executors, and
+//! they add no inference implementation of their own.
+//!
+//! Nothing here opens a socket, and nothing here substitutes one
+//! setting for another: a missing setting, a malformed value, and a
+//! profile no System One client can carry all reach the caller as the
+//! refusal the resolver named, never a quieter door.
 
-/// Resolve the decision profile without hiding invalid configuration.
-/// An absent legacy key leaves ordinary chat without a classifier.
+use crate::profiles::{Profile, Profiles, Refusal};
+
+/// The variables whose presence means a decision door was configured:
+/// the profile's own settings and the `TYPESAFE_*` set the hosted
+/// profile still reads. The shared `OPENAGENTS_*` variables and the
+/// relay door's `CODER_*` pair are not among them — another tool on the
+/// machine may own those, and their presence alone configures nothing
+/// here.
+const CONFIGURED: &[&str] = &[
+    crate::profiles::PROFILE_VAR,
+    crate::profiles::URL_VAR,
+    crate::profiles::MODEL_VAR,
+    crate::profiles::KEY_VAR,
+    jev::env::API_KEY,
+    jev::env::BASE_URL,
+    jev::env::DEFAULT_MODEL,
+];
+
+/// Resolve the active profile into the door the call sites share,
+/// without hiding invalid configuration.
+///
+/// An environment that names no decision variable at all answers
+/// `None` — ordinary chat without a classifier, the same absence it has
+/// always meant. One that names any resolves through
+/// [`Profiles::resolve_env`] and builds through [`Profile::client`],
+/// and either stage's refusal is the caller's error rather than a
+/// fallback.
+///
+/// # Errors
+///
+/// Returns the [`Refusal`] text for a configuration that resolved
+/// badly: a required setting no source supplied, a value the profile
+/// cannot use, a name it does not know, a setting it does not take, or
+/// a profile no System One client carries.
 pub fn from_env() -> Result<Option<jev::Client>, String> {
-    let mut values = std::collections::BTreeMap::new();
-    for name in [
-        "CODER_DECISION_PROFILE",
-        "CODER_DECISION_URL",
-        "CODER_DECISION_MODEL",
-        "CODER_DECISION_KEY",
-        "TYPESAFE_API_KEY",
-        "TYPESAFE_BASE_URL",
-        "TYPESAFE_DEFAULT_MODEL",
-    ] {
-        match std::env::var(name) {
-            Ok(value) => {
-                values.insert(name, value);
-            }
-            Err(std::env::VarError::NotPresent) => {}
-            Err(std::env::VarError::NotUnicode(_)) => {
-                return Err(format!("{name} must be valid Unicode"));
-            }
-        }
+    // A variable holding bytes that are not Unicode counts as set: it
+    // is malformed configuration, and resolution is what says so.
+    let configured = CONFIGURED.iter().any(|name| match std::env::var(name) {
+        Ok(value) => !value.trim().is_empty(),
+        Err(std::env::VarError::NotPresent) => false,
+        Err(std::env::VarError::NotUnicode(_)) => true,
+    });
+    if !configured {
+        return Ok(None);
     }
-    resolve(|name| values.get(name).cloned())
+    door(Profiles::new().resolve_env())
 }
 
+/// `read` decides what the environment says, so a test fixes it.
+/// Nothing configured is no door rather than an error, and a configured
+/// one resolves and builds through the same path the process
+/// environment takes.
+#[cfg(test)]
 fn resolve(read: impl Fn(&str) -> Option<String>) -> Result<Option<jev::Client>, String> {
-    let value = |name| read(name).filter(|value| !value.trim().is_empty());
-    let profile = value("CODER_DECISION_PROFILE");
-    let endpoint = value("CODER_DECISION_URL");
-    let model = value("CODER_DECISION_MODEL");
-    let key = value("CODER_DECISION_KEY");
-    let configured = endpoint.is_some() || model.is_some() || key.is_some();
-    let required = |value: Option<String>, name| {
-        value.ok_or_else(|| format!("the decision profile requires {name}"))
-    };
-    let config = match profile.as_deref() {
-        Some("local") => {
-            if key.is_some() {
-                return Err("the local decision profile does not accept CODER_DECISION_KEY".into());
-            }
-            jev::Config::local(
-                required(endpoint, "CODER_DECISION_URL")?,
-                required(model, "CODER_DECISION_MODEL")?,
-            )
-        }
-        Some("http" | "provider") => jev::Config::new()
-            .base_url(required(endpoint, "CODER_DECISION_URL")?)
-            .default_model(required(model, "CODER_DECISION_MODEL")?)
-            .api_key(required(key, "CODER_DECISION_KEY")?),
-        Some(_) => return Err("CODER_DECISION_PROFILE must be local, http, or provider; relay profiles are not implemented".into()),
-        None if configured => return Err("CODER_DECISION_PROFILE is required with CODER_DECISION_URL, CODER_DECISION_MODEL, or CODER_DECISION_KEY".into()),
-        None => {
-            let key = value("TYPESAFE_API_KEY");
-            let endpoint = value("TYPESAFE_BASE_URL");
-            let model = value("TYPESAFE_DEFAULT_MODEL");
-            if key.is_none() && endpoint.is_none() && model.is_none() {
-                return Ok(None);
-            }
-            jev::Config::new()
-                .api_key(required(key, "TYPESAFE_API_KEY")?)
-                .base_url(endpoint.unwrap_or_else(|| jev::defaults::BASE_URL.into()))
-                .default_model(model.unwrap_or_else(|| jev::defaults::MODEL.into()))
-        }
-    };
-    jev::Client::new(config)
+    let configured = CONFIGURED
+        .iter()
+        .any(|name| read(name).is_some_and(|value| !value.trim().is_empty()));
+    if !configured {
+        return Ok(None);
+    }
+    door(Profiles::new().resolve(read))
+}
+
+/// The resolved profile's door — or its refusal, either way as the
+/// string the call sites carry.
+fn door(resolved: Result<Profile, Refusal>) -> Result<Option<jev::Client>, String> {
+    resolved
+        .and_then(|profile| profile.client())
         .map(Some)
-        .map_err(|error| format!("decision configuration is invalid: {error}"))
+        .map_err(|refusal| refusal.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::resolve;
+
+    /// A valid worker public key for the relay profile: the secp256k1
+    /// generator's x coordinate.
+    const WORKER: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
     fn profile(values: &[(&str, &str)]) -> Result<Option<jev::Client>, String> {
         resolve(|name| {
@@ -86,34 +103,131 @@ mod tests {
         })
     }
 
+    /// An environment that names no decision variable leaves ordinary
+    /// chat without a classifier; one that names a malformed or
+    /// incomplete one is an error, not an absence.
     #[test]
-    fn absent_legacy_configuration_is_distinct_from_invalid_configuration() {
+    fn absent_configuration_is_distinct_from_invalid_configuration() {
         assert!(profile(&[]).unwrap().is_none());
-        assert!(profile(&[("TYPESAFE_BASE_URL", "http://127.0.0.1:1")]).is_err());
-        assert!(profile(&[("CODER_DECISION_PROFILE", "relay")]).is_err());
+        // A stray decision setting engages resolution, and the hosted
+        // profile names the credential it still needs.
         assert!(profile(&[("CODER_DECISION_URL", "http://127.0.0.1:1")]).is_err());
+        // A legacy endpoint without its key is an error, as before.
+        assert!(profile(&[("TYPESAFE_BASE_URL", "http://127.0.0.1:1")]).is_err());
+        // A name the resolver does not know is refused, not defaulted.
+        assert!(profile(&[("CODER_DECISION_PROFILE", "hosted-ish")]).is_err());
     }
 
+    /// Every profile kind that speaks the System One HTTP door builds
+    /// the one client the call sites share; the relay kind resolves
+    /// cleanly and refuses the HTTP door it does not use.
     #[test]
-    fn explicit_local_profile_needs_no_provider_key_and_refuses_remote_routes() {
-        for (url, valid) in [
-            ("http://127.0.0.1:1", true),
-            ("https://example.invalid", false),
+    fn each_profile_kind_builds_its_door() {
+        for (values, url) in [
+            (
+                &[
+                    ("CODER_DECISION_PROFILE", "hosted_http"),
+                    ("CODER_DECISION_KEY", "oak_test.secret"),
+                ][..],
+                jev::defaults::BASE_URL,
+            ),
+            (
+                &[
+                    ("CODER_DECISION_PROFILE", "direct_local"),
+                    ("CODER_DECISION_URL", "http://127.0.0.1:1"),
+                    ("CODER_DECISION_MODEL", "local-kev"),
+                ][..],
+                "http://127.0.0.1:1",
+            ),
+            (
+                &[
+                    ("CODER_DECISION_PROFILE", "own_provider"),
+                    ("CODER_DECISION_URL", "https://decisions.example.com"),
+                    ("CODER_DECISION_MODEL", "shared-kev"),
+                    ("CODER_DECISION_KEY", "oak_test.secret"),
+                ][..],
+                "https://decisions.example.com",
+            ),
         ] {
-            let result = profile(&[
-                ("CODER_DECISION_PROFILE", "local"),
-                ("CODER_DECISION_URL", url),
-                ("CODER_DECISION_MODEL", "local-kev"),
-            ]);
-            assert_eq!(result.is_ok(), valid);
+            let client = profile(values)
+                .unwrap_or_else(|error| panic!("{values:?} refused: {error}"))
+                .expect("a configured profile builds a door");
+            assert_eq!(client.base_url(), url, "{values:?}");
         }
-        assert!(
-            profile(&[
-                ("CODER_DECISION_PROFILE", "http"),
+        match profile(&[
+            ("CODER_DECISION_PROFILE", "relay"),
+            ("CODER_DECISION_WORKER", WORKER),
+        ]) {
+            Err(error) => assert!(error.contains("relay"), "{error}"),
+            Ok(client) => panic!("a relay profile built an HTTP door: {client:?}"),
+        }
+    }
+
+    /// A local endpoint never invents a provider credential: a
+    /// `direct_local` and a loopback `own_provider` build with no key
+    /// variable anywhere in the environment.
+    #[test]
+    fn a_local_profile_builds_without_any_key_env() {
+        for values in [
+            &[
+                ("CODER_DECISION_PROFILE", "direct_local"),
                 ("CODER_DECISION_URL", "http://127.0.0.1:1"),
-                ("CODER_DECISION_MODEL", "shared-kev")
-            ])
-            .is_err()
-        );
+                ("CODER_DECISION_MODEL", "local-kev"),
+            ][..],
+            &[
+                ("CODER_DECISION_PROFILE", "own_provider"),
+                ("CODER_DECISION_URL", "http://127.0.0.1:1"),
+                ("CODER_DECISION_MODEL", "local-kev"),
+            ][..],
+        ] {
+            let client = profile(values)
+                .unwrap_or_else(|error| panic!("{values:?} refused: {error}"))
+                .expect("a local endpoint builds a door");
+            assert_eq!(client.base_url(), "http://127.0.0.1:1");
+            assert_eq!(client.default_model(), "local-kev");
+        }
+    }
+
+    /// A keyless `own_provider` beyond loopback cannot be built — and
+    /// the resolver does not lend it the hosted credential sitting in
+    /// the same environment to make one anyway.
+    #[test]
+    fn a_keyless_remote_door_refuses_rather_than_borrowing_a_credential() {
+        let error = profile(&[
+            ("CODER_DECISION_PROFILE", "own_provider"),
+            ("CODER_DECISION_URL", "https://decisions.example.com"),
+            ("CODER_DECISION_MODEL", "shared-kev"),
+            ("TYPESAFE_API_KEY", "ts-secret"),
+        ])
+        .expect_err("a keyless remote door is refused");
+        assert!(error.contains("credential"), "{error}");
+    }
+
+    /// Malformed configuration names what was wrong rather than
+    /// vanishing into a default or an absent door.
+    #[test]
+    fn malformed_configuration_errors_loudly() {
+        for values in [
+            // A remote address under the local profile.
+            &[
+                ("CODER_DECISION_PROFILE", "direct_local"),
+                ("CODER_DECISION_URL", "https://example.invalid"),
+                ("CODER_DECISION_MODEL", "local-kev"),
+            ][..],
+            // A credential the local profile does not take.
+            &[
+                ("CODER_DECISION_PROFILE", "direct_local"),
+                ("CODER_DECISION_URL", "http://127.0.0.1:1"),
+                ("CODER_DECISION_MODEL", "local-kev"),
+                ("CODER_DECISION_KEY", "oak_test.secret"),
+            ][..],
+            // A legacy endpoint that is not a URL at all.
+            &[
+                ("TYPESAFE_API_KEY", "ts-secret"),
+                ("TYPESAFE_BASE_URL", "not a url"),
+            ][..],
+        ] {
+            assert!(profile(values).is_err(), "{values:?}");
+        }
     }
 }

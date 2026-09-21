@@ -460,12 +460,16 @@ mod tests {
         assert_eq!(object["action"]["confidence"], 0.9);
         assert_eq!(object["action"]["probabilities"]["respond"], 0.9);
 
-        let skipped = Classified::Skipped("no TYPESAFE_API_KEY — generating unrouted".to_string());
+        let skipped =
+            Classified::Skipped("no decision door is configured — generating unrouted".to_string());
         let object = event_object(&Event::Classified(skipped), false).unwrap();
         assert_eq!(object["route"], Value::Null);
         assert_eq!(object["halt"], Value::Null);
         assert_eq!(object["action"], Value::Null);
-        assert_eq!(object["note"], "no TYPESAFE_API_KEY — generating unrouted");
+        assert_eq!(
+            object["note"],
+            "no decision door is configured — generating unrouted"
+        );
 
         let object = event_object(&Event::Judgment("stop 0.71".to_string()), false).unwrap();
         assert_eq!(object, json!({"event": "judgment", "line": "stop 0.71"}));
