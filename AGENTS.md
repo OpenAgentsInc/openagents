@@ -27,7 +27,7 @@ fixture, or an issue.
 
 ## Skills
 
-Three skills are vendored under `.agents/skills/`. Read and apply them:
+Four skills are vendored under `.agents/skills/`. Read and apply them:
 
 - `.agents/skills/google-developer-style/SKILL.md` — every piece of prose in
   this repository follows the Google Developer Documentation Style Guide:
@@ -42,6 +42,10 @@ Three skills are vendored under `.agents/skills/`. Read and apply them:
   `coder-worker`, and before you debug a relay handoff. It maps the three
   NIP lanes, the NIP-01/42/44 flow, and how a NIP-CJ job travels from
   `coder` to a worker.
+- `.agents/skills/decision-api/SKILL.md` — the caller's contract: bearer
+  keys, `POST /v1/systemone`, the three question types, typed refusals,
+  `Retry-After`, and idempotent retries. Read it before you write client
+  code against a door or change what `oak` sends.
 
 [`docs/glossary.md`](docs/glossary.md) defines the terms this repository
 uses, and marks which are implemented and which are only specified.
@@ -91,6 +95,14 @@ uses, and marks which are implemented and which are only specified.
   `docs/decision-models/gateway.md` before changing a refusal code, a
   bound, or the reservation lifecycle.
 - `crates/jev` — the Rust SDK for TypeSafe's System One API.
+- `crates/oak` — the caller's CLI for the decision API: `oak ask` sends a
+  state and a questions file through `POST /v1/systemone`, `--input
+  lines|ndjson` runs a bounded batch with ordered NDJSON output, and
+  `oak models` lists the doors a credential can reach. Retries are oak's
+  own loop — the service settles quota by `(request, attempt)`, so each
+  retry keeps the `Idempotency-Key` and bumps `x-attempt`. Credentials
+  come from `OPENAGENTS_API_KEY` or a `0600` config file, never a flag.
+  `docs/decision-models/caller.md` is the caller's guide.
 - `crates/kev` — the Rust port of the kev decision model: packed prefill,
   block-causal question isolation, pointer readout, and `kev-serve`, a
   TypeSafe-compatible `POST /v1/systemone` server. Documentation and
