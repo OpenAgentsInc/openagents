@@ -148,6 +148,18 @@ struct Options {
     suite_out: Option<String>,
     /// Where `build` writes the question set.
     questions_out: Option<String>,
+    /// The frozen admission plan `admit` judges.
+    plan: Option<String>,
+    /// The store `admit` reads the locked-confirmation rows from.
+    locked: Option<String>,
+    /// The ledger `admit` checks the locked read was spent under.
+    ledger: Option<String>,
+    /// The transfer suite `admit` checks the candidate against.
+    transfer_suite: Option<String>,
+    /// The store `admit` reads the transfer rows from.
+    transfer_store: Option<String>,
+    /// When `admit` dates the decision; now by default.
+    at: Option<String>,
 }
 
 fn main() {
@@ -168,6 +180,7 @@ fn main() {
         "verify" => run(verify_command(&options)),
         "build" => run(build_command(&options)),
         "regress" => run(regress_command(&options)),
+        "admit" => run(admit_command(&options)),
         "" | "help" | "--help" | "-h" => {
             println!("{USAGE}");
         }
@@ -191,6 +204,8 @@ gym report   render a measured record from recorded rows
 gym verify   walk a store's receipt chain and say where it breaks
 gym build    turn a caller's labelled JSONL into a suite and question set
 gym regress  compare a door with its own last recorded run
+gym admit    judge a frozen admission plan against recorded evidence and
+             write the decision a registry activates
 
   --door name=url     a door to ask; repeatable
   --jev               hosted Jev, from TYPESAFE_API_KEY
@@ -229,9 +244,20 @@ gym regress  compare a door with its own last recorded run
   --timeout seconds   how long one call to a `--door` may take; the client's
                       ten seconds by default, and worth raising on a busy
                       machine, because a timeout loses the item entirely
+  --plan path         the frozen admission plan `admit` judges
+  --locked path       the store `admit` reads the locked-confirmation rows
+                      from; with --ledger
+  --ledger path       the ledger `admit` checks the locked read was spent
+                      under; with --locked
+  --transfer-suite p  the transfer suite `admit` checks the candidate against
+  --transfer-store p  the store `admit` reads the transfer rows from
+  --at timestamp      when `admit` dates the decision; now by default
 
 `regress` exits 1 when something regressed, 2 when it could not compare, and
-0 otherwise. Read the report either way.";
+0 otherwise. Read the report either way.
+
+`admit` writes the decision to `--out` or stdout and exits 1 when the ruling
+is not `passed`: only a passed decision may activate a candidate.";
 
 fn run(outcome: Result<(), String>) {
     if let Err(trouble) = outcome {
@@ -283,6 +309,12 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--suite-out" => options.suite_out = args.next(),
             "--questions-out" => options.questions_out = args.next(),
             "--timeout" => options.timeout = args.next().and_then(|value| value.parse().ok()),
+            "--plan" => options.plan = args.next(),
+            "--locked" => options.locked = args.next(),
+            "--ledger" => options.ledger = args.next(),
+            "--transfer-suite" => options.transfer_suite = args.next(),
+            "--transfer-store" => options.transfer_store = args.next(),
+            "--at" => options.at = args.next(),
             other => eprintln!("unknown flag {other}"),
         }
     }
@@ -2750,6 +2782,163 @@ fn regress_command(options: &Options) -> Result<(), String> {
     }
     if verdicts.is_empty() {
         std::process::exit(2);
+    }
+    Ok(())
+}
+
+/// One side's rows out of a store, split by the door the plan pins.
+fn rows_for(rows: &[Row], door: &str) -> Vec<Row> {
+    rows.iter()
+        .filter(|row| row.door == door)
+        .cloned()
+        .collect()
+}
+
+/// A door's running cost over the rows a store recorded, stated as the
+/// measured latencies and the recorded refusals. Cost is unmetered rather
+/// than zero: a local lane has no meter, and a zero would be a price nobody
+/// quoted.
+fn profile_of(rows: &[Row]) -> Profile {
+    let latencies: Vec<f64> = rows.iter().filter_map(|row| row.latency_ms).collect();
+    let refusals = rows.iter().filter(|row| row.is_refused()).count();
+    Profile::timed(&latencies)
+        .refusing(refusals)
+        .costing(gym::gate::Cost::UnmeteredLocalLane)
+}
+
+/// Judges a frozen admission plan against recorded evidence and writes the
+/// digested decision.
+///
+/// The development rows come from `--store`, split by the door names the
+/// plan pins; the one-shot confirmation comes from `--locked` checked
+/// against `--ledger`; the transfer check reads `--transfer-store` over
+/// `--transfer-suite`. The plan, not a flag, decides what is compared: the
+/// identities, the instrument, the winning metric and its declared effect,
+/// and every guard's bound are all inside the plan's digest, so what this
+/// command ran is what the record attests. The decision is written to
+/// `--out` or stdout; the exit code follows the ruling, so a caller can
+/// gate on it without parsing JSON.
+fn admit_command(options: &Options) -> Result<(), String> {
+    let plan_path = options
+        .plan
+        .as_deref()
+        .ok_or_else(|| "admit judges a frozen plan; pass --plan path".to_string())?;
+    let plan = gym::admission::Plan::load(plan_path).map_err(|error| error.to_string())?;
+    let suite = load_suite(options)?;
+
+    let store_path = options.store.as_deref().ok_or_else(|| {
+        "admit reads the development rows from a store; pass --store path".to_string()
+    })?;
+    let development = read_rows(store_path)?;
+    let development_head = Store::at(store_path)
+        .head()
+        .map_err(|error| error.to_string())?;
+    let dev_base = rows_for(&development, &plan.base.door);
+    let dev_candidate = rows_for(&development, &plan.candidate.door);
+
+    let locked = match (options.locked.as_deref(), options.ledger.as_deref()) {
+        (Some(path), Some(ledger_path)) => {
+            let rows = read_rows(path)?;
+            let head = Store::at(path).head().map_err(|error| error.to_string())?;
+            let ledger = gym::suite::LockedLedger::at(ledger_path);
+            Some((
+                rows_for(&rows, &plan.base.door),
+                rows_for(&rows, &plan.candidate.door),
+                head,
+                ledger,
+            ))
+        }
+        (None, None) => None,
+        _ => {
+            return Err(
+                "--locked and --ledger go together; the confirmation is a read the ledger \
+                 recorded, not rows a caller points at"
+                    .to_string(),
+            );
+        }
+    };
+
+    let transfer = match (options.transfer_suite.as_deref(), options.transfer_store.as_deref()) {
+        (Some(suite_path), Some(store_path)) => {
+            let transfer_suite =
+                Suite::load_file(suite_path).map_err(|error| error.to_string())?;
+            let rows = read_rows(store_path)?;
+            let head = Store::at(store_path)
+                .head()
+                .map_err(|error| error.to_string())?;
+            Some((
+                transfer_suite,
+                rows_for(&rows, &plan.base.door),
+                rows_for(&rows, &plan.candidate.door),
+                head,
+            ))
+        }
+        (None, None) => None,
+        _ => {
+            return Err(
+                "--transfer-suite and --transfer-store go together; the check needs both the \
+                 suite the plan froze and the rows scored on it"
+                    .to_string(),
+            );
+        }
+    };
+
+    let evidence = gym::admission::Evidence {
+        suite: &suite,
+        development: gym::admission::Side {
+            base: &dev_base,
+            candidate: &dev_candidate,
+            store_head: development_head,
+        },
+        locked: locked
+            .as_ref()
+            .map(|(base, candidate, head, ledger)| gym::admission::Locked {
+                base,
+                candidate,
+                ledger,
+                store_head: head.clone(),
+            }),
+        transfer: transfer
+            .as_ref()
+            .map(|(transfer_suite, base, candidate, head)| gym::admission::Transfer {
+                suite: transfer_suite,
+                base,
+                candidate,
+                store_head: head.clone(),
+            }),
+        deployment: Some(
+            gym::gate::Deployment::new(
+                plan.guards.deployment.budget.workload.clone(),
+                profile_of(&dev_base),
+                profile_of(&dev_candidate),
+            ),
+        ),
+        decided_at: options.at.clone().unwrap_or_else(eval::now_utc),
+        commitment: None,
+    };
+    let decision = plan.decide(&evidence).map_err(|error| error.to_string())?;
+
+    let rendered =
+        serde_json::to_string_pretty(&decision).expect("an admission decision serializes");
+    match options.out.as_deref() {
+        Some(path) => {
+            std::fs::write(path, format!("{rendered}\n"))
+                .map_err(|error| format!("{path}: {error}"))?;
+            println!("wrote the decision to `{path}`: {}", decision.ruling);
+        }
+        None => println!("{rendered}"),
+    }
+    for phase in &decision.phases {
+        eprintln!("{}: {}", phase.phase, phase.verdict);
+        for criterion in phase.breaches() {
+            eprintln!("  {} — {}", criterion.name, criterion.detail);
+        }
+    }
+    for refusal in &decision.refusals {
+        eprintln!("refused: {refusal}");
+    }
+    if !decision.ruling.admitted() {
+        std::process::exit(1);
     }
     Ok(())
 }

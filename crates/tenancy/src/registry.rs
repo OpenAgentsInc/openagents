@@ -5,7 +5,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::manifest::{Binding, Manifest};
+use crate::admission::{self, Record};
+use crate::manifest::{Binding, Expected, Lane, Manifest};
 
 /// The file the current manifest lives in.
 const CURRENT: &str = "registry.json";
@@ -28,6 +29,10 @@ pub enum Trouble {
     Sequence { expected: u64, found: u64 },
     /// A history lookup named a digest no archived revision carries.
     UnknownRevision(String),
+    /// The admission contract was asked for and did not hold: a record
+    /// that failed verification, a candidate that was not admitted, or a
+    /// write that tried to reach the trained lane without one.
+    Admission(admission::Fault),
 }
 
 impl std::fmt::Display for Trouble {
@@ -48,6 +53,7 @@ impl std::fmt::Display for Trouble {
             Self::UnknownRevision(digest) => {
                 write!(f, "no archived revision carries digest `{digest}`")
             }
+            Self::Admission(fault) => write!(f, "{fault}"),
         }
     }
 }
@@ -307,6 +313,7 @@ impl Registry {
         manifest
             .validate(&dir.join(CURRENT).display().to_string())
             .map_err(Trouble::Invalid)?;
+        check_trained_bindings(None, &manifest)?;
         Self::write(dir, manifest)
     }
 
@@ -345,6 +352,109 @@ impl Registry {
                 });
             }
         }
+        manifest.seal();
+        manifest
+            .validate(&dir.join(CURRENT).display().to_string())
+            .map_err(Trouble::Invalid)?;
+        check_trained_bindings(Some(&installed.manifest), &manifest)?;
+        Self::write(dir, manifest)
+    }
+
+    /// Activate a trained binding on a verified admission record.
+    ///
+    /// This is the only path that writes a `trained` lane: the record is
+    /// verified — schema, digest, ruling — and the binding it produces is
+    /// the record's own content rather than anything the caller asserted.
+    /// The artifact the door must publish is the candidate the admission
+    /// measured, down to the execution map; the `promotion` field carries
+    /// the record's own `admission:` digest; and `scope` carries the
+    /// families the admission covered. Tenant, credential, principals,
+    /// quota, and the door's existing capacity are preserved: activation
+    /// changes what the door serves, not who may reach it or how much it
+    /// may serve.
+    ///
+    /// The write is a revision like any other: the sequence advances, the
+    /// installed digest is superseded, and the previous manifest stays
+    /// archived under its own digest, so [`Registry::rollback`] can return
+    /// to it without reconstructing anything.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Trouble::Admission`] when the record does not admit —
+    /// wrong ruling, unpinned artifact, no scope — or the tenant is not in
+    /// the registry.
+    pub fn activate(
+        dir: &Path,
+        tenant: &str,
+        door: &str,
+        record: &Record,
+    ) -> Result<Self, Trouble> {
+        record.admitted().map_err(Trouble::Admission)?;
+        let installed = Self::open(dir)?;
+        let mut manifest = installed.manifest.clone();
+        let entry = manifest.tenants.get_mut(tenant).ok_or_else(|| {
+            Trouble::Admission(admission::Fault::Denied(format!(
+                "tenant `{tenant}` is not in the registry; an admission activates a binding \
+                 for a tenant the registry already knows"
+            )))
+        })?;
+        // The binding the door already held keeps its capacity: activation
+        // replaces what the door serves, not the share of it the tenant
+        // was promised.
+        let capacity = entry
+            .doors
+            .get(door)
+            .and_then(|binding| binding.capacity.clone());
+        entry.doors.insert(
+            door.to_string(),
+            Binding {
+                lane: Lane::Trained,
+                artifact: Expected {
+                    model: record.candidate.model.clone(),
+                    adapter: record.candidate.adapter.clone(),
+                    artifact_signature: record.candidate.artifact_signature.clone(),
+                    execution: record.candidate.execution.clone(),
+                },
+                capacity,
+                promotion: Some(record.reference().to_string()),
+                scope: record.scope.clone(),
+            },
+        );
+        manifest.sequence = installed.manifest.sequence + 1;
+        manifest.supersedes = Some(installed.manifest.digest.clone());
+        manifest.seal();
+        manifest
+            .validate(&dir.join(CURRENT).display().to_string())
+            .map_err(Trouble::Invalid)?;
+        Self::write(dir, manifest)
+    }
+
+    /// Roll the registry back to the revision the installed one superseded.
+    ///
+    /// A rollback is a revision, not an edit: the archived manifest is
+    /// reinstated at the next sequence number, superseding the one that
+    /// replaced it, and every revision stays readable under its digest.
+    /// That is what makes undoing an activation safe — the binding that
+    /// answered before the candidate was admitted is the binding that
+    /// answers after, byte for byte, because it was never rewritten.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Trouble::Invalid`] when the installed revision is the
+    /// genesis and there is nothing to return to, and the usual write
+    /// failures otherwise.
+    pub fn rollback(dir: &Path) -> Result<Self, Trouble> {
+        let installed = Self::open(dir)?;
+        let Some(supersedes) = installed.manifest.supersedes.clone() else {
+            return Err(Trouble::Invalid(
+                "the installed revision supersedes nothing; there is no earlier revision to \
+                 roll back to"
+                    .to_string(),
+            ));
+        };
+        let mut manifest = Self::revision(dir, &supersedes)?;
+        manifest.sequence = installed.manifest.sequence + 1;
+        manifest.supersedes = Some(installed.manifest.digest.clone());
         manifest.seal();
         manifest
             .validate(&dir.join(CURRENT).display().to_string())
@@ -496,6 +606,39 @@ impl Registry {
 
         Ok(Self { manifest })
     }
+}
+
+/// The guard [`Registry::install`] and [`Registry::update`] share: no
+/// trained binding may appear or change outside [`Registry::activate`].
+///
+/// A `trained` lane is the claim that a verified admission record judged
+/// this candidate, and `activate` is the only writer that has verified
+/// one. An update that adds a trained binding, or moves an existing one's
+/// artifact, capacity, promotion, or scope, is refused rather than
+/// believed — the promotion field is a digest of the record that admitted
+/// the candidate, and a string that merely names it is not it. An
+/// unchanged binding is left alone: a revision that touches other doors
+/// does not have to re-litigate an admission that already ran.
+fn check_trained_bindings(installed: Option<&Manifest>, next: &Manifest) -> Result<(), Trouble> {
+    for (tenant, record) in &next.tenants {
+        for (door, binding) in &record.doors {
+            if binding.lane != Lane::Trained {
+                continue;
+            }
+            let unchanged = installed
+                .and_then(|held| held.tenants.get(tenant))
+                .and_then(|held| held.doors.get(door))
+                .is_some_and(|held| held == binding);
+            if !unchanged {
+                return Err(Trouble::Admission(admission::Fault::Denied(format!(
+                    "door `{door}` for tenant `{tenant}` is a trained lane, which only \
+                     `Registry::activate` may write — an ordinary update cannot add or change \
+                     a trained binding, because the admission record is verified, not named"
+                ))));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The current UTC time, as RFC 3339. The registry needs a timestamp for

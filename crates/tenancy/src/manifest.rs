@@ -76,12 +76,20 @@ pub struct Binding {
     /// The capacity the agreement assigns, when it assigns one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capacity: Option<Capacity>,
-    /// The admission record that authorized a trained artifact. Required
-    /// on a `trained`-lane binding; meaningless elsewhere. The record
-    /// itself is the admission contract's business — the binding only
-    /// proves a reference was named.
+    /// The admission record that authorized a trained artifact: the
+    /// record's own `admission:` digest, not a name for it. Required on a
+    /// `trained`-lane binding; meaningless elsewhere. Only
+    /// [`crate::Registry::activate`] sets it, because setting it is the
+    /// claim the record was verified — an ordinary update that writes one
+    /// is refused rather than believed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promotion: Option<String>,
+    /// The question families the admission record covered, carried by the
+    /// binding so an activation is bound to the scope it was measured on.
+    /// Only a `trained` lane may carry one: on any other lane it would
+    /// claim a scope no admission established.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scope: Vec<String>,
 }
 
 /// A tenant's budget, when the agreement names one.
@@ -254,10 +262,34 @@ fn validate_binding(name: &str, door: &str, binding: &Binding) -> Result<(), Str
             binding.artifact.artifact_signature
         ));
     }
-    if binding.lane == Lane::Trained && binding.promotion.as_deref().is_none_or(str::is_empty) {
+    if binding.lane == Lane::Trained {
+        match binding.promotion.as_deref() {
+            // The reference is the record's own digest: `admission:`
+            // followed by 64 hex characters, the shape
+            // `gym::admission::Decision` seals and `admission::Record`
+            // verifies. Anything else is a string that claims an admission
+            // without naming one, which is the bypass this check exists
+            // to refuse.
+            Some(reference)
+                if reference
+                    .strip_prefix("admission:")
+                    .is_some_and(|digest| {
+                        digest.len() == 64
+                            && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    }) => {}
+            _ => {
+                return Err(format!(
+                    "{name}: door `{door}` is a trained lane without a verified admission \
+                     reference — `promotion` must be the record's own `admission:` digest, \
+                     and only `Registry::activate` writes one"
+                ));
+            }
+        }
+    } else if !binding.scope.is_empty() {
         return Err(format!(
-            "{name}: door `{door}` is a trained lane without a promotion reference — \
-             an admitted candidate names the record that admitted it"
+            "{name}: door `{door}` carries an admitted family scope on a {} lane — a scope \
+             is what an admission covered, so it belongs on the trained lane",
+            lane_name(binding.lane)
         ));
     }
     Ok(())
@@ -279,7 +311,11 @@ pub fn lane_name(lane: Lane) -> &'static str {
 /// `preserve_order` makes a `serde_json` map insertion-ordered whenever a
 /// sibling crate enables it, and the digest agreement must not depend on
 /// who wrote the bytes.
-fn canonicalize(value: &Value) -> String {
+///
+/// `pub(crate)` because `admission::Record` recomputes a decision's digest
+/// under this exact canonicalization: the agreement between the two is the
+/// verification, so there is one implementation of it.
+pub(crate) fn canonicalize(value: &Value) -> String {
     match value {
         Value::Object(map) => {
             let mut keys: Vec<&String> = map.keys().collect();

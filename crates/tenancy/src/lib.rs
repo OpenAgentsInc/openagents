@@ -25,6 +25,15 @@
 //! a fault the registry names, and it stays a fault until an explicit
 //! update authorizes the replacement.
 //!
+//! A `trained` lane is the one exception to an update's reach: it is bound
+//! only by [`Registry::activate`], which consumes a verified
+//! [`admission::Record`] — the digested decision `gym::admission` emits —
+//! and writes the artifact, the record reference, and the admitted family
+//! scope from the record rather than from anything the caller asserted.
+//! An ordinary update that adds or changes a trained binding is refused,
+//! and [`Registry::rollback`] returns to the archived revision an
+//! activation superseded.
+//!
 //! # Revisions, not edits
 //!
 //! A registry directory holds the current manifest and every manifest that
@@ -50,6 +59,7 @@
 //! membership still stands.
 
 pub mod accounts;
+pub mod admission;
 pub mod backend;
 pub mod keys;
 mod manifest;
@@ -61,6 +71,7 @@ pub use accounts::{
     ACCOUNTS_SCHEMA, Account, Accounts, Invitation, InviteStatus, Invited, MemberRef, MemberStatus,
     Membership, Role, Store, Workspace, WorkspaceKind,
 };
+pub use admission::{Candidate, Record as AdmissionRecord, Ruling as AdmissionRuling};
 pub use keys::{AuthRefusal, Authenticated, Issued, Key, KeyStore, KeyTrouble, Status};
 pub use manifest::{Binding, Capacity, Expected, Lane, Manifest, Quota, SCHEMA, Tenant, lane_name};
 pub use registry::{Admission, Fault, Published, Refusal, Registry, Trouble};

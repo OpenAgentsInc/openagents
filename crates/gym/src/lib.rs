@@ -28,6 +28,8 @@
 //!   the rule produces a new rule rather than new history.
 //! - [`ab`] — the loop that compares two doors over interleaved seed blocks,
 //!   screens the result, and confirms the win on blocks nobody has drawn.
+//! - [`admission`] — the frozen plan a cross-artifact candidate is admitted
+//!   under, and the digested decision a registry activates from.
 //! - [`views`] — rendering where unknown reads as unknown and never as zero.
 //! - [`calibrate`] — the reliability table that turns a raw signal into a
 //!   probability, and the record that says what it was fitted against.
@@ -47,6 +49,7 @@
 //! the door.
 
 pub mod ab;
+pub mod admission;
 pub mod build;
 pub mod calibrate;
 pub mod commitment;
