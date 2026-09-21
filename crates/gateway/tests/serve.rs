@@ -1036,6 +1036,47 @@ async fn classify_score_ranks_inputs_on_the_declared_rubric() {
 }
 
 #[tokio::test]
+async fn classify_score_ranking_keeps_ties_and_omits_invalid_rubrics() {
+    let stub = per_input_backend(|body| {
+        let invalid = body["state"] == "invalid";
+        let answer = if invalid {
+            json!({"type":"score","score":3.0,"confidence":1.0,
+                   "legend":{"0":"weak","3":"outside"},
+                   "probabilities":{"0":0.0,"3":1.0},"selected":"3"})
+        } else {
+            json!({"type":"score","score":0.5,"confidence":0.5,
+                   "legend":{"0":"weak","1":"strong"},
+                   "probabilities":{"0":0.5,"1":0.5}})
+        };
+        (
+            StatusCode::OK,
+            json!({"model":"kev-0.6b","answers":{"q0":answer}}),
+        )
+    });
+    let (endpoint, _) = backend(stub).await;
+    let deployment = classification_deployment(endpoint).await;
+    let call = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"stable-ranking",
+          "select":{"score":{"order":"ascending","top_n":1}}},
+        "inputs":[{"id":"first","text":"valid"},{"id":"second","text":"valid"},
+                  {"id":"bad","text":"invalid"}],
+        "mode":"score","levels":["weak","strong"]
+    });
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["selections"],
+        json!([{
+            "mode":"score","ranking":["first"],"unevaluated":["bad"]
+        }])
+    );
+    assert_eq!(body["results"][0]["units"][0]["selected"], 1);
+    assert_eq!(body["results"][1]["units"][0]["outcome"], "answered");
+    assert_eq!(body["results"][2]["units"][0]["outcome"], "unavailable");
+}
+
+#[tokio::test]
 async fn classify_refuses_invalid_rubrics_and_undeclared_rules() {
     let (endpoint, forwards) = backend(honest(artifact('b'), json!({}))).await;
     let deployment = classification_deployment(endpoint).await;
