@@ -123,7 +123,11 @@ on the same pinned workload. Include skewed task durations, dependency chains,
 shared reads, conflicting writes, exclusive measurements, review backpressure,
 and an externally owned task. Report admitted and accepted work, makespan,
 queue wait, resource peaks, refusals, retries, review/gate time, and known or
-unknown cost.
+unknown cost. The [2026-09-21 waves-versus-refill measurement](../measurements/2026-09-21-wave-vs-refill.md)
+runs that comparison across the separate-lanes and session-count lane models on
+three digested fixture workloads; the earlier
+[verification record](../verification/2026-09-21-project-supervisor.md) adds the
+widths sweep and the fixture-process benchmark.
 
 A deterministic simulation proves scheduling behavior under its stated inputs.
 It does not measure Devin throughput. A local fake executor proves dispatch and
