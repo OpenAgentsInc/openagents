@@ -89,7 +89,6 @@ pub struct Task {
     #[serde(default)]
     pub priority: i64,
     /// The resource vector held while admitted.
-    #[serde(default)]
     pub resources: Resources,
     /// The stated duration, in simulation ticks. Real scheduling does
     /// not read it; [`crate::simulate`] does.

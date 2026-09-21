@@ -53,7 +53,7 @@
 //! each distinguishable by the unique attempt id.
 
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -262,6 +262,14 @@ impl Ledger {
     /// Open at an explicit time — the seam tests and recovery share.
     fn open_at(dir: &Path, now: u64) -> Result<Self, LedgerError> {
         std::fs::create_dir_all(dir)?;
+        if std::fs::symlink_metadata(dir)?.file_type().is_symlink() {
+            return Err(LedgerError::Corrupt("ledger directory is a symlink".into()));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+        }
         let lock = lock_file(&dir.join(LOCK))?;
         let path = dir.join(LEDGER);
         let mut ledger = Self {
@@ -284,8 +292,17 @@ impl Ledger {
     /// Read the document, or mint a fresh one — and commit it, so the
     /// run id exists on disk before any attempt does.
     fn load(&mut self) -> Result<(), LedgerError> {
-        match std::fs::read_to_string(&self.path) {
+        regular_or_absent(&self.path)?;
+        let read = std::fs::File::open(&self.path).and_then(|file| {
+            let mut text = String::new();
+            file.take(16 * 1024 * 1024 + 1).read_to_string(&mut text)?;
+            Ok(text)
+        });
+        match read {
             Ok(text) => {
+                if text.len() > 16 * 1024 * 1024 {
+                    return Err(LedgerError::Corrupt("ledger exceeds 16 MiB".into()));
+                }
                 let document: Document = serde_json::from_str(&text).map_err(|error| {
                     LedgerError::Corrupt(format!("{}: {error}", self.path.display()))
                 })?;
@@ -330,12 +347,16 @@ impl Ledger {
     /// file, `fsync` it, rename it over the old document, and `fsync`
     /// the directory so the rename is durable too.
     fn commit(&mut self) -> Result<(), LedgerError> {
-        self.document.sequence += 1;
+        self.document.sequence = self
+            .document
+            .sequence
+            .checked_add(1)
+            .ok_or_else(|| LedgerError::Corrupt("ledger sequence exhausted".into()))?;
         let text = serde_json::to_string_pretty(&self.document)
             .map_err(|error| LedgerError::Corrupt(error.to_string()))?;
-        let temporary = self.path.with_extension("tmp");
+        let temporary = self.dir.join(format!(".ledger-{}.tmp", fresh_run()?));
         {
-            let mut file = std::fs::File::create(&temporary)?;
+            let mut file = private_file(&temporary, true)?;
             file.write_all(text.as_bytes())?;
             file.sync_all()?;
         }
@@ -471,11 +492,20 @@ impl Ledger {
             "att-{}-{:06}",
             self.document.run, self.document.next_attempt
         );
-        self.document.next_attempt += 1;
+        let next_attempt = self
+            .document
+            .next_attempt
+            .checked_add(1)
+            .ok_or_else(|| LedgerError::Corrupt("attempt identity counter exhausted".into()))?;
+        let attempts = record
+            .attempts
+            .checked_add(1)
+            .ok_or_else(|| LedgerError::Corrupt("task attempt counter exhausted".into()))?;
+        self.document.next_attempt = next_attempt;
         record.status = Status::Active;
         record.attempt = attempt.clone();
         record.owner = owner.to_string();
-        record.attempts += 1;
+        record.attempts = attempts;
         record.result_digest = None;
         record.cause = None;
         record.updated_unix = unix_now();
@@ -614,7 +644,8 @@ impl Ledger {
 /// second writer waits rather than collides; a writer that outlives the
 /// wait is named in the refusal.
 fn lock_file(path: &Path) -> Result<std::fs::File, LedgerError> {
-    let file = std::fs::File::create(path)?;
+    regular_or_absent(path)?;
+    let file = private_file(path, false)?;
     let started = Instant::now();
     loop {
         match file.try_lock() {
@@ -628,6 +659,32 @@ fn lock_file(path: &Path) -> Result<std::fs::File, LedgerError> {
             Err(std::fs::TryLockError::Error(error)) => return Err(LedgerError::Io(error)),
         }
     }
+}
+
+fn regular_or_absent(path: &Path) -> Result<(), LedgerError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_file() && !meta.file_type().is_symlink() => Ok(()),
+        Ok(_) => Err(LedgerError::Corrupt(
+            "ledger state must be a regular file".into(),
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(LedgerError::Io(error)),
+    }
+}
+
+fn private_file(path: &Path, exclusive: bool) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .create_new(exclusive);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
 }
 
 /// The ledger instance's id — 16 bytes of randomness, hex, minted once.
@@ -651,6 +708,17 @@ mod tests {
     use super::*;
     use crate::catalog::{Catalog, Footprint, Task};
     use crate::resources::Resources;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_lock_cannot_truncate_another_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(outside.path(), "preserve").unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join(LOCK)).unwrap();
+        assert!(Ledger::open(dir.path()).is_err());
+        assert_eq!(std::fs::read_to_string(outside.path()).unwrap(), "preserve");
+    }
 
     fn task(id: &str) -> Task {
         Task {

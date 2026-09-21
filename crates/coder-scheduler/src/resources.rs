@@ -137,10 +137,12 @@ impl std::fmt::Display for Bound {
 impl InUse {
     /// Add one task's hold.
     pub fn add(&mut self, resources: &Resources) {
-        self.executor_slots += resources.executor_slots;
-        self.cpu_units += resources.cpu_units;
-        self.memory_mib += resources.memory_mib;
-        self.integration += u32::from(resources.integration);
+        self.executor_slots = self.executor_slots.saturating_add(resources.executor_slots);
+        self.cpu_units = self.cpu_units.saturating_add(resources.cpu_units);
+        self.memory_mib = self.memory_mib.saturating_add(resources.memory_mib);
+        self.integration = self
+            .integration
+            .saturating_add(u32::from(resources.integration));
         self.quiet |= resources.quiet_host;
     }
 
@@ -150,16 +152,32 @@ impl InUse {
     /// scheduling rule the plan applies, not a quantity.
     #[must_use]
     pub fn exceeds(&self, capacity: &Capacity, resources: &Resources) -> Option<Bound> {
-        if self.executor_slots + resources.executor_slots > capacity.executor_slots {
+        if self
+            .executor_slots
+            .checked_add(resources.executor_slots)
+            .is_none_or(|sum| sum > capacity.executor_slots)
+        {
             return Some(Bound::ExecutorSlots);
         }
-        if self.cpu_units + resources.cpu_units > capacity.cpu_units {
+        if self
+            .cpu_units
+            .checked_add(resources.cpu_units)
+            .is_none_or(|sum| sum > capacity.cpu_units)
+        {
             return Some(Bound::CpuUnits);
         }
-        if self.memory_mib + resources.memory_mib > capacity.memory_mib {
+        if self
+            .memory_mib
+            .checked_add(resources.memory_mib)
+            .is_none_or(|sum| sum > capacity.memory_mib)
+        {
             return Some(Bound::MemoryMib);
         }
-        if self.integration + u32::from(resources.integration) > capacity.integration_lanes {
+        if self
+            .integration
+            .checked_add(u32::from(resources.integration))
+            .is_none_or(|sum| sum > capacity.integration_lanes)
+        {
             return Some(Bound::Integration);
         }
         None
@@ -169,6 +187,42 @@ impl InUse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resource_arithmetic_cannot_wrap_into_spare_capacity() {
+        let capacity = Capacity {
+            executor_slots: u32::MAX,
+            cpu_units: u32::MAX,
+            memory_mib: u64::MAX,
+            integration_lanes: u32::MAX,
+        };
+        let mut used = InUse {
+            executor_slots: u32::MAX,
+            ..InUse::default()
+        };
+        assert_eq!(
+            used.exceeds(
+                &capacity,
+                &Resources {
+                    executor_slots: 1,
+                    ..Resources::default()
+                }
+            ),
+            Some(Bound::ExecutorSlots)
+        );
+        used.executor_slots = 0;
+        used.memory_mib = u64::MAX;
+        assert_eq!(
+            used.exceeds(
+                &capacity,
+                &Resources {
+                    memory_mib: 1,
+                    ..Resources::default()
+                }
+            ),
+            Some(Bound::MemoryMib)
+        );
+    }
 
     fn host() -> Capacity {
         Capacity {

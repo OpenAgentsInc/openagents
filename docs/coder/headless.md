@@ -30,6 +30,7 @@ coder -p --json --trace runs/one.atif.jsonl "count the crates"
 | `--prompt-file <FILE>` | Read the prompt from a file, newlines and all. Implies `--print`. |
 | `--trace <PATH>` | Write this session's trace to `PATH`. |
 | `--json` | Report the turn as one JSON object instead of as text. |
+| `--programs <SPEC>` | Grant named program slugs, subject to the environment effect ceiling. |
 | `-h`, `--help` | Print the usage text. |
 
 The environment picks the door exactly as it does in the terminal:
@@ -42,6 +43,9 @@ The environment also says what a turn may do to the machine, again
 exactly as in the terminal: `CODER_SHELL=off` withdraws execution, and a
 headless turn then answers without running a command whatever its reply
 asks for. See [the shell loop](shell-loop.md#execution-intent).
+
+Program execution separately requires `CODER_PROGRAMS` or `--programs`. See
+[program authority](program-authority.md) for the effect ceiling and refusal behavior.
 
 ## Lanes
 

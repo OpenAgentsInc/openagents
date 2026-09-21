@@ -613,3 +613,11 @@ The four questions are about delegation in general, not about Devin. The one
 worth measuring first is independence, because six parallel agents is a good
 idea exactly when the six pieces of work do not touch, and nobody can tell
 by looking.
+
+## Operator authority and project supervision
+
+Program selection proposes a program; [operator authority](coder/program-authority.md)
+determines whether it may run. [Scoped tracker intake](coder/tracker-intake.md)
+feeds host-prepared tasks into the existing source contract. The
+[project supervisor](coder/project-supervision.md) adds a durable outer queue with
+resource admission, immediate refill, and independent result review.

@@ -458,7 +458,10 @@ async fn a_request_selects_its_program_and_runs_it() {
     }
     let machine = machine();
     let root = machine.path();
-    let run = runtime(root).await.apply(&inputs(), &Grant::all(), None).await;
+    let run = runtime(root)
+        .await
+        .apply(&inputs(), &Grant::all(), None)
+        .await;
 
     assert_eq!(run.program.as_deref(), Some("delegate-fan-out"));
     assert_eq!(run.stopped, None, "{:?}", run.stopped);
@@ -492,7 +495,9 @@ async fn the_recorded_run_is_the_path_the_task_expects() {
     recorder.user(&inputs.request);
     let runtime = runtime(root).await;
     runtime.survey().record(&mut recorder, None);
-    let run = runtime.apply(&inputs, &Grant::all(), Some(&mut recorder)).await;
+    let run = runtime
+        .apply(&inputs, &Grant::all(), Some(&mut recorder))
+        .await;
     // A session that ran to the end closes itself, and the grade reads
     // the end record: a trace without one is a session that stopped.
     recorder.finish(atif::log::ENDED);
@@ -704,7 +709,10 @@ async fn an_executor_claim_does_not_establish_enforcement() {
         .unwrap();
     delegate.bounds.insert("memory_mb".to_string(), json!(128));
     let delegate_name = delegate.name.clone();
-    let run = runtime(root).await.run(&program, &inputs(), &Grant::all(), None).await;
+    let run = runtime(root)
+        .await
+        .run(&program, &inputs(), &Grant::all(), None)
+        .await;
     let stopped = run
         .stopped
         .expect("an unsupported bound refuses before any step runs");
@@ -756,7 +764,12 @@ async fn the_check_records_who_holds_each_bound() {
     let path = recorder.path().to_path_buf();
     runtime(root)
         .await
-        .run(&fan_out(root), &inputs(), &Grant::all(), Some(&mut recorder))
+        .run(
+            &fan_out(root),
+            &inputs(),
+            &Grant::all(),
+            Some(&mut recorder),
+        )
         .await;
     drop(recorder);
 
@@ -786,7 +799,10 @@ async fn an_absent_executor_refuses_the_delegate_step() {
     let mut inputs = inputs();
     inputs.executor = "not-a-capability-here".to_string();
 
-    let run = runtime(root).await.run(&fan_out(root), &inputs, &Grant::all(), None).await;
+    let run = runtime(root)
+        .await
+        .run(&fan_out(root), &inputs, &Grant::all(), None)
+        .await;
 
     let stopped = run.stopped.expect("there is no executor");
     assert_eq!(stopped.step, "admit", "the check names it first");
@@ -805,7 +821,10 @@ async fn a_lookup_that_found_no_work_refuses() {
     let mut inputs = inputs();
     inputs.tasks.clear();
 
-    let run = runtime(root).await.run(&fan_out(root), &inputs, &Grant::all(), None).await;
+    let run = runtime(root)
+        .await
+        .run(&fan_out(root), &inputs, &Grant::all(), None)
+        .await;
     let stopped = run.stopped.expect("nothing to delegate");
     assert_eq!(stopped.step, "select");
     assert_eq!(stopped.code, "no_tasks");
@@ -1192,7 +1211,12 @@ async fn a_plan_with_no_collisions_says_nothing_about_collisions() {
     let path = recorder.path().to_path_buf();
     runtime(root)
         .await
-        .run(&fan_out(root), &inputs(), &Grant::all(), Some(&mut recorder))
+        .run(
+            &fan_out(root),
+            &inputs(),
+            &Grant::all(),
+            Some(&mut recorder),
+        )
         .await;
     drop(recorder);
 
@@ -1229,7 +1253,10 @@ async fn the_fan_out_runs_at_the_width_the_step_states() {
         .bounds
         .insert("concurrent_max".to_string(), json!(1));
 
-    let run = runtime(root).await.run(&program, &inputs(), &Grant::all(), None).await;
+    let run = runtime(root)
+        .await
+        .run(&program, &inputs(), &Grant::all(), None)
+        .await;
     assert_eq!(run.stopped, None, "{:?}", run.stopped);
     assert!(
         run.delegations
@@ -1277,7 +1304,10 @@ async fn an_answer_below_the_floor_stops_the_program() {
         .unwrap();
     step.bounds.insert("refuse_below".to_string(), json!(0.95));
 
-    let run = runtime(root).await.run(&program, &inputs(), &Grant::all(), None).await;
+    let run = runtime(root)
+        .await
+        .run(&program, &inputs(), &Grant::all(), None)
+        .await;
     assert_eq!(run.step_names(), ["select"]);
     let stopped = run.stopped.expect("0.93 is below 0.95");
     assert_eq!(stopped.step, "independence");
@@ -1478,7 +1508,9 @@ async fn the_first_program_runs_live() {
         .collect();
     recorder.user(&inputs.request);
     runtime.survey().record(&mut recorder, None);
-    let run = runtime.apply(&inputs, &Grant::all(), Some(&mut recorder)).await;
+    let run = runtime
+        .apply(&inputs, &Grant::all(), Some(&mut recorder))
+        .await;
     drop(recorder);
 
     for step in &run.steps {
@@ -1509,4 +1541,50 @@ async fn the_first_program_runs_live() {
         "{:?}",
         judgment.faults
     );
+}
+
+/// A writing item cannot widen a read-only program grant after source lookup.
+#[tokio::test]
+async fn writing_work_list_data_cannot_grant_write_authority() {
+    if !boundary_supported() {
+        return;
+    }
+    let machine = machine();
+    let root = machine.path();
+    let mut inputs = inputs();
+    inputs.tasks[0].writes = true;
+    let grant = Grant::selected(
+        Some("delegate-fan-out"),
+        Some("reads,delegation,network,subprocesses,spend"),
+    );
+    let run = runtime(root)
+        .await
+        .run(&fan_out(root), &inputs, &grant, None)
+        .await;
+    assert!(run.delegations.is_empty());
+    let refused = run.stopped.unwrap();
+    assert_eq!(refused.code, "unauthorized");
+    assert!(refused.reason.contains("writes"));
+}
+
+/// Even a confident selection from ordinary prose cannot grant an executor.
+#[tokio::test]
+async fn a_wrong_selection_has_no_authority_from_bullet_prose() {
+    if !boundary_supported() {
+        return;
+    }
+    let machine = machine();
+    let mut agent = agent(machine.path(), "delegate-fan-out")
+        .await
+        .with_program_grant(Some("none"));
+    let finished = turn::run(
+        &mut agent,
+        "Explain this list:\n- item one\n- item two".into(),
+        &mut |_| {},
+    )
+    .await
+    .unwrap();
+    let run = finished.program.expect("the stub selected a program");
+    assert!(run.delegations.is_empty());
+    assert_eq!(run.stopped.unwrap().code, "unauthorized");
 }

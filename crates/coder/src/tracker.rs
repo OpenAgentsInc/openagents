@@ -71,6 +71,9 @@ pub const SNAPSHOT_BYTES: u64 = 4 * 1024 * 1024;
 /// The task-map document version this reads.
 pub const TASKS_VERSION: u32 = 1;
 
+/// The bytes a task-map document itself may be before it is read.
+pub const TASKS_BYTES: u64 = 1024 * 1024;
+
 /// What a fetch and a read may spend.
 ///
 /// Every bound is stated rather than assumed: a fetch that runs past the
@@ -290,18 +293,18 @@ impl TaskMap {
         }
     }
 
-    /// Reads a task map from a local file.
+    /// Reads a task map from a local file, bounded to [`TASKS_BYTES`].
     ///
     /// # Errors
     ///
     /// Returns a sentence naming why the file is not a task map this host
-    /// reads: unreadable, unparseable, a `v` it does not know, or a
-    /// definition that asks nothing or names a path outside the
-    /// workspace.
+    /// reads: unreadable, past the bound, unparseable, a `v` it does not
+    /// know, or a definition that asks nothing or names a path outside
+    /// the workspace.
     pub fn load(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let bytes = read_capped(path, TASKS_BYTES, "a task map")?;
         let map: Self =
-            serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+            serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         map.validate()
             .map_err(|reason| format!("{}: {reason}", path.display()))?;
         Ok(map)
@@ -363,10 +366,10 @@ pub struct Issue {
     #[serde(default)]
     pub blocked_by: Vec<Dependency>,
     /// Whether the fetch saw the whole blocked-by list. An absent field
-    /// reads as complete, which is what a hand-written snapshot means by
-    /// it; an acquisition that hit the dependency page bound writes
-    /// `false` explicitly.
-    #[serde(default = "complete")]
+    /// reads as `false` — missing dependency completeness cannot admit —
+    /// so a snapshot that means complete writes `true` explicitly, and
+    /// an acquisition that hit the dependency page bound writes `false`.
+    #[serde(default)]
     pub blocked_by_complete: bool,
     /// What this issue becomes when it runs — the host's task definition,
     /// resolved at acquisition so the snapshot carries what it digested.
@@ -374,13 +377,12 @@ pub struct Issue {
     pub task: Option<TaskDef>,
 }
 
-fn complete() -> bool {
-    true
-}
-
 /// A project item the snapshot records but does not carry as an issue:
-/// a draft, a pull request, an item with no content. It is named so the
-/// record of what the project held is complete.
+/// a draft, a pull request, an item the fetch read and classified as
+/// not an issue. It is named so the record of what the project held is
+/// complete. An item the fetch could not classify — one whose content
+/// the credential cannot read, or one carrying no type — is not skipped:
+/// it refuses the page, because it cannot be told apart from an issue.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Skipped {
     /// The project item's node identity.
@@ -426,16 +428,9 @@ impl Snapshot {
     /// reads: unreadable, past the bound, unparseable, or refused by
     /// [`Snapshot::validate`].
     pub fn load(path: &Path) -> Result<Self, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        if bytes.len() as u64 > SNAPSHOT_BYTES {
-            return Err(format!(
-                "{}: {SNAPSHOT_BYTES} bytes is the most a snapshot may be, and this one is {}",
-                path.display(),
-                bytes.len()
-            ));
-        }
-        let snapshot: Self = serde_json::from_slice(&bytes)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let bytes = read_capped(path, SNAPSHOT_BYTES, "a snapshot")?;
+        let snapshot: Self =
+            serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         snapshot
             .validate()
             .map_err(|reason| format!("{}: {reason}", path.display()))?;
@@ -585,7 +580,10 @@ impl Snapshot {
                 Some(reason) => {
                     item.insert(
                         "prompt".to_string(),
-                        json!(format!("Tracked issue {}#{}: {}", issue.repo, issue.number, issue.title)),
+                        json!(format!(
+                            "Tracked issue {}#{}: {}",
+                            issue.repo, issue.number, issue.title
+                        )),
                     );
                     item.insert("blocked".to_string(), json!(reason));
                 }
@@ -663,7 +661,9 @@ impl Snapshot {
             );
         }
         if cyclic.contains(&issue.number) {
-            return Some("sits on a dependency cycle, and nothing in a cycle runs first".to_string());
+            return Some(
+                "sits on a dependency cycle, and nothing in a cycle runs first".to_string(),
+            );
         }
         for dep in &issue.blocked_by {
             if !dep.in_scope(&self.scope) {
@@ -724,10 +724,16 @@ impl Snapshot {
                 ),
             ));
         }
-        let fresh_by_number: BTreeMap<u64, &Issue> =
-            fresh.issues.iter().map(|issue| (issue.number, issue)).collect();
-        let pinned_by_number: BTreeMap<u64, &Issue> =
-            self.issues.iter().map(|issue| (issue.number, issue)).collect();
+        let fresh_by_number: BTreeMap<u64, &Issue> = fresh
+            .issues
+            .iter()
+            .map(|issue| (issue.number, issue))
+            .collect();
+        let pinned_by_number: BTreeMap<u64, &Issue> = self
+            .issues
+            .iter()
+            .map(|issue| (issue.number, issue))
+            .collect();
         for issue in &self.issues {
             let item = format!("#{}", issue.number);
             let Some(now) = fresh_by_number.get(&issue.number) else {
@@ -766,7 +772,10 @@ impl Snapshot {
                 ));
             }
             if issue.task != now.task {
-                drift.push(Drift::of(item.clone(), "its task definition changed".to_string()));
+                drift.push(Drift::of(
+                    item.clone(),
+                    "its task definition changed".to_string(),
+                ));
             }
         }
         for issue in &fresh.issues {
@@ -888,6 +897,27 @@ fn is_repository(repo: &str) -> bool {
     })
 }
 
+/// Reads a document file, refusing the moment it passes `cap` bytes.
+///
+/// The bound applies while the bytes arrive: a file of any size is never
+/// held in memory first and measured afterwards, which is the difference
+/// between a cap and a report.
+fn read_capped(path: &Path, cap: u64, what: &str) -> Result<Vec<u8>, String> {
+    use std::io::Read as _;
+    let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.take(cap + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    if bytes.len() as u64 > cap {
+        return Err(format!(
+            "{}: {cap} bytes is the most {what} may be, and this one is past it",
+            path.display()
+        ));
+    }
+    Ok(bytes)
+}
+
 /// Whether `path` names a place inside the workspace — relative, and
 /// never reaching above it.
 fn workspace_relative(path: &str) -> Result<(), String> {
@@ -992,9 +1022,8 @@ fn visit(
 /// contract, and it is a `query`, not a `mutation`.
 pub mod github {
     use std::collections::BTreeSet;
-    use std::io::Read as _;
     use std::path::Path;
-    use std::process::{Command, Stdio};
+    use std::process::Command;
     use std::time::{Duration, Instant};
 
     use serde_json::Value;
@@ -1060,11 +1089,17 @@ pub mod github {
     /// except the query itself; `project` is `-F` so it goes as an
     /// integer, and `cursor` is absent rather than empty on the first
     /// page.
+    ///
+    /// `--hostname` comes from the captured scope, not from ambient
+    /// `GH_HOST`: every page speaks to the host the snapshot claims, so
+    /// the scope cannot drift mid-acquisition.
     #[must_use]
     pub fn argv(scope: &Scope, cursor: Option<&str>) -> Vec<String> {
         let mut argv = vec![
             "api".to_string(),
             "graphql".to_string(),
+            "--hostname".to_string(),
+            scope.host.clone(),
             "-f".to_string(),
             format!("query={QUERY}"),
             "-f".to_string(),
@@ -1101,6 +1136,10 @@ pub mod github {
     /// base it saw, and the cursor that continues it.
     #[derive(Clone, Debug, Default)]
     pub struct Page {
+        /// Every project item identity the page carried, issues and
+        /// skipped alike — the acquisition deduplicates on them, because
+        /// an item reported twice means the pages overlap.
+        pub ids: Vec<String>,
         pub issues: Vec<Fetched>,
         pub skipped: Vec<Skipped>,
         pub base: Option<Base>,
@@ -1116,6 +1155,10 @@ pub mod github {
     /// issue missing a field the pin needs is refused rather than
     /// defaulted, and a `blockedBy` page that says it has more marks the
     /// issue's dependency list incomplete rather than silently short.
+    /// An item the fetch cannot classify — one with no identity, one
+    /// whose content the credential cannot read, or one carrying no
+    /// type — is an incomplete page, not a skipped item: it cannot be
+    /// told apart from an issue the snapshot should carry.
     ///
     /// # Errors
     ///
@@ -1136,7 +1179,10 @@ pub mod github {
                         .to_string()
                 })
                 .collect();
-            return Err(format!("the tracker answered with errors: {}", messages.join("; ")));
+            return Err(format!(
+                "the tracker answered with errors: {}",
+                messages.join("; ")
+            ));
         }
         let data = value
             .get("data")
@@ -1182,14 +1228,16 @@ pub mod github {
             let id = node
                 .get("id")
                 .and_then(Value::as_str)
-                .unwrap_or("unknown")
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| {
+                    "a project item carries no identity, and an item the fetch cannot name is one it cannot account for".to_string()
+                })?
                 .to_string();
+            page.ids.push(id.clone());
             let Some(content) = node.get("content").filter(|c| c.is_object()) else {
-                page.skipped.push(Skipped {
-                    id,
-                    reason: "carries no content".to_string(),
-                });
-                continue;
+                return Err(format!(
+                    "project item {id} answered no content — an item the credential cannot read is an incomplete page, not a skipped one"
+                ));
             };
             match content.get("__typename").and_then(Value::as_str) {
                 Some("Issue") => page.issues.push(parse_issue(content)?),
@@ -1197,10 +1245,11 @@ pub mod github {
                     id,
                     reason: format!("a {other} project item, not an issue"),
                 }),
-                None => page.skipped.push(Skipped {
-                    id,
-                    reason: "carries no type".to_string(),
-                }),
+                None => {
+                    return Err(format!(
+                        "project item {id} carries no type, and an item the fetch cannot classify is not one it can skip"
+                    ));
+                }
             }
         }
         Ok(page)
@@ -1258,7 +1307,9 @@ pub mod github {
             "OPEN" => "open",
             "CLOSED" => "closed",
             other => {
-                return Err(format!("an issue is {other:?}, and an issue is OPEN or CLOSED"));
+                return Err(format!(
+                    "an issue is {other:?}, and an issue is OPEN or CLOSED"
+                ));
             }
         };
         let repo = want("repository")?
@@ -1362,17 +1413,20 @@ pub mod github {
         limits: &Limits,
         fetched_at: &str,
     ) -> Result<Snapshot, String> {
-        if fetched.len() > limits.items {
+        if fetched.len() + skipped.len() > limits.items {
             return Err(format!(
                 "the project holds {} items against a bound of {}",
-                fetched.len(),
+                fetched.len() + skipped.len(),
                 limits.items
             ));
         }
         let mut seen = BTreeSet::new();
         for issue in &fetched {
             if !seen.insert(issue.number) {
-                return Err(format!("the tracker reported issue #{} twice", issue.number));
+                return Err(format!(
+                    "the tracker reported issue #{} twice",
+                    issue.number
+                ));
             }
         }
         let snapshot = Snapshot {
@@ -1420,6 +1474,87 @@ pub mod github {
         Some(format!("{}\n…", &body[..cut]))
     }
 
+    /// The page loop one acquisition runs.
+    ///
+    /// `fetch` answers one page by cursor under the wall that remains.
+    /// The guards are the difference between a snapshot and a partial
+    /// answer that reads as complete: a cursor the tracker already gave
+    /// is a loop rather than progress, an item identity reported twice
+    /// means the pages overlap, and skipped items count toward the item
+    /// bound because they are items the project holds.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why the pages are not a complete read:
+    /// the page or item bound passed, the deadline passed, a cursor or an
+    /// item identity repeated, the base moved mid-read, or a fetch
+    /// failed.
+    pub fn paginate(
+        limits: &Limits,
+        mut fetch: impl FnMut(Option<&str>, Duration) -> Result<Page, String>,
+    ) -> Result<(Vec<Fetched>, Vec<Skipped>, Base), String> {
+        let started = Instant::now();
+        let mut fetched = Vec::new();
+        let mut skipped = Vec::new();
+        let mut base: Option<Base> = None;
+        let mut cursor: Option<String> = None;
+        let mut cursors = BTreeSet::new();
+        let mut ids = BTreeSet::new();
+        let mut pages = 0;
+        loop {
+            pages += 1;
+            if pages > limits.pages {
+                return Err(format!(
+                    "the project has more than {} pages of items, and a fetch that stops short is a partial answer",
+                    limits.pages
+                ));
+            }
+            let remaining = limits
+                .wall
+                .checked_sub(started.elapsed())
+                .filter(|left| !left.is_zero())
+                .ok_or_else(|| "the acquisition's deadline passed mid-fetch".to_string())?;
+            let parsed = fetch(cursor.as_deref(), remaining)?;
+            if let Some(seen) = &parsed.base {
+                match &base {
+                    None => base = Some(seen.clone()),
+                    Some(pinned) if pinned != seen => {
+                        return Err(
+                            "the base moved while the pages were being read — the snapshot would be two selections".to_string(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            for id in parsed.ids {
+                if !ids.insert(id.clone()) {
+                    return Err(format!(
+                        "the tracker reported item {id} twice — a page that repeats is a read this snapshot cannot trust"
+                    ));
+                }
+            }
+            fetched.extend(parsed.issues);
+            skipped.extend(parsed.skipped);
+            if fetched.len() + skipped.len() > limits.items {
+                return Err(format!(
+                    "the project holds more than {} items, and a fetch that stops short is a partial answer",
+                    limits.items
+                ));
+            }
+            match parsed.next {
+                Some(next) if !cursors.insert(next.clone()) => {
+                    return Err(format!(
+                        "the tracker returned cursor {next:?} twice — repeating a page is not progress"
+                    ));
+                }
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        let base = base.ok_or_else(|| "no page named the scoped repository's base".to_string())?;
+        Ok((fetched, skipped, base))
+    }
+
     /// Acquires a snapshot through a supervised `gh` subprocess the
     /// operator approved.
     ///
@@ -1430,6 +1565,14 @@ pub mod github {
     /// the same approval a probe needs, re-decided against the store as
     /// it stands now. The approved adapter's pinned path is what runs;
     /// under an unconditional trust the manifest's binary resolves fresh.
+    /// Either way the resolved file must be named `gh` — the argv is
+    /// `gh api graphql`, and an approval that pins anything else is not
+    /// this adapter whatever the manifest's word said.
+    ///
+    /// The scope is validated and captured before the first page runs,
+    /// and every page's argv is built from that one capture — host
+    /// included, as `--hostname` — so an ambient `GH_HOST` or a mutated
+    /// scope cannot move a later page to a different project.
     ///
     /// `env` is the caller's environment for the child — `GH_TOKEN` or
     /// `GH_HOST`, whatever the host supplies. Its values are secrets:
@@ -1439,10 +1582,11 @@ pub mod github {
     ///
     /// # Errors
     ///
-    /// Returns a sentence naming why no snapshot exists: the manifest is
-    /// unapproved, the adapter is not a subprocess transport, the binary
-    /// resolves to nothing, a page refused, the deadline passed, or the
-    /// assembled pages are not a snapshot.
+    /// Returns a sentence naming why no snapshot exists: the scope is not
+    /// a scope, the manifest is unapproved, the adapter is not a
+    /// subprocess transport, the binary resolves to nothing or is not
+    /// `gh`, a page refused, the deadline passed, or the assembled pages
+    /// are not a snapshot.
     pub fn acquire(
         entry: &capability::Entry,
         trust: &capability::Trust,
@@ -1452,6 +1596,7 @@ pub mod github {
         tasks: &TaskMap,
         env: &[(String, String)],
     ) -> Result<Snapshot, String> {
+        scope.validate()?;
         if entry.manifest.transport != capability::SUBPROCESS {
             return Err(format!(
                 "transport {} is not an argv this host runs",
@@ -1471,6 +1616,12 @@ pub mod github {
             }
             capability::Verified::Unapproved(why) => return Err(why),
         };
+        if adapter.file_name() != Some(std::ffi::OsStr::new("gh")) {
+            return Err(format!(
+                "the approved adapter {} is not `gh`, and this acquisition only drives the GitHub CLI",
+                adapter.display()
+            ));
+        }
         let secrets: Vec<String> = env
             .iter()
             .map(|(_, value)| value.clone())
@@ -1479,56 +1630,14 @@ pub mod github {
         let fetch = Fetch {
             adapter: &adapter,
             workspace,
+            scope,
             limits,
             env,
             secrets: &secrets,
         };
-        let started = Instant::now();
-        let mut fetched = Vec::new();
-        let mut skipped = Vec::new();
-        let mut base: Option<Base> = None;
-        let mut cursor: Option<String> = None;
-        let mut pages = 0;
-        loop {
-            pages += 1;
-            if pages > limits.pages {
-                return Err(format!(
-                    "the project has more than {} pages of items, and a fetch that stops short is a partial answer",
-                    limits.pages
-                ));
-            }
-            let remaining = limits
-                .wall
-                .checked_sub(started.elapsed())
-                .filter(|left| !left.is_zero())
-                .ok_or_else(|| "the acquisition's deadline passed mid-fetch".to_string())?;
-            let body = fetch.page(&argv(scope, cursor.as_deref()), remaining, pages)?;
-            let parsed = page(&body)?;
-            if let Some(seen) = &parsed.base {
-                match &base {
-                    None => base = Some(seen.clone()),
-                    Some(pinned) if pinned != seen => {
-                        return Err(
-                            "the base moved while the pages were being read — the snapshot would be two selections".to_string(),
-                        );
-                    }
-                    _ => {}
-                }
-            }
-            fetched.extend(parsed.issues);
-            skipped.extend(parsed.skipped);
-            if fetched.len() > limits.items {
-                return Err(format!(
-                    "the project holds more than {} items, and a fetch that stops short is a partial answer",
-                    limits.items
-                ));
-            }
-            match parsed.next {
-                Some(next) => cursor = Some(next),
-                None => break,
-            }
-        }
-        let base = base.ok_or_else(|| "no page named the scoped repository's base".to_string())?;
+        let (fetched, skipped, base) = paginate(limits, |cursor, remaining| {
+            fetch.page(cursor, remaining).and_then(|body| page(&body))
+        })?;
         let fetched_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|since| since.as_secs().to_string())
@@ -1545,11 +1654,13 @@ pub mod github {
     }
 
     /// One acquisition's running context: the approved adapter, the
-    /// directory it runs in, and the bounds and credentials the caller
-    /// set. Bundled because a page run needs all of them.
+    /// directory it runs in, the scope it was captured for, and the
+    /// bounds and credentials the caller set. Bundled because a page run
+    /// needs all of them.
     struct Fetch<'a> {
         adapter: &'a Path,
         workspace: &'a Path,
+        scope: &'a Scope,
         limits: &'a Limits,
         env: &'a [(String, String)],
         secrets: &'a [String],
@@ -1558,48 +1669,32 @@ pub mod github {
     impl Fetch<'_> {
         /// Runs one page's argv through the bounded supervisor: the child
         /// in a process group of its own, the deadline terminating the
-        /// group, output to files read back under the cap.
-        fn page(&self, args: &[String], wall: Duration, page: usize) -> Result<String, String> {
-            let dir = std::env::temp_dir();
-            let pid = std::process::id();
-            let out_path = dir.join(format!("coder-tracker-{pid}-{page}-out.json"));
-            let err_path = dir.join(format!("coder-tracker-{pid}-{page}-err.txt"));
-            let result = self.page_at(args, wall, &out_path, &err_path);
-            let _ = std::fs::remove_file(&out_path);
-            let _ = std::fs::remove_file(&err_path);
-            result
-        }
-
-        fn page_at(
-            &self,
-            args: &[String],
-            wall: Duration,
-            out_path: &Path,
-            err_path: &Path,
-        ) -> Result<String, String> {
-            let out = std::fs::File::create(out_path)
-                .map_err(|e| format!("{}: {e}", out_path.display()))?;
-            let err = std::fs::File::create(err_path)
-                .map_err(|e| format!("{}: {e}", err_path.display()))?;
+        /// group and the direct child reaped, and both output streams
+        /// drained into capped buffers as they arrive. Nothing is written
+        /// to a file — there is no path for a name to guess and nothing
+        /// to leave behind.
+        ///
+        /// The argv is built here, per page, from the one scope the
+        /// acquisition captured, so a later page cannot be asked for a
+        /// different host, owner, repository, or project. A page cut at
+        /// the output cap is a refused page: half a GraphQL body is a
+        /// partial answer, not a short one.
+        fn page(&self, cursor: Option<&str>, wall: Duration) -> Result<String, String> {
             let mut command = Command::new(self.adapter);
             command
-                .args(args)
+                .args(argv(self.scope, cursor))
                 .envs(self.env.iter().cloned())
-                .current_dir(self.workspace)
-                .stdin(Stdio::null())
-                .stdout(Stdio::from(out))
-                .stderr(Stdio::from(err));
-            supervise::blocking::own_group(&mut command);
-            let mut child = command
-                .spawn()
-                .map_err(|e| format!("{}: {e}", self.adapter.display()))?;
-            let ending = supervise::blocking::wait(&mut child, wall);
-            let text = capped(out_path, self.limits.output_bytes)?;
-            match ending {
-                supervise::Ending::Exited(Some(0)) => Ok(text),
+                .current_dir(self.workspace);
+            let ended = run(supervise::Job::from_command(command)
+                .bounded(supervise::Limits::within(wall).keeping(self.limits.output_bytes)))?;
+            match ended.ending {
+                supervise::Ending::Exited(Some(0)) if ended.stdout.truncated => Err(format!(
+                    "the tracker answered past the {}-byte output cap",
+                    self.limits.output_bytes
+                )),
+                supervise::Ending::Exited(Some(0)) => Ok(ended.stdout.text),
                 supervise::Ending::Exited(code) => {
-                    let detail = capped(err_path, 8192).unwrap_or_default();
-                    let detail = scrub(&detail, self.secrets);
+                    let detail = scrub(&ended.stderr.text, self.secrets);
                     Err(format!(
                         "the tracker adapter exited {}: {}",
                         code.map_or_else(|| "on a signal".to_string(), |code| code.to_string()),
@@ -1609,26 +1704,32 @@ pub mod github {
                 supervise::Ending::TimedOut => {
                     Err("the tracker fetch ran past its deadline".to_string())
                 }
-                supervise::Ending::Failed(why) => Err(format!("the tracker fetch failed: {why}")),
+                supervise::Ending::Failed(why) => Err(format!(
+                    "the tracker fetch failed: {}",
+                    scrub(&why, self.secrets)
+                )),
             }
         }
     }
 
-    /// A file's first `cap` bytes, or the refusal a file past the cap
-    /// earns. Output past the bound is counted and refused rather than
-    /// read, the same rule the supervisor's capture keeps.
-    fn capped(path: &Path, cap: usize) -> Result<String, String> {
-        let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let mut bytes = Vec::new();
-        file.take(cap as u64 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        if bytes.len() > cap {
-            return Err(format!(
-                "the tracker answered past the {cap}-byte output cap"
-            ));
-        }
-        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    /// Runs a supervised job to its end from synchronous code.
+    ///
+    /// The job's runtime lives on a worker thread of its own, so a caller
+    /// that already sits inside a runtime does not nest one inside
+    /// another — the same bridge `capability::bounded::run` uses. The
+    /// supervisor still owns the whole contract: the process group, the
+    /// deadline, the reap, and the capped streams.
+    fn run(job: supervise::Job) -> Result<supervise::Ended, String> {
+        let worker = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| format!("no runtime to supervise the fetch: {error}"))?;
+            Ok(runtime.block_on(job.run()))
+        });
+        worker
+            .join()
+            .map_err(|_| "the fetch's supervising thread panicked".to_string())?
     }
 
     /// Scrubs secrets out of text an error might carry.
@@ -1765,7 +1866,10 @@ mod tests {
             work[0].blocked.as_deref(),
             Some("no task definition names it")
         );
-        assert!(work[1].blocked.is_none(), "an open in-list dependency is an after edge, not a block");
+        assert!(
+            work[1].blocked.is_none(),
+            "an open in-list dependency is an after edge, not a block"
+        );
         assert_eq!(work[1].after, ["9507"]);
         assert!(work[2].blocked.is_none());
     }
@@ -1803,9 +1907,21 @@ mod tests {
             .map(|item| item.blocked.as_deref().unwrap_or(""))
             .collect();
         assert!(reasons[0].contains("outside the scoped"), "{}", reasons[0]);
-        assert!(reasons[1].contains("completeness is unknown"), "{}", reasons[1]);
-        assert!(reasons[2].contains("outside the scoped repository"), "{}", reasons[2]);
-        assert!(reasons[3].contains("outside this selection"), "{}", reasons[3]);
+        assert!(
+            reasons[1].contains("completeness is unknown"),
+            "{}",
+            reasons[1]
+        );
+        assert!(
+            reasons[2].contains("outside the scoped repository"),
+            "{}",
+            reasons[2]
+        );
+        assert!(
+            reasons[3].contains("outside this selection"),
+            "{}",
+            reasons[3]
+        );
         assert!(reasons[4].contains("does not pin"), "{}", reasons[4]);
     }
 
@@ -1898,11 +2014,34 @@ mod tests {
         fresh.base.revision = "0a1e2c9000000000000000000000000000000000".to_string();
 
         let drift = pinned.revalidate(&fresh);
-        let reasons: Vec<String> = drift.iter().map(|d| format!("{} {}", d.item, d.reason)).collect();
-        assert!(reasons.iter().any(|r| r.contains("base") && r.contains("moved")), "{reasons:?}");
-        assert!(reasons.iter().any(|r| r.contains("#1") && r.contains("changed")), "{reasons:?}");
-        assert!(reasons.iter().any(|r| r.contains("#2") && r.contains("closed")), "{reasons:?}");
-        assert!(reasons.iter().any(|r| r.contains("#3") && r.contains("appeared")), "{reasons:?}");
+        let reasons: Vec<String> = drift
+            .iter()
+            .map(|d| format!("{} {}", d.item, d.reason))
+            .collect();
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("base") && r.contains("moved")),
+            "{reasons:?}"
+        );
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("#1") && r.contains("changed")),
+            "{reasons:?}"
+        );
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("#2") && r.contains("closed")),
+            "{reasons:?}"
+        );
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("#3") && r.contains("appeared")),
+            "{reasons:?}"
+        );
 
         assert!(pinned.revalidate(&pinned.clone()).is_empty());
     }
@@ -1914,8 +2053,16 @@ mod tests {
         fresh.issues[0].node = "I_recreated".to_string();
 
         let drift = pinned.revalidate(&fresh);
-        assert!(drift.iter().any(|d| d.item == "#1" && d.reason.contains("no longer")));
-        assert!(drift.iter().any(|d| d.item == "#2" && d.reason.contains("re-created")));
+        assert!(
+            drift
+                .iter()
+                .any(|d| d.item == "#1" && d.reason.contains("no longer"))
+        );
+        assert!(
+            drift
+                .iter()
+                .any(|d| d.item == "#2" && d.reason.contains("re-created"))
+        );
     }
 
     #[test]
@@ -1948,9 +2095,7 @@ mod tests {
         use serde_json::{Value, json};
 
         use super::super::github::{Fetched, assemble, page, scrub};
-        use super::super::{
-            Base, Limits, Scope, TaskDef, TaskMap, TASKS_VERSION,
-        };
+        use super::super::{Base, Limits, Scope, TASKS_VERSION, TaskDef, TaskMap};
         use crate::capability;
 
         fn page_json(nodes: Value, has_next: bool) -> String {
@@ -1989,7 +2134,10 @@ mod tests {
             let first = page(&page_json(json!([issue_node(1), issue_node(2)]), true)).unwrap();
             assert_eq!(first.issues.len(), 2);
             assert_eq!(first.next.as_deref(), Some("c2"));
-            assert_eq!(first.base.unwrap().revision, "1e84bb108a5c03f1d865bbcf12d9572f282e5eb5");
+            assert_eq!(
+                first.base.unwrap().revision,
+                "1e84bb108a5c03f1d865bbcf12d9572f282e5eb5"
+            );
 
             let last = page(&page_json(json!([issue_node(3)]), false)).unwrap();
             assert!(last.next.is_none());
@@ -1997,7 +2145,8 @@ mod tests {
 
         #[test]
         fn errors_and_missing_data_refuse_the_page() {
-            let errors = json!({"errors": [{"message": "Could not resolve to a ProjectV2"}]}).to_string();
+            let errors =
+                json!({"errors": [{"message": "Could not resolve to a ProjectV2"}]}).to_string();
             assert!(page(&errors).unwrap_err().contains("Could not resolve"));
             assert!(page("{}").is_err());
             let no_project = json!({"data": {
@@ -2005,7 +2154,8 @@ mod tests {
                 "repository": {"defaultBranchRef": {"name": "main", "target": {"oid": "1e84bb108a5c03f1d865bbcf12d9572f282e5eb5"}}}
             }}).to_string();
             assert!(page(&no_project).unwrap_err().contains("no project"));
-            let no_repo = json!({"data": {"organization": {"projectV2": {}}, "repository": null}}).to_string();
+            let no_repo = json!({"data": {"organization": {"projectV2": {}}, "repository": null}})
+                .to_string();
             assert!(page(&no_repo).unwrap_err().contains("repository"));
         }
 
@@ -2014,13 +2164,76 @@ mod tests {
             let nodes = json!([
                 issue_node(1),
                 {"id": "PVTI_draft", "content": {"__typename": "DraftIssue", "title": "a draft"}},
-                {"id": "PVTI_pr", "content": {"__typename": "PullRequest", "number": 9}},
-                {"id": "PVTI_empty", "content": null}
+                {"id": "PVTI_pr", "content": {"__typename": "PullRequest", "number": 9}}
             ]);
             let page = page(&page_json(nodes, false)).unwrap();
             assert_eq!(page.issues.len(), 1);
-            assert_eq!(page.skipped.len(), 3);
+            assert_eq!(page.skipped.len(), 2);
             assert!(page.skipped[0].reason.contains("DraftIssue"));
+        }
+
+        #[test]
+        fn inaccessible_items_and_missing_dependency_completeness_refuse() {
+            assert!(
+                page(&page_json(
+                    json!([{"id":"unreadable","content":null}]),
+                    false
+                ))
+                .is_err()
+            );
+            let mut value = serde_json::to_value(super::issue(1)).unwrap();
+            value.as_object_mut().unwrap().remove("blocked_by_complete");
+            let issue: super::super::Issue = serde_json::from_value(value).unwrap();
+            assert!(!issue.blocked_by_complete);
+            assert!(
+                super::snapshot(vec![issue]).work().unwrap()[0]
+                    .blocked
+                    .is_some()
+            );
+        }
+
+        #[test]
+        fn pagination_refuses_loops_duplicates_and_skipped_item_overflow() {
+            use super::super::github::paginate;
+            let limits = Limits::bounded();
+            let mut calls = 0;
+            let result = paginate(&limits, |_, _| {
+                calls += 1;
+                page(&page_json(json!([issue_node(calls)]), true))
+            });
+            assert!(result.unwrap_err().contains("cursor"));
+            assert_eq!(calls, 2);
+            let mut calls = 0;
+            let result = paginate(&limits, |_, _| {
+                calls += 1;
+                page(&page_json(json!([issue_node(1)]), calls == 1))
+            });
+            assert!(result.unwrap_err().contains("twice"));
+            let limits = Limits { items: 1, ..limits };
+            let result = paginate(&limits, |_, _| {
+                page(&page_json(
+                    json!([
+                        {"id":"draft-a","content":{"__typename":"DraftIssue"}},
+                        {"id":"draft-b","content":{"__typename":"DraftIssue"}}
+                    ]),
+                    false,
+                ))
+            });
+            assert!(result.unwrap_err().contains("items"));
+        }
+
+        #[test]
+        fn oversized_files_are_rejected_during_capture() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("oversized.json");
+            let file = std::fs::File::create(&path).unwrap();
+            file.set_len(super::super::SNAPSHOT_BYTES + 1).unwrap();
+            assert!(
+                super::super::Snapshot::load(&path)
+                    .unwrap_err()
+                    .contains("past it")
+            );
+            assert!(TaskMap::load(&path).unwrap_err().contains("past it"));
         }
 
         #[test]
@@ -2069,14 +2282,35 @@ mod tests {
             two.number = 2;
             two.node = "I2".to_string();
             let scope = Scope::github("OpenAgentsInc", "openagents", 16);
-            let base = Base { branch: "main".to_string(), revision: "abc".to_string() };
+            let base = Base {
+                branch: "main".to_string(),
+                revision: "abc".to_string(),
+            };
             let tasks = TaskMap {
                 v: TASKS_VERSION,
-                tasks: BTreeMap::from([(1, TaskDef { prompt: "Do one.".to_string(), ..TaskDef::default() })]),
+                tasks: BTreeMap::from([(
+                    1,
+                    TaskDef {
+                        prompt: "Do one.".to_string(),
+                        ..TaskDef::default()
+                    },
+                )]),
             };
-            let snapshot = assemble(scope.clone(), vec![one.clone(), two.clone()], Vec::new(), base.clone(), &tasks, &Limits::bounded(), "1").unwrap();
+            let snapshot = assemble(
+                scope.clone(),
+                vec![one.clone(), two.clone()],
+                Vec::new(),
+                base.clone(),
+                &tasks,
+                &Limits::bounded(),
+                "1",
+            )
+            .unwrap();
             assert_eq!(snapshot.issues.len(), 2);
-            assert!(snapshot.issues[1].task.is_none(), "issue 2 has no task definition");
+            assert!(
+                snapshot.issues[1].task.is_none(),
+                "issue 2 has no task definition"
+            );
             assert_eq!(
                 snapshot.issues[0].body_digest,
                 capability::digest_bytes(b"body")
@@ -2084,16 +2318,38 @@ mod tests {
 
             let mut dup = one.clone();
             dup.node = "I1b".to_string();
-            assert!(assemble(scope.clone(), vec![one.clone(), dup], Vec::new(), base.clone(), &tasks, &Limits::bounded(), "1").is_err());
+            assert!(
+                assemble(
+                    scope.clone(),
+                    vec![one.clone(), dup],
+                    Vec::new(),
+                    base.clone(),
+                    &tasks,
+                    &Limits::bounded(),
+                    "1"
+                )
+                .is_err()
+            );
 
-            let tight = Limits { items: 1, ..Limits::bounded() };
-            assert!(assemble(scope, vec![one, two], Vec::new(), base, &tasks, &tight, "1").unwrap_err().contains("bound"));
+            let tight = Limits {
+                items: 1,
+                ..Limits::bounded()
+            };
+            assert!(
+                assemble(scope, vec![one, two], Vec::new(), base, &tasks, &tight, "1")
+                    .unwrap_err()
+                    .contains("bound")
+            );
         }
 
         #[test]
         fn secrets_are_scrubbed_from_errors() {
-            let secrets = vec!["ghp_secretvalue123".to_string(), "another-secret".to_string()];
-            let text = "fatal: ghp_secretvalue123 and github_pat_11ABCDEFG and another-secret failed";
+            let secrets = vec![
+                "ghp_secretvalue123".to_string(),
+                "another-secret".to_string(),
+            ];
+            let text =
+                "fatal: ghp_secretvalue123 and github_pat_11ABCDEFG and another-secret failed";
             let scrubbed = scrub(text, &secrets);
             assert!(!scrubbed.contains("secretvalue"), "{scrubbed}");
             assert!(!scrubbed.contains("11ABCDEFG"), "{scrubbed}");

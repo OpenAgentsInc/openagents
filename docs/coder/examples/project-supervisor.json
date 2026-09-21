@@ -1,0 +1,69 @@
+{
+  "v": 1,
+  "repository": "/absolute/path/to/openagents",
+  "project": {
+    "owner": "OpenAgentsInc",
+    "repository": "openagents",
+    "project": 16
+  },
+  "capacity": {
+    "executor_slots": 6,
+    "cpu_units": 8,
+    "memory_mib": 32768,
+    "integration_lanes": 1
+  },
+  "external_reservation": {
+    "executor_slots": 1,
+    "cpu_units": 1,
+    "memory_mib": 4096,
+    "quiet_host": false,
+    "integration": false
+  },
+  "excluded_issues": [
+    9476
+  ],
+  "external_owners": [],
+  "accepted_closed_issues": [],
+  "review_cap": 3,
+  "dispatch_limit": 6,
+  "admission_minutes": 60,
+  "poll_seconds": 30,
+  "tasks": [
+    {
+      "scheduling": {
+        "id": "9507-review-intake",
+        "issue": 9507,
+        "base": "",
+        "input": "",
+        "depends_on": [],
+        "footprint": {
+          "kind": "declared",
+          "reads": [
+            "crates/coder/src/tracker.rs"
+          ],
+          "writes": []
+        },
+        "priority": 1,
+        "resources": {
+          "executor_slots": 1,
+          "cpu_units": 2,
+          "memory_mib": 4096,
+          "quiet_host": false,
+          "integration": false
+        },
+        "estimate_ticks": 1
+      },
+      "assignment": {
+        "id": "9507-review-intake",
+        "base": "",
+        "prompt": "Read crates/coder/src/tracker.rs and report its pagination refusal conditions. Do not change files or run builds. Put findings before the final line. End with exactly: Final answer: intake-reviewed",
+        "writes": false,
+        "expected_text": "intake-reviewed",
+        "minutes": 5
+      },
+      "issue_updated": "",
+      "issue_body_digest": "",
+      "tracker_base": ""
+    }
+  ]
+}

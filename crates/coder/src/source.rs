@@ -342,7 +342,9 @@ fn workspace_relative(path: &str) -> Result<(), String> {
         .components()
         .any(|part| part == std::path::Component::ParentDir)
     {
-        return Err(format!("{path:?} leaves the workspace, which a source may not"));
+        return Err(format!(
+            "{path:?} leaves the workspace, which a source may not"
+        ));
     }
     Ok(())
 }

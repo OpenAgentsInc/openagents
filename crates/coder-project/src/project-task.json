@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "slug": "project-task",
+  "name": "Run one admitted project task",
+  "summary": "Runs one task admitted by the project supervisor through the existing Coder runtime.",
+  "inputs": {
+    "tasks": "list",
+    "executor": "capability-slug"
+  },
+  "outputs": {
+    "results": "list"
+  },
+  "steps": [
+    {
+      "name": "select",
+      "kind": "query",
+      "source": "request",
+      "bounds": {
+        "max_results": 1,
+        "on_overflow": "refuse"
+      }
+    },
+    {
+      "name": "admit",
+      "kind": "check",
+      "bounds": {
+        "refuse_on": "cannot_enforce_intersection"
+      }
+    },
+    {
+      "name": "fan_out",
+      "kind": "delegate",
+      "briefing": "You are working in a Git worktree made for this item alone. The repository's common Git directory is sealed: git commands that read or write it, including status, add, commit, and worktree, fail here, and that is by design. Do not try to unseal it, and do not touch anything outside this worktree. If your item changes files, commit it to the scratch Git directory already inside the worktree at `.coder-git`, which holds one commit of the tree as you found it: with `GIT_DIR=.coder-git` and `GIT_WORK_TREE=.` exported, run `git add -A` and `git commit`. Every git command you run needs those two variables, and your commit should hold only the files your item changed. The reviewer fetches from that scratch directory with `git fetch <worktree>/.coder-git HEAD` after you finish; nothing you commit reaches the shared repository on its own. End your reply with one line that starts with `Final answer:` followed by the answer the item asks for, in the form it asks for it. Whatever you print before that line is kept as narration; only what follows the last `Final answer:` is judged.",
+      "bounds": {
+        "concurrent_max": 1,
+        "isolation": "worktree",
+        "minutes": 30
+      }
+    }
+  ]
+}

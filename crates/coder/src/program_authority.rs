@@ -251,8 +251,7 @@ impl Programs {
             (Programs::All, other) => other.clone(),
             (mine, Programs::All) => mine.clone(),
             (Programs::Named(mine), Programs::Named(theirs)) => {
-                let slugs: BTreeSet<String> =
-                    mine.intersection(theirs).cloned().collect();
+                let slugs: BTreeSet<String> = mine.intersection(theirs).cloned().collect();
                 match slugs.is_empty() {
                     true => Programs::None,
                     false => Programs::Named(slugs),
@@ -433,7 +432,11 @@ pub fn parse_programs(spec: &str) -> (Programs, Vec<String>) {
     }
     let mut slugs = BTreeSet::new();
     let mut notes = Vec::new();
-    for word in spec.split(',').map(str::trim).filter(|word| !word.is_empty()) {
+    for word in spec
+        .split(',')
+        .map(str::trim)
+        .filter(|word| !word.is_empty())
+    {
         match word.to_ascii_lowercase().as_str() {
             "all" | "any" | "*" => return (Programs::All, notes),
             "0" | "off" | "no" | "false" | "none" => {}
@@ -465,7 +468,11 @@ fn parse_effects(spec: Option<&str>) -> (Effects, Vec<String>) {
     }
     let mut effects = Effects::none();
     let mut notes = Vec::new();
-    for word in spec.split(',').map(str::trim).filter(|word| !word.is_empty()) {
+    for word in spec
+        .split(',')
+        .map(str::trim)
+        .filter(|word| !word.is_empty())
+    {
         match Effects::named(word) {
             Some(one) => effects = effects.union(one),
             None => notes.push(format!("{word:?} is not an effect and grants nothing")),
@@ -532,7 +539,10 @@ mod tests {
     /// a program or an effect either one denied.
     #[test]
     fn a_child_scope_narrows_and_never_widens() {
-        let parent = Grant::selected(Some("burn-down"), Some("reads,writes,delegation,network,subprocesses,spend"));
+        let parent = Grant::selected(
+            Some("burn-down"),
+            Some("reads,writes,delegation,network,subprocesses,spend"),
+        );
         for child in [
             Grant::all(),
             Grant::selected(Some("burn-down,delegate-fan-out"), None),

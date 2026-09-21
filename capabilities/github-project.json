@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "slug": "github-project",
+  "name": "GitHub project intake",
+  "summary": "Approves the GitHub CLI for the host's bounded read-only project adapter. It is not a delegated executor.",
+  "transport": "subprocess",
+  "detect": {"binary": "gh", "version": ["gh", "--version"]},
+  "enforces": [],
+  "cannot_enforce": ["budget_cents"],
+  "sees_repository": false,
+  "concurrent_max": 1,
+  "cost": "local",
+  "isolation": [],
+  "invoke": []
+}

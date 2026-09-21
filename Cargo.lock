@@ -498,6 +498,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-project"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "coder",
+ "coder-scheduler",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "supervise",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "coder-scheduler"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "coder-terminal"
 version = "0.1.0"
 dependencies = [

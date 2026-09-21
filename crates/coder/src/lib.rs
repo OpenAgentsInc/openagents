@@ -59,8 +59,8 @@ pub mod runtime;
 pub mod shell;
 pub mod source;
 pub mod survey;
-pub mod tracker;
 pub mod trace;
+pub mod tracker;
 pub mod turn;
 mod worktree;
 

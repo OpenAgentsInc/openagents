@@ -167,6 +167,8 @@ git status --porcelain=v1 > "$RUN/before.status"
 unset CODER_DOOR_KEY CODER_AI_GATEWAY_KEY CODER_DOOR_URL CODER_MODEL
 unset CODER_WORKER CODER_RELAY CODER_EXECUTOR CODER_SOURCE_DIR
 export CODER_DELEGATE=devin-local CODER_SHELL=off
+export CODER_PROGRAMS=burn-down,project-task
+export CODER_PROGRAM_EFFECTS=reads,writes,delegation,network,subprocesses,spend
 
 if "$BIN/coder" -p --json --trace "$RUN/trace.atif.jsonl" \
   "Run the burn-down program for every item in this checkout's work list." \
@@ -409,6 +411,8 @@ Coordinator environment, using the worker's public key from its startup log:
 export CODER_RELAY='wss://relay.openagents.com'
 export CODER_WORKER='<worker-public-key>'
 export CODER_DELEGATE=devin-relay
+export CODER_PROGRAMS=burn-down
+export CODER_PROGRAM_EFFECTS=reads,writes,delegation,network,subprocesses,spend
 unset CODER_DOOR_KEY CODER_AI_GATEWAY_KEY CODER_MODEL CODER_EXECUTOR
 # Repeat the captured smoke invocation and checker above with these settings.
 # Do not repeat the local block that unsets CODER_WORKER and CODER_RELAY.
@@ -493,3 +497,10 @@ They can contain login codes and authentication links. Extract operational
 lessons without publishing the raw transcript. A parent's `child_session_ids`
 records hosted child sessions; it does not prove that Coder's local delegation
 path was used. Verify the actual capability and transport in Coder's trace.
+
+## Continuous project supervision
+
+For project polling, durable claims, resource-aware admission, and completion-driven
+refill, use the [project supervisor procedure](project-supervision.md). The local
+executor and protected approval/state setup in this runbook still apply. Program
+authority is explicit; see [program authority](program-authority.md).

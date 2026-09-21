@@ -877,7 +877,12 @@ impl Runtime {
     /// will answer with. A work item's `writes` is read at dispatch, off
     /// the item itself, because a source answers after admission ran —
     /// see [`Runtime::delegate`].
-    pub fn authorize(&self, program: &Program, inputs: &Inputs, grant: &Grant) -> Result<(), Refused> {
+    pub fn authorize(
+        &self,
+        program: &Program,
+        inputs: &Inputs,
+        grant: &Grant,
+    ) -> Result<(), Refused> {
         if !grant.authorizes(&program.slug) {
             return Err(Refused::at(
                 "",
@@ -1985,6 +1990,15 @@ mod tests {
             .expect_err("no memory enforcement exists");
         assert_eq!(refused.code, "bound_unenforceable");
         assert!(refused.reason.contains("memory_mb"));
+        for bound in ["read_paths", "network_allowlist", "budget_cents"] {
+            let mut program = program.clone();
+            program.steps[0].bounds.clear();
+            program.steps[0].bounds.insert(bound.into(), json!([]));
+            assert_eq!(
+                runtime.admit(&program).unwrap_err().code,
+                "bound_unenforceable"
+            );
+        }
     }
 
     /// The work is the list the sentence carries, in the order it was
