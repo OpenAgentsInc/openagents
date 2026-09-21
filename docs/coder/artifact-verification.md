@@ -142,7 +142,7 @@ the same checker environment.
 
 `run-suite` emits typed verification verdicts and retains the shipped Gym
 adapter's measurement details. Still missing for the full #9509 contract are
-`review-changes`, dedicated program-level `metrics` and `gate` output bindings,
+dedicated program-level `metrics` and `gate` output bindings,
 and the broader terminal and headless presentation of completion evidence.
 The suite/doors inputs and metrics/gate outputs remain the target contract;
 measurement details currently live under each check's `suite_evidence`.
@@ -201,3 +201,92 @@ it still requires the plan's explicit unrestricted-read and network grants.
 A local endpoint is a transport restriction, not a filesystem read sandbox or
 proof that a model process cannot make its own network calls. Hosted suite
 execution and verified model-artifact attestation remain separate work.
+
+
+## Review a pinned diff
+
+Run `coder-project review-changes REPOSITORY WORKTREE PLAN.json NEW_OUTPUT_DIRECTORY`
+with a protected host plan outside the repository and its granted write roots:
+
+```json
+{
+  "schema": "openagents.review-plan.v1",
+  "verification": {
+    "base": "FULL_RECORDED_BASE_COMMIT",
+    "tip": "FULL_INSPECTED_SCRATCH_COMMIT",
+    "owned_paths": ["crates/example"],
+    "plan": "USE_THE_VERIFICATION_PLAN_OBJECT_DESCRIBED_ABOVE"
+  },
+  "reviewer": {
+    "manifest": "/protected/reviewer-capability.json",
+    "manifest_digest": "PINNED_MANIFEST_DIGEST",
+    "arguments": [],
+    "seconds": 120,
+    "output_bytes": 65536
+  },
+  "policy": {"confirm_at": 0.9, "dismiss_below": 0.1},
+  "excluded": []
+}
+```
+
+Replace the `plan` placeholder with the actual versioned verification object.
+The example thresholds illustrate the configuration shape; they are not measured
+review policy. Choose and evaluate thresholds for the intended model and workload.
+The command requires a configured [decision profile](decision-profiles.md), the
+operator's program effect grants, and approval for both the mechanical check and
+reviewer capabilities. The runtime resolves `openagents.review-finding.v1` from
+the host question registry. Its semantic accuracy has not been measured.
+
+The host independently inspects the scratch artifact, captures its exact diff,
+and binds the verification plan to the artifact digest before execution. Mechanical
+checks run first. A failed or incomplete check stops the program before the reviewer
+runs. The reviewer runs in a read-only candidate boundary with private scratch,
+bounded time and output, and independent before/after snapshots. Like the existing
+verification boundary, it does not enforce network or filesystem read isolation;
+the verification plan must explicitly permit those effects.
+
+The reviewer receives `CODER_REVIEW_BASE`, `CODER_REVIEW_TIP`,
+`CODER_REVIEW_INPUT_DIGEST`, `CODER_REVIEW_DIFF_DIGEST`, and
+`CODER_REVIEW_DIFF` (the captured diff file path). Its complete stdout must be:
+
+```json
+{
+  "schema": "openagents.review-findings.v1",
+  "base": "ECHO_CODER_REVIEW_BASE",
+  "tip": "ECHO_CODER_REVIEW_TIP",
+  "input_digest": "ECHO_CODER_REVIEW_INPUT_DIGEST",
+  "findings": [
+    {
+      "path": "crates/example/src/lib.rs",
+      "span": {"start": 10, "end": 10},
+      "severity": "error",
+      "summary": "Describe the introduced problem.",
+      "evidence": "Optional supporting evidence."
+    }
+  ]
+}
+```
+
+`findings` is mandatory, including when empty. The host accepts at most 256
+findings. It anchors paths to the inspected changes and line spans to added
+new-side lines, excludes operator-declared paths, and preserves unanchored
+findings without asking the model about them. Quoted Git paths do not support
+line anchoring yet; file-level findings can omit `span`. Per-file decision
+context is capped at 32 KiB and records truncation. A truncated context is not
+proof of complete review coverage.
+
+The result retains original findings, raw probabilities, and confirmed,
+dismissed, unresolved, or unanswered dispositions. A failed decision call retains
+collected evidence and unanswered findings. A missing document, wrong identity,
+truncated output, crash, timeout, or changed snapshot cannot become an empty
+successful review. Exit 0 means the reporting workflow finished, not that the
+patch passed review: findings and unresolved results still require examination.
+Exit 3 reports a program refusal; exit 2 reports host preparation or observation
+failure. Every result sets `integration_accepted` to false. Merge, push, and issue
+closure remain separate effects.
+
+The subprocess/HTTP fixture exercises the real command with explicit empty,
+malformed, failed, truncated, and three-way judged findings. It verifies retained
+probabilities and ambiguous dispositions. It establishes protocol behavior, not
+reviewer or decision-model quality. Full terminal presentation and measured
+semantic review remain work under #9509 and #9503.

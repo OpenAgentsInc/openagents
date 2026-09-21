@@ -507,7 +507,7 @@ mod tests {
         );
         assert_eq!(
             registry.get("review-changes").unwrap().step_names(),
-            ["diff", "mechanical", "review"]
+            ["mechanical", "review"]
         );
         assert_eq!(
             registry.get("answer-question").unwrap().step_names(),

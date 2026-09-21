@@ -13,6 +13,7 @@ const USAGE: &str = "Usage:
   coder-project inspect REPOSITORY WORKTREE BASE OWNED_PATH...
   coder-project verify REPOSITORY WORKTREE PLAN.json NEW_OUTPUT_DIRECTORY
   coder-project run-suite REPOSITORY WORKTREE PLAN.json NEW_OUTPUT_DIRECTORY
+  coder-project review-changes REPOSITORY WORKTREE PLAN.json NEW_OUTPUT_DIRECTORY
   coder-project gym-suite PLAN.json
   coder-project project CONFIGURATION.json STATE_DIRECTORY [--watch]
   coder-project snapshot REPOSITORY OWNER REPO PROJECT_NUMBER
@@ -119,7 +120,7 @@ async fn execute(args: &[String]) -> Result<u8, String> {
             );
             Ok(0)
         }
-        Some("verify" | "run-suite") if args.len() == 5 => {
+        Some("verify" | "run-suite" | "review-changes") if args.len() == 5 => {
             let repository = Path::new(&args[1])
                 .canonicalize()
                 .map_err(|e| e.to_string())?;
@@ -138,21 +139,42 @@ async fn execute(args: &[String]) -> Result<u8, String> {
             if bytes.len() > 1024 * 1024 {
                 return Err("verification plan exceeds 1 MiB".into());
             }
-            let plan: artifact::Verification =
+            let value: serde_json::Value =
                 serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            let review: Option<artifact::Review> = if args[0] == "review-changes" {
+                Some(serde_json::from_value(value.clone()).map_err(|e| e.to_string())?)
+            } else {
+                None
+            };
+            let plan: artifact::Verification = serde_json::from_value(
+                review
+                    .as_ref()
+                    .map(|_| value["verification"].clone())
+                    .unwrap_or_else(|| value.clone()),
+            )
+            .map_err(|e| e.to_string())?;
             plan.plan.validate()?;
             std::fs::DirBuilder::new()
                 .mode(0o700)
                 .create(output)
                 .map_err(|e| e.to_string())?;
-            record(&output.join("plan.json"), &plan)?;
+            record(&output.join("plan.json"), &value)?;
             let mut trace = coder::Recorder::at(
                 &output.join("trace.atif.jsonl"),
                 "host-verification",
                 "none",
                 &repository.display().to_string(),
             )?;
-            let result = if args[0] == "run-suite" {
+            let result = if let Some(review) = &review {
+                artifact::review_changes(
+                    &repository,
+                    worktree,
+                    review,
+                    &coder::Grant::operator(Some("review-changes")),
+                    &mut trace,
+                )
+                .await
+            } else if args[0] == "run-suite" {
                 artifact::run_suite(
                     &repository,
                     worktree,
@@ -177,7 +199,7 @@ async fn execute(args: &[String]) -> Result<u8, String> {
             }
             let (value, code) = match result {
                 Ok(run) => (
-                    serde_json::json!({"summary":run.summary(),"verification":run.verification,"refusal":run.stopped.as_ref().map(ToString::to_string),"integration_accepted":false}),
+                    serde_json::json!({"summary":run.summary(),"verification":run.verification,"review":run.review,"refusal":run.stopped.as_ref().map(ToString::to_string),"integration_accepted":false}),
                     if run.finished() { 0 } else { 3 },
                 ),
                 Err(error) => (

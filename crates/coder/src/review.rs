@@ -277,39 +277,39 @@ pub fn parse_diff(diff: &str) -> Vec<FileDiff> {
     let mut current: Option<FileDiff> = None;
     let mut remaining: Option<(u32, u32, u32)> = None;
     for line in diff.lines() {
-        if let Some((old, next, new)) = remaining.as_mut() {
-            if *old > 0 || *new > 0 {
-                if let Some(file) = current.as_mut() {
-                    append_line(file, line);
-                    match line.as_bytes().first() {
-                        Some(b'+') if *new > 0 => {
-                            if let Some((_, end)) = file
-                                .added
-                                .last_mut()
-                                .filter(|(_, end)| end.checked_add(1) == Some(*next))
-                            {
-                                *end = *next;
-                            } else {
-                                file.added.push((*next, *next));
-                            }
-                            *next += 1;
-                            *new -= 1;
+        if let Some((old, next, new)) = remaining.as_mut()
+            && (*old > 0 || *new > 0)
+        {
+            if let Some(file) = current.as_mut() {
+                append_line(file, line);
+                match line.as_bytes().first() {
+                    Some(b'+') if *new > 0 => {
+                        if let Some((_, end)) = file
+                            .added
+                            .last_mut()
+                            .filter(|(_, end)| end.checked_add(1) == Some(*next))
+                        {
+                            *end = *next;
+                        } else {
+                            file.added.push((*next, *next));
                         }
-                        Some(b'-') if *old > 0 => *old -= 1,
-                        Some(b' ') if *old > 0 && *new > 0 => {
-                            *old -= 1;
-                            *new -= 1;
-                            *next += 1;
-                        }
-                        Some(b'\\') => {}
-                        _ => {
-                            file.added.clear();
-                            remaining = None;
-                        }
+                        *next += 1;
+                        *new -= 1;
+                    }
+                    Some(b'-') if *old > 0 => *old -= 1,
+                    Some(b' ') if *old > 0 && *new > 0 => {
+                        *old -= 1;
+                        *new -= 1;
+                        *next += 1;
+                    }
+                    Some(b'\\') => {}
+                    _ => {
+                        file.added.clear();
+                        remaining = None;
                     }
                 }
-                continue;
             }
+            continue;
         }
         remaining = None;
         if let Some(rest) = line.strip_prefix("diff --git ") {
@@ -500,6 +500,10 @@ pub struct AnchoredFinding {
 /// reviewer's word about itself.
 #[derive(Clone, Debug, Serialize)]
 pub struct Evidence {
+    /// The operator-pinned reviewer specification.
+    pub reviewer: Reviewer,
+    /// The explicit host disposition policy, retained for replay.
+    pub policy: Policy,
     /// [`EVIDENCE_SCHEMA`].
     pub schema: String,
     /// The recorded task base the review was pinned to.
@@ -708,6 +712,7 @@ const ENV_DIFF: &str = "CODER_REVIEW_DIFF";
 /// snapshot, or a boundary this host cannot build.
 pub async fn collect(context: &Context) -> Result<Evidence, String> {
     context.reviewer.validate()?;
+    context.policy.validate()?;
     let workspace = context
         .workspace
         .canonicalize()
@@ -717,6 +722,8 @@ pub async fn collect(context: &Context) -> Result<Evidence, String> {
         return Err("candidate snapshot is incomplete; the reviewer did not run".into());
     }
     let evidence = |outcome: Outcome, reason: String| Evidence {
+        reviewer: context.reviewer.clone(),
+        policy: context.policy,
         schema: EVIDENCE_SCHEMA.into(),
         base: context.scope.base.clone(),
         tip: context.scope.tip.clone(),
@@ -783,10 +790,10 @@ pub async fn collect(context: &Context) -> Result<Evidence, String> {
         .env_clear()
         .current_dir(&workspace)
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-        .env("HOME", &scratch)
-        .env("TMPDIR", &scratch)
-        .env("TMP", &scratch)
-        .env("TEMP", &scratch)
+        .env("HOME", scratch)
+        .env("TMPDIR", scratch)
+        .env("TMP", scratch)
+        .env("TEMP", scratch)
         .env(ENV_BASE, &context.scope.base)
         .env(ENV_TIP, &context.scope.tip)
         .env(ENV_INPUT, &context.scope.input_digest)

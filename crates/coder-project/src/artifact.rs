@@ -120,6 +120,100 @@ async fn verify_program(
     Ok(run)
 }
 
+/// Protected host requirements for mechanical checks and independent review.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Review {
+    pub schema: String,
+    pub verification: Verification,
+    pub reviewer: coder::review::Reviewer,
+    pub policy: coder::review::Policy,
+    #[serde(default)]
+    pub excluded: Vec<String>,
+}
+
+/// Capture the exact inspected diff and run checks before judging findings.
+/// This reports evidence; it never authorizes integration.
+pub async fn review_changes(
+    repository: &Path,
+    worktree: &Path,
+    requirements: &Review,
+    grant: &coder::Grant,
+    trace: &mut coder::Recorder,
+) -> Result<coder::Run, String> {
+    if requirements.schema != "openagents.review-plan.v1" {
+        return Err("unknown review plan schema".into());
+    }
+    requirements.policy.validate()?;
+    requirements.reviewer.validate()?;
+    let pins = &requirements.verification;
+    pins.plan.validate()?;
+    for path in &requirements.excluded {
+        relative(path)?;
+    }
+    let before = inspect(repository, worktree, &pins.base, &pins.owned_paths).await?;
+    if before.tip != pins.tip || before.digest() != pins.plan.input_digest {
+        return Err("review plan does not bind the inspected artifact".into());
+    }
+    let diff = observe(
+        worktree,
+        &[
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-renames",
+            "--binary",
+            &before.seed,
+            &before.tip,
+            "--",
+        ],
+    )
+    .await?;
+    if atif::digest(&serde_json::json!(diff)) != before.diff_digest {
+        return Err("candidate diff changed during review preparation".into());
+    }
+    let scope = coder::review::Scope {
+        base: before.base.clone(),
+        tip: before.tip.clone(),
+        input_digest: before.digest(),
+        diff_digest: before.diff_digest.clone(),
+        files: coder::review::parse_diff(&diff),
+        diff,
+        paths: before.changed_paths.clone(),
+        excluded: requirements.excluded.clone(),
+    };
+    let survey = coder::Survey::read(Some(repository), repository);
+    let runtime = coder::Runtime::using(survey, Some(repository))
+        .with_verification(
+            worktree.into(),
+            pins.plan.clone(),
+            coder::capability::Trust::operator(),
+        )
+        .with_review(coder::review::Context {
+            workspace: worktree.into(),
+            reviewer: requirements.reviewer.clone(),
+            scope,
+            policy: requirements.policy,
+            trust: coder::capability::Trust::operator(),
+        });
+    let program: coder::Program =
+        serde_json::from_str(include_str!("../../../programs/review-changes.json"))
+            .map_err(|error| error.to_string())?;
+    let run = runtime
+        .run(
+            &program,
+            &coder::Inputs::read("Review the pinned retained artifact.", ""),
+            grant,
+            Some(trace),
+        )
+        .await;
+    let after = inspect(repository, worktree, &pins.base, &pins.owned_paths).await?;
+    if after.digest() != before.digest() {
+        return Err("candidate changed during review".into());
+    }
+    Ok(run)
+}
+
 /// Require normalized repository-relative paths before comparing ownership.
 pub fn relative(path: &str) -> Result<(), String> {
     let p = Path::new(path);

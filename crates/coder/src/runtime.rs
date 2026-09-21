@@ -972,8 +972,8 @@ impl Runtime {
     /// shorter option set is the same answer the capability probe gives
     /// for an executor that is not here. `run-suite` needs a host-prepared
     /// verification plan this runtime does not carry and `review-changes`
-    /// names a question set it has no wording for, so a machine carrying
-    /// all five programs offers three.
+    /// requires a host-prepared reviewer and artifact scope. Neither is
+    /// offered without its independent host configuration.
     #[must_use]
     pub fn selectable(&self) -> Vec<(String, String)> {
         self.survey

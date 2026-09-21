@@ -548,8 +548,8 @@ that was there before. Three rules hold the path together:
   outcome is a refusal. On this repository that leaves `delegate-fan-out`,
   `burn-down`, and `answer-question`; `run-suite` requires a protected
   verification plan that ordinary turns do not install, and
-  `review-changes` names a question set it has no wording
-  for. `burn-down` is `delegate-fan-out` with the `work-list` source in
+  `review-changes` requires a protected reviewer and captured artifact scope
+  that ordinary turns do not install. `burn-down` is `delegate-fan-out` with the `work-list` source in
   place of `request`, `isolation: worktree`, and thirty minutes per item:
   the program the backlog runs through, where the work is written to
   `.coder/work-list.json` by inspection and every delegate's worktree is
