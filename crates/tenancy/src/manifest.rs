@@ -271,12 +271,9 @@ fn validate_binding(name: &str, door: &str, binding: &Binding) -> Result<(), Str
             // without naming one, which is the bypass this check exists
             // to refuse.
             Some(reference)
-                if reference
-                    .strip_prefix("admission:")
-                    .is_some_and(|digest| {
-                        digest.len() == 64
-                            && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-                    }) => {}
+                if reference.strip_prefix("admission:").is_some_and(|digest| {
+                    digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                }) => {}
             _ => {
                 return Err(format!(
                     "{name}: door `{door}` is a trained lane without a verified admission \

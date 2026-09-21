@@ -2858,10 +2858,12 @@ fn admit_command(options: &Options) -> Result<(), String> {
         }
     };
 
-    let transfer = match (options.transfer_suite.as_deref(), options.transfer_store.as_deref()) {
+    let transfer = match (
+        options.transfer_suite.as_deref(),
+        options.transfer_store.as_deref(),
+    ) {
         (Some(suite_path), Some(store_path)) => {
-            let transfer_suite =
-                Suite::load_file(suite_path).map_err(|error| error.to_string())?;
+            let transfer_suite = Suite::load_file(suite_path).map_err(|error| error.to_string())?;
             let rows = read_rows(store_path)?;
             let head = Store::at(store_path)
                 .head()
@@ -2900,19 +2902,19 @@ fn admit_command(options: &Options) -> Result<(), String> {
             }),
         transfer: transfer
             .as_ref()
-            .map(|(transfer_suite, base, candidate, head)| gym::admission::Transfer {
-                suite: transfer_suite,
-                base,
-                candidate,
-                store_head: head.clone(),
-            }),
-        deployment: Some(
-            gym::gate::Deployment::new(
-                plan.guards.deployment.budget.workload.clone(),
-                profile_of(&dev_base),
-                profile_of(&dev_candidate),
+            .map(
+                |(transfer_suite, base, candidate, head)| gym::admission::Transfer {
+                    suite: transfer_suite,
+                    base,
+                    candidate,
+                    store_head: head.clone(),
+                },
             ),
-        ),
+        deployment: Some(gym::gate::Deployment::new(
+            plan.guards.deployment.budget.workload.clone(),
+            profile_of(&dev_base),
+            profile_of(&dev_candidate),
+        )),
         decided_at: options.at.clone().unwrap_or_else(eval::now_utc),
         commitment: None,
     };
