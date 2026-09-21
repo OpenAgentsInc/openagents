@@ -56,6 +56,7 @@
 //! may run. Admission holds the plan to both before any check executes.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -65,7 +66,7 @@ use serde_json::{Map, Value, json};
 
 use crate::capability::{self, Presence};
 use crate::delegate::{
-    Bounds, Delegation, Delegator, Isolation, Task, Verdict, boundary_supported,
+    Bounds, Delegation, Delegator, Isolation, Status, Task, Verdict, boundary_supported,
 };
 use crate::program::{Kind, Program, Step};
 use crate::program_authority::{self, Effects, Grant};
@@ -488,13 +489,17 @@ impl std::fmt::Display for Tally {
 /// count ends the run when the clock does, a step count with no
 /// deadline ends it when the count is spent. A run that reaches a step
 /// boundary past its budget cancels the step rather than dispatching
-/// it, and settles `cancelled` — the end the caller chose, which is the
-/// whole point of recording it apart from `refused` and `unknown`.
+/// it, and a deadline that expires while a step dispatches ends the
+/// step's work where it stands — the subprocess group goes down through
+/// supervise's own cancel path. Either way the step marks `cancelled`
+/// and the run settles `cancelled` — the end the caller chose, which is
+/// the whole point of recording it apart from `refused` and `unknown`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Budget {
-    /// How long the run may take, measured from when it starts. A step
-    /// boundary reached after this much time cancels rather than
-    /// dispatching.
+    /// How long the run may take, measured from when it starts. The
+    /// bound reaches inside a step: the work a step spawns runs under
+    /// the tighter of its own bound and what the deadline leaves, and an
+    /// expiry while the step dispatched ends the step `cancelled`.
     pub deadline: Option<Duration>,
     /// How many steps the run may dispatch. The step past the count
     /// cancels rather than dispatching.
@@ -620,11 +625,15 @@ impl Runtime {
     }
 
     /// Bounds each run: the caller's deadline and step count, checked at
-    /// every step boundary before the step dispatches. A step reached
-    /// past the budget never runs — it marks `cancelled`, and so does
-    /// every step after it, and the run settles `cancelled`: the end the
-    /// caller chose, never a refusal the work gave. Unset, the run
-    /// checks nothing and behaves exactly as before.
+    /// every step boundary before the step dispatches and again while it
+    /// does. A step reached past the budget never runs, and a deadline
+    /// that expires mid-step stops the step's work through supervise's
+    /// cancel path — the bound each spawned process group already runs
+    /// under — rather than waiting for the next boundary. Either way the
+    /// step marks `cancelled`, and so does every step after it, and the
+    /// run settles `cancelled`: the end the caller chose, never a
+    /// refusal the work gave. Unset, the run checks nothing and behaves
+    /// exactly as before.
     #[must_use]
     pub fn with_budget(mut self, budget: Budget) -> Self {
         self.budget = Some(budget);
@@ -1315,11 +1324,16 @@ impl Runtime {
     /// says changes what the run does.
     ///
     /// When the runtime carries a budget — see [`Runtime::with_budget`]
-    /// — each step boundary checks it before the step dispatches, and a
-    /// step reached past the budget cancels instead: the step and every
-    /// step after it mark `cancelled`, and the run settles `cancelled`
-    /// rather than truncating silently as `refused`. Cancelled is the
-    /// end the caller chose; `unknown` stays what a crash leaves.
+    /// — each step boundary checks it before the step dispatches, and
+    /// the deadline checks again while the step does: a step reached
+    /// past the budget never runs, and a deadline expiring mid-step ends
+    /// the step's subprocesses through supervise's cancel path. Either
+    /// way the step and every step after it mark `cancelled` — the
+    /// pending steps of a cancelled `program` step's child too — and the
+    /// run settles `cancelled` rather than truncating silently as
+    /// `refused`. Cancelled is the end the caller chose; `unknown` stays
+    /// what a crash leaves, and a worktree the run claimed stays claimed
+    /// under the mark rather than disappearing with it.
     pub async fn run(
         &self,
         program: &Program,
@@ -1364,13 +1378,7 @@ impl Runtime {
             // deliberate end, recorded, rather than a refusal or a
             // silent truncation.
             if let Some(refused) = self.budget_spent(&step.name, position, started) {
-                for remaining in &program.steps[position..] {
-                    self.advance_runstate(
-                        &mut record,
-                        Mark::step(&remaining.name, State::Cancelled),
-                        trace.as_deref_mut(),
-                    );
-                }
+                self.cancel_from(&mut record, &run, program, position, trace.as_deref_mut());
                 run.stopped = Some(refused);
                 break;
             }
@@ -1379,6 +1387,7 @@ impl Runtime {
                 Mark::step(&step.name, State::Dispatched),
                 trace.as_deref_mut(),
             );
+            let remaining = self.remaining(started);
             let outcome = match step.kind {
                 Kind::Query => self
                     .look_up(step, inputs, trace.as_deref_mut())
@@ -1389,13 +1398,17 @@ impl Runtime {
                         output
                     }),
                 Kind::Decide => {
-                    self.decide(
-                        step,
-                        program,
-                        inputs,
-                        &selection,
-                        &mut run,
-                        trace.as_deref_mut(),
+                    self.within(
+                        &step.name,
+                        remaining,
+                        self.decide(
+                            step,
+                            program,
+                            inputs,
+                            &selection,
+                            &mut run,
+                            trace.as_deref_mut(),
+                        ),
                     )
                     .await
                 }
@@ -1403,7 +1416,12 @@ impl Runtime {
                     if step.bounds.get("refuse_on").and_then(Value::as_str)
                         == Some("gate_not_met") =>
                 {
-                    self.verify_step(step, &mut run, trace.as_deref_mut()).await
+                    self.within(
+                        &step.name,
+                        remaining,
+                        self.verify_step(step, &mut run, trace.as_deref_mut()),
+                    )
+                    .await
                 }
                 Kind::Check => self.check(step, program, inputs, trace.as_deref_mut()),
                 Kind::Delegate => {
@@ -1413,6 +1431,7 @@ impl Runtime {
                         &selection,
                         &mut run,
                         grant,
+                        started,
                         trace.as_deref_mut(),
                     )
                     .await
@@ -1424,6 +1443,25 @@ impl Runtime {
                     format!("this host does not run a {} step", step.kind.word()),
                 )),
             };
+            // The deadline reaches inside the step, not only to its
+            // boundary: an expiry while the step dispatched ends it. For
+            // delegate work the tightened bound already stopped the
+            // subprocess group — supervise's own cancel path — and a
+            // dispatch `within` timed out was dropped the same way. The
+            // step marks `cancelled`, the end the caller chose, never
+            // `refused` for an end it did not give and never `unknown`,
+            // which is a crash's mark.
+            if self.deadline_spent(started)
+                || matches!(&outcome, Err(refused) if refused.code == BUDGET_EXCEEDED)
+            {
+                self.cancel_from(&mut record, &run, program, position, trace.as_deref_mut());
+                run.stopped = Some(Refused::at(
+                    &step.name,
+                    BUDGET_EXCEEDED,
+                    "the run's deadline passed while the step was dispatched".to_string(),
+                ));
+                break;
+            }
             match outcome {
                 Ok(output) => {
                     self.advance_runstate(
@@ -1579,6 +1617,167 @@ impl Runtime {
             ));
         }
         None
+    }
+
+    /// What the run's deadline still leaves, when it carries one.
+    ///
+    /// A step bounds the work it spawns by the tighter of its own bound
+    /// and this, so a step never outlives the run. The answer saturates
+    /// at zero: a step dispatching past the deadline hands its work a
+    /// bound of nothing, and the check after dispatch cancels the step.
+    fn remaining(&self, started: Instant) -> Option<Duration> {
+        let deadline = self.budget?.deadline?;
+        Some(deadline.saturating_sub(started.elapsed()))
+    }
+
+    /// Whether the run's deadline passed while a step dispatched — the
+    /// mid-step half of [`Runtime::budget_spent`], which sees only the
+    /// boundary.
+    fn deadline_spent(&self, started: Instant) -> bool {
+        self.budget
+            .and_then(|budget| budget.deadline)
+            .is_some_and(|deadline| started.elapsed() >= deadline)
+    }
+
+    /// Runs one step's dispatch under what the run's deadline leaves.
+    ///
+    /// An expiry while the step awaited its work drops the dispatch —
+    /// supervise's own cancel path, since a dropped `Job` still
+    /// terminates its process group — and the step comes back as the
+    /// budget's end rather than the work's. Cancellation is the caller's
+    /// bound reaching inside the step, not a refusal the step gave.
+    async fn within(
+        &self,
+        step: &str,
+        remaining: Option<Duration>,
+        dispatch: impl Future<Output = Result<String, Refused>>,
+    ) -> Result<String, Refused> {
+        let Some(remaining) = remaining else {
+            return dispatch.await;
+        };
+        match tokio::time::timeout(remaining, dispatch).await {
+            Ok(outcome) => outcome,
+            Err(_) => Err(Refused::at(
+                step,
+                BUDGET_EXCEEDED,
+                "the run's deadline passed while the step was dispatched".to_string(),
+            )),
+        }
+    }
+
+    /// Marks a step and every step after it `cancelled` — the end the
+    /// caller's bound chose — then records what the run still holds:
+    /// each worktree a delegation retained and each delegation that came
+    /// back as the harness's rather than the executor's.
+    fn cancel_from(
+        &self,
+        record: &mut Option<(Store, String)>,
+        run: &Run,
+        program: &Program,
+        from: usize,
+        mut trace: Option<&mut Recorder>,
+    ) {
+        for step in program.steps.iter().skip(from) {
+            self.cancel_step(record, &step.name, step, 1, trace.as_deref_mut());
+        }
+        self.record_claims(record, run, trace);
+    }
+
+    /// Marks `step` `cancelled` under `name`, then every step of the
+    /// child program it names — `name/step` — down to the composition's
+    /// own depth bound. A cancelled parent's pending children never ran;
+    /// the record says so step by step rather than leaving them for
+    /// recovery to guess at. A `program` step whose reference resolves
+    /// to nothing marks only itself: there is no child to name.
+    fn cancel_step(
+        &self,
+        record: &mut Option<(Store, String)>,
+        name: &str,
+        step: &Step,
+        depth: u64,
+        mut trace: Option<&mut Recorder>,
+    ) {
+        self.advance_runstate(
+            record,
+            Mark::step(name, State::Cancelled),
+            trace.as_deref_mut(),
+        );
+        if step.kind != Kind::Program || depth >= crate::child::MAX_DEPTH {
+            return;
+        }
+        let Some(child) = self.resolve_child(step) else {
+            return;
+        };
+        for child_step in &child.steps {
+            self.cancel_step(
+                record,
+                &format!("{name}/{}", child_step.name),
+                child_step,
+                depth + 1,
+                trace.as_deref_mut(),
+            );
+        }
+    }
+
+    /// The child a `program` step's address resolves to in this host's
+    /// registry — the binding [`crate::child`] checked before anything
+    /// ran, read again so a cancelled parent's record can name the
+    /// pending steps its child would have taken.
+    fn resolve_child(&self, step: &Step) -> Option<&Program> {
+        let reference = crate::child::ChildRef::parse(step.program.as_deref()?).ok()?;
+        let resolution = reference.resolve(&self.survey.programs)?;
+        self.survey.programs.get(&resolution.slug)
+    }
+
+    /// Writes what a cancelled run still owes the record: each worktree
+    /// a delegation retained, kept under the cancelled mark so a later
+    /// reconciler finds the checkout where the run left it — never
+    /// silently removed and never replayed — and each delegation that
+    /// came back as the harness's rather than the executor's. A cleanup
+    /// failure is its own mark on the task's record: the step's
+    /// `cancelled` stays what it is, and the failure is named apart
+    /// rather than smudged into it.
+    fn record_claims(
+        &self,
+        record: &mut Option<(Store, String)>,
+        run: &Run,
+        mut trace: Option<&mut Recorder>,
+    ) {
+        for (n, delegation) in run.delegations.iter().enumerate() {
+            let harness = matches!(delegation.status, Status::Harness(_));
+            if !harness && delegation.retained.is_none() {
+                continue;
+            }
+            let state = if harness {
+                State::Unverifiable
+            } else if delegation.answered() {
+                State::Answered
+            } else {
+                State::Cancelled
+            };
+            let task = requirement_name(n);
+            let mut mark = Mark::task(&task, 1, state);
+            if let Some(worktree) = &delegation.retained {
+                mark = mark.retaining(worktree.clone());
+            }
+            self.advance_runstate(record, mark, trace.as_deref_mut());
+        }
+    }
+
+    /// One delegation's wall bound: the tighter of the step's stated
+    /// `minutes` — the task's own bound when the step states none — and
+    /// what the run's deadline leaves.
+    fn step_bound(
+        &self,
+        bound: Bounds,
+        minutes: Option<u64>,
+        remaining: Option<Duration>,
+    ) -> Bounds {
+        let stated = minutes.map(Bounds::minutes).unwrap_or(bound);
+        match remaining {
+            Some(remaining) if remaining < stated.wall() => Bounds::within(remaining),
+            _ => stated,
+        }
     }
 
     /// What the claim pins: each `decide` step's question set by digest —
@@ -2246,6 +2445,7 @@ impl Runtime {
     }
 
     /// A `delegate` step: the work, handed over under the step's bounds.
+    #[allow(clippy::too_many_arguments)]
     async fn delegate(
         &self,
         step: &Step,
@@ -2253,6 +2453,7 @@ impl Runtime {
         selection: &Selection,
         run: &mut Run,
         grant: &Grant,
+        started: Instant,
         trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
         // A step that hands over nothing did not run: it reported "0 of 0
@@ -2337,15 +2538,19 @@ impl Runtime {
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|briefing| !briefing.is_empty());
+        // Each delegation's wall is the tighter of the step's stated
+        // bound and what the run's deadline leaves: supervise holds the
+        // bound against the process group, so threading the run's
+        // remaining budget into it is what stops the step's subprocesses
+        // when the caller's bound expires mid-step.
+        let remaining = self.remaining(started);
         let bounded: Vec<Task> = selection
             .tasks()
             .into_iter()
             .map(|task| {
                 let mut task = task;
                 task.isolation = isolation;
-                if let Some(minutes) = minutes {
-                    task.bounds = Bounds::minutes(minutes);
-                }
+                task.bounds = self.step_bound(task.bounds, minutes, remaining);
                 if let Some(briefing) = briefing {
                     task.prompt = format!("{briefing}\n\n{}", task.prompt);
                 }
@@ -3281,6 +3486,481 @@ mod tests {
         assert!(store.recover().unwrap().is_empty());
     }
 
+    /// Writes an executable stub that stands in for the executor, the
+    /// way `crate::delegate`'s tests stand one in.
+    fn stub(dir: &Path, name: &str, script: &str) -> PathBuf {
+        use std::io::Write as _;
+        let path = dir.join(name);
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(file, "#!/bin/sh\n{script}").unwrap();
+        drop(file);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        path
+    }
+
+    /// A checkout with one commit, for the cases a worktree comes from.
+    /// `None` on a machine with no working version control.
+    fn scratch_repository() -> Option<tempfile::TempDir> {
+        let dir = tempfile::tempdir().ok()?;
+        std::fs::write(dir.path().join("a.rs"), "// a file\n").ok()?;
+        let run = |arguments: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir.path())
+                .args(arguments)
+                .output()
+                .ok()
+                .filter(|done| done.status.success())
+        };
+        run(&["init", "--quiet"])?;
+        run(&["config", "user.email", "test@example.invalid"])?;
+        run(&["config", "user.name", "A Test"])?;
+        run(&["add", "a.rs"])?;
+        run(&["commit", "--quiet", "-m", "one file"])?;
+        Some(dir)
+    }
+
+    /// A probed capability over `binary`, the shape `Survey::read`
+    /// reports: the probe's path is the binary a delegation runs, and
+    /// the manifest's `invoke` contributes no arguments — the prompt a
+    /// delegation appends is the argv's last word, which the stub
+    /// ignores.
+    fn stub_capability(binary: &Path) -> capability::Found {
+        capability::Found {
+            manifest: capability::Manifest {
+                v: 1,
+                slug: "stub-local".to_string(),
+                name: "A stub".to_string(),
+                summary: String::new(),
+                transport: capability::SUBPROCESS.to_string(),
+                detect: capability::Detect {
+                    binary: binary.display().to_string(),
+                    ..Default::default()
+                },
+                enforces: vec!["minutes".to_string()],
+                cannot_enforce: Vec::new(),
+                sees_repository: true,
+                concurrent_max: Some(2),
+                cost: "local".to_string(),
+                isolation: vec!["directory".to_string(), "worktree".to_string()],
+                invoke: vec!["stub-local".to_string()],
+                invoke_writing: Vec::new(),
+                workspace_probe: None,
+                refuses: Vec::new(),
+            },
+            presence: Presence::Present {
+                version: "stub 1.0".to_string(),
+                report: "stub 1.0".to_string(),
+                path: binary.to_path_buf(),
+            },
+            workspace: PathBuf::new(),
+            milliseconds: 0,
+            proof: capability::Proof::Unconditional,
+            source: capability::Source::Operator,
+            digest: String::new(),
+            path: PathBuf::new(),
+        }
+    }
+
+    /// Whether this machine's boundary applies a profile, not just
+    /// builds one — a nested sandbox cannot, and there the case is
+    /// about an environment that cannot run a bounded command rather
+    /// than about the code.
+    fn boundary_enforces() -> bool {
+        let Ok(boundary) = coder_boundary::Boundary::readonly().build() else {
+            return false;
+        };
+        let Ok(mut command) = boundary.command("/usr/bin/true", Vec::<&std::ffi::OsStr>::new())
+        else {
+            return false;
+        };
+        command
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
+    /// A runtime whose survey holds the stub alone, over a real
+    /// checkout, so a `delegate` step fans out for real.
+    fn stub_runtime(repo: &Path, binary: &Path, runstate: &Path) -> Runtime {
+        Runtime {
+            survey: Survey {
+                capabilities: vec![stub_capability(binary)],
+                programs: crate::program::Registry::open(&[]),
+                sources: source::Registry::open(&[]),
+                workspace: repo.to_path_buf(),
+            },
+            questions: questions::Registry::open(&[]),
+            door: None,
+            door_error: None,
+            relay: None,
+            verification: None,
+            review: None,
+            runstate: Some(runstate.to_path_buf()),
+            budget: None,
+            repository: Some(repo.to_path_buf()),
+            host: Host::with_repository(),
+        }
+    }
+
+    /// A deadline that expires while a step awaits its dispatch ends
+    /// the step where it stands — the dispatch is dropped, the same
+    /// cancel path supervise holds a spawned job to — and the step
+    /// marks `cancelled`, not a refusal the step gave. The settled
+    /// record is the partial completion: the step that answered stays
+    /// answered, the step the deadline ended and the one it never
+    /// reached are cancelled.
+    #[tokio::test]
+    async fn a_deadline_expiring_mid_step_cancels_the_step() {
+        let questions_dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            questions_dir.path().join("hang.json"),
+            serde_json::to_string(&json!({
+                "v": 1,
+                "id": "test.hang.v1",
+                "name": "A door that never answers",
+                "questions": {
+                    "q": {"type": "noul", "instructions": "Whether the work may run."}
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        // A listener that accepts and never replies: the door the step
+        // awaits hangs until the run's bound ends the await.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((socket, _)) = listener.accept().await {
+                held.push(socket);
+            }
+        });
+        let door = jev::Client::new(jev::Config::local(
+            format!("http://127.0.0.1:{port}"),
+            "stub",
+        ))
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut runtime = empty_runtime()
+            .with_runstate(dir.path())
+            .with_budget(Budget {
+                deadline: Some(Duration::from_secs(3)),
+                max_steps: None,
+            });
+        runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
+        runtime.door = Some(door);
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "judge", "kind": "decide", "question": "test.hang.v1", "bounds": {}},
+                {"name": "after", "kind": "query", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let started = Instant::now();
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert!(
+            started.elapsed() < Duration::from_secs(9),
+            "the run outlived the deadline it carried"
+        );
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some(BUDGET_EXCEEDED)
+        );
+        assert_eq!(run.step_names(), ["select"]);
+
+        // Partial completion, settled: `select` answered, `judge` and
+        // `after` cancelled, and the outcome is the caller's end.
+        let mut store = Store::open(dir.path()).unwrap();
+        assert!(store.recover().unwrap().is_empty());
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1, "{ids:?}");
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.state, State::Settled);
+        assert_eq!(record.outcome, Some(runstate::Outcome::Cancelled));
+        for (name, state) in [
+            ("select", State::Answered),
+            ("judge", State::Cancelled),
+            ("after", State::Cancelled),
+        ] {
+            let step = record
+                .steps
+                .iter()
+                .find(|step| step.step == name)
+                .unwrap_or_else(|| panic!("no step record for {name}"));
+            assert_eq!(step.state, state, "{name}");
+        }
+    }
+
+    /// A deadline that expires while a `delegate` step's subprocesses
+    /// run ends them through supervise's own bound: the delegation's
+    /// wall is tightened to what the run has left, the process group
+    /// goes down when it fires, and the step marks `cancelled`.
+    #[tokio::test]
+    async fn a_deadline_expiring_mid_step_stops_the_steps_subprocess() {
+        if !boundary_supported() || !boundary_enforces() {
+            return;
+        }
+        let Some(repo) = scratch_repository() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stub(dir.path(), "slow", "sleep 60");
+        let runtime = stub_runtime(repo.path(), &binary, dir.path()).with_budget(Budget {
+            deadline: Some(Duration::from_secs(3)),
+            max_steps: None,
+        });
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "work", "kind": "delegate", "bounds": {"minutes": 5}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs {
+            request: "sleep".to_string(),
+            tasks: vec![Task::asking("the sixty-second task")],
+            executor: "stub-local".to_string(),
+        };
+
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some(BUDGET_EXCEEDED),
+            "{:?}",
+            run.stopped
+        );
+        // The step's subprocess did not run out its stated five
+        // minutes: the tightened wall ended its group inside the
+        // deadline.
+        assert_eq!(run.delegations.len(), 1);
+        assert_eq!(
+            run.delegations[0].status,
+            Status::TimedOut,
+            "{:?}",
+            run.delegations[0].detail
+        );
+        assert!(
+            run.delegations[0].elapsed < Duration::from_secs(30),
+            "{:?}",
+            run.delegations[0].elapsed
+        );
+
+        let mut store = Store::open(dir.path()).unwrap();
+        assert!(store.recover().unwrap().is_empty());
+        let ids = claimed(dir.path());
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        let work = record
+            .steps
+            .iter()
+            .find(|step| step.step == "work")
+            .unwrap();
+        assert_eq!(work.state, State::Cancelled);
+    }
+
+    /// A cancelled run keeps what it claimed: the worktree a writing
+    /// delegation retained is marked on the task's record under the
+    /// cancelled mark — left on disk for a reconciler, never silently
+    /// removed and never replayed.
+    #[tokio::test]
+    async fn a_cancelled_run_keeps_the_worktree_it_claimed() {
+        if !boundary_supported() || !boundary_enforces() {
+            return;
+        }
+        let Some(repo) = scratch_repository() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stub(dir.path(), "slow", "sleep 60");
+        let runtime = stub_runtime(repo.path(), &binary, dir.path()).with_budget(Budget {
+            deadline: Some(Duration::from_secs(3)),
+            max_steps: None,
+        });
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "work", "kind": "delegate",
+                 "bounds": {"minutes": 5, "isolation": "worktree"}}
+            ]
+        }))
+        .unwrap();
+        let mut task = Task::asking("the sixty-second task");
+        task.writes = true;
+        let inputs = Inputs {
+            request: "sleep".to_string(),
+            tasks: vec![task],
+            executor: "stub-local".to_string(),
+        };
+
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some(BUDGET_EXCEEDED)
+        );
+        // The delegation claimed a checkout before the deadline ended
+        // it, and a writing delegation's checkout is the reviewer's to
+        // read — it stays where the executor left it.
+        assert_eq!(run.delegations.len(), 1);
+        let retained = run.delegations[0]
+            .retained
+            .clone()
+            .expect("a writing delegation keeps its worktree");
+        assert!(
+            retained.exists(),
+            "the claimed worktree is gone from where the record names it: {}",
+            retained.display()
+        );
+
+        let mut store = Store::open(dir.path()).unwrap();
+        assert!(store.recover().unwrap().is_empty());
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1, "{ids:?}");
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.outcome, Some(runstate::Outcome::Cancelled));
+        let work = record
+            .steps
+            .iter()
+            .find(|step| step.step == "work")
+            .unwrap();
+        assert_eq!(work.state, State::Cancelled);
+        let attempt = record
+            .tasks
+            .iter()
+            .find(|task| task.task == "t1")
+            .expect("the claimed worktree is marked on the task's record");
+        assert_eq!(attempt.state, State::Cancelled);
+        assert_eq!(attempt.worktree.as_deref(), Some(retained.as_path()));
+    }
+
+    /// A cancelled parent's pending children are marked like every step
+    /// the run never reached: the `program` step marks `cancelled`, and
+    /// each of its child's steps marks `cancelled` under `parent/child`,
+    /// the name the record keeps for them.
+    #[tokio::test]
+    async fn a_cancelled_parent_marks_its_pending_children_cancelled() {
+        let programs = tempfile::tempdir().unwrap();
+        std::fs::write(
+            programs.path().join("child.json"),
+            serde_json::to_string(&json!({
+                "v": 1, "slug": "child-program",
+                "steps": [
+                    {"name": "gather", "kind": "query", "bounds": {}},
+                    {"name": "ship", "kind": "query", "bounds": {}}
+                ]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "call", "kind": "program", "program": "child-program", "bounds": {}},
+                {"name": "after", "kind": "query", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+
+        // A record claimed and dispatched the way `run` leaves one,
+        // then cancelled at the step after `select`.
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(dir.path()).unwrap();
+        store
+            .claim(&Claim {
+                run: "run-parent",
+                base: "",
+                program: "parent-program",
+                questions: &[],
+                sources: &[],
+            })
+            .unwrap();
+        let mut record = Some((store, "run-parent".to_string()));
+        let run = Run::default();
+        runtime.cancel_from(&mut record, &run, &parent, 1, None);
+
+        let store = Store::open(dir.path()).unwrap();
+        let record = store.get("run-parent").unwrap().unwrap();
+        for name in ["call", "call/gather", "call/ship", "after"] {
+            let step = record
+                .steps
+                .iter()
+                .find(|step| step.step == name)
+                .unwrap_or_else(|| panic!("no step record for {name}"));
+            assert_eq!(step.state, State::Cancelled, "{name}");
+        }
+        // A step the parent never reached is nowhere: `select` was
+        // never marked by the cancellation.
+        assert!(record.steps.iter().all(|step| step.step != "select"));
+    }
+
+    /// A delegation that comes back as the harness's — a cleanup that
+    /// failed, a binary that never spawned — is its own mark on the
+    /// task's record: `unverifiable`, what nobody can read an answer out
+    /// of. It never smudges the step's `cancelled`, which stays the end
+    /// the caller chose.
+    #[tokio::test]
+    async fn a_cleanup_failure_is_its_own_mark() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime();
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "work", "kind": "delegate", "bounds": {}}]
+        }))
+        .unwrap();
+        let mut delegation = delegation(Task::asking("anything"), "");
+        delegation.status = Status::Harness("the checkout would not close".to_string());
+        delegation.retained = Some(PathBuf::from("/claimed/checkout"));
+        let run = Run {
+            program: Some("burn-down".to_string()),
+            delegations: vec![delegation],
+            ..Run::default()
+        };
+
+        let mut store = Store::open(dir.path()).unwrap();
+        store
+            .claim(&Claim {
+                run: "run-cleanup",
+                base: "",
+                program: "burn-down",
+                questions: &[],
+                sources: &[],
+            })
+            .unwrap();
+        let mut record = Some((store, "run-cleanup".to_string()));
+        runtime.cancel_from(&mut record, &run, &program, 0, None);
+
+        let store = Store::open(dir.path()).unwrap();
+        let record = store.get("run-cleanup").unwrap().unwrap();
+        let step = record
+            .steps
+            .iter()
+            .find(|step| step.step == "work")
+            .unwrap();
+        assert_eq!(step.state, State::Cancelled);
+        let attempt = record
+            .tasks
+            .iter()
+            .find(|task| task.task == "t1")
+            .expect("the harness's delegation is marked on the task's record");
+        assert_eq!(attempt.state, State::Unverifiable);
+        assert_eq!(
+            attempt.worktree.as_deref(),
+            Some(Path::new("/claimed/checkout"))
+        );
+    }
+
     /// Without a runstate directory a run opens no store: nothing is
     /// created anywhere the run could reach.
     #[tokio::test]
@@ -3420,7 +4100,7 @@ mod tests {
     }
 
     fn supported() -> bool {
-        if crate::delegate::boundary_supported() {
+        if crate::delegate::boundary_supported() && boundary_enforces() {
             true
         } else {
             eprintln!("skipping: verification needs an enforcing filesystem boundary");
