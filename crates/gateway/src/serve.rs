@@ -999,8 +999,10 @@ async fn money_hold(
         naming.attempt,
         naming.request_digest,
         priced,
-        &admission.binding.artifact.model,
-        lane_name(admission.binding.lane),
+        (
+            &admission.binding.artifact.model,
+            lane_name(admission.binding.lane),
+        ),
     ) {
         Ok(hold) => Ok(Some(hold)),
         Err(refusal) => {

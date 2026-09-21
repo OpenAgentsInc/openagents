@@ -133,9 +133,9 @@ pub fn reserve(
     attempt: u32,
     request_digest: &str,
     priced: &Priced,
-    model: &str,
-    capacity: &str,
+    binding: (&str, &str),
 ) -> Result<Hold, Refusal> {
+    let (model, capacity) = binding;
     let key = format!("{request}#{attempt}");
     if ledger.hold(workspace, &key).is_some() {
         return Err(Refusal::Duplicate);
