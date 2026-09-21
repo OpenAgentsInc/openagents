@@ -147,6 +147,8 @@ implement this shared context system.
 | Compute ledger | Implemented | `ledger.jsonl` in a run directory: append-only `award`/`reserve`/`settle`/`release` events replayed into per-guild balances. Awards dedupe on `(deposit, pos)`; an unsettled hold stays reserved across a crash. |
 | Agent key | Implemented | A member's Nostr identity, derived as `sha256("voyager-agent-key:" + username)` — only pubkeys live in manifests; secrets are re-derived at run time. |
 | World effect | Implemented | A named console command in the manifest's `effects` map that a verified quest may run. A quest names an effect; it never supplies commands. |
+| Guild channel | Implemented | A closed NIP-29 group on the episode's supervised `nostr-relay`, one per guild: members write C7 `kind:9` chat as their enrolled keys, a nonmember write is refused `restricted:`, and reads are public. |
+| Decision door | Implemented | A `POST /v1/systemone` endpoint a world's `relay.decision_url` names — a local `kev-serve` or a live TypeSafe door. A `choice` answer orders admitted work; every call is recorded under `decisions/` with state, questions, model, raw response, and transport. |
 
 ## Capabilities and programs
 

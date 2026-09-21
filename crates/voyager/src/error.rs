@@ -39,6 +39,13 @@ pub enum Error {
     /// task the agent could not finish.
     #[error("episode: {0}")]
     Episode(String),
+    /// The Nostr relay faulted: it would not start, the socket closed,
+    /// or a call never answered.
+    #[error("relay: {0}")]
+    Relay(String),
+    /// The decision door faulted or refused a question.
+    #[error("decision: {0}")]
+    Decision(String),
     /// No Java runtime was found where the search said one would be.
     #[error("java: {0}")]
     Java(String),
@@ -70,5 +77,17 @@ impl Error {
     #[must_use]
     pub fn episode(message: impl Into<String>) -> Self {
         Error::Episode(message.into())
+    }
+
+    /// Builds a relay error.
+    #[must_use]
+    pub fn relay(message: impl Into<String>) -> Self {
+        Error::Relay(message.into())
+    }
+
+    /// Builds a decision error.
+    #[must_use]
+    pub fn decision(message: impl Into<String>) -> Self {
+        Error::Decision(message.into())
     }
 }

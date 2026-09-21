@@ -25,12 +25,17 @@
 use std::time::{Duration, Instant};
 
 use atif::document::{Outcome, Session, Source, Step};
+use nostr::domain::RelaySigner;
 use serde_json::{Map, Value, json};
 
 use crate::bridge::{Bridge, Event};
+use crate::decide::Door;
 use crate::episode::{Plan, Report, TaskResult};
 use crate::error::{Error, Result};
+use crate::guild::{self, Channel};
+use crate::keys;
 use crate::ledger::{Awarded, Ledger};
+use crate::relay::Relay;
 use crate::server::Server;
 use crate::world::{Deposit, Member, World};
 
@@ -43,6 +48,11 @@ const CALL_SLACK: Duration = Duration::from_secs(20);
 struct AgentHandle<'a> {
     member: &'a Member,
     bridge: Bridge,
+    /// The agent's Nostr identity — its derived key, matching the
+    /// manifest's `pubkey` binding.
+    signer: RelaySigner,
+    /// Its guild channel, when the world runs a relay.
+    channel: Option<Channel>,
 }
 
 /// A runner for a world that enrolls agents.
@@ -50,6 +60,8 @@ struct Ensemble<'a> {
     world: &'a World,
     plan: &'a Plan,
     server: Server,
+    relay: Option<Relay>,
+    door: Option<Door>,
     agents: Vec<AgentHandle<'a>>,
     ledger: Ledger,
     log: atif::log::Log,
@@ -95,6 +107,62 @@ pub fn run_ensemble(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Resu
     progress("starting the minecraft server");
     let server = Server::start(world, &plan.jar, &plan.java, &server_dir, plan.port)?;
 
+    // A world with a `relay` section gets guild channels: one local
+    // `nostr-relay`, one closed group per guild, every member enrolled
+    // through management before the first agent speaks.
+    let mut relay = None;
+    let mut door = None;
+    if let Some(section) = &world.relay {
+        progress("starting the nostr relay");
+        let started = Relay::start(
+            &plan.relay_bin,
+            &plan.relay_database,
+            section.port,
+            &run_dir.join("relay.log"),
+        )?;
+        let mgmt = RelaySigner::from_secret_hex(&crate::relay::management_secret())
+            .map_err(|error| Error::relay(format!("management key: {error}")))?;
+        let mut guilds: Vec<&str> = Vec::new();
+        for member in &world.agents {
+            if !guilds.contains(&member.guild.as_str()) {
+                guilds.push(&member.guild);
+            }
+        }
+        for guild_id in &guilds {
+            // An earlier episode on this database may have left the
+            // group; the new episode owns its guilds, with clean
+            // history, so a stale one is dropped before creating.
+            let _ = guild::manage(&started.http, &mgmt, "deletegroup", json!([guild_id]));
+            guild::manage(
+                &started.http,
+                &mgmt,
+                "creategroup",
+                json!([
+                    guild_id,
+                    format!("{guild_id} guild"),
+                    "a voyager arena guild",
+                    "",
+                    true,
+                    mgmt.pubkey(),
+                    [guild::CHAT_KIND]
+                ]),
+            )?;
+            for member in world.agents.iter().filter(|m| m.guild == *guild_id) {
+                guild::manage(
+                    &started.http,
+                    &mgmt,
+                    "putgroupuser",
+                    json!([guild_id, member.pubkey, ["member"]]),
+                )?;
+            }
+        }
+        if let Some(url) = &section.decision_url {
+            let model = section.decision_model.as_deref().unwrap_or("kev-latest");
+            door = Some(Door::local(url, model, run_dir.join("decisions"))?);
+        }
+        relay = Some(started);
+    }
+
     let session = Session::opening(
         &run_dir
             .file_name()
@@ -111,6 +179,8 @@ pub fn run_ensemble(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Resu
         world,
         plan,
         server,
+        relay,
+        door,
         agents: Vec::new(),
         ledger,
         log,
@@ -168,7 +238,13 @@ impl Ensemble<'_> {
             self.bounded()?;
             (self.progress)(&format!("{} of {} joining", member.username, member.guild));
             let bridge = Bridge::start(&self.plan.bridge)?;
-            self.agents.push(AgentHandle { member, bridge });
+            let signer = keys::agent_signer(&member.username)?;
+            self.agents.push(AgentHandle {
+                member,
+                bridge,
+                signer,
+                channel: None,
+            });
             let index = self.agents.len() - 1;
             self.call(
                 index,
@@ -184,7 +260,9 @@ impl Ensemble<'_> {
                     member.username, member.guild
                 ),
             )?;
+            self.channel_open(index)?;
         }
+        self.check_membership_boundary(&mut tasks)?;
 
         // To camp, then to work. Each member walks to its manifest camp
         // and digs its guild's deposits; the last leg sends each guild's
@@ -210,21 +288,22 @@ impl Ensemble<'_> {
             self.task_mine(index, true, &mut tasks)?;
         }
 
-        // Report.
+        // Report: every guild hears its own close, and an outside reader
+        // confirms the channels stayed public for reading.
         let balances = crate::ledger::describe(&self.ledger);
         self.note(Source::System, "ledger", balances.clone());
         for index in 0..self.agents.len() {
             let guild = self.agents[index].member.guild.clone();
             let balance = self.ledger.balance(&guild);
-            let _ = self.say(
-                index,
-                &format!(
-                    "Guild {} closes with {} available, {} held, {} spent.",
-                    guild, balance.available, balance.reserved, balance.spent
-                ),
+            let closing = format!(
+                "Guild {} closes with {} available, {} held, {} spent.",
+                guild, balance.available, balance.reserved, balance.spent
             );
+            let _ = self.say(index, &closing);
+            self.channel_chat(index, &closing)?;
             let _ = self.agents[index].bridge.disconnect();
         }
+        self.check_public_read(&mut tasks)?;
         tasks.push(TaskResult {
             task: "guild work".to_string(),
             ok: true,
@@ -294,6 +373,12 @@ impl Ensemble<'_> {
                 }
             })
             .collect();
+        // A decision door, when the world names one, orders contested
+        // work — the answer picks which deposit this member digs first.
+        let mut deposits = deposits;
+        if contested && deposits.len() > 1 && self.door.is_some() {
+            deposits = self.decide_order(index, deposits)?;
+        }
         for deposit in deposits {
             self.bounded()?;
             let want = deposit.blocks.len().min(64) as u32;
@@ -369,6 +454,12 @@ impl Ensemble<'_> {
                 &format!("{username} at {}: {detail}", deposit.id),
                 json!({"deposit": deposit.id, "dug": result.get("dug").cloned()}),
             );
+            if awarded > 0 {
+                self.channel_chat(
+                    index,
+                    &format!("{username} dug {awarded} at {} for {guild}.", deposit.id),
+                )?;
+            }
             tasks.push(TaskResult {
                 task: format!("{username}: mine {}", deposit.id),
                 ok: awarded > 0,
@@ -376,6 +467,210 @@ impl Ensemble<'_> {
             });
         }
         Ok(())
+    }
+
+    /// Opens the member's guild channel: connect, answer AUTH as the
+    /// enrolled key, post the join line. A world without a relay skips
+    /// this — the member still plays.
+    fn channel_open(&mut self, index: usize) -> Result<()> {
+        let Some(relay) = &self.relay else {
+            return Ok(());
+        };
+        let url = relay.url.clone();
+        let signer = self.agents[index].signer.clone();
+        let group = self.agents[index].member.guild.clone();
+        let username = self.agents[index].member.username.clone();
+        let mut channel = Channel::connect(&url, &signer)?;
+        let verdict = channel.chat(&signer, &group, &format!("{username} online."))?;
+        self.note(
+            Source::System,
+            &format!("{username} on {group}: {}", describe_verdict(&verdict)),
+            json!({"accepted": verdict.accepted, "message": verdict.message}),
+        );
+        if !verdict.accepted {
+            return Err(Error::episode(format!(
+                "{username} could not speak in {group}: {}",
+                verdict.message
+            )));
+        }
+        self.agents[index].channel = Some(channel);
+        Ok(())
+    }
+
+    /// One kind-9 line into the member's own guild channel. A refused
+    /// post is recorded and returned as an error — a member who cannot
+    /// speak in its own channel is a broken binding.
+    fn channel_chat(&mut self, index: usize, text: &str) -> Result<()> {
+        let signer = self.agents[index].signer.clone();
+        let group = self.agents[index].member.guild.clone();
+        let username = self.agents[index].member.username.clone();
+        let Some(channel) = self.agents[index].channel.as_mut() else {
+            return Ok(());
+        };
+        let verdict = channel.chat(&signer, &group, text)?;
+        self.note(
+            Source::System,
+            &format!("{username} to {group}: {}", describe_verdict(&verdict)),
+            json!({"text": text, "accepted": verdict.accepted}),
+        );
+        if !verdict.accepted {
+            return Err(Error::episode(format!(
+                "{username} was refused in {group}: {}",
+                verdict.message
+            )));
+        }
+        Ok(())
+    }
+
+    /// The membership boundary, exercised once: a ferro member writes
+    /// to lumen's channel and the relay must refuse it. A pass is a
+    /// recorded `restricted:` verdict, not silence.
+    fn check_membership_boundary(&mut self, tasks: &mut Vec<TaskResult>) -> Result<()> {
+        let Some(_relay) = &self.relay else {
+            return Ok(());
+        };
+        let mut pair = None;
+        'find: for (index, handle) in self.agents.iter().enumerate() {
+            for other in &self.world.agents {
+                if other.guild != handle.member.guild {
+                    pair = Some((index, other.guild.clone()));
+                    break 'find;
+                }
+            }
+        }
+        let Some((index, foreign)) = pair else {
+            return Ok(());
+        };
+        let username = self.agents[index].member.username.clone();
+        let signer = self.agents[index].signer.clone();
+        let Some(channel) = self.agents[index].channel.as_mut() else {
+            return Ok(());
+        };
+        let verdict = channel.chat(
+            &signer,
+            &foreign,
+            &format!("{username} knocking where it does not belong."),
+        )?;
+        let ok = !verdict.accepted;
+        self.note(
+            Source::System,
+            &format!(
+                "{username} writing {foreign}: {}",
+                describe_verdict(&verdict)
+            ),
+            json!({"accepted": verdict.accepted, "message": verdict.message}),
+        );
+        tasks.push(TaskResult {
+            task: format!("{username}: restricted write to {foreign}"),
+            ok,
+            detail: if ok {
+                verdict.message
+            } else {
+                "the relay accepted a nonmember write".to_string()
+            },
+        });
+        Ok(())
+    }
+
+    /// Public read: an unauthenticated observer — a fresh key with no
+    /// membership anywhere — must still read the guilds' kind-9
+    /// history.
+    fn check_public_read(&mut self, tasks: &mut Vec<TaskResult>) -> Result<()> {
+        let Some(relay) = &self.relay else {
+            return Ok(());
+        };
+        let observer = RelaySigner::from_secret_hex(&observer_secret())
+            .map_err(|error| Error::relay(format!("observer key: {error}")))?;
+        let mut channel = Channel::connect(&relay.url, &observer)?;
+        for guild_id in self
+            .world
+            .agents
+            .iter()
+            .map(|m| m.guild.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            let events = channel.read(serde_json::json!({
+                "kinds": [guild::CHAT_KIND],
+                "#h": [guild_id],
+            }))?;
+            self.note(
+                Source::System,
+                &format!("observer read {guild_id}: {} messages", events.len()),
+                json!({"count": events.len()}),
+            );
+            tasks.push(TaskResult {
+                task: format!("observer reads {guild_id}"),
+                ok: !events.is_empty(),
+                detail: format!("{} kind-9 events visible", events.len()),
+            });
+        }
+        Ok(())
+    }
+
+    /// The decision door orders contested work: one `choice` question
+    /// per guild, whose answer picks the first deposit to dig. The
+    /// rest keep manifest order. No door means manifest order — the
+    /// call is evidence, not a prerequisite.
+    fn decide_order<'d>(
+        &mut self,
+        index: usize,
+        mut deposits: Vec<&'d Deposit>,
+    ) -> Result<Vec<&'d Deposit>> {
+        let Some(door) = &mut self.door else {
+            return Ok(deposits);
+        };
+        let guild = self.agents[index].member.guild.clone();
+        let balance = self.ledger.balance(&guild);
+        let options: Vec<(String, String)> = deposits
+            .iter()
+            .map(|deposit| {
+                (
+                    deposit.id.clone(),
+                    format!(
+                        "{} blocks of {} at {} credits each",
+                        deposit.blocks.len(),
+                        deposit.kind,
+                        deposit.award
+                    ),
+                )
+            })
+            .collect();
+        let state = serde_json::json!({
+            "guild": guild,
+            "balance": {
+                "available": balance.available,
+                "awarded": balance.awarded,
+            },
+            "contested_deposits": deposits.iter().map(|deposit| {
+                serde_json::json!({
+                    "id": deposit.id,
+                    "kind": deposit.kind,
+                    "blocks": deposit.blocks.len(),
+                    "award_per_block": deposit.award,
+                })
+            }).collect::<Vec<_>>(),
+        });
+        let picked = door.choose(
+            state,
+            "Which contested deposit should this guild work first for the best value?",
+            &options,
+            &format!("{guild} contested order"),
+        )?;
+        self.note(
+            Source::System,
+            &format!(
+                "{guild} decision: {} first (confidence {:.2})",
+                picked.choice, picked.confidence
+            ),
+            serde_json::json!({
+                "picked": picked.choice,
+                "confidence": picked.confidence,
+                "probabilities": picked.probabilities,
+                "record": picked.record,
+            }),
+        );
+        deposits.sort_by_key(|deposit| usize::from(deposit.id != picked.choice));
+        Ok(deposits)
     }
 
     /// A bot says something in the world, tagged with its username so
@@ -490,4 +785,23 @@ impl Ensemble<'_> {
             trace: self.trace.clone(),
         }
     }
+}
+
+/// A verdict as a progress line: `accepted`, or the refusal message.
+fn describe_verdict(verdict: &guild::Verdict) -> String {
+    if verdict.accepted {
+        "accepted".to_string()
+    } else {
+        format!("refused: {}", verdict.message)
+    }
+}
+
+/// The observer key — an identity with no membership anywhere, used to
+/// prove guild reads are public.
+fn observer_secret() -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(b"voyager-relay-key:observer")
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
