@@ -1,7 +1,7 @@
 # The relay decision contract
 
-`proposed` — specified, not implemented. No decision worker or relay-side
-caller exists; this document is the contract a worker implementation
+`proposed` — the pure protocol layer is implemented; the network service
+is not. No decision worker or relay-side caller exists; this document is the contract a worker implementation
 follows, written spec-first under
 [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469). The wire
 shapes are defined in [NIP-CJ](../../nips/openagents/NIP-CJ.md) ("Decision
@@ -382,3 +382,19 @@ worker.
   [#9484](https://github.com/OpenAgentsInc/openagents/issues/9484).
 - The receipt is an attributable claim by the serving process, not remote
   attestation — the same standing the HTTP lane's receipts have.
+
+## Implemented protocol layer
+
+`nostr::decision` constructs and checks signed, encrypted requests, statuses,
+results, and cancellations for this family. It binds a result to the configured
+worker, recipient, request event, logical request, attempt, and request digest.
+The embedded receipt must have a valid canonical digest, relay transport, and a
+matching outcome. Contradictory response/error fields refuse parsing. Consumers
+must still decode the full execution receipt and verify model identity and typed
+answer semantics; a valid signature does not prove inference correctness.
+
+The layer is pure protocol code. It does not connect to a relay, map principals
+to tenants, reserve quota, persist idempotency state, dispatch inference, or
+settle billing. Its tests use signed local fixtures, not a live decision worker.
+The worker and caller paths, service admission, cancellation settlement, and
+HTTP/relay parity measurements remain required for #9469.

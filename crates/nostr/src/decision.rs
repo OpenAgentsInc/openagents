@@ -20,16 +20,16 @@
 //!   lives outside the payload.
 //! - It runs no job. A worker that uses it still needs a door, a
 //!   concurrency bound, and a publish loop.
-//! - It does not verify the embedded execution receipt beyond its schema
-//!   tag and its correlation fields; sealing and verifying a receipt is
-//!   `receipts::execution`'s job.
+//! - It verifies the receipt seal and transport correlation. Consumers must
+//!   still decode the full typed receipt and validate served identities and
+//!   answer semantics before accepting a model result.
 //!
 //! The relay is transport, not authority. Every acceptance check here runs
 //! on what the signature covers — kind, signer, `e` and `p` tags, and the
 //! decrypted payload's own `request`/`attempt` — so a relabeled or replayed
 //! event fails as unbound rather than reading as an answer.
 
-use secp256k1::{SecretKey, XOnlyPublicKey};
+use secp256k1::{Secp256k1, SecretKey, XOnlyPublicKey};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
@@ -627,6 +627,7 @@ pub fn result_payload(
             map.insert("error".into(), Value::Object(error_value));
         }
     }
+    parse_result(&payload)?;
     Ok(payload)
 }
 
@@ -712,7 +713,7 @@ impl Seal<'_> {
 #[derive(Debug)]
 pub enum Admitted {
     /// A `type: "systemone"` decision call.
-    Call(AdmittedCall),
+    Call(Box<AdmittedCall>),
     /// A `type: "cancel"` cancellation.
     Cancel(AdmittedCancel),
 }
@@ -768,6 +769,7 @@ impl AdmittedCall {
         receipt: &Value,
     ) -> Result<Event, DecisionError> {
         let payload = result_payload(&self.body.request, self.body.attempt, resolution, receipt)?;
+        bind_receipt(receipt, &self.attempt_id, &self.request_digest)?;
         seal.event(RESULT_KIND, self.reply_tags(), &payload)
     }
 }
@@ -825,7 +827,7 @@ pub enum Answer {
 /// The subscription label a relay delivers an event under is an unsigned
 /// routing hint; this struct is the signed identity the label can only
 /// point at.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Pending<'a> {
     /// This attempt's request event `id` — an answer `e`-tags it.
     pub attempt_id: &'a str,
@@ -838,6 +840,8 @@ pub struct Pending<'a> {
     pub request: &'a str,
     /// The attempt number the payload must name.
     pub attempt: u32,
+    /// Digest of the exact request envelope sent by this caller.
+    pub request_digest: String,
 }
 
 /// Whether `event` is a decision-job request addressed to `worker`, and
@@ -867,6 +871,9 @@ pub fn admit(
     }
     event.validate_structure()?;
     event.validate_crypto()?;
+    if secret.x_only_public_key(&Secp256k1::new()).0.to_string() != worker {
+        return Err(DecisionError::NotAddressed);
+    }
     if !event.tag_values("p").any(|key| key == worker) {
         return Err(DecisionError::NotAddressed);
     }
@@ -894,14 +901,14 @@ pub fn admit(
             {
                 return Err(DecisionError::DeadlinePassed { deadline, now });
             }
-            Ok(Admitted::Call(AdmittedCall {
+            Ok(Admitted::Call(Box::new(AdmittedCall {
                 principal: event.pubkey.clone(),
                 attempt_id: event.id.clone(),
                 created_at: event.created_at,
                 request_digest: body.digest(),
                 body,
                 payload,
-            }))
+            })))
         }
         Some("cancel") => {
             let request = payload
@@ -961,6 +968,9 @@ pub fn bind_answer(
     if !event.tag_values("e").any(|id| id == pending.attempt_id) {
         return Err(DecisionError::Unbound { field: "e" });
     }
+    if secret.x_only_public_key(&Secp256k1::new()).0.to_string() != pending.customer {
+        return Err(DecisionError::Unbound { field: "customer" });
+    }
     if !event.tag_values("p").any(|key| key == pending.customer) {
         return Err(DecisionError::Unbound { field: "p" });
     }
@@ -983,7 +993,9 @@ pub fn bind_answer(
     check_correlation(&payload, pending.request, pending.attempt)?;
 
     if event.kind == RESULT_KIND {
-        Ok(Answer::Result(parse_result(&payload)?))
+        let result = parse_result(&payload)?;
+        bind_receipt(&result.receipt, pending.attempt_id, &pending.request_digest)?;
+        Ok(Answer::Result(result))
     } else {
         Ok(Answer::Status(parse_status(&payload)?))
     }
@@ -1308,6 +1320,13 @@ fn parse_status(payload: &Value) -> Result<StatusPayload, DecisionError> {
             .unwrap_or_default(),
     )
     .ok_or_else(|| malformed("a status payload names `queued`, `processing`, or `error`"))?;
+    if status != Status::Error
+        && ["code", "message", "retry_after_ms"]
+            .iter()
+            .any(|key| payload.get(key).is_some())
+    {
+        return Err(malformed("a progress status cannot carry refusal fields"));
+    }
     let refusal = if status == Status::Error {
         Some(Refusal::parse(payload, "a status error")?)
     } else {
@@ -1343,6 +1362,19 @@ fn parse_result(payload: &Value) -> Result<ResultPayload, DecisionError> {
     {
         return Err(malformed(
             "the receipt's `request`/`attempt` does not match the result's",
+        ));
+    }
+    if receipt.get("outcome").and_then(Value::as_str) != Some(outcome.as_str()) {
+        return Err(malformed("the receipt outcome does not match the result"));
+    }
+    let contradictory = if outcome == Outcome::Answered {
+        "error"
+    } else {
+        "response"
+    };
+    if payload.get(contradictory).is_some() {
+        return Err(malformed(
+            "the result carries contradictory response and error fields",
         ));
     }
     let (response, refusal) = if outcome == Outcome::Answered {
@@ -1388,20 +1420,55 @@ fn correlation_fields(payload: &Value) -> Result<(String, u32), DecisionError> {
     Ok((request.to_owned(), attempt))
 }
 
-/// The shallow check this layer runs on an embedded receipt: object form
-/// and the schema tag. The seal and the remaining fields are
-/// `receipts::execution`'s to verify.
+/// Verify the seal over the original JSON and fields required by the relay.
+/// Full typed receipt and served-model validation remain the consumer's job.
 fn check_receipt(receipt: &Value) -> Result<(), DecisionError> {
-    if !receipt.is_object() {
-        return Err(malformed("the `receipt` is not an object"));
+    let mut fields = receipt
+        .as_object()
+        .cloned()
+        .ok_or_else(|| malformed("the receipt is not an object"))?;
+    if receipt.get("v").and_then(Value::as_str) != Some(RECEIPT_SCHEMA) {
+        return Err(malformed("the receipt schema is unsupported"));
     }
-    match receipt.get("v").and_then(Value::as_str) {
-        Some(RECEIPT_SCHEMA) => Ok(()),
-        found => Err(malformed(&format!(
-            "the receipt's `v` is {}, not {RECEIPT_SCHEMA}",
-            found.unwrap_or("<absent>")
-        ))),
+    if receipt.get("transport").and_then(Value::as_str) != Some("relay") {
+        return Err(malformed("the receipt transport is not relay"));
     }
+    for key in ["request_digest", "attempt_id"] {
+        if receipt
+            .get(key)
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        {
+            return Err(malformed(
+                "the receipt is missing its request or attempt identity",
+            ));
+        }
+    }
+    let digest = fields.remove("digest");
+    if digest.as_ref().and_then(Value::as_str)
+        != Some(digest_canonical(&Value::Object(fields)).as_str())
+    {
+        return Err(malformed("the receipt digest does not verify"));
+    }
+    Ok(())
+}
+
+fn bind_receipt(
+    receipt: &Value,
+    attempt_id: &str,
+    request_digest: &str,
+) -> Result<(), DecisionError> {
+    if receipt.get("attempt_id").and_then(Value::as_str) != Some(attempt_id) {
+        return Err(DecisionError::Unbound {
+            field: "receipt.attempt_id",
+        });
+    }
+    if receipt.get("request_digest").and_then(Value::as_str) != Some(request_digest) {
+        return Err(DecisionError::Unbound {
+            field: "receipt.request_digest",
+        });
+    }
+    Ok(())
 }
 
 /// A logical `request` id: nonempty, bounded, and visible ASCII, so it is
@@ -1644,6 +1711,7 @@ mod tests {
                 customer: &self.caller.1,
                 request: "req-9f4c2a",
                 attempt: 1,
+                request_digest: body().digest(),
             }
         }
 
@@ -1678,13 +1746,80 @@ mod tests {
     }
 
     fn receipt(request: &str, attempt: u32) -> Value {
-        json!({
+        let mut value = json!({
             "v": RECEIPT_SCHEMA,
             "request": request,
             "attempt": attempt,
             "transport": "relay",
-            "digest": format!("sha256:{}", "4".repeat(64)),
-        })
+            "attempt_id": ends().request(&body()).id,
+            "request_digest": body().digest(),
+            "outcome": "answered",
+            "requested": {"model":"shared-kev"},
+            "served": {"model":"shared-kev"}
+        });
+        reseal(&mut value);
+        value
+    }
+
+    fn reseal(receipt: &mut Value) {
+        receipt.as_object_mut().unwrap().remove("digest");
+        receipt["digest"] = json!(digest_canonical(receipt));
+    }
+
+    #[test]
+    fn receipts_must_be_sealed_and_bound_to_the_exact_request() {
+        let ends = ends();
+        let request = ends.request(&body());
+        for (field, wrong) in [
+            ("transport", json!("http")),
+            ("outcome", json!("refused")),
+            ("attempt_id", json!("0".repeat(64))),
+            ("request_digest", json!("sha256:other")),
+        ] {
+            let mut payload = result_value();
+            payload["receipt"][field] = wrong;
+            reseal(&mut payload["receipt"]);
+            let event = ends.result(&request, &payload);
+            assert!(
+                bind_answer(&event, &ends.pending(&request), &ends.caller.0).is_err(),
+                "{field}"
+            );
+        }
+        let mut payload = result_value();
+        payload["receipt"]["tenant"] = json!("changed-after-sealing");
+        let event = ends.result(&request, &payload);
+        assert!(bind_answer(&event, &ends.pending(&request), &ends.caller.0).is_err());
+    }
+
+    #[test]
+    fn decryption_key_must_name_the_configured_recipient() {
+        let ends = ends();
+        let request = ends.request(&body());
+        assert!(matches!(
+            admit(
+                &request,
+                &ends.worker.1,
+                &ends.caller.0,
+                NOW,
+                RequestWindow::DEFAULT
+            ),
+            Err(DecisionError::NotAddressed)
+        ));
+        let result = ends.result(&request, &result_value());
+        assert!(matches!(
+            bind_answer(&result, &ends.pending(&request), &ends.worker.0),
+            Err(DecisionError::Unbound { field: "customer" })
+        ));
+    }
+
+    #[test]
+    fn contradictory_result_and_progress_fields_refuse() {
+        let mut payload = result_value();
+        payload["error"] = json!({"code":"failed"});
+        assert!(parse_result(&payload).is_err());
+        let mut status = status_payload("req-9f4c2a", 1, Status::Processing);
+        status["code"] = json!("failed");
+        assert!(parse_status(&status).is_err());
     }
 
     fn result_value() -> Value {
