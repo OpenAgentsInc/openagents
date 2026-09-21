@@ -466,7 +466,10 @@ mod tests {
         let report = Doctor::report(&hosted(), &door, Some("acme"));
         assert!(report.position.is_unknown());
         let joined = report.lines(120).join("\n");
-        assert!(joined.contains("route /v1/balance: refused unmetered"), "{joined}");
+        assert!(
+            joined.contains("route /v1/balance: refused unmetered"),
+            "{joined}"
+        );
         assert!(joined.contains("position: unknown"), "{joined}");
         assert!(!joined.contains("position: credited"), "{joined}");
 
@@ -497,7 +500,10 @@ mod tests {
         assert_eq!(report.origin(), Origin::Simulated);
         let joined = report.lines(120).join("\n");
         assert!(joined.contains("doctor: simulated"), "{joined}");
-        assert!(joined.contains("route /healthz: reachable (simulated)"), "{joined}");
+        assert!(
+            joined.contains("route /healthz: reachable (simulated)"),
+            "{joined}"
+        );
     }
 
     #[test]
@@ -515,7 +521,10 @@ mod tests {
     fn narrow_widths_elide_with_a_marker() {
         let report = Doctor::report(&hosted(), &healthy, Some("acme"));
         let lines = report.lines(24);
-        assert!(lines.iter().any(|line| line.ends_with(ELLIPSIS)), "{lines:?}");
+        assert!(
+            lines.iter().any(|line| line.ends_with(ELLIPSIS)),
+            "{lines:?}"
+        );
         for line in &lines {
             assert!(line.chars().count() <= 24, "{line}");
         }
