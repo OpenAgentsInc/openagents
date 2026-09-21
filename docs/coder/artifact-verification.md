@@ -141,3 +141,58 @@ the full #9509 contract: a shipped suite adapter that emits the evidence
 contract and the `metrics` output the program contract requires. The suite/doors inputs and
 metrics/gate outputs remain the target contract; the current report records
 only typed verification verdicts.
+
+## Measure a Gym suite through the adapter
+
+`coder-project gym-suite PLAN.json` is a checker for the typed `suite`
+acceptance mode. Approve the installed `coder-project` binary as a subprocess
+capability and pass `gym-suite` and the absolute plan path as its arguments in
+`run-suite`'s host verification plan. The adapter writes one
+`openagents.verification.v1` object to stdout. Its optional `details` object
+contains the Gym gate outcome, question and gate identities, measured rows,
+missing-row counts, and elapsed time. The host retains those details under
+`checks[].suite_evidence`; it still decides integration separately.
+
+The protected adapter plan has this shape:
+
+```json
+{
+  "suite": "/protected/suite.json",
+  "suite_digest": "PINNED_GYM_SUITE_DIGEST",
+  "questions": "/protected/questions.json",
+  "question_digest": "PINNED_QUESTION_DIGEST",
+  "gate": "/protected/gate.json",
+  "gate_digest": "PINNED_GATE_DIGEST",
+  "input_digest": "INSPECTED_ARTIFACT_DIGEST",
+  "baseline": {"url": "http://127.0.0.1:8009", "model": "baseline-model"},
+  "candidate": {"url": "http://127.0.0.1:8010", "model": "candidate-model"},
+  "max_items": 1000,
+  "seconds": 120
+}
+```
+
+Use Gym's typed content digests, not a hash of the JSON file's formatting.
+Keep the plan outside the candidate's write grants. The suite, question set,
+and gate must match their pins before any inference starts. Both endpoints
+must pass the native SDK's local-only configuration checks; the adapter sends
+no provider credentials and follows no hosted fallback. It does not start or
+build model servers. The host must prepare the intended candidate endpoint.
+Model names are checked on responses, but are not cryptographic artifact
+attestations; recorded door identities remain unverified.
+
+The adapter asks both doors on the same development items, interleaved by
+item, and applies the selected Gym score-comparison gate. It never reads the
+locked partition or fits calibration on the development partition. A deployment
+cost/latency gate cannot judge these score comparisons and remains
+`unverifiable`. Missing answers, refusals, stale identities, and exceeded
+bounds cannot pass. Documents are limited to 16 MiB each, development items to
+1,000, and the whole measurement to the host's declared duration (at most one
+hour). The outer verification plan also bounds subprocess time and output.
+If the retained measurement object exceeds that output cap, the host refuses
+truncated evidence; it does not accept the verdict alone.
+
+The existing host boundary enforces a read-only candidate and owned scratch;
+it still requires the plan's explicit unrestricted-read and network grants.
+A local endpoint is a transport restriction, not a filesystem read sandbox or
+proof that a model process cannot make its own network calls. Hosted suite
+execution and verified model-artifact attestation remain separate work.

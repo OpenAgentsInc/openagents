@@ -13,6 +13,7 @@ use supervise::{Job, Limits};
 pub mod artifact;
 pub mod controller;
 pub mod github;
+pub mod gym_suite;
 
 /// An operator-prepared task. Tracker text cannot populate its authority.
 #[derive(Clone, Debug, Serialize, Deserialize)]

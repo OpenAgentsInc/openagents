@@ -133,9 +133,12 @@ pub enum Verdict {
     Unverifiable,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SuiteEvidence {
+    /// Bounded measurements retained with the verdict and its input identities.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
     pub schema: String,
     pub suite_digest: String,
     pub input_digest: String,
@@ -144,6 +147,8 @@ pub struct SuiteEvidence {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Checked {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suite_evidence: Option<SuiteEvidence>,
     pub id: String,
     pub verdict: Verdict,
     pub reason: String,
@@ -280,7 +285,21 @@ pub async fn run(workspace: &Path, plan: &Plan, trust: &Trust) -> Result<Report,
             .run_holding(boundary.hold())
             .await;
         let (verdict, reason) = judge(check, &ended);
+        let suite_evidence = match &check.acceptance {
+            Acceptance::Suite {
+                suite_digest,
+                input_digest,
+            } if !ended.truncated() => serde_json::from_str::<SuiteEvidence>(&ended.stdout.text)
+                .ok()
+                .filter(|e| {
+                    e.schema == SCHEMA
+                        && &e.suite_digest == suite_digest
+                        && &e.input_digest == input_digest
+                }),
+            _ => None,
+        };
         checks.push(Checked {
+            suite_evidence,
             id: check.id.clone(),
             verdict,
             reason,

@@ -13,6 +13,7 @@ const USAGE: &str = "Usage:
   coder-project inspect REPOSITORY WORKTREE BASE OWNED_PATH...
   coder-project verify REPOSITORY WORKTREE PLAN.json NEW_OUTPUT_DIRECTORY
   coder-project run-suite REPOSITORY WORKTREE PLAN.json NEW_OUTPUT_DIRECTORY
+  coder-project gym-suite PLAN.json
   coder-project project CONFIGURATION.json STATE_DIRECTORY [--watch]
   coder-project snapshot REPOSITORY OWNER REPO PROJECT_NUMBER
   coder-project pin-config TEMPLATE.json NEW_CONFIGURATION.json
@@ -54,6 +55,17 @@ async fn execute(args: &[String]) -> Result<u8, String> {
     match args.first().map(String::as_str) {
         None | Some("--help" | "-h") => {
             print!("{USAGE}");
+            Ok(0)
+        }
+        Some("gym-suite") if args.len() == 2 => {
+            let text = coder_project::gym_suite::read_document(Path::new(&args[1]))?;
+            let plan: coder_project::gym_suite::Plan =
+                serde_json::from_str(&text).map_err(|e| e.to_string())?;
+            let evidence = coder_project::gym_suite::evidence(&plan).await;
+            println!(
+                "{}",
+                serde_json::to_string(&evidence).map_err(|e| e.to_string())?
+            );
             Ok(0)
         }
         Some("run-one") if args.len() == 4 => {
