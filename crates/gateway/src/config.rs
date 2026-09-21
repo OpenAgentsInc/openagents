@@ -76,6 +76,13 @@ pub struct Config {
     /// starving the process.
     #[serde(default = "default_in_flight")]
     pub max_in_flight: usize,
+    /// Admitted classification inputs, including waiting and running items.
+    #[serde(default = "default_classify_inputs")]
+    pub max_classify_inputs: u32,
+    /// Per-tenant share of admitted classification inputs. Anonymous calls
+    /// share one separate allowance; issuing another key creates no new share.
+    #[serde(default = "default_classify_inputs")]
+    pub max_classify_inputs_per_tenant: u32,
     /// The most questions one request may carry. Default 256 — the
     /// backend's own bounds are tighter still, but a request this shape
     /// is refused before it is authorized or reserved.
@@ -106,6 +113,10 @@ fn default_forward_timeout_ms() -> u64 {
 
 fn default_ttl_secs() -> u64 {
     300
+}
+
+fn default_classify_inputs() -> u32 {
+    1024
 }
 
 fn default_in_flight() -> usize {
@@ -148,6 +159,13 @@ impl Config {
                 name.display(),
                 self.v
             ));
+        }
+        if self.max_classify_inputs == 0
+            || self.max_classify_inputs > 1_000_000
+            || self.max_classify_inputs_per_tenant == 0
+            || self.max_classify_inputs_per_tenant > self.max_classify_inputs
+        {
+            return Err("classification input limits must be positive, at most 1,000,000 globally, and per-tenant no larger than global".into());
         }
         if self.reservation_ttl_secs * 1000 < self.forward_timeout_ms {
             return Err(format!(

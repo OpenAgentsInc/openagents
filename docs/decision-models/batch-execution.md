@@ -36,10 +36,12 @@ misconfiguration, not a cap.
 
 ## Queueing, deadlines, and halts
 
-An item that cannot take a slot waits — bounded by the call's execution
+Every slot wait and forward uses the same absolute deadline. An item that
+cannot take a slot waits — bounded by the call's execution
 deadline, which is the configured `forward_timeout_ms` measured from
 when the call was admitted. The queue is the call's own pending items,
-so its depth never exceeds the request's input count. Saturation is
+so its depth never exceeds the request's input count. Global and per-tenant
+admission limits additionally bound the sum of admitted input counts. Saturation is
 typed: an item still waiting when the deadline passes reports
 `unattempted` with a cause naming the bound that stopped it (a full fan
 out, the door's slots, or the gateway's slots), and an item dispatched
@@ -87,10 +89,14 @@ latency promise for a real backend.
 - Item concurrency is HTTP-level scheduling; the door still answers one
   `systemone` call per input. No packing, no cross-input sharing, no
   model-side batching.
-- The queue is per call and per slot pool. There is no global queued-item
-  bound beyond `max_inputs` per request and `max_in_flight` per process,
-  and no per-tenant scheduling fairness — a tenant's bound remains its
-  quota reservations and the shared pools.
+- Admission reserves the entire request's input count against
+  `max_classify_inputs` and `max_classify_inputs_per_tenant` before quota
+  reservation or task creation. Both default to 1,024. Waiting and running
+  items retain these permits until the call ends. Requests that cannot fit
+  receive `classification_queue_full` with HTTP 429 and `Retry-After: 1`.
+  Different keys for one tenant share the same allowance; anonymous calls
+  share a separate allowance. These are admission ceilings, not weighted
+  fairness, priority scheduling, token/memory estimates, or dedicated allocations.
 - A call's deadline is `forward_timeout_ms`, shared with plain
   forwards; there is no separate classification deadline yet.
 - Receipts still record the attempt, not each item — per-item receipt

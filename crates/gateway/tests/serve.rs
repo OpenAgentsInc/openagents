@@ -250,6 +250,8 @@ async fn deploy_tuned(
         forward_timeout_ms: 10_000,
         reservation_ttl_secs: 300,
         max_in_flight: 8,
+        max_classify_inputs: 1024,
+        max_classify_inputs_per_tenant: 1024,
         max_questions: 256,
         max_options: 4096,
         doors,
@@ -1599,6 +1601,88 @@ async fn classify_shares_the_door_bound_across_tenants() {
         for (index, item) in body["results"].as_array().unwrap().iter().enumerate() {
             assert_eq!(item["input"], format!("i{index}"));
         }
+    }
+}
+
+#[tokio::test]
+async fn classify_bounds_queued_inputs_globally_and_per_tenant() {
+    for global in [2, 4] {
+        let stub = Backend {
+            delay_ms: 300,
+            ..honest(artifact('a'), choice_answer())
+        };
+        let (endpoint, forwards) = backend(stub).await;
+        let deployment = deploy_tuned(
+            manifest(None),
+            [("shared-kev".into(), classify_door(endpoint, 1))]
+                .into_iter()
+                .collect(),
+            |config| {
+                config.max_classify_inputs = global;
+                config.max_classify_inputs_per_tenant = 2;
+            },
+        )
+        .await;
+        let registry = Registry::open(deployment.dir.path()).unwrap();
+        let alias = keys::issue(deployment.dir.path(), registry.manifest(), "acme").unwrap();
+        let mut call = classify_batch(2);
+        call["model"] = json!("shared-kev");
+        call["capacity"] = json!("shared");
+        let address = deployment.address.clone();
+        let token = deployment.tokens["acme"].clone();
+        let body = call.clone();
+        let first = tokio::spawn(async move {
+            reqwest::Client::new()
+                .post(format!("{address}/v1/classify"))
+                .bearer_auth(token)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        });
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while forwards.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let denied = reqwest::Client::new()
+            .post(format!("{}/v1/classify", deployment.address))
+            .bearer_auth(&alias.token)
+            .json(&call)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(denied.headers()["retry-after"], "1");
+        assert_eq!(
+            denied.json::<Value>().await.unwrap()["error"]["code"],
+            "classification_queue_full"
+        );
+        let other =
+            send_classification_as(&deployment, &call, Some(&deployment.tokens["globex"])).await;
+        assert_eq!(
+            other.0,
+            if global == 2 {
+                StatusCode::TOO_MANY_REQUESTS
+            } else {
+                StatusCode::OK
+            },
+            "{}",
+            other.1
+        );
+        assert_eq!(first.await.unwrap()["outcome"], "answered");
+        // The completed call releases both allowances, including for another key.
+        assert_eq!(
+            send_classification_as(&deployment, &call, Some(&alias.token))
+                .await
+                .0,
+            StatusCode::OK
+        );
     }
 }
 

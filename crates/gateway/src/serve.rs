@@ -119,6 +119,8 @@ pub struct ServeState {
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
+    classify_inputs: Arc<Semaphore>,
+    tenant_classify_inputs: Mutex<HashMap<Option<String>, Arc<Semaphore>>>,
     /// Per-door bounds, keyed by door name.
     doors: Mutex<HashMap<String, DoorBounds>>,
     /// Attempt ids minted within this process.
@@ -147,6 +149,8 @@ impl ServeState {
         Ok(Arc::new(Self {
             dir: config.registry.clone(),
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
+            classify_inputs: Arc::new(Semaphore::new(config.max_classify_inputs as usize)),
+            tenant_classify_inputs: Mutex::new(HashMap::new()),
             config,
             client,
             ledger: Mutex::new(ledger),
@@ -934,6 +938,10 @@ async fn classify_admitted(
         }
     };
     let endpoint = backend.endpoint.clone();
+    let _queued = match classify_queue(state, &caller, plan.inputs as u32, &ctx).await {
+        Ok(permits) => permits,
+        Err(verdict) => return verdict,
+    };
 
     // 3–5. Bound, reserve, verify — the reservation's units are the
     // plan's: one question per judgment, the readout width of every
@@ -1143,6 +1151,43 @@ async fn classify_admitted(
     }
 }
 
+/// Reserve the entire atomic input set before quota or task creation. These
+/// permits cover waiting and running inputs until the request completes.
+async fn classify_queue(
+    state: &ServeState,
+    caller: &Caller,
+    inputs: u32,
+    ctx: &Context,
+) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), Verdict> {
+    let refuse = || Verdict::Refused {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        code: "classification_queue_full",
+        message: "the global or tenant classification input allowance cannot fit this request"
+            .into(),
+        outcome: Outcome::Refused,
+        ctx: ctx.clone(),
+    };
+    let global = state
+        .classify_inputs
+        .clone()
+        .try_acquire_many_owned(inputs)
+        .map_err(|_| refuse())?;
+    let mut tenants = state.tenant_classify_inputs.lock().await;
+    // An owned permit retains its semaphore. Remove entries with no active
+    // reservations so departed tenants do not accumulate process state.
+    tenants.retain(|_, pool| Arc::strong_count(pool) > 1);
+    let pool = tenants.entry(caller.tenant.clone()).or_insert_with(|| {
+        Arc::new(Semaphore::new(
+            state.config.max_classify_inputs_per_tenant as usize,
+        ))
+    });
+    let tenant = pool
+        .clone()
+        .try_acquire_many_owned(inputs)
+        .map_err(|_| refuse())?;
+    Ok((global, tenant))
+}
+
 /// What one input's scheduled forward needs: its position and id, its
 /// own question body, and every bound it runs under.
 struct ItemWork {
@@ -1210,10 +1255,11 @@ async fn classify_item(work: ItemWork) -> ItemResult {
     };
     // The call's own fan-out bound. The pool closes on halt, which is
     // how a stopped call frees its queue instead of waiting it out.
-    let Ok(_item) = slots.clone().acquire_owned().await else {
+    let cutoff = tokio::time::Instant::from_std(deadline);
+    let Ok(Ok(_item)) = tokio::time::timeout_at(cutoff, slots.clone().acquire_owned()).await else {
         return unattempted("the call stopped before this input's forward");
     };
-    let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+    let Some(_) = deadline.checked_duration_since(Instant::now()) else {
         return unattempted("the call's execution deadline passed before its forward ran");
     };
     if halt.load(Ordering::SeqCst) {
@@ -1222,7 +1268,7 @@ async fn classify_item(work: ItemWork) -> ItemResult {
     // The binding's declared concurrency, when it names one — waited
     // on, never borrowed: a busy door's items queue inside the deadline.
     let _door = match door_slots(&state, &door).await {
-        Some(pool) => match tokio::time::timeout(remaining, pool.acquire_owned()).await {
+        Some(pool) => match tokio::time::timeout_at(cutoff, pool.acquire_owned()).await {
             Ok(Ok(permit)) => Some(permit),
             _ => {
                 return unattempted(
@@ -1232,7 +1278,7 @@ async fn classify_item(work: ItemWork) -> ItemResult {
         },
         None => None,
     };
-    let _host = match tokio::time::timeout(remaining, state.in_flight.clone().acquire_owned()).await
+    let _host = match tokio::time::timeout_at(cutoff, state.in_flight.clone().acquire_owned()).await
     {
         Ok(Ok(permit)) => permit,
         _ => {
@@ -1245,10 +1291,10 @@ async fn classify_item(work: ItemWork) -> ItemResult {
         return unattempted("the call stopped before this input's forward");
     }
     let item_started = Instant::now();
-    let remaining = deadline
-        .checked_duration_since(Instant::now())
-        .unwrap_or_default();
-    let forwarded = tokio::time::timeout(remaining, forward(&state, &endpoint, &body))
+    if Instant::now() >= deadline {
+        return unattempted("the call's execution deadline passed before dispatch");
+    }
+    let forwarded = tokio::time::timeout_at(cutoff, forward(&state, &endpoint, &body))
         .await
         .unwrap_or_else(|_| Forwarded::Unavailable {
             message: "the classification call exceeded its execution deadline".to_string(),
