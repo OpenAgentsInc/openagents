@@ -133,14 +133,19 @@ to make a test pass.
 Current tests cover immutable workspace execution, failed and hung commands,
 typed evidence identity, missing evidence, truncated output, plan validation,
 evidence requirements at admission, the test budget, and the CLI's artifact
-pinning. They use bounded fixture commands. They do not establish that a full
-Cargo build or a Gym acceptance run works in this boundary.
+pinning. The Gym adapter integration test also runs the installed checker
+through this boundary against controlled local HTTP fixture doors. It covers
+passed and failed gates, stale pins, mismatched model identities, truncated
+output, retained measurement details, and unchanged candidate contents. These
+fixtures do not establish model quality or prove that a full Cargo build fits
+the same checker environment.
 
-`run-suite` is supported only as far as this path reaches. Still missing for
-the full #9509 contract: a shipped suite adapter that emits the evidence
-contract and the `metrics` output the program contract requires. The suite/doors inputs and
-metrics/gate outputs remain the target contract; the current report records
-only typed verification verdicts.
+`run-suite` emits typed verification verdicts and retains the shipped Gym
+adapter's measurement details. Still missing for the full #9509 contract are
+`review-changes`, dedicated program-level `metrics` and `gate` output bindings,
+and the broader terminal and headless presentation of completion evidence.
+The suite/doors inputs and metrics/gate outputs remain the target contract;
+measurement details currently live under each check's `suite_evidence`.
 
 ## Measure a Gym suite through the adapter
 
