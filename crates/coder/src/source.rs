@@ -39,12 +39,16 @@
 //! work that declares it comes after other work cannot run beside that
 //! either. Neither fact needs a model: they are in the list.
 //!
-//! [`Selection::of`] therefore does two things with them. A declared order
-//! is **enforced** — an item naming work that is still in the same list is
-//! dropped from this batch and recorded as dropped, because running the two
-//! together is wrong by construction rather than by judgment. A shared path
-//! is **recorded** — every path more than one selected item touches is
-//! named in the trace and put in front of the decision that follows.
+//! [`Selection::of`] therefore does three things with them. A declared
+//! order is **enforced** — an item naming work that is still in the same
+//! list is dropped from this batch and recorded as dropped, because
+//! running the two together is wrong by construction rather than by
+//! judgment. A writer's shared path is **enforced** the same way — an
+//! item that writes may not touch a path anything already kept touches,
+//! whether the kept item writes or only reads it. A shared path between
+//! what survives is **recorded** — every path more than one selected
+//! item touches is named in the trace and put in front of the decision
+//! that follows.
 //!
 //! The asymmetry is the measurement's.
 //! [#9414](https://github.com/OpenAgentsInc/openagents/issues/9414) put
@@ -615,12 +619,18 @@ impl Selection {
     ///    declares, and the identifiers are recorded as
     ///    [`Selection::ordered`].
     /// 2. **What the list knows is enforced.** An item the source itself
-    ///    marked `blocked` is dropped with its reason, and an item naming
+    ///    marked `blocked` is dropped with its reason, an item naming
     ///    work that is still in this list is dropped because the two
-    ///    cannot run at once and nothing here schedules a second batch.
-    ///    The check reads the whole list rather than the part already
-    ///    admitted, so it does not depend on which of the two the
-    ///    ordering put first.
+    ///    cannot run at once and nothing here schedules a second batch,
+    ///    and an item that writes is dropped when a path it touches is
+    ///    one anything already kept touches — a kept writer would take
+    ///    two edits on one file, a kept reader would answer about a file
+    ///    that changes under it. The `after` check reads the whole list
+    ///    rather than the part already admitted, so it does not depend
+    ///    on which of the two the ordering put first; the write check
+    ///    reads only what is kept, because a dropped item holds no file.
+    ///    A non-writing item shares freely: two reads of one path are
+    ///    harmless.
     /// 3. **The bound.** More items than `max` either truncates or
     ///    refuses, and [`Selection::overflow`] says which.
     ///
@@ -651,18 +661,32 @@ impl Selection {
                 .iter()
                 .filter(|id| present.contains(id))
                 .collect();
-            if waiting.is_empty() {
-                kept.push(work);
+            if !waiting.is_empty() {
+                let names: Vec<String> = waiting.iter().map(|id| (*id).clone()).collect();
+                dropped.push(Dropped {
+                    id: work.id,
+                    reason: format!(
+                        "comes after {}, which this lookup also found",
+                        names.join(", ")
+                    ),
+                });
                 continue;
             }
-            let names: Vec<String> = waiting.iter().map(|id| (*id).clone()).collect();
-            dropped.push(Dropped {
-                id: work.id,
-                reason: format!(
-                    "comes after {}, which this lookup also found",
-                    names.join(", ")
-                ),
-            });
+            if work.task.writes
+                && let Some((path, other)) = kept.iter().find_map(|other| {
+                    work.touches
+                        .iter()
+                        .find(|path| other.touches.contains(*path))
+                        .map(|path| (path.clone(), other.id.clone()))
+                })
+            {
+                dropped.push(Dropped {
+                    id: work.id,
+                    reason: format!("writes {path}, which {other} also touches"),
+                });
+                continue;
+            }
+            kept.push(work);
         }
         let overflow = match (kept.len() > max, on_overflow) {
             (false, _) => Overflow::None,
@@ -887,6 +911,13 @@ mod tests {
         }
     }
 
+    /// A writing item, the shape a work list spells with `"writes": true`.
+    fn writes(id: &str, touches: &[&str]) -> Work {
+        let mut item = work(id, touches, &[]);
+        item.task.writes = true;
+        item
+    }
+
     fn list(work: Vec<Work>, max: usize, on_overflow: OnOverflow) -> Selection {
         Selection::of(&Source::request(), work, max, on_overflow)
     }
@@ -1027,6 +1058,149 @@ mod tests {
         assert_eq!(selection.collisions.len(), 1);
         assert_eq!(selection.collisions[0].path, "crates/gym/src/suite.rs");
         assert_eq!(selection.collisions[0].work, ["a", "b"]);
+    }
+
+    /// Two writers on one path cannot run beside each other, and nothing
+    /// here schedules a second batch: the later writer is dropped with
+    /// the shared path and the item already holding it.
+    #[test]
+    fn two_writers_sharing_a_path_conflict() {
+        let selection = list(
+            vec![
+                writes("a", &["crates/gym/src/suite.rs"]),
+                writes("b", &["crates/gym/src/suite.rs", "docs/gym/README.md"]),
+                writes("c", &["crates/coder/src/turn.rs"]),
+            ],
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(selection.selected(), ["a", "c"]);
+        assert_eq!(selection.dropped.len(), 1);
+        assert_eq!(selection.dropped[0].id, "b");
+        assert_eq!(
+            selection.dropped[0].reason, "writes crates/gym/src/suite.rs, which a also touches",
+            "the reason names the shared path and the item that holds it"
+        );
+        assert!(
+            selection.collisions.is_empty(),
+            "a dropped item touches nothing, so nothing is left to collide"
+        );
+    }
+
+    /// A kept reader still holds its file: a writer ordered after it is
+    /// dropped, because the read would be answered about a file that
+    /// changes under it.
+    #[test]
+    fn a_writer_sharing_a_readers_path_is_dropped() {
+        let selection = list(
+            vec![
+                work("read", &["src/lib.rs"], &[]),
+                writes("edit", &["src/lib.rs"]),
+            ],
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(selection.selected(), ["read"]);
+        assert_eq!(selection.dropped.len(), 1);
+        assert_eq!(selection.dropped[0].id, "edit");
+        assert_eq!(
+            selection.dropped[0].reason,
+            "writes src/lib.rs, which read also touches"
+        );
+    }
+
+    /// The drop is the writer's, not the path's: a writer ordered first
+    /// keeps its file, and a reader sharing it runs beside it — the
+    /// shared path stays a recorded collision for the gate to judge.
+    #[test]
+    fn a_reader_sharing_a_writers_path_runs() {
+        let selection = list(
+            vec![
+                writes("edit", &["src/lib.rs"]),
+                work("read", &["src/lib.rs"], &[]),
+            ],
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(selection.selected(), ["edit", "read"]);
+        assert!(selection.dropped.is_empty());
+        assert_eq!(selection.collisions.len(), 1);
+        assert_eq!(selection.collisions[0].work, ["edit", "read"]);
+    }
+
+    /// Two reads of one path are harmless: a non-writing item shares
+    /// freely, and the shared path stays a recorded collision rather
+    /// than a drop.
+    #[test]
+    fn two_readers_sharing_a_path_do_not_conflict() {
+        let selection = list(
+            vec![
+                work("a", &["src/lib.rs"], &[]),
+                work("b", &["src/lib.rs"], &[]),
+            ],
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(selection.selected(), ["a", "b"]);
+        assert!(selection.dropped.is_empty());
+        assert_eq!(selection.collisions.len(), 1);
+        assert_eq!(selection.collisions[0].work, ["a", "b"]);
+    }
+
+    /// A writer conflicts over what it touches, not over the batch: a
+    /// writer and an item on disjoint paths run beside each other.
+    #[test]
+    fn a_writer_runs_beside_work_it_does_not_touch() {
+        let selection = list(
+            vec![
+                writes("a", &["src/a.rs"]),
+                work("b", &["src/b.rs"], &[]),
+                writes("c", &["src/c.rs"]),
+            ],
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(selection.selected(), ["a", "b", "c"]);
+        assert!(selection.dropped.is_empty());
+        assert!(selection.collisions.is_empty());
+    }
+
+    /// Drops record in the order the list put the items in: three
+    /// writers on one path keep the first and drop the next two, each
+    /// naming the item that already holds the path.
+    #[test]
+    fn three_writers_on_one_path_drop_in_order() {
+        let selection = list(
+            vec![
+                writes("a", &["src/shared.rs"]),
+                writes("b", &["src/shared.rs"]),
+                writes("c", &["src/shared.rs", "src/other.rs"]),
+            ],
+            6,
+            OnOverflow::Truncate,
+        );
+
+        assert_eq!(selection.selected(), ["a"]);
+        assert_eq!(
+            selection
+                .dropped
+                .iter()
+                .map(|dropped| dropped.id.as_str())
+                .collect::<Vec<_>>(),
+            ["b", "c"],
+            "drops record in the list's own order"
+        );
+        for dropped in &selection.dropped {
+            assert_eq!(
+                dropped.reason, "writes src/shared.rs, which a also touches",
+                "each drop names the shared path and the item holding it"
+            );
+        }
     }
 
     #[test]
