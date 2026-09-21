@@ -27,5 +27,6 @@
 //! serving process's attributable claim — not attestation. And no part
 //! of this crate prices a unit of anything.
 
+pub mod classify;
 pub mod config;
 pub mod serve;
