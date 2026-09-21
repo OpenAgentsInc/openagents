@@ -931,7 +931,7 @@ pub mod mcp {
         ))
     }
 
-    /// The tools this server serves. Neither schema accepts a credential
+    /// The tools this server serves. No schema accepts a credential
     /// or an endpoint: those stay in operator configuration.
     fn tool_list() -> Value {
         let mut list = json!({
