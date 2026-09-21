@@ -1,0 +1,15 @@
+{
+  "$comment": [
+    "The `independent` gate question of questions/independence-v2.json (openagents.independence.v2), word for word, under a gym id so the independence-eval-v1 suite can serve it as the candidate wording. The decide step asks it beside `readonly` and `needs_tool_restriction`; the binding reads only this answer, so it is the one measured.",
+    "v2 names no count and adds the dependence half of the rule: ordered tasks cannot run at the same time even when their footprints are disjoint."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "independence-gate-v2",
+  "suite": "independence-eval-v1",
+  "questions": {
+    "independence": {
+      "type": "noul",
+      "instructions": "The listed tasks can run at the same time without colliding: no two of them edit the same file, and none depends on another finishing first."
+    }
+  }
+}

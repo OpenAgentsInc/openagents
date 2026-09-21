@@ -137,7 +137,7 @@ operator overrides a checkout without editing it.
 
 A program keeps decision-question wording outside its steps. A `decide`
 step names an identifier such as
-`openagents.independence.v1`; the text behind it is a file in `questions/`,
+`openagents.independence.v2`; the text behind it is a file in `questions/`,
 digested as a whole, and the digest is recorded beside every answer.
 
 Rewording a question changes what was asked. A program that inlined its

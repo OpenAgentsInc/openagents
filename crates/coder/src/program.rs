@@ -663,7 +663,7 @@ mod tests {
         assert_eq!(independence.kind, Kind::Decide);
         assert_eq!(
             independence.question.as_deref(),
-            Some("openagents.independence.v1")
+            Some("openagents.independence.v2")
         );
         assert_eq!(independence.bounds["refuse_below"], json!(0.7));
         assert_eq!(

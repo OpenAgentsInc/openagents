@@ -685,15 +685,22 @@ mod tests {
             assert!(set.digest.is_some(), "{} is digested", set.id);
         }
         // Every shipped set answers a site and every site answers its
-        // set, so the only report is the one genuinely unbound set:
+        // set, so the only reports are the genuinely unbound sets:
         // `openagents.evidence-relevance.v1` shipped ahead of the site
-        // that will ask it, and the inventory says so rather than
-        // letting a run find out at admission.
+        // that will ask it, and `openagents.independence.v1` stays on
+        // disk after v2 took both bindings — kept so the digests
+        // historical runs recorded stay resolvable. The inventory says
+        // so rather than letting a run find out at admission.
         assert_eq!(
             inventory.problems(),
-            [Problem::UnboundSet {
-                set: "openagents.evidence-relevance.v1".to_string()
-            }]
+            [
+                Problem::UnboundSet {
+                    set: "openagents.evidence-relevance.v1".to_string()
+                },
+                Problem::UnboundSet {
+                    set: "openagents.independence.v1".to_string()
+                },
+            ]
         );
     }
 

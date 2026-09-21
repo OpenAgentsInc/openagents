@@ -544,7 +544,7 @@ async fn the_recorded_run_is_the_path_the_task_expects() {
     assert_eq!(decisions.len(), 3);
     assert_eq!(
         decisions[1].extra["question_set"],
-        json!("openagents.independence.v1")
+        json!("openagents.independence.v2")
     );
     assert!(
         decisions[1].extra["set_digest"].as_str().is_some_and(
@@ -1273,7 +1273,7 @@ async fn the_fan_out_runs_at_the_width_the_step_states() {
 async fn a_question_with_no_wording_refuses() {
     let machine = machine();
     let root = machine.path();
-    std::fs::remove_file(root.join("questions").join("independence.json")).unwrap();
+    std::fs::remove_file(root.join("questions").join("independence-v2.json")).unwrap();
 
     let runtime = runtime(root).await;
     let refused = runtime
@@ -1282,7 +1282,7 @@ async fn a_question_with_no_wording_refuses() {
     assert_eq!(refused.step, "independence");
     assert_eq!(refused.code, "question_unresolved");
     assert!(
-        refused.reason.contains("openagents.independence.v1"),
+        refused.reason.contains("openagents.independence.v2"),
         "{refused}"
     );
 }

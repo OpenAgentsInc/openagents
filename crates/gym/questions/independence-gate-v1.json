@@ -1,0 +1,15 @@
+{
+  "$comment": [
+    "The `independent` gate question of questions/independence.json (openagents.independence.v1), word for word, under a gym id so the independence-eval-v1 suite can serve it. The decide step asks it beside `readonly` and `needs_tool_restriction`; the binding reads only this answer, so it is the one measured.",
+    "v1's wording says six tasks, which is the golden's count and not the work list's (openagents#9508)."
+  ],
+  "schema": "openagents.gym.question_set.v1",
+  "id": "independence-gate-v1",
+  "suite": "independence-eval-v1",
+  "questions": {
+    "independence": {
+      "type": "noul",
+      "instructions": "The six tasks can run in parallel without colliding."
+    }
+  }
+}

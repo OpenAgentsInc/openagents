@@ -1,0 +1,702 @@
+{
+ "schema": "openagents.gym.suite.v1",
+ "name": "independence-eval-v1",
+ "created": "2026-09-21",
+ "description": "Twelve task lists in the shape the fan-out's decide step sends, at zero, one, two, six, and twelve tasks, drawn from the colliding, disjoint, ambiguous, and mixed shapes of the semantics harness. The panel decides whether openagents.independence.v2, which names no count and adds the dependence half of the rule, is at least as good as openagents.independence.v1, whose wording says six tasks (openagents#9508). Labels are the author's, read off the state by the rule each item carries.",
+ "tier": "smoke",
+ "gate": "decision-v1",
+ "questions": "independence-gate-v1",
+ "items": [
+  {
+   "id": "independence/n0-empty",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 0
+    },
+    "tasks": []
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "The list names no tasks, so there is nothing to run at once; the admitting answer is no."
+  },
+  {
+   "id": "independence/n1-single",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 1
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Read docs/overview.md and report what it says.",
+      "reads": "docs/overview.md",
+      "writes": false
+     }
+    ]
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "A list of one task has no pair that can collide."
+  },
+  {
+   "id": "independence/n2-disjoint-read",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 2
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Read src/a.rs and report what it says.",
+      "reads": "src/a.rs",
+      "writes": false
+     },
+     {
+      "id": "t2",
+      "prompt": "Read src/b.rs and report what it says.",
+      "reads": "src/b.rs",
+      "writes": false
+     }
+    ]
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Both tasks only read, and they read different files."
+  },
+  {
+   "id": "independence/n2-shared-write",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 2
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Append a summary line to docs/log.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/log.md"
+      ]
+     },
+     {
+      "id": "t2",
+      "prompt": "Append a result line to docs/log.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/log.md"
+      ]
+     }
+    ],
+    "collisions": [
+     {
+      "path": "docs/log.md",
+      "work": [
+       "t1",
+       "t2"
+      ]
+     }
+    ]
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Both tasks write the same file."
+  },
+  {
+   "id": "independence/n2-ordered",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 2
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Read src/a.rs and report what it says.",
+      "reads": "src/a.rs",
+      "writes": false
+     },
+     {
+      "id": "t2",
+      "prompt": "Read src/b.rs and report what it says.",
+      "reads": "src/b.rs",
+      "writes": false,
+      "after": [
+       "t1"
+      ]
+     }
+    ]
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "t2 is declared after t1, so the pair cannot run at the same time whatever their footprints say."
+  },
+  {
+   "id": "independence/n6-disjoint-read",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 6
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Read docs/part-1.md and report what it says.",
+      "reads": "docs/part-1.md",
+      "writes": false
+     },
+     {
+      "id": "t2",
+      "prompt": "Read docs/part-2.md and report what it says.",
+      "reads": "docs/part-2.md",
+      "writes": false
+     },
+     {
+      "id": "t3",
+      "prompt": "Read docs/part-3.md and report what it says.",
+      "reads": "docs/part-3.md",
+      "writes": false
+     },
+     {
+      "id": "t4",
+      "prompt": "Read docs/part-4.md and report what it says.",
+      "reads": "docs/part-4.md",
+      "writes": false
+     },
+     {
+      "id": "t5",
+      "prompt": "Read docs/part-5.md and report what it says.",
+      "reads": "docs/part-5.md",
+      "writes": false
+     },
+     {
+      "id": "t6",
+      "prompt": "Read docs/part-6.md and report what it says.",
+      "reads": "docs/part-6.md",
+      "writes": false
+     }
+    ]
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Six read-only tasks on six different files."
+  },
+  {
+   "id": "independence/n6-shared-append",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 6
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Append a summary line to docs/log.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/log.md"
+      ]
+     },
+     {
+      "id": "t2",
+      "prompt": "Append a summary line to docs/log.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/log.md"
+      ]
+     },
+     {
+      "id": "t3",
+      "prompt": "Append a summary line to docs/log.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/log.md"
+      ]
+     },
+     {
+      "id": "t4",
+      "prompt": "Append a summary line to docs/log.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/log.md"
+      ]
+     },
+     {
+      "id": "t5",
+      "prompt": "Append a summary line to docs/log.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/log.md"
+      ]
+     },
+     {
+      "id": "t6",
+      "prompt": "Append a summary line to docs/log.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/log.md"
+      ]
+     }
+    ],
+    "collisions": [
+     {
+      "path": "docs/log.md",
+      "work": [
+       "t1",
+       "t2",
+       "t3",
+       "t4",
+       "t5",
+       "t6"
+      ]
+     }
+    ]
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Every task writes the same file."
+  },
+  {
+   "id": "independence/n6-mixed",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 6
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Summarize src/a.rs into docs/a-summary.md.",
+      "reads": "src/a.rs",
+      "writes": true,
+      "touches": [
+       "src/a.rs",
+       "docs/a-summary.md"
+      ]
+     },
+     {
+      "id": "t2",
+      "prompt": "Check docs/a-summary.md for accuracy.",
+      "reads": "docs/a-summary.md",
+      "writes": false
+     },
+     {
+      "id": "t3",
+      "prompt": "Read src/c.rs and report what it says.",
+      "reads": "src/c.rs",
+      "writes": false
+     },
+     {
+      "id": "t4",
+      "prompt": "Read src/d.rs and report what it says.",
+      "reads": "src/d.rs",
+      "writes": false
+     },
+     {
+      "id": "t5",
+      "prompt": "Read src/e.rs and report what it says.",
+      "reads": "src/e.rs",
+      "writes": false
+     },
+     {
+      "id": "t6",
+      "prompt": "Read src/f.rs and report what it says.",
+      "reads": "src/f.rs",
+      "writes": false
+     }
+    ],
+    "collisions": [
+     {
+      "path": "docs/a-summary.md",
+      "work": [
+       "t1",
+       "t2"
+      ]
+     }
+    ]
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "t2 reads the file t1 writes, so that pair collides even though the other tasks are disjoint."
+  },
+  {
+   "id": "independence/n6-undeclared",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 6
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Update the project's configuration wherever it lives.",
+      "reads": null,
+      "writes": true
+     },
+     {
+      "id": "t2",
+      "prompt": "Fix whichever test is failing.",
+      "reads": null,
+      "writes": true
+     },
+     {
+      "id": "t3",
+      "prompt": "Read src/c.rs and report what it says.",
+      "reads": "src/c.rs",
+      "writes": false
+     },
+     {
+      "id": "t4",
+      "prompt": "Read src/d.rs and report what it says.",
+      "reads": "src/d.rs",
+      "writes": false
+     },
+     {
+      "id": "t5",
+      "prompt": "Read src/e.rs and report what it says.",
+      "reads": "src/e.rs",
+      "writes": false
+     },
+     {
+      "id": "t6",
+      "prompt": "Read src/f.rs and report what it says.",
+      "reads": "src/f.rs",
+      "writes": false
+     }
+    ]
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "Two tasks cannot say what they write, so a collision cannot be ruled out; the gate's safe answer is no."
+  },
+  {
+   "id": "independence/n6-disjoint-write",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 6
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Write the summary to docs/part-1.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/part-1.md"
+      ]
+     },
+     {
+      "id": "t2",
+      "prompt": "Write the summary to docs/part-2.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/part-2.md"
+      ]
+     },
+     {
+      "id": "t3",
+      "prompt": "Write the summary to docs/part-3.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/part-3.md"
+      ]
+     },
+     {
+      "id": "t4",
+      "prompt": "Write the summary to docs/part-4.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/part-4.md"
+      ]
+     },
+     {
+      "id": "t5",
+      "prompt": "Write the summary to docs/part-5.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/part-5.md"
+      ]
+     },
+     {
+      "id": "t6",
+      "prompt": "Write the summary to docs/part-6.md.",
+      "reads": null,
+      "writes": true,
+      "touches": [
+       "docs/part-6.md"
+      ]
+     }
+    ]
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Six tasks, each writing a different file."
+  },
+  {
+   "id": "independence/n12-disjoint-read",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 12
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Read docs/page-01.md and report what it says.",
+      "reads": "docs/page-01.md",
+      "writes": false
+     },
+     {
+      "id": "t2",
+      "prompt": "Read docs/page-02.md and report what it says.",
+      "reads": "docs/page-02.md",
+      "writes": false
+     },
+     {
+      "id": "t3",
+      "prompt": "Read docs/page-03.md and report what it says.",
+      "reads": "docs/page-03.md",
+      "writes": false
+     },
+     {
+      "id": "t4",
+      "prompt": "Read docs/page-04.md and report what it says.",
+      "reads": "docs/page-04.md",
+      "writes": false
+     },
+     {
+      "id": "t5",
+      "prompt": "Read docs/page-05.md and report what it says.",
+      "reads": "docs/page-05.md",
+      "writes": false
+     },
+     {
+      "id": "t6",
+      "prompt": "Read docs/page-06.md and report what it says.",
+      "reads": "docs/page-06.md",
+      "writes": false
+     },
+     {
+      "id": "t7",
+      "prompt": "Read docs/page-07.md and report what it says.",
+      "reads": "docs/page-07.md",
+      "writes": false
+     },
+     {
+      "id": "t8",
+      "prompt": "Read docs/page-08.md and report what it says.",
+      "reads": "docs/page-08.md",
+      "writes": false
+     },
+     {
+      "id": "t9",
+      "prompt": "Read docs/page-09.md and report what it says.",
+      "reads": "docs/page-09.md",
+      "writes": false
+     },
+     {
+      "id": "t10",
+      "prompt": "Read docs/page-10.md and report what it says.",
+      "reads": "docs/page-10.md",
+      "writes": false
+     },
+     {
+      "id": "t11",
+      "prompt": "Read docs/page-11.md and report what it says.",
+      "reads": "docs/page-11.md",
+      "writes": false
+     },
+     {
+      "id": "t12",
+      "prompt": "Read docs/page-12.md and report what it says.",
+      "reads": "docs/page-12.md",
+      "writes": false
+     }
+    ]
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "Twelve read-only tasks on twelve different files."
+  },
+  {
+   "id": "independence/n12-one-collision",
+   "family": "independence",
+   "kind": "noul",
+   "state": {
+    "plan": {
+     "program": "delegate-fan-out",
+     "request": "Fan out one session per task.",
+     "executor": "devin",
+     "tasks": 12
+    },
+    "tasks": [
+     {
+      "id": "t1",
+      "prompt": "Read docs/page-01.md and report what it says.",
+      "reads": "docs/page-01.md",
+      "writes": false
+     },
+     {
+      "id": "t2",
+      "prompt": "Read docs/page-02.md and report what it says.",
+      "reads": "docs/page-02.md",
+      "writes": false
+     },
+     {
+      "id": "t3",
+      "prompt": "Read docs/page-03.md and report what it says.",
+      "reads": "docs/page-03.md",
+      "writes": false
+     },
+     {
+      "id": "t4",
+      "prompt": "Read docs/page-04.md and report what it says.",
+      "reads": "docs/page-04.md",
+      "writes": false
+     },
+     {
+      "id": "t5",
+      "prompt": "Read docs/page-05.md and report what it says.",
+      "reads": "docs/page-05.md",
+      "writes": false
+     },
+     {
+      "id": "t6",
+      "prompt": "Read docs/page-06.md and report what it says.",
+      "reads": "docs/page-06.md",
+      "writes": false
+     },
+     {
+      "id": "t7",
+      "prompt": "Read docs/page-07.md and report what it says.",
+      "reads": "docs/page-07.md",
+      "writes": false
+     },
+     {
+      "id": "t8",
+      "prompt": "Read docs/page-08.md and report what it says.",
+      "reads": "docs/page-08.md",
+      "writes": false
+     },
+     {
+      "id": "t9",
+      "prompt": "Read docs/page-09.md and report what it says.",
+      "reads": "docs/page-09.md",
+      "writes": false
+     },
+     {
+      "id": "t10",
+      "prompt": "Read docs/page-10.md and report what it says.",
+      "reads": "docs/page-10.md",
+      "writes": false
+     },
+     {
+      "id": "t11",
+      "prompt": "Draft the CHANGELOG.md entry for src/changes.rs.",
+      "reads": "src/changes.rs",
+      "writes": true,
+      "touches": [
+       "src/changes.rs",
+       "CHANGELOG.md"
+      ]
+     },
+     {
+      "id": "t12",
+      "prompt": "Rewrite CHANGELOG.md to the style in docs/style.md.",
+      "reads": "docs/style.md",
+      "writes": true,
+      "touches": [
+       "docs/style.md",
+       "CHANGELOG.md"
+      ]
+     }
+    ],
+    "collisions": [
+     {
+      "path": "CHANGELOG.md",
+      "work": [
+       "t11",
+       "t12"
+      ]
+     }
+    ]
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "Two of the twelve tasks write the same file, so the list is not independent."
+  }
+ ],
+ "digest": "7bdf37d9e5b06cb67d25e6f6306340cc5cdc7c450f3e5f5843e5ac21d757ecd6"
+}
