@@ -65,7 +65,9 @@ uses, and marks which are implemented and which are only specified.
   reach, each bound to an artifact digest and its execution configuration.
   Authorization returns an admission snapshot — an update cannot relabel a
   call in flight — and every revision stays archived under its digest so an
-  earlier answer can always be explained.
+  earlier answer can always be explained. `tenancy::keys` is the credential
+  half: `oak_<id>.<secret>` bearer keys, stored as digests only, issued and
+  rotated through the `tenant-keys` binary.
 - `crates/receipts` — versioned receipts a decision call leaves behind.
   `receipts::execution` is the shared HTTP/relay shape: request and attempt
   identity, tenant and registry references, requested and served artifact

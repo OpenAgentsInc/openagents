@@ -420,6 +420,18 @@ impl Registry {
         }
     }
 
+    /// The tenant an authenticated external principal belongs to — a
+    /// relay's NIP-42 pubkey resolving to the same record an HTTP key
+    /// would. Absent principals name no tenant.
+    #[must_use]
+    pub fn tenant_of_principal(&self, principal: &str) -> Option<&str> {
+        self.manifest
+            .tenants
+            .iter()
+            .find(|(_, record)| record.principals.iter().any(|p| p == principal))
+            .map(|(tenant, _)| tenant.as_str())
+    }
+
     /// The doors a tenant may name, for discovery: their own bindings plus
     /// the shared set. Discovery reads the same map authorization does —
     /// a tenant cannot learn a door exists by asking for a catalog either.
@@ -488,7 +500,7 @@ impl Registry {
 
 /// The current UTC time, as RFC 3339. The registry needs a timestamp for
 /// its revision log and carries no clock dependency for one.
-fn now_utc() -> String {
+pub(crate) fn now_utc() -> String {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|span| span.as_secs())
@@ -573,6 +585,7 @@ mod tests {
             "acme".to_string(),
             Tenant {
                 credential: "key-ref:acme/2026-09".to_string(),
+                principals: vec!["nostr:acme-pubkey".to_string()],
                 doors: [(
                     "acme-dedicated".to_string(),
                     dedicated_binding(&digest_of('b')),
@@ -585,6 +598,7 @@ mod tests {
             "globex".to_string(),
             Tenant {
                 credential: "key-ref:globex/2026-09".to_string(),
+                principals: vec![],
                 doors: BTreeMap::new(),
             },
         );
@@ -640,6 +654,19 @@ mod tests {
             Err(Refusal::NotShared(_))
         ));
         assert!(registry.authorize(None, "kev-0.6b").is_ok());
+    }
+
+    #[test]
+    fn a_relay_principal_resolves_to_the_same_tenant() {
+        let (_dir, registry) = installed();
+        assert_eq!(
+            registry.tenant_of_principal("nostr:acme-pubkey"),
+            Some("acme")
+        );
+        assert_eq!(registry.tenant_of_principal("nostr:nobody"), None);
+        // The resolved tenant authorizes exactly as a keyed caller would.
+        let tenant = registry.tenant_of_principal("nostr:acme-pubkey").unwrap();
+        assert!(registry.authorize(Some(tenant), "acme-dedicated").is_ok());
     }
 
     #[test]
