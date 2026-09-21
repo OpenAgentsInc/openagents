@@ -44,7 +44,10 @@ enough. Inspect actual diffs and run independent checks before accepting work.
 Keep one integrator. Fetch each retained scratch repository, review only the
 changes after its seeded root commit, and integrate accepted commits serially.
 Resolve conflicts and test the combined result. Refill with another ready batch
-until the authorized work is complete. Keep failures and incomplete work visible.
+until the authorized work is complete. Overlap batch preparation with
+long-running verification; serialize only integration and acceptance, and keep
+pending checks recorded as pending until they resolve. Keep failures and
+incomplete work visible.
 Publish only within the user's existing authorization; never force-push or let
 delegates push to the shared branch. Report the commit, tests, and remaining limits.
 ```
@@ -279,6 +282,18 @@ batch and an immutable source file, but must enforce the total limit itself.
 Do not mutate a running batch's input file or reuse its trace. Prefer ordinary
 batches until that coordination is needed; there is no durable automatic
 backlog scheduler in this runbook.
+
+Do not serialize the whole loop on slow evidence. Long-running checks —
+conformance suites, soak runs, the manual gate — and an in-flight batch all
+run unattended. While they run, prepare and dispatch the next bounded batch
+from a committed base and a separate evidence directory, subject to the same
+total delegate limit. What does not overlap is integration and acceptance:
+one integrator integrates serially, and a task or tree whose verification is
+still running is **pending**, never passed or failed. Keep a record of which
+checks are pending for each candidate commit, and resolve them before
+claiming or closing anything. If pending evidence later fails, un-integrate
+or fix forward and say so; a commit on the shared branch is not proof of
+acceptance either.
 
 For each writing result:
 
