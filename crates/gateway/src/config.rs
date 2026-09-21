@@ -30,6 +30,17 @@ pub struct Door {
     /// from a missing declaration.
     #[serde(default)]
     pub classify: Option<BackendLimits>,
+    /// The most per-input forwards one `POST /v1/classify` call may hold
+    /// in flight against this backend at once. Default 1 — the call
+    /// runs serially, as it always has. A value above one is the
+    /// operator's explicit declaration that the backend takes that
+    /// much item concurrency; the binding's declared
+    /// `capacity.concurrency`, when it names one, still bounds every
+    /// forward underneath it, and the process's `max_in_flight` bounds
+    /// the whole. A bound that can never be reached is refused rather
+    /// than silently capped.
+    #[serde(default = "default_item_concurrency")]
+    pub classify_item_concurrency: u64,
 }
 
 /// The parsed `gateway.json`.
@@ -101,6 +112,10 @@ fn default_in_flight() -> usize {
     64
 }
 
+fn default_item_concurrency() -> u64 {
+    1
+}
+
 fn default_questions() -> u64 {
     256
 }
@@ -153,6 +168,29 @@ impl Config {
                     backend.endpoint
                 ));
             }
+            if backend.classify_item_concurrency == 0 {
+                return Err(format!(
+                    "{}: door `{door}` declares a classify item concurrency of zero — \
+                     it admits no forwards at all",
+                    name.display()
+                ));
+            }
+            if backend.classify.is_none() && backend.classify_item_concurrency > 1 {
+                return Err(format!(
+                    "{}: door `{door}` declares a classify item concurrency but no classify \
+                     bounds — the facade does not infer support it was not told about",
+                    name.display()
+                ));
+            }
+            if backend.classify_item_concurrency > self.max_in_flight as u64 {
+                return Err(format!(
+                    "{}: door `{door}` declares a classify item concurrency of {} above the \
+                     process's `max_in_flight` of {} — a bound that can never be reached",
+                    name.display(),
+                    backend.classify_item_concurrency,
+                    self.max_in_flight
+                ));
+            }
         }
         Ok(())
     }
@@ -188,6 +226,35 @@ mod tests {
         let loaded = Config::load(&path).unwrap();
         assert_eq!(loaded.max_body_bytes, 1_048_576);
         assert_eq!(loaded.doors["kev-0.6b"].endpoint, "http://127.0.0.1:9080");
+    }
+
+    #[test]
+    fn an_unreachable_or_unbacked_item_concurrency_is_refused() {
+        // Item concurrency without classify bounds infers support the
+        // door never declared.
+        let mut unbacked = config();
+        unbacked
+            .doors
+            .get_mut("kev-0.6b")
+            .unwrap()
+            .classify_item_concurrency = 4;
+        assert!(unbacked.check(Path::new("gateway.json")).is_err());
+
+        // A bound above the process's own forward bound can never be
+        // reached — the misconfiguration is refused, not capped.
+        let mut unreachable = config();
+        unreachable.max_in_flight = 8;
+        let door = unreachable.doors.get_mut("kev-0.6b").unwrap();
+        door.classify = Some(crate::classify::BackendLimits::product());
+        door.classify_item_concurrency = 128;
+        assert!(unreachable.check(Path::new("gateway.json")).is_err());
+
+        // Zero admits no forwards at all.
+        let mut zero = config();
+        let door = zero.doors.get_mut("kev-0.6b").unwrap();
+        door.classify = Some(crate::classify::BackendLimits::product());
+        door.classify_item_concurrency = 0;
+        assert!(zero.check(Path::new("gateway.json")).is_err());
     }
 
     #[test]

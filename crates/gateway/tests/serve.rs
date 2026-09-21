@@ -116,6 +116,11 @@ struct Backend {
     delay_ms: u64,
     /// How many forwards arrived — a refusal must not spend one.
     forwards: Arc<AtomicUsize>,
+    /// Forwards the stub is holding right now.
+    in_flight: Arc<AtomicUsize>,
+    /// The highest `in_flight` observed — the record a concurrency
+    /// bound is checked against.
+    peak: Arc<AtomicUsize>,
     /// Every forwarded body, so a test can read the questions the
     /// facade actually sent.
     bodies: Arc<Mutex<Vec<Value>>>,
@@ -137,16 +142,21 @@ async fn backend_models(State(backend): State<Arc<Backend>>) -> Json<Value> {
 
 async fn backend_systemone(State(backend): State<Arc<Backend>>, body: Bytes) -> Response {
     backend.forwards.fetch_add(1, Ordering::SeqCst);
+    let held = backend.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+    backend.peak.fetch_max(held, Ordering::SeqCst);
     let parsed: Value = serde_json::from_slice(&body).unwrap_or_default();
     backend.bodies.lock().unwrap().push(parsed.clone());
     if backend.delay_ms > 0 {
         tokio::time::sleep(Duration::from_millis(backend.delay_ms)).await;
     }
-    if let Some(respond) = &backend.respond {
+    let response = if let Some(respond) = &backend.respond {
         let (status, body) = respond(&parsed);
-        return (status, Json(body)).into_response();
-    }
-    (backend.answer_status, Json(backend.answer_body.clone())).into_response()
+        (status, Json(body)).into_response()
+    } else {
+        (backend.answer_status, Json(backend.answer_body.clone())).into_response()
+    };
+    backend.in_flight.fetch_sub(1, Ordering::SeqCst);
+    response
 }
 
 /// Stand a stub backend up on a real port.
@@ -171,6 +181,8 @@ fn honest(digest: String, body: Value) -> Backend {
         answer_body: body,
         delay_ms: 0,
         forwards: Arc::new(AtomicUsize::new(0)),
+        in_flight: Arc::new(AtomicUsize::new(0)),
+        peak: Arc::new(AtomicUsize::new(0)),
         bodies: Arc::new(Mutex::new(Vec::new())),
         respond: None,
     }
@@ -200,6 +212,7 @@ async fn deploy(manifest: Manifest, endpoints: BTreeMap<String, String>) -> Depl
                     Door {
                         endpoint,
                         classify: None,
+                        classify_item_concurrency: 1,
                     },
                 )
             })
@@ -211,6 +224,16 @@ async fn deploy(manifest: Manifest, endpoints: BTreeMap<String, String>) -> Depl
 /// The same deployment, with each door's full declaration supplied —
 /// classify bounds included.
 async fn deploy_doors(manifest: Manifest, doors: BTreeMap<String, Door>) -> Deployment {
+    deploy_tuned(manifest, doors, |_| {}).await
+}
+
+/// A deployment whose config the caller adjusts first — the seam for
+/// bounds a test needs to tighten.
+async fn deploy_tuned(
+    manifest: Manifest,
+    doors: BTreeMap<String, Door>,
+    tune: impl FnOnce(&mut Config),
+) -> Deployment {
     let dir = tempfile::tempdir().unwrap();
     let registry = Registry::install(dir.path(), manifest.clone()).unwrap();
     let mut tokens = BTreeMap::new();
@@ -218,7 +241,7 @@ async fn deploy_doors(manifest: Manifest, doors: BTreeMap<String, Door>) -> Depl
         let issued = keys::issue(dir.path(), registry.manifest(), tenant).unwrap();
         tokens.insert(tenant.clone(), issued.token);
     }
-    let config = Config {
+    let mut config = Config {
         v: SCHEMA.to_string(),
         listen: "127.0.0.1:0".to_string(),
         registry: dir.path().to_path_buf(),
@@ -231,6 +254,7 @@ async fn deploy_doors(manifest: Manifest, doors: BTreeMap<String, Door>) -> Depl
         max_options: 4096,
         doors,
     };
+    tune(&mut config);
     let state = ServeState::open(config).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = format!("http://{}", listener.local_addr().unwrap());
@@ -687,6 +711,16 @@ async fn discovery_lists_the_callers_doors() {
     assert_eq!(body["models"].as_array().unwrap().len(), 1);
 }
 
+/// A door that serves classify: the product limits plus the configured
+/// item concurrency the scheduler fans out under.
+fn classify_door(endpoint: String, item_concurrency: u64) -> Door {
+    Door {
+        endpoint,
+        classify: Some(gateway::classify::BackendLimits::product()),
+        classify_item_concurrency: item_concurrency,
+    }
+}
+
 fn classify_call() -> Value {
     json!({
         "v":"openagents.classify.v1", "model":"acme-kev", "capacity":"dedicated",
@@ -705,15 +739,9 @@ async fn classify_preserves_input_order_and_records_verified_native_answers() {
     }))).await;
     let deployment = deploy_doors(
         manifest(None),
-        [(
-            "acme-kev".into(),
-            Door {
-                endpoint,
-                classify: Some(gateway::classify::BackendLimits::product()),
-            },
-        )]
-        .into_iter()
-        .collect(),
+        [("acme-kev".into(), classify_door(endpoint, 1))]
+            .into_iter()
+            .collect(),
     )
     .await;
     let response = reqwest::Client::new()
@@ -760,15 +788,26 @@ async fn classify_refuses_undeclared_limits_before_forwarding() {
 async fn classification_deployment(endpoint: String) -> Deployment {
     deploy_doors(
         manifest(None),
-        [(
-            "acme-kev".into(),
-            Door {
-                endpoint,
-                classify: Some(gateway::classify::BackendLimits::product()),
-            },
-        )]
-        .into_iter()
-        .collect(),
+        [("acme-kev".into(), classify_door(endpoint, 1))]
+            .into_iter()
+            .collect(),
+    )
+    .await
+}
+
+/// The same deployment with the door's configured item concurrency and
+/// any gateway tuning the test needs.
+async fn classification_deployment_tuned(
+    endpoint: String,
+    item_concurrency: u64,
+    tune: impl FnOnce(&mut Config),
+) -> Deployment {
+    deploy_tuned(
+        manifest(None),
+        [("acme-kev".into(), classify_door(endpoint, item_concurrency))]
+            .into_iter()
+            .collect(),
+        tune,
     )
     .await
 }
@@ -1387,4 +1426,299 @@ async fn classify_score_keeps_outcome_order_when_forwards_fail() {
         body["selections"],
         json!([{"mode":"score","ranking":["a"],"unevaluated":["b","c"]}])
     );
+}
+
+/// The classify body a concurrency test sends: `n` inputs named by
+/// their position, each a single-label choice.
+fn classify_batch(n: usize) -> Value {
+    json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"test-policy",
+          "select":{"single_label":{"ties":"first-declared","no_match":{"kind":"null"}}}},
+        "inputs":(0..n).map(|i| json!({"id":format!("i{i}"),"text":format!("text {i}")})).collect::<Vec<_>>(),
+        "mode":"single-label","labels":[{"id":"a"},{"id":"b"}]
+    })
+}
+
+/// The choice answer the concurrency stubs all send.
+fn choice_answer() -> Value {
+    json!({"model":"kev-0.6b",
+           "answers":{"q0":{"type":"choice","choice":"a","confidence":0.8,
+                            "probabilities":{"a":0.8,"b":0.2}}},
+           "usage":{"input_tokens":3,"output_tokens":1}})
+}
+
+/// POST a classify call under a specific credential.
+async fn send_classification_as(
+    deployment: &Deployment,
+    call: &Value,
+    token: Option<&str>,
+) -> (StatusCode, Value) {
+    let mut request = reqwest::Client::new()
+        .post(format!("{}/v1/classify", deployment.address))
+        .json(call);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.unwrap();
+    (response.status(), response.json().await.unwrap())
+}
+
+#[tokio::test]
+async fn classify_stays_serial_until_the_door_declares_item_concurrency() {
+    // The default bound is one: four inputs over a slow stub never hold
+    // two forwards at once, and each still answers in order.
+    let stub = Backend {
+        delay_ms: 60,
+        ..honest(artifact('b'), choice_answer())
+    };
+    let peak = stub.peak.clone();
+    let (endpoint, forwards) = backend(stub).await;
+    let deployment = classification_deployment_tuned(endpoint, 1, |_| {}).await;
+    let (status, body) = send_classification(&deployment, &classify_batch(4)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "answered");
+    assert_eq!(forwards.load(Ordering::SeqCst), 4);
+    assert_eq!(peak.load(Ordering::SeqCst), 1);
+    for (index, item) in body["results"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(item["input"], format!("i{index}"));
+    }
+}
+
+#[tokio::test]
+async fn classify_fans_out_only_as_far_as_the_door_declares() {
+    // Six inputs over a 60ms stub with item concurrency 3: the backend
+    // never sees more than three forwards at once, and the results keep
+    // input order however they completed.
+    let stub = Backend {
+        delay_ms: 60,
+        ..honest(artifact('b'), choice_answer())
+    };
+    let peak = stub.peak.clone();
+    let (endpoint, forwards) = backend(stub).await;
+    let deployment = classification_deployment_tuned(endpoint, 3, |_| {}).await;
+    let (status, body) = send_classification(&deployment, &classify_batch(6)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(forwards.load(Ordering::SeqCst), 6);
+    let observed = peak.load(Ordering::SeqCst);
+    assert!(observed > 1 && observed <= 3, "peak {observed}");
+    for (index, item) in body["results"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(item["input"], format!("i{index}"));
+        assert_eq!(item["units"][0]["selected"], "a");
+    }
+    assert_eq!(body["usage"]["input_tokens"], 18);
+}
+
+#[tokio::test]
+async fn classify_reassembles_input_order_when_completions_reorder() {
+    // The first input is the slowest: under concurrency the later
+    // inputs finish first, and the response still reports request order.
+    let app = axum::Router::new()
+        .route(
+            "/v1/models",
+            get(|| async {
+                Json(json!({"models":[{"id":"kev-0.6b","artifact_identity":{"digest":artifact('b')},"execution":{}}]}))
+            }),
+        )
+        .route(
+            "/v1/systemone",
+            post(|body: Bytes| async move {
+                let parsed: Value = serde_json::from_slice(&body).unwrap_or_default();
+                let delay = match parsed["state"].as_str().unwrap_or_default() {
+                    "slow" => 200,
+                    "mid" => 80,
+                    _ => 20,
+                };
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+                (StatusCode::OK, Json(choice_answer()))
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(axum::serve(listener, app).into_future());
+    let deployment = classification_deployment_tuned(endpoint, 3, |_| {}).await;
+    let mut call = classify_batch(3);
+    call["inputs"] = json!([
+        {"id":"slow","text":"slow"},
+        {"id":"mid","text":"mid"},
+        {"id":"fast","text":"fast"},
+    ]);
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "answered");
+    let ids: Vec<&str> = body["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item["input"].as_str())
+        .collect();
+    assert_eq!(ids, ["slow", "mid", "fast"]);
+    let slow = body["results"][0]["latency_ms"].as_u64().unwrap();
+    let fast = body["results"][2]["latency_ms"].as_u64().unwrap();
+    assert!(slow > fast, "slow {slow} should outlast fast {fast}");
+}
+
+#[tokio::test]
+async fn classify_shares_the_door_bound_across_tenants() {
+    // A shared door with a declared concurrency of two, configured for
+    // an item bound of four: two tenants' calls together never hold more
+    // than the binding's two forwards, and each call keeps its own order.
+    let mut manifest = manifest(None);
+    manifest.shared.get_mut("shared-kev").unwrap().capacity = Some(Capacity {
+        concurrency: Some(2),
+        requests_per_minute: None,
+    });
+    let stub = Backend {
+        delay_ms: 80,
+        ..honest(artifact('a'), choice_answer())
+    };
+    let peak = stub.peak.clone();
+    let (endpoint, forwards) = backend(stub).await;
+    let deployment = deploy_doors(
+        manifest,
+        [("shared-kev".into(), classify_door(endpoint, 4))]
+            .into_iter()
+            .collect(),
+    )
+    .await;
+    let mut call = classify_batch(4);
+    call["model"] = json!("shared-kev");
+    call["capacity"] = json!("shared");
+    let (acme, globex) = tokio::join!(
+        send_classification_as(&deployment, &call, Some(&deployment.tokens["acme"])),
+        send_classification_as(&deployment, &call, Some(&deployment.tokens["globex"])),
+    );
+    assert_eq!(acme.0, StatusCode::OK, "{}", acme.1);
+    assert_eq!(globex.0, StatusCode::OK, "{}", globex.1);
+    assert_eq!(acme.1["outcome"], "answered");
+    assert_eq!(globex.1["outcome"], "answered");
+    assert_eq!(forwards.load(Ordering::SeqCst), 8);
+    let observed = peak.load(Ordering::SeqCst);
+    assert!(observed <= 2, "peak {observed} exceeded the binding's 2");
+    for body in [&acme.1, &globex.1] {
+        for (index, item) in body["results"].as_array().unwrap().iter().enumerate() {
+            assert_eq!(item["input"], format!("i{index}"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn classify_deadline_leaves_unattempted_items_and_partial_usage() {
+    // A 300ms call over a 120ms stub at bound two: three batches of
+    // forwards fit, the fourth never dispatches, and settlement counts
+    // only what ran.
+    let stub = Backend {
+        delay_ms: 120,
+        ..honest(artifact('b'), choice_answer())
+    };
+    let (endpoint, forwards) = backend(stub).await;
+    let deployment = classification_deployment_tuned(endpoint, 2, |config| {
+        config.forward_timeout_ms = 300;
+    })
+    .await;
+    let (status, body) = send_classification(&deployment, &classify_batch(8)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let dispatched = forwards.load(Ordering::SeqCst) as u64;
+    let outcomes = &body["outcomes"];
+    let incomplete =
+        outcomes["unavailable"].as_u64().unwrap() + outcomes["unattempted"].as_u64().unwrap();
+    assert!(
+        incomplete > 0,
+        "the deadline must leave work undone: {body}"
+    );
+    assert_eq!(
+        outcomes["answered"].as_u64().unwrap() + outcomes["refused"].as_u64().unwrap() + incomplete,
+        8
+    );
+    assert_eq!(dispatched, 8 - outcomes["unattempted"].as_u64().unwrap());
+    let ledger = std::fs::read_to_string(deployment.dir.path().join("quota-ledger.jsonl")).unwrap();
+    let settled: Value = ledger
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|event| event["event"] == "settled")
+        .expect("the attempt settled");
+    assert_eq!(settled["units"]["questions"], dispatched);
+}
+
+#[tokio::test]
+async fn classify_a_dead_backend_halts_the_queue_without_inventing_work() {
+    // Five inputs at bound two over a stub that dies on the third: the
+    // dead forward is unavailable, its in-flight neighbour still reports
+    // what it got, and everything queued reports unattempted.
+    let stub = per_input_backend(|body| {
+        if body["state"] == "text 2" {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                json!({"error":{"code":"busy"}}),
+            );
+        }
+        (StatusCode::OK, choice_answer())
+    });
+    let (endpoint, forwards) = backend(stub).await;
+    let deployment = classification_deployment_tuned(endpoint, 2, |_| {}).await;
+    let (status, body) = send_classification(&deployment, &classify_batch(5)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "mixed");
+    let outcomes = &body["outcomes"];
+    assert_eq!(outcomes["unavailable"], 1);
+    assert!(outcomes["unattempted"].as_u64().unwrap() >= 1, "{body}");
+    assert_eq!(
+        outcomes["answered"].as_u64().unwrap() + outcomes["unavailable"].as_u64().unwrap(),
+        forwards.load(Ordering::SeqCst) as u64,
+    );
+    for (index, item) in body["results"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(item["input"], format!("i{index}"));
+    }
+}
+
+#[tokio::test]
+async fn classify_serial_and_concurrent_batches_are_measured() {
+    // The fixture: eight inputs over a stub that holds each forward
+    // 60ms, run once per configured bound. The measurement reports what
+    // the runs did — completed items, batch elapsed, per-item latency,
+    // and incomplete coverage — not a throughput claim.
+    const INPUTS: usize = 8;
+    async fn run(item_concurrency: u64) -> (Value, usize) {
+        let stub = Backend {
+            delay_ms: 60,
+            ..honest(artifact('b'), choice_answer())
+        };
+        let peak = stub.peak.clone();
+        let (endpoint, _) = backend(stub).await;
+        let deployment = classification_deployment_tuned(endpoint, item_concurrency, |_| {}).await;
+        let (_, body) = send_classification(&deployment, &classify_batch(INPUTS)).await;
+        (body, peak.load(Ordering::SeqCst))
+    }
+    let (serial, serial_peak) = run(1).await;
+    let (concurrent, concurrent_peak) = run(4).await;
+    let report = |body: &Value, peak: usize| {
+        let items = body["results"].as_array().unwrap();
+        json!({
+            "completed_items": items.iter().filter(|i| i["outcome"] == "answered").count(),
+            "batch_ms": body["timing"]["latency_ms"],
+            "per_item_ms": items.iter().map(|i| i["latency_ms"].clone()).collect::<Vec<_>>(),
+            "incomplete": items.iter().filter(|i| i["outcome"] != "answered").count(),
+            "peak_in_flight": peak,
+        })
+    };
+    let measurement = json!({"serial": report(&serial, serial_peak),
+                             "concurrent": report(&concurrent, concurrent_peak)});
+    eprintln!("classify-schedule-measurement {measurement}");
+    assert_eq!(measurement["serial"]["completed_items"], INPUTS);
+    assert_eq!(measurement["concurrent"]["completed_items"], INPUTS);
+    assert_eq!(measurement["serial"]["incomplete"], 0);
+    assert_eq!(measurement["concurrent"]["incomplete"], 0);
+    assert_eq!(serial_peak, 1);
+    assert!(concurrent_peak > 1 && concurrent_peak <= 4);
+    let serial_ms = serial["timing"]["latency_ms"].as_u64().unwrap();
+    let concurrent_ms = concurrent["timing"]["latency_ms"].as_u64().unwrap();
+    assert!(
+        concurrent_ms < serial_ms,
+        "concurrent {concurrent_ms} should beat serial {serial_ms}"
+    );
+    for body in [&serial, &concurrent] {
+        for (index, item) in body["results"].as_array().unwrap().iter().enumerate() {
+            assert_eq!(item["input"], format!("i{index}"));
+        }
+    }
 }

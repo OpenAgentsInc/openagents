@@ -27,7 +27,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::Json;
@@ -537,6 +537,46 @@ async fn bounded(
     capacity: &Capacity,
     ctx: &Context,
 ) -> Result<Permits, Verdict> {
+    windowed(state, door, capacity, ctx).await?;
+    let door_permit = match door_permit(state, door).await {
+        Some(permit) => Some(permit),
+        None => {
+            return Err(Verdict::Refused {
+                status: StatusCode::TOO_MANY_REQUESTS,
+                code: "busy",
+                message: format!("door `{door}`'s forward slots are full; retry shortly"),
+                outcome: Outcome::Refused,
+                ctx: ctx.clone(),
+            });
+        }
+    };
+    let Ok(host_permit) = state.in_flight.clone().try_acquire_owned() else {
+        return Err(Verdict::Refused {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "overloaded",
+            message: "the gateway's forward bound is full; retry shortly".to_string(),
+            outcome: Outcome::Refused,
+            ctx: ctx.clone(),
+        });
+    };
+    Ok(Permits {
+        _door: door_permit.flatten(),
+        _host: host_permit,
+    })
+}
+
+/// The door's declared rate window, counted once per call and refusing
+/// when the window is full — before any reservation exists, so a
+/// congestion refusal never holds quota. This is also where the door's
+/// bounds entry is created or rebuilt from the binding's declared
+/// capacity, which the classify scheduler's per-item forwards acquire
+/// from afterwards.
+async fn windowed(
+    state: &ServeState,
+    door: &str,
+    capacity: &Capacity,
+    ctx: &Context,
+) -> Result<(), Verdict> {
     {
         let mut doors = state.doors.lock().await;
         let bounds = doors.entry(door.to_string()).or_insert_with(|| DoorBounds {
@@ -579,31 +619,7 @@ async fn bounded(
             bounds.window.push_back(Instant::now());
         }
     }
-    let door_permit = match door_permit(state, door).await {
-        Some(permit) => Some(permit),
-        None => {
-            return Err(Verdict::Refused {
-                status: StatusCode::TOO_MANY_REQUESTS,
-                code: "busy",
-                message: format!("door `{door}`'s forward slots are full; retry shortly"),
-                outcome: Outcome::Refused,
-                ctx: ctx.clone(),
-            });
-        }
-    };
-    let Ok(host_permit) = state.in_flight.clone().try_acquire_owned() else {
-        return Err(Verdict::Refused {
-            status: StatusCode::TOO_MANY_REQUESTS,
-            code: "overloaded",
-            message: "the gateway's forward bound is full; retry shortly".to_string(),
-            outcome: Outcome::Refused,
-            ctx: ctx.clone(),
-        });
-    };
-    Ok(Permits {
-        _door: door_permit.flatten(),
-        _host: host_permit,
-    })
+    Ok(())
 }
 
 /// Step 4 of every route: the durable reservation. From here the
@@ -835,7 +851,7 @@ async fn admitted(
 /// The classify call's passage: the same admission sequence, then a
 /// `systemone` forward per input and an assembled per-item result.
 async fn classify_admitted(
-    state: &ServeState,
+    state: &Arc<ServeState>,
     headers: &HeaderMap,
     body: &Bytes,
     naming: &Naming<'_>,
@@ -921,12 +937,14 @@ async fn classify_admitted(
 
     // 3–5. Bound, reserve, verify — the reservation's units are the
     // plan's: one question per judgment, the readout width of every
-    // categorical set and rubric, and the envelope's own bytes.
+    // categorical set and rubric, and the envelope's own bytes. The
+    // call holds no forward permits of its own: each item's forward
+    // acquires the door's declared slot and the process's bound for
+    // itself, so an in-flight forward is always covered work.
     let capacity = admission.binding.capacity.clone().unwrap_or_default();
-    let _permits = match bounded(state, &request.model, &capacity, &ctx).await {
-        Ok(permits) => permits,
-        Err(verdict) => return verdict,
-    };
+    if let Err(verdict) = windowed(state, &request.model, &capacity, &ctx).await {
+        return verdict;
+    }
     let options: u64 = plan
         .units
         .iter()
@@ -948,93 +966,99 @@ async fn classify_admitted(
         return verdict;
     }
 
-    // 6. Fan out — one `systemone` forward per input, in request
-    // order, holding the door's single permit for the whole call.
+    // 6. Fan out — one `systemone` forward per input, reconstructed in
+    // request order however the forwards complete. The call's fan-out
+    // bound is the door's configured item concurrency — one unless the
+    // operator declared more — never above the binding's declared
+    // concurrency or the process's forward bound, so a configured bound
+    // cannot multiply capacity the deployment did not declare.
     let artifact = admission.binding.artifact.model.clone();
-    let mut items = Vec::with_capacity(request.inputs.len());
+    let plan = Arc::new(plan);
+    let item_bound = backend
+        .classify_item_concurrency
+        .min(capacity.concurrency.unwrap_or(u64::MAX))
+        .min(state.config.max_in_flight as u64)
+        .min(plan.inputs)
+        .max(1) as usize;
+    let slots = Arc::new(Semaphore::new(item_bound));
+    let halt = Arc::new(AtomicBool::new(false));
+    let deadline = started + Duration::from_millis(state.config.forward_timeout_ms);
+    let mut scheduled = tokio::task::JoinSet::new();
+    for (index, input) in request.inputs.iter().enumerate() {
+        let (body, asked) = forward_body(&request, &plan, input, &artifact);
+        scheduled.spawn(classify_item(ItemWork {
+            index,
+            input: input.id.clone(),
+            body,
+            asked,
+            state: state.clone(),
+            door: request.model.clone(),
+            endpoint: endpoint.clone(),
+            model: artifact.clone(),
+            plan: plan.clone(),
+            slots: slots.clone(),
+            halt: halt.clone(),
+            deadline,
+        }));
+    }
+    let mut done: Vec<Option<ItemResult>> = (0..request.inputs.len()).map(|_| None).collect();
+    while let Some(joined) = scheduled.join_next().await {
+        if let Ok(result) = joined {
+            let slot = &mut done[result.index];
+            *slot = Some(result);
+        }
+    }
+
+    // Reassemble in input order and aggregate the per-unit outcomes
+    // into the call's own. An item whose task never reported is counted
+    // as dispatched-unavailable — potentially attempted work never
+    // reads as unattempted or answered.
+    let mut items = Vec::with_capacity(done.len());
     let mut counts = Counts::default();
     let mut forwards = 0_u64;
     let mut input_tokens = CompleteCounter::default();
     let mut output_tokens = CompleteCounter::default();
-    let mut halted = false;
-    for input in &request.inputs {
-        if halted {
-            // A door that stopped answering mid-call leaves the rest
-            // unattempted — named, never dropped.
-            items.push(unattempted_item(input, &plan));
-            counts.unattempted += plan.units.len() as u64;
-            continue;
+    for (index, slot) in done.into_iter().enumerate() {
+        let result = slot.unwrap_or_else(|| ItemResult {
+            index,
+            dispatched: true,
+            item: failed_item(
+                &request.inputs[index].id,
+                &plan,
+                "unavailable",
+                "the input's forward never reported",
+                None,
+            ),
+            usage: None,
+        });
+        if result.dispatched {
+            forwards += 1;
+            input_tokens.add(
+                result
+                    .usage
+                    .as_ref()
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(Value::as_u64),
+            );
+            output_tokens.add(
+                result
+                    .usage
+                    .as_ref()
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(Value::as_u64),
+            );
         }
-        let Some(remaining) =
-            Duration::from_millis(state.config.forward_timeout_ms).checked_sub(started.elapsed())
-        else {
-            halted = true;
-            items.push(unattempted_item(input, &plan));
-            counts.unattempted += plan.units.len() as u64;
-            continue;
-        };
-        let (forward_body, asked) = forward_body(&request, &plan, input, &artifact);
-        let item_started = Instant::now();
-        forwards += 1;
-        let forwarded = tokio::time::timeout(remaining, forward(state, &endpoint, &forward_body))
-            .await
-            .unwrap_or_else(|_| Forwarded::Unavailable {
-                message: "the classification call exceeded its execution deadline".to_string(),
-            });
-        match forwarded {
-            Forwarded::Served { body, .. } => {
-                let (item, usage) = served_item(
-                    input,
-                    &plan,
-                    &asked,
-                    &artifact,
-                    &body,
-                    item_started.elapsed(),
-                    &mut counts,
-                );
-                input_tokens.add(
-                    usage
-                        .as_ref()
-                        .and_then(|u| u.get("input_tokens"))
-                        .and_then(Value::as_u64),
-                );
-                output_tokens.add(
-                    usage
-                        .as_ref()
-                        .and_then(|u| u.get("output_tokens"))
-                        .and_then(Value::as_u64),
-                );
-                items.push(item);
-            }
-            Forwarded::Refused { cause, .. } => {
-                input_tokens.add(None);
-                output_tokens.add(None);
-                items.push(failed_item(
-                    input,
-                    &plan,
-                    "refused",
-                    &cause,
-                    Some(item_started.elapsed()),
-                ));
-                counts.refused += plan.units.len() as u64;
-            }
-            Forwarded::Unavailable { message } => {
-                input_tokens.add(None);
-                output_tokens.add(None);
-                items.push(failed_item(
-                    input,
-                    &plan,
-                    "unavailable",
-                    &message,
-                    Some(item_started.elapsed()),
-                ));
-                counts.unavailable += plan.units.len() as u64;
-                halted = true;
+        for unit in result.item["units"].as_array().into_iter().flatten() {
+            match unit.get("outcome").and_then(Value::as_str) {
+                Some("answered") => counts.answered += 1,
+                Some("refused") => counts.refused += 1,
+                Some("unavailable") => counts.unavailable += 1,
+                _ => counts.unattempted += 1,
             }
         }
+        items.push(result.item);
     }
 
-    // Aggregate the per-unit outcomes into the call's own.
     let total = plan.inputs * plan.units.len() as u64;
     let (label, status, outcome, cause) = if counts.answered == total {
         ("answered", StatusCode::OK, Outcome::Answered, None)
@@ -1117,6 +1141,156 @@ async fn classify_admitted(
         cause,
         ctx,
     }
+}
+
+/// What one input's scheduled forward needs: its position and id, its
+/// own question body, and every bound it runs under.
+struct ItemWork {
+    /// The input's position — results reassemble in request order.
+    index: usize,
+    /// The input's caller-chosen id.
+    input: String,
+    /// The serialized `systemone` envelope for this input alone.
+    body: Bytes,
+    /// The question ids the body asked, mapped back to (unit, label).
+    asked: Vec<(usize, String, Option<String>)>,
+    state: Arc<ServeState>,
+    /// The door's name, for its declared concurrency pool.
+    door: String,
+    endpoint: String,
+    /// The artifact id the answer must claim.
+    model: String,
+    plan: Arc<classify::Plan>,
+    /// The call's own fan-out bound — closed when the call halts.
+    slots: Arc<Semaphore>,
+    /// Set when the door stops answering: queued items stop waiting.
+    halt: Arc<AtomicBool>,
+    /// The call's execution deadline — queue waits and forwards share it.
+    deadline: Instant,
+}
+
+/// What one scheduled input produced.
+struct ItemResult {
+    /// The input's position.
+    index: usize,
+    /// Whether the forward was dispatched — dispatched work is charged.
+    dispatched: bool,
+    /// The assembled per-input result.
+    item: Value,
+    /// The door's own usage report, when it sent one.
+    usage: Option<Value>,
+}
+
+/// One input's scheduled forward: take the call's fan-out slot, then
+/// wait — inside the call's deadline — for the door's declared slot and
+/// the process's forward slot, so an in-flight forward always holds the
+/// capacity that covers it. An item the call never dispatched reports
+/// `unattempted` and spends nothing; a door that stops answering halts
+/// the call rather than letting queued work pretend it ran.
+async fn classify_item(work: ItemWork) -> ItemResult {
+    let ItemWork {
+        index,
+        input,
+        body,
+        asked,
+        state,
+        door,
+        endpoint,
+        model,
+        plan,
+        slots,
+        halt,
+        deadline,
+    } = work;
+    let unattempted = |cause: &'static str| ItemResult {
+        index,
+        dispatched: false,
+        item: unattempted_item(&input, &plan, cause),
+        usage: None,
+    };
+    // The call's own fan-out bound. The pool closes on halt, which is
+    // how a stopped call frees its queue instead of waiting it out.
+    let Ok(_item) = slots.clone().acquire_owned().await else {
+        return unattempted("the call stopped before this input's forward");
+    };
+    let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+        return unattempted("the call's execution deadline passed before its forward ran");
+    };
+    if halt.load(Ordering::SeqCst) {
+        return unattempted("the call stopped before this input's forward");
+    }
+    // The binding's declared concurrency, when it names one — waited
+    // on, never borrowed: a busy door's items queue inside the deadline.
+    let _door = match door_slots(&state, &door).await {
+        Some(pool) => match tokio::time::timeout(remaining, pool.acquire_owned()).await {
+            Ok(Ok(permit)) => Some(permit),
+            _ => {
+                return unattempted(
+                    "the call's execution deadline passed while the door's slots were full",
+                );
+            }
+        },
+        None => None,
+    };
+    let _host = match tokio::time::timeout(remaining, state.in_flight.clone().acquire_owned()).await
+    {
+        Ok(Ok(permit)) => permit,
+        _ => {
+            return unattempted(
+                "the call's execution deadline passed while the gateway's slots were full",
+            );
+        }
+    };
+    if halt.load(Ordering::SeqCst) {
+        return unattempted("the call stopped before this input's forward");
+    }
+    let item_started = Instant::now();
+    let remaining = deadline
+        .checked_duration_since(Instant::now())
+        .unwrap_or_default();
+    let forwarded = tokio::time::timeout(remaining, forward(&state, &endpoint, &body))
+        .await
+        .unwrap_or_else(|_| Forwarded::Unavailable {
+            message: "the classification call exceeded its execution deadline".to_string(),
+        });
+    let latency = item_started.elapsed();
+    let (item, usage) = match forwarded {
+        Forwarded::Served { body, .. } => {
+            served_item(&input, &plan, &asked, &model, &body, latency)
+        }
+        Forwarded::Refused { cause, .. } => (
+            failed_item(&input, &plan, "refused", &cause, Some(latency)),
+            None,
+        ),
+        Forwarded::Unavailable { message } => {
+            // A door that stops answering halts the call: queued inputs
+            // report unattempted — dispatched, never invented.
+            halt.store(true, Ordering::SeqCst);
+            slots.close();
+            (
+                failed_item(&input, &plan, "unavailable", &message, Some(latency)),
+                None,
+            )
+        }
+    };
+    ItemResult {
+        index,
+        dispatched: true,
+        item,
+        usage,
+    }
+}
+
+/// The door's declared concurrency pool — `None` when the binding
+/// declares no bound and the configured item concurrency is the door's
+/// only declaration.
+async fn door_slots(state: &ServeState, door: &str) -> Option<Arc<Semaphore>> {
+    state
+        .doors
+        .lock()
+        .await
+        .get(door)
+        .and_then(|bounds| bounds.slots.clone())
 }
 
 /// A total exists only when every dispatched input reports the counter.
@@ -1471,13 +1645,12 @@ fn corpus_aggregates(plan: &classify::Plan, items: &[Value]) -> Vec<Value> {
 /// One input's assembled result when its forward answered: each unit's
 /// outcome, raw answers, and policy-selected output.
 fn served_item(
-    input: &classify::Input,
+    input: &str,
     plan: &classify::Plan,
     asked: &[(usize, String, Option<String>)],
     expected_model: &str,
     body: &Bytes,
     latency: Duration,
-    counts: &mut Counts,
 ) -> (Value, Option<Value>) {
     let parsed = serde_json::from_slice::<Value>(body).ok();
     let answers = parsed
@@ -1500,10 +1673,7 @@ fn served_item(
             None => unit_failure(unit, "unavailable", "the door's answer did not parse"),
         };
         if result.get("outcome").and_then(Value::as_str) == Some("answered") {
-            counts.answered += 1;
             answered += 1;
-        } else {
-            counts.unavailable += 1;
         }
         units.push(result);
     }
@@ -1515,7 +1685,7 @@ fn served_item(
         "unavailable"
     };
     let mut item = json!({
-        "input": input.id,
+        "input": input,
         "outcome": input_outcome,
         "units": units,
         "latency_ms": latency.as_millis() as u64,
@@ -1796,14 +1966,14 @@ fn unit_failure(unit: &classify::Unit, outcome: &str, cause: &str) -> Value {
 /// One input's result when its forward failed before any unit could
 /// answer — every unit reports the same outcome and cause.
 fn failed_item(
-    input: &classify::Input,
+    input: &str,
     plan: &classify::Plan,
     outcome: &str,
     cause: &str,
     latency: Option<Duration>,
 ) -> Value {
     let mut item = json!({
-        "input": input.id,
+        "input": input,
         "outcome": outcome,
         "cause": cause,
         "units": plan.units.iter().map(|unit| unit_failure(unit, outcome, cause)).collect::<Vec<_>>(),
@@ -1814,16 +1984,11 @@ fn failed_item(
     item
 }
 
-/// One input's result when the call stopped before its forward —
-/// dispatched nothing, charged nothing past the reservation.
-fn unattempted_item(input: &classify::Input, plan: &classify::Plan) -> Value {
-    failed_item(
-        input,
-        plan,
-        "unattempted",
-        "the call stopped before this input's forward",
-        None,
-    )
+/// One input's result when the call never dispatched its forward —
+/// nothing spent past the reservation, and the cause says which bound
+/// stopped it.
+fn unattempted_item(input: &str, plan: &classify::Plan, cause: &str) -> Value {
+    failed_item(input, plan, "unattempted", cause, None)
 }
 
 /// Try the door's concurrency pool — `None` when the pool exists and is
