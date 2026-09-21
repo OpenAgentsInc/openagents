@@ -44,6 +44,12 @@
 //! contract. And a verified binding still cannot attest remote weights —
 //! it proves the serving process claims the identity the registry bound.
 
+//! `accounts` is the membership half of the same story: the versioned
+//! store that binds accounts to workspaces by role, and the
+//! authorization read a session or key makes to learn whether a
+//! membership still stands.
+
+pub mod accounts;
 pub mod backend;
 pub mod keys;
 mod manifest;
@@ -51,6 +57,10 @@ pub mod money;
 pub mod quota;
 mod registry;
 
+pub use accounts::{
+    ACCOUNTS_SCHEMA, Account, Accounts, Invitation, InviteStatus, Invited, MemberRef,
+    MemberStatus, Membership, Role, Store, Workspace, WorkspaceKind,
+};
 pub use keys::{AuthRefusal, Authenticated, Issued, Key, KeyStore, KeyTrouble, Status};
 pub use manifest::{Binding, Capacity, Expected, Lane, Manifest, Quota, SCHEMA, Tenant, lane_name};
 pub use registry::{Admission, Fault, Published, Refusal, Registry, Trouble};
