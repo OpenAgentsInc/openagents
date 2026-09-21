@@ -206,12 +206,26 @@ impl Recorder {
     /// rather than once per turn keeps that without repeating a repository
     /// context block into every step.
     pub fn instructions(&mut self, text: &str) {
-        let digest = atif::digest(&json!(text));
+        self.instructions_with_repository(text, None);
+    }
+
+    /// Record the same captured repository evidence that produced the prompt.
+    /// Metadata participates in deduplication and is never parsed from source text.
+    pub fn instructions_with_repository(
+        &mut self,
+        text: &str,
+        evidence: Option<&crate::repo::RepositoryEvidence>,
+    ) {
+        let digest = atif::digest(&json!({"text": text, "repository": evidence}));
         if self.instructions.as_deref() == Some(digest.as_str()) {
             return;
         }
         self.instructions = Some(digest);
-        self.write(Step::said(Source::System, text).noting("kind", json!(INSTRUCTIONS_KIND)));
+        let mut step = Step::said(Source::System, text).noting("kind", json!(INSTRUCTIONS_KIND));
+        if let Some(evidence) = evidence {
+            step = step.noting("repository_context", json!(evidence));
+        }
+        self.write(step);
     }
 
     /// What the model answered, what the turn cost, and — when the door

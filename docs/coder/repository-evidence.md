@@ -28,9 +28,18 @@ separate budget, and the entire rendered search-evidence block is at most
 unavailable search/read results, excluded sources, and omitted paths or
 excerpts. The collector does not claim exhaustive recall.
 
+Each generation collects its prompt and evidence together. Its ATIF instruction
+step retains `repository_context` with schema `openagents.repository-context.v1`,
+search terms, only the source references actually rendered, coverage diagnostics,
+and digests of the rendered search block and repository card. Recording uses
+that captured object without rereading files or parsing source text as metadata.
+The prompt and metadata jointly determine trace deduplication. The card digest
+identifies its existing document prefixes; it does not imply complete source
+coverage for those prefixes. Disabling trace recording still disables this record.
+
 These references are consumed by the existing repository context path; they
 are not a persistent evidence store or a relevance model. The repository card
 and its document prefixes still have their existing behavior. Complete binding
-instruction retention, host read/disclosure policy, structured context manifests
-in traces and interfaces, diff/test evidence, and measured semantic selection
+instruction retention, host read/disclosure policy, complete context manifests
+and their interface, diff/test evidence, and measured semantic selection
 remain part of #9513. Path checks here are not an operating-system read sandbox.

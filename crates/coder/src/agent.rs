@@ -299,12 +299,19 @@ impl Agent {
     /// generation, in that order.
     #[must_use]
     pub fn context(&self) -> String {
+        self.context_with_evidence().0
+    }
+
+    fn context_with_evidence(&self) -> (String, Option<crate::repo::RepositoryEvidence>) {
         let mut context = self.about.context();
+        let mut evidence = None;
         if let Some(repo) = &self.repo {
             context.push_str("\n\n");
-            context.push_str(&repo.context_for(&self.task));
+            let (rendered, captured) = repo.context_with_evidence(&self.task);
+            context.push_str(&rendered);
+            evidence = Some(captured);
         }
-        context
+        (context, evidence)
     }
 
     /// The recorder this session writes to, for tests and for a caller that
@@ -591,9 +598,9 @@ impl Agent {
         sink: &mut (dyn FnMut(&str) + Send),
         meta: &mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
-        let instructions = self.instructions(clarify, false, false);
+        let (instructions, evidence) = self.instructions(clarify, false, false);
         if let Some(trace) = &mut self.trace {
-            trace.instructions(&instructions);
+            trace.instructions_with_repository(&instructions, evidence.as_ref());
         }
         let started = Instant::now();
         let answered = Answered::default();
@@ -653,9 +660,9 @@ impl Agent {
             // so — except while clarifying, where the one question it is
             // asking for is the whole instruction.
             let final_only = !permit.executes() && !clarify;
-            let instructions = self.instructions(clarify, final_only, retries > 0);
+            let (instructions, evidence) = self.instructions(clarify, final_only, retries > 0);
             if let Some(trace) = &mut self.trace {
-                trace.instructions(&instructions);
+                trace.instructions_with_repository(&instructions, evidence.as_ref());
             }
             let started = Instant::now();
             let answered = Answered::default();
@@ -781,7 +788,12 @@ impl Agent {
 
     /// The instructions for one generation: the base text, the clarify,
     /// retry, or final suffix, and the repo context block.
-    fn instructions(&self, clarify: bool, final_only: bool, retrying: bool) -> String {
+    fn instructions(
+        &self,
+        clarify: bool,
+        final_only: bool,
+        retrying: bool,
+    ) -> (String, Option<crate::repo::RepositoryEvidence>) {
         let mut instructions = if clarify {
             format!("{INSTRUCTIONS}{CLARIFY_SUFFIX}")
         } else {
@@ -793,8 +805,9 @@ impl Agent {
             instructions.push_str(RETRY_SUFFIX);
         }
         instructions.push_str("\n\n");
-        instructions.push_str(&self.context());
-        instructions
+        let (context, evidence) = self.context_with_evidence();
+        instructions.push_str(&context);
+        (instructions, evidence)
     }
 
     /// The judge's read on a round of outcomes: `Pass` without a
@@ -1154,11 +1167,11 @@ mod tests {
     #[test]
     fn a_retry_changes_the_next_instructions() {
         let agent = saying("hi".to_string());
-        let plain = agent.instructions(false, false, false);
+        let plain = agent.instructions(false, false, false).0;
         assert!(!plain.contains(RETRY_SUFFIX), "{plain}");
-        let retrying = agent.instructions(false, false, true);
+        let retrying = agent.instructions(false, false, true).0;
         assert!(retrying.contains(RETRY_SUFFIX), "{retrying}");
-        let last = agent.instructions(false, true, true);
+        let last = agent.instructions(false, true, true).0;
         assert!(
             last.contains(FINAL_SUFFIX) && !last.contains(RETRY_SUFFIX),
             "{last}"
@@ -1226,14 +1239,14 @@ mod tests {
         };
         git(&["init", "-q"]);
         let outside = saying("hi".to_string());
-        let none = outside.instructions(false, false, false);
+        let none = outside.instructions(false, false, false).0;
         assert!(none.contains("about this application:"), "{none}");
         assert!(none.contains("not available on this machine"), "{none}");
 
         let repo = Repo::discover(dir.path());
         assert!(repo.is_some(), "the decoy is a repository");
         let inside = saying("hi".to_string()).with_repo(repo);
-        let both = inside.instructions(false, false, false);
+        let both = inside.instructions(false, false, false).0;
         assert!(
             both.contains(&format!("workspace repository: {}", dir.path().display()))
                 || both.contains(&format!(

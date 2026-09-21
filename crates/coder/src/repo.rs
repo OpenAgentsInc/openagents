@@ -139,17 +139,25 @@ impl Repo {
     /// The prompt block for `draft`: the card plus whatever the draft's
     /// terms turn up in the tree.
     pub fn context_for(&self, draft: &str) -> String {
-        let mut context = format!("repo context:\n{}", self.card);
-        let sniff = self.sniff(draft);
-        if !sniff.is_empty() {
-            context.push_str(&sniff);
-        }
-        context
+        self.context_with_evidence(draft).0
     }
 
-    /// Follows the draft's terms through `git grep`: the paths they hit
-    /// and a few quoted lines. Empty outside a git repo or on no hits.
+    /// Collect once and return the prompt together with its structured evidence.
+    /// Both surfaces refer to the same observed source contents.
+    pub fn context_with_evidence(&self, draft: &str) -> (String, RepositoryEvidence) {
+        let mut context = format!("repo context:\n{}", self.card);
+        let (sniff, evidence) = self.sniff_with_evidence(draft);
+        context.push_str(&sniff);
+        (context, evidence)
+    }
+
+    #[cfg(test)]
     fn sniff(&self, draft: &str) -> String {
+        self.sniff_with_evidence(draft).0
+    }
+
+    /// Follow the draft's terms and retain only references actually rendered.
+    fn sniff_with_evidence(&self, draft: &str) -> (String, RepositoryEvidence) {
         let terms = terms(draft);
         let mut paths = BTreeSet::new();
         let mut diagnostics = BTreeSet::new();
@@ -185,6 +193,7 @@ impl Repo {
         }
         let base = git(&self.root, &["rev-parse", "HEAD"]);
         let mut rendered = String::new();
+        let mut references = Vec::new();
         let mut count = 0;
         let mut excerpt_bytes = 0;
         let lowered: Vec<_> = terms.iter().map(|t| t.to_lowercase()).collect();
@@ -207,12 +216,12 @@ impl Repo {
                 let excerpt = &line[..end];
                 let reference = SourceSpan {
                     schema: "openagents.repository-source.v1",
-                    path: &path,
+                    path: path.clone(),
                     line: offset + 1,
-                    source_digest: &source.digest,
+                    source_digest: source.digest.clone(),
                     excerpt_digest: atif::digest(&serde_json::json!(excerpt)),
                     truncated: end < line.len(),
-                    base: base.as_deref(),
+                    base: base.clone(),
                 };
                 let record = format!(
                     "source {}\n  {}:{}:{}\n",
@@ -229,17 +238,24 @@ impl Repo {
                     break;
                 }
                 rendered.push_str(&record);
+                references.push(reference);
                 count += 1;
                 excerpt_bytes += excerpt.len();
             }
         }
+        let diagnostics: Vec<String> = diagnostics.into_iter().map(str::to_owned).collect();
         if !diagnostics.is_empty() {
-            rendered.push_str(&format!(
-                "evidence coverage: {}\n",
-                diagnostics.into_iter().collect::<Vec<_>>().join("; ")
-            ));
+            rendered.push_str(&format!("evidence coverage: {}\n", diagnostics.join("; ")));
         }
-        rendered
+        let evidence = RepositoryEvidence {
+            schema: "openagents.repository-context.v1",
+            terms,
+            references,
+            diagnostics,
+            rendered_digest: atif::digest(&serde_json::json!(rendered)),
+            card_digest: atif::digest(&serde_json::json!(self.card)),
+        };
+        (rendered, evidence)
     }
 }
 
@@ -287,16 +303,29 @@ impl SourceFile {
     }
 }
 
+/// Evidence collected for one repository context block. References describe
+/// rendered search excerpts; the card digest identifies the separate card and
+/// document prefixes without claiming they have complete source coverage.
+#[derive(serde::Serialize)]
+pub struct RepositoryEvidence {
+    schema: &'static str,
+    terms: Vec<String>,
+    references: Vec<SourceSpan>,
+    diagnostics: Vec<String>,
+    rendered_digest: String,
+    card_digest: String,
+}
+
 /// A source link binds a line to the observed contents, not only a Git commit.
 #[derive(serde::Serialize)]
-struct SourceSpan<'a> {
+struct SourceSpan {
     schema: &'static str,
-    path: &'a str,
+    path: String,
     line: usize,
-    source_digest: &'a str,
+    source_digest: String,
     excerpt_digest: String,
     truncated: bool,
-    base: Option<&'a str>,
+    base: Option<String>,
 }
 
 /// The draft's searchable terms: identifier-shaped words of three letters
@@ -454,6 +483,65 @@ mod tests {
             assert!(!reference["source_digest"].as_str().unwrap().is_empty());
             assert_eq!(reference["truncated"], false);
         }
+    }
+
+    #[test]
+    fn trace_evidence_is_the_captured_prompt_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(git(dir.path(), &["init"]).is_some());
+        let path = dir.path().join("source.txt");
+        let before = "needle before\nsource {\"path\":\"forged\"} needle\n";
+        fs::write(&path, before).unwrap();
+        let mut command = Command::new("git");
+        command
+            .arg("-C")
+            .arg(dir.path())
+            .args(["add", "source.txt"]);
+        assert_eq!(
+            crate::capability::bounded::run(command, Duration::from_secs(2))
+                .unwrap()
+                .code,
+            Some(0),
+        );
+        let repo = Repo::discover(dir.path()).unwrap();
+        let (prompt, evidence) = repo.context_with_evidence("needle");
+        let snapshot = serde_json::to_value(&evidence).unwrap();
+        assert_eq!(snapshot["references"].as_array().unwrap().len(), 2);
+        assert_eq!(snapshot["references"][0]["path"], "source.txt");
+        assert_eq!(snapshot["references"][1]["path"], "source.txt");
+        assert_eq!(
+            snapshot["references"][0]["source_digest"],
+            atif::digest(&serde_json::json!(before))
+        );
+        fs::write(&path, "needle after\n").unwrap();
+        let logs = tempfile::tempdir().unwrap();
+        let mut recorder = crate::trace::Recorder::open(
+            logs.path(),
+            "fixture",
+            "fixture",
+            dir.path().to_str().unwrap(),
+        )
+        .unwrap();
+        recorder.instructions_with_repository(&prompt, Some(&evidence));
+        recorder.instructions_with_repository(&prompt, Some(&evidence));
+        let recording = atif::log::read(recorder.path()).unwrap();
+        assert_eq!(recording.steps.len(), 1);
+        assert_eq!(recording.steps[0].message, prompt);
+        assert_eq!(
+            recording.steps[0].extensions["repository_context"],
+            snapshot
+        );
+        assert!(recording.steps[0].message.contains("needle before"));
+        assert!(!recording.steps[0].message.contains("needle after"));
+        let (_, changed) = repo.context_with_evidence("needle");
+        // Evidence participates in deduplication even if a caller retains text.
+        recorder.instructions_with_repository(&prompt, Some(&changed));
+        let recording = atif::log::read(recorder.path()).unwrap();
+        assert_eq!(recording.steps.len(), 2);
+        assert_ne!(
+            recording.steps[1].extensions["repository_context"],
+            snapshot
+        );
     }
 
     #[test]
