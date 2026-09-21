@@ -24,9 +24,12 @@
 //!
 //! Discovery lists the doors a caller's tenant may name; it is the
 //! registry's word, not proof of remote weights. Receipts are the
-//! serving process's attributable claim — not attestation. And no part
-//! of this crate prices a unit of anything.
+//! serving process's attributable claim — not attestation. And
+//! monetary admission — `money` in the config — is an explicit opt-in:
+//! absent the field, no workspace is charged and no balance route
+//! exists.
 
 pub mod classify;
 pub mod config;
+pub mod money;
 pub mod serve;

@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::classify::BackendLimits;
+use crate::money::Money;
 
 /// The schema tag a gateway config carries.
 pub const SCHEMA: &str = "openagents.gateway.v1";
@@ -55,8 +56,16 @@ pub struct Config {
     pub registry: PathBuf,
     /// Require an authenticated workspace membership on every public decision
     /// and discovery request. Legacy tenant-key admission is the default.
+    /// Monetary admission requires it: a charge binds a workspace, never an
+    /// anonymous or bearer-only call.
     #[serde(default)]
     pub require_workspace_membership: bool,
+    /// Monetary admission — the explicit opt-in to charging workspaces.
+    /// Absent means no ledger opens, no workspace is charged, and no
+    /// balance route exists: the gateway behaves exactly as it did
+    /// without the field.
+    #[serde(default)]
+    pub money: Option<Money>,
     /// The largest request body admitted, in bytes. Default 1 MiB —
     /// a decision request is state plus questions, never a bulk upload.
     #[serde(default = "default_body_max")]
@@ -179,6 +188,41 @@ impl Config {
                 self.reservation_ttl_secs,
                 self.forward_timeout_ms
             ));
+        }
+        if let Some(money) = &self.money {
+            if !self.require_workspace_membership {
+                return Err(format!(
+                    "{}: `money` requires `require_workspace_membership` — a charge \
+                     binds an authenticated workspace, never an anonymous or \
+                     bearer-only call",
+                    name.display()
+                ));
+            }
+            for (door, priced) in &money.doors {
+                if !self.doors.contains_key(door) {
+                    return Err(format!(
+                        "{}: money prices door `{door}`, which has no configured \
+                         backend — the price names nothing the gateway can serve",
+                        name.display()
+                    ));
+                }
+                if priced.price.policy != crate::money::POLICY {
+                    return Err(format!(
+                        "{}: door `{door}`'s price names policy `{}`, which this \
+                         build does not implement (`{}`)",
+                        name.display(),
+                        priced.price.policy,
+                        crate::money::POLICY
+                    ));
+                }
+                priced.price.quote(&priced.maximum_usage).map_err(|error| {
+                    format!(
+                        "{}: door `{door}`'s price cannot quote its declared \
+                             maximum usage: {error}",
+                        name.display()
+                    )
+                })?;
+            }
         }
         for (door, backend) in &self.doors {
             if !(backend.endpoint.starts_with("http://")

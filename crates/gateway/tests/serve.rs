@@ -20,6 +20,7 @@ use tenancy::quota::Ledger;
 use tenancy::{Binding, Capacity, Expected, Lane, Manifest, Quota, Registry, Tenant, keys};
 
 use gateway::config::{Config, Door, SCHEMA};
+use gateway::money::{Money, Priced};
 use gateway::serve::{self, ServeState};
 
 /// A valid-looking artifact pin for test bindings.
@@ -246,6 +247,7 @@ async fn deploy_tuned(
         listen: "127.0.0.1:0".to_string(),
         registry: dir.path().to_path_buf(),
         require_workspace_membership: false,
+        money: None,
         max_body_bytes: 1_048_576,
         max_response_bytes: 4_194_304,
         forward_timeout_ms: 10_000,
@@ -1996,4 +1998,1107 @@ async fn discovery_reports_classify_limits_without_inventing_backend_support() {
         StatusCode::UNPROCESSABLE_ENTITY
     );
     assert_eq!(forwards.load(Ordering::SeqCst), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Monetary admission: the opt-in mode that charges an authenticated
+// workspace for every dispatched call. Every price here is a synthetic
+// fixture — none of it is launch pricing.
+// ---------------------------------------------------------------------------
+
+/// The fixture hold one attempt reserves: the configured maximum usage
+/// quoted under the fixture price — 1,000 input at 10 and 100 output at
+/// 40 millionths of a unit.
+const HOLD: u64 = 14_000;
+
+/// The fixture charge the honest stub's usage report settles at —
+/// 3 input at 10 and 1 output at 40 millionths.
+const CHARGE: u64 = 70;
+
+/// The door's fixture price and bound: `kev-0.6b` on the `dedicated`
+/// lane under the synthetic `synthetic-fixture-v1` schedule.
+fn fixture_priced() -> Priced {
+    Priced {
+        price: tenancy::money::Price {
+            version: "synthetic-fixture-v1".to_string(),
+            currency: "USD".to_string(),
+            model: "kev-0.6b".to_string(),
+            capacity: "dedicated".to_string(),
+            policy: gateway::money::POLICY.to_string(),
+            rates: [
+                (
+                    tenancy::money::Resource::InputTokens,
+                    tenancy::money::Rate {
+                        millionths: 10,
+                        per_units: 1,
+                    },
+                ),
+                (
+                    tenancy::money::Resource::OutputTokens,
+                    tenancy::money::Rate {
+                        millionths: 40,
+                        per_units: 1,
+                    },
+                ),
+            ]
+            .into(),
+        },
+        maximum_usage: [
+            (tenancy::money::Resource::InputTokens, 1_000),
+            (tenancy::money::Resource::OutputTokens, 100),
+        ]
+        .into(),
+    }
+}
+
+/// One operator mutation against the fixture ledger.
+fn ledger_apply(
+    ledger: &mut tenancy::money::Ledger,
+    workspace: &str,
+    source: &str,
+    operation: tenancy::money::Operation,
+) {
+    ledger
+        .apply(tenancy::money::Mutation {
+            workspace: workspace.to_string(),
+            source: source.to_string(),
+            audit: format!("fixture:{source}"),
+            operation,
+        })
+        .unwrap();
+}
+
+/// Provision the workspace's account — create it in USD, then grant
+/// `credit` millionths when given. Funding is the operator's act on the
+/// ledger; the gateway itself never credits an account.
+fn provision_account(ledger: &mut tenancy::money::Ledger, workspace: &str, credit: Option<u64>) {
+    ledger_apply(
+        ledger,
+        workspace,
+        "create",
+        tenancy::money::Operation::Create {
+            currency: "USD".to_string(),
+            spend_limit: u64::MAX,
+            topups_allowed: false,
+        },
+    );
+    if let Some(amount) = credit {
+        ledger_apply(
+            ledger,
+            workspace,
+            "grant",
+            tenancy::money::Operation::Credit {
+                amount,
+                credit_kind: tenancy::money::CreditKind::Grant,
+            },
+        );
+    }
+}
+
+/// A monetary deployment: the running gateway plus the provisioning a
+/// test needs to grow the scenario — another member, another workspace.
+struct MoneyDeployment {
+    /// The live gateway.
+    deployment: Deployment,
+    /// The organization workspace the acme key's account belongs to.
+    workspace: String,
+    /// The account the acme key's principal is bound to.
+    member: String,
+    /// The owning account — the workspace's inviter.
+    owner: String,
+    /// The money ledger's path, for log assertions.
+    ledger: std::path::PathBuf,
+}
+
+/// Stand the whole monetary stack up: registry, a key per tenant, a
+/// workspace the acme key's account joins, the operator-provisioned
+/// ledger, and the gateway holding its lock.
+async fn deploy_money(
+    manifest: Manifest,
+    doors: BTreeMap<String, Door>,
+    priced: BTreeMap<String, Priced>,
+    provision: impl FnOnce(&mut tenancy::money::Ledger, &str),
+) -> MoneyDeployment {
+    let dir = tempfile::tempdir().unwrap();
+    let registry = Registry::install(dir.path(), manifest).unwrap();
+    let mut tokens = BTreeMap::new();
+    for tenant in registry.manifest().tenants.keys() {
+        let issued = keys::issue(dir.path(), registry.manifest(), tenant).unwrap();
+        tokens.insert(tenant.clone(), issued.token);
+    }
+    // The acme key's principal joins an organization workspace — the
+    // membership a monetary charge binds to.
+    let key = keys::authenticate(dir.path(), registry.manifest(), &tokens["acme"]).unwrap();
+    let accounts = tenancy::Accounts::install(dir.path()).unwrap();
+    let owner = accounts.create_account("owner", &[]).unwrap();
+    let member = accounts
+        .create_account("member", &[format!("key:{}", key.key_id)])
+        .unwrap();
+    let workspace = accounts
+        .create_workspace(
+            &owner.id,
+            "team",
+            tenancy::WorkspaceKind::Organization,
+            "acme",
+            None,
+        )
+        .unwrap();
+    let invite = accounts
+        .invite(&owner.id, &workspace.id, tenancy::Role::Member, 3_600)
+        .unwrap();
+    accounts.accept(&member.id, &invite.token).unwrap();
+    let ledger = dir.path().join("money.jsonl");
+    {
+        let mut opened = tenancy::money::Ledger::open(&ledger).unwrap();
+        provision(&mut opened, &workspace.id);
+    }
+    let config = Config {
+        v: SCHEMA.to_string(),
+        listen: "127.0.0.1:0".to_string(),
+        registry: dir.path().to_path_buf(),
+        require_workspace_membership: true,
+        money: Some(Money {
+            ledger: ledger.clone(),
+            doors: priced,
+        }),
+        max_body_bytes: 1_048_576,
+        max_response_bytes: 4_194_304,
+        forward_timeout_ms: 10_000,
+        reservation_ttl_secs: 300,
+        max_in_flight: 8,
+        max_classify_inputs: 1024,
+        max_classify_inputs_per_tenant: 1024,
+        max_questions: 256,
+        max_options: 4096,
+        doors,
+    };
+    let state = ServeState::open(config).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(axum::serve(listener, serve::router(state.clone())).into_future());
+    MoneyDeployment {
+        deployment: Deployment {
+            tokens,
+            dir,
+            address,
+            _state: state,
+        },
+        workspace: workspace.id,
+        member: member.id,
+        owner: owner.id,
+        ledger,
+    }
+}
+
+/// POST a decision call under monetary admission — bearer key plus the
+/// workspace header, with optional idempotency headers.
+async fn send_money_call(
+    deployment: &MoneyDeployment,
+    body: &Value,
+    token: Option<&str>,
+    workspace: Option<&str>,
+    key: Option<(&str, u32)>,
+) -> reqwest::Response {
+    let mut request = reqwest::Client::new()
+        .post(format!("{}/v1/systemone", deployment.deployment.address))
+        .json(body);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    if let Some(workspace) = workspace {
+        request = request.header("x-workspace-id", workspace);
+    }
+    if let Some((idempotency, attempt)) = key {
+        request = request
+            .header("idempotency-key", idempotency)
+            .header("x-attempt", attempt.to_string());
+    }
+    request.send().await.unwrap()
+}
+
+/// GET the caller's workspace balance.
+async fn get_balance(
+    deployment: &MoneyDeployment,
+    token: Option<&str>,
+    workspace: Option<&str>,
+) -> (StatusCode, Value) {
+    let mut request =
+        reqwest::Client::new().get(format!("{}/v1/balance", deployment.deployment.address));
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    if let Some(workspace) = workspace {
+        request = request.header("x-workspace-id", workspace);
+    }
+    let response = request.send().await.unwrap();
+    (response.status(), response.json().await.unwrap())
+}
+
+/// The priced `acme-kev` door over the given stub endpoint.
+fn money_doors(endpoint: String) -> (BTreeMap<String, Door>, BTreeMap<String, Priced>) {
+    (
+        [(
+            "acme-kev".into(),
+            Door {
+                endpoint,
+                classify: None,
+                classify_item_concurrency: 1,
+            },
+        )]
+        .into_iter()
+        .collect(),
+        [("acme-kev".into(), fixture_priced())]
+            .into_iter()
+            .collect(),
+    )
+}
+
+/// The accounts store of a running deployment — provisioning a test
+/// adds after the gateway is up still lands on the next request.
+fn accounts(deployment: &MoneyDeployment) -> tenancy::Accounts {
+    tenancy::Accounts::open(deployment.deployment.dir.path()).unwrap()
+}
+
+/// Add `principal`'s key to a fresh account that joins the workspace —
+/// the shape a second key in the same workspace takes.
+fn join_workspace(
+    deployment: &MoneyDeployment,
+    label: &str,
+    principal: String,
+    workspace: &str,
+) -> String {
+    let accounts = accounts(deployment);
+    let account = accounts.create_account(label, &[principal]).unwrap();
+    let invite = accounts
+        .invite(&deployment.owner, workspace, tenancy::Role::Member, 3_600)
+        .unwrap();
+    accounts.accept(&account.id, &invite.token).unwrap();
+    account.id
+}
+
+#[tokio::test]
+async fn money_admission_reserves_then_settles_reported_usage() {
+    let (endpoint, forwards) = backend(honest(
+        artifact('b'),
+        json!({"answers": {"q1": 0.9}, "usage": {"input_tokens": 3, "output_tokens": 1}}),
+    ))
+    .await;
+    let (doors, priced) = money_doors(endpoint);
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(2 * HOLD));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    let response = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&token),
+        Some(&deployment.workspace),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["x-settlement"], "settled");
+    assert_eq!(forwards.load(Ordering::SeqCst), 1);
+    let (status, balance) =
+        get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(status, StatusCode::OK, "{balance}");
+    assert_eq!(balance["workspace"], deployment.workspace);
+    assert_eq!(balance["balance"]["settled"], CHARGE);
+    assert_eq!(balance["balance"]["reserved"], 0);
+    assert_eq!(balance["balance"]["available"], 2 * HOLD - CHARGE);
+    assert_eq!(balance["balance"]["currency"], "USD");
+    assert_eq!(
+        balance["prices"]["acme-kev"]["version"],
+        "synthetic-fixture-v1"
+    );
+    // The ledger stays locked to the running gateway, and its log holds
+    // the reserve and the settle under one attempt reference.
+    assert!(tenancy::money::Ledger::open(&deployment.ledger).is_err());
+    let log = std::fs::read_to_string(&deployment.ledger).unwrap();
+    assert!(log.contains("\"reserve\""));
+    assert!(log.contains("\"settle\""));
+    assert!(log.contains("\"receipt\""));
+}
+
+#[tokio::test]
+async fn money_refusals_reach_no_backend() {
+    let (endpoint, forwards) = backend(honest(
+        artifact('b'),
+        json!({"answers": {"q1": 0.9}, "usage": {"input_tokens": 3, "output_tokens": 1}}),
+    ))
+    .await;
+    let mut doors = BTreeMap::new();
+    for (door, endpoint) in [
+        ("acme-kev", endpoint.clone()),
+        ("shared-kev", endpoint.clone()),
+    ] {
+        doors.insert(
+            door.to_string(),
+            Door {
+                endpoint,
+                classify: None,
+                classify_item_concurrency: 1,
+            },
+        );
+    }
+    // `acme-kev` is priced; `shared-kev` is deliberately not — a door
+    // with no configured price must refuse, never invent one.
+    let priced: BTreeMap<String, Priced> = [("acme-kev".into(), fixture_priced())]
+        .into_iter()
+        .collect();
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        // The workspace account exists but cannot cover one hold.
+        provision_account(ledger, workspace, Some(CHARGE));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    let workspace = deployment.workspace.clone();
+
+    // No key, no workspace header, insufficient balance, an unpriced
+    // door: four refusals, and the backend sees none of them.
+    for (token, workspace, status, code) in [
+        (None, Some(workspace.as_str()), 401, "unauthenticated"),
+        (Some(token.as_str()), None, 400, "workspace_required"),
+        (
+            Some(token.as_str()),
+            Some(workspace.as_str()),
+            402,
+            "insufficient_funds",
+        ),
+    ] {
+        let response =
+            send_money_call(&deployment, &call("acme-kev"), token, workspace, None).await;
+        assert_eq!(response.status(), status);
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body["error"]["code"], code);
+    }
+    let unpriced = send_money_call(
+        &deployment,
+        &call("shared-kev"),
+        Some(&token),
+        Some(&workspace),
+        None,
+    )
+    .await;
+    assert_eq!(unpriced.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = unpriced.json().await.unwrap();
+    assert_eq!(body["error"]["code"], "unpriced");
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+    // A workspace with membership but no provisioned account refuses the
+    // same way — admission never creates one.
+    let accounts = accounts(&deployment);
+    let empty = accounts
+        .create_workspace(
+            &deployment.member,
+            "empty",
+            tenancy::WorkspaceKind::Organization,
+            "acme",
+            None,
+        )
+        .unwrap();
+    let response = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&token),
+        Some(&empty.id),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::PAYMENT_REQUIRED);
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn money_a_price_that_disagrees_with_the_binding_refuses() {
+    let (endpoint, forwards) = backend(honest(
+        artifact('b'),
+        json!({"answers": {"q1": 0.9}, "usage": {"input_tokens": 3, "output_tokens": 1}}),
+    ))
+    .await;
+    // The door is bound to `kev-0.6b` on `dedicated`; a price naming
+    // another model or lane cannot govern its calls.
+    for (model, capacity) in [("other-model", "dedicated"), ("kev-0.6b", "shared")] {
+        let mut priced = fixture_priced();
+        priced.price.model = model.to_string();
+        priced.price.capacity = capacity.to_string();
+        let (doors, _) = money_doors(endpoint.clone());
+        let deployment = deploy_money(
+            manifest(None),
+            doors,
+            [("acme-kev".into(), priced)].into_iter().collect(),
+            |ledger, workspace| provision_account(ledger, workspace, Some(HOLD)),
+        )
+        .await;
+        let response = send_money_call(
+            &deployment,
+            &call("acme-kev"),
+            Some(&deployment.deployment.tokens["acme"]),
+            Some(&deployment.workspace),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body["error"]["code"], "price_invalid", "{body}");
+        assert_eq!(forwards.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn money_completion_without_usage_stays_outstanding() {
+    // The backend answers but reports nothing the price can read: the
+    // call resolves, the full hold stays outstanding — never zero.
+    let (endpoint, _) = backend(honest(artifact('b'), json!({"answers": {"q1": 0.9}}))).await;
+    let (doors, priced) = money_doors(endpoint);
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(2 * HOLD));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    let response = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&token),
+        Some(&deployment.workspace),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["x-settlement"], "outstanding");
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(balance["balance"]["reserved"], HOLD);
+    assert_eq!(balance["balance"]["settled"], 0);
+    assert_eq!(balance["balance"]["available"], HOLD);
+    // The ledger names the completion unknown — the hold is a liability
+    // an operator reconciles, not a charge the gateway dropped.
+    let log = std::fs::read_to_string(&deployment.ledger).unwrap();
+    assert!(log.contains("\"unknown\""));
+}
+
+#[tokio::test]
+async fn money_an_unavailable_backend_keeps_the_hold_outstanding() {
+    // A dispatch that fails outright is unknown work: the reservation
+    // stays outstanding rather than releasing on a timeout's say-so.
+    let stub = Backend {
+        answer_status: StatusCode::SERVICE_UNAVAILABLE,
+        answer_body: json!({"error": {"code": "busy"}}),
+        ..honest(artifact('b'), json!({}))
+    };
+    let (endpoint, forwards) = backend(stub).await;
+    let (doors, priced) = money_doors(endpoint);
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(2 * HOLD));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    let response = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&token),
+        Some(&deployment.workspace),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.headers()["x-settlement"], "outstanding");
+    assert_eq!(forwards.load(Ordering::SeqCst), 1);
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(balance["balance"]["reserved"], HOLD);
+}
+
+#[tokio::test]
+async fn money_concurrent_calls_never_overspend() {
+    // Four calls, credit for two holds: exactly two dispatch, two
+    // refuse at admission, and the backend sees exactly the funded two.
+    let stub = Backend {
+        delay_ms: 400,
+        ..honest(
+            artifact('b'),
+            json!({"answers": {"q1": 0.9}, "usage": {"input_tokens": 3, "output_tokens": 1}}),
+        )
+    };
+    let (endpoint, forwards) = backend(stub).await;
+    let (doors, priced) = money_doors(endpoint);
+    // Widen the door's declared concurrency so admission refusal lands
+    // on the money reserve, not the forward bound.
+    let mut manifest = manifest(None);
+    manifest
+        .tenants
+        .get_mut("acme")
+        .unwrap()
+        .doors
+        .get_mut("acme-kev")
+        .unwrap()
+        .capacity = Some(Capacity {
+        concurrency: Some(8),
+        requests_per_minute: None,
+    });
+    let deployment = deploy_money(manifest, doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(2 * HOLD));
+    })
+    .await;
+    let address = deployment.deployment.address.clone();
+    let token = deployment.deployment.tokens["acme"].clone();
+    let workspace = deployment.workspace.clone();
+    let send = || {
+        let (address, token, workspace) = (address.clone(), token.clone(), workspace.clone());
+        tokio::spawn(async move {
+            reqwest::Client::new()
+                .post(format!("{address}/v1/systemone"))
+                .bearer_auth(token)
+                .header("x-workspace-id", workspace)
+                .json(&call("acme-kev"))
+                .send()
+                .await
+                .unwrap()
+                .status()
+        })
+    };
+    let mut tasks = Vec::new();
+    for _ in 0..4 {
+        tasks.push(send());
+    }
+    let mut ok = 0;
+    let mut refused = 0;
+    for task in tasks {
+        match task.await.unwrap() {
+            StatusCode::OK => ok += 1,
+            StatusCode::PAYMENT_REQUIRED => refused += 1,
+            status => panic!("unexpected {status}"),
+        }
+    }
+    assert_eq!((ok, refused), (2, 2));
+    assert_eq!(forwards.load(Ordering::SeqCst), 2);
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&workspace)).await;
+    assert_eq!(balance["balance"]["settled"], 2 * CHARGE);
+    assert_eq!(balance["balance"]["reserved"], 0);
+    assert_eq!(balance["balance"]["available"], 2 * HOLD - 2 * CHARGE);
+}
+
+#[tokio::test]
+async fn money_a_retried_attempt_is_charged_once() {
+    // Two concurrent sends of one (idempotency-key, attempt) pair
+    // share the hold: both answer, the workspace pays once.
+    let stub = Backend {
+        delay_ms: 150,
+        ..honest(
+            artifact('b'),
+            json!({"answers": {"q1": 0.9}, "usage": {"input_tokens": 3, "output_tokens": 1}}),
+        )
+    };
+    let (endpoint, forwards) = backend(stub).await;
+    let (doors, priced) = money_doors(endpoint);
+    // Widen the door's declared concurrency so admission refusal lands
+    // on the money reserve, not the forward bound.
+    let mut manifest = manifest(None);
+    manifest
+        .tenants
+        .get_mut("acme")
+        .unwrap()
+        .doors
+        .get_mut("acme-kev")
+        .unwrap()
+        .capacity = Some(Capacity {
+        concurrency: Some(8),
+        requests_per_minute: None,
+    });
+    let deployment = deploy_money(manifest, doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(2 * HOLD));
+    })
+    .await;
+    let address = deployment.deployment.address.clone();
+    let token = deployment.deployment.tokens["acme"].clone();
+    let workspace = deployment.workspace.clone();
+    let send = || {
+        let (address, token, workspace) = (address.clone(), token.clone(), workspace.clone());
+        tokio::spawn(async move {
+            let response = reqwest::Client::new()
+                .post(format!("{address}/v1/systemone"))
+                .bearer_auth(token)
+                .header("x-workspace-id", workspace)
+                .header("idempotency-key", "req-dup")
+                .header("x-attempt", "1")
+                .json(&call("acme-kev"))
+                .send()
+                .await
+                .unwrap();
+            let settlement = response
+                .headers()
+                .get("x-settlement")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
+            (response.status(), settlement)
+        })
+    };
+    let (first, second) = (send(), send());
+    let (first, second) = tokio::join!(first, second);
+    for (status, settlement) in [first.unwrap(), second.unwrap()] {
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settlement.as_deref(), Some("settled"));
+    }
+    let token = deployment.deployment.tokens["acme"].clone();
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(balance["balance"]["settled"], CHARGE, "{balance}");
+    let log = std::fs::read_to_string(&deployment.ledger).unwrap();
+    assert_eq!(log.matches("\"kind\":\"reserve\"").count(), 1);
+    // The resolved pair refuses a changed body and a replay alike.
+    let mut changed = call("acme-kev");
+    changed["state"] = json!("different content");
+    let replay = send_money_call(
+        &deployment,
+        &changed,
+        Some(&token),
+        Some(&deployment.workspace),
+        Some(("req-dup", 1)),
+    )
+    .await;
+    assert_eq!(replay.status(), StatusCode::CONFLICT);
+    let replay = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&token),
+        Some(&deployment.workspace),
+        Some(("req-dup", 1)),
+    )
+    .await;
+    assert_eq!(replay.status(), StatusCode::CONFLICT);
+    assert_eq!(forwards.load(Ordering::SeqCst), 2);
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(balance["balance"]["settled"], CHARGE);
+}
+
+#[tokio::test]
+async fn money_the_workspace_spans_its_keys_and_survives_rotation() {
+    let (endpoint, _) = backend(honest(
+        artifact('b'),
+        json!({"answers": {"q1": 0.9}, "usage": {"input_tokens": 3, "output_tokens": 1}}),
+    ))
+    .await;
+    let (doors, priced) = money_doors(endpoint);
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(4 * HOLD));
+    })
+    .await;
+    let dir = deployment.deployment.dir.path();
+    // A second acme key joins the workspace through its own account —
+    // the workspace's balance, not either key's, is what's charged.
+    let registry = Registry::open(dir).unwrap();
+    let second = keys::issue(dir, registry.manifest(), "acme").unwrap();
+    let second_key = keys::authenticate(dir, registry.manifest(), &second.token).unwrap();
+    join_workspace(
+        &deployment,
+        "member-two",
+        format!("key:{}", second_key.key_id),
+        &deployment.workspace,
+    );
+    for token in [
+        deployment.deployment.tokens["acme"].clone(),
+        second.token.clone(),
+    ] {
+        let response = send_money_call(
+            &deployment,
+            &call("acme-kev"),
+            Some(&token),
+            Some(&deployment.workspace),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+    let (_, balance) = get_balance(
+        &deployment,
+        Some(&second.token),
+        Some(&deployment.workspace),
+    )
+    .await;
+    assert_eq!(balance["balance"]["settled"], 2 * CHARGE);
+    // Rotating the first key revokes it at once: the old secret stops
+    // authenticating, and the workspace's balance is untouched.
+    let first = keys::authenticate(
+        dir,
+        registry.manifest(),
+        &deployment.deployment.tokens["acme"],
+    )
+    .unwrap();
+    let rotated = keys::rotate(dir, &first.key_id).unwrap();
+    let revoked = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&deployment.deployment.tokens["acme"]),
+        Some(&deployment.workspace),
+        None,
+    )
+    .await;
+    assert_eq!(revoked.status(), StatusCode::UNAUTHORIZED);
+    // The rotated credential needs its principal bound to an account —
+    // then it spends from the same workspace balance, never a reset one.
+    let rotated_key = keys::authenticate(dir, registry.manifest(), &rotated.token).unwrap();
+    join_workspace(
+        &deployment,
+        "member-rotated",
+        format!("key:{}", rotated_key.key_id),
+        &deployment.workspace,
+    );
+    let response = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&rotated.token),
+        Some(&deployment.workspace),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let (_, balance) = get_balance(
+        &deployment,
+        Some(&rotated.token),
+        Some(&deployment.workspace),
+    )
+    .await;
+    assert_eq!(balance["balance"]["settled"], 3 * CHARGE);
+    // A revoked key loses dispatch and balance reads together.
+    keys::revoke(dir, &second_key.key_id).unwrap();
+    let response = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&second.token),
+        Some(&deployment.workspace),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let (status, _) = get_balance(
+        &deployment,
+        Some(&second.token),
+        Some(&deployment.workspace),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn money_balance_reads_stay_inside_the_callers_workspace() {
+    let (endpoint, _) = backend(honest(
+        artifact('b'),
+        json!({"answers": {"q1": 0.9}, "usage": {"input_tokens": 3, "output_tokens": 1}}),
+    ))
+    .await;
+    let (doors, priced) = money_doors(endpoint);
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(HOLD));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    // The member's own workspace reads its exact position.
+    let (status, balance) =
+        get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(status, StatusCode::OK, "{balance}");
+    assert_eq!(balance["balance"]["credited"], HOLD);
+    // No header, no key, a workspace in another tenant, a workspace the
+    // account never joined: each refuses rather than leaking a position.
+    let accounts = accounts(&deployment);
+    let foreign = accounts
+        .create_workspace(
+            &deployment.owner,
+            "foreign",
+            tenancy::WorkspaceKind::Organization,
+            "globex",
+            None,
+        )
+        .unwrap();
+    let stranger = accounts.create_account("stranger", &[]).unwrap();
+    let unjoined = accounts
+        .create_workspace(
+            &stranger.id,
+            "unjoined",
+            tenancy::WorkspaceKind::Organization,
+            "acme",
+            None,
+        )
+        .unwrap();
+    for (token, workspace, status) in [
+        (Some(token.as_str()), None, 400),
+        (None, Some(deployment.workspace.as_str()), 401),
+        (Some(token.as_str()), Some(foreign.id.as_str()), 403),
+        (Some(token.as_str()), Some(unjoined.id.as_str()), 403),
+        (
+            Some(deployment.deployment.tokens["globex"].as_str()),
+            Some(deployment.workspace.as_str()),
+            403,
+        ),
+    ] {
+        assert_eq!(
+            get_balance(&deployment, token, workspace).await.0,
+            status,
+            "{token:?} {workspace:?}"
+        );
+    }
+    // No mutation route exists: the only writes are the operator's own
+    // ledger entries.
+    for method in ["post", "put", "delete"] {
+        let response = reqwest::Client::new()
+            .request(
+                method.parse().unwrap(),
+                format!("{}/v1/balance", deployment.deployment.address),
+            )
+            .bearer_auth(&token)
+            .header("x-workspace-id", &deployment.workspace)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+}
+
+#[tokio::test]
+async fn money_recovery_keeps_an_outstanding_hold_outstanding() {
+    // A hold the last writer left mid-flight is unknown liability after
+    // reopen: the gateway serves over it, the balance still shows it
+    // reserved, and nothing releases it silently.
+    let (endpoint, _) = backend(honest(
+        artifact('b'),
+        json!({"answers": {"q1": 0.9}, "usage": {"input_tokens": 3, "output_tokens": 1}}),
+    ))
+    .await;
+    let (doors, priced) = money_doors(endpoint);
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(3 * HOLD));
+        ledger_apply(
+            ledger,
+            workspace,
+            "stale:reserve",
+            tenancy::money::Operation::Reserve {
+                attempt: "stale#1".to_string(),
+                request_digest: "sha256:fixture".to_string(),
+                price: fixture_priced().price,
+                maximum_usage: fixture_priced().maximum_usage,
+            },
+        );
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(balance["balance"]["reserved"], HOLD, "{balance}");
+    // New work still reserves and settles against what remains.
+    let response = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&token),
+        Some(&deployment.workspace),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(balance["balance"]["reserved"], HOLD);
+    assert_eq!(balance["balance"]["settled"], CHARGE);
+}
+
+#[tokio::test]
+async fn money_absent_keeps_every_legacy_behavior() {
+    // No `money` in the config: no ledger, no membership requirement,
+    // no settlement header, and the balance route does not exist.
+    let (endpoint, forwards) =
+        backend(honest(artifact('b'), json!({"answers": {"q1": 0.9}}))).await;
+    let deployment = deploy(
+        manifest(None),
+        [("acme-kev".to_string(), endpoint)].into_iter().collect(),
+    )
+    .await;
+    let response = send_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get("x-settlement").is_none());
+    assert_eq!(forwards.load(Ordering::SeqCst), 1);
+    let balance = reqwest::Client::new()
+        .get(format!("{}/v1/balance", deployment.address))
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(balance.status(), StatusCode::NOT_FOUND);
+    assert!(!deployment.dir.path().join("money.jsonl").exists());
+}
+
+#[tokio::test]
+async fn money_classification_reserves_once_and_settles_the_fan_out() {
+    // One hold covers the whole call: each dispatched item reports its
+    // usage, the aggregate settles, and one silent item would leave the
+    // whole hold outstanding.
+    let (endpoint, forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let mut doors = BTreeMap::new();
+    doors.insert(
+        "acme-kev".to_string(),
+        Door {
+            endpoint,
+            classify: Some(gateway::classify::BackendLimits::product()),
+            classify_item_concurrency: 2,
+        },
+    );
+    let priced: BTreeMap<String, Priced> = [("acme-kev".into(), fixture_priced())]
+        .into_iter()
+        .collect();
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(3 * HOLD));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{}/v1/classify", deployment.deployment.address))
+        .bearer_auth(&token)
+        .header("x-workspace-id", &deployment.workspace)
+        .json(&classify_batch(2))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["x-settlement"], "settled");
+    assert_eq!(forwards.load(Ordering::SeqCst), 2);
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    // Two items each reporting 3 input and 1 output tokens.
+    assert_eq!(balance["balance"]["settled"], 2 * CHARGE);
+    assert_eq!(balance["balance"]["reserved"], 0);
+}
+
+#[tokio::test]
+async fn money_classification_stays_outstanding_on_a_silent_item() {
+    // One dispatched item reports no usage the price reads: the call's
+    // hold is never partially priced — it stays outstanding in full.
+    let stub = per_input_backend(|body| {
+        if body["state"] == "text 0" {
+            (StatusCode::OK, choice_answer())
+        } else {
+            (
+                StatusCode::OK,
+                json!({"answers": {"q0": {"type": "choice", "choice": "a",
+                "confidence": 0.8, "probabilities": {"a": 0.8, "b": 0.2}}}}),
+            )
+        }
+    });
+    let (endpoint, forwards) = backend(stub).await;
+    let mut doors = BTreeMap::new();
+    doors.insert(
+        "acme-kev".to_string(),
+        Door {
+            endpoint,
+            classify: Some(gateway::classify::BackendLimits::product()),
+            classify_item_concurrency: 1,
+        },
+    );
+    let priced: BTreeMap<String, Priced> = [("acme-kev".into(), fixture_priced())]
+        .into_iter()
+        .collect();
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(3 * HOLD));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/classify", deployment.deployment.address))
+        .bearer_auth(&token)
+        .header("x-workspace-id", &deployment.workspace)
+        .json(&classify_batch(2))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["x-settlement"], "outstanding");
+    assert_eq!(forwards.load(Ordering::SeqCst), 2);
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(balance["balance"]["reserved"], HOLD);
+    assert_eq!(balance["balance"]["settled"], 0);
+}
+
+#[tokio::test]
+async fn money_classification_refusals_hold_nothing() {
+    // A classify call refused before any fan-out — an unpriced door, or
+    // a funded account that cannot cover the hold — dispatches nothing
+    // and reserves nothing that stays.
+    let (endpoint, forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let mut doors = BTreeMap::new();
+    for door in ["acme-kev", "shared-kev"] {
+        doors.insert(
+            door.to_string(),
+            Door {
+                endpoint: endpoint.clone(),
+                classify: Some(gateway::classify::BackendLimits::product()),
+                classify_item_concurrency: 1,
+            },
+        );
+    }
+    let priced: BTreeMap<String, Priced> = [("acme-kev".into(), fixture_priced())]
+        .into_iter()
+        .collect();
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(CHARGE));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    for (model, capacity) in [("acme-kev", "dedicated"), ("shared-kev", "shared")] {
+        let mut batch = classify_batch(1);
+        batch["model"] = json!(model);
+        batch["capacity"] = json!(capacity);
+        let response = reqwest::Client::new()
+            .post(format!("{}/v1/classify", deployment.deployment.address))
+            .bearer_auth(&token)
+            .header("x-workspace-id", &deployment.workspace)
+            .json(&batch)
+            .send()
+            .await
+            .unwrap();
+        let body: Value = response.json().await.unwrap();
+        assert!(
+            matches!(
+                body["error"]["code"].as_str(),
+                Some("insufficient_funds" | "unpriced")
+            ),
+            "{body}"
+        );
+    }
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(balance["balance"]["reserved"], 0);
+}
+
+#[tokio::test]
+async fn money_a_failed_identity_check_releases_the_hold() {
+    // The backend publishes a digest the binding did not pin: the check
+    // refuses before a byte is forwarded, and work that never dispatched
+    // is the one release the ledger accepts — the account keeps it all.
+    let stub = Backend {
+        digest: artifact('z'),
+        ..honest(
+            artifact('b'),
+            json!({"answers": {"q1": 0.9}, "usage": {"input_tokens": 3, "output_tokens": 1}}),
+        )
+    };
+    let (endpoint, forwards) = backend(stub).await;
+    let (doors, priced) = money_doors(endpoint);
+    let deployment = deploy_money(manifest(None), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(HOLD));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    let response = send_money_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&token),
+        Some(&deployment.workspace),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.headers()["x-settlement"], "released");
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["error"]["code"], "identity_mismatch");
+    assert_eq!(body["settlement"], "released");
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    assert_eq!(balance["balance"]["reserved"], 0);
+    assert_eq!(balance["balance"]["available"], HOLD);
 }

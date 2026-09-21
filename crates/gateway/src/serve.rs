@@ -47,6 +47,7 @@ use tenancy::{Admission, Capacity, Published, Registry, keys, lane_name, quota};
 
 use crate::classify::{self, Mode, RankOrder, Request as ClassifyRequest};
 use crate::config::{Config, Door};
+use crate::money;
 
 /// The file every attempt's sealed receipt appends to.
 const RECEIPTS: &str = "receipts.jsonl";
@@ -63,6 +64,9 @@ pub enum Trouble {
     Ledger(quota::LedgerTrouble),
     /// The registry did not open.
     Registry(tenancy::Trouble),
+    /// The spending ledger did not open — a lock, a damaged log, or a
+    /// path that is not a private regular file.
+    Money(String),
 }
 
 impl std::fmt::Display for Trouble {
@@ -71,6 +75,7 @@ impl std::fmt::Display for Trouble {
             Self::Io(error) => write!(f, "{error}"),
             Self::Ledger(trouble) => write!(f, "{trouble}"),
             Self::Registry(trouble) => write!(f, "{trouble}"),
+            Self::Money(message) => write!(f, "{message}"),
         }
     }
 }
@@ -116,6 +121,10 @@ pub struct ServeState {
     config: Config,
     client: reqwest::Client,
     ledger: Mutex<quota::Ledger>,
+    /// The workspace spending ledger — present only when the operator
+    /// opted in to monetary admission, and locked for the process's
+    /// lifetime when it is.
+    money: Option<Mutex<tenancy::money::Ledger>>,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
@@ -146,6 +155,15 @@ impl ServeState {
             .timeout(Duration::from_millis(config.forward_timeout_ms))
             .build()
             .map_err(|error| Trouble::Io(std::io::Error::other(error.to_string())))?;
+        // Monetary admission opens its ledger at startup — a spending
+        // store that cannot open fails the process, not the first call.
+        let money = config
+            .money
+            .as_ref()
+            .map(|money| tenancy::money::Ledger::open(&money.ledger))
+            .transpose()
+            .map_err(Trouble::Money)?
+            .map(Mutex::new);
         Ok(Arc::new(Self {
             dir: config.registry.clone(),
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
@@ -154,6 +172,7 @@ impl ServeState {
             config,
             client,
             ledger: Mutex::new(ledger),
+            money,
             receipts: Mutex::new(receipts),
             doors: Mutex::new(HashMap::new()),
             attempt_ids: AtomicU64::new(0),
@@ -183,11 +202,19 @@ impl ServeState {
 /// Build the axum router over the state.
 pub fn router(state: Arc<ServeState>) -> axum::Router {
     let body_max = state.config.max_body_bytes;
-    axum::Router::new()
+    let router = axum::Router::new()
         .route("/v1/systemone", post(systemone))
         .route("/v1/classify", post(classify))
         .route("/v1/models", get(models))
-        .route("/healthz", get(healthz))
+        .route("/healthz", get(healthz));
+    // The balance read exists only under monetary admission — absent the
+    // mode there is no ledger behind it and no route at all.
+    let router = if state.config.money.is_some() {
+        router.route("/v1/balance", get(balance))
+    } else {
+        router
+    };
+    router
         .layer(DefaultBodyLimit::max(body_max))
         .with_state(state)
 }
@@ -239,6 +266,73 @@ async fn models(
         })
         .collect();
     Ok(Json(json!({"models": cards})))
+}
+
+/// `GET /v1/balance`: the caller's workspace account position under
+/// monetary admission — exact credited, reserved, settled, refunded,
+/// available, and remaining authorized spend, plus the price versions
+/// the configured doors charge under.
+///
+/// The read is scoped by the same authenticated membership the decision
+/// path requires: the `X-Workspace-Id` header names the account, and a
+/// caller can only ever read a workspace it belongs to. There is no
+/// top-up or payment mutation here — account funding is an operator act
+/// on the ledger itself.
+async fn balance(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, Response> {
+    let (_registry, caller) = match authenticate(&state, &headers) {
+        Ok(parts) => parts,
+        Err((status, code, message)) => return Err(gateway_error(status.as_u16(), code, &message)),
+    };
+    let Some(workspace) = caller.workspace else {
+        return Err(gateway_error(
+            400,
+            "workspace_required",
+            "one X-Workspace-Id header is required",
+        ));
+    };
+    let Some(ledger) = &state.money else {
+        return Err(gateway_error(
+            404,
+            "unmetered",
+            "this gateway does not run monetary admission",
+        ));
+    };
+    let balance = ledger.lock().await.balance(&workspace).map_err(|error| {
+        gateway_error(
+            404,
+            "account_missing",
+            &format!("workspace `{workspace}` holds no monetary account: {error}"),
+        )
+    })?;
+    let prices: serde_json::Map<String, Value> = state
+        .config
+        .money
+        .as_ref()
+        .map(|money| {
+            money
+                .doors
+                .iter()
+                .map(|(door, priced)| {
+                    (
+                        door.clone(),
+                        json!({
+                            "version": priced.price.version,
+                            "policy": priced.price.policy,
+                            "currency": priced.price.currency,
+                        }),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Json(json!({
+        "workspace": workspace,
+        "balance": serde_json::to_value(&balance).unwrap_or_default(),
+        "prices": prices,
+    })))
 }
 
 /// Publish configured admission bounds without claiming a live backend probe or
@@ -304,6 +398,10 @@ struct Caller {
     /// The credential id the call authenticated under — a reference,
     /// never the secret.
     key: String,
+    /// The workspace the membership check admitted — present only when
+    /// `require_workspace_membership` ran, and the account monetary
+    /// admission charges.
+    workspace: Option<String>,
 }
 
 /// Resolve the `Authorization` header and reopen the registry for this
@@ -333,6 +431,7 @@ fn authenticate(
             Caller {
                 tenant: None,
                 key: "anonymous".to_string(),
+                workspace: None,
             },
         ));
     };
@@ -358,9 +457,10 @@ fn authenticate(
                 format!("the credential was refused: {refusal}"),
             )
         })?;
+    let mut workspace = None;
     if state.config.require_workspace_membership {
         let mut values = headers.get_all("x-workspace-id").iter();
-        let workspace = values
+        let named = values
             .next()
             .and_then(|value| value.to_str().ok())
             .filter(|value| !value.is_empty())
@@ -386,7 +486,7 @@ fn authenticate(
             )
         })?;
         accounts
-            .authenticate_key(registry.manifest(), workspace, token)
+            .authenticate_key(registry.manifest(), named, token)
             .map_err(|cause| match cause {
                 tenancy::accounts::Refusal::Store(_) => (
                     StatusCode::SERVICE_UNAVAILABLE,
@@ -404,12 +504,14 @@ fn authenticate(
                     "the credential has no active membership in this workspace and tenant".into(),
                 ),
             })?;
+        workspace = Some(named.to_string());
     }
     Ok((
         registry,
         Caller {
             tenant: Some(authenticated.tenant),
             key: authenticated.key_id,
+            workspace,
         },
     ))
 }
@@ -431,6 +533,9 @@ struct ReceiptContext {
     result_digest: Option<String>,
     /// The reservation the attempt settled against, when it held one.
     usage: Option<String>,
+    /// How the attempt's monetary hold resolved — `settled`,
+    /// `outstanding`, or `released` — when monetary admission ran.
+    settlement: Option<&'static str>,
 }
 
 /// What the admission path produced.
@@ -553,24 +658,36 @@ async fn conclude(
             message,
             outcome,
             ctx,
-        } => (
-            status,
-            outcome,
-            outcome_label(outcome),
-            serde_json::to_vec(&json!({
+        } => {
+            let mut body = json!({
                 "error": {"code": code, "message": message,
                           "request": naming.request, "attempt": naming.attempt},
-            }))
-            .unwrap_or_default()
-            .into(),
-            Some(code.to_string()),
-            ctx,
-        ),
+            });
+            if let Some(settlement) = ctx.settlement {
+                body["settlement"] = json!(settlement);
+            }
+            (
+                status,
+                outcome,
+                outcome_label(outcome),
+                serde_json::to_vec(&body).unwrap_or_default().into(),
+                Some(code.to_string()),
+                ctx,
+            )
+        }
     };
 
+    let settlement = ctx.settlement;
     let receipt_digest =
         write_receipt(state, naming, outcome, cause.as_deref(), started, &ctx).await;
-    respond(status, body_out, naming, label, receipt_digest.as_deref())
+    respond(
+        status,
+        body_out,
+        naming,
+        label,
+        receipt_digest.as_deref(),
+        settlement,
+    )
 }
 
 /// The permits a bound attempt holds until it resolves.
@@ -785,19 +902,24 @@ async fn reserved(
 
 /// Step 5 of every route: the backend's published identity against the
 /// binding — before a byte of the request is forwarded. A failed check
-/// releases the reservation rather than charging it.
+/// releases the reservation rather than charging it; a monetary hold is
+/// released the same way, because work that never dispatched is the one
+/// release the ledger accepts without further evidence.
 async fn verified(
     state: &ServeState,
     endpoint: &str,
     admission: &Admission,
     naming: &Naming<'_>,
     ctx: &mut Context,
+    hold: &Option<money::Hold>,
 ) -> Result<(), Verdict> {
     let published =
         match published_identity(state, endpoint, &admission.binding.artifact.model).await {
             Ok(published) => published,
             Err(message) => {
                 state.release(naming.request, naming.attempt).await;
+                money_release(state, hold).await;
+                ctx.settlement = hold.as_ref().map(|_| money::Settlement::Released.label());
                 return Err(Verdict::Refused {
                     status: StatusCode::SERVICE_UNAVAILABLE,
                     code: "door_unavailable",
@@ -809,6 +931,8 @@ async fn verified(
         };
     if let Err(fault) = admission.verify(&published) {
         state.release(naming.request, naming.attempt).await;
+        money_release(state, hold).await;
+        ctx.settlement = hold.as_ref().map(|_| money::Settlement::Released.label());
         return Err(Verdict::Refused {
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "identity_mismatch",
@@ -828,6 +952,104 @@ async fn verified(
         execution: published.execution.clone(),
     };
     Ok(())
+}
+
+/// Step 4b of every route, only under monetary admission: the durable
+/// worst-case spend reservation against the caller's workspace, taken
+/// before any backend dispatch. A refusal here releases the call's
+/// quota reservation — the hold was fresh, because a replayed
+/// reservation returns standing rather than refusing.
+async fn money_hold(
+    state: &ServeState,
+    caller: &Caller,
+    door: &str,
+    admission: &Admission,
+    naming: &Naming<'_>,
+    ctx: &Context,
+) -> Result<Option<money::Hold>, Verdict> {
+    let Some(config) = &state.config.money else {
+        return Ok(None);
+    };
+    let Some(workspace) = caller.workspace.clone() else {
+        return Err(Verdict::Refused {
+            status: StatusCode::BAD_REQUEST,
+            code: "workspace_required",
+            message: "monetary admission requires an authenticated workspace".to_string(),
+            outcome: Outcome::Refused,
+            ctx: ctx.clone(),
+        });
+    };
+    let Some(priced) = config.doors.get(door) else {
+        return Err(Verdict::Refused {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "unpriced",
+            message: format!(
+                "door `{door}` has no configured price — the gateway does not \
+                 invent one to keep it serving"
+            ),
+            outcome: Outcome::Refused,
+            ctx: ctx.clone(),
+        });
+    };
+    let ledger = state.money.as_ref().expect("money config opens a ledger");
+    let mut ledger = ledger.lock().await;
+    match money::reserve(
+        &mut ledger,
+        &workspace,
+        naming.request,
+        naming.attempt,
+        naming.request_digest,
+        priced,
+        &admission.binding.artifact.model,
+        lane_name(admission.binding.lane),
+    ) {
+        Ok(hold) => Ok(Some(hold)),
+        Err(refusal) => {
+            drop(ledger);
+            // The reserve left nothing standing — free the call's quota
+            // reservation rather than holding budget it cannot spend.
+            state.release(naming.request, naming.attempt).await;
+            let (status, code) = match &refusal {
+                money::Refusal::Funds(_) => (StatusCode::PAYMENT_REQUIRED, "insufficient_funds"),
+                money::Refusal::Price(_) => (StatusCode::SERVICE_UNAVAILABLE, "price_invalid"),
+                money::Refusal::Ledger(_) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "ledger_unavailable")
+                }
+            };
+            Err(Verdict::Refused {
+                status,
+                code,
+                message: refusal.to_string(),
+                outcome: Outcome::Refused,
+                ctx: ctx.clone(),
+            })
+        }
+    }
+}
+
+/// Release a monetary hold whose work was never dispatched.
+async fn money_release(state: &ServeState, hold: &Option<money::Hold>) {
+    if let (Some(ledger), Some(hold)) = (&state.money, hold) {
+        let mut ledger = ledger.lock().await;
+        money::release(&mut ledger, hold);
+    }
+}
+
+/// Resolve the attempt's monetary hold from its outcome and observed
+/// usage — settling only what the response prices, and leaving the full
+/// reservation outstanding otherwise.
+async fn money_settle(
+    state: &ServeState,
+    hold: &Option<money::Hold>,
+    naming: &Naming<'_>,
+    usage: Option<tenancy::money::Usage>,
+) -> Option<&'static str> {
+    let (Some(ledger), Some(hold)) = (&state.money, hold) else {
+        return None;
+    };
+    let mut ledger = ledger.lock().await;
+    let receipt = format!("{}#{}", naming.request, naming.attempt);
+    Some(money::settle(&mut ledger, hold, usage, &receipt).label())
 }
 
 /// Settle the attempt's reservation from its recorded outcome.
@@ -927,7 +1149,11 @@ async fn admitted(
     if let Err(verdict) = reserved(state, &registry, &caller, naming, &units, &mut ctx).await {
         return verdict;
     }
-    if let Err(verdict) = verified(state, &endpoint, &admission, naming, &mut ctx).await {
+    let hold = match money_hold(state, &caller, door, &admission, naming, &ctx).await {
+        Ok(hold) => hold,
+        Err(verdict) => return verdict,
+    };
+    if let Err(verdict) = verified(state, &endpoint, &admission, naming, &mut ctx, &hold).await {
         return verdict;
     }
 
@@ -953,6 +1179,15 @@ async fn admitted(
     };
     ctx.result_digest = Some(digest_bytes(&body_out));
     settled(state, naming, outcome, &units).await;
+    if hold.is_some() {
+        // A dispatched attempt settles the usage the door reported;
+        // anything unpriceable — a missing, partial, or non-count
+        // report — leaves the whole hold outstanding, never zero.
+        let usage = serde_json::from_slice::<Value>(&body_out)
+            .ok()
+            .and_then(|body| money::observed(&hold.as_ref().unwrap().price, &body));
+        ctx.settlement = money_settle(state, &hold, naming, usage).await;
+    }
     Verdict::Forwarded {
         status,
         body: body_out,
@@ -1081,7 +1316,11 @@ async fn classify_admitted(
     if let Err(verdict) = reserved(state, &registry, &caller, naming, &units, &mut ctx).await {
         return verdict;
     }
-    if let Err(verdict) = verified(state, &endpoint, &admission, naming, &mut ctx).await {
+    let hold = match money_hold(state, &caller, &request.model, &admission, naming, &ctx).await {
+        Ok(hold) => hold,
+        Err(verdict) => return verdict,
+    };
+    if let Err(verdict) = verified(state, &endpoint, &admission, naming, &mut ctx, &hold).await {
         return verdict;
     }
 
@@ -1137,6 +1376,8 @@ async fn classify_admitted(
     let mut forwards = 0_u64;
     let mut input_tokens = CompleteCounter::default();
     let mut output_tokens = CompleteCounter::default();
+    // Every dispatched item's own usage report — the settlement reads.
+    let mut dispatched_reports: Vec<Option<Value>> = Vec::new();
     for (index, slot) in done.into_iter().enumerate() {
         let result = slot.unwrap_or_else(|| ItemResult {
             index,
@@ -1166,6 +1407,7 @@ async fn classify_admitted(
                     .and_then(|u| u.get("output_tokens"))
                     .and_then(Value::as_u64),
             );
+            dispatched_reports.push(result.usage.clone());
         }
         for unit in result.item["units"].as_array().into_iter().flatten() {
             match unit.get("outcome").and_then(Value::as_str) {
@@ -1252,6 +1494,21 @@ async fn classify_admitted(
         input_bytes: units.input_bytes,
     };
     settled(state, naming, outcome, &attempted).await;
+    if let Some(held) = &hold {
+        ctx.settlement = if forwards == 0 {
+            // Nothing dispatched — the one release the ledger accepts
+            // without further evidence.
+            money_release(state, &hold).await;
+            Some(money::Settlement::Released.label())
+        } else {
+            // Every dispatched item must report every priced resource;
+            // one silent item leaves the whole hold outstanding.
+            let reports: Vec<Option<&Value>> =
+                dispatched_reports.iter().map(Option::as_ref).collect();
+            let usage = money::observed_total(&held.price, &reports);
+            money_settle(state, &hold, naming, usage).await
+        };
+    }
     Verdict::Forwarded {
         status,
         body: body_out,
@@ -2425,6 +2682,7 @@ fn respond(
     naming: &Naming<'_>,
     label: &str,
     receipt_digest: Option<&str>,
+    settlement: Option<&str>,
 ) -> Response {
     let mut response = Response::builder()
         .status(status)
@@ -2434,6 +2692,9 @@ fn respond(
         .header("x-outcome", label);
     if let Some(digest) = receipt_digest {
         response = response.header("x-receipt", digest);
+    }
+    if let Some(settlement) = settlement {
+        response = response.header("x-settlement", settlement);
     }
     if status == StatusCode::TOO_MANY_REQUESTS {
         response = response.header("retry-after", "1");
