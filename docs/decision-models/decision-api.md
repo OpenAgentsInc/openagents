@@ -37,7 +37,7 @@ under [the verification guide](../verification.md).
 | Caller-owned evaluation | [Measured records](../gym/measured-records.md) covers `gym build`, evaluation, reports, and receipt-chain verification. Intake, reports, and Rust intake are landed: [#9464](https://github.com/OpenAgentsInc/openagents/issues/9464), [#9465](https://github.com/OpenAgentsInc/openagents/issues/9465), and [#9477](https://github.com/OpenAgentsInc/openagents/issues/9477). |
 | Report coverage and commitments | [Measured records](../gym/measured-records.md) now includes expected coverage, `gym report --commitment`, and `gym verify --commitment`; [#9478](https://github.com/OpenAgentsInc/openagents/issues/9478) and [#9479](https://github.com/OpenAgentsInc/openagents/issues/9479) are landed. Authenticity still depends on the independently trusted channel that carries the commitment. |
 | Relay infrastructure | Authentication, capability manifests, and Coder jobs exist. A versioned decision job, shared authorization/accounting, and decision-worker admission remain open: [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469) and [#9470](https://github.com/OpenAgentsInc/openagents/issues/9470). |
-| Training ingredients | Adapter formats, artifact locks, retained training tooling, and Gym exist. Tenant training and cross-artifact admission remain open: [#9472](https://github.com/OpenAgentsInc/openagents/issues/9472) and [#9473](https://github.com/OpenAgentsInc/openagents/issues/9473). |
+| Training and admission | Adapter formats, artifact locks, retained training tooling, and Gym exist. [Candidate admission](candidate-admission.md) implements frozen comparisons, retained evidence, one-shot confirmation, and registry activation/rollback. Synthetic verification does not qualify a production candidate. Tenant training remains tracked in [#9472](https://github.com/OpenAgentsInc/openagents/issues/9472). |
 
 Latency evidence applies to its recorded workload and host. Hosted Jev's
 quiet internet p50 is about 100 ms
@@ -630,6 +630,16 @@ Losing, tied where improvement is required, incomplete, or unverifiable
 candidates do not activate. Do not reuse a historical workload's noise floor
 as a universal acceptance threshold. Store the admission record and bind
 activation/rollback through the registry. Owner: [#9473](https://github.com/OpenAgentsInc/openagents/issues/9473).
+
+The implementation and operator procedure are documented in
+[candidate admission](candidate-admission.md). The native evaluator requires
+separate retained reports for development, locked confirmation, and transfer,
+with exact row and selection verification. The transfer workload declares its
+own variance. Explicit deployment evidence must name the frozen workload;
+unknown cost cannot become a zero-cost claim. `Registry::activate` consumes a
+replayed admission record and refuses a stale base. Authorized discovery cards
+publish admitted scope, the record reference, and the registry revision.
+
 
 Public benchmark/status snapshots use committed evidence with coverage,
 identities, conditions, freshness, label basis, privacy controls, and cost
