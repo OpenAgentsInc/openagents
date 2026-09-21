@@ -2837,43 +2837,13 @@ fn admit_command(options: &Options) -> Result<(), String> {
             .to_string()
     })?;
     let commitment = gym::commitment::Commitment::load(commitment_path)?;
-    let faults = gym::commitment::check(&commitment, &development);
-    if !faults.is_empty() {
-        return Err(format!(
-            "development evidence does not match its retained commitment: {}",
-            faults.join("; ")
-        ));
-    }
-    if commitment.rows != development.len()
-        || commitment.suite_digest != plan.workload.suite_digest
-        || commitment.question_set != plan.workload.question_set
-        || commitment.question_digest != plan.workload.question_digest
-        || commitment.gate_digest != plan.workload.gate_digest
-    {
-        return Err("development commitment does not bind the complete frozen workload".into());
-    }
-    let expected = gym::coverage::Expected::of(
+    gym::admission::verify_report(
+        &commitment,
+        &development,
         &suite,
-        &plan.workload.partitions,
-        None,
-        None,
-        vec![plan.base.door.clone(), plan.candidate.door.clone()],
+        &plan.workload,
+        &[plan.base.door.clone(), plan.candidate.door.clone()],
     )?;
-    if commitment.expected_set() != *expected.items()
-        || commitment
-            .selection
-            .doors
-            .iter()
-            .collect::<std::collections::BTreeSet<_>>()
-            != expected
-                .doors
-                .iter()
-                .collect::<std::collections::BTreeSet<_>>()
-    {
-        return Err(
-            "development commitment selects different items or doors from the frozen plan".into(),
-        );
-    }
     let development_head = Store::at(store_path)
         .head()
         .map_err(|error| error.to_string())?;
@@ -3818,6 +3788,56 @@ mod tests {
             store.append(row).unwrap();
         }
         path.to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn admission_retained_report_refuses_changed_rows_tail_and_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        let (suite, _) = caller_suite();
+        let path = chained(dir.path(), "report.jsonl", &dev_rows(&suite, "base", &[]));
+        let rows = read_rows(&path).unwrap();
+        let doors = vec!["base".to_string()];
+        let expected = gym::coverage::Expected::of(
+            &suite,
+            &[Partition::Development],
+            None,
+            None,
+            doors.clone(),
+        )
+        .unwrap();
+        let commitment = gym::commitment::Commitment::of(
+            &suite,
+            &expected,
+            gym::commitment::Selection {
+                partitions: vec!["development".into()],
+                family: None,
+                items: None,
+                doors: doors.clone(),
+            },
+            &rows,
+            rows.last().unwrap().receipt.clone(),
+            None,
+        );
+        let workload = gym::admission::Workload {
+            suite: suite.name.clone(),
+            suite_digest: suite.digest.clone(),
+            question_set: commitment.question_set.clone(),
+            question_digest: commitment.question_digest.clone(),
+            partitions: vec![Partition::Development],
+            gate_digest: commitment.gate_digest.clone(),
+        };
+        let verify = |report: &gym::commitment::Commitment, evidence: &[Row], names: &[String]| {
+            gym::admission::verify_report(report, evidence, &suite, &workload, names)
+        };
+        verify(&commitment, &rows, &doors).unwrap();
+        assert!(verify(&commitment, &rows[..rows.len() - 1], &doors).is_err());
+        let mut edited = rows.clone();
+        edited[0].correct = Some(false);
+        assert!(verify(&commitment, &edited, &doors).is_err());
+        assert!(verify(&commitment, &rows, &["candidate".into()]).is_err());
+        let mut forged = commitment.clone();
+        forged.rows -= 1;
+        assert!(verify(&forged, &rows, &doors).is_err());
     }
 
     /// Render the record for a store and return it.

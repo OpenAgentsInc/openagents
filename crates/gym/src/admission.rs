@@ -2051,3 +2051,57 @@ fn check_suite_contract(
     }
     refusals
 }
+
+/// Verify a retained report against the exact rows and frozen selection.
+/// The caller must obtain the commitment from a separately trusted channel.
+/// A valid chain alone does not establish that its tail is complete.
+///
+/// # Errors
+/// Refuses changed commitments, broken chains, uncommitted growth, and
+/// workload or selection drift.
+pub fn verify_report(
+    commitment: &crate::commitment::Commitment,
+    rows: &[Row],
+    suite: &Suite,
+    workload: &Workload,
+    doors: &[String],
+) -> Result<(), String> {
+    if commitment.schema != crate::commitment::COMMITMENT_SCHEMA
+        || commitment.digest != commitment.compute_digest()
+    {
+        return Err("the retained commitment does not verify".into());
+    }
+    let values = rows
+        .iter()
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if let crate::store::ChainVerdict::Broken { detail, .. } = crate::store::verify_chain(&values) {
+        return Err(format!(
+            "the retained report has a broken receipt chain: {detail}"
+        ));
+    }
+    let faults = crate::commitment::check(commitment, rows);
+    if !faults.is_empty() {
+        return Err(format!(
+            "evidence does not match its retained commitment: {}",
+            faults.join("; ")
+        ));
+    }
+    if commitment.rows != rows.len()
+        || commitment.suite_digest != workload.suite_digest
+        || commitment.question_set != workload.question_set
+        || commitment.question_digest != workload.question_digest
+        || commitment.gate_digest != workload.gate_digest
+    {
+        return Err("commitment does not bind the complete frozen workload".into());
+    }
+    let expected = Expected::of(suite, &workload.partitions, None, None, doors.to_vec())?;
+    if commitment.expected_set() != *expected.items()
+        || commitment.selection.doors.iter().collect::<BTreeSet<_>>()
+            != doors.iter().collect::<BTreeSet<_>>()
+    {
+        return Err("commitment selects different items or doors from the frozen plan".into());
+    }
+    Ok(())
+}
