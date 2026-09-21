@@ -32,6 +32,7 @@ struct Stub {
     workspaces: Mutex<Vec<Option<String>>>,
     /// The `x-attempt` header each classify call carried.
     classify_attempts: Mutex<Vec<String>>,
+    classify_keys: Mutex<Vec<Option<String>>>,
     /// The classify calls seen.
     classify_calls: AtomicUsize,
 }
@@ -478,6 +479,12 @@ async fn classify(
     body: axum::body::Bytes,
 ) -> Response {
     stub.classify_calls.fetch_add(1, Ordering::SeqCst);
+    stub.classify_keys.lock().unwrap().push(
+        headers
+            .get("idempotency-key")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned),
+    );
     stub.classify_attempts.lock().unwrap().push(
         headers
             .get("x-attempt")
@@ -496,6 +503,13 @@ async fn classify(
             Json(json!({"error": {"code": "rate_limited", "message": "come back shortly"}})),
         )
             .into_response(),
+        "redirect" => (StatusCode::FOUND, [("location", "/v1/models")]).into_response(),
+        "partial-503" => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(classify_doc(&request, None)),
+        )
+            .into_response(),
+        "malformed" => Json(json!({"ok":true})).into_response(),
         "typed-refuse" => typed(422, "invalid_request", "the envelope is invalid"),
         "refused-door" => (
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -874,4 +888,319 @@ async fn usage_errors_exit_two() {
         None,
     );
     assert_eq!(output.status.code(), Some(2));
+}
+
+fn envelope(mode: &str, ids: &[&str]) -> Value {
+    let mut request = json!({"v":"openagents.classify.v1","model":"stub-v1","capacity":"shared",
+        "mode":mode,"policy":{"v":"openagents.classify-policy.v1","name":"fixture","select":{
+            "single_label":{"ties":"no-match","min_probability":0.6,"uncertain_below":0.7,"no_match":{"kind":"null"}},
+            "multi_label":{"threshold":0.6,"ties":"include-all","no_match":"empty","uncertain_below":0.7},
+            "binary":{"threshold":0.6,"uncertain_below":0.7},
+            "score":{"order":"descending","uncertain_below":0.7}
+        }},
+        "inputs":ids.iter().map(|id| json!({"id":id,"text":id})).collect::<Vec<_>>()});
+    if mode == "score" {
+        request["levels"] = json!(["low", "medium", "high"]);
+    } else if mode == "binary" {
+        request["labels"] = json!([{"id":"a","description":"A"}]);
+    } else {
+        request["labels"] = json!([{"id":"a","description":"A"},{"id":"b","description":"B"}]);
+    }
+    let parsed: gateway::classify::Request = serde_json::from_value(request.clone()).unwrap();
+    parsed
+        .plan(&gateway::classify::BackendLimits::product())
+        .unwrap();
+    request
+}
+
+fn mcp(url: &str, dir: &tempfile::TempDir) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_oak-mcp"));
+    command
+        .env_clear()
+        .env("OPENAGENTS_API_KEY", KEY)
+        .env("OPENAGENTS_BASE_URL", url)
+        .env("OPENAGENTS_CONFIG", dir.path().join("missing.json"));
+    command
+}
+
+fn initialized() -> Vec<Value> {
+    vec![
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"fixture","version":"1"}}}),
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+    ]
+}
+
+fn messages(values: &[Value]) -> String {
+    values.iter().map(|value| format!("{value}\n")).collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn classification_cli_and_mcp_preserve_all_gateway_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let (url, stub) = stub().await;
+    stub.require_workspace.store(true, Ordering::SeqCst);
+    for mode in ["single-label", "multi-label", "binary", "score"] {
+        let request = envelope(
+            mode,
+            &["HIGH", "LOW", "NONE", "WEAK", "REFUSE", "DROP", "PENDING"],
+        );
+        let expected = classify_doc(&request, None);
+        let mut command = oak(&url, &dir);
+        command.args([
+            "classify",
+            "--envelope",
+            "-",
+            "--workspace",
+            WORKSPACE,
+            "--quiet",
+        ]);
+        let output = spawn(command, Some(&request.to_string()));
+        assert_eq!(
+            rows(&output),
+            vec![expected.clone()],
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_ne!(
+            output.status.code(),
+            Some(0),
+            "mixed output must not report all answered"
+        );
+        let mut input = initialized();
+        input.push(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
+        input.push(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"classify","arguments":{"request":request}}}));
+        let mut command = mcp(&url, &dir);
+        command.args(["--workspace", WORKSPACE]);
+        let output = spawn(command, Some(&messages(&input)));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let replies = rows(&output);
+        assert_eq!(replies.len(), 3);
+        assert_eq!(replies[0]["result"]["protocolVersion"], "2025-06-18");
+        assert_eq!(replies[1]["result"]["tools"].as_array().unwrap().len(), 2);
+        assert_eq!(replies[2]["result"]["structuredContent"], expected);
+        let text: Value =
+            serde_json::from_str(replies[2]["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(text, expected);
+    }
+    assert!(
+        stub.workspaces
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|workspace| workspace.as_deref() == Some(WORKSPACE))
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn classification_retries_timeout_refusals_and_input_bounds_are_explicit() {
+    let dir = tempfile::tempdir().unwrap();
+    let (url, stub) = stub().await;
+    let mut request = envelope("multi-label", &["ONE"]);
+    request["model"] = json!("flaky-door");
+    let path = dir.path().join("envelope.json");
+    std::fs::write(&path, request.to_string()).unwrap();
+    let mut command = oak(&url, &dir);
+    command.args([
+        "classify",
+        "--envelope",
+        path.to_str().unwrap(),
+        "--request-id",
+        "fixture-retry",
+        "--quiet",
+    ]);
+    let output = spawn(command, None);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(stub.classify_calls.load(Ordering::SeqCst), 2);
+    let attempts = stub.classify_attempts.lock().unwrap().clone();
+    assert_ne!(attempts[0], attempts[1]);
+    assert_eq!(
+        *stub.classify_keys.lock().unwrap(),
+        vec![Some("fixture-retry".into()); 2]
+    );
+    for model in ["typed-refuse", "refused-door", "slow-door", "malformed"] {
+        request["model"] = json!(model);
+        let mut command = oak(&url, &dir);
+        command.args([
+            "classify",
+            "--envelope",
+            "-",
+            "--timeout",
+            "1",
+            "--retries",
+            "0",
+            "--quiet",
+        ]);
+        let output = spawn(command, Some(&request.to_string()));
+        assert!(!output.status.success(), "{model}");
+        assert!(
+            !output.stdout.is_empty(),
+            "{model}: failure must retain a typed result"
+        );
+    }
+    let before = stub.classify_calls.load(Ordering::SeqCst);
+    for input in [
+        "{".to_string(),
+        " ".repeat(oak::MAX_ENVELOPE_BYTES as usize + 1),
+    ] {
+        let mut command = oak(&url, &dir);
+        command.args(["classify", "--envelope", "-", "--quiet"]);
+        assert_eq!(spawn(command, Some(&input)).status.code(), Some(2));
+    }
+    assert_eq!(stub.classify_calls.load(Ordering::SeqCst), before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mcp_requires_initialization_and_rejects_caller_credentials() {
+    let dir = tempfile::tempdir().unwrap();
+    let (url, stub) = stub().await;
+    let mut input = vec![json!({"jsonrpc":"2.0","id":0,"method":"tools/list"})];
+    input.extend(initialized());
+    input.push(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"classify","arguments":{"request":envelope("binary", &["ONE"]),"api_key":"untrusted"}}}));
+    input.push(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_models","arguments":{}}}));
+    let output = spawn(mcp(&url, &dir), Some(&messages(&input)));
+    let replies = rows(&output);
+    assert!(replies[0]["error"].is_object());
+    assert!(replies[2]["error"].is_object());
+    assert!(replies[3]["result"]["structuredContent"].is_object());
+    assert_eq!(stub.classify_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn classification_never_replays_a_partial_report_or_follows_a_redirect() {
+    let dir = tempfile::tempdir().unwrap();
+    let (url, stub) = stub().await;
+    for model in ["partial-503", "redirect"] {
+        let mut request = envelope("multi-label", &["ONE", "DROP"]);
+        request["model"] = json!(model);
+        let before = stub.workspaces.lock().unwrap().len();
+        let mut command = oak(&url, &dir);
+        command.args([
+            "classify",
+            "--envelope",
+            "-",
+            "--request-id",
+            model,
+            "--retries",
+            "3",
+            "--quiet",
+        ]);
+        let output = spawn(command, Some(&request.to_string()));
+        assert!(!output.status.success());
+        assert_eq!(stub.workspaces.lock().unwrap().len(), before + 1);
+        if model == "partial-503" {
+            assert_eq!(rows(&output), vec![classify_doc(&request, None)]);
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mcp_validates_handshake_ids_and_negotiates_a_supported_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let (url, _) = stub().await;
+    let mut initialize = initialized().remove(0);
+    initialize["params"]["protocolVersion"] = json!("unknown-version");
+    let input = vec![
+        json!({"jsonrpc":"2.0","id":{},"method":"ping"}),
+        json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}),
+        initialize,
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        json!({"jsonrpc":"2.0","id":3,"method":"notifications/unknown"}),
+    ];
+    let replies = rows(&spawn(mcp(&url, &dir), Some(&messages(&input))));
+    assert_eq!(replies.len(), 4);
+    assert_eq!(replies[0]["error"]["code"], -32600);
+    assert_eq!(replies[1]["error"]["code"], -32602);
+    assert_eq!(replies[2]["result"]["protocolVersion"], "2025-11-25");
+    assert_eq!(replies[3]["error"]["code"], -32601);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn every_caller_route_sends_the_resolved_workspace() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let (url, stub) = stub().await;
+    stub.require_workspace.store(true, Ordering::SeqCst);
+    let config = dir.path().join("config.json");
+    std::fs::write(&config, json!({"workspace":WORKSPACE}).to_string()).unwrap();
+    std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+    for source in ["flag", "environment", "file"] {
+        for verb in ["ask", "models", "classify"] {
+            let mut command = oak(&url, &dir);
+            command.arg(verb).arg("--quiet");
+            match verb {
+                "ask" => {
+                    command.args(["--questions", &questions(&dir), "fixture"]);
+                }
+                "classify" => {
+                    command.args(["--envelope", "-"]);
+                }
+                _ => {}
+            }
+            match source {
+                "flag" => {
+                    command
+                        .env("OPENAGENTS_WORKSPACE", "wrong")
+                        .args(["--workspace", WORKSPACE]);
+                }
+                "environment" => {
+                    command.env("OPENAGENTS_WORKSPACE", WORKSPACE);
+                }
+                _ => {
+                    command
+                        .env_remove("OPENAGENTS_WORKSPACE")
+                        .args(["--config", config.to_str().unwrap()]);
+                }
+            }
+            let output = spawn(
+                command,
+                (verb == "classify")
+                    .then(|| envelope("multi-label", &["ONE"]).to_string())
+                    .as_deref(),
+            );
+            assert!(
+                output.status.success(),
+                "{verb}/{source}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+    assert_eq!(stub.workspaces.lock().unwrap().len(), 9);
+    assert!(
+        stub.workspaces
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|workspace| workspace.as_deref() == Some(WORKSPACE))
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mcp_retains_auth_errors_and_recovers_after_an_oversized_message() {
+    let dir = tempfile::tempdir().unwrap();
+    let (url, _) = stub().await;
+    let mut input = initialized();
+    input.push(
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_models"}}),
+    );
+    let mut command = mcp(&url, &dir);
+    command.env("OPENAGENTS_API_KEY", "oak_invalid.fixture");
+    let replies = rows(&spawn(command, Some(&messages(&input))));
+    assert_eq!(replies[1]["result"]["isError"], true);
+    assert_eq!(replies[1]["result"]["structuredContent"]["status"], 401);
+    let mut input = "x".repeat(oak::MAX_MCP_MESSAGE_BYTES as usize + 1);
+    input.push('\n');
+    input.push_str(&messages(&initialized()));
+    let replies = rows(&spawn(mcp(&url, &dir), Some(&input)));
+    assert_eq!(replies.len(), 2);
+    assert_eq!(replies[0]["error"]["code"], -32600);
+    assert!(replies[1]["result"]["serverInfo"].is_object());
 }

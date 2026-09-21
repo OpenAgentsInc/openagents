@@ -462,6 +462,10 @@ fn classify(envelope: &str, common: &Common) -> i32 {
             }
         }
         Err(error) => {
+            println!(
+                "{}",
+                json!({"error":{"code":error.code,"message":error.message}})
+            );
             eprintln!("oak: {error}");
             match error.code {
                 "unavailable" => EXIT_UNAVAILABLE,

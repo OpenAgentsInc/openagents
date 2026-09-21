@@ -369,6 +369,7 @@ impl Transport {
             .build()
             .map_err(|error| format!("the runtime did not build: {error}"))?;
         let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|error| format!("the HTTP client did not build: {error}"))?;
         Ok(Self {
@@ -397,7 +398,22 @@ impl Transport {
     /// A classify report — whatever its outcome — and a typed refusal are
     /// both a [`Reply`].
     pub fn post_classify(&self, envelope: &[u8], opts: &CallOpts) -> Result<Reply, CallError> {
-        self.exchange(reqwest::Method::POST, CLASSIFY_PATH, Some(envelope), opts)
+        let reply = self.exchange(reqwest::Method::POST, CLASSIFY_PATH, Some(envelope), opts)?;
+        if let Reply::Document { body, .. } = &reply
+            && (body.get("v").and_then(Value::as_str) != Some(CLASSIFY_SCHEMA)
+                || !matches!(
+                    body.get("outcome").and_then(Value::as_str),
+                    Some("answered" | "mixed" | "refused" | "unavailable" | "unattempted")
+                )
+                || !body.get("results").is_some_and(Value::is_array)
+                || !body.get("outcomes").is_some_and(Value::is_object))
+        {
+            return Err(CallError {
+                code: "invalid_response",
+                message: "the service did not return a classification report".into(),
+            });
+        }
+        Ok(reply)
     }
 
     /// One call's retry loop, run on the transport's runtime: the same
@@ -423,6 +439,7 @@ impl Transport {
         opts: &CallOpts,
     ) -> Result<Reply, CallError> {
         let url = format!("{}{path}", self.base_url);
+        let retry_uncertain = method == reqwest::Method::GET || opts.request_id.is_some();
         let mut attempt = 0_u32;
         let mut delay = Duration::from_millis(250);
         loop {
@@ -450,7 +467,7 @@ impl Transport {
             let mut response = match request.send().await {
                 Ok(response) => response,
                 Err(error) => {
-                    if attempt <= opts.retries {
+                    if retry_uncertain && attempt <= opts.retries {
                         tokio::time::sleep(delay.min(MAX_RETRY_AFTER)).await;
                         delay = (delay * 2).min(Duration::from_secs(5));
                         continue;
@@ -489,7 +506,7 @@ impl Transport {
                 });
             }
             if let Some(error) = body_error {
-                if attempt <= opts.retries {
+                if retry_uncertain && attempt <= opts.retries {
                     tokio::time::sleep(delay.min(MAX_RETRY_AFTER)).await;
                     delay = (delay * 2).min(Duration::from_secs(5));
                     continue;
@@ -573,7 +590,9 @@ fn reply_of(status: u16, headers: &HeaderMap, bytes: &[u8]) -> Reply {
 /// a retry cannot change.
 fn retryable(reply: &Reply) -> bool {
     let (status, code) = match reply {
-        Reply::Document { status, .. } => (*status, ""),
+        // A report carries observed outcomes, even under a failing status.
+        // Retrying it would discard that evidence and run the inputs again.
+        Reply::Document { .. } => return false,
         Reply::Refused { status, code, .. } => (*status, code.as_str()),
     };
     let unavailable =
@@ -605,10 +624,10 @@ pub mod mcp {
 
     /// The protocol version this build reports when it cannot answer the
     /// client's — the latest it serves.
-    pub const PROTOCOL_VERSION: &str = "2025-06-18";
+    pub const PROTOCOL_VERSION: &str = "2025-11-25";
 
     /// Every protocol version this build serves, latest first.
-    pub const PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+    pub const PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18"];
 
     /// The `serverInfo.name` the handshake reports.
     pub const SERVER_NAME: &str = "oak-mcp";
@@ -790,6 +809,16 @@ pub mod mcp {
     /// notification, or a response addressed to us.
     fn handle(phase: &mut Phase, options: &Options, message: &Value) -> Option<Value> {
         let id = message.get("id").cloned();
+        if id
+            .as_ref()
+            .is_some_and(|id| !id.is_string() && !id.is_number())
+        {
+            return Some(error(
+                Value::Null,
+                INVALID_REQUEST,
+                "request id must be a string or number",
+            ));
+        }
         if message.get("method").is_none() {
             // A response to a request this server never sends is
             // ignored; anything else without a method is malformed.
@@ -836,7 +865,6 @@ pub mod mcp {
                 INVALID_PARAMS,
                 "the session is not initialized — send `initialize`, then `notifications/initialized`",
             )),
-            _ if method.starts_with("notifications/") => None,
             _ => Some(error(id, METHOD_NOT_FOUND, "method not found")),
         }
     }
@@ -861,6 +889,22 @@ pub mod mcp {
                 "initialize params must carry `protocolVersion`",
             ));
         };
+        if !params
+            .and_then(|p| p.get("capabilities"))
+            .is_some_and(Value::is_object)
+            || !params
+                .and_then(|p| p.get("clientInfo"))
+                .is_some_and(|info| {
+                    info.get("name").is_some_and(Value::is_string)
+                        && info.get("version").is_some_and(Value::is_string)
+                })
+        {
+            return Some(error(
+                id.clone(),
+                INVALID_PARAMS,
+                "initialize requires capabilities and clientInfo name/version",
+            ));
+        }
         // The negotiated version: the client's when this build serves
         // it, else this build's latest — the client decides whether to
         // stay.

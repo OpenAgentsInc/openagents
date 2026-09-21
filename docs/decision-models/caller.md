@@ -5,10 +5,11 @@ answers, and survive the failure modes. The deployed service is
 [the gateway](gateway.md); the measurement side is
 [the Gym](../gym/measured-records.md).
 
-The contract has one route that decides — `POST /v1/systemone` — and one
-that lists — `GET /v1/models`. Both examples below work against any door
-that speaks the contract, including a local `kev-serve` and TypeSafe's own
-`api.typesafe.ai`.
+The native decision route is `POST /v1/systemone`; discovery uses
+`GET /v1/models`. The gateway also provides the
+[classification facade and MCP callers](classification-callers.md). Native
+examples below work against compatible doors, including local `kev-serve`
+and TypeSafe's `api.typesafe.ai`; classification requires the gateway facade.
 
 ## Credentials
 
