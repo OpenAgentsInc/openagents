@@ -32,7 +32,8 @@
 //! `docs/decision-models/workspace-membership.md`, not implemented here.
 
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -71,7 +72,7 @@ pub enum Role {
     /// owner, revokes pending invitations, and removes members.
     Admin,
     /// Admins plus the workspace: an owner sets roles, moves seats and
-    /// billing, and transfers ownership. Exactly one active member holds
+    /// membership, and transfers ownership. Exactly one active member holds
     /// it at a time.
     Owner,
 }
@@ -143,7 +144,7 @@ pub struct Membership {
 /// The `id` never changes — a rename, a seat change, and every membership
 /// write leave it standing. `tenant` is the registry tenant the
 /// workspace's quota and billing bind to; membership changes never touch
-/// it, and only an owner may rebind it.
+/// it. Rebinding requires a separate operator migration, not a member action.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Workspace {
     /// The workspace's id — `ws_<hex>`, assigned at creation and stable.
@@ -265,8 +266,7 @@ impl Store {
 
     /// Read and validate a store's text.
     fn parse(text: &str, name: &str) -> Result<Self, String> {
-        let store: Self =
-            serde_json::from_str(text).map_err(|error| format!("{name}: {error}"))?;
+        let store: Self = serde_json::from_str(text).map_err(|error| format!("{name}: {error}"))?;
         store.validate(name)?;
         Ok(store)
     }
@@ -283,7 +283,10 @@ impl Store {
     /// that parsed.
     pub fn validate(&self, name: &str) -> Result<(), String> {
         if self.v != ACCOUNTS_SCHEMA {
-            return Err(format!("{name}: schema `{}` is not `{ACCOUNTS_SCHEMA}`", self.v));
+            return Err(format!(
+                "{name}: schema `{}` is not `{ACCOUNTS_SCHEMA}`",
+                self.v
+            ));
         }
         if self.digest != self.compute_digest() {
             return Err(format!(
@@ -296,6 +299,9 @@ impl Store {
                 return Err(format!("{name}: an account carries an empty id or label"));
             }
             for principal in &account.principals {
+                if !valid_principal(principal) {
+                    return Err(format!("{name}: invalid principal reference"));
+                }
                 if let Some(other) = principals.insert(principal, &account.id) {
                     return Err(format!(
                         "{name}: principal `{principal}` resolves to both `{other}` and \
@@ -379,7 +385,10 @@ impl Store {
                 ));
             }
             if invitation.digest.len() != 64
-                || !invitation.digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                || !invitation
+                    .digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
             {
                 return Err(format!(
                     "{name}: invitation `{}` carries a digest that is not 64 hex \
@@ -412,7 +421,6 @@ pub struct MemberRef {
 }
 
 /// What `invite` hands back: the record and, once, the token.
-#[derive(Debug)]
 pub struct Invited {
     /// The stored record — safe to log and keep.
     pub invitation: Invitation,
@@ -420,6 +428,15 @@ pub struct Invited {
     /// secret exists outside the invitee's hands; the store cannot
     /// reproduce it.
     pub token: String,
+}
+
+impl std::fmt::Debug for Invited {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Invited")
+            .field("invitation", &self.invitation)
+            .field("token", &"[redacted]")
+            .finish()
+    }
 }
 
 /// Why an account-store read or write failed at the storage layer.
@@ -595,7 +612,10 @@ impl std::fmt::Display for Refusal {
                 "workspace `{workspace}` grants ownership only through transfer"
             ),
             Self::MalformedInvitation => {
-                write!(f, "the token is not an `{INVITE_PREFIX}_<id>.<secret>` invitation")
+                write!(
+                    f,
+                    "the token is not an `{INVITE_PREFIX}_<id>.<secret>` invitation"
+                )
             }
             Self::UnknownInvitation(id) => {
                 write!(f, "invitation `{id}` is not one this store issued")
@@ -702,6 +722,41 @@ fn split_invite(token: &str) -> Option<(String, String)> {
     Some((id.to_string(), secret.to_string()))
 }
 
+const STORE_BYTES: u64 = 16 * 1024 * 1024;
+
+fn read_store(path: &Path) -> Result<String, Trouble> {
+    let mut text = String::new();
+    std::fs::File::open(path)?
+        .take(STORE_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > STORE_BYTES {
+        return Err(Trouble::Invalid("account store exceeds 16 MiB".into()));
+    }
+    Ok(text)
+}
+
+fn write_synced(path: &Path, text: &str) -> Result<(), Trouble> {
+    let mut file = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(text.as_bytes())?;
+    file.sync_all()?;
+    Ok(())
+}
+
+fn valid_principal(value: &str) -> bool {
+    let (hex, length) = if let Some(hex) = value.strip_prefix("key:") {
+        (hex, 16)
+    } else if let Some(hex) = value.strip_prefix("nostr:") {
+        (hex, 64)
+    } else {
+        return false;
+    };
+    hex.len() == length && hex.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 /// Load the store from a directory, validating it end to end.
 ///
 /// A missing file is an error, not an empty store: the account store is
@@ -709,7 +764,7 @@ fn split_invite(token: &str) -> Option<(String, String)> {
 /// and does not is incomplete storage — it fails closed.
 fn load(dir: &Path) -> Result<Store, Trouble> {
     let path = dir.join(ACCOUNTS);
-    let text = std::fs::read_to_string(&path)?;
+    let text = read_store(&path)?;
     Store::parse(&text, &path.display().to_string()).map_err(Trouble::Invalid)
 }
 
@@ -718,15 +773,24 @@ fn load(dir: &Path) -> Result<Store, Trouble> {
 fn save(dir: &Path, store: &Store) -> Result<(), Trouble> {
     let history = dir.join(HISTORY);
     std::fs::create_dir_all(&history)?;
-    let text = serde_json::to_string_pretty(store)
-        .map_err(|error| Trouble::Invalid(error.to_string()))?;
+    let text =
+        serde_json::to_string_pretty(store).map_err(|error| Trouble::Invalid(error.to_string()))?;
     let archived = history.join(format!("{}.json", store.digest));
-    if !archived.exists() {
-        std::fs::write(&archived, format!("{text}\n"))?;
+    if text.len() as u64 + 1 > STORE_BYTES {
+        return Err(Trouble::Invalid("account store exceeds 16 MiB".into()));
     }
-    let staged = dir.join(format!(".{ACCOUNTS}.tmp"));
-    std::fs::write(&staged, format!("{text}\n"))?;
+    if !archived.exists() {
+        write_synced(&archived, &format!("{text}\n"))?;
+    } else if read_store(&archived)? != format!("{text}\n") {
+        return Err(Trouble::Invalid(
+            "archived revision content mismatch".into(),
+        ));
+    }
+    std::fs::File::open(&history)?.sync_all()?;
+    let staged = dir.join(format!(".{ACCOUNTS}.{}.tmp", fresh()?));
+    write_synced(&staged, &format!("{text}\n"))?;
     std::fs::rename(&staged, dir.join(ACCOUNTS))?;
+    std::fs::File::open(dir)?.sync_all()?;
     Ok(())
 }
 
@@ -773,7 +837,12 @@ impl Accounts {
     /// The directory must not already hold one — a store begins, it does
     /// not appear mid-chain.
     pub fn install(dir: &Path) -> Result<Self, Trouble> {
-        if dir.join(ACCOUNTS).exists() {
+        std::fs::create_dir_all(dir)?;
+        let _lock = Lock::acquire(dir)?;
+        if dir.join(ACCOUNTS).exists()
+            || (dir.join(HISTORY).exists()
+                && std::fs::read_dir(dir.join(HISTORY))?.next().is_some())
+        {
             return Err(Trouble::Invalid(format!(
                 "{} already holds an account store; open it rather than reinstalling",
                 dir.display()
@@ -815,12 +884,26 @@ impl Accounts {
     /// Read an archived revision by digest — the lookup that explains
     /// which membership authorized an earlier call.
     pub fn revision(dir: &Path, digest: &str) -> Result<Store, Trouble> {
+        if !digest
+            .strip_prefix("sha256:")
+            .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+        {
+            return Err(Trouble::Invalid(
+                "revision must be a SHA-256 identity".into(),
+            ));
+        }
         let path = dir.join(HISTORY).join(format!("{digest}.json"));
         if !path.exists() {
             return Err(Trouble::UnknownRevision(digest.to_string()));
         }
-        let text = std::fs::read_to_string(&path)?;
-        Store::parse(&text, &path.display().to_string()).map_err(Trouble::Invalid)
+        let text = read_store(&path)?;
+        let store = Store::parse(&text, &path.display().to_string()).map_err(Trouble::Invalid)?;
+        if store.digest != digest {
+            return Err(Trouble::Invalid(
+                "archived revision identity mismatch".into(),
+            ));
+        }
+        Ok(store)
     }
 
     /// Whether an account may act in a workspace, and under which role.
@@ -879,7 +962,9 @@ impl Accounts {
 
     /// The account a principal resolves to, when one does.
     pub fn account_of_principal(&self, principal: &str) -> Result<Option<String>, Trouble> {
-        Ok(load(&self.dir)?.accounts.values()
+        Ok(load(&self.dir)?
+            .accounts
+            .values()
             .find(|account| account.principals.iter().any(|p| p == principal))
             .map(|account| account.id.clone()))
     }
@@ -946,8 +1031,7 @@ impl Accounts {
             }
             for principal in principals {
                 if let Some(other) = store.accounts.values().find(|candidate| {
-                    candidate.id != account
-                        && candidate.principals.iter().any(|p| p == principal)
+                    candidate.id != account && candidate.principals.iter().any(|p| p == principal)
                 }) {
                     return Err(Refusal::PrincipalTaken {
                         principal: principal.clone(),
@@ -1066,7 +1150,10 @@ impl Accounts {
                     });
                 }
             }
-            let id = format!("{INVITE_PREFIX}_{}", &fresh().map_err(Refusal::Store)?[..16]);
+            let id = format!(
+                "{INVITE_PREFIX}_{}",
+                &fresh().map_err(Refusal::Store)?[..16]
+            );
             let secret = fresh().map_err(Refusal::Store)?;
             let invitation = Invitation {
                 id: id.clone(),
@@ -1075,7 +1162,9 @@ impl Accounts {
                 role,
                 invited_by: actor.to_string(),
                 created: crate::registry::now_utc(),
-                expires_unix: now + ttl_secs,
+                expires_unix: now.checked_add(ttl_secs).ok_or_else(|| {
+                    Refusal::Store(Trouble::Invalid("invitation expiry overflow".into()))
+                })?,
                 status: InviteStatus::Pending,
                 accepted_by: None,
             };
@@ -1268,20 +1357,18 @@ impl Accounts {
                 .ok_or_else(|| Refusal::UnknownWorkspace(workspace.to_string()))?;
             let actor_role = active_member(ws, actor)?.role;
             let target_role = match ws.members.get(target) {
-                Some(membership) if membership.status == MemberStatus::Active => {
-                    membership.role
-                }
+                Some(membership) if membership.status == MemberStatus::Active => membership.role,
                 Some(_) => {
                     return Err(Refusal::Revoked {
                         workspace: ws.id.clone(),
                         account: target.to_string(),
-                    })
+                    });
                 }
                 None => {
                     return Err(Refusal::NotMember {
                         workspace: ws.id.clone(),
                         account: target.to_string(),
-                    })
+                    });
                 }
             };
             let permitted = if actor == target {
@@ -1425,36 +1512,6 @@ impl Accounts {
         })
     }
 
-    /// Rebind the workspace's tenant — the registry tenant its quota and
-    /// billing resolve against. Owner only; the workspace id and every
-    /// membership stand unchanged.
-    pub fn rebind_tenant(
-        &self,
-        actor: &str,
-        workspace: &str,
-        tenant: &str,
-    ) -> Result<Workspace, Refusal> {
-        if tenant.is_empty() {
-            return Err(Refusal::EmptyField("tenant"));
-        }
-        self.mutate(|store, _| {
-            let ws = store
-                .workspaces
-                .get_mut(workspace)
-                .ok_or_else(|| Refusal::UnknownWorkspace(workspace.to_string()))?;
-            let member = active_member(ws, actor)?;
-            if member.role != Role::Owner {
-                return Err(Refusal::Forbidden {
-                    workspace: ws.id.clone(),
-                    account: actor.to_string(),
-                    action: "rebind-tenant",
-                });
-            }
-            ws.tenant = tenant.to_string();
-            Ok(ws.clone())
-        })
-    }
-
     /// The serialization point every mutation passes through.
     ///
     /// The lock goes on first, the store is re-read inside it — so the
@@ -1544,6 +1601,93 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_installation_has_one_genesis_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let root = dir.path().to_path_buf();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    Accounts::install(&root).is_ok()
+                })
+            })
+            .collect();
+        let successes = handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .filter(|ok| *ok)
+            .count();
+        assert_eq!(successes, 1);
+        let accounts = Accounts::open(dir.path()).unwrap();
+        account(&accounts, "retained");
+        assert!(Accounts::install(dir.path()).is_err());
+        assert_eq!(accounts.store().unwrap().accounts.len(), 1);
+        std::fs::remove_file(dir.path().join(ACCOUNTS)).unwrap();
+        assert!(Accounts::install(dir.path()).is_err());
+    }
+
+    #[test]
+    fn revision_lookup_rejects_paths_and_wrong_archived_identity() {
+        let (dir, accounts) = installed();
+        let genesis = accounts.store().unwrap();
+        assert!(matches!(
+            Accounts::revision(dir.path(), "../accounts"),
+            Err(Trouble::Invalid(_))
+        ));
+        account(&accounts, "alice");
+        let current = accounts.store().unwrap();
+        std::fs::write(
+            dir.path()
+                .join(HISTORY)
+                .join(format!("{}.json", genesis.digest)),
+            serde_json::to_vec(&current).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(
+            Accounts::revision(dir.path(), &genesis.digest),
+            Err(Trouble::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn secrets_and_invalid_expiry_do_not_enter_the_store() {
+        let (dir, accounts) = installed();
+        let before = accounts.store().unwrap().digest;
+        let secret = "oak_fixture_is_not_a_principal_reference";
+        assert!(accounts.create_account("alice", &[secret.into()]).is_err());
+        assert_eq!(accounts.store().unwrap().digest, before);
+        let owner = account(&accounts, "owner");
+        let ws = org(&accounts, &owner, None);
+        let before = accounts.store().unwrap().digest;
+        assert!(
+            accounts
+                .invite(&owner.id, &ws.id, Role::Member, u64::MAX)
+                .is_err()
+        );
+        assert_eq!(accounts.store().unwrap().digest, before);
+        let invited = accounts
+            .invite(&owner.id, &ws.id, Role::Member, 60)
+            .unwrap();
+        assert!(!format!("{invited:?}").contains(&invited.token));
+        assert!(
+            !std::fs::read_to_string(dir.path().join(ACCOUNTS))
+                .unwrap()
+                .contains(secret)
+        );
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(dir.path().join(ACCOUNTS))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
     fn two_workspaces_hold_independent_memberships_and_tenants() {
         let (_dir, accounts) = installed();
         let alice = account(&accounts, "alice");
@@ -1607,29 +1751,46 @@ mod tests {
         // workspace's seats, name, or tenant.
         assert!(matches!(
             accounts.invite(&member.id, &ws.id, Role::Member, 3600),
-            Err(Refusal::Forbidden { action: "invite", .. })
+            Err(Refusal::Forbidden {
+                action: "invite",
+                ..
+            })
         ));
         assert!(matches!(
             accounts.set_role(&member.id, &ws.id, &admin.id, Role::Member),
-            Err(Refusal::Forbidden { action: "set-role", .. })
+            Err(Refusal::Forbidden {
+                action: "set-role",
+                ..
+            })
         ));
         assert!(matches!(
             accounts.remove_member(&member.id, &ws.id, &admin.id),
-            Err(Refusal::Forbidden { action: "remove-member", .. })
+            Err(Refusal::Forbidden {
+                action: "remove-member",
+                ..
+            })
         ));
         assert!(matches!(
             accounts.set_seats(&member.id, &ws.id, Some(10)),
-            Err(Refusal::Forbidden { action: "set-seats", .. })
+            Err(Refusal::Forbidden {
+                action: "set-seats",
+                ..
+            })
         ));
 
         // An admin invites and removes members, but cannot re-role,
         // remove a peer admin or the owner, transfer, or set seats.
-        assert!(accounts
-            .invite(&admin.id, &ws.id, Role::Member, 3600)
-            .is_ok());
+        assert!(
+            accounts
+                .invite(&admin.id, &ws.id, Role::Member, 3600)
+                .is_ok()
+        );
         assert!(matches!(
             accounts.set_role(&admin.id, &ws.id, &member.id, Role::Admin),
-            Err(Refusal::Forbidden { action: "set-role", .. })
+            Err(Refusal::Forbidden {
+                action: "set-role",
+                ..
+            })
         ));
         assert!(matches!(
             accounts.remove_member(&admin.id, &ws.id, &owner.id),
@@ -1637,11 +1798,17 @@ mod tests {
         ));
         assert!(matches!(
             accounts.transfer_ownership(&admin.id, &ws.id, &member.id),
-            Err(Refusal::Forbidden { action: "transfer-ownership", .. })
+            Err(Refusal::Forbidden {
+                action: "transfer-ownership",
+                ..
+            })
         ));
         assert!(matches!(
             accounts.set_seats(&admin.id, &ws.id, Some(10)),
-            Err(Refusal::Forbidden { action: "set-seats", .. })
+            Err(Refusal::Forbidden {
+                action: "set-seats",
+                ..
+            })
         ));
 
         // Nobody writes ownership: not by invitation, not by role write.
@@ -1668,7 +1835,10 @@ mod tests {
             Err(Refusal::MalformedInvitation)
         ));
         assert!(matches!(
-            accounts.accept(&joiner.id, &format!("{INVITE_PREFIX}_nosuch.{}", "0".repeat(64))),
+            accounts.accept(
+                &joiner.id,
+                &format!("{INVITE_PREFIX}_nosuch.{}", "0".repeat(64))
+            ),
             Err(Refusal::UnknownInvitation(_))
         ));
 
@@ -1680,7 +1850,9 @@ mod tests {
         ));
 
         // A wrong secret is not a second chance.
-        let invite = accounts.invite(&owner.id, &ws.id, Role::Admin, 3600).unwrap();
+        let invite = accounts
+            .invite(&owner.id, &ws.id, Role::Admin, 3600)
+            .unwrap();
         let id = &invite.invitation.id;
         let wrong = format!("{INVITE_PREFIX}_{id}.{}", "f".repeat(64));
         assert!(matches!(
@@ -1709,7 +1881,9 @@ mod tests {
 
         // A fresh invitation for an existing member is a different
         // refusal: the account already belongs.
-        let again = accounts.invite(&owner.id, &ws.id, Role::Member, 3600).unwrap();
+        let again = accounts
+            .invite(&owner.id, &ws.id, Role::Member, 3600)
+            .unwrap();
         assert!(matches!(
             accounts.accept(&joiner.id, &again.token),
             Err(Refusal::AlreadyMember { .. })
@@ -1719,7 +1893,9 @@ mod tests {
             .unwrap();
 
         // A revoked invitation refuses whoever presents it.
-        let invite = accounts.invite(&owner.id, &ws.id, Role::Member, 3600).unwrap();
+        let invite = accounts
+            .invite(&owner.id, &ws.id, Role::Member, 3600)
+            .unwrap();
         accounts
             .revoke_invitation(&owner.id, &ws.id, &invite.invitation.id)
             .unwrap();
@@ -1732,7 +1908,9 @@ mod tests {
         ));
 
         // The store on disk carries the digest, never the secret.
-        let live = accounts.invite(&owner.id, &ws.id, Role::Member, 3600).unwrap();
+        let live = accounts
+            .invite(&owner.id, &ws.id, Role::Member, 3600)
+            .unwrap();
         let secret = live.token.split_once('.').unwrap().1;
         let text = std::fs::read_to_string(_dir.path().join(ACCOUNTS)).unwrap();
         assert!(!text.contains(secret), "{text}");
@@ -1746,7 +1924,9 @@ mod tests {
         let ws = org(&accounts, &owner, Some(2));
 
         // Owner fills one seat; one live invitation holds the other.
-        let first = accounts.invite(&owner.id, &ws.id, Role::Member, 3600).unwrap();
+        let first = accounts
+            .invite(&owner.id, &ws.id, Role::Member, 3600)
+            .unwrap();
         assert!(matches!(
             accounts.invite(&owner.id, &ws.id, Role::Member, 3600),
             Err(Refusal::SeatLimit { seats: 2, .. })
@@ -1772,12 +1952,16 @@ mod tests {
 
         // Raising the bound frees invitations again.
         accounts.set_seats(&owner.id, &ws.id, Some(3)).unwrap();
-        let held = accounts.invite(&owner.id, &ws.id, Role::Member, 3600).unwrap();
+        let held = accounts
+            .invite(&owner.id, &ws.id, Role::Member, 3600)
+            .unwrap();
 
         // Removing a member does not free a seat a live invitation still
         // holds — the seat frees when the invitation lapses.
         accounts.set_seats(&owner.id, &ws.id, Some(2)).unwrap();
-        accounts.remove_member(&owner.id, &ws.id, &joiner.id).unwrap();
+        accounts
+            .remove_member(&owner.id, &ws.id, &joiner.id)
+            .unwrap();
         assert!(matches!(
             accounts.invite(&owner.id, &ws.id, Role::Member, 3600),
             Err(Refusal::SeatLimit { seats: 2, .. })
@@ -1785,9 +1969,11 @@ mod tests {
         accounts
             .revoke_invitation(&owner.id, &ws.id, &held.invitation.id)
             .unwrap();
-        assert!(accounts
-            .invite(&owner.id, &ws.id, Role::Member, 3600)
-            .is_ok());
+        assert!(
+            accounts
+                .invite(&owner.id, &ws.id, Role::Member, 3600)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -1810,11 +1996,15 @@ mod tests {
             Err(Refusal::NotMember { .. })
         ));
 
-        let invite = accounts.invite(&owner.id, &ws.id, Role::Member, 3600).unwrap();
+        let invite = accounts
+            .invite(&owner.id, &ws.id, Role::Member, 3600)
+            .unwrap();
         accounts.accept(&next.id, &invite.token).unwrap();
 
         // Transfer is atomic: the target owns, the old owner administers.
-        accounts.transfer_ownership(&owner.id, &ws.id, &next.id).unwrap();
+        accounts
+            .transfer_ownership(&owner.id, &ws.id, &next.id)
+            .unwrap();
         assert_eq!(
             accounts.authorize(&ws.id, &next.id).unwrap().role,
             Role::Owner
@@ -1844,14 +2034,18 @@ mod tests {
         let member = account(&accounts, "member");
         let ws = org(&accounts, &owner, None);
 
-        let invite = accounts.invite(&owner.id, &ws.id, Role::Member, 3600).unwrap();
+        let invite = accounts
+            .invite(&owner.id, &ws.id, Role::Member, 3600)
+            .unwrap();
         let membership = accounts.accept(&member.id, &invite.token).unwrap();
         let before = accounts.authorize(&ws.id, &member.id).unwrap();
         assert_eq!(before.epoch, membership.epoch);
 
         // Revocation is visible to the very next authorization, on any
         // handle — a second handle sees the same committed state.
-        accounts.remove_member(&owner.id, &ws.id, &member.id).unwrap();
+        accounts
+            .remove_member(&owner.id, &ws.id, &member.id)
+            .unwrap();
         let other = Accounts::open(_dir.path()).unwrap();
         assert!(matches!(
             other.authorize(&ws.id, &member.id),
@@ -1947,23 +2141,38 @@ mod tests {
     fn principals_resolve_and_stay_unique() {
         let (_dir, accounts) = installed();
         let alice = accounts
-            .create_account("alice", &["key:abc123".to_string()])
+            .create_account("alice", &["key:0123456789abcdef".to_string()])
             .unwrap();
         assert!(matches!(
-            accounts.create_account("mallory", &["key:abc123".to_string()]),
+            accounts.create_account("mallory", &["key:0123456789abcdef".to_string()]),
             Err(Refusal::PrincipalTaken { .. })
         ));
         assert_eq!(
-            accounts.account_of_principal("key:abc123").unwrap(),
+            accounts
+                .account_of_principal("key:0123456789abcdef")
+                .unwrap(),
             Some(alice.id.clone())
         );
         accounts
-            .update_principals(&alice.id, &["nostr:deadbeef".to_string()])
+            .update_principals(
+                &alice.id,
+                &[
+                    "nostr:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        .to_string(),
+                ],
+            )
             .unwrap();
-        assert_eq!(accounts.account_of_principal("key:abc123").unwrap(), None);
         assert_eq!(
             accounts
-                .account_of_principal("nostr:deadbeef")
+                .account_of_principal("key:0123456789abcdef")
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            accounts
+                .account_of_principal(
+                    "nostr:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                )
                 .unwrap()
                 .as_deref(),
             Some(alice.id.as_str())
@@ -1975,10 +2184,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         // Missing entirely: an opened store is not an empty one.
-        assert!(matches!(
-            Accounts::open(dir.path()),
-            Err(Trouble::Io(_))
-        ));
+        assert!(matches!(Accounts::open(dir.path()), Err(Trouble::Io(_))));
 
         let accounts = Accounts::install(dir.path()).unwrap();
         let owner = account(&accounts, "owner");
@@ -2041,15 +2247,22 @@ mod tests {
 
         // An admin cannot remove a peer admin — only members.
         let second_admin = account(&accounts, "second-admin");
-        let invite = accounts.invite(&owner.id, &ws.id, Role::Admin, 3600).unwrap();
+        let invite = accounts
+            .invite(&owner.id, &ws.id, Role::Admin, 3600)
+            .unwrap();
         accounts.accept(&second_admin.id, &invite.token).unwrap();
         assert!(matches!(
             accounts.remove_member(&admin.id, &ws.id, &second_admin.id),
-            Err(Refusal::Forbidden { action: "remove-member", .. })
+            Err(Refusal::Forbidden {
+                action: "remove-member",
+                ..
+            })
         ));
 
         // A member may leave; an admin may remove a member.
-        accounts.remove_member(&member.id, &ws.id, &member.id).unwrap();
+        accounts
+            .remove_member(&member.id, &ws.id, &member.id)
+            .unwrap();
         assert!(matches!(
             accounts.authorize(&ws.id, &member.id),
             Err(Refusal::Revoked { .. })

@@ -58,8 +58,8 @@ pub mod quota;
 mod registry;
 
 pub use accounts::{
-    ACCOUNTS_SCHEMA, Account, Accounts, Invitation, InviteStatus, Invited, MemberRef,
-    MemberStatus, Membership, Role, Store, Workspace, WorkspaceKind,
+    ACCOUNTS_SCHEMA, Account, Accounts, Invitation, InviteStatus, Invited, MemberRef, MemberStatus,
+    Membership, Role, Store, Workspace, WorkspaceKind,
 };
 pub use keys::{AuthRefusal, Authenticated, Issued, Key, KeyStore, KeyTrouble, Status};
 pub use manifest::{Binding, Capacity, Expected, Lane, Manifest, Quota, SCHEMA, Tenant, lane_name};

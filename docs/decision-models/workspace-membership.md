@@ -35,8 +35,10 @@ consumes it, and every later presentation is a replay that refuses with
 
 ## The permission matrix
 
-Every mutation names the acting account and is authorized against its
-active membership before anything is read or written.
+Member-management mutations authorize the acting account against its active
+membership before changing state. Invitation acceptance instead uses the token's
+authority. Account provisioning and principal binding are operator-only calls;
+an HTTP adapter must not expose them as ordinary member operations.
 
 | Action | Owner | Admin | Member |
 | --- | --- | --- | --- |
@@ -45,7 +47,7 @@ active membership before anything is read or written.
 | Remove a member | Any other member | Members only | Self only |
 | Set a role between `admin` and `member` | ✓ | — | — |
 | Transfer ownership | ✓ | — | — |
-| Set seats, rename, rebind the tenant | ✓ | — | — |
+| Set seats and rename | ✓ | — | — |
 
 Two rules sit outside the table because they are invariants, not
 permissions:
@@ -66,7 +68,7 @@ orphaning members the next read would refuse to load.
 
 ## The call flow a future HTTP adapter runs
 
-No HTTP exists today. When an adapter lands in front of this store, a
+No membership HTTP adapter exists today. When one lands in front of this store, a
 request runs the same sequence the gateway already runs for decision
 calls:
 
@@ -80,9 +82,10 @@ calls:
    `Accounts::authorize_principal` answers the [`MemberRef`] — role,
    membership epoch, workspace epoch — or a typed refusal:
    `not-member`, `revoked`, `unknown-workspace`. For a mutation, the
-   mutation calls (`invite`, `accept`, `set_role`, `remove_member`,
-   `transfer_ownership`, `set_seats`, `rename`, `rebind_tenant`) run the
-   same check inside the write and refuse before anything changes.
+   member-management calls (`invite`, `set_role`, `remove_member`,
+   `transfer_ownership`, `set_seats`, `rename`) check the actor inside the
+   write. `accept` validates the invitation token and accepting account
+   instead; it does not require an existing membership.
 3. **Serialize the write.** `Accounts::mutate` takes `accounts.lock`,
    re-reads the store inside it, applies the change, bumps `sequence`,
    chains `supersedes`, reseals the digest, revalidates, archives the
@@ -139,3 +142,11 @@ authorization on any handle — nothing needs to expire.
   one; short TTLs and single-use semantics are the mitigation.
 
 [`MemberRef`]: ../../crates/tenancy/src/accounts.rs
+
+Workspace tenant bindings are fixed at operator provisioning. Membership roles
+do not authorize rebinding a workspace to another tenant or billing account.
+An eventual migration must independently authorize both sides and preserve
+accounting obligations. Principal references accept only a 16-digit hexadecimal
+key ID or a 64-digit hexadecimal Nostr public key; bearer secrets are rejected.
+Store documents are limited to 16 MiB. Installation and mutations share the
+writer lock, and persisted files are synchronized before publication.
