@@ -71,6 +71,7 @@ use crate::program::{Kind, Program, Step};
 use crate::program_authority::{self, Effects, Grant};
 use crate::questions::{self, Fill, Set};
 use crate::relay::RelayDoor;
+use crate::runstate::{self, Claim, Mark, State, Store};
 use crate::source::{self, OnOverflow, Overflow, Selection, Source};
 use crate::survey::Survey;
 use crate::trace::{Recorder, answers_value};
@@ -485,6 +486,7 @@ pub struct Runtime {
     host: Host,
     verification: Option<(PathBuf, crate::verification::Plan, capability::Trust)>,
     review: Option<crate::review::Context>,
+    runstate: Option<PathBuf>,
 }
 
 impl Runtime {
@@ -519,6 +521,7 @@ impl Runtime {
             relay: None,
             verification: None,
             review: None,
+            runstate: None,
             repository: repository.map(Path::to_path_buf),
             host: match repository {
                 Some(_) => Host::with_repository(),
@@ -544,6 +547,7 @@ impl Runtime {
             relay: None,
             verification: None,
             review: None,
+            runstate: None,
             host,
         }
     }
@@ -574,6 +578,16 @@ impl Runtime {
     #[must_use]
     pub fn review(&self) -> Option<&crate::review::Context> {
         self.review.as_ref()
+    }
+
+    /// Records each program run in the runstate store at `dir`, so a run
+    /// leaves the recovery state a crash reconciles from. Unset, no
+    /// store is opened and nothing about a run changes. The store
+    /// observes a run — it never gates one.
+    #[must_use]
+    pub fn with_runstate(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.runstate = Some(dir.into());
+        self
     }
 
     /// Answers the decision questions through this door rather than the
@@ -1251,6 +1265,13 @@ impl Runtime {
     /// against the program at the same point, so a program nobody
     /// authorized fails there too. After that each step runs in the order
     /// the program lists, and the first refusal stops the rest.
+    ///
+    /// When the runtime carries a runstate directory — see
+    /// [`Runtime::with_runstate`] — the run also claims a recovery record
+    /// once admission and the grant have passed, marks each step as it
+    /// dispatches and resolves, and settles when the run ends. A run
+    /// refused before that point holds no run id, and nothing the store
+    /// says changes what the run does.
     pub async fn run(
         &self,
         program: &Program,
@@ -1277,8 +1298,23 @@ impl Runtime {
                 return run;
             }
         }
+        // Admission and the grant have passed: the run claims its
+        // recovery record before the first step dispatches. A run
+        // refused earlier holds no run id, and a store that cannot
+        // answer observes the run as nothing — it never gates one.
+        let mut record = self.claim_runstate(program, trace.as_deref_mut());
+        self.advance_runstate(
+            &mut record,
+            Mark::run(State::Dispatched),
+            trace.as_deref_mut(),
+        );
         let mut selection = Selection::default();
         for step in &program.steps {
+            self.advance_runstate(
+                &mut record,
+                Mark::step(&step.name, State::Dispatched),
+                trace.as_deref_mut(),
+            );
             let outcome = match step.kind {
                 Kind::Query => self
                     .look_up(step, inputs, trace.as_deref_mut())
@@ -1325,19 +1361,188 @@ impl Runtime {
                 )),
             };
             match outcome {
-                Ok(output) => run.steps.push(Ran {
-                    name: step.name.clone(),
-                    kind: step.kind,
-                    output,
-                }),
+                Ok(output) => {
+                    self.advance_runstate(
+                        &mut record,
+                        Mark::step(&step.name, State::Answered),
+                        trace.as_deref_mut(),
+                    );
+                    run.steps.push(Ran {
+                        name: step.name.clone(),
+                        kind: step.kind,
+                        output,
+                    });
+                }
                 Err(refused) => {
+                    self.advance_runstate(
+                        &mut record,
+                        Mark::step(&step.name, refusal_state(&refused)),
+                        trace.as_deref_mut(),
+                    );
                     run.stopped = Some(refused);
                     break;
                 }
             }
         }
+        self.settle_runstate(&mut record, &run, trace.as_deref_mut());
         self.report(&run, started, trace);
         run
+    }
+
+    /// Claims the run's recovery record, when the operator pointed this
+    /// runtime at a runstate directory.
+    ///
+    /// The claim lands after admission and the grant have passed and
+    /// before the first step dispatches, so a run refused earlier holds
+    /// no run id. The store observes the run: a store that cannot open,
+    /// or a claim it refuses, is noted in the trace and the run goes on
+    /// unrecorded rather than not at all.
+    fn claim_runstate(
+        &self,
+        program: &Program,
+        trace: Option<&mut Recorder>,
+    ) -> Option<(Store, String)> {
+        let dir = self.runstate.as_ref()?;
+        let mut store = match Store::open(dir) {
+            Ok(store) => store,
+            Err(trouble) => {
+                self.note(
+                    trace,
+                    &format!("the runstate store did not open: {trouble}"),
+                );
+                return None;
+            }
+        };
+        let id = run_id(&program.slug);
+        let base = self.base_commit();
+        let (questions, sources) = self.claim_pins(program);
+        match store.claim(&Claim {
+            run: &id,
+            base: &base,
+            program: &program.slug,
+            questions: &questions,
+            sources: &sources,
+        }) {
+            Ok(_) => Some((store, id)),
+            Err(refusal) => {
+                self.note(
+                    trace,
+                    &format!("the runstate store refused the claim: {refusal}"),
+                );
+                None
+            }
+        }
+    }
+
+    /// Appends one mark to the run's record. A mark the store refuses or
+    /// cannot write is noted in the trace — the store observes the run,
+    /// and nothing it says changes what the run does.
+    fn advance_runstate(
+        &self,
+        record: &mut Option<(Store, String)>,
+        mark: Mark<'_>,
+        trace: Option<&mut Recorder>,
+    ) {
+        let Some((store, id)) = record.as_mut() else {
+            return;
+        };
+        if let Err(refusal) = store.advance(id, mark) {
+            self.note(
+                trace,
+                &format!("the runstate store refused a mark: {refusal}"),
+            );
+        }
+    }
+
+    /// Settles the run's record with what the run came to. The result
+    /// reference is where the run's evidence lives — the trace when one
+    /// is being kept, the program's slug otherwise — never the evidence
+    /// itself.
+    fn settle_runstate(
+        &self,
+        record: &mut Option<(Store, String)>,
+        run: &Run,
+        trace: Option<&mut Recorder>,
+    ) {
+        let Some((store, id)) = record.as_mut() else {
+            return;
+        };
+        let outcome = match &run.stopped {
+            None => runstate::Outcome::Answered,
+            Some(refused) if unverifiable(&refused.code) => runstate::Outcome::Unverifiable,
+            Some(_) => runstate::Outcome::Refused,
+        };
+        let result = trace
+            .as_deref()
+            .map(|recorder| recorder.path().to_string_lossy().into_owned())
+            .or_else(|| run.program.clone())
+            .unwrap_or_default();
+        if let Err(refusal) = store.settle(id, outcome, &result) {
+            self.note(
+                trace,
+                &format!("the runstate store refused the settle: {refusal}"),
+            );
+        }
+    }
+
+    /// What the claim pins: each `decide` step's question set by digest —
+    /// by its identifier when this host has no wording for it — and each
+    /// `query` step's source by slug. The program and its sources carry
+    /// no digests; the question sets do.
+    fn claim_pins(&self, program: &Program) -> (Vec<String>, Vec<String>) {
+        let mut questions: Vec<String> = Vec::new();
+        let mut sources: Vec<String> = Vec::new();
+        for step in &program.steps {
+            match step.kind {
+                Kind::Decide => {
+                    let id = step.question.clone().unwrap_or_default();
+                    let pin = match self.questions.get(&id) {
+                        Some(set) => set.digest(),
+                        None => id,
+                    };
+                    if !questions.contains(&pin) {
+                        questions.push(pin);
+                    }
+                }
+                Kind::Query => {
+                    let slug = step
+                        .source
+                        .clone()
+                        .unwrap_or_else(|| source::REQUEST.to_string());
+                    if !sources.contains(&slug) {
+                        sources.push(slug);
+                    }
+                }
+                _ => {}
+            }
+        }
+        (questions, sources)
+    }
+
+    /// The commit the run branched from, or empty when this host has no
+    /// checkout or the checkout cannot name one.
+    fn base_commit(&self) -> String {
+        let Some(root) = &self.repository else {
+            return String::new();
+        };
+        let mut command = std::process::Command::new("git");
+        command.arg("-C").arg(root).args(["rev-parse", "HEAD"]);
+        let Ok(output) =
+            crate::capability::bounded::run(command, std::time::Duration::from_secs(2))
+        else {
+            return String::new();
+        };
+        match output.code == Some(0) && !output.truncated {
+            true => output.out.trim().to_string(),
+            false => String::new(),
+        }
+    }
+
+    /// A runstate observation in the trace, when one is being kept.
+    fn note(&self, trace: Option<&mut Recorder>, text: &str) {
+        if let Some(trace) = trace {
+            trace.note(text);
+        }
     }
 
     /// Selects the program a request asks for and runs it, under the
@@ -2175,6 +2380,43 @@ impl Runtime {
     }
 }
 
+/// The identifier one program run is claimed under: the program's slug,
+/// the millisecond it started, and the process it runs in. The id is
+/// also the record file's name, so anything outside its charset —
+/// letters, digits, `-`, `_`, `.` — becomes a `-`.
+fn run_id(slug: &str) -> String {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|span| span.as_millis())
+        .unwrap_or_default();
+    let pid = std::process::id();
+    format!("run-{slug}-{millis}-{pid}")
+        .chars()
+        .map(
+            |c| match c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                true => c,
+                false => '-',
+            },
+        )
+        .collect()
+}
+
+/// Whether a refusal code names work that produced nothing checkable —
+/// the `*_unverifiable` codes — rather than work that declined.
+fn unverifiable(code: &str) -> bool {
+    code.ends_with("unverifiable")
+}
+
+/// The record state a stopped step's refusal maps to: `unverifiable`
+/// when the refusal names work that produced nothing anyone could
+/// check, `refused` otherwise.
+fn refusal_state(refused: &Refused) -> State {
+    match unverifiable(&refused.code) {
+        true => State::Unverifiable,
+        false => State::Refused,
+    }
+}
+
 /// The work a request lists, one task per list item.
 ///
 /// A line counts when it opens with a list marker: `-`, `*`, `•`, `1.`, or
@@ -2324,6 +2566,7 @@ mod tests {
             relay: None,
             verification: None,
             review: None,
+            runstate: None,
             repository: None,
             host: Host::without_repository(),
         }
@@ -2566,6 +2809,181 @@ mod tests {
         runtime
             .authorize(&program, &inputs, &Grant::all())
             .expect("a full grant admits what the host admitted");
+    }
+
+    /// The run ids under a runstate directory — one `*.jsonl` file per
+    /// claimed run.
+    fn claimed(dir: &Path) -> Vec<String> {
+        let mut runs: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.strip_suffix(".jsonl").map(str::to_string)
+            })
+            .collect();
+        runs.sort();
+        runs
+    }
+
+    /// With a runstate directory set, a finished run leaves a claimed
+    /// and settled record: the run id it claimed, the names and digests
+    /// the claim pinned, each step's marks, and what the run came to.
+    #[tokio::test]
+    async fn a_run_leaves_a_settled_runstate_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime().with_runstate(dir.path());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let logs = tempfile::tempdir().unwrap();
+        let mut recorder =
+            Recorder::open(logs.path(), "fixture", "fixture", "fixture-repo").unwrap();
+        let trace = recorder.path().to_string_lossy().into_owned();
+
+        let run = runtime
+            .run(&program, &inputs, &Grant::all(), Some(&mut recorder))
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+
+        let mut store = Store::open(dir.path()).unwrap();
+        // A settled run is complete: recovery surfaces nothing.
+        assert!(store.recover().unwrap().is_empty());
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1, "one run, one record file: {ids:?}");
+        assert!(ids[0].starts_with("run-burn-down-"), "{}", ids[0]);
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.state, State::Settled);
+        assert_eq!(record.outcome, Some(runstate::Outcome::Answered));
+        // The claim pins: the program by slug, this host's missing base
+        // commit as empty, and the request source the query step read.
+        assert_eq!(record.program, "burn-down");
+        assert_eq!(record.base, "");
+        assert_eq!(record.sources, ["request"]);
+        assert!(record.questions.is_empty());
+        // The result reference is the trace, because a recorder exists.
+        assert_eq!(record.result.as_deref(), Some(trace.as_str()));
+        assert_eq!(record.steps.len(), 1);
+        assert_eq!(record.steps[0].step, "select");
+        assert_eq!(record.steps[0].state, State::Answered);
+    }
+
+    /// A run refused at admission or by the grant claims nothing: a
+    /// refused run holds no run id, and the directory is never created.
+    #[tokio::test]
+    async fn a_refused_run_leaves_no_runstate_record() {
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "unknown-bound",
+            "steps": [{"name": "work", "kind": "delegate", "bounds": {"memory_mb": 128}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime().with_runstate(dir.path().join("runstate"));
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some("bound_unenforceable")
+        );
+        assert!(!dir.path().join("runstate").exists());
+
+        // And a program the grant does not cover refuses just as early.
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime().with_runstate(dir.path().join("runstate"));
+        let run = runtime.run(&program, &inputs, &Grant::none(), None).await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some(program_authority::UNAUTHORIZED)
+        );
+        assert!(!dir.path().join("runstate").exists());
+    }
+
+    /// A run a step stops mid-way leaves the run's dispatched record,
+    /// each step's own record — answered for the one that ran, refused
+    /// for the one that stopped it — settled as refused.
+    #[tokio::test]
+    async fn a_run_stopping_midway_settles_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime().with_runstate(dir.path());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "narrow", "kind": "query",
+                 "bounds": {"max_results": 1, "on_overflow": "refuse"}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one\n- two", "stub-local");
+
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some("too_many_results")
+        );
+        assert_eq!(run.step_names(), ["select"]);
+
+        let mut store = Store::open(dir.path()).unwrap();
+        assert!(store.recover().unwrap().is_empty());
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1, "{ids:?}");
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.state, State::Settled);
+        assert_eq!(record.outcome, Some(runstate::Outcome::Refused));
+        // No recorder exists: the result reference is the program slug.
+        assert_eq!(record.result.as_deref(), Some("burn-down"));
+        assert_eq!(record.steps.len(), 2);
+        let select = record
+            .steps
+            .iter()
+            .find(|step| step.step == "select")
+            .unwrap();
+        let narrow = record
+            .steps
+            .iter()
+            .find(|step| step.step == "narrow")
+            .unwrap();
+        assert_eq!(select.state, State::Answered);
+        assert_eq!(narrow.state, State::Refused);
+    }
+
+    /// Without a runstate directory a run opens no store: nothing is
+    /// created anywhere the run could reach.
+    #[tokio::test]
+    async fn a_run_without_runstate_creates_nothing() {
+        let workspace = tempfile::tempdir().unwrap();
+        let survey = Survey {
+            capabilities: Vec::new(),
+            programs: crate::program::Registry::open(&[]),
+            sources: source::Registry::open(&[]),
+            workspace: workspace.path().into(),
+        };
+        let runtime = Runtime::using(survey, None);
+        assert!(runtime.runstate.is_none());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert!(
+            std::fs::read_dir(workspace.path())
+                .unwrap()
+                .next()
+                .is_none()
+        );
     }
 
     /// An unauthorized run stops before the first step — and before the
