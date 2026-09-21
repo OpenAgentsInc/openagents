@@ -23,10 +23,23 @@
 //! **A step kind the host does not run refuses the whole program.** An
 //! unrecognized kind is refused when the file is read, by
 //! [`crate::program::Program::load`]. A kind this version recognizes and
-//! does not run — `program` and `module`, which are composition and
-//! WebAssembly — is refused here, at admission. Neither is ever skipped: a
-//! program whose unknown steps are skipped is a different program, and it
-//! is the one a host would run by accident.
+//! does not run — `module`, which is WebAssembly — is refused here, at
+//! admission. Neither is ever skipped: a program whose unknown steps are
+//! skipped is a different program, and it is the one a host would run by
+//! accident.
+//!
+//! A `program` step runs the child program its address resolves to,
+//! nested inside the parent's run. The composition's shape — cycles,
+//! depth, step and call totals, widening bounds, pins, bindings, and the
+//! propagation table — is checked once at admission by
+//! [`crate::child::Composition`]; nothing structural is discovered at
+//! dispatch. The child's steps spend the same budget and deadline the
+//! parent's do, record themselves `parent/child` in the run's state so a
+//! receipt can name where inside the composition work happened, and end
+//! the way the step's stated propagation table says: a child that
+//! completed or was refused lands on the parent step exactly as the
+//! document mapped it. A `module` step stays refused until a dedicated
+//! Wasm implementation exists.
 //!
 //! **A `decide` step names a question, never its wording.** The wording
 //! lives in [`crate::questions`], addressed by identifier and digested as
@@ -42,11 +55,10 @@
 //!
 //! # What runs, and what does not
 //!
-//! Four step kinds: `query`, `decide`, `check`, and `delegate`.
-//! Composition, `module`, cycle detection, depth bounds, and fetching are
-//! all specified and none is needed to run the first program. A runtime
-//! that runs one program correctly is worth more than one that describes
-//! five.
+//! Five step kinds: `query`, `decide`, `check`, `delegate`, and `program`,
+//! which nests a resolved child under narrowed bounds. `module` and
+//! fetching stay specified and unbuilt. A runtime that runs one program
+//! correctly is worth more than one that describes five.
 //!
 //! A `check` step gated on `gate_not_met` runs the operator-installed
 //! verification plan rather than anything the program carries. Its
@@ -256,10 +268,12 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
         ],
         Kind::Check => &["refuse_on", "acceptance", "max_tests"],
         Kind::Delegate => &["concurrent_max", "isolation", "minutes"],
-        // Composition and WebAssembly are specified and not built. A host
-        // that met one and ran the rest would be running a different
-        // program.
-        Kind::Program | Kind::Module => &[],
+        // The bounds a `program` step may declare for its child, each a
+        // narrowing of what the composition has left.
+        Kind::Program => &["depth", "steps", "calls"],
+        // WebAssembly is specified and not built. A host that met one and
+        // ran the rest would be running a different program.
+        Kind::Module => &[],
     }
 }
 
@@ -458,6 +472,56 @@ impl Run {
         };
         format!("{program} stopped at {stopped}.")
     }
+}
+
+/// What a step list's run came to.
+///
+/// The distinction the runtime keeps between the three ends: `Finished`
+/// is the document's own end, `Ended` is the work's or the host's answer
+/// to a step, and `Cancelled` is the caller's bound — which is never a
+/// child program's outcome and never something a propagation table maps.
+enum StepsEnd {
+    /// Every step in the list answered.
+    Finished,
+    /// A step refused; the list stops where it stopped.
+    Ended(Refused),
+    /// The caller's budget or deadline spent; carries the refusal the
+    /// run settles `cancelled` under.
+    Cancelled(Refused),
+}
+
+/// The state one [`Runtime::run_steps`] borrows for the whole run, shared
+/// by every nested list it expands.
+///
+/// A child program does not get a copy: its steps spend the same
+/// `dispatched` count against the same budget, mark the same `record`,
+/// and produce into the same map — a child's bound is what the parent
+/// had left, which is how a child narrows and never widens.
+struct StepRun<'a> {
+    /// The operator's sentence, the work, and the executor — the child's
+    /// own when a `program` step's binding projects them.
+    inputs: &'a Inputs,
+    /// The grant the whole run answers to; a child runs under it, never
+    /// a wider one.
+    grant: &'a Grant,
+    /// When the run began, for the deadline.
+    started: Instant,
+    /// The work the `query` step selected, when one ran.
+    selection: &'a mut Selection,
+    /// The run being recorded.
+    run: &'a mut Run,
+    /// The recovery record, when the operator pointed the runtime at one.
+    record: &'a mut Option<(Store, String)>,
+    /// Steps dispatched across the whole composition, for the step
+    /// budget.
+    dispatched: &'a mut usize,
+    /// Every step's output and declared produced fields, keyed
+    /// `step` and `step.field` under the step's full `parent/child`
+    /// name — what a `program` step's binding reads when it projects
+    /// inputs for its child.
+    produced: &'a mut BTreeMap<String, Value>,
+    /// The session's trace, when one is being kept.
+    trace: Option<&'a mut Recorder>,
 }
 
 /// A run's completion verdicts, counted.
@@ -686,8 +750,38 @@ impl Runtime {
     ///
     /// Returns the first step this host would refuse, and the reason.
     pub fn admit(&self, program: &Program) -> Result<(), Refused> {
+        // A program that calls children answers for its whole composition
+        // before the first step runs: every reference resolves pinned,
+        // every propagation is stated, no chain returns to itself, and no
+        // bound exceeds or widens. The first problem is the refusal.
+        if program.steps.iter().any(|step| step.kind == Kind::Program)
+            && let Some(problem) = crate::child::Composition::check(program, &self.survey.programs)
+                .into_iter()
+                .next()
+        {
+            return Err(Refused::at("", "composition_refused", problem.to_string()));
+        }
+        self.admit_tree(program)
+    }
+
+    /// Whether this host would run every step of a program and of every
+    /// child its `program` steps resolve to.
+    ///
+    /// The composition check already ran, so the recursion is acyclic
+    /// and depth-bounded: a child a step names is admitted as its own
+    /// program, and a step kind the host does not run anywhere in the
+    /// graph refuses the whole thing before the first step rather than
+    /// mid-run.
+    fn admit_tree(&self, program: &Program) -> Result<(), Refused> {
         for step in &program.steps {
             self.admit_step(program, step)?;
+        }
+        for step in &program.steps {
+            if step.kind == Kind::Program
+                && let Some(child) = self.resolve_child(step)
+            {
+                self.admit_tree(child)?;
+            }
         }
         Ok(())
     }
@@ -799,6 +893,19 @@ impl Runtime {
                     "minutes must name a positive deadline this host can represent, and this step names {value}"
                 )),
             },
+            "depth" | "steps" | "calls" => {
+                let ceiling = match bound {
+                    "depth" => crate::child::MAX_DEPTH,
+                    "steps" => crate::child::MAX_STEPS,
+                    _ => crate::child::MAX_CALLS,
+                };
+                match value.as_u64() {
+                    Some(count) if count > 0 && count <= ceiling => Ok(()),
+                    _ => refuse(format!(
+                        "{bound} is a count between one and {ceiling}, and this step names {value}"
+                    )),
+                }
+            }
             "max_results" | "concurrent_max" | "max_tests" => match value.as_u64() {
                 Some(count) if count > 0 && usize::try_from(count).is_ok() => Ok(()),
                 _ => refuse(format!(
@@ -1371,43 +1478,90 @@ impl Runtime {
             trace.as_deref_mut(),
         );
         let mut selection = Selection::default();
-        for (position, step) in program.steps.iter().enumerate() {
-            // The caller's budget stands at the boundary: a step that
-            // would dispatch past it never runs. The step and every
-            // step after it mark cancelled, and the run stops — the
-            // deliberate end, recorded, rather than a refusal or a
-            // silent truncation.
-            if let Some(refused) = self.budget_spent(&step.name, position, started) {
-                self.cancel_from(&mut record, &run, program, position, trace.as_deref_mut());
+        let mut dispatched = 0usize;
+        let mut produced = BTreeMap::new();
+        let mut steps = StepRun {
+            inputs,
+            grant,
+            started,
+            selection: &mut selection,
+            run: &mut run,
+            record: &mut record,
+            dispatched: &mut dispatched,
+            produced: &mut produced,
+            trace: trace.as_deref_mut(),
+        };
+        match self.run_steps(&mut steps, program, "", 1).await {
+            StepsEnd::Finished => {}
+            StepsEnd::Ended(refused) => run.stopped = Some(refused),
+            StepsEnd::Cancelled(refused) => {
+                self.record_claims(&mut record, &run, trace.as_deref_mut());
                 run.stopped = Some(refused);
-                break;
+            }
+        }
+        self.settle_runstate(&mut record, &run, trace.as_deref_mut());
+        self.report(&run, started, trace);
+        run
+    }
+
+    /// Runs one step list — a program's own steps or a child's — in the
+    /// order the program lists them.
+    ///
+    /// `prefix` namespaces the run's records: a child's steps mark
+    /// themselves `parent/child` so a receipt names where inside the
+    /// composition the work happened, and `dispatched` counts against the
+    /// run's step budget whichever list spent it. The caller's budget
+    /// stands at each boundary and the deadline reaches inside each
+    /// dispatch: either spending ends the list `cancelled`, the end the
+    /// caller chose, never a refusal the step did not give. A step that
+    /// refuses ends the list `Ended` and its own mark says how; the steps
+    /// after it hold no records because none ran.
+    async fn run_steps<'a>(
+        &'a self,
+        ctx: &'a mut StepRun<'a>,
+        program: &'a Program,
+        prefix: &'a str,
+        depth: u64,
+    ) -> StepsEnd {
+        for (position, step) in program.steps.iter().enumerate() {
+            let name = format!("{prefix}{}", step.name);
+            if let Some(refused) = self.budget_spent(&name, *ctx.dispatched, ctx.started) {
+                self.cancel_pending(
+                    ctx.record,
+                    &program.steps,
+                    position,
+                    prefix,
+                    depth,
+                    ctx.trace.as_deref_mut(),
+                );
+                return StepsEnd::Cancelled(refused);
             }
             self.advance_runstate(
-                &mut record,
-                Mark::step(&step.name, State::Dispatched),
-                trace.as_deref_mut(),
+                ctx.record,
+                Mark::step(&name, State::Dispatched),
+                ctx.trace.as_deref_mut(),
             );
-            let remaining = self.remaining(started);
+            let remaining = self.remaining(ctx.started);
             let outcome = match step.kind {
                 Kind::Query => self
-                    .look_up(step, inputs, trace.as_deref_mut())
+                    .look_up(step, ctx.inputs, ctx.trace.as_deref_mut())
                     .map(|found| {
                         let output = found.output();
-                        selection = found.clone();
-                        run.selection = Some(found);
+                        *ctx.selection = found.clone();
+                        ctx.run.selection = Some(found);
                         output
                     }),
                 Kind::Decide => {
                     self.within(
-                        &step.name,
+                        &name,
                         remaining,
                         self.decide(
                             step,
                             program,
-                            inputs,
-                            &selection,
-                            &mut run,
-                            trace.as_deref_mut(),
+                            ctx.inputs,
+                            ctx.selection,
+                            ctx.run,
+                            ctx.trace.as_deref_mut(),
                         ),
                     )
                     .await
@@ -1417,78 +1571,292 @@ impl Runtime {
                         == Some("gate_not_met") =>
                 {
                     self.within(
-                        &step.name,
+                        &name,
                         remaining,
-                        self.verify_step(step, &mut run, trace.as_deref_mut()),
+                        self.verify_step(step, ctx.run, ctx.trace.as_deref_mut()),
                     )
                     .await
                 }
-                Kind::Check => self.check(step, program, inputs, trace.as_deref_mut()),
+                Kind::Check => self.check(step, program, ctx.inputs, ctx.trace.as_deref_mut()),
                 Kind::Delegate => {
                     self.delegate(
                         step,
-                        inputs,
-                        &selection,
-                        &mut run,
-                        grant,
-                        started,
-                        trace.as_deref_mut(),
+                        ctx.inputs,
+                        ctx.selection,
+                        ctx.run,
+                        ctx.grant,
+                        ctx.started,
+                        ctx.trace.as_deref_mut(),
                     )
                     .await
                 }
+                Kind::Program => self.nested(ctx, step, prefix, depth).await,
                 // Admission refused these before the first step ran.
-                Kind::Program | Kind::Module => Err(Refused::at(
-                    &step.name,
+                Kind::Module => Err(Refused::at(
+                    &name,
                     "step_kind_unavailable",
                     format!("this host does not run a {} step", step.kind.word()),
                 )),
             };
             // The deadline reaches inside the step, not only to its
-            // boundary: an expiry while the step dispatched ends it. For
-            // delegate work the tightened bound already stopped the
-            // subprocess group — supervise's own cancel path — and a
-            // dispatch `within` timed out was dropped the same way. The
-            // step marks `cancelled`, the end the caller chose, never
-            // `refused` for an end it did not give and never `unknown`,
-            // which is a crash's mark.
-            if self.deadline_spent(started)
+            // boundary: an expiry while the step dispatched ends it.
+            // For delegate work the tightened bound already stopped
+            // the subprocess group — supervise's own cancel path —
+            // and a dispatch `within` timed out was dropped the same
+            // way. The step marks `cancelled`, the end the caller
+            // chose, never `refused` for an end it did not give and
+            // never `unknown`, which is a crash's mark.
+            if self.deadline_spent(ctx.started)
                 || matches!(&outcome, Err(refused) if refused.code == BUDGET_EXCEEDED)
             {
-                self.cancel_from(&mut record, &run, program, position, trace.as_deref_mut());
-                run.stopped = Some(Refused::at(
-                    &step.name,
+                self.cancel_pending(
+                    ctx.record,
+                    &program.steps,
+                    position,
+                    prefix,
+                    depth,
+                    ctx.trace.as_deref_mut(),
+                );
+                return StepsEnd::Cancelled(Refused::at(
+                    &name,
                     BUDGET_EXCEEDED,
                     "the run's deadline passed while the step was dispatched".to_string(),
                 ));
-                break;
             }
             match outcome {
                 Ok(output) => {
+                    if let Err(refused) = collect_produced(step, &name, &output, ctx.produced) {
+                        self.advance_runstate(
+                            ctx.record,
+                            Mark::step(&name, refusal_state(&refused)),
+                            ctx.trace.as_deref_mut(),
+                        );
+                        return StepsEnd::Ended(refused);
+                    }
                     self.advance_runstate(
-                        &mut record,
-                        Mark::step(&step.name, State::Answered),
-                        trace.as_deref_mut(),
+                        ctx.record,
+                        Mark::step(&name, State::Answered),
+                        ctx.trace.as_deref_mut(),
                     );
-                    run.steps.push(Ran {
-                        name: step.name.clone(),
+                    ctx.run.steps.push(Ran {
+                        name,
                         kind: step.kind,
                         output,
                     });
+                    *ctx.dispatched += 1;
                 }
                 Err(refused) => {
                     self.advance_runstate(
-                        &mut record,
-                        Mark::step(&step.name, refusal_state(&refused)),
-                        trace.as_deref_mut(),
+                        ctx.record,
+                        Mark::step(&name, refusal_state(&refused)),
+                        ctx.trace.as_deref_mut(),
                     );
-                    run.stopped = Some(refused);
-                    break;
+                    return StepsEnd::Ended(refused);
                 }
             }
         }
-        self.settle_runstate(&mut record, &run, trace.as_deref_mut());
-        self.report(&run, started, trace);
-        run
+        StepsEnd::Finished
+    }
+
+    /// The child program a `program` step runs, nested inside the
+    /// parent's run.
+    ///
+    /// The composition's shape was checked at admission; what happens
+    /// here is only the run half. The child resolves against the same
+    /// registry again, runs one level deeper under the run's own budget
+    /// and deadline, and its steps mark `step/child` in the run's
+    /// records. Its ending is what the step's stated propagation table
+    /// maps: `completed`, `failed`, or `refused` lands on this step's
+    /// success, failure, or refusal exactly as the document said —
+    /// never a default the host chose. A spending of the caller's bound
+    /// inside the child is the run's cancellation, not a child outcome
+    /// the table maps.
+    async fn nested(
+        &self,
+        ctx: &mut StepRun<'_>,
+        step: &Step,
+        prefix: &str,
+        depth: u64,
+    ) -> Result<String, Refused> {
+        use crate::child::{Binding, Effect, Outcome, Propagation};
+        let name = format!("{prefix}{}", step.name);
+        if depth >= crate::child::MAX_DEPTH {
+            return Err(Refused::at(
+                &name,
+                "composition_depth",
+                format!(
+                    "the composition's depth bound of {} is spent",
+                    crate::child::MAX_DEPTH
+                ),
+            ));
+        }
+        let Some(child) = self.resolve_child(step) else {
+            return Err(Refused::at(
+                &name,
+                "child_unresolved",
+                "the child program this step names resolves to nothing in this host's registry",
+            ));
+        };
+        let binding = Binding::of(step)
+            .map_err(|reason| Refused::at(&name, "contract_invalid", reason))?
+            .unwrap_or_default();
+        let table = match Propagation::of(step) {
+            Ok(Some(table)) => table,
+            Ok(None) => {
+                return Err(Refused::at(
+                    &name,
+                    "propagation_undeclared",
+                    "a program step states its propagation table, and this one states none",
+                ));
+            }
+            Err(reason) => return Err(Refused::at(&name, "contract_invalid", reason)),
+        };
+        let child_inputs = child_inputs(ctx.inputs, &binding, ctx.produced, prefix, &name)?;
+        let child_prefix = format!("{name}/");
+        let mut child_ctx = StepRun {
+            inputs: &child_inputs,
+            grant: ctx.grant,
+            started: ctx.started,
+            selection: &mut *ctx.selection,
+            run: &mut *ctx.run,
+            record: &mut *ctx.record,
+            dispatched: &mut *ctx.dispatched,
+            produced: &mut *ctx.produced,
+            trace: ctx.trace.as_deref_mut(),
+        };
+        // `run_steps` and `nested` recurse through each other, so this
+        // call is boxed to keep the future a size the compiler can name.
+        let end = Box::pin(self.run_steps(&mut child_ctx, child, &child_prefix, depth + 1)).await;
+        let (outcome, detail) = match end {
+            StepsEnd::Finished => (Outcome::Completed, String::new()),
+            // The caller's bound spent inside the child is the run's own
+            // end — it propagates, whatever the table says.
+            StepsEnd::Cancelled(refused) => return Err(refused),
+            // A child whose step refused ends `refused`. `failed` stays
+            // for a step kind that can report its work failed without
+            // refusing; none does yet, and the table's row is honored
+            // when one does.
+            StepsEnd::Ended(refused) => (Outcome::Refused, refused.to_string()),
+        };
+        match outcome.propagation(&table) {
+            Effect::Success => {
+                let mut output = Map::new();
+                output.insert("child".to_string(), Value::String(child.slug.clone()));
+                output.insert(
+                    "outcome".to_string(),
+                    serde_json::to_value(outcome).unwrap_or_default(),
+                );
+                // The step's declared `produces` resolve from what the
+                // child's steps produced — same field name, later steps
+                // winning — from a child step's output object when it
+                // carries the field, and from this step's own `child`
+                // and `outcome`, which it produces by construction. A
+                // field nothing produced is the contract the document
+                // stated and the run could not meet, which refuses
+                // rather than inventing a value.
+                for field in binding.produces.keys() {
+                    let mut found = None;
+                    for child_step in &child.steps {
+                        if let Some(value) = ctx
+                            .produced
+                            .get(&format!("{child_prefix}{}.{field}", child_step.name))
+                        {
+                            found = Some(value.clone());
+                            continue;
+                        }
+                        if let Some(Value::Object(object)) = ctx
+                            .produced
+                            .get(&format!("{child_prefix}{}", child_step.name))
+                            && let Some(value) = object.get(field)
+                        {
+                            found = Some(value.clone());
+                        }
+                    }
+                    if found.is_none() {
+                        found = match field.as_str() {
+                            "child" => Some(Value::String(child.slug.clone())),
+                            "outcome" => Some(serde_json::to_value(outcome).unwrap_or_default()),
+                            _ => None,
+                        };
+                    }
+                    match found {
+                        Some(value) => {
+                            ctx.produced
+                                .insert(format!("{name}.{field}"), value.clone());
+                            output.insert(field.clone(), value);
+                        }
+                        None => {
+                            return Err(Refused::at(
+                                &name,
+                                "output_unproduced",
+                                format!(
+                                    "the child program {} produced no field named {field:?}, which this step declares it produces",
+                                    child.slug
+                                ),
+                            ));
+                        }
+                    }
+                }
+                Ok(Value::Object(output).to_string())
+            }
+            Effect::Failure => Err(Refused::at(
+                &name,
+                "child_failed",
+                format!(
+                    "the child program {} did not complete: {detail}",
+                    child.slug
+                ),
+            )),
+            Effect::Refusal => Err(Refused::at(
+                &name,
+                "child_refused",
+                format!(
+                    "the child program {} did not complete: {detail}",
+                    child.slug
+                ),
+            )),
+        }
+    }
+
+    /// Marks `steps[from..]` and their pending children `cancelled`,
+    /// under `prefix` — the marks a list writes when the run's own bound
+    /// ends it. A step whose record already resolved keeps it: an
+    /// answered child step is never relabelled `cancelled` because a
+    /// later bound spent.
+    fn cancel_pending(
+        &self,
+        record: &mut Option<(Store, String)>,
+        steps: &[Step],
+        from: usize,
+        prefix: &str,
+        depth: u64,
+        mut trace: Option<&mut Recorder>,
+    ) {
+        for step in steps.iter().skip(from) {
+            self.cancel_step(
+                record,
+                &format!("{prefix}{}", step.name),
+                step,
+                depth,
+                trace.as_deref_mut(),
+            );
+        }
+    }
+
+    /// Whether the run's record already says how `name` ended — a mark
+    /// a cancelled run must not overwrite. `dispatched` is not an end:
+    /// a step in flight when the bound spent marks `cancelled`.
+    fn step_resolved(&self, record: &Option<(Store, String)>, name: &str) -> bool {
+        let Some((store, id)) = record else {
+            return false;
+        };
+        store.get(id).is_ok_and(|view| {
+            view.is_some_and(|view| {
+                view.steps.iter().any(|step| {
+                    step.step == name && !matches!(step.state, State::Pending | State::Dispatched)
+                })
+            })
+        })
     }
 
     /// Claims the run's recovery record, when the operator pointed this
@@ -1668,7 +2036,10 @@ impl Runtime {
     /// Marks a step and every step after it `cancelled` — the end the
     /// caller's bound chose — then records what the run still holds:
     /// each worktree a delegation retained and each delegation that came
-    /// back as the harness's rather than the executor's.
+    /// back as the harness's rather than the executor's. `run_steps`
+    /// writes the same marks through [`Runtime::cancel_pending`]; this
+    /// wrapper remains the tests' entry point.
+    #[cfg(test)]
     fn cancel_from(
         &self,
         record: &mut Option<(Store, String)>,
@@ -1677,9 +2048,7 @@ impl Runtime {
         from: usize,
         mut trace: Option<&mut Recorder>,
     ) {
-        for step in program.steps.iter().skip(from) {
-            self.cancel_step(record, &step.name, step, 1, trace.as_deref_mut());
-        }
+        self.cancel_pending(record, &program.steps, from, "", 1, trace.as_deref_mut());
         self.record_claims(record, run, trace);
     }
 
@@ -1688,7 +2057,9 @@ impl Runtime {
     /// own depth bound. A cancelled parent's pending children never ran;
     /// the record says so step by step rather than leaving them for
     /// recovery to guess at. A `program` step whose reference resolves
-    /// to nothing marks only itself: there is no child to name.
+    /// to nothing marks only itself: there is no child to name. A step
+    /// whose record already resolved keeps its mark — an answered child
+    /// step is never relabelled `cancelled` because a later bound spent.
     fn cancel_step(
         &self,
         record: &mut Option<(Store, String)>,
@@ -1697,11 +2068,13 @@ impl Runtime {
         depth: u64,
         mut trace: Option<&mut Recorder>,
     ) {
-        self.advance_runstate(
-            record,
-            Mark::step(name, State::Cancelled),
-            trace.as_deref_mut(),
-        );
+        if !self.step_resolved(record, name) {
+            self.advance_runstate(
+                record,
+                Mark::step(name, State::Cancelled),
+                trace.as_deref_mut(),
+            );
+        }
         if step.kind != Kind::Program || depth >= crate::child::MAX_DEPTH {
             return;
         }
@@ -2722,6 +3095,155 @@ fn refusal_state(refused: &Refused) -> State {
     match unverifiable(&refused.code) {
         true => State::Unverifiable,
         false => State::Refused,
+    }
+}
+
+/// Records one answered step's output for the steps that read it later:
+/// the whole output under the step's `parent/child` name, and each field
+/// its binding declares under `name.field`.
+///
+/// A step that declares `produces` and answers with something that is
+/// not an object carrying those fields is a contract the run could not
+/// meet — it refuses rather than a later step reading a gap as an
+/// answer. A `program` step's fields were resolved by its child before
+/// its output was written; they are already in the map.
+fn collect_produced(
+    step: &Step,
+    name: &str,
+    output: &str,
+    produced: &mut BTreeMap<String, Value>,
+) -> Result<(), Refused> {
+    produced.insert(
+        name.to_string(),
+        serde_json::from_str(output).unwrap_or_else(|_| Value::String(output.to_string())),
+    );
+    let binding = crate::child::Binding::of(step)
+        .map_err(|reason| Refused::at(name, "contract_invalid", reason))?;
+    let Some(binding) = binding else {
+        return Ok(());
+    };
+    if step.kind == Kind::Program || binding.produces.is_empty() {
+        return Ok(());
+    }
+    let object = serde_json::from_str::<Map<String, Value>>(output).map_err(|_| {
+        Refused::at(
+            name,
+            "output_unproduced",
+            format!(
+                "step {name:?} declares produces, and its output is not an object that can carry them"
+            ),
+        )
+    })?;
+    for field in binding.produces.keys() {
+        match object.get(field) {
+            Some(value) => {
+                produced.insert(format!("{name}.{field}"), value.clone());
+            }
+            None => {
+                return Err(Refused::at(
+                    name,
+                    "output_unproduced",
+                    format!(
+                        "step {name:?} declares it produces {field:?}, and its output carries none"
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The inputs a `program` step's binding hands the child: `request` and
+/// `executor` project from the origins the binding states, and absent a
+/// binding the child inherits the parent's.
+///
+/// `tasks` is the run's work list — not a field a binding projects —
+/// and any other name is a declared input this host cannot hand a
+/// child, which refuses rather than arriving empty.
+fn child_inputs(
+    inputs: &Inputs,
+    binding: &crate::child::Binding,
+    produced: &BTreeMap<String, Value>,
+    prefix: &str,
+    name: &str,
+) -> Result<Inputs, Refused> {
+    let mut child = inputs.clone();
+    let mut projected = false;
+    for (input, origin) in &binding.inputs {
+        let value = resolve_input(origin, inputs, produced, prefix, name)?;
+        match input.as_str() {
+            "request" | "executor" => {
+                let text = match &value {
+                    Value::String(text) => text.clone(),
+                    other => other.to_string(),
+                };
+                match input.as_str() {
+                    "request" => {
+                        child.request = text;
+                        projected = true;
+                    }
+                    _ => child.executor = text,
+                }
+            }
+            _ => {
+                return Err(Refused::at(
+                    name,
+                    "input_unsupported",
+                    format!(
+                        "input {input:?} names no field of a run's state this host can hand a child"
+                    ),
+                ));
+            }
+        }
+    }
+    // A projected request is the child's own: the work it lists reads
+    // the way `Inputs::read` reads the operator's.
+    if projected {
+        child.tasks = listed(&child.request);
+    }
+    Ok(child)
+}
+
+/// What one declared input origin answers with: a field of the run's
+/// state, an earlier step's produced output, or the literal the document
+/// carried. An origin that answers nothing refuses — the composition
+/// check proved the producer was declared, so an absent value means the
+/// step produced no such field.
+fn resolve_input(
+    origin: &crate::child::Input,
+    inputs: &Inputs,
+    produced: &BTreeMap<String, Value>,
+    prefix: &str,
+    name: &str,
+) -> Result<Value, Refused> {
+    match origin {
+        crate::child::Input::State { field } => match field.as_str() {
+            "request" => Ok(Value::String(inputs.request.clone())),
+            "executor" => Ok(Value::String(inputs.executor.clone())),
+            _ => Err(Refused::at(
+                name,
+                "input_absent",
+                format!("the run's state holds no field {field:?} this input can read"),
+            )),
+        },
+        crate::child::Input::Step { step, field } => {
+            let key = match field {
+                Some(field) => format!("{prefix}{step}.{field}"),
+                None => format!("{prefix}{step}"),
+            };
+            produced.get(&key).cloned().ok_or_else(|| {
+                let what = field.as_ref().map_or_else(
+                    || "its output".to_string(),
+                    |field| format!("field {field:?}"),
+                );
+                Refused::at(
+                    name,
+                    "producer_absent",
+                    format!("step {step:?} produced {what} this input reads nothing of"),
+                )
+            })
+        }
+        crate::child::Input::Literal { value } => Ok(value.clone()),
     }
 }
 
@@ -4064,6 +4586,453 @@ mod tests {
         // A step the parent never reached is nowhere: `select` was
         // never marked by the cancellation.
         assert!(record.steps.iter().all(|step| step.step != "select"));
+    }
+
+    /// A program file under `dir`, for a registry to open.
+    fn stage_program(dir: &Path, slug: &str, steps: &str) {
+        std::fs::write(
+            dir.join(format!("{slug}.json")),
+            serde_json::to_string(&json!({
+                "v": 1, "slug": slug, "name": slug,
+                "steps": serde_json::from_str::<Value>(steps).unwrap()
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
+    /// The `program` step's JSON with the propagation table every
+    /// well-formed one states.
+    fn call_step(address: &str, extra: &str) -> String {
+        format!(
+            r#"{{"name": "call", "kind": "program", "program": "{address}", "bounds": {{}},
+                "propagation": {{"completed": "success", "failed": "failure", "refused": "refusal"}}{extra}}}"#
+        )
+    }
+
+    /// A `program` step runs the child its address resolves to: the
+    /// child's steps dispatch under `step/child` marks, report into the
+    /// one run's record, and the step answers with what the child came
+    /// to — the whole composition in one run.
+    #[tokio::test]
+    async fn a_program_step_runs_its_child_under_prefixed_marks() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = runtime.with_runstate(dir.path());
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "child-program@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"}},
+                {"name": "after", "kind": "query", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        // The child's step finished before the step that ran it, and the
+        // step after it ran under the parent's own name.
+        assert_eq!(run.step_names(), ["call/gather", "call", "after"]);
+        let output: Value = serde_json::from_str(&run.steps[1].output).unwrap();
+        assert_eq!(output["child"], "child-program");
+        assert_eq!(output["outcome"], "completed");
+
+        let mut store = Store::open(dir.path()).unwrap();
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1, "{ids:?}");
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.outcome, Some(runstate::Outcome::Answered));
+        for name in ["call", "call/gather", "after"] {
+            let step = record
+                .steps
+                .iter()
+                .find(|step| step.step == name)
+                .unwrap_or_else(|| panic!("no step record for {name}"));
+            assert_eq!(step.state, State::Answered, "{name}");
+        }
+    }
+
+    /// A child that ends refused lands on the parent step where the
+    /// propagation table says: `refused` mapped to `failure` stops the
+    /// run at the step that called it.
+    #[tokio::test]
+    async fn a_childs_refusal_lands_where_the_table_maps_it() {
+        let programs = tempfile::tempdir().unwrap();
+        // The child's query reads the request source; a request with no
+        // task list refuses `no_tasks` at dispatch.
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "child-program@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "failure"}},
+                {"name": "after", "kind": "query", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("a sentence with no list", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        let stopped = run.stopped.as_ref().expect("the run stopped");
+        assert_eq!(stopped.step, "call");
+        assert_eq!(stopped.code, "child_failed");
+        assert!(run.step_names().iter().all(|name| name != "after"));
+    }
+
+    /// The table may just as honestly map `refused` to `success`: the
+    /// parent's run goes on, and the step's output says what the child
+    /// came to rather than pretending it completed.
+    #[tokio::test]
+    async fn a_refused_child_mapped_to_success_lets_the_parent_go_on() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "child-program@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "success"}},
+                {"name": "after", "kind": "program", "program": "child-program@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "success"}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("a sentence with no list", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.step_names(), ["call", "after"]);
+        let output: Value = serde_json::from_str(&run.steps[0].output).unwrap();
+        assert_eq!(output["outcome"], "refused");
+    }
+
+    /// A composition the check cannot account for refuses at admission —
+    /// before the first step, before any record exists: a chain that
+    /// returns to itself names the whole cycle.
+    #[tokio::test]
+    async fn a_composition_cycle_is_refused_before_anything_ran() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "a",
+            &format!("[{}]", call_step("b@1.0.0", "")),
+        );
+        stage_program(
+            programs.path(),
+            "b",
+            &format!("[{}]", call_step("a@1.0.0", "")),
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = runtime.with_runstate(dir.path());
+        let parent = runtime.survey.programs.get("a").unwrap().clone();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        let stopped = run.stopped.as_ref().expect("the run refused");
+        assert_eq!(stopped.code, "composition_refused");
+        assert!(stopped.reason.contains("a -> b -> a"), "{stopped}");
+        assert!(!dir.path().exists() || claimed(dir.path()).is_empty());
+    }
+
+    /// Every way a child address fails is refused the same way — before
+    /// a step runs: a digest nothing answers, a bare name nobody pinned,
+    /// and a release that is not in the registry.
+    #[tokio::test]
+    async fn a_child_address_the_registry_cannot_pin_is_refused() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        for address in [
+            format!("sha256:{}", "0".repeat(64)),
+            "child-program".to_string(),
+            "missing-child@9.9.9".to_string(),
+        ] {
+            let parent: Program = serde_json::from_value(json!({
+                "v": 1, "slug": "parent-program",
+                "steps": [serde_json::from_str::<Value>(&call_step(&address, "")).unwrap()]
+            }))
+            .unwrap();
+            let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+            let stopped = run.stopped.as_ref().expect("the run refused");
+            assert_eq!(stopped.code, "composition_refused", "{address}");
+        }
+    }
+
+    /// A child bound wider than what the composition has left refuses —
+    /// narrowed is admitted, widened is never clamped.
+    #[tokio::test]
+    async fn a_child_bound_wider_than_the_composition_has_left_is_refused() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "child-program@1.0.0",
+                 "bounds": {"steps": 256},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        let stopped = run.stopped.as_ref().expect("the run refused");
+        assert_eq!(stopped.code, "composition_refused");
+        assert!(stopped.reason.contains("narrows"), "{stopped}");
+    }
+
+    /// A `program` step that states no propagation table refuses: the
+    /// mapping is the document's to state and the host's never to
+    /// default.
+    #[tokio::test]
+    async fn a_program_step_without_propagation_is_refused() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "child-program@1.0.0", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        let stopped = run.stopped.as_ref().expect("the run refused");
+        assert_eq!(stopped.code, "composition_refused");
+        assert!(stopped.reason.contains("propagation"), "{stopped}");
+    }
+
+    /// A step kind the host does not run refuses the whole composition
+    /// at admission — a `module` step inside a child is the parent's
+    /// refusal before the first step, not the child's mid-run.
+    #[tokio::test]
+    async fn a_module_step_inside_a_child_refuses_the_composition() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "plug", "kind": "module", "module": {"sha256": "abc"}, "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [serde_json::from_str::<Value>(&call_step("child-program@1.0.0", "")).unwrap()]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        let stopped = run.stopped.as_ref().expect("the run refused");
+        assert_eq!(stopped.code, "step_kind_unavailable");
+        assert!(stopped.reason.contains("module"), "{stopped}");
+    }
+
+    /// The caller's budget spends across the composition: a step count
+    /// the child's second step would pass cancels the run there — the
+    /// answered child step keeps its mark, the pending one and the
+    /// program step mark `cancelled`, and nothing is relabelled.
+    #[tokio::test]
+    async fn a_budget_spent_inside_a_child_cancels_the_run() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[
+                {"name": "one", "kind": "query", "bounds": {}},
+                {"name": "two", "kind": "query", "bounds": {}}
+            ]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = runtime.with_runstate(dir.path()).with_budget(Budget {
+            max_steps: Some(1),
+            deadline: None,
+        });
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [serde_json::from_str::<Value>(&call_step("child-program@1.0.0", "")).unwrap()]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        let stopped = run.stopped.as_ref().expect("the run cancelled");
+        assert_eq!(stopped.code, BUDGET_EXCEEDED);
+
+        let mut store = Store::open(dir.path()).unwrap();
+        let ids = claimed(dir.path());
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.outcome, Some(runstate::Outcome::Cancelled));
+        for (name, state) in [
+            ("call/one", State::Answered),
+            ("call/two", State::Cancelled),
+            ("call", State::Cancelled),
+        ] {
+            let step = record
+                .steps
+                .iter()
+                .find(|step| step.step == name)
+                .unwrap_or_else(|| panic!("no step record for {name}"));
+            assert_eq!(step.state, state, "{name}");
+        }
+    }
+
+    /// The inputs a `program` step's binding states are the child's own:
+    /// a `request` literal is the sentence the child's `query` step
+    /// reads, list and all.
+    #[tokio::test]
+    async fn a_program_steps_declared_inputs_project_the_childs_request() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "child-program@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"},
+                 "binding": {"inputs": {"request": {"from": "literal", "value": "child work\n- the one the parent projected"}}}}
+            ]
+        }))
+        .unwrap();
+        // The parent's own request carries no work at all: the only list
+        // the child's `query` could read is the projected one.
+        let inputs = Inputs::read("no list here", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        let gather = run
+            .steps
+            .iter()
+            .find(|step| step.name == "call/gather")
+            .expect("the child's step ran");
+        assert!(gather.output.contains("1 of 1"), "{gather:?}");
+    }
+
+    /// A field a `program` step produces is one a later step's binding
+    /// reads: `outcome` produced by the first call feeds the second
+    /// call's projected request, and the run goes on because the
+    /// producer declared it.
+    #[tokio::test]
+    async fn a_produced_field_flows_into_the_next_childs_inputs() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "s1", "kind": "program", "program": "child-program@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "failure"},
+                 "binding": {"produces": {"outcome": "word"}, "exposes": ["outcome"]}},
+                {"name": "s2", "kind": "program", "program": "child-program@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "success"},
+                 "binding": {"inputs": {"request": {"from": "step", "step": "s1", "field": "outcome"}}}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        // s1 produced `outcome` — completed — and s2's child read it as
+        // its request, which holds no list, so the child refused and the
+        // table mapped that to success.
+        let s1 = run
+            .steps
+            .iter()
+            .find(|step| step.name == "s1")
+            .expect("s1 ran");
+        let output: Value = serde_json::from_str(&s1.output).unwrap();
+        assert_eq!(output["outcome"], "completed");
+        let s2 = run
+            .steps
+            .iter()
+            .find(|step| step.name == "s2")
+            .expect("s2 ran");
+        let output: Value = serde_json::from_str(&s2.output).unwrap();
+        assert_eq!(output["outcome"], "refused");
+    }
+
+    /// A `produces` field nothing in the child produced is the contract
+    /// the document stated and the run could not meet — refused, never
+    /// filled with a value nobody produced.
+    #[tokio::test]
+    async fn a_produces_field_nothing_produced_is_refused() {
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "child-program",
+            r#"[{"name": "gather", "kind": "query", "bounds": {}}]"#,
+        );
+        let mut runtime = empty_runtime();
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "child-program@1.0.0", "bounds": {},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "refusal"},
+                 "binding": {"produces": {"missing": "word"}}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
+        let stopped = run.stopped.as_ref().expect("the run refused");
+        assert_eq!(stopped.code, "output_unproduced");
+        assert!(stopped.reason.contains("missing"), "{stopped}");
     }
 
     /// A delegation that comes back as the harness's — a cleanup that
