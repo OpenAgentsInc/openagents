@@ -33,6 +33,10 @@ versions, dependency policy, and disposable PostgreSQL acceptance. It stops
 on the first failed command; later commands have not run when that happens.
 It also runs the small Python artifact-acquisition regression suite before
 Rust checks; this suite needs Python 3 and no model weights or network.
+Backup collection regressions also run before Rust checks. They force a blob
+rename during collection and verify that missing or corrupt bytes prevent
+publication. The PostgreSQL phase separately tests backup and restore under
+concurrent uploads and deletions.
 It also checks the delegation-result validator against completed, refused,
 incomplete, and inconsistent execution records before the Rust checks.
 
