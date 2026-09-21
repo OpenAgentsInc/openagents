@@ -28,13 +28,13 @@ tool catalog should not occupy every generation request.
 | [Delivery and evaluation](delivery.md) | Current implementation, migration from Coder, acceptance, evaluation, and source provenance. |
 
 These documents use **must** for requirements of the proposed implementation.
-They are not a new wire protocol. Existing
-[NIP-PRG](../../nips/openagents/NIP-PRG.md),
-[NIP-CAP](../../nips/openagents/NIP-CAP.md), and the
-[Decision API](../decision-models/api/decision-api.md) retain their contracts.
-New serialized fields, bindings, ABI support, and protocol extensions require
-versioned schemas and conformance fixtures before they can be advertised.
-Unknown execution semantics must refuse rather than run a partial workflow.
+The [OpenAgents NIPs](../../nips/openagents/README.md) now specify the wire
+contracts: revised v1 CAP/PRG, new EXT/RUN, shared artifacts, and CJ execution
+jobs. Their definitions govern serialization, identity, ABI, and interoperation;
+this directory explains the product architecture. Implementation and conformance
+fixtures remain required before advertisement. Unsupported execution semantics
+refuse. The existing [Decision API](../decision-models/api/decision-api.md)
+is unchanged.
 
 ## How this fits the Coder plan
 

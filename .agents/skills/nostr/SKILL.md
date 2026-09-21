@@ -48,6 +48,11 @@ Read the spec before the code. The files you need most often:
   and `coder-worker`.
 - `nips/openagents/NIP-CAP.md` — capability manifests and presence.
 - `nips/openagents/NIP-PRG.md` — programs.
+- `nips/openagents/NIP-EXT.md` — extension releases, discovery, and revocation.
+- `nips/openagents/NIP-RUN.md` — encrypted durable journals and recovery.
+- `nips/openagents/contracts.md` — pinned identities, schemas, locks, evidence,
+  context, effects, and outcomes for the revised v1 contracts.
+- `docs/protocol/implementation-plan.md` — implementation across all lanes.
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.
 
@@ -71,7 +76,9 @@ forge one.
 
 `crates/nostr` implements this as `EventClass::from_kind` in
 `domain/replacement.rs`. Every NIP-CJ
-job kind is ephemeral; every NIP-CAP and NIP-PRG kind is addressable.
+job kind is ephemeral; NIP-CAP and NIP-PRG discovery kinds are addressable.
+NIP-EXT and NIP-RUN add regular immutable records with separate addressable
+heads. A discovery head is never an execution version pin.
 
 **Messages**, client to relay:
 
@@ -229,6 +236,15 @@ key must differ.
 meet, with per-transport latency and refusal causes.
 
 ## Capabilities and programs (NIP-CAP, NIP-PRG)
+
+These drafts were revised in place as v1 on 2026-09-21. The paragraphs below
+describe the earlier implemented local registry boundary, not conformance to
+every revised field. CAP separates definitions, local bindings, and grants;
+PRG defines typed dataflow, `invoke`, and the plugin ABI; EXT defines
+distribution and RUN durable records. Read the current specs and implementation
+plan before changing readers or manifests; the required shapes must migrate
+together. Existing CJ conversation/decision payloads remain separate from
+execution v1 on `25920`/`26920`/`27020`.
 
 These two NIPs define the events behind `capabilities/`, `programs/`,
 `questions/`, and `sources/`. They are files first and events second: a

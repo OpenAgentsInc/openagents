@@ -3,6 +3,11 @@
 Status: implementation baseline and target acceptance plan, 2026-09-21.
 This documentation change ships a specification, not a plugin runtime.
 
+The subsequent [OpenAgents NIP revision](../../nips/openagents/README.md)
+defines these contracts as revised/new v1 drafts. The
+[protocol implementation plan](../protocol/implementation-plan.md) owns the
+wire/domain/relay backlog; the baseline below remains explicitly dated.
+
 ## Implementation baseline
 
 The baseline is OpenAgents revision
@@ -82,8 +87,8 @@ These increments are ordered by dependency and are not promised dates.
 Programs can use native operations while the plugin host is developed. The
 first useful increment does not need a public marketplace. Binary ABI,
 portable package encoding, typed program bindings, and remote catalog event
-semantics are explicit contract deliverables; implementers must resolve them
-with schemas and conformance vectors, not informal extra JSON fields.
+semantics now have normative v1 NIP contracts. Implementers must supply their
+machine-readable schemas and conformance vectors, not informal extra fields.
 
 ## Acceptance for implementations
 

@@ -1,359 +1,183 @@
-NIP-CAP
-=======
+# NIP-CAP — Execution capabilities
 
-Capabilities
-------------
+`draft` `optional` — revised v1, 2026-09-21. This replaces the earlier
+executor-only draft in place. Existing repository readers cover parts of that
+earlier shape; they require updates before claiming this contract. There is
+no separate legacy publication or automatic schema conversion. See the
+[implementation plan](../../docs/protocol/implementation-plan.md).
 
-`draft` `optional`
+This NIP defines portable execution descriptions and operator preferences.
+[NIP-PRG](NIP-PRG.md) defines workflows, [NIP-EXT](NIP-EXT.md) distributes
+components, and the [shared contracts](contracts.md) define identity,
+references, schemas, effects, limits, and refusal behavior.
 
-This NIP defines two addressable, signed documents: `kind:30180` capability
-manifests, which say **how to drive an executor**, and `kind:30181` operator
-policies, which say **which executors an operator prefers**.
+## Description, binding, and grant
 
-Programs — the composable unit of work whose steps reach these capabilities
-— are [NIP-PRG](NIP-PRG.md), and are deliberately not defined here. A
-program is a general primitive that says nothing about any machine; a
-capability is specific to one.
-
-## Capabilities and programs
-
-A **capability** is something you can reach. A **program** is something you
-can run. They are separate kinds because they change for different reasons
-and at different rates.
-
-| | Capability | Program |
+| Object | Meaning | Authority |
 | --- | --- | --- |
-| Answers | What is available, and what will it promise? | What are the steps, and what bounds them? |
-| Belongs to | the machine and the executor | the work |
-| Changes when | you install, upgrade, or lose an executor | you decide to do the work differently |
-| Portable? | No. Presence is per machine. | Yes. A program says nothing about where it runs. |
-| Names | `devin-local`, `codex`, `coder-cloud` | `delegate-fan-out`, `review-changes` |
+| Capability definition | A portable typed interface and execution requirements. | Describes; grants nothing. |
+| Host binding | The native operation, executable adapter, guest host, or remote worker satisfying that interface. | Host-owned configuration outside an untrusted checkout. |
+| Grant | Permission for a principal to use a binding within a scope and budget. | Host/operator policy, never supplied by the component itself. |
+| Presence | The binding's observed usability in this context. | Local observation, never inferred from publication. |
 
-The two are many-to-many. One program reaches several capabilities, and one
-capability serves many programs. Installing the Devin CLI does not tell you
-what to do with it, and writing `delegate-fan-out` does not require Devin —
-the program names a step of kind `delegate`, and which executor fills it is
-resolved at run time from what the machine has and what the operator
-prefers.
+A definition is portable even when its implementation is machine-specific.
+Public definitions MUST NOT contain local credentials or private inventories.
+A program requests an interface; a host resolves and records an eligible
+binding. Operation descriptors support discovery without replacing admission.
 
-The join between them is bounds. A program's step states the bounds it needs
-and a capability manifest states the bounds its executor will keep, so a
-host can refuse a pairing before it runs anything. That is the whole reason
-`cannot_enforce` is stated positively.
+## Kinds and addressing
 
-One way to keep them apart: **a capability can be absent, and a program
-cannot be wrong about the machine.** If `devin` is not installed, the
-capability is simply not an option. The program is unchanged, and runs with
-whatever executor is.
-
-## The taxonomy
-
-The taxonomy is deliberate, and it is the glossary's rather than this
-document's. A **capability** is a granted ability. An **executor** is the
-implementation that performs an agent session, reached through an executor
-adapter. A **program** is a state machine with named steps and per-step
-bounds, which the decision engine picks at the start of a run.
-
-A **plugin** is none of these. In the reference implementation a plugin is a
-sandboxed WebAssembly guest: small, pure, deterministic, and denied the
-network. An executor that spawns a process and reaches the internet is the
-tier a plugin host refuses to load. The reusable component is the
-**program** of [NIP-PRG](NIP-PRG.md), not a plugin, and the distinction is
-load-bearing rather than cosmetic — see
-[`docs/programs.md`](../../docs/programs.md).
-
-A capability is a thing a Coder instance can hand work to — another agent's
-CLI on the same computer, a cloud lane, a subprocess with a protocol. The
-manifest says what the executor is, which bounds it can hold to, and what it
-needs present. The policy says what the operator wants done with it.
-
-Neither event says whether the executor is **installed here**. That is
-local fact, it belongs on the machine, and publishing it would be an
-inventory of somebody's computer with no consumer. See
-[Local presence is not an event](#local-presence-is-not-an-event).
-
-## Kinds
-
-Both kinds are in the NIP-33 parameterized replaceable range
-(30000–39999) per [NIP-01](../official/01.md): addressed by
-`(pubkey, kind, d_tag)`, with only the latest event per address retained.
-
-| Kind | Name | Author |
+| Kind | Record | Content |
 | --- | --- | --- |
-| `30180` | Capability manifest | anyone; typically the capability's maintainer |
-| `30181` | Operator capability policy | the operator |
+| `30180` | Capability discovery head | Public definition or immutable definition reference. |
+| `30181` | Operator preference head | Public JSON or owner-encrypted preference document. |
 
-A dedicated kind is taken rather than NIP-78 `kind:30078`
-application-specific data, for the reasons [NIP-AP](../block/NIP-AP.md)
-gives: it isolates this address space so capability slugs cannot collide
-with another application's `d` tag choices, and it lets an indexer
-recognize a manifest from the kind alone.
+Both are addressable by signer, kind, and exactly one `d` slug. Replacement
+updates discovery, never an installed or admitted execution. Resolve and retain
+the exact signed event and definition bytes under the shared reference/lock
+contract. A release can carry a definition without publishing a separate head.
 
-### Relationship to NIP-89
+A public `30180` has `t` tags `oa:cap:v1` and
+`oa:profile:<profile>`. Transport hints use `t: oa:transport:<transport>`.
+Duplicate semantic tags or disagreement with the resolved definition refuse.
+The earlier multi-letter `transport` tag is display metadata only.
 
-[NIP-89](../official/89.md) `kind:31990` declares that an application
-handles an event kind. This is the same instinct one layer down: a
-capability manifest declares that an executor handles a **task**, and what
-it will and will not promise while doing so. The two do not overlap —
-nothing here handles an event kind — and a client that understands NIP-89
-learns nothing useful from a `30180`.
+## Capability body
 
-### Relationship to NIP-AP
+`v` is `1`; `requires` is the common feature list. A body is exactly one of:
 
-[NIP-AP](../block/NIP-AP.md) `kind:30175` describes **how to instantiate an
-agent**: identity, system prompt, model, runtime. A capability manifest
-describes **how to hand work to an executor that already exists**. A persona
-is a blueprint for something we run; a capability is an interface to
-something somebody else runs. A manifest MAY name a persona in `persona`
-when the executor is a Coder agent instantiated from one.
+- A definition with `id`, `profile`, `summary`, `input`, `output`, `effects`,
+  `minimum`, `support`, and `binding_contract`.
+- A head with `definition: DefinitionRef`; the fetched definition contains
+  those fields, and its publisher identity agrees with the head.
 
-## Roles
+`id` is publisher-qualified. `summary` is inert selector text covered by the
+digest. `input` and `output` are SchemaRefs. `effects` uses common effects;
+`minimum` is a bounds object. Optional `meta` is inert.
 
-- **maintainer** — publishes and updates a `30180` for an executor. Has no
-  authority over anyone's machine; a manifest is a description, not a grant.
-- **operator** — publishes a `30181` saying which capabilities to prefer and
-  under what bounds. Signed by the operator, so the policy travels between
-  that operator's machines without being configuration on each one.
-- **host** — the Coder instance that reads both, probes local presence, and
-  decides. **The host is the only party that decides anything.** A manifest
-  it has not resolved, and a policy it did not fetch for its own operator,
-  change nothing.
-
-## Slugs
-
-The `d` tag is the plaintext capability slug, matching the NIP-AP grammar:
-
-```
-^[a-z0-9][a-z0-9_-]{0,63}$
-```
-
-Plaintext for the same reason NIP-AP gives: manifests are public
-definitions meant for discovery and human-readable addressing. A policy's
-`d` tag is a policy name, under the same grammar, so an operator can hold
-more than one.
-
-## Capability manifest — kind `30180`
-
-```jsonc
-{
-  "kind": 30180,
-  "pubkey": "<maintainer pubkey, hex>",
-  "created_at": 1789900000,
-  "tags": [
-    ["d", "devin-local"],
-    ["name", "Devin CLI, this computer"],
-    ["transport", "acp"]
-  ],
-  "content": "<json body>"
-}
-```
-
-There MUST be exactly one `d` tag. The `transport` tag duplicates
-`content.transport` so a relay query can filter without reading bodies.
-
-### Body
-
-```jsonc
-{
-  "v": 1,
-  "summary": "Hands a bounded task to the Devin CLI on this computer.",
-  "transport": "acp",
-  "detect": {
-    "binary": "devin",
-    "version": ["devin", "--version"],
-    "probe": ["devin", "acp", "--help"]
-  },
-  "enforces": ["max_turns", "minutes", "model"],
-  "cannot_enforce": ["tool_set", "role", "budget_cents", "effort"],
-  "sees_repository": true,
-  "concurrent_max": null,
-  "cost": "operator_account",
-  "isolation": ["worktree", "directory"],
-  "invoke": ["devin", "-p", "--"],
-  "workspace_probe": {
-    "argv": ["devin", "-p", "capability probe", "--model", "not-a-model"],
-    "accepts": ["not-a-model"],
-    "note": "Reaches the trust check and stops short of starting a session."
-  },
-  "refuses": [
-    {
-      "name": "untrusted_workspace",
-      "match": "Refusing to run in an untrusted workspace",
-      "explanation": "Declines a directory nobody has trusted interactively."
-    }
-  ]
-}
-```
-
-| Field | Meaning |
+| Profile | Binding contract |
 | --- | --- |
-| `transport` | How the host speaks to it. `acp`, `subprocess`, `http`. |
-| `detect` | What a host runs to decide the executor is present, and to read its version. Arguments are a fixed argv, never a shell string. |
-| `enforces` | Bounds the executor will hold to if given. |
-| `cannot_enforce` | **Bounds it will silently ignore.** Load-bearing — see below. |
-| `sees_repository` | Whether the executor can read the caller's working directory. A cloud lane cannot. |
-| `concurrent_max` | The most simultaneous instances the manifest claims are safe, or `null` for unstated. |
-| `cost` | Who pays: `operator_account`, `metered`, `local`. Never a number; prices go stale in a signed event. |
-| `isolation` | Which checkout shapes it accepts. |
-| `invoke` | The argv that hands the executor one task, with the prompt appended as the final argument. A fixed argv, like `detect`. |
-| `invoke_writing` | Optional. The argv for a task that writes, when it differs from `invoke`: an executor that stops to confirm each edit or command cannot be confirmed from a fan-out, so the manifest states the argv that lets it work unattended. The host's filesystem boundary, not the executor's own confirmation, is what holds a writing task. Absent means a writing task runs `invoke`. |
-| `workspace_probe` | A fixed argv a host runs **in a candidate working directory** to find out whether the executor will accept it. `accepts` names output that proves acceptance — for a probe that exits non-zero either way, the word only an accepted workspace reaches. |
-| `refuses` | What the executor declines while installed, each with the text that identifies it. |
+| `native` | Stable host `operation` ID and `interface` version. |
+| `executor` | `interface`, `transport` (`subprocess`, `acp`, `http`, or `nostr-cj`), task/context SchemaRefs, and accepted `isolation` modes. |
+| `plugin` | Exact plugin DefinitionRef and supported ABI/profile IDs from NIP-PRG. |
+| `adapter` | `interface`, `transport` (`mcp`, `http`, `subprocess`, or `nostr-cj`), and explicit supported operation IDs. |
 
-`detect`, `invoke`, and `invoke_writing` are fixed argv, and a host
-replaces the first element of each with the absolute path it resolved.
-`invoke_writing` without `invoke` is invalid. A manifest with no
-`invoke` says how to find an executor and not how to drive one, so a host
-that reads one can report the capability present and MUST NOT delegate
-through it.
+Executor/adapter contracts may include `remote`, an object with optional
+`worker` (exact pubkey), `relays` (bounded WebSocket URL list), `endpoint`
+(public HTTP URL), and `identity` (ArtifactRef for the serving identity).
+`nostr-cj` requires worker and relays; HTTP requires endpoint. These are
+verified connection hints, not grants or permission to disclose tenant-only
+models. Host bindings pin and verify the actual serving identity before use.
 
-### `cannot_enforce` is the field that matters
+A host need not support every profile. A plugin profile cannot acquire the
+effects of an executor. An MCP listing cannot create a binding. Decision
+services use explicit native/adapter bindings with recipient and spend policy;
+a guest cannot perform unrecorded inference.
 
-An executor that ignores a bound is more dangerous than one that refuses
-it. A host MUST refuse a delegation whose requirements intersect
-`cannot_enforce`, rather than issuing it and hoping.
+`support` contains `bounds`, `cancellation`, `idempotency`, and `evidence`:
 
-This is the one part of a manifest a host treats as a **constraint** rather
-than as advice, and it is why the field is stated positively instead of
-being inferred from the absence of an `enforces` entry: an omission is
-ambiguous and a refusal must not rest on an omission.
+- `bounds` maps each stated common bound to `enforced`, `not_enforced`, or
+  `unknown`. Omitted bounds are `unknown`.
+- `cancellation` is `before_dispatch`, `cooperative`, `host_terminated`, or
+  `unsupported`; it describes a mechanism, not guaranteed remote stop.
+- `idempotency` is `none`, `request_attempt`, or `pure`, evaluated for the
+  actual binding and inputs.
+- `evidence` lists supported versioned receipt/result schema IDs.
 
-## Reading a manifest never runs it
+The former `enforces`/`cannot_enforce` arrays are superseded by this map.
+Revised-v1 readers MUST reject those old semantic fields rather than silently
+reinterpret them. Migrate repository manifests and readers together; retained
+historical runs keep their original bytes.
 
-A manifest is untrusted input: it names an executable and its arguments,
-and a manifest that reached `exec` on the strength of being read would let
-any repository run any interpreter the host carries. Discovery is inert —
-a host reads, validates, and records manifests and runs nothing. An
-executable probe runs only under a **host-owned approval**: a record the
-operator wrote, outside the repository, naming the exact manifest digest,
-the adapter's canonical path and contents, and every argv word that names
-a file — the word as spelled, the canonical path it resolved to, and the
-bytes it held. The decision re-resolves each word in the directory the
-argv would run in, so a retargeted link or a file dropped under a relative
-name invalidates the approval. Directory placement, search order, and a
-manifest's own claims grant nothing; a record copied into a repository
-cannot authorize itself, and a store inside the manifest's own checkout
-approves nothing wherever the probe would run. Approval authorizes the
-probe to run — it does not verify that the manifest's `enforces` claims
-are honored, which is the host's own enforcement to prove.
+## Binding and enforcement
 
-## Presence has five states
+A local binding records definition digest, implementation identity, adapters,
+supported assurance, scope mappings, probe approval, and configuration digest.
+Secrets remain outside receipts; record opaque references, not credentials.
 
-A host that has run `detect` knows one of five things, and the last four
-are the ones a present-or-absent answer cannot carry.
+Subprocess/ACP bindings can declare `detect`, `invoke`, `invoke_writing`, and
+`workspace_probe` as fixed argv arrays. These are local binding fields, not
+portable instructions to execute. Resolve executable and argument-file paths
+to canonical identities and pin their contents. `invoke_writing` requires
+`invoke`. Never concatenate an argv into a shell string. A binding without
+an invocation contract may be inspected but MUST NOT receive work.
 
-| State | Meaning |
+For each required bound the host constructs an enforcement plan. Executor
+`not_enforced` or `unknown` cannot satisfy a requirement by itself. A host
+may supply an independently enforced mechanism such as a supervisor deadline
+or filesystem boundary. Missing coverage at the required assurance refuses.
+A signed claim does not prove enforcement. Read isolation, write isolation,
+network confinement, and spend accounting are distinct properties; an isolated
+writing worktree does not establish all four.
+
+Record effective limits/grants before dispatch. Recheck revocation, binding
+identity, source freshness, and reservations at dispatch. Preference, semantic
+confidence, and publisher signatures cannot override admission. Stricter host
+limits are permitted and recorded.
+
+## Discovery and probes
+
+Reading a definition MUST NOT execute probes, install packages, start adapters,
+contact models, or mint grants. An executable probe requires a host-owned
+approval outside the checkout naming exact definition, binding, executable,
+and argument-file identities. Resolve them again in the intended directory;
+changed bytes or retargeted paths invalidate approval.
+
+Bound probes by time, output, and effects through the host supervisor. A probe
+MUST NOT start paid or effectful task execution. Prefer typed responses. A
+legacy textual workspace probe uses declared refusal/acceptance matches, with
+refusal precedence; unexplained nonzero exit, timeout, or excess output is
+unknown. A probe approval is not approval for subsequent delegated work.
+
+| Presence | Meaning |
 | --- | --- |
-| Present | `detect` resolved, the version parsed, and a declared workspace probe accepted. The only state that is a route. |
-| Absent | Nothing to run. **Not an error** — the capability is not an option, which is why an operator without an executor loses nothing. |
-| Present and unavailable | Installed, detected, and refusing this context. |
-| Unprobed | Declared, and no host-owned approval names it, so nothing ran. |
-| Unknown | A probe ran and could not be read — it timed out, exited wrong, answered past the output bound, or exited without a declared word. |
+| `present` | Approved observation establishes usability in this context. |
+| `absent` | No implementation is installed/resolvable. |
+| `unavailable` | Installed but explicitly refuses this context. |
+| `unprobed` | No valid approval or observation; no probe executed. |
+| `unknown` | Observation could not establish usability. |
 
-The third state is a fact about a pairing rather than about a machine. The
-reference implementation recorded six of six delegations declined with
-`Refusing to run in an untrusted workspace`, from a git worktree the
-executor did not trust, while that executor stayed installed and reported
-its version throughout. A host that reads that as present offers a route
-that fails every time it is taken, and a host that reads it as absent
-cannot say why a capability the operator installed went missing.
+Only `present` can become a route, with separate admission. Cached observations
+bind definition, implementation, workspace, and freshness identity. Local
+presence MUST NOT appear in public heads. Deliberate encrypted fleet inventory
+requires a separately consented application.
 
-`refuses` names what an executor declines while installed, and
-`workspace_probe` is how a host asks. The host runs the argv in the
-candidate working directory, under a wall clock and an output bound, and
-reads everything it printed, standard error included. The typed contract,
-in order:
+## Operator policy
 
-- **A declared `match` means present and unavailable.** The executor is
-  there, and this is a directory it will not work.
-- **A declared `accepts` word, or a clean exit, means present.** A probe
-  that exits non-zero by design — one that reaches a trust check and
-  stops short of a session — declares the word that only an accepted
-  workspace reaches, so a silent non-zero exit is not mistaken for either
-  answer.
-- **Anything else means unknown.** A timeout, a failed run, output past
-  the bound, or an exit that names neither a declared refusal nor a
-  declared acceptance proves nothing, and `unknown` is not a route.
+A preference body has `v: 1`, `requires`, `prefer`, `deny`, `ceilings`,
+`assurance`, `disclosure_policy`, and optional `meta`. `prefer` orders qualified
+definition IDs; `deny` lists those IDs; `ceilings` uses common bounds.
+`assurance` is `host_enforced` or `trusted_contract`. `disclosure_policy` is
+an ArtifactRef evaluated by a supported host policy engine. Unsupported policy
+semantics refuse; policy prose is not executable.
 
-Two rules make the asking safe on every look:
+Preferences break ties among admissible bindings; they grant nothing. An
+operator pin still undergoes admission. Hard known conflicts cannot be
+overridden by semantic independence judgments. No policy requires inference
+when mechanical admission already settles the question.
 
-- **A workspace probe MUST NOT do the work.** An argv that starts a session
-  charges the operator for a question, and a host asks this question
-  whenever it considers a directory.
-- **A probe a host cannot read means unknown, never present or
-  unavailable.** A host that treats a failed probe as a refusal hides a
-  capability the operator has, and a host that treats it as present
-  offers a route that may not exist.
+Public policies have `t: oa:cap-policy:public:v1`. Private policies have
+`t: oa:cap-policy:private:v1`, one `p` equal to the signer, random 64-hex `d`,
+and NIP-44 v2 self-encrypted content. A conforming relay MUST exclude them
+from search and restrict reads, COUNT, and fanout to that authenticated key.
+Private tags must not leak machine names. Sync to another principal requires
+explicit re-encryption and its own local grants; an owner signature is not
+automatic permission on every device.
 
-Presence still stays on the machine. The state a probe found is local fact
-under [Local presence is not an event](#local-presence-is-not-an-event),
-and this section adds nothing an event carries.
+## Relationships and conformance
 
-## Operator capability policy — kind `30181`
+NIP-89 describes event handlers; NIP-AP describes personas. Neither grants
+task execution. NIP-OA/NIP-AA establish relationships that a host may consume,
+not universal operator authority. NIP-CJ binds remote invocation to an exact
+signer and worker. NIP-EXT binds definitions to immutable releases.
 
-```jsonc
-{
-  "kind": 30181,
-  "pubkey": "<operator pubkey, hex>",
-  "tags": [["d", "default"]],
-  "content": "<json body>"
-}
-```
+Required fixtures cover all profiles, unsupported bounds, changed executable
+and argument files, missing/stale approvals, five presence states, conflicting
+effects, host-versus-executor enforcement, private-policy ACLs, and replacement
+without automatic updates. Both interfaces must use the same admission path.
 
-```jsonc
-{
-  "v": 1,
-  "prefer": [
-    {"capability": "devin-local", "weight": 3, "when": "available"},
-    {"capability": "coder", "weight": 1}
-  ],
-  "fan_out_max": 6,
-  "require_independence_check": true,
-  "never": [
-    {"capability": "devin-cloud", "reason": "does not see the checkout"}
-  ]
-}
-```
-
-`prefer` is an ordering, not a rule: it breaks ties among capabilities that
-are present and admissible. **A preference never admits a capability that
-`cannot_enforce` refused**, and a host that lets one do so has a bug rather
-than a configured behaviour.
-
-`fan_out_max` bounds how many delegations one request may start.
-`require_independence_check` says the host must not fan out until it has
-decided the tasks do not collide — see
-[`docs/programs.md`](../../docs/programs.md).
-
-## Local presence is not an event
-
-A host knows `devin` is installed by running `detect`. That fact stays on
-the machine.
-
-Publishing it would say "this computer has these tools at these versions"
-to anyone subscribing — a fingerprint of a person's machine — and no party
-in this NIP needs it. A fleet that genuinely needs a capability inventory
-should publish a **deliberate** one to a **known** audience under its own
-kind, and that is not this NIP.
-
-## Trust
-
-A manifest is **not** an authority to run anything. Signing it says a
-maintainer wrote it, not that it is safe. A host SHOULD:
-
-- resolve manifests only from pubkeys the operator names;
-- treat `detect` as an argv it runs, never a shell string it interpolates —
-  a manifest is untrusted input and a manifest that could inject a shell
-  command would be a remote execution primitive;
-- ignore any field it does not understand, and refuse a `v` it does not
-  know rather than guessing;
-- resolve `detect.binary` to an absolute path and run that path, rather
-  than letting `PATH` decide which binary a delegation reaches — `PATH`
-  differs between an operator's interactive shell and the one a spawned
-  process inherits, and a host that reports a version from one and
-  delegates through the other has reported on something it did not run;
-- re-probe presence rather than trusting a cached answer across an upgrade.
-
-There are no signatures on executables here and no attestation that a
-binary named `devin` is Devin. Nothing in this NIP defends against a
-hostile local binary, and it should not pretend to.
+Relays advertise `nip-cap-v1` only for conforming validation/discovery and
+configured privacy behavior. Host admission is separate. Earlier and revised
+drafts share `v: 1` during pre-release revision; support follows the mandatory
+shape and conformance evidence, not the number alone. Old-shaped definitions
+refuse rather than being guessed into the new shape.

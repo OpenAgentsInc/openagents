@@ -4,7 +4,7 @@ This directory holds our copies of the Nostr protocol specifications
 (NIPs). These copies are the source of truth for the Rust implementation
 in this repository.
 
-## The two sources
+## The three lanes
 
 | Lane | Upstream | Content |
 | --- | --- | --- |
@@ -14,6 +14,12 @@ in this repository.
 
  `nips/openagents/` is not synced: its files are the source of truth and the
 manifest does not track them.
+
+The [OpenAgents protocol index](openagents/README.md) covers the revised v1
+capability/program contracts, extension distribution, durable runs, and three
+job families. The [implementation plan](../docs/protocol/implementation-plan.md)
+tracks remaining work across all lanes. A draft revision changes the target;
+it does not make an existing reader conformant.
 
 `nips/manifest.json` records the exact upstream commit for each synced lane, with
 a `tree_url` link to browse that commit. Use those links to see the

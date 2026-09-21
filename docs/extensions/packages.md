@@ -143,13 +143,13 @@ distribution is introduced. Keep existing event meanings intact:
 - NIP-CAP `30180` describes a capability; `30181` describes operator policy.
 - NIP-PRG `30182` describes a program; `30183` locates a module whose bytes
   must match the hash required by the program.
-- A multi-component package release, listing ownership, release pointer, and
-  revocation feed need additional specified semantics. Do not pretend the
-  current module announcement already implements this catalog.
+- [NIP-EXT](../../nips/openagents/NIP-EXT.md) defines releases, listings,
+  revocation checkpoints, and namespace migration. The module announcement
+  remains a locator and does not implement this catalog.
 
-The public distribution design must define ownership proofs, signed payloads,
-replay protection, authorized updates, key rotation/transfer, immutable release
-validation, revocation ordering, and relay policy before publication is enabled.
+Implement and verify NIP-EXT ownership proofs, signed payloads, explicit
+namespace migration, immutable release validation, revocation ordering, and
+relay policy before publication is enabled.
 It must not import the reference service's private endpoints or authentication
 implementation. A verified transport session does not by itself establish
 ownership of every package name.

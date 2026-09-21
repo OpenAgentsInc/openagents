@@ -13,7 +13,8 @@ A module's bytes, manifest, schemas, and operation descriptors have separate
 digests bound by the package release. Matching the module digest alone does
 not establish its interface or permissions.
 
-The first host profile supports two access modes:
+The [NIP-PRG guest profile](../../nips/openagents/NIP-PRG.md#wasm-module-profile)
+specifies two access modes:
 
 | Mode | Available operations | Admission |
 | --- | --- | --- |
@@ -29,8 +30,8 @@ command by choosing a special string.
 
 Network-capable adapters and agent executors remain separate host components.
 A future guest profile requires its own version, threat model, and acceptance
-evidence. NIP-PRG's wider module bounds do not require a host to support that
-profile: unsupported required bounds cause admission refusal.
+evidence. The revised NIP-PRG profile refuses these broader effects;
+unsupported required bounds cause admission refusal.
 
 ## Manifest and compatibility
 
@@ -63,10 +64,10 @@ determinism. No ambient WASI access is enabled by default.
 
 ## Typed packet ABI
 
-Adopt a versioned packet interface, with a Rust PDK hiding allocation and
-serialization. Treat the reference `packet-v0` interface as migration input,
-not an ABI that OpenAgents already supports. Before implementation promotion,
-publish an ABI schema and cross-language conformance vectors covering:
+Implement the [NIP-PRG packet ABI](../../nips/openagents/NIP-PRG.md#packet-abi),
+with a Rust PDK hiding allocation and serialization. The reference `packet-v0`
+interface is migration input, not a supported OpenAgents ABI. Before
+implementation promotion, add conformance vectors covering:
 
 | Boundary | Required contract |
 | --- | --- |
@@ -77,9 +78,9 @@ publish an ABI schema and cross-language conformance vectors covering:
 | Imports | Versioned typed calls with per-call and aggregate bounds; scoped opaque handles rather than ambient paths. |
 | Failure | Distinct host validation failure, guest refusal, trap, deadline, cancellation, memory exhaustion, and output-limit failure. |
 
-This specification fixes the behavioral contract. Binary export names,
-serialization details, and generated PDK types must be ratified together in
-that ABI artifact; packages must not advertise compatibility before it exists.
+NIP-PRG fixes binary exports and serialization. Generated PDK types and
+fixtures must agree with that contract; packages must not advertise
+compatibility before their implementation passes it.
 The PDK's public programming model is a typed input-to-result function. It
 must not encourage plugins to write tool-call envelopes or imitate a model.
 

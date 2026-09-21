@@ -74,8 +74,9 @@ unsupported semantics, unresolved child identities, and dependency cycles.
 Missing data is an error or an explicit schema-defined optional value, never
 an empty string inserted to make the next step run.
 
-These bindings require a new supported schema contract and NIP review; they
-are not fields to add silently to the current v1 files. The initial executor
+These bindings are specified by [revised NIP-PRG v1](../../nips/openagents/NIP-PRG.md).
+Earlier draft files and readers must migrate together; they cannot silently
+ignore the revised required fields. The initial executor
 runs an acyclic graph. Bounded retries and repair rounds are explicit host
 policies with attempt limits; they do not permit recursive program cycles.
 
@@ -89,13 +90,16 @@ policies with attempt limits; they do not permit recursive program cycles.
 | `delegate` | Give a bounded task to a host-approved executor with explicit context and expected outputs. | Existing executor/task path; general native context bindings remain work. |
 | `program` | Execute a fully resolved child program with typed dataflow and narrowed bounds. | Specified, currently refused. |
 | `module` | Invoke a pinned Wasm module through the plugin host with typed packets. | Specified, currently refused. |
+| `invoke` | Invoke a registered native or approved adapter operation under its typed effect contract. | Newly specified; not implemented. |
 
 Native reading, editing, testing, and generation use registered host bindings;
 a package cannot add an arbitrary `shell` step by supplying a string. A native
 agent executor can perform an open-ended repair under `delegate`, while Rust
 owns its admitted operations, context construction, and verification. If a
-new independently serialized step kind becomes necessary, specify and version
-it before use. Do not disguise a side effect as a deterministic `query`.
+new independently serialized step kind becomes necessary, specify it before
+use. The revised `invoke` kind supplies this native-operation path; it does
+not make the earlier runtime accept it. Do not disguise a side effect as a
+deterministic `query`.
 
 Plugins can serve two positions. An explicit `module` step transforms typed
 input into typed output. A host role can automatically derive evidence after

@@ -2,12 +2,17 @@
 
 `draft` `optional`
 
-A request/response protocol between a Coder terminal and a fulfillment
-worker, carried entirely over Nostr relay traffic. The relay is transport
-only: it holds no job state, sees only ciphertext, and never stores a job
-artifact. This NIP is the OpenAgents-owned analogue of the pattern the
-Block lane uses for Buzz: application logic expressed as event kinds and
-tags rather than a private API.
+A family of request/response protocols carried over Nostr. Conversation jobs
+retain their existing integer versions, decision jobs retain the System One
+contract, and the new execution family is `openagents.execution.v1`. The
+families have distinct kinds and MUST NOT reinterpret each other's payloads.
+
+The relay transports encrypted traffic and does not authorize execution.
+Conversation/decision traffic remains ephemeral. Execution jobs require durable
+worker admission and [NIP-RUN](NIP-RUN.md) records; a relay may retain those
+opaque records under that separate profile without becoming the scheduler.
+The [shared contracts](contracts.md) apply to the new execution family, not
+as a silent rewrite of deployed conversation or decision payloads.
 
 NIP-90 reserves a similar shape (`5xxx`/`6xxx`/`7000`) but upstream marks it
 unrecommended, and its plaintext `i`/`output` tags and payment flow do not
@@ -16,8 +21,9 @@ fit encrypted terminal sessions. This NIP defines its own kind family.
 ## Kinds
 
 All three kinds are ephemeral (`20000`–`29999`): relays fan them out to
-open subscriptions and never persist them. A job lives only as long as the
-two connected sockets that speak it.
+open subscriptions and never persist them. Delivery depends on the connected
+sockets. Closing a socket abandons observation; it does not prove that remote
+generation or an executor stopped.
 
 | Kind | Name | Direction |
 | --- | --- | --- |
@@ -207,9 +213,11 @@ no `seq`, so its order is the relay's word rather than the worker's.
 4. The terminal renders the judgment line, streams partial deltas, and
    folds the result into the transcript.
 
-A terminal that sees no feedback within its deadline reports the worker
-unavailable and may retry; because every kind is ephemeral, a retry is
-simply a new request — there is no stored queue to drain.
+A terminal that sees no feedback within its deadline reports an unknown or
+unavailable outcome according to observed contact. This conversation family
+has no durable retry identity: another request is a new run, and MUST NOT be
+used to recover an uncertain effectful task automatically. Use the execution
+family for effectful work requiring retry identity or recovery.
 
 ## Encryption
 
@@ -359,5 +367,157 @@ cosmetic:
 - `request`/`attempt` make a retried job one logical request; the
   conversation family has no retry identity because a turn is not
   retried, it is re-run.
-- `cancel` exists because a decision call is worth aborting; a
-  conversation turn ends by dropping the socket.
+- `cancel` exists on the decision family. Dropping a conversation socket ends
+  the caller's observation but does not establish remote cancellation.
+
+## Execution jobs
+
+`proposed` — v1, not implemented. This family carries an admitted operation or
+program, typed task input, context references, and durable outcomes. It does
+not use conversation text as an executable command or require an LLM to select
+a program. CAP/PRG/EXT/RUN and the shared contracts are normative for this
+family. Existing conversation/decision handlers MUST reject these kinds.
+
+| Kind | Name | Direction |
+| --- | --- | --- |
+| `25920` | Execution request or control | Caller → worker |
+| `26920` | Execution result or control answer | Worker → caller |
+| `27020` | Execution admission/progress | Worker → caller |
+
+These are draft OpenAgents assignments and are ephemeral. Durable state lives
+in the worker and optional NIP-RUN retention service. A client subscribes before
+publishing. Requests have exactly one `p` worker; responses have exactly one
+`p` caller and one `e` for the request/control event they answer. Payloads are
+NIP-44 v2 encrypted. Verify kind, signer, recipient, and exact request binding
+before interpreting content; NIP-42 connection identity is not a forwarded grant.
+
+### Execute payload
+
+The body contains `v: "openagents.execution.v1"`, `requires`, `type: "execute"`,
+`request`, `attempt`, `run`, `target`, `lock`, `input`, `context`,
+`requirements`, `bounds`, `deadline`, `retain_until`, and optional `parent`.
+
+| Field | Meaning |
+| --- | --- |
+| `request` | Random logical request ID stable across retries. |
+| `attempt` | Positive integer; retransmission preserves it, a permitted new attempt increments it. |
+| `run` | Logical remote run ID, distinct from parent run ID. |
+| `target` | Exact operation/program DefinitionRef. |
+| `lock` | ArtifactRef of the complete dependency lock. |
+| `input` | Schema-valid bounded typed value, or `{artifact: ArtifactRef}` when the target schema specifies artifact input. |
+| `context` | ArtifactRef of a recipient-specific context manifest. |
+| `requirements` | ArtifactRef of requested effects, assurance, and disclosure constraints; not a grant. |
+| `bounds` | Whole-attempt ceilings under the caller's parent reservation and worker policy. |
+| `deadline` | Required Unix-second latest completion time; mirror in `expiration`. |
+| `retain_until` | Required recovery horizon beyond deadline, subject to worker admission. |
+| `parent` | Optional `{run, step, iteration, attempt}` attribution; no inherited authority by assertion. |
+
+The request signer maps to the worker's principal/tenant policy independently
+of payload claims. Admission resolves the target/lock, validates context
+recipient and source scope, intersects authority, verifies enforceability,
+reserves quota, and durably claims the pair before any effect. Missing or
+unavailable referenced content refuses under bounded fetch policy. Credentials
+and local absolute paths are never supplied as portable authority.
+
+The worker validates `created_at` against its documented freshness/skew window
+and requires an unexpired deadline. An `expiration` tag that differs from the
+deadline is malformed. Retention must extend beyond the deadline. A deadline
+is enforced by the worker as well as checked by the relay; NIP-40 expiration
+does not terminate a subprocess. Valid retransmissions retrieve known state
+without dispatching again, even if execution's deadline has since passed.
+
+### Identity, admission, and retransmission
+
+The idempotency key is `(worker, principal, request, attempt)`. Its fingerprint
+is SHA-256 of JCS(the complete execute body), including target, input, lock,
+context, requirements, bounds, deadline, and retention horizon. Different
+transport events with the same key and fingerprint are retransmissions:
+return the recorded admission/result and do not reserve or execute again.
+Changed content under the same key is `idempotency_conflict`.
+
+The worker binds a request to one run and monotone attempt sequence. A new
+attempt is admitted only after reconciling the preceding outcome and applying
+the target's retry contract. No automatic retry of an unknown effect is
+permitted. Resending to a different worker has no cross-worker deduplication
+guarantee and requires explicit reconciliation/admission.
+
+Before a `27020` `type: "accepted"` response, persist the admitted claim,
+enforcement/reservation plan, and NIP-RUN root. Accepted includes `request`,
+`attempt`, `run`, `input_digest`, `lock_digest`, `record` (exact encrypted
+NIP-RUN EventRef or retained record ArtifactRef), `mailbox`, `retain_until`,
+and `controller`. It binds to the execute event with `e`. The worker may refuse
+an unsupported retention request; it MUST NOT silently promise a shorter one.
+
+A relay `OK` is delivery admission only, not worker acceptance. Missing
+accepted feedback does not prove that the worker did nothing. The worker
+records dispatch intent before dispatch; crash after intent is unknown until
+reconciled. Claim/dispatch storage and fencing enforce at-most-once dispatch
+for a known attempt where supported; the protocol does not promise exactly
+once effects across crashes or external systems.
+
+### Progress and results
+
+`27020` progress has version/features, `type: "progress"`, request/attempt/run,
+`seq`, and `status` (`queued`, `running`, or `reconciling`). Sequence is a
+monotone progress counter, separate from the authoritative run journal.
+Gaps stop incremental rendering until status/replay; progress never establishes
+completion. Optional view/evidence ArtifactRefs remain recipient-scoped.
+
+`26920` `type: "result"` includes request/attempt/run, common `outcome`,
+`dispatched`, `output` (typed value or null), `artifacts`, `receipts`,
+`verification`, `integration`, and latest `record` reference. A refusal before
+dispatch also contains a typed `code` and `message`. Refusals distinguish
+unsupported semantics, permission, stale inputs, limits, busy capacity,
+revocation, unavailable content, and identity conflict. Unknown spend is null,
+never zero. Decision subcalls retain their own sealed receipt schema.
+
+Persist results before reporting them as recoverable. One logical terminal
+result can be delivered repeatedly, bound to each retransmission's event ID;
+clients deduplicate by request/attempt and verified outcome identity. Conflicting
+terminal results require reconciliation, not first-arrival selection. A result
+may contain only artifacts and no prose; nonempty conversation text is not a
+requirement here. Execution completion does not imply verified acceptance.
+
+### Status, replay, and cancellation
+
+Controls use kind `25920`, the same version/features, and `type` of `status`,
+`replay`, or `cancel`. They contain request/attempt/run and one `e` referring
+to an accepted execute event. `replay` additionally contains `after_seq` (null
+for the root) and `max_records`; `cancel` contains a bounded reason.
+Require the original caller or an independently authorized control principal;
+knowledge of run ID or mailbox is not authority.
+
+Controls never create new execution. The worker answers with `26920`, `e`
+bound to the control event, type `status_result`, `replay_result`, or
+`cancel_result`, and the same logical identities. Status includes the current
+state and latest record/result reference. Replay includes ordered retained
+record references, `next_seq`, and `complete`. Gaps, truncation, or expired
+retention are explicit. A missing/expired record answers `unknown` or
+`content_unavailable`, not proof of unattempted work.
+
+Cancellation persists `cancel_requested`, prevents queued dispatch, propagates
+to children/supervised processes, and reports confirmed outcome or unknown.
+Before dispatch it may resolve `cancelled` with dispatched false; after
+dispatch it MUST preserve evidence of effects and unresolved accounting.
+`cancel_result` acknowledges the control, not guaranteed stop. Late outcomes
+remain available for reconciliation even when the UI stops displaying them.
+
+Workers retain idempotency state/results or tombstones through `retain_until`.
+An expired/stale execute event is refused and MUST NOT recreate forgotten
+work. A new attempt after expiry requires explicit reconciliation policy;
+absence of a tombstone is not permission to repeat an effect.
+
+### Compatibility and conformance
+
+No existing family is renumbered or implicitly upgraded. CJ conversation v1/v2
+remain their established payload versions; the decision family remains
+`openagents.systemone.v1`; this new execution contract is v1. Core kinds,
+version/type validation, and schemas provide separate rejection boundaries.
+
+Required fixtures cover all three family cross-deliveries, signer/tenant
+binding, repeated and conflicting fingerprints, lost admission/result traffic,
+crashes before/after each effect boundary, restart/status/replay, retention
+expiry, cancellation races, stale bases, budget settlement, duplicate/forked
+results, and unauthorized controls. Demonstrate terminal/headless behavior
+through the same host path. Do not advertise an execution worker until this
+complete path runs; relay fanout alone is not execution support.
