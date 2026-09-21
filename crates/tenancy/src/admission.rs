@@ -711,6 +711,18 @@ mod tests {
                 .iter()
                 .any(|r| r.contains("evaluated rows differ"))
         );
+        let mut identity_rows = dev.3.clone();
+        identity_rows[0].door_identity.artifact_signature = format!("sha256:{}", "f".repeat(64));
+        let mut identity_drift = evidence.clone();
+        identity_drift.development.candidate = &identity_rows;
+        let refused = plan.decide(&identity_drift).unwrap();
+        assert_eq!(refused.ruling, gym::admission::Ruling::Refused);
+        assert!(
+            refused
+                .refusals
+                .iter()
+                .any(|reason| reason.contains("different identity"))
+        );
     }
 
     #[test]
@@ -827,6 +839,7 @@ mod tests {
         plan.rule.min_blocks_per_side = synthetic(1.0);
         plan.rule.metric_order[0].block_sigma = synthetic(0.1);
         plan.rule.effect_size_sigmas = synthetic(1.0);
+        plan.rule.family_regression_sigmas = synthetic(1.0);
         plan.seal();
         let items = suite.partition(Partition::Development).unwrap();
         let rows = |pin: &Pinned, correct_count: usize| -> Vec<_> {
@@ -890,6 +903,20 @@ mod tests {
                 .find(|c| c.name == "the_candidate_earns_the_win")
                 .unwrap();
             assert_eq!(win.verdict, expected, "{}", win.detail);
+            if correct == 0 {
+                let family = phase
+                    .criteria
+                    .iter()
+                    .find(|c| c.name == "no_family_regresses_beyond_the_allowance")
+                    .unwrap();
+                assert_eq!(
+                    family.verdict,
+                    gym::gate::Verdict::Failed,
+                    "{}",
+                    family.detail
+                );
+            }
+
             // A winning metric alone never authorizes activation without
             // locked confirmation, transfer, deployment, and every guard.
             assert!(
