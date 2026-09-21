@@ -333,6 +333,92 @@ fn tracker_block(
     None
 }
 
+/// One admission round's answer: the plan, the status view it was drawn
+/// from, and the cause every kept-out task names.
+struct Round {
+    plan: plan::Plan,
+    states: BTreeMap<String, Status>,
+    reasons: BTreeMap<String, String>,
+}
+
+/// Decide one round's admissions.
+///
+/// The tracker answer filters queued tasks before the planner sees
+/// them: a failed fetch blocks everything it cannot observe, an issue
+/// the fetch did not carry blocks its task, and a present-but-moved
+/// issue fails its pins through [`tracker_block`]. The planner then
+/// applies dependencies, footprints, exclusions, capacity, and the
+/// review cap over what remains. Every task the round does not admit
+/// lands in `reasons`, so the round snapshot records a cause rather
+/// than a silence.
+fn plan_round(
+    configuration: &Configuration,
+    catalog: &Catalog,
+    ledger: &Ledger,
+    snapshot: &Result<github::Snapshot, String>,
+) -> Round {
+    let mut reasons = BTreeMap::<String, String>::new();
+    let mut states = ledger.statuses();
+    states.insert("external-owner-reservation".into(), Status::Active);
+    let mut eligible = catalog.clone();
+    eligible.tasks.retain(|task| {
+        if task.id == "external-owner-reservation" || states.get(&task.id) != Some(&Status::Queued)
+        {
+            return true;
+        }
+        let prepared = configuration
+            .tasks
+            .iter()
+            .find(|p| p.scheduling.id == task.id)
+            .expect("catalog contains prepared tasks");
+        let reason = match snapshot {
+            Err(error) => Some(error.clone()),
+            Ok(snapshot) if !snapshot.issues.contains_key(&task.issue) => {
+                Some("issue is no longer visible in the scoped project".into())
+            }
+            Ok(snapshot) => tracker_block(configuration, prepared, snapshot),
+        };
+        if let Some(reason) = reason {
+            reasons.insert(task.id.clone(), reason);
+            false
+        } else {
+            true
+        }
+    });
+    let policy = Policy {
+        review_cap: configuration.review_cap,
+    };
+    let completed: BTreeSet<_> = states
+        .iter()
+        .filter(|(_, status)| **status == Status::Completed)
+        .map(|(id, _)| id.clone())
+        .collect();
+    let plan = plan::select(&plan::Input {
+        catalog: &eligible,
+        capacity: &configuration.capacity,
+        states: &states,
+        externally_completed: &completed,
+        exclusions: &configuration.external_owners,
+        policy: &policy,
+    });
+    for blocked in &plan.blocked {
+        reasons.insert(
+            blocked.task.clone(),
+            blocked
+                .reasons
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; "),
+        );
+    }
+    Round {
+        plan,
+        states,
+        reasons,
+    }
+}
+
 /// Watch a project and dispatch only prepared, current, unblocked work.
 /// The ledger lock is held until every local dispatch has settled.
 pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result<(), String> {
@@ -401,67 +487,16 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
         if started.elapsed() >= deadline || launched >= initial.dispatch_limit {
             stop = true;
         }
-        let mut reasons = BTreeMap::<String, String>::new();
         let snapshot = if !stop {
             github::fetch(&configuration.project, &configuration.repository).await
         } else {
             Err("supervisor admission bound reached; draining active work".into())
         };
-        let mut eligible = catalog.clone();
-        let mut states = ledger.statuses();
-        states.insert("external-owner-reservation".into(), Status::Active);
-        eligible.tasks.retain(|task| {
-            if task.id == "external-owner-reservation"
-                || states.get(&task.id) != Some(&Status::Queued)
-            {
-                return true;
-            }
-            let prepared = configuration
-                .tasks
-                .iter()
-                .find(|p| p.scheduling.id == task.id)
-                .expect("catalog contains prepared tasks");
-            let reason = match &snapshot {
-                Err(error) => Some(error.clone()),
-                Ok(snapshot) if !snapshot.issues.contains_key(&task.issue) => {
-                    Some("issue is no longer visible in the scoped project".into())
-                }
-                Ok(snapshot) => tracker_block(&configuration, prepared, snapshot),
-            };
-            if let Some(reason) = reason {
-                reasons.insert(task.id.clone(), reason);
-                false
-            } else {
-                true
-            }
-        });
-        let policy = Policy {
-            review_cap: configuration.review_cap,
-        };
-        let completed: BTreeSet<_> = states
-            .iter()
-            .filter(|(_, status)| **status == Status::Completed)
-            .map(|(id, _)| id.clone())
-            .collect();
-        let plan = plan::select(&plan::Input {
-            catalog: &eligible,
-            capacity: &configuration.capacity,
-            states: &states,
-            externally_completed: &completed,
-            exclusions: &configuration.external_owners,
-            policy: &policy,
-        });
-        for blocked in &plan.blocked {
-            reasons.insert(
-                blocked.task.clone(),
-                blocked
-                    .reasons
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join("; "),
-            );
-        }
+        let Round {
+            plan,
+            states,
+            reasons,
+        } = plan_round(&configuration, &catalog, &ledger, &snapshot);
         round += 1;
         let unprepared: Vec<_> = snapshot
             .as_ref()
@@ -540,27 +575,43 @@ pub async fn run(configuration_path: &Path, state: &Path, watch: bool) -> Result
     Ok(())
 }
 
+/// The adversarial exercise matrix: the controller's dispatch hazards
+/// run against the real admission, ledger, and review paths. The matrix
+/// exists so these failures are found here, not in a live run.
+///
+/// `run` itself needs a live tracker and an approved executor, so the
+/// tests drive the same seams the loop drives: [`plan_round`] for the
+/// admission decision, `Ledger` for the durable record, and
+/// `consume_reviews` for host decisions. Two hazards have no direct
+/// expression at this layer and are simulated at their real mechanism:
+/// process death is a dropped ledger writer, because reopening is the
+/// recovery a crashed run actually gets, and a second coordinator is a
+/// second thread on the same state directory, because the
+/// cross-process guard is the same OS file lock either way.
 #[cfg(test)]
 mod tests {
     use super::*;
+    use coder_scheduler::ledger::LedgerError;
+    use coder_scheduler::plan::Reason;
+    use coder_scheduler::resources::Bound;
 
-    fn prepared() -> Prepared {
+    fn prepared_named(id: &str, issue: u64) -> Prepared {
         let assignment = Assignment {
-            id: "task-a".into(),
+            id: id.into(),
             base: "a".repeat(40),
-            prompt: "Inspect a.rs".into(),
+            prompt: format!("Inspect {id}'s files."),
             writes: false,
             expected_text: Some("done".into()),
             minutes: 1,
         };
         let scheduling = Task {
             id: assignment.id.clone(),
-            issue: 9507,
+            issue,
             base: assignment.base.clone(),
             input: String::new(),
             depends_on: vec![],
             footprint: Footprint::Declared {
-                reads: vec!["a.rs".into()],
+                reads: vec![format!("src/{id}.rs")],
                 writes: vec![],
             },
             priority: 1,
@@ -576,12 +627,16 @@ mod tests {
         let mut prepared = Prepared {
             scheduling,
             assignment,
-            issue_updated: "version-1".into(),
-            issue_body_digest: "body-1".into(),
+            issue_updated: format!("version-{issue}"),
+            issue_body_digest: format!("body-{issue}"),
             tracker_base: "a".repeat(40),
         };
         prepared.scheduling.input = prepared.input_digest();
         prepared
+    }
+
+    fn prepared() -> Prepared {
+        prepared_named("task-a", 9507)
     }
 
     fn configuration() -> Configuration {
@@ -611,22 +666,36 @@ mod tests {
         }
     }
 
+    fn issue(number: u64) -> github::Issue {
+        github::Issue {
+            number,
+            updated_at: format!("version-{number}"),
+            body_digest: format!("body-{number}"),
+            closed: false,
+            blockers: vec![],
+        }
+    }
+
     fn snapshot() -> github::Snapshot {
         github::Snapshot {
-            issues: BTreeMap::from([(
-                9507,
-                github::Issue {
-                    number: 9507,
-                    updated_at: "version-1".into(),
-                    body_digest: "body-1".into(),
-                    closed: false,
-                    blockers: vec![],
-                },
-            )]),
+            issues: BTreeMap::from([(9507, issue(9507))]),
             source_digest: "snapshot".into(),
             default_branch_revision: "a".repeat(40),
             ignored_non_issues: 0,
             ignored_other_repositories: 0,
+        }
+    }
+
+    fn ledger_at(state: &Path, configuration: &Configuration) -> (Ledger, Catalog) {
+        let catalog = configuration.catalog().unwrap();
+        let mut ledger = Ledger::open(state).unwrap();
+        ledger.register(&catalog).unwrap();
+        (ledger, catalog)
+    }
+
+    fn control_dirs(state: &Path) {
+        for name in ["control", "reviewed"] {
+            std::fs::create_dir(state.join(name)).unwrap();
         }
     }
 
@@ -724,5 +793,391 @@ mod tests {
         consume_reviews(state.path(), &mut ledger).unwrap();
         assert_eq!(ledger.record(&task.id).unwrap().status, Status::Completed);
         assert!(state.path().join("reviewed/review.json").exists());
+    }
+
+    #[test]
+    fn externally_owned_or_excluded_work_never_dispatches() {
+        // An excluded issue cannot even stay in the configuration.
+        let mut configuration = configuration();
+        configuration.tasks[0].scheduling.issue = 9476;
+        let error = configuration.validate().unwrap_err();
+        assert!(error.contains("excluded"), "{error}");
+
+        // An externally owned path refuses at the plan however free the
+        // host is — a free slot is not authority.
+        let mut configuration = self::configuration();
+        configuration.external_owners = vec![plan::Exclusion {
+            owner: "root-integration".into(),
+            writes: vec!["src".into()],
+        }];
+        configuration.validate().unwrap();
+        let state = tempfile::tempdir().unwrap();
+        let (ledger, catalog) = ledger_at(state.path(), &configuration);
+        let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot()));
+        assert!(round.plan.admit.is_empty());
+        assert!(
+            round.reasons["task-a"].contains("owned by `root-integration`"),
+            "{:?}",
+            round.reasons
+        );
+        // The polling board applies the same rule: an exclusion the
+        // document itself carries never enters the ready set.
+        let board = crate::poll::Board::from_snapshot(&json!({
+            "exclusions": [9507],
+            "items": [{"number": 9507, "title": "Ready work", "status": "Ready",
+                       "updatedAt": "version-9507", "state": "open"}]
+        }))
+        .unwrap();
+        assert!(board.ready(&BTreeSet::new()).is_empty());
+        assert!(
+            board.refill(6, &BTreeSet::new()).is_empty(),
+            "an excluded issue never enters a refill"
+        );
+    }
+
+    #[test]
+    fn a_cycle_among_prepared_tasks_is_detected_before_dispatch() {
+        let mut configuration = configuration();
+        configuration.tasks[0].scheduling.depends_on = vec!["task-b".into()];
+        let mut second = prepared_named("task-b", 9508);
+        second.scheduling.depends_on = vec!["task-a".into()];
+        configuration.tasks.push(second);
+        let error = configuration.validate().unwrap_err();
+        assert!(error.contains("cycle"), "{error}");
+        assert!(
+            error.contains("task-a") && error.contains("task-b"),
+            "the refusal names the cycle's members: {error}"
+        );
+        // The catalog never seals, so no round can plan over the cycle:
+        // none of its tasks can dispatch.
+        assert!(configuration.catalog().is_err());
+    }
+
+    #[test]
+    fn a_partial_or_failed_fetch_blocks_what_it_cannot_see() {
+        let mut configuration = configuration();
+        configuration.tasks.push(prepared_named("task-b", 9508));
+        configuration.validate().unwrap();
+        let state = tempfile::tempdir().unwrap();
+        let (ledger, catalog) = ledger_at(state.path(), &configuration);
+
+        // The fetch carried 9507 but not 9508: the missing one blocks
+        // rather than being assumed done or ready.
+        let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot()));
+        assert_eq!(round.plan.admit.len(), 1);
+        assert_eq!(round.plan.admit[0].task, "task-a");
+        assert_eq!(
+            round.reasons["task-b"],
+            "issue is no longer visible in the scoped project"
+        );
+
+        // A failed fetch blocks every queued task — nothing dispatches
+        // on an observation that never arrived.
+        let failed: Result<github::Snapshot, String> = Err("tracker fetch refused".into());
+        let round = plan_round(&configuration, &catalog, &ledger, &failed);
+        assert!(round.plan.admit.is_empty());
+        assert!(
+            round
+                .reasons
+                .values()
+                .all(|reason| reason == "tracker fetch refused"),
+            "{:?}",
+            round.reasons
+        );
+
+        // The polling board reads the same rule: an edge into an item
+        // the fetch did not carry is missing observation, never a
+        // satisfied dependency — even when completion evidence is
+        // supplied for it.
+        let board = crate::poll::Board::from_snapshot(&json!({
+            "items": [{"number": 1, "title": "Dependent", "status": "Ready",
+                       "updatedAt": "v1",
+                       "blockedBy": [{"number": 2, "state": "closed"}]}]
+        }))
+        .unwrap();
+        assert_eq!(
+            board.blocked_reason(1, &BTreeSet::from([2])),
+            Some(crate::poll::Blockage::MissingDependency { dependency: 2 })
+        );
+        assert!(board.refill(1, &BTreeSet::from([2])).is_empty());
+    }
+
+    #[test]
+    fn a_second_coordinator_cannot_claim_the_same_task() {
+        let state = tempfile::tempdir().unwrap();
+        let configuration = configuration();
+        let catalog = configuration.catalog().unwrap();
+        let mut ledger = Ledger::open(state.path()).unwrap();
+        ledger.register(&catalog).unwrap();
+        let digest = catalog.task("task-a").unwrap().digest();
+
+        let attempt = ledger.claim("task-a", "coordinator-one", &digest).unwrap();
+        // The claim is compare-and-set: a second owner loses on the
+        // live record, not on timing luck.
+        assert!(matches!(
+            ledger.claim("task-a", "coordinator-two", &digest),
+            Err(LedgerError::Transition { .. })
+        ));
+
+        // A second writer to the same state directory waits on the OS
+        // lock. When the first closes, it reads the in-flight attempt
+        // as `unknown` — claimed work is observed, never duplicated.
+        let dir = state.path().to_path_buf();
+        let contender = std::thread::spawn(move || Ledger::open(&dir));
+        std::thread::sleep(Duration::from_millis(200));
+        drop(ledger);
+        let mut second = contender.join().unwrap().unwrap();
+        let record = second.record("task-a").unwrap();
+        assert_eq!(record.status, Status::Unknown);
+        assert_eq!(record.attempt, attempt);
+        assert_eq!(record.owner, "coordinator-one");
+        assert!(matches!(
+            second.claim("task-a", "coordinator-two", &digest),
+            Err(LedgerError::Transition { .. })
+        ));
+    }
+
+    #[test]
+    fn an_interrupted_attempt_recovers_unknown_and_is_never_replayed() {
+        let state = tempfile::tempdir().unwrap();
+        let configuration = configuration();
+        let catalog = configuration.catalog().unwrap();
+        let digest = catalog.task("task-a").unwrap().digest();
+        let attempt;
+        {
+            let mut ledger = Ledger::open(state.path()).unwrap();
+            ledger.register(&catalog).unwrap();
+            attempt = ledger.claim("task-a", "coordinator", &digest).unwrap();
+            // The writer dies mid-flight: the claim is durable and no
+            // result ever arrives.
+        }
+        let mut ledger = Ledger::open(state.path()).unwrap();
+        let record = ledger.record("task-a").unwrap();
+        assert_eq!(record.status, Status::Unknown);
+        assert_eq!(record.attempt, attempt);
+        assert_eq!(record.owner, "coordinator");
+        assert_eq!(record.attempts, 1);
+        assert!(
+            record
+                .cause
+                .as_deref()
+                .is_some_and(|c| c.contains("unknown")),
+            "{:?}",
+            record.cause
+        );
+        // Unknown is not a clean failure: settlement refuses, the task
+        // still occupies the plan, and nothing requeues it implicitly.
+        assert!(matches!(
+            ledger.settle("task-a", &attempt, "coordinator", "late-result"),
+            Err(LedgerError::Transition { .. })
+        ));
+        let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot()));
+        assert!(round.plan.admit.is_empty());
+        assert_eq!(round.plan.occupying, ["task-a"]);
+        // Only the operator's explicit requeue returns it — under a new
+        // attempt identity, so the interrupted attempt stays
+        // distinguishable.
+        ledger.requeue("task-a").unwrap();
+        let retry = ledger.claim("task-a", "coordinator", &digest).unwrap();
+        assert_ne!(retry, attempt);
+    }
+
+    #[test]
+    fn a_result_from_before_repinning_is_stale_never_applied() {
+        let state = tempfile::tempdir().unwrap();
+        control_dirs(state.path());
+        let configuration = configuration();
+        let catalog = configuration.catalog().unwrap();
+        let mut ledger = Ledger::open(state.path()).unwrap();
+        ledger.register(&catalog).unwrap();
+        let bound = catalog.task("task-a").unwrap().digest();
+        let attempt = ledger.claim("task-a", "coordinator", &bound).unwrap();
+        ledger
+            .settle("task-a", &attempt, "coordinator", "result-digest")
+            .unwrap();
+
+        // The issue moved; pinning it again produces a new input digest
+        // and therefore a new task identity.
+        let mut repinned = self::configuration();
+        repinned.tasks[0].issue_updated = "version-2".into();
+        repinned.tasks[0].scheduling.input = repinned.tasks[0].input_digest();
+        repinned.validate().unwrap();
+        let new_catalog = repinned.catalog().unwrap();
+        ledger.register(&new_catalog).unwrap();
+        let current = new_catalog.task("task-a").unwrap().digest();
+        assert_ne!(bound, current);
+
+        // The drift the run refuses on is reported against the live
+        // record, and the old attempt's result cannot settle under the
+        // new identity.
+        let drift = ledger.drift(&new_catalog);
+        assert_eq!(drift.len(), 1);
+        assert_eq!(drift[0].task, "task-a");
+        assert_eq!(drift[0].status, Status::Review);
+        assert_eq!(drift[0].bound, bound);
+        assert_eq!(drift[0].current, current);
+        assert!(matches!(
+            ledger.accept("task-a", &attempt, "coordinator", &current),
+            Err(LedgerError::TaskChanged { .. })
+        ));
+        // A review presenting the new task digest mismatches the bound
+        // record and is refused whole — the stale result stays
+        // unapplied.
+        write_new(
+            &state.path().join("control/review.json"),
+            &Review {
+                task: "task-a".into(),
+                attempt,
+                task_digest: current,
+                result_digest: "result-digest".into(),
+                accepted: true,
+                evidence: "independent review record".into(),
+            },
+        )
+        .unwrap();
+        assert!(consume_reviews(state.path(), &mut ledger).is_err());
+        let record = ledger.record("task-a").unwrap();
+        assert_eq!(record.status, Status::Review);
+        assert_eq!(record.task_digest, bound);
+    }
+
+    #[test]
+    fn a_cancelled_attempt_stays_on_the_record_for_the_reconciler() {
+        let state = tempfile::tempdir().unwrap();
+        let mut configuration = configuration();
+        configuration.tasks.push(prepared_named("task-b", 9508));
+        configuration.validate().unwrap();
+        let (mut ledger, catalog) = ledger_at(state.path(), &configuration);
+        let digest = catalog.task("task-a").unwrap().digest();
+        let attempt = ledger.claim("task-a", "coordinator", &digest).unwrap();
+        // task-b runs to a result while task-a's job is cancelled
+        // before any result arrives — the settle arm never runs for it.
+        let sibling_digest = catalog.task("task-b").unwrap().digest();
+        let sibling = ledger
+            .claim("task-b", "coordinator", &sibling_digest)
+            .unwrap();
+        ledger
+            .settle("task-b", &sibling, "coordinator", "sibling-result")
+            .unwrap();
+
+        // On the live ledger the cancelled attempt still reads
+        // dispatched: the record does not report a finish it never saw,
+        // and the attempt keeps occupying the plan.
+        let record = ledger.record("task-a").unwrap();
+        assert_eq!(record.status, Status::Active);
+        assert_eq!(record.attempt, attempt);
+        assert_eq!(record.owner, "coordinator");
+        let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot()));
+        assert!(round.plan.admit.is_empty());
+        assert!(round.plan.occupying.iter().any(|task| task == "task-a"));
+
+        // Recovery is what propagates the cancellation: the next open
+        // marks the unreported attempt unknown — never queued, never
+        // done — while the sibling's settled result still awaits its
+        // review.
+        drop(ledger);
+        let ledger = Ledger::open(state.path()).unwrap();
+        assert_eq!(ledger.record("task-a").unwrap().status, Status::Unknown);
+        assert_eq!(ledger.record("task-b").unwrap().status, Status::Review);
+    }
+
+    #[test]
+    fn needs_beyond_capacity_refuse_with_a_named_bound() {
+        // The task asks for more CPU than the host declares: the plan
+        // refuses it with the bound's name every round rather than
+        // admitting it or dropping it silently.
+        let mut configuration = configuration();
+        configuration.tasks[0].scheduling.resources.cpu_units =
+            configuration.capacity.cpu_units + 1;
+        configuration.validate().unwrap();
+        let state = tempfile::tempdir().unwrap();
+        let (ledger, catalog) = ledger_at(state.path(), &configuration);
+        let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot()));
+        assert!(round.plan.admit.is_empty());
+        assert_eq!(
+            round.plan.blocked[0].reasons,
+            vec![Reason::Capacity(Bound::CpuUnits)]
+        );
+        assert!(
+            round.reasons["task-a"].contains("cpu-units"),
+            "the round record names the bound: {:?}",
+            round.reasons
+        );
+
+        // The reservation book answers the same way at request time: a
+        // need over the ceiling is a typed refusal that names the lane
+        // and the numbers, not a grant that waits forever.
+        let mut book = crate::reservations::Book::new(crate::reservations::Ceilings {
+            executor_slots: 2,
+            cpu_units: 8,
+            memory_mib: 8192,
+        });
+        let needs = crate::reservations::Needs {
+            holder: "task-a".into(),
+            executor_slots: Some(1),
+            cpu_units: Some(9),
+            memory_mib: Some(256),
+            quiet_accelerator: None,
+            integration: false,
+            isolation: crate::reservations::Isolation::Admission,
+            for_seconds: None,
+            at_unix: 1_000,
+        };
+        assert_eq!(
+            book.request(needs),
+            Err(crate::reservations::Refusal::Ceiling {
+                lane: crate::reservations::Lane::CpuBuild,
+                held: 0,
+                requested: 9,
+                ceiling: 8,
+            })
+        );
+    }
+
+    #[test]
+    fn a_full_review_backlog_applies_backpressure_until_reviewed() {
+        let state = tempfile::tempdir().unwrap();
+        control_dirs(state.path());
+        let mut configuration = configuration();
+        configuration.review_cap = 1;
+        configuration.tasks.push(prepared_named("task-b", 9508));
+        configuration.validate().unwrap();
+        let (mut ledger, catalog) = ledger_at(state.path(), &configuration);
+
+        // task-a settles into review and fills the cap: task-b is told
+        // to wait for review, not admitted unboundedly.
+        let digest = catalog.task("task-a").unwrap().digest();
+        let attempt = ledger.claim("task-a", "coordinator", &digest).unwrap();
+        ledger
+            .settle("task-a", &attempt, "coordinator", "a-result")
+            .unwrap();
+        let mut snapshot = snapshot();
+        snapshot.issues.insert(9508, issue(9508));
+        let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot.clone()));
+        assert!(round.plan.admit.is_empty());
+        assert!(
+            round.reasons["task-b"].contains("review backlog is at its cap of 1"),
+            "{:?}",
+            round.reasons
+        );
+
+        // The host's accept drains the backlog; the next round admits
+        // the queued task.
+        write_new(
+            &state.path().join("control/review.json"),
+            &Review {
+                task: "task-a".into(),
+                attempt,
+                task_digest: digest,
+                result_digest: "a-result".into(),
+                accepted: true,
+                evidence: "independent review record".into(),
+            },
+        )
+        .unwrap();
+        consume_reviews(state.path(), &mut ledger).unwrap();
+        let round = plan_round(&configuration, &catalog, &ledger, &Ok(snapshot));
+        assert_eq!(round.plan.admit.len(), 1);
+        assert_eq!(round.plan.admit[0].task, "task-b");
     }
 }
