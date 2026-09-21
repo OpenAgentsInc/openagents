@@ -12,6 +12,12 @@ measurement tools exist; most service and customer features remain open
 work. The [delivery plan](#delivery-plan-and-issue-ownership) identifies an
 owner for every workstream. Product tracker: [#9481](https://github.com/OpenAgentsInc/openagents/issues/9481).
 
+[Coder and Coder Terminal](../coder/coder-as-decision-router-consumer.md)
+are the flagship consumers of this public contract. Their roadmap links
+typed decisions to bounded programs, independent completion evidence, and
+an inspectable terminal experience. Consumer integration is tracked in
+[#9501](https://github.com/OpenAgentsInc/openagents/issues/9501).
+
 Product implementations follow [the repository contract](../../AGENTS.md):
 Rust, with the existing Swift bridge exception for Apple's model. Web
 interfaces, gateways, workers, CLI tools, and MCP servers follow that rule.
@@ -24,6 +30,8 @@ under [the verification guide](../verification.md).
 | Capability | Current evidence and limit |
 | --- | --- |
 | Native typed decisions | `crates/jev` implements the client contract; `kev-serve` and `lev-serve` serve `POST /v1/systemone` and `GET /v1/models`. |
+| Tenant foundations | `crates/tenancy` implements registry bindings, key storage/lifecycle, and durable quota reservations. These library components do not establish the hosted gateway or full customer account system. |
+| Execution receipt schema | `crates/receipts` defines per-attempt identities, typed outcomes, timing, and request/result digests. HTTP/relay publication and Coder consumption remain integration work under [#9471](https://github.com/OpenAgentsInc/openagents/issues/9471) and [#9505](https://github.com/OpenAgentsInc/openagents/issues/9505). |
 | Local serving | [Kev](../kev/README.md) runs the open model locally; [Lev](../lev/README.md) reaches Apple's on-device runtime through the Swift helper. Neither binary establishes the hosted tenant service. |
 | Artifact and execution identity | [Model identity](../gym/model-identity.md) records the serving process's claim about loaded artifacts and configuration. Authentication can make that claim attributable; the card alone is not remote execution attestation. |
 | Caller-owned evaluation | [Measured records](../gym/measured-records.md) covers `gym build`, evaluation, reports, and receipt-chain verification. Intake, reports, and Rust intake are landed: [#9464](https://github.com/OpenAgentsInc/openagents/issues/9464), [#9465](https://github.com/OpenAgentsInc/openagents/issues/9465), and [#9477](https://github.com/OpenAgentsInc/openagents/issues/9477). |

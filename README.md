@@ -139,6 +139,10 @@ output, and exits 0 for an answer, 2 for a declined turn, and 1 for one
 that did not finish. `docs/coder/headless.md` has the flags and the JSON
 report.
 
+[Coder as a Decision Router consumer](docs/coder/coder-as-decision-router-consumer.md)
+defines the flagship product vision, the existing implementation, and the
+issues that connect typed decisions to bounded programs and verified work.
+
 Keys in the environment decide the door: `TYPESAFE_API_KEY` turns
 classify on; `CODER_DOOR_KEY`/`CODER_DOOR_URL`/`CODER_MODEL` take an
 own-key door; `CODER_WORKER` + `CODER_RELAY` route the turn through the

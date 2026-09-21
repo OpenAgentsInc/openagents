@@ -4,6 +4,11 @@ This document proposes how the Coder terminal gets rebuilt in this
 repository, and how the two-tool agent behind it is shaped. It describes
 what has landed, what comes next, and the questions that decide the rest.
 
+The current product direction and integration issue map are in
+[Coder as a Decision Router consumer](coder-as-decision-router-consumer.md).
+Use that document for the flagship consumer roadmap; this rebuild plan
+retains the terminal's earlier design context.
+
 ## Context and boundary
 
 The private `coder` repository holds a mature terminal: a renderer-agnostic

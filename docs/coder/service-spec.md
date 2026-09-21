@@ -1,6 +1,14 @@
 # Coder service: Nostr auth, free usage, and deployment
 
-Status: proposal. Revised for the relay backend: the terminal talks only
+Status: historical service proposal. The current
+[Coder consumer vision](coder-as-decision-router-consumer.md) and
+[Decision API specification](../decision-models/decision-api.md) supersede
+this proposal's product-wide relay-only and no-billing scope. The target
+supports explicit HTTP, relay, own-provider, and local decision profiles.
+The text below preserves the earlier design; implemented wire behavior is
+documented in [relay transport](relay-transport.md).
+
+The earlier relay design proposed that the terminal talks only
 Nostr to `wss://relay.openagents.com`, deployed from this repository's
 `crates/nostr-relay`. The earlier version of this document proposed a
 private HTTP service with NIP-98 headers; that direction is dropped. The
