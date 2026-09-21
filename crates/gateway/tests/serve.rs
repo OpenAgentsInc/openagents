@@ -172,6 +172,27 @@ struct Deployment {
 
 /// Stand the whole thing up: registry, keys, stub backend, gateway.
 async fn deploy(manifest: Manifest, endpoints: BTreeMap<String, String>) -> Deployment {
+    deploy_doors(
+        manifest,
+        endpoints
+            .into_iter()
+            .map(|(door, endpoint)| {
+                (
+                    door,
+                    Door {
+                        endpoint,
+                        classify: None,
+                    },
+                )
+            })
+            .collect(),
+    )
+    .await
+}
+
+/// The same deployment, with each door's full declaration supplied —
+/// classify bounds included.
+async fn deploy_doors(manifest: Manifest, doors: BTreeMap<String, Door>) -> Deployment {
     let dir = tempfile::tempdir().unwrap();
     let registry = Registry::install(dir.path(), manifest.clone()).unwrap();
     let mut tokens = BTreeMap::new();
@@ -179,10 +200,6 @@ async fn deploy(manifest: Manifest, endpoints: BTreeMap<String, String>) -> Depl
         let issued = keys::issue(dir.path(), registry.manifest(), tenant).unwrap();
         tokens.insert(tenant.clone(), issued.token);
     }
-    let doors = endpoints
-        .into_iter()
-        .map(|(door, endpoint)| (door, Door { endpoint }))
-        .collect();
     let config = Config {
         v: SCHEMA.to_string(),
         listen: "127.0.0.1:0".to_string(),

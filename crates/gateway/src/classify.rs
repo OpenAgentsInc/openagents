@@ -121,11 +121,105 @@ pub struct Dimension {
     pub instructions: Option<String>,
 }
 
-/// The versioned policy identity the call runs under.
+/// How a tie at the top of a categorical distribution resolves.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SingleTies {
+    /// The earlier label in the declared set wins.
+    FirstDeclared,
+    /// A tie selects the no-match outcome rather than guessing.
+    NoMatch,
+}
+
+/// How a tie at a `top_n` boundary resolves.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BoundaryTies {
+    /// Every label tied at the boundary is selected, past the cap.
+    IncludeAll,
+    /// The cap holds exactly; tied labels keep their declared order.
+    Truncate,
+}
+
+/// What a selection reports when nothing matches.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum NoMatch {
+    /// The unit's `selected` is null.
+    Null,
+    /// The unit's `selected` is a designated label in the set — the
+    /// caller's declared "none of the above".
+    Label {
+        /// The label id, which must appear in the label set the rule
+        /// applies to.
+        label: String,
+    },
+}
+
+/// What an empty multi-label selection reports.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EmptySelection {
+    /// The unit's `selected` is an empty list.
+    Empty,
+    /// The unit's `selected` is null.
+    Null,
+}
+
+/// The selection rule for a single-label — categorical — unit.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SingleSelect {
+    /// How a tie at the top of the distribution resolves.
+    pub ties: SingleTies,
+    /// An explicit abstention cut: when the distribution's top
+    /// probability is below it, the unit selects the no-match outcome.
+    /// Absent means the argmax is always reported — the contract has
+    /// no implicit confidence threshold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_probability: Option<f64>,
+    /// What an unmatched unit selects.
+    pub no_match: NoMatch,
+}
+
+/// The selection rule for a multi-label unit, where each label's
+/// probability stands alone.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MultiSelect {
+    /// The probability a label must reach to be selected. Required —
+    /// the caller declares the cut its own data supports; the contract
+    /// does not invent one.
+    pub threshold: f64,
+    /// A cap on the number of selected labels, when the caller
+    /// declares one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_n: Option<u64>,
+    /// How a tie at the `top_n` boundary resolves.
+    pub ties: BoundaryTies,
+    /// What an input with no selected label reports.
+    pub no_match: EmptySelection,
+}
+
+/// The selection rules a policy declares, one entry per mode.
 ///
-/// This slice checks the identity only. Selection rules — thresholds,
-/// top-N, ties, exclusions, no-match behavior — belong to the policy's
-/// own versioned contract and are not fields this envelope accepts.
+/// Each entry is optional on the document and required by the work:
+/// a request that plans a mode the policy does not declare is refused
+/// rather than assigned a rule it never saw.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Select {
+    /// The rule for single-label units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub single_label: Option<SingleSelect>,
+    /// The rule for multi-label units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multi_label: Option<MultiSelect>,
+}
+
+/// The versioned policy identity the call runs under: its name and
+/// the explicit selection rules it declares — threshold, top-N, tie
+/// handling, and no-match behavior, none of them defaulted.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {
@@ -133,6 +227,8 @@ pub struct Policy {
     pub v: String,
     /// The policy's name.
     pub name: String,
+    /// The selection rules, per mode.
+    pub select: Select,
 }
 
 /// The limits the selected backend publishes, checked against the
@@ -224,6 +320,121 @@ impl BackendLimits {
         }
         Ok(())
     }
+}
+
+impl Policy {
+    /// The checks a policy's own values pass before any unit is
+    /// validated against them: a declared cut is a probability and a
+    /// declared cap admits at least one label.
+    fn check(&self) -> Result<(), Refusal> {
+        if let Some(rule) = &self.select.single_label {
+            if let Some(cut) = rule.min_probability {
+                check_probability("min_probability", cut)?;
+            }
+        }
+        if let Some(rule) = &self.select.multi_label {
+            check_probability("threshold", rule.threshold)?;
+            if rule.top_n == Some(0) {
+                return Err(Refusal::InvalidRequest(
+                    "the policy's `top_n` of 0 selects no labels".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl SingleSelect {
+    /// Resolve a categorical unit's selected output: the label the
+    /// distribution's top probability names, or the no-match outcome
+    /// when a declared tie rule or abstention cut says so.
+    ///
+    /// `probabilities` pairs each declared label with its answered
+    /// probability, in declared order — the order `first-declared`
+    /// tie-breaking reads.
+    pub fn select(&self, probabilities: &[(String, f64)]) -> Value {
+        let top = probabilities
+            .iter()
+            .map(|(_, probability)| *probability)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let tied = probabilities
+            .iter()
+            .filter(|(_, probability)| *probability == top)
+            .count();
+        let abstained = self.min_probability.is_some_and(|cut| top < cut);
+        let tied_out = tied > 1 && self.ties == SingleTies::NoMatch;
+        if abstained || tied_out {
+            return self.unmatched();
+        }
+        probabilities
+            .iter()
+            .find(|(_, probability)| *probability == top)
+            .map_or_else(|| self.unmatched(), |(label, _)| {
+                Value::String(label.clone())
+            })
+    }
+
+    /// What the unit selects when nothing matched.
+    fn unmatched(&self) -> Value {
+        match &self.no_match {
+            NoMatch::Null => Value::Null,
+            NoMatch::Label { label } => Value::String(label.clone()),
+        }
+    }
+}
+
+impl MultiSelect {
+    /// Resolve a multi-label unit's selected labels: every label at or
+    /// above the declared threshold, best first, then capped and
+    /// tie-broken as the policy declares.
+    ///
+    /// `probabilities` pairs each declared label with its answered
+    /// probability, in declared order — the order equal probabilities
+    /// keep.
+    pub fn select(&self, probabilities: &[(String, f64)]) -> Value {
+        let mut passed: Vec<&(String, f64)> = probabilities
+            .iter()
+            .filter(|(_, probability)| *probability >= self.threshold)
+            .collect();
+        // The sort is stable, so equal probabilities keep their
+        // declared order.
+        passed.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let mut selected: Vec<String> = passed.iter().map(|(label, _)| label.clone()).collect();
+        if let Some(cap) = self.top_n.map(|top_n| top_n as usize) {
+            if selected.len() > cap {
+                match self.ties {
+                    BoundaryTies::Truncate => selected.truncate(cap),
+                    BoundaryTies::IncludeAll => {
+                        let boundary = passed[cap - 1].1;
+                        selected = passed
+                            .iter()
+                            .take_while(|(_, probability)| *probability >= boundary)
+                            .map(|(label, _)| label.clone())
+                            .collect();
+                    }
+                }
+            }
+        }
+        if selected.is_empty() {
+            return match self.no_match {
+                EmptySelection::Empty => Value::Array(Vec::new()),
+                EmptySelection::Null => Value::Null,
+            };
+        }
+        Value::Array(selected.into_iter().map(Value::String).collect())
+    }
+}
+
+/// A declared cut must be a probability — finite and from 0 to 1.
+fn check_probability(field: &'static str, value: f64) -> Result<(), Refusal> {
+    if !(0.0..=1.0).contains(&value) {
+        return Err(Refusal::InvalidRequest(format!(
+            "the policy's `{field}` of {value} is not a probability"
+        )));
+    }
+    Ok(())
 }
 
 /// The parsed request envelope.
@@ -391,6 +602,23 @@ pub enum Primitive {
     },
 }
 
+/// One unit of classification work: a dimension's or the request's own
+/// label set, the mode it is judged under, and the labels it names.
+///
+/// A plan carries the units in request order so the executor can build
+/// each input's questions and read each input's answers without
+/// re-walking the envelope.
+#[derive(Clone, Debug, Serialize)]
+pub struct Unit {
+    /// The dimension's id, absent for a request without dimensions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimension: Option<String>,
+    /// How the unit's labels are judged.
+    pub mode: Mode,
+    /// The unit's label set, in declared order.
+    pub labels: Vec<Label>,
+}
+
 /// One judgment the request would need, in the order it must report:
 /// inputs in request order, then dimensions in request order, then
 /// labels in their set's order.
@@ -428,6 +656,8 @@ pub struct Plan {
     /// How many judgments the work list holds — the call's total work
     /// count, checked against the effective bound.
     pub judgments: u64,
+    /// The units every input is asked, in request order.
+    pub units: Vec<Unit>,
     /// The judgments, ordered input-first so results can be
     /// reconstructed without re-sorting.
     pub work: Vec<Judgment>,
@@ -471,6 +701,7 @@ impl Request {
                 self.policy.v
             )));
         }
+        self.policy.check()?;
         limits.check()?;
         if let Some(instructions) = &self.instructions {
             check_bytes(
@@ -530,6 +761,45 @@ impl Request {
             check_labels(&self.labels, self.mode.unwrap_or(Mode::SingleLabel), limits)?;
         }
 
+        // The policy must declare a rule for every mode the request
+        // plans, and a named no-match label must be in each set it
+        // could select from.
+        for (dimension, mode, labels) in &units {
+            match mode {
+                Mode::SingleLabel => {
+                    let rule = self.policy.select.single_label.as_ref().ok_or_else(|| {
+                        Refusal::InvalidRequest(
+                            "the policy declares no `single_label` selection rule".to_string(),
+                        )
+                    })?;
+                    if let NoMatch::Label { label } = &rule.no_match {
+                        if !labels.iter().any(|candidate| &candidate.id == label) {
+                            return Err(Refusal::InvalidRequest(format!(
+                                "the policy's no-match label `{label}` is not in the label set{}",
+                                dimension.map_or_else(String::new, |d| format!(" of `{d}`")),
+                            )));
+                        }
+                    }
+                }
+                Mode::MultiLabel => {
+                    let rule = self.policy.select.multi_label.as_ref().ok_or_else(|| {
+                        Refusal::InvalidRequest(
+                            "the policy declares no `multi_label` selection rule".to_string(),
+                        )
+                    })?;
+                    if let Some(top_n) = rule.top_n {
+                        if top_n > labels.len() as u64 {
+                            return Err(Refusal::InvalidRequest(format!(
+                                "the policy's `top_n` of {top_n} exceeds the {} labels{}",
+                                labels.len(),
+                                dimension.map_or_else(String::new, |d| format!(" of `{d}`")),
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+
         // Count first with checked arithmetic, then build the work in
         // the same order — inputs, then dimensions, then labels.
         let inputs = self.inputs.len() as u64;
@@ -585,6 +855,14 @@ impl Request {
             policy: self.policy.clone(),
             inputs,
             judgments,
+            units: units
+                .iter()
+                .map(|(dimension, mode, labels)| Unit {
+                    dimension: dimension.map(str::to_string),
+                    mode: *mode,
+                    labels: labels.to_vec(),
+                })
+                .collect(),
             work,
         })
     }
@@ -741,12 +1019,24 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// A policy declaring both selection rules — the tests' default.
+    fn policy() -> Value {
+        json!({
+            "v": POLICY_SCHEMA,
+            "name": "test",
+            "select": {
+                "single_label": {"ties": "first-declared", "no_match": {"kind": "null"}},
+                "multi_label": {"threshold": 0.5, "ties": "include-all", "no_match": "empty"},
+            },
+        })
+    }
+
     fn envelope() -> Value {
         json!({
             "v": SCHEMA,
             "model": "shared-kev",
             "capacity": "shared",
-            "policy": {"v": POLICY_SCHEMA, "name": "default"},
+            "policy": policy(),
             "inputs": [
                 {"id": "a", "text": "charged twice"},
                 {"id": "b", "text": "where is my order"},
@@ -809,7 +1099,7 @@ mod tests {
             "v": SCHEMA,
             "model": "shared-kev",
             "capacity": "dedicated",
-            "policy": {"v": POLICY_SCHEMA, "name": "review"},
+            "policy": policy(),
             "inputs": [
                 {"id": "z", "text": "z"},
                 {"id": "y", "record": {"body": "y"}},
@@ -1126,9 +1416,176 @@ mod tests {
             assert_eq!(code(&refusal), "invalid_request", "field {field}");
         }
         let mut value = envelope();
-        value["policy"] = json!({"v": "other.v9", "name": "x"});
+        let mut wrong = policy();
+        wrong["v"] = json!("other.v9");
+        value["policy"] = wrong;
         let refusal = plan(&value).unwrap_err();
         assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn the_policy_must_declare_the_rules_the_request_uses() {
+        // A single-label request with no declared single_label rule is
+        // refused rather than assigned one.
+        let mut value = envelope();
+        value["policy"]["select"]["single_label"] = Value::Null;
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+
+        // And the same for multi-label.
+        let mut value = envelope();
+        value["mode"] = json!("multi-label");
+        value["policy"]["select"]["multi_label"] = Value::Null;
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn a_declared_cut_is_a_probability_and_a_cap_admits_a_label() {
+        for cut in [-0.1, 1.1] {
+            let mut value = envelope();
+            value["mode"] = json!("multi-label");
+            value["policy"]["select"]["multi_label"]["threshold"] = json!(cut);
+            let refusal = plan(&value).unwrap_err();
+            assert_eq!(code(&refusal), "invalid_request", "cut {cut}");
+        }
+        let mut value = envelope();
+        value["mode"] = json!("multi-label");
+        value["policy"]["select"]["multi_label"]["top_n"] = json!(0);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn a_no_match_label_must_be_in_the_set_it_selects_from() {
+        // The designated no-match label has to be a real option.
+        let mut value = envelope();
+        value["labels"] = json!([{"id": "billing"}, {"id": "other"}]);
+        value["policy"]["select"]["single_label"]["no_match"] =
+            json!({"kind": "label", "label": "other"});
+        assert!(plan(&value).is_ok());
+
+        let mut value = envelope();
+        value["policy"]["select"]["single_label"]["no_match"] =
+            json!({"kind": "label", "label": "not-a-label"});
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn a_top_n_past_the_set_is_refused() {
+        let mut value = envelope();
+        value["mode"] = json!("multi-label");
+        value["policy"]["select"]["multi_label"]["top_n"] = json!(3);
+        let refusal = plan(&value).unwrap_err();
+        assert_eq!(code(&refusal), "invalid_request");
+    }
+
+    #[test]
+    fn single_select_applies_ties_abstention_and_no_match() {
+        let rule = SingleSelect {
+            ties: SingleTies::FirstDeclared,
+            min_probability: None,
+            no_match: NoMatch::Null,
+        };
+        let probabilities = |entries: &[(&str, f64)]| -> Vec<(String, f64)> {
+            entries
+                .iter()
+                .map(|(label, p)| (label.to_string(), *p))
+                .collect()
+        };
+
+        // The argmax wins; a tie keeps declared order.
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.7), ("b", 0.3)])),
+            json!("a")
+        );
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.5), ("b", 0.5)])),
+            json!("a")
+        );
+
+        // With `no-match` tie handling the same tie reports no match.
+        let rule = SingleSelect {
+            ties: SingleTies::NoMatch,
+            min_probability: None,
+            no_match: NoMatch::Label {
+                label: "other".to_string(),
+            },
+        };
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.5), ("b", 0.5)])),
+            json!("other")
+        );
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.9), ("b", 0.1)])),
+            json!("a")
+        );
+
+        // An explicit abstention cut sends a weak argmax to no-match —
+        // and only an explicit one.
+        let rule = SingleSelect {
+            ties: SingleTies::FirstDeclared,
+            min_probability: Some(0.6),
+            no_match: NoMatch::Null,
+        };
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.55), ("b", 0.45)])),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn multi_select_applies_threshold_top_n_and_ties() {
+        let probabilities = |entries: &[(&str, f64)]| -> Vec<(String, f64)> {
+            entries
+                .iter()
+                .map(|(label, p)| (label.to_string(), *p))
+                .collect()
+        };
+        let rule = MultiSelect {
+            threshold: 0.5,
+            top_n: None,
+            ties: BoundaryTies::IncludeAll,
+            no_match: EmptySelection::Empty,
+        };
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.9), ("b", 0.4), ("c", 0.7)])),
+            json!(["a", "c"])
+        );
+        // Nothing over the cut reports the declared empty outcome.
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.1), ("b", 0.2)])),
+            json!([])
+        );
+        let rule = MultiSelect {
+            no_match: EmptySelection::Null,
+            ..rule.clone()
+        };
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.1), ("b", 0.2)])),
+            Value::Null
+        );
+
+        // top-n truncates exactly, or includes the boundary tie.
+        let rule = MultiSelect {
+            top_n: Some(1),
+            ties: BoundaryTies::Truncate,
+            ..rule.clone()
+        };
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.9), ("b", 0.9), ("c", 0.3)])),
+            json!(["a"])
+        );
+        let rule = MultiSelect {
+            top_n: Some(1),
+            ties: BoundaryTies::IncludeAll,
+            ..rule.clone()
+        };
+        assert_eq!(
+            rule.select(&probabilities(&[("a", 0.9), ("b", 0.9), ("c", 0.3)])),
+            json!(["a", "b"])
+        );
     }
 
     #[test]
@@ -1137,7 +1594,7 @@ mod tests {
             "v": SCHEMA,
             "model": "m",
             "capacity": "c",
-            "policy": {"v": POLICY_SCHEMA, "name": "p"},
+            "policy": policy(),
             "inputs": [{"id": "i", "text": "x"}],
             "dimensions": [
                 {"id": "cat", "mode": "single-label",

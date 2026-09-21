@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::classify::BackendLimits;
+
 /// The schema tag a gateway config carries.
 pub const SCHEMA: &str = "openagents.gateway.v1";
 
@@ -22,6 +24,12 @@ pub struct Door {
     /// Plain HTTP is expected — the backend binds a private interface
     /// and trusts only forwarded calls.
     pub endpoint: String,
+    /// The bounds this backend declares for `POST /v1/classify`, when
+    /// the operator has measured and declared them. Absent means the
+    /// door serves `systemone` only — the facade never infers support
+    /// from a missing declaration.
+    #[serde(default)]
+    pub classify: Option<BackendLimits>,
 }
 
 /// The parsed `gateway.json`.
