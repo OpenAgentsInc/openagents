@@ -45,6 +45,7 @@
 pub mod about;
 pub mod agent;
 pub mod capability;
+pub mod child;
 pub mod classify;
 pub mod decision;
 pub mod delegate;
