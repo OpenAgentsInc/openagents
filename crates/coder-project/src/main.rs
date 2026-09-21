@@ -12,6 +12,7 @@ const USAGE: &str = "Usage:
   coder-project run-one REPOSITORY ASSIGNMENT.json NEW_OUTPUT_DIRECTORY
   coder-project inspect REPOSITORY WORKTREE BASE OWNED_PATH...
   coder-project verify REPOSITORY WORKTREE PLAN.json NEW_OUTPUT_DIRECTORY
+  coder-project run-suite REPOSITORY WORKTREE PLAN.json NEW_OUTPUT_DIRECTORY
   coder-project project CONFIGURATION.json STATE_DIRECTORY [--watch]
   coder-project snapshot REPOSITORY OWNER REPO PROJECT_NUMBER
   coder-project pin-config TEMPLATE.json NEW_CONFIGURATION.json
@@ -106,7 +107,7 @@ async fn execute(args: &[String]) -> Result<u8, String> {
             );
             Ok(0)
         }
-        Some("verify") if args.len() == 5 => {
+        Some("verify" | "run-suite") if args.len() == 5 => {
             let repository = Path::new(&args[1])
                 .canonicalize()
                 .map_err(|e| e.to_string())?;
@@ -139,14 +140,25 @@ async fn execute(args: &[String]) -> Result<u8, String> {
                 "none",
                 &repository.display().to_string(),
             )?;
-            let result = artifact::verify(
-                &repository,
-                worktree,
-                &plan,
-                &coder::Grant::operator(Some("verify-artifact")),
-                &mut trace,
-            )
-            .await;
+            let result = if args[0] == "run-suite" {
+                artifact::run_suite(
+                    &repository,
+                    worktree,
+                    &plan,
+                    &coder::Grant::operator(Some("run-suite")),
+                    &mut trace,
+                )
+                .await
+            } else {
+                artifact::verify(
+                    &repository,
+                    worktree,
+                    &plan,
+                    &coder::Grant::operator(Some("verify-artifact")),
+                    &mut trace,
+                )
+                .await
+            };
             trace.finish("ended");
             if let Some(error) = trace.failure() {
                 return Err(format!("verification trace is incomplete: {error}"));

@@ -108,7 +108,13 @@ async fn cli_requires_pinned_artifacts_and_never_accepts_missing_suite_evidence(
         },
     };
     let plan = host.path().join("plan.json");
-    for (name, expected) in [("pass", 0), ("unverifiable", 3), ("stale", 2)] {
+    for (name, expected) in [
+        ("pass", 0),
+        ("suite-refuses-exit", 3),
+        ("unverifiable", 3),
+        ("suite-pass", 0),
+        ("stale", 2),
+    ] {
         if name == "unverifiable" {
             requirements.plan.checks[0].acceptance = Acceptance::Suite {
                 suite_digest: "suite".into(),
@@ -117,6 +123,10 @@ async fn cli_requires_pinned_artifacts_and_never_accepts_missing_suite_evidence(
         }
         if name == "stale" {
             requirements.tip = "0".repeat(40);
+        }
+        if name == "suite-pass" {
+            let evidence = json!({"schema":SCHEMA,"suite_digest":"suite","input_digest":observed.digest(),"verdict":"passed"});
+            requirements.plan.checks[0].arguments[1] = format!("printf '%s' '{evidence}'");
         }
         std::fs::write(&plan, serde_json::to_vec(&requirements).unwrap()).unwrap();
         let out = host.path().join(name);
@@ -127,7 +137,11 @@ async fn cli_requires_pinned_artifacts_and_never_accepts_missing_suite_evidence(
             .env("CODER_CAPABILITY_TRUST", &store)
             .env("CODER_PROGRAM_EFFECTS", "reads,network,subprocesses,spend")
             .args([
-                "verify",
+                if name.starts_with("suite-") {
+                    "run-suite"
+                } else {
+                    "verify"
+                },
                 repo.to_str().unwrap(),
                 work.to_str().unwrap(),
                 plan.to_str().unwrap(),

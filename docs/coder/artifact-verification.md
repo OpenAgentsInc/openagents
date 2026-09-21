@@ -78,10 +78,11 @@ The repository's `run-suite` program is one such step:
 The suite digests and the adapter arguments stay in the host-prepared plan;
 the program carries only what the check requires. A host with no installed
 plan refuses `run-suite` at admission, so it stays out of program selection
-on a machine that was not given one. The earlier shape — a `delegate` step
-that ran the suite through an executor and a `check` step that read its
-answer — is gone: delegating the tests and accepting the delegate's final
-text is what this path replaces.
+on a machine that was not given one. The earlier declared shape used a
+`delegate` step followed by a check,
+but the runtime refused its unsupported gate at admission. The new host path
+executes independent checks directly; it never accepts a delegate's final text
+as suite evidence.
 
 ## Run and review
 
@@ -91,8 +92,14 @@ export CODER_PROGRAM_EFFECTS=reads,network,subprocesses,spend
   "$PROTECTED_PLAN" "$NEW_EVIDENCE_DIRECTORY"
 ```
 
-The explicit command authorizes the bundled `verify-artifact` program within
-the effect ceiling. It verifies capability approval again before each check,
+Use `coder-project run-suite` with the same arguments to invoke the repository's
+suite program. That path requires every check to use typed `suite` acceptance,
+pins all checks to one suite identity, and admits at most 16 checks. A plan using
+`exit-success` refuses before execution. Both commands inspect the candidate
+before and after checks and record independent evidence outside the checkout.
+
+The explicit command authorizes its named program (`verify-artifact` or
+`run-suite`) within the effect ceiling. It verifies capability approval again before each check,
 runs checks serially with process-group cleanup, and records `plan.json`,
 `result.json`, and `trace.atif.jsonl` in a new protected directory. Exit code `0`
 means the verification program passed, `3` means a refusal or unmet gate, and
@@ -131,7 +138,6 @@ Cargo build or a Gym acceptance run works in this boundary.
 
 `run-suite` is supported only as far as this path reaches. Still missing for
 the full #9509 contract: a shipped suite adapter that emits the evidence
-contract, a host entry point that installs a suite plan and runs `run-suite`
-end to end (`coder-project verify` remains the only plan installer), and the
-`metrics` output the earlier contract declared — the report's typed verdicts
-are the only result the run records.
+contract and the `metrics` output the program contract requires. The suite/doors inputs and
+metrics/gate outputs remain the target contract; the current report records
+only typed verification verdicts.

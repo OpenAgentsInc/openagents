@@ -513,10 +513,7 @@ mod tests {
             registry.get("answer-question").unwrap().step_names(),
             ["answer"]
         );
-        assert_eq!(
-            registry.get("run-suite").unwrap().step_names(),
-            ["score", "gate"]
-        );
+        assert_eq!(registry.get("run-suite").unwrap().step_names(), ["score"]);
     }
 
     #[test]

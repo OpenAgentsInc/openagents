@@ -2392,24 +2392,11 @@ mod tests {
         Runtime::using(survey, None).with_verification(workspace.into(), plan, trust)
     }
 
-    /// Whether this host can run one command inside the boundary, not
-    /// merely build the profile — a nested sandbox compiles one and then
-    /// cannot apply it, which is a host that cannot run checks.
     fn supported() -> bool {
-        let runs = coder_boundary::Boundary::readonly()
-            .build()
-            .and_then(|boundary| boundary.command(Path::new("/bin/true"), Vec::<String>::new()))
-            .map(|mut command| {
-                command
-                    .env_clear()
-                    .status()
-                    .is_ok_and(|status| status.success())
-            })
-            .unwrap_or(false);
-        if runs {
+        if crate::delegate::boundary_supported() {
             true
         } else {
-            eprintln!("skipping: suite checks need an enforcing filesystem boundary");
+            eprintln!("skipping: verification needs an enforcing filesystem boundary");
             false
         }
     }

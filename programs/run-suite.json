@@ -3,8 +3,8 @@
   "slug": "run-suite",
   "name": "Run a pinned suite",
   "summary": "Runs host-prepared checks bound to one suite and input identity, under a stated test budget.",
-  "inputs": {},
-  "outputs": {"verdict": "string"},
+  "inputs": {"suite": "string", "doors": "list"},
+  "outputs": {"metrics": "map", "gate": "string"},
   "steps": [
     {"name": "score", "kind": "check",
      "bounds": {"refuse_on": "gate_not_met", "acceptance": "suite", "max_tests": 16}}

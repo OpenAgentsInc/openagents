@@ -528,8 +528,9 @@ that was there before. Three rules hold the path together:
   already refuses a program whose bounds or steps this host cannot keep, so
   offering one as an option would put a choice on the question whose only
   outcome is a refusal. On this repository that leaves `delegate-fan-out`,
-  `burn-down`, and `answer-question`; `run-suite` names a check this host
-  does not run and `review-changes` names a question set it has no wording
+  `burn-down`, and `answer-question`; `run-suite` requires a protected
+  verification plan that ordinary turns do not install, and
+  `review-changes` names a question set it has no wording
   for. `burn-down` is `delegate-fan-out` with the `work-list` source in
   place of `request`, `isolation: worktree`, and thirty minutes per item:
   the program the backlog runs through, where the work is written to

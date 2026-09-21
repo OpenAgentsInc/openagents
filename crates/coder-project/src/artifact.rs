@@ -43,6 +43,45 @@ pub async fn verify(
     grant: &coder::Grant,
     trace: &mut coder::Recorder,
 ) -> Result<coder::Run, String> {
+    verify_program(
+        repository,
+        worktree,
+        requirements,
+        grant,
+        trace,
+        include_str!("verify-artifact.json"),
+    )
+    .await
+}
+
+/// Run the repository's suite program with the same independent artifact pins.
+/// Its admission requires typed suite evidence from every prepared check.
+pub async fn run_suite(
+    repository: &Path,
+    worktree: &Path,
+    requirements: &Verification,
+    grant: &coder::Grant,
+    trace: &mut coder::Recorder,
+) -> Result<coder::Run, String> {
+    verify_program(
+        repository,
+        worktree,
+        requirements,
+        grant,
+        trace,
+        include_str!("../../../programs/run-suite.json"),
+    )
+    .await
+}
+
+async fn verify_program(
+    repository: &Path,
+    worktree: &Path,
+    requirements: &Verification,
+    grant: &coder::Grant,
+    trace: &mut coder::Recorder,
+    program_json: &str,
+) -> Result<coder::Run, String> {
     let before = inspect(
         repository,
         worktree,
@@ -53,8 +92,7 @@ pub async fn verify(
     if before.tip != requirements.tip || before.digest() != requirements.plan.input_digest {
         return Err("verification plan does not bind the inspected artifact".into());
     }
-    let program: coder::Program =
-        serde_json::from_str(include_str!("verify-artifact.json")).map_err(|e| e.to_string())?;
+    let program: coder::Program = serde_json::from_str(program_json).map_err(|e| e.to_string())?;
     let survey = coder::Survey::read(Some(repository), repository);
     let runtime = coder::Runtime::using(survey, Some(repository)).with_verification(
         worktree.into(),
