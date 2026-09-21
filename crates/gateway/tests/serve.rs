@@ -3135,3 +3135,617 @@ async fn money_a_failed_identity_check_releases_the_hold() {
     assert_eq!(balance["balance"]["reserved"], 0);
     assert_eq!(balance["balance"]["available"], HOLD);
 }
+
+// ---------------------------------------------------------------------------
+// Review and fallback: the opt-in second pass over the primary's
+// outputs, every secondary dispatch admitted like the primary's own.
+// ---------------------------------------------------------------------------
+
+/// The manifest the review tests share: `acme` holds its classify door
+/// plus a reviewer and a fallback door, each pinned to its own artifact.
+fn review_manifest() -> Manifest {
+    let mut manifest = manifest(None);
+    let acme = manifest.tenants.get_mut("acme").unwrap();
+    for (door, signature) in [("acme-kev-review", 'c'), ("acme-kev-fb", 'd')] {
+        acme.doors.insert(
+            door.to_string(),
+            Binding {
+                lane: Lane::Dedicated,
+                artifact: Expected {
+                    model: "kev-0.6b".to_string(),
+                    adapter: None,
+                    artifact_signature: artifact(signature),
+                    execution: BTreeMap::new(),
+                },
+                capacity: None,
+                promotion: None,
+                scope: vec![],
+            },
+        );
+    }
+    manifest
+}
+
+/// A deployment with the primary door plus the reviewer and fallback
+/// doors the review policy names.
+async fn review_deployment(primary: String, reviewer: String, fallback: String) -> Deployment {
+    deploy_doors(
+        review_manifest(),
+        [
+            ("acme-kev".into(), classify_door(primary, 1)),
+            (
+                "acme-kev-review".into(),
+                Door {
+                    endpoint: reviewer,
+                    classify: None,
+                    classify_item_concurrency: 1,
+                },
+            ),
+            (
+                "acme-kev-fb".into(),
+                Door {
+                    endpoint: fallback,
+                    classify: None,
+                    classify_item_concurrency: 1,
+                },
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    )
+    .await
+}
+
+/// A review policy body over the declared cuts.
+fn review_policy(reviewer: &str, trigger: &str, on_failure: &str) -> Value {
+    json!({
+        "v": "openagents.classify-review.v1",
+        "reviewer": reviewer,
+        "trigger": trigger,
+        "on_failure": on_failure,
+        "max_items": 8,
+        "max_attempts": 8,
+        "latency_ms": 5_000,
+    })
+}
+
+/// A classify call whose policy declares the given review block and the
+/// uncertainty cut the `uncertain` trigger reads.
+fn review_call(review: Value) -> Value {
+    let mut call = classify_call();
+    call["policy"]["select"]["single_label"]["uncertain_below"] = json!(0.9);
+    call["policy"]["review"] = review;
+    call
+}
+
+/// The primary's uncertain answer: below the declared 0.9 cut.
+fn uncertain_answer() -> Value {
+    json!({"model":"kev-0.6b",
+           "answers":{"q0":{"type":"choice","choice":"a","confidence":0.55,
+                            "probabilities":{"a":0.55,"b":0.45}}},
+           "usage":{"input_tokens":3,"output_tokens":1}})
+}
+
+/// The reviewer's decisive answer the other way.
+fn corrected_answer() -> Value {
+    json!({"model":"kev-0.6b",
+           "answers":{"q0":{"type":"choice","choice":"b","confidence":0.9,
+                            "probabilities":{"a":0.1,"b":0.9}}},
+           "usage":{"input_tokens":4,"output_tokens":2}})
+}
+
+#[tokio::test]
+async fn classify_without_a_review_policy_runs_strict_native() {
+    let (endpoint, _) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    let (status, body) = send_classification(&deployment, &classify_batch(2)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.get("review").is_none());
+    assert!(body["usage"].get("review").is_none());
+    for item in body["results"].as_array().unwrap() {
+        assert!(item.get("attempts").is_none());
+        assert!(item.get("fallback").is_none());
+        assert_eq!(item["review_status"], "not-reviewed");
+    }
+    assert_eq!(receipt_log(&deployment.dir).len(), 1);
+}
+
+#[tokio::test]
+async fn classify_review_rejudges_flagged_units_and_records_both_answers() {
+    let (primary, primary_forwards) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let (reviewer, reviewer_forwards) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, fallback_forwards) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let call = review_call(review_policy(
+        "acme-kev-review",
+        "uncertain",
+        "keep-original",
+    ));
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // Every input re-judged through the reviewer door, none through the
+    // fallback.
+    assert_eq!(primary_forwards.load(Ordering::SeqCst), 2);
+    assert_eq!(reviewer_forwards.load(Ordering::SeqCst), 2);
+    assert_eq!(fallback_forwards.load(Ordering::SeqCst), 0);
+    for item in body["results"].as_array().unwrap() {
+        let unit = &item["units"][0];
+        assert_eq!(unit["selected"], "b", "{unit}");
+        assert_eq!(unit["final_source"], "reviewer");
+        // The primary's answer survives whole under `original`.
+        assert_eq!(unit["original"]["selected"], "a");
+        assert_eq!(unit["original"]["uncertain"], true);
+        assert_eq!(unit["review"]["outcome"], "answered");
+        assert_eq!(unit["review"]["reason"], "uncertain");
+        assert_eq!(item["review_status"], "reviewed");
+        // The attempt chain names each dispatch's own identity.
+        let attempts = item["attempts"].as_array().unwrap();
+        assert_eq!(attempts.len(), 2);
+        assert_eq!(attempts[0]["role"], "primary");
+        assert_eq!(attempts[1]["role"], "review");
+        assert_eq!(attempts[1]["door"], "acme-kev-review");
+        assert_ne!(attempts[0]["attempt_id"], attempts[1]["attempt_id"]);
+    }
+    assert_eq!(body["review"]["v"], "openagents.classify-review.v1");
+    assert_eq!(body["review"]["reviewed"], 2);
+    assert_eq!(body["review"]["review_answered"], 2);
+    assert_eq!(body["review"]["fallback_dispatched"], 0);
+    assert_eq!(body["review"]["trigger"], "uncertain");
+    assert_eq!(body["review"]["policy_digest"].as_str().unwrap().len(), 71);
+    // Usage stays separate: the reviewer's tokens never merge into the
+    // primary's counters.
+    assert_eq!(body["usage"]["input_tokens"], 6);
+    assert_eq!(body["usage"]["review"]["input_tokens"], 8);
+    assert_eq!(body["usage"]["review"]["forwards"], 2);
+    // One receipt per dispatch: the call plus each review forward.
+    assert_eq!(receipt_log(&deployment.dir).len(), 3);
+}
+
+#[tokio::test]
+async fn classify_review_does_not_fire_on_units_the_trigger_does_not_name() {
+    // A decisive answer clears the declared uncertainty cut — the
+    // trigger never fires and the reviewer sees nothing.
+    let decisive = json!({"model":"kev-0.6b",
+           "answers":{"q0":{"type":"choice","choice":"a","confidence":0.95,
+                            "probabilities":{"a":0.95,"b":0.05}}},
+           "usage":{"input_tokens":3,"output_tokens":1}});
+    let (primary, _) = backend(honest(artifact('b'), decisive)).await;
+    let (reviewer, reviewer_forwards) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let call = review_call(review_policy(
+        "acme-kev-review",
+        "uncertain",
+        "keep-original",
+    ));
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(reviewer_forwards.load(Ordering::SeqCst), 0);
+    assert_eq!(body["review"]["reviewed"], 0);
+    for item in body["results"].as_array().unwrap() {
+        assert_eq!(item["review_status"], "not-reviewed");
+        assert_eq!(item["units"][0]["selected"], "a");
+        assert!(item["units"][0].get("review").is_none());
+    }
+}
+
+#[tokio::test]
+async fn classify_review_keeps_the_original_when_the_reviewed_answer_fails_contract() {
+    // The reviewer's distribution does not cover the label set — an
+    // answer the contract cannot validate is a review that did not
+    // answer, and under `keep-original` the primary's selection stands.
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let (reviewer, _) = backend(honest(
+        artifact('c'),
+        json!({"model":"kev-0.6b",
+               "answers":{"q0":{"type":"choice","choice":"a","confidence":0.9,
+                                "probabilities":{"a":0.9}}},
+               "usage":{"input_tokens":4,"output_tokens":2}}),
+    ))
+    .await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let call = review_call(review_policy(
+        "acme-kev-review",
+        "uncertain",
+        "keep-original",
+    ));
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    for item in body["results"].as_array().unwrap() {
+        let unit = &item["units"][0];
+        assert_eq!(unit["selected"], "a", "{unit}");
+        assert_eq!(unit["final_source"], "primary");
+        assert_eq!(unit["review"]["outcome"], "unavailable");
+        assert_eq!(item["review_status"], "review-incomplete");
+    }
+    assert_eq!(body["review"]["reviewed"], 2);
+    assert_eq!(body["review"]["review_answered"], 0);
+}
+
+#[tokio::test]
+async fn classify_review_strict_governs_when_the_review_does_not_answer() {
+    // Under `strict`, an unanswered review replaces the selection: the
+    // unit reports the review's failure with the primary's whole answer
+    // kept under `original`.
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let (reviewer, _) = backend(honest(
+        artifact('c'),
+        json!({"model":"kev-0.6b", "answers":{"q0":{"type":"noul","probability":0.7}}}),
+    ))
+    .await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let mut call = review_call(review_policy("acme-kev-review", "uncertain", "strict"));
+    call["inputs"] = json!([{"id":"one","text":"one"}]);
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    let unit = &body["results"][0]["units"][0];
+    assert_eq!(unit["outcome"], "unavailable", "{unit}");
+    assert_eq!(unit["final_source"], "reviewer");
+    assert_eq!(unit["original"]["selected"], "a");
+    assert_eq!(unit["original"]["outcome"], "answered");
+    assert_eq!(body["review"]["on_failure"], "strict");
+}
+
+#[tokio::test]
+async fn classify_review_stops_at_the_declared_item_bound() {
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let (reviewer, reviewer_forwards) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let mut policy = review_policy("acme-kev-review", "uncertain", "keep-original");
+    policy["max_items"] = json!(1);
+    let call = review_call(policy);
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(reviewer_forwards.load(Ordering::SeqCst), 1);
+    assert_eq!(body["review"]["reviewed"], 1);
+    // The bound's stop is recorded on the unit it stopped.
+    let stopped: Vec<&Value> = body["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| &item["units"][0])
+        .filter(|unit| unit["review"]["outcome"].as_str() == Some("unattempted"))
+        .collect();
+    assert_eq!(stopped.len(), 1, "{body}");
+    assert!(
+        stopped[0]["review"]["cause"]
+            .as_str()
+            .unwrap()
+            .contains("max_items"),
+        "{body}"
+    );
+    assert_eq!(stopped[0]["final_source"], "primary");
+}
+
+#[tokio::test]
+async fn classify_review_stops_at_the_declared_latency_bound() {
+    // A reviewer slower than the phase's own deadline: the first
+    // dispatch times out inside it, the second never dispatches.
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let reviewer_stub = Backend {
+        delay_ms: 400,
+        ..honest(artifact('c'), corrected_answer())
+    };
+    let (reviewer, _) = backend(reviewer_stub).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let mut policy = review_policy("acme-kev-review", "uncertain", "keep-original");
+    policy["latency_ms"] = json!(150);
+    let call = review_call(policy);
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let outcomes: Vec<&str> = body["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["units"][0]["review"]["outcome"].as_str().unwrap())
+        .collect();
+    assert!(outcomes.contains(&"unavailable"), "{body}");
+    assert!(outcomes.contains(&"unattempted"), "{body}");
+    // The stopped unit's cause names the latency bound.
+    let stopped = body["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| &item["units"][0])
+        .find(|unit| unit["review"]["outcome"].as_str() == Some("unattempted"))
+        .unwrap();
+    assert!(
+        stopped["review"]["cause"]
+            .as_str()
+            .unwrap()
+            .contains("latency_ms"),
+        "{body}"
+    );
+    // Both units keep their primary selections.
+    for item in body["results"].as_array().unwrap() {
+        assert_eq!(item["units"][0]["selected"], "a");
+        assert_eq!(item["units"][0]["final_source"], "primary");
+    }
+}
+
+#[tokio::test]
+async fn classify_fallback_retries_a_declared_transport_failure() {
+    // The primary door 503s: the declared `transport` entry retries the
+    // item through the fallback door, which answers.
+    let (primary, _) = backend(Backend {
+        answer_status: StatusCode::SERVICE_UNAVAILABLE,
+        answer_body: json!({"error":"down"}),
+        ..honest(artifact('b'), json!({}))
+    })
+    .await;
+    let (reviewer, _) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, fallback_forwards) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let mut policy = review_policy("acme-kev-review", "no-match", "keep-original");
+    policy["fallback"] = json!([{"on": "transport", "model": "acme-kev-fb"}]);
+    let mut call = review_call(policy);
+    call["inputs"] = json!([{"id":"one","text":"one"}]);
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(fallback_forwards.load(Ordering::SeqCst), 1);
+    let item = &body["results"][0];
+    assert_eq!(item["outcome"], "answered", "{item}");
+    assert_eq!(item["units"][0]["selected"], "a");
+    // The primary's failure survives whole under `original`.
+    assert_eq!(item["original"]["outcome"], "unavailable");
+    assert_eq!(item["fallback"]["on"], "transport");
+    assert_eq!(item["fallback"]["outcome"], "answered");
+    assert_eq!(item["fallback"]["door"], "acme-kev-fb");
+    let attempts = item["attempts"].as_array().unwrap();
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(attempts[0]["role"], "primary");
+    assert_eq!(attempts[0]["outcome"], "unavailable");
+    assert_eq!(attempts[1]["role"], "fallback");
+    assert_eq!(body["review"]["fallback_dispatched"], 1);
+    assert_eq!(body["review"]["fallback_answered"], 1);
+    // Two dispatches, two receipts past the call's own.
+    assert_eq!(receipt_log(&deployment.dir).len(), 2);
+}
+
+#[tokio::test]
+async fn classify_fallback_never_retries_an_undeclared_cause() {
+    // The primary 503s but the policy declares no `transport` entry:
+    // the failure stands and the skipped fallback is recorded.
+    let (primary, primary_forwards) = backend(Backend {
+        answer_status: StatusCode::SERVICE_UNAVAILABLE,
+        answer_body: json!({"error":"down"}),
+        ..honest(artifact('b'), json!({}))
+    })
+    .await;
+    let (reviewer, _) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, fallback_forwards) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let policy = review_policy("acme-kev-review", "no-match", "keep-original");
+    let mut call = review_call(policy);
+    call["inputs"] = json!([{"id":"one","text":"one"}]);
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(primary_forwards.load(Ordering::SeqCst), 1);
+    assert_eq!(fallback_forwards.load(Ordering::SeqCst), 0);
+    let item = &body["results"][0];
+    assert_eq!(item["outcome"], "unavailable");
+    assert_eq!(item["fallback"]["outcome"], "skipped");
+    assert_eq!(body["review"]["fallback_dispatched"], 0);
+}
+
+#[tokio::test]
+async fn classify_fallback_retries_only_the_refusal_codes_it_declared() {
+    // A typed refusal is an answer: the `refused` entry retries only
+    // the codes it enumerates, and an unlisted cause is kept.
+    let refused = |code: &str| Backend {
+        answer_status: StatusCode::UNPROCESSABLE_ENTITY,
+        answer_body: json!({"error": {"code": code}}),
+        ..honest(artifact('b'), json!({}))
+    };
+    let (primary, _) = backend(refused("content_policy")).await;
+    let (reviewer, _) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, fallback_forwards) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let mut policy = review_policy("acme-kev-review", "no-match", "keep-original");
+    policy["fallback"] =
+        json!([{"on": "refused", "model": "acme-kev-fb", "codes": ["quota_exceeded"]}]);
+    let mut call = review_call(policy);
+    call["inputs"] = json!([{"id":"one","text":"one"}]);
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(fallback_forwards.load(Ordering::SeqCst), 0);
+    let item = &body["results"][0];
+    assert_eq!(item["outcome"], "refused", "{item}");
+    assert_eq!(item["cause"], "content_policy");
+    assert_eq!(item["fallback"]["outcome"], "skipped");
+
+    // The declared code retries and answers through the fallback door.
+    let (primary, _) = backend(refused("quota_exceeded")).await;
+    let (reviewer, _) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, fallback_forwards) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let mut policy = review_policy("acme-kev-review", "no-match", "keep-original");
+    policy["fallback"] =
+        json!([{"on": "refused", "model": "acme-kev-fb", "codes": ["quota_exceeded"]}]);
+    let mut call = review_call(policy);
+    call["inputs"] = json!([{"id":"one","text":"one"}]);
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(fallback_forwards.load(Ordering::SeqCst), 1);
+    let item = &body["results"][0];
+    assert_eq!(item["outcome"], "answered", "{item}");
+    assert_eq!(item["original"]["outcome"], "refused");
+    assert_eq!(item["original"]["cause"], "quota_exceeded");
+    assert_eq!(item["fallback"]["outcome"], "answered");
+}
+
+#[tokio::test]
+async fn classify_review_dispatches_only_doors_the_caller_is_bound_to() {
+    // globex's call rides `shared-kev`, which its binding names; the
+    // policy's reviewer is `acme-kev`, which it does not. The review
+    // sub-dispatch is refused at its own authorization — the caller's
+    // bindings bound every dispatch, not just the call's own.
+    let (primary, _) = backend(honest(artifact('a'), uncertain_answer())).await;
+    let (reviewer, reviewer_forwards) = backend(honest(artifact('c'), corrected_answer())).await;
+    let deployment = deploy_doors(
+        review_manifest(),
+        [
+            ("shared-kev".into(), classify_door(primary, 1)),
+            (
+                "acme-kev".into(),
+                Door {
+                    endpoint: reviewer,
+                    classify: None,
+                    classify_item_concurrency: 1,
+                },
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    )
+    .await;
+    let mut call = review_call(review_policy("acme-kev", "uncertain", "keep-original"));
+    call["model"] = json!("shared-kev");
+    call["capacity"] = json!("shared");
+    call["inputs"] = json!([{"id":"one","text":"one"}]);
+    let (status, body) =
+        send_classification_as(&deployment, &call, Some(&deployment.tokens["globex"])).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(reviewer_forwards.load(Ordering::SeqCst), 0);
+    let unit = &body["results"][0]["units"][0];
+    assert_eq!(unit["selected"], "a", "{unit}");
+    assert_eq!(unit["final_source"], "primary");
+    assert_eq!(unit["review"]["outcome"], "refused", "{unit}");
+    let attempts = body["results"][0]["attempts"].as_array().unwrap();
+    assert_eq!(attempts[1]["role"], "review");
+    assert_eq!(attempts[1]["code"], "door_not_bound");
+    assert_eq!(body["review"]["reviewed"], 1);
+}
+
+#[tokio::test]
+async fn classify_review_refuses_an_unbound_reviewer_door() {
+    // A reviewer the caller's bindings do not name: the sub-dispatch is
+    // refused at authorization, recorded on the unit, and never reaches
+    // a backend.
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let (reviewer, reviewer_forwards) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let mut call = review_call(review_policy("acme-kev-fb", "uncertain", "keep-original"));
+    // Point the policy at a door acme does not bind: `shared-kev` is
+    // bound, so use a name nobody holds.
+    call["policy"]["review"]["reviewer"] = json!("unbound-door");
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(reviewer_forwards.load(Ordering::SeqCst), 0);
+    for item in body["results"].as_array().unwrap() {
+        let unit = &item["units"][0];
+        assert_eq!(unit["selected"], "a", "{unit}");
+        assert_eq!(unit["final_source"], "primary");
+        assert_eq!(unit["review"]["outcome"], "refused", "{unit}");
+        let attempts = item["attempts"].as_array().unwrap();
+        assert_eq!(attempts[1]["role"], "review");
+        assert_eq!(attempts[1]["outcome"], "refused");
+        assert_eq!(attempts[1]["code"], "door_not_bound");
+    }
+    assert_eq!(body["review"]["reviewed"], 2);
+    assert_eq!(body["review"]["review_answered"], 0);
+    // Each refused sub-dispatch still leaves its own receipt.
+    assert_eq!(receipt_log(&deployment.dir).len(), 3);
+}
+
+#[tokio::test]
+async fn classify_review_policy_rejects_invalid_declarations() {
+    let (endpoint, _) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    for review in [
+        // Wrong schema tag.
+        json!({"v":"openagents.classify-review.v0","reviewer":"acme-kev-review",
+               "trigger":"uncertain","on_failure":"keep-original",
+               "max_items":1,"max_attempts":1,"latency_ms":1}),
+        // A zero bound admits no work.
+        json!({"v":"openagents.classify-review.v1","reviewer":"acme-kev-review",
+               "trigger":"uncertain","on_failure":"keep-original",
+               "max_items":0,"max_attempts":1,"latency_ms":1}),
+        // A `refused` fallback without the codes it may carry.
+        json!({"v":"openagents.classify-review.v1","reviewer":"acme-kev-review",
+               "trigger":"uncertain","on_failure":"keep-original",
+               "max_items":1,"max_attempts":1,"latency_ms":1,
+               "fallback":[{"on":"refused","model":"acme-kev-fb"}]}),
+        // `codes` on a non-refusal entry.
+        json!({"v":"openagents.classify-review.v1","reviewer":"acme-kev-review",
+               "trigger":"uncertain","on_failure":"keep-original",
+               "max_items":1,"max_attempts":1,"latency_ms":1,
+               "fallback":[{"on":"transport","model":"acme-kev-fb","codes":["x"]}]}),
+    ] {
+        let call = review_call(review);
+        let (status, body) = send_classification(&deployment, &call).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(body["error"]["code"], "invalid_request", "{body}");
+    }
+}
+
+#[tokio::test]
+async fn classify_review_holds_money_for_every_attempted_dispatch() {
+    // Under monetary admission each secondary dispatch takes its own
+    // hold and settles its own usage — the workspace balance reflects
+    // every charged call.
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let (reviewer, _) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let mut doors = BTreeMap::new();
+    doors.insert("acme-kev".to_string(), classify_door(primary, 1));
+    for (door, endpoint) in [("acme-kev-review", reviewer), ("acme-kev-fb", fallback)] {
+        doors.insert(
+            door.to_string(),
+            Door {
+                endpoint,
+                classify: None,
+                classify_item_concurrency: 1,
+            },
+        );
+    }
+    let priced: BTreeMap<String, Priced> = [
+        ("acme-kev".into(), fixture_priced()),
+        ("acme-kev-review".into(), fixture_priced()),
+        ("acme-kev-fb".into(), fixture_priced()),
+    ]
+    .into_iter()
+    .collect();
+    let deployment = deploy_money(review_manifest(), doors, priced, |ledger, workspace| {
+        provision_account(ledger, workspace, Some(8 * HOLD));
+    })
+    .await;
+    let token = deployment.deployment.tokens["acme"].clone();
+    let call = review_call(review_policy(
+        "acme-kev-review",
+        "uncertain",
+        "keep-original",
+    ));
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/classify", deployment.deployment.address))
+        .bearer_auth(&token)
+        .header("x-workspace-id", &deployment.workspace)
+        .json(&call)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["x-settlement"], "settled");
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["review"]["reviewed"], 2, "{body}");
+    // Each review attempt settled its own hold — recorded on the
+    // attempt row itself.
+    for item in body["results"].as_array().unwrap() {
+        let attempts = item["attempts"].as_array().unwrap();
+        assert_eq!(attempts[1]["settlement"], "settled", "{item}");
+        assert!(attempts[1]["usage_ref"].is_string());
+    }
+    // The summary's reserved spend counts every secondary hold's
+    // worst case.
+    assert_eq!(body["review"]["reserved_spend"], 2 * HOLD);
+    let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
+    // The primary call plus two review dispatches, each settling the
+    // usage its door reported.
+    assert_eq!(balance["balance"]["reserved"], 0);
+    assert_eq!(balance["balance"]["settled"], 2 * CHARGE + 2 * 120);
+}
