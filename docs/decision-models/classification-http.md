@@ -60,11 +60,20 @@ the same `selected` value.
 
 The route shares authentication, tenant authorization, backend identity
 checks, quota reservations, and receipt recording with `/v1/systemone`. It
-forwards one native request per input serially under the configured
-concurrency permits. The configured forward timeout bounds the
-classification execution across inputs; remaining inputs are unattempted
-after the deadline or a transport failure. It does not provide packed
-inference or durable jobs.
+forwards one native request per input through a bounded scheduler. A
+door's `classify_item_concurrency` declaration — one unless the operator
+configures more — bounds how many of a call's forwards run at once, and
+every in-flight forward additionally holds the binding's declared
+`capacity.concurrency` slot and the process's `max_in_flight` slot, so a
+configured bound never multiplies capacity the deployment did not
+declare. Items that cannot start queue inside the call's deadline: the
+configured forward timeout bounds the classification execution across
+inputs, including the wait for a slot. Inputs still queued when the
+deadline passes, or after a transport failure halts the call, report
+`unattempted` with the bound that stopped them. Results reassemble in
+input order however forwards complete. This does not provide packed
+inference or durable jobs; `batch-execution.md` covers the scheduling
+contract and its measured fixture.
 
 Results preserve input order and IDs. Each unit reports its outcome, raw
 answer, and policy-selected output: the label or label list for the
@@ -127,7 +136,13 @@ declared-cut uncertainty flags — overlapping label counts, routed versus
 genuine no-match labels, and unevaluated inputs counted under their
 outcomes — undeclared-limit and invalid-rubric refusals, partial
 outcomes, incomplete usage, model/distribution rejection, and bounded
-reads of an unfinished chunked response. They do not establish model
-quality, production throughput, caller-declared label exclusions,
-per-item receipt identities, semantic review of flagged inputs, or the
-durable-job surface #9484 owns.
+reads of an unfinished chunked response. The scheduling tests prove the
+serial default, the configured item bound at the stub's observed peak,
+input order under reordered completions, a binding's declared
+concurrency shared across tenants, a deadline's partial coverage with
+its settled units, and a halted call's unattempted queue — plus a
+reproducible serial-versus-concurrent fixture measurement in
+`batch-execution.md`. They do not establish model quality, production
+throughput, caller-declared label exclusions, per-item receipt
+identities, semantic review of flagged inputs, or the durable-job
+surface #9484 owns.

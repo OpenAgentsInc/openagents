@@ -226,6 +226,8 @@ mod tests {
         let loaded = Config::load(&path).unwrap();
         assert_eq!(loaded.max_body_bytes, 1_048_576);
         assert_eq!(loaded.doors["kev-0.6b"].endpoint, "http://127.0.0.1:9080");
+        // An undeclared item concurrency is one — serial, as before.
+        assert_eq!(loaded.doors["kev-0.6b"].classify_item_concurrency, 1);
     }
 
     #[test]
