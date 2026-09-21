@@ -241,7 +241,11 @@ impl Host {
 pub fn enforced(kind: Kind) -> &'static [&'static str] {
     match kind {
         Kind::Query => &["max_results", "on_overflow"],
-        Kind::Decide => &["refuse_below", "requires_calibration", "per_requirement"],
+        Kind::Decide => &[
+            "refuse_below",
+            "requires_scorable_answer",
+            "per_requirement",
+        ],
         Kind::Check => &["refuse_on", "acceptance", "max_tests"],
         Kind::Delegate => &["concurrent_max", "isolation", "minutes"],
         // Composition and WebAssembly are specified and not built. A host
@@ -719,7 +723,7 @@ impl Runtime {
                     "refuse_below is a probability, and this step names {value}"
                 )),
             },
-            "requires_calibration" | "per_requirement" => match value.is_boolean() {
+            "requires_scorable_answer" | "per_requirement" => match value.is_boolean() {
                 true => Ok(()),
                 false => refuse(format!(
                     "{bound} is true or false, and this step names {value}"
@@ -1484,13 +1488,12 @@ impl Runtime {
         run.answers
             .insert(step.name.clone(), answers_value(&response.answers));
 
-        // `requires_calibration` is the host promising the answer can be
-        // scored later: a probability rather than a label, from a named
-        // model, beside the digest of the wording that produced it. The
-        // first two are checked here; the digest is recorded either way.
+        // Scoreability means a probability from a named model, beside the
+        // recorded question digest. It does not establish calibration or
+        // authorize a model for this workload.
         if step
             .bounds
-            .get("requires_calibration")
+            .get("requires_scorable_answer")
             .and_then(Value::as_bool)
             == Some(true)
         {
@@ -1500,7 +1503,7 @@ impl Runtime {
             if !scorable {
                 return Err(Refused::at(
                     &step.name,
-                    "uncalibrated",
+                    "unscorable_answer",
                     format!(
                         "{id} must answer with a probability from a named model to be scored against an outcome, and this answer cannot be"
                     ),
@@ -2180,6 +2183,36 @@ mod tests {
             assert_eq!(refused.step, "work");
             assert_eq!(refused.code, "bound_unenforceable");
         }
+    }
+
+    #[test]
+    fn calibration_is_not_silently_reinterpreted_as_scoreability() {
+        let runtime = empty_runtime();
+        for value in [true, false] {
+            let program: Program = serde_json::from_value(json!({
+                "v":1,"slug":"legacy-calibration",
+                "steps":[{"name":"judge","kind":"decide","bounds":{"requires_calibration":value}}]
+            }))
+            .unwrap();
+            let refused = runtime.admit(&program).unwrap_err();
+            assert_eq!(refused.code, "bound_unenforceable");
+            assert!(refused.reason.contains("requires_calibration"));
+        }
+        let program: Program = serde_json::from_value(json!({
+            "v":1,"slug":"scoreability",
+            "steps":[{"name":"judge","kind":"decide","bounds":{"requires_scorable_answer":true}}]
+        }))
+        .unwrap();
+        assert!(
+            runtime
+                .admit_bound(&program.steps[0], "requires_scorable_answer", &json!(true))
+                .is_ok()
+        );
+        assert!(
+            runtime
+                .admit_bound(&program.steps[0], "requires_scorable_answer", &json!("yes"))
+                .is_err()
+        );
     }
 
     #[test]

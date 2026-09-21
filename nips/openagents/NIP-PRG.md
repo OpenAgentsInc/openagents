@@ -74,7 +74,7 @@ them disagreeing refuses the program.
      "bounds": {"max_results": 12, "on_overflow": "refuse"}},
     {"name": "independence", "kind": "decide",
      "question": "openagents.independence.v1",
-     "bounds": {"refuse_below": 0.7, "requires_calibration": true}},
+     "bounds": {"refuse_below": 0.7, "requires_scorable_answer": true}},
     {"name": "admit",        "kind": "check",
      "bounds": {"refuse_on": "cannot_enforce_intersection"}},
     {"name": "fan_out",      "kind": "delegate",
@@ -341,3 +341,16 @@ and none of them is the signature on the event:
 Signing an announcement says a publisher wrote it. It does not say the
 module is safe, and a host that treats a familiar pubkey as a reason to relax
 any of the three has removed the part that was protecting it.
+
+### Scoreable answers and calibration
+
+`requires_scorable_answer: true` requires the gate answer to carry a probability
+from a named model so an evaluator can compare it with an observed outcome.
+This bound does not attest calibration, authorize a model, or establish a safe
+threshold. The question-set digest remains part of the decision record.
+
+The former `requires_calibration` spelling overstated this check. Hosts must
+not silently interpret that name as scoreability. A host without an admitted
+workload/model calibration-evidence contract refuses it as an unsupported bound.
+Updating a program to the new spelling changes its digest; retained runs keep
+the program and question identities they actually executed.

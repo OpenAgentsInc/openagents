@@ -10,7 +10,7 @@
      "bounds": {"max_results": 6, "on_overflow": "refuse"}},
     {"name": "independence", "kind": "decide",
      "question": "openagents.independence.v2",
-     "bounds": {"refuse_below": 0.7, "requires_calibration": true}},
+     "bounds": {"refuse_below": 0.7, "requires_scorable_answer": true}},
     {"name": "admit", "kind": "check",
      "bounds": {"refuse_on": "cannot_enforce_intersection"}},
     {"name": "fan_out", "kind": "delegate",

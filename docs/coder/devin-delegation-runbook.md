@@ -450,8 +450,10 @@ budget. Six is the current configured concurrency ceiling, not a measured
 account entitlement or an optimal throughput claim. Lower task count when
 account limits, memory, build contention, or available independent work demand
 it. A semantic probability above the program's `0.7` floor is not proof of
-independence. `requires_calibration` currently checks probability-bearing model
-output, not an admitted calibration map.
+independence. `requires_scorable_answer` checks probability-bearing model
+output, not an admitted calibration map. The old `requires_calibration` bound
+is refused; update the program deliberately and retain its previous digest in
+historical runs.
 
 | Symptom | Next action |
 | --- | --- |

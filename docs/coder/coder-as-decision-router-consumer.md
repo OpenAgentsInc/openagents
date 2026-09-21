@@ -193,10 +193,10 @@ busier. The retired questions in the
 [Coder baseline record](../decision-models/2026-09-20-coder-question-baselines.md)
 stay retired unless new evidence justifies a replacement.
 
-The current program bound `requires_calibration` checks that an answer
-contains a probability from a named model. It does not establish an admitted
-calibration map. The target must either check workload/model-specific
-calibration evidence or rename the weaker property. A question, model,
+The program bound `requires_scorable_answer` checks that an answer contains
+a probability from a named model. It does not establish an admitted calibration
+map. The old `requires_calibration` spelling is refused as unsupported; an
+actual calibration promise requires workload/model-specific evidence. A question, model,
 artifact, or state policy change invalidates assumptions that depended on
 the previous version.
 
