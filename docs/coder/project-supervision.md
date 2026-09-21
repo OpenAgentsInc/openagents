@@ -140,7 +140,7 @@ queue operation completes the full Decision Router consumer.
 
 ## Lessons retained from earlier work
 
-The [delegation after-action report](../audits/2026-09-20-delegation-after-action-report.md)
+The [delegation after-action report](../audits/2026-09-20-delegation-after-action-report/README.md)
 identified fragmented verification, excessive unfinished work, reactive retries,
 and supervisor integration as bottlenecks. The later
 [workstation runbook verification](verification/2026-09-20-devin-runbook.md)

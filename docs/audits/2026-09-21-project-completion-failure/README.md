@@ -53,10 +53,10 @@ Raw transcripts and execution logs remain private because they can contain
 credentials, prompts, paths, or user data. The checked-in evidence contains only
 commit metadata, numeric measurements, record names, and log digests:
 
-- [Every commit and rationale as CSV](2026-09-21-project-completion-failure-commits.csv).
-- [Every recovered gate phase and duration](2026-09-21-project-completion-failure-gate-phases.csv).
-- [Gate and delegation timing records](2026-09-21-project-completion-failure-timing.json).
-- [Timestamped command and wait intervals](2026-09-21-project-completion-failure-waits.csv).
+- [Every commit and rationale as CSV](commits.csv).
+- [Every recovered gate phase and duration](gate-phases.csv).
+- [Gate and delegation timing records](timing.json).
+- [Timestamped command and wait intervals](waits.csv).
 
 ## Time accounting
 
@@ -483,9 +483,9 @@ complete retained inventory and measured time accounting.
 ## How a TypeSafe-native Coder could prevent this failure
 
 This recommendation applies the founder's
-[original coding-agent document](../coder/thoughts-on-a-typesafe-coding-agent.md),
-the [Coder architecture analysis](../coder/typesafe-agent-analysis.md), and the
-[delivery roadmap](../coder/typesafe-agent-roadmap.md) to the failures measured
+[original coding-agent document](../../coder/thoughts-on-a-typesafe-coding-agent.md),
+the [Coder architecture analysis](../../coder/typesafe-agent-analysis.md), and the
+[delivery roadmap](../../coder/typesafe-agent-roadmap.md) to the failures measured
 above. The founder's relevant ideas are query-specific context, explicit shared
 state, subgoal deduplication, and background consumers of existing observations.
 The roadmap supplies the crucial implementation boundary: Rust owns authority,
