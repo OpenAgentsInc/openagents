@@ -11,9 +11,9 @@
 //!
 //! # The lifecycle
 //!
-//! `pending` → `dispatched` → `answered` | `refused` | `unverifiable` →
-//! `settled`, with `unknown` standing apart as recovery's mark rather
-//! than a transition:
+//! `pending` → `dispatched` → `answered` | `refused` | `unverifiable` |
+//! `cancelled` → `settled`, with `unknown` standing apart as recovery's
+//! mark rather than a transition:
 //!
 //! - **pending** — the claim is on disk. [`Store::claim`] writes it
 //!   under `create_new`, so a run id is claimed once and a second claim
@@ -22,6 +22,10 @@
 //!   step, a step to its work, a task to an attempt.
 //! - **answered | refused | unverifiable** — the work produced an
 //!   answer, declined, or came back with nothing anyone could check.
+//! - **cancelled** — the caller chose to end the record: a budget
+//!   spent, a run stopped deliberately. It is the end someone asked
+//!   for, written down — not the work's own decline, and not what a
+//!   crash left behind.
 //! - **settled** — terminal. [`Store::settle`] records what the run came
 //!   to and the reference its result lives under, and nothing appends
 //!   after it.
@@ -71,6 +75,11 @@ pub enum State {
     Refused,
     /// The work came back with nothing anyone could check.
     Unverifiable,
+    /// The caller chose to end the record — a deliberate stop, recorded
+    /// as one. `Refused` is the work's or the host's decline, `Unknown`
+    /// is what a crash left, and `Cancelled` is neither: it is what
+    /// someone asked for.
+    Cancelled,
     /// Terminal: what the record came to is written.
     Settled,
     /// Recovery's mark on an unfinished record.
@@ -79,8 +88,8 @@ pub enum State {
 
 /// What a settled run came to — the terminal half of its state.
 ///
-/// These are the three states a run settles from, kept as their own
-/// type because they are also the outcome a settled record remembers.
+/// These are the states a run settles from, kept as their own type
+/// because they are also the outcome a settled record remembers.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Outcome {
@@ -90,6 +99,11 @@ pub enum Outcome {
     Refused,
     /// The run finished without an answer anyone could check.
     Unverifiable,
+    /// The run was cancelled — the caller's own bound ended it. An end
+    /// someone chose and recorded, never a refusal the work gave and
+    /// never the `unknown` a crash leaves: the distinction is the whole
+    /// point of durable state.
+    Cancelled,
 }
 
 /// What a claim pins — the run's identity and the digests it ran under.
@@ -477,7 +491,10 @@ impl Store {
     /// to its start — or `unknown`, which is recovery's mark and not a
     /// transition. And the run's own record does not settle here:
     /// [`Store::settle`] carries what the run came to. A step or task
-    /// attempt may settle through a mark — its state is its outcome.
+    /// attempt may settle through a mark — its state is its outcome —
+    /// and `cancelled` is a mark like any other move: the caller's own
+    /// end, written where the record stands rather than left for
+    /// recovery to guess at.
     pub fn advance(&mut self, run: &str, mark: Mark<'_>) -> Result<Run, Refusal> {
         if !valid_run_id(run) {
             return Err(Refusal::BadName {
@@ -623,6 +640,10 @@ impl Store {
     /// not freed, and the caller reconciles what the mark names rather
     /// than replaying it. What the run did is ATIF's evidence; this
     /// store answers only whether it finished.
+    ///
+    /// A record already ended keeps its mark: `settled`, and `cancelled`
+    /// — which is an end someone chose and wrote, not something a crash
+    /// may be allowed to relabel — take no `unknown` from recovery.
     pub fn recover(&mut self) -> Result<Vec<Run>, Trouble> {
         let mut paths: Vec<PathBuf> = std::fs::read_dir(&self.dir)?
             .filter_map(Result::ok)
@@ -653,7 +674,13 @@ impl Store {
                 append(&path, &unknown_run(&run), torn.take())?;
             }
             for record in folded.steps.values().chain(folded.tasks.values()) {
-                if matches!(record.state, State::Settled | State::Unknown) {
+                // A settled or cancelled record is an end already
+                // written, and an unknown one is already marked:
+                // recovery adds to none of them.
+                if matches!(
+                    record.state,
+                    State::Settled | State::Unknown | State::Cancelled
+                ) {
                     continue;
                 }
                 append(&path, &unknown_mark(record), torn.take())?;
@@ -1084,5 +1111,51 @@ mod tests {
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].run, "run-1");
         assert_eq!(runs[0].state, State::Unknown);
+    }
+
+    #[test]
+    fn a_cancelled_mark_is_not_what_a_crash_left() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut store = Store::open(dir.path()).unwrap();
+            store.claim(&claim("run-1", &[], &[])).unwrap();
+            store
+                .advance("run-1", Mark::run(State::Dispatched))
+                .unwrap();
+            store
+                .advance("run-1", Mark::step("done", State::Answered))
+                .unwrap();
+            store
+                .advance("run-1", Mark::step("rest", State::Cancelled))
+                .unwrap();
+            // The host dies between the cancelled marks and the settle.
+        }
+        let mut store = Store::open(dir.path()).unwrap();
+        let runs = store.recover().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].state, State::Unknown);
+        // Recovery marks what the crash left, not what the caller
+        // chose: the answered step is unknown, the cancelled one keeps
+        // the deliberate mark.
+        let done = runs[0]
+            .steps
+            .iter()
+            .find(|step| step.step == "done")
+            .unwrap();
+        let rest = runs[0]
+            .steps
+            .iter()
+            .find(|step| step.step == "rest")
+            .unwrap();
+        assert_eq!(done.state, State::Unknown);
+        assert_eq!(rest.state, State::Cancelled);
+        // And reconciliation still ends in a settle — cancelled this
+        // time, because that is what the run came to.
+        let settled = store
+            .settle("run-1", Outcome::Cancelled, "atif:run-1")
+            .unwrap();
+        assert_eq!(settled.state, State::Settled);
+        assert_eq!(settled.outcome, Some(Outcome::Cancelled));
+        assert!(store.recover().unwrap().is_empty());
     }
 }

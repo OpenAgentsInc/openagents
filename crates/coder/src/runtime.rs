@@ -57,7 +57,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use atif::{Call, Decision, Outcome};
 use jev::{Answer, SystemOneRequest};
@@ -115,6 +115,11 @@ const BRIEFING: &str = "briefing";
 /// What a check refuses on beyond the condition the bound names: a bound
 /// nobody has claimed either way.
 const UNKNOWN: &str = "enforcement_unknown";
+
+/// The code a run stopped by its own budget records. The caller's bound
+/// ended the run rather than the work, so the run settles `cancelled` —
+/// never `refused`, which is a decline the run gave itself.
+const BUDGET_EXCEEDED: &str = "budget_exceeded";
 
 /// Who holds a delegation to one of its bounds.
 ///
@@ -475,6 +480,27 @@ impl std::fmt::Display for Tally {
     }
 }
 
+/// The caller's bound on a whole run.
+///
+/// A budget is the caller's, stated when the runtime is built — a
+/// program cannot state its own honestly, and no step bound reaches
+/// across the run. Either half may stand alone: a deadline with no step
+/// count ends the run when the clock does, a step count with no
+/// deadline ends it when the count is spent. A run that reaches a step
+/// boundary past its budget cancels the step rather than dispatching
+/// it, and settles `cancelled` — the end the caller chose, which is the
+/// whole point of recording it apart from `refused` and `unknown`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Budget {
+    /// How long the run may take, measured from when it starts. A step
+    /// boundary reached after this much time cancels rather than
+    /// dispatching.
+    pub deadline: Option<Duration>,
+    /// How many steps the run may dispatch. The step past the count
+    /// cancels rather than dispatching.
+    pub max_steps: Option<usize>,
+}
+
 /// One machine, running programs.
 pub struct Runtime {
     survey: Survey,
@@ -487,6 +513,7 @@ pub struct Runtime {
     verification: Option<(PathBuf, crate::verification::Plan, capability::Trust)>,
     review: Option<crate::review::Context>,
     runstate: Option<PathBuf>,
+    budget: Option<Budget>,
 }
 
 impl Runtime {
@@ -522,6 +549,7 @@ impl Runtime {
             verification: None,
             review: None,
             runstate: None,
+            budget: None,
             repository: repository.map(Path::to_path_buf),
             host: match repository {
                 Some(_) => Host::with_repository(),
@@ -548,6 +576,7 @@ impl Runtime {
             verification: None,
             review: None,
             runstate: None,
+            budget: None,
             host,
         }
     }
@@ -587,6 +616,18 @@ impl Runtime {
     #[must_use]
     pub fn with_runstate(mut self, dir: impl Into<PathBuf>) -> Self {
         self.runstate = Some(dir.into());
+        self
+    }
+
+    /// Bounds each run: the caller's deadline and step count, checked at
+    /// every step boundary before the step dispatches. A step reached
+    /// past the budget never runs — it marks `cancelled`, and so does
+    /// every step after it, and the run settles `cancelled`: the end the
+    /// caller chose, never a refusal the work gave. Unset, the run
+    /// checks nothing and behaves exactly as before.
+    #[must_use]
+    pub fn with_budget(mut self, budget: Budget) -> Self {
+        self.budget = Some(budget);
         self
     }
 
@@ -1272,6 +1313,13 @@ impl Runtime {
     /// dispatches and resolves, and settles when the run ends. A run
     /// refused before that point holds no run id, and nothing the store
     /// says changes what the run does.
+    ///
+    /// When the runtime carries a budget — see [`Runtime::with_budget`]
+    /// — each step boundary checks it before the step dispatches, and a
+    /// step reached past the budget cancels instead: the step and every
+    /// step after it mark `cancelled`, and the run settles `cancelled`
+    /// rather than truncating silently as `refused`. Cancelled is the
+    /// end the caller chose; `unknown` stays what a crash leaves.
     pub async fn run(
         &self,
         program: &Program,
@@ -1309,7 +1357,23 @@ impl Runtime {
             trace.as_deref_mut(),
         );
         let mut selection = Selection::default();
-        for step in &program.steps {
+        for (position, step) in program.steps.iter().enumerate() {
+            // The caller's budget stands at the boundary: a step that
+            // would dispatch past it never runs. The step and every
+            // step after it mark cancelled, and the run stops — the
+            // deliberate end, recorded, rather than a refusal or a
+            // silent truncation.
+            if let Some(refused) = self.budget_spent(&step.name, position, started) {
+                for remaining in &program.steps[position..] {
+                    self.advance_runstate(
+                        &mut record,
+                        Mark::step(&remaining.name, State::Cancelled),
+                        trace.as_deref_mut(),
+                    );
+                }
+                run.stopped = Some(refused);
+                break;
+            }
             self.advance_runstate(
                 &mut record,
                 Mark::step(&step.name, State::Dispatched),
@@ -1469,6 +1533,7 @@ impl Runtime {
         };
         let outcome = match &run.stopped {
             None => runstate::Outcome::Answered,
+            Some(refused) if refused.code == BUDGET_EXCEEDED => runstate::Outcome::Cancelled,
             Some(refused) if unverifiable(&refused.code) => runstate::Outcome::Unverifiable,
             Some(_) => runstate::Outcome::Refused,
         };
@@ -1483,6 +1548,37 @@ impl Runtime {
                 &format!("the runstate store refused the settle: {refusal}"),
             );
         }
+    }
+
+    /// Whether the caller's budget is spent at a step boundary, and the
+    /// stop the run records when it is.
+    ///
+    /// The boundary is before the step dispatches: `dispatched` counts
+    /// the steps already handed out, so a step count of one spends the
+    /// budget at the second step, and the deadline compares against when
+    /// the run began. A runtime carrying no budget answers `None` at
+    /// every boundary — the check is the budget's, not the run's.
+    fn budget_spent(&self, step: &str, dispatched: usize, started: Instant) -> Option<Refused> {
+        let budget = self.budget?;
+        if let Some(max) = budget.max_steps
+            && dispatched >= max
+        {
+            return Some(Refused::at(
+                step,
+                BUDGET_EXCEEDED,
+                format!("the run's step budget of {max} is spent"),
+            ));
+        }
+        if let Some(deadline) = budget.deadline
+            && started.elapsed() >= deadline
+        {
+            return Some(Refused::at(
+                step,
+                BUDGET_EXCEEDED,
+                "the run's deadline has passed".to_string(),
+            ));
+        }
+        None
     }
 
     /// What the claim pins: each `decide` step's question set by digest —
@@ -2567,6 +2663,7 @@ mod tests {
             verification: None,
             review: None,
             runstate: None,
+            budget: None,
             repository: None,
             host: Host::without_repository(),
         }
@@ -2954,6 +3051,234 @@ mod tests {
             .unwrap();
         assert_eq!(select.state, State::Answered);
         assert_eq!(narrow.state, State::Refused);
+    }
+
+    /// A run the budget stops settles cancelled: the step past the
+    /// budget and every step after it mark cancelled, and the record
+    /// says the caller ended it — not a refusal the work gave.
+    #[tokio::test]
+    async fn a_run_past_its_budget_settles_cancelled() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime()
+            .with_runstate(dir.path())
+            .with_budget(Budget {
+                deadline: None,
+                max_steps: Some(1),
+            });
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "narrow", "kind": "query", "bounds": {}},
+                {"name": "last", "kind": "query", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some(BUDGET_EXCEEDED)
+        );
+        assert_eq!(run.step_names(), ["select"]);
+
+        let mut store = Store::open(dir.path()).unwrap();
+        // A settled run is complete — cancelled or not, recovery
+        // surfaces nothing.
+        assert!(store.recover().unwrap().is_empty());
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1, "{ids:?}");
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.state, State::Settled);
+        assert_eq!(record.outcome, Some(runstate::Outcome::Cancelled));
+        assert_eq!(record.steps.len(), 3);
+        let select = record
+            .steps
+            .iter()
+            .find(|step| step.step == "select")
+            .unwrap();
+        let narrow = record
+            .steps
+            .iter()
+            .find(|step| step.step == "narrow")
+            .unwrap();
+        let last = record
+            .steps
+            .iter()
+            .find(|step| step.step == "last")
+            .unwrap();
+        assert_eq!(select.state, State::Answered);
+        assert_eq!(narrow.state, State::Cancelled);
+        assert_eq!(last.state, State::Cancelled);
+    }
+
+    /// A step reached after the deadline never dispatches: the budget is
+    /// spent before the first boundary, the step's only mark is the
+    /// cancellation, and the run settles cancelled.
+    #[tokio::test]
+    async fn a_step_past_the_deadline_never_dispatches() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime()
+            .with_runstate(dir.path())
+            .with_budget(Budget {
+                deadline: Some(Duration::ZERO),
+                max_steps: None,
+            });
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some(BUDGET_EXCEEDED)
+        );
+        assert!(run.steps.is_empty());
+
+        let mut store = Store::open(dir.path()).unwrap();
+        assert!(store.recover().unwrap().is_empty());
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1, "{ids:?}");
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.outcome, Some(runstate::Outcome::Cancelled));
+        let select = record
+            .steps
+            .iter()
+            .find(|step| step.step == "select")
+            .unwrap();
+        assert_eq!(select.state, State::Cancelled);
+        // On disk the step's first and only line is the cancelled mark:
+        // it was never dispatched.
+        let text = std::fs::read_to_string(dir.path().join(format!("{}.jsonl", ids[0]))).unwrap();
+        let marks: Vec<&str> = text
+            .lines()
+            .filter(|line| line.contains("\"step\":\"select\""))
+            .collect();
+        assert_eq!(marks.len(), 1, "{marks:?}");
+        assert!(marks[0].contains("\"state\":\"cancelled\""), "{}", marks[0]);
+    }
+
+    /// A cancelled run and a crashed one read differently on disk: the
+    /// cancelled run settled — deliberate, recorded, absent from
+    /// recovery — while the run that simply stopped mid-way is the one
+    /// recovery marks unknown.
+    #[tokio::test]
+    async fn a_cancelled_run_is_not_a_crashed_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime()
+            .with_runstate(dir.path())
+            .with_budget(Budget {
+                deadline: None,
+                max_steps: Some(0),
+            });
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert!(!run.finished());
+
+        // A second run claimed and abandoned in the same store is the
+        // crash: dispatched and never settled.
+        let mut store = Store::open(dir.path()).unwrap();
+        store
+            .claim(&Claim {
+                run: "run-crashed",
+                base: "",
+                program: "burn-down",
+                questions: &[],
+                sources: &[],
+            })
+            .unwrap();
+        store
+            .advance("run-crashed", Mark::run(State::Dispatched))
+            .unwrap();
+
+        // Recovery returns the crash, and only the crash.
+        let recovered = store.recover().unwrap();
+        assert_eq!(recovered.len(), 1, "{recovered:?}");
+        assert_eq!(recovered[0].run, "run-crashed");
+        assert_eq!(recovered[0].state, State::Unknown);
+        assert_eq!(claimed(dir.path()).len(), 2);
+    }
+
+    /// A runtime carrying no budget runs exactly as it always has:
+    /// every step dispatches, and the run settles answered.
+    #[tokio::test]
+    async fn a_run_without_a_budget_is_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime().with_runstate(dir.path());
+        assert!(runtime.budget.is_none());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "again", "kind": "query", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.step_names(), ["select", "again"]);
+
+        let mut store = Store::open(dir.path()).unwrap();
+        assert!(store.recover().unwrap().is_empty());
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1, "{ids:?}");
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.state, State::Settled);
+        assert_eq!(record.outcome, Some(runstate::Outcome::Answered));
+        assert!(
+            record
+                .steps
+                .iter()
+                .all(|step| step.state == State::Answered)
+        );
+    }
+
+    /// A cancelled run's record is deliberate end to end: `settled`
+    /// with `cancelled` as what it came to, written on disk — never
+    /// `unknown`, which is only ever what a crash leaves behind.
+    #[tokio::test]
+    async fn a_cancelled_run_records_deliberate_settlement() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime()
+            .with_runstate(dir.path())
+            .with_budget(Budget {
+                deadline: Some(Duration::ZERO),
+                max_steps: None,
+            });
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        runtime.run(&program, &inputs, &Grant::all(), None).await;
+
+        let mut store = Store::open(dir.path()).unwrap();
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1, "{ids:?}");
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        assert_eq!(record.state, State::Settled);
+        assert_eq!(record.outcome, Some(runstate::Outcome::Cancelled));
+        // The last run line on disk is the settle, carrying the
+        // cancelled outcome — an end someone chose, not a mark
+        // recovery wrote.
+        let text = std::fs::read_to_string(dir.path().join(format!("{}.jsonl", ids[0]))).unwrap();
+        let last: serde_json::Value = serde_json::from_str(text.lines().last().unwrap()).unwrap();
+        assert_eq!(last["record"], json!("run"));
+        assert_eq!(last["state"], json!("settled"));
+        assert_eq!(last["outcome"], json!("cancelled"));
+        assert!(store.recover().unwrap().is_empty());
     }
 
     /// Without a runstate directory a run opens no store: nothing is
