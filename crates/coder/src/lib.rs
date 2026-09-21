@@ -60,6 +60,7 @@ pub mod program_authority;
 pub mod questions;
 pub mod relay;
 pub mod repo;
+pub mod resolve;
 pub mod review;
 pub mod runstate;
 pub mod runtime;
