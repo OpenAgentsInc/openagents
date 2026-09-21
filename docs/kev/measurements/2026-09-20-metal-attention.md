@@ -89,7 +89,7 @@ It does extra work to reach the next multiple of 64, and it also changed
 bf16 probabilities by up to 0.00823. Upstream's bucketing result is not
 assumed to transfer to this Candle runtime.
 
-## Verification and pending serving comparison
+## Verification and the serving comparison
 
 Portable tests verify rounded memory costs, invalid backend/bucket choices,
 and HTTP refusal before a deliberately broken embedding lookup. Packed,
@@ -104,10 +104,52 @@ long-running relay soak were explicitly skipped. Model-free gate results
 do not substitute for the real-weight run above. The complete gate output
 is retained as `data/metal-attention/manual-gate.txt`.
 
-The quiet HTTP matrix is recorded separately from the contended profiler.
-Its eager configurations completed; an SDPA attempt stopped when the monitor
-detected a build. That interrupted attempt is excluded, and fresh SDPA
-measurements are pending. The eager exact default remains unchanged.
+## Quiet-host serving matrix
+
+The HTTP matrix runs `scripts/benchmark-kev-http.py` against a fresh server
+per configuration: twenty measured serial requests per case after three
+warm-ups, on the same pinned bundle, Metal device, bf16 compute, 4 GiB
+memory budget, and 4096-token bound. An early SDPA attempt stopped when
+its monitor detected a build; that attempt is excluded and retained as
+`data/metal-attention/http-sdpa-0-interrupted.*`. Both SDPA configurations
+were re-measured on 2026-09-21 with no build or measurement client on the
+host. The server reports the pinned bundle as `kev-latest`; the content
+digest `sha256:5622bbba…` matches the checkpoint section. Host and process
+captures sit beside each result as `http-*-quiet-host.json` and
+`http-*-quiet-process.txt`.
+
+| Case, p50 (p95) ms | Eager, exact | SDPA, exact | Eager, 64-token | SDPA, 64-token |
+| --- | ---: | ---: | ---: | ---: |
+| short, 1 question, repeated | 82.0 (83.8) | 80.9 (86.9) | 84.7 (89.6) | 79.6 (82.7) |
+| short, 1 question, new | 84.6 (85.8) | 87.8 (89.1) | 91.2 (97.0) | 90.1 (95.1) |
+| short, 5 questions, repeated | 185.5 (187.1) | 203.4 (218.4) | 223.2 (243.6) | 232.6 (247.8) |
+| short, 5 questions, new | 199.8 (201.0) | 209.7 (218.0) | 220.9 (228.5) | 229.9 (234.8) |
+| long, 1 question, repeated | 613.8 (614.4) | 620.4 (700.8) | 730.3 (774.3) | 684.8 (806.0) |
+| long, 1 question, new | 671.2 (722.2) | 633.8 (649.9) | 764.1 (798.0) | 701.4 (722.6) |
+| long, 5 questions, repeated | 862.0 (928.6) | 757.3 (800.3) | 951.6 (1010.0) | 859.1 (881.9) |
+| long, 5 questions, new | 880.6 (935.0) | 788.6 (820.5) | 953.7 (1001.8) | 878.4 (919.9) |
+
+SDPA's kernel-time advantage reaches HTTP latency only at the long states.
+Long five-question requests improve 10–13 percent at p50 under either
+bucket policy; long one-question requests improve 6–8 percent under
+padding and are at parity without it. Short requests are at parity or
+slightly slower — attention is a minority of request time at these
+shapes, so the 6.4× attention-kernel ratio does not transfer end to end.
+Peak memory is unchanged within noise: 9.1–9.8 GiB maximum resident set
+and 23.8–24.4 GB peak footprint across all four configurations. Warm-up
+differs once: the first request under the first SDPA server cost 1661 ms —
+consistent with a one-time Metal pipeline build — while the second SDPA
+server's first request cost 82 ms, so the cost did not repeat across
+processes. Every eager configuration's first request cost 82–91 ms.
+
+Padding still costs time on this workload — every padded row is slower
+than its exact counterpart under both backends — and it retains the bf16
+probability drift the table above records. The measured outcome is a
+modest positive, not a default change: SDPA buys roughly a tenth off
+long-state latency and carries one changed argmax on a near-tied
+fixture. The eager exact default remains unchanged; whether the
+long-state gain justifies that numerical difference is a serving-policy
+decision this record informs rather than makes.
 
 Reproduce the correctness run:
 
@@ -121,6 +163,16 @@ RUST_TEST_THREADS=1 cargo test --release --locked -p kev \
 ```
 
 Run `cargo run --release -p kev --features metal --example attention_probe --
-BASE ADAPTER FIXTURES bf16` to regenerate the diagnostic probe. Use
-`scripts/benchmark-kev-http.py` against a fresh server for serving latency;
-do not use stage-synchronized profiling times as HTTP latency.
+BASE ADAPTER FIXTURES bf16` to regenerate the diagnostic probe. Reproduce
+one serving row with a fresh server and the benchmark script:
+
+```sh
+target/release/kev-serve --adapter-dir ADAPTER --base-dir BASE \
+  --port 18454 --device metal --dtype bf16 \
+  --attention sdpa --bucket-size 0 --memory-budget-mib 4096 --max-tokens 4096 &
+python3 scripts/benchmark-kev-http.py --url http://127.0.0.1:18454 \
+  --model kev-latest --repeats 20 --output http-sdpa-0-quiet.json
+```
+
+Use the script's request timing for serving latency; do not use
+stage-synchronized profiling times as HTTP latency.

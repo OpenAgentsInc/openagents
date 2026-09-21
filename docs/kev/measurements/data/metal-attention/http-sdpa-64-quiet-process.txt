@@ -3,12 +3,12 @@ kev-serve: 1 variants loaded, default kev-latest
 kev-serve: memory budget 4096 MiB, 2 forwards at once across variants
 kev-serve: kev-latest: one forward at 4096 tokens needs 3424 MiB, 1 at once
 kev-serve: bind 127.0.0.1:18454: Address already in use (os error 48)
-       17.86 real        14.44 user         2.59 sys
-          9800417280  maximum resident set size
+       18.18 real        14.78 user         2.56 sys
+          9094643712  maximum resident set size
                    0  average shared memory size
                    0  average unshared data size
                    0  average unshared stack size
-             1387689  page reclaims
+             1387886  page reclaims
                    0  page faults
                    0  swaps
                    0  block input operations
@@ -16,8 +16,8 @@ kev-serve: bind 127.0.0.1:18454: Address already in use (os error 48)
                    0  messages sent
                    0  messages received
                    0  signals received
-                 109  voluntary context switches
-                3184  involuntary context switches
-        283814435794  instructions retired
-         72880426577  cycles elapsed
-         24321367600  peak memory footprint
+                   0  voluntary context switches
+                3530  involuntary context switches
+        281455665823  instructions retired
+         72231635866  cycles elapsed
+         23794519304  peak memory footprint

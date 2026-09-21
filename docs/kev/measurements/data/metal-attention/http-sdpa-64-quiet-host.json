@@ -1,880 +1,7 @@
 {
  "condition": "No other model measurement client or Cargo build detected during this run; normal desktop services remain.",
  "before": {
-  "utc": "2026-09-21T16:48:05.794076+00:00",
-  "processes": [
-   {
-    "pid": 408,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 7408,
-    "name": "corebrightnessd"
-   },
-   {
-    "pid": 1589,
-    "ppid": 1588,
-    "cpu": 0.0,
-    "rss_kib": 2223248,
-    "name": "kev-serve"
-   },
-   {
-    "pid": 3339,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 620944,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 3500,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 183072,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 10900,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 44624,
-    "name": "managedcorespotlightd"
-   },
-   {
-    "pid": 13515,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 17792,
-    "name": "VTEncoderXPCService"
-   },
-   {
-    "pid": 15799,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 444464,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 17808,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 1763584,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 17825,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 345920,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 18410,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 32,
-    "name": "lev-serve"
-   },
-   {
-    "pid": 26904,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 16048,
-    "name": "filevaultd"
-   },
-   {
-    "pid": 30146,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 32,
-    "name": "lev-serve"
-   },
-   {
-    "pid": 32721,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 465488,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 34829,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 484848,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 36951,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 32,
-    "name": "lev-serve"
-   },
-   {
-    "pid": 39903,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 32,
-    "name": "lev-serve"
-   },
-   {
-    "pid": 44956,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 67120,
-    "name": "TGOnDeviceInferenceProviderService"
-   },
-   {
-    "pid": 49201,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 6832,
-    "name": "VTDecoderXPCService"
-   },
-   {
-    "pid": 49727,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 415152,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 49777,
-    "ppid": 49773,
-    "cpu": 0.0,
-    "rss_kib": 217792,
-    "name": "coder"
-   },
-   {
-    "pid": 50286,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 100080,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 51734,
-    "ppid": 49777,
-    "cpu": 0.0,
-    "rss_kib": 78560,
-    "name": "devin"
-   },
-   {
-    "pid": 51735,
-    "ppid": 49777,
-    "cpu": 0.0,
-    "rss_kib": 77664,
-    "name": "devin"
-   },
-   {
-    "pid": 51736,
-    "ppid": 51734,
-    "cpu": 0.0,
-    "rss_kib": 115664,
-    "name": "devin"
-   },
-   {
-    "pid": 51737,
-    "ppid": 51735,
-    "cpu": 0.1,
-    "rss_kib": 124112,
-    "name": "devin"
-   },
-   {
-    "pid": 53946,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 1264,
-    "name": "IMTranscoderAgent"
-   },
-   {
-    "pid": 57049,
-    "ppid": 1,
-    "cpu": 42.6,
-    "rss_kib": 170656,
-    "name": "WindowServer"
-   },
-   {
-    "pid": 57364,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 198112,
-    "name": "corespotlightd"
-   },
-   {
-    "pid": 57399,
-    "ppid": 1,
-    "cpu": 0.2,
-    "rss_kib": 508352,
-    "name": "Google Chrome"
-   },
-   {
-    "pid": 57420,
-    "ppid": 1,
-    "cpu": 2.0,
-    "rss_kib": 153520,
-    "name": "ghostty"
-   },
-   {
-    "pid": 57452,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 1952,
-    "name": "chrome_crashpad_handler"
-   },
-   {
-    "pid": 57458,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 213056,
-    "name": "spotlightknowledged.updater"
-   },
-   {
-    "pid": 57484,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 229040,
-    "name": "Google Chrome Helper"
-   },
-   {
-    "pid": 57490,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 128816,
-    "name": "Google Chrome Helper"
-   },
-   {
-    "pid": 57527,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 119616,
-    "name": "Spotlight"
-   },
-   {
-    "pid": 57544,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 34736,
-    "name": "Google Chrome Helper"
-   },
-   {
-    "pid": 57578,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 15072,
-    "name": "Google Chrome Helper (Alerts)"
-   },
-   {
-    "pid": 57604,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 127360,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 58096,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 13520,
-    "name": "VTDecoderXPCService"
-   },
-   {
-    "pid": 59877,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 57488,
-    "name": "VTDecoderXPCService"
-   },
-   {
-    "pid": 61124,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 134848,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 61272,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 1456,
-    "name": "VTDecoderXPCService"
-   },
-   {
-    "pid": 61492,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 1776,
-    "name": "VTEncoderXPCService"
-   },
-   {
-    "pid": 62594,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 82352,
-    "name": "spotlightknowledged"
-   },
-   {
-    "pid": 64041,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 26544,
-    "name": "VTDecoderXPCService"
-   },
-   {
-    "pid": 64957,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 12448,
-    "name": "VTEncoderXPCService"
-   },
-   {
-    "pid": 66775,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 1488,
-    "name": "VTDecoderXPCService"
-   },
-   {
-    "pid": 71437,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 969296,
-    "name": "kev-serve"
-   },
-   {
-    "pid": 72857,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 131424,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 73240,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 130336,
-    "name": "Google Chrome Helper"
-   },
-   {
-    "pid": 73596,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 125248,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 73610,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 486752,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 75096,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 1840,
-    "name": "VTEncoderXPCService"
-   },
-   {
-    "pid": 75097,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 22432,
-    "name": "Google Chrome Helper"
-   },
-   {
-    "pid": 75098,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 32480,
-    "name": "Google Chrome Helper"
-   },
-   {
-    "pid": 75118,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 19968,
-    "name": "VTDecoderXPCService"
-   },
-   {
-    "pid": 88157,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 185056,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 88640,
-    "ppid": 57399,
-    "cpu": 0.0,
-    "rss_kib": 435280,
-    "name": "Google Chrome Helper (Renderer)"
-   },
-   {
-    "pid": 89623,
-    "ppid": 1,
-    "cpu": 0.0,
-    "rss_kib": 56160,
-    "name": "TGOnDeviceInferenceProviderService"
-   },
-   {
-    "pid": 61057,
-    "ppid": 60642,
-    "cpu": 1.2,
-    "rss_kib": 273584,
-    "name": "devin"
-   },
-   {
-    "pid": 61058,
-    "ppid": 61057,
-    "cpu": 26.1,
-    "rss_kib": 308736,
-    "name": "devin"
-   }
-  ]
- },
- "samples": [
-  {
-   "utc": "2026-09-21T16:48:05.863293+00:00",
-   "processes": [
-    {
-     "pid": 408,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 7408,
-     "name": "corebrightnessd"
-    },
-    {
-     "pid": 1589,
-     "ppid": 1588,
-     "cpu": 0.0,
-     "rss_kib": 2223248,
-     "name": "kev-serve"
-    },
-    {
-     "pid": 3339,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 620944,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 3500,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 183072,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 10900,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 44624,
-     "name": "managedcorespotlightd"
-    },
-    {
-     "pid": 13515,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 17792,
-     "name": "VTEncoderXPCService"
-    },
-    {
-     "pid": 15799,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 444464,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 17808,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 1763584,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 17825,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 345920,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 18410,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 32,
-     "name": "lev-serve"
-    },
-    {
-     "pid": 26904,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 16048,
-     "name": "filevaultd"
-    },
-    {
-     "pid": 30146,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 32,
-     "name": "lev-serve"
-    },
-    {
-     "pid": 32721,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 465488,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 34829,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 484848,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 36951,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 32,
-     "name": "lev-serve"
-    },
-    {
-     "pid": 39903,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 32,
-     "name": "lev-serve"
-    },
-    {
-     "pid": 44956,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 67120,
-     "name": "TGOnDeviceInferenceProviderService"
-    },
-    {
-     "pid": 49201,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 6832,
-     "name": "VTDecoderXPCService"
-    },
-    {
-     "pid": 49727,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 415152,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 49777,
-     "ppid": 49773,
-     "cpu": 0.0,
-     "rss_kib": 217792,
-     "name": "coder"
-    },
-    {
-     "pid": 50286,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 100080,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 51734,
-     "ppid": 49777,
-     "cpu": 0.0,
-     "rss_kib": 78560,
-     "name": "devin"
-    },
-    {
-     "pid": 51735,
-     "ppid": 49777,
-     "cpu": 0.0,
-     "rss_kib": 77664,
-     "name": "devin"
-    },
-    {
-     "pid": 51736,
-     "ppid": 51734,
-     "cpu": 0.0,
-     "rss_kib": 115664,
-     "name": "devin"
-    },
-    {
-     "pid": 51737,
-     "ppid": 51735,
-     "cpu": 0.1,
-     "rss_kib": 124112,
-     "name": "devin"
-    },
-    {
-     "pid": 53946,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 1264,
-     "name": "IMTranscoderAgent"
-    },
-    {
-     "pid": 57049,
-     "ppid": 1,
-     "cpu": 42.6,
-     "rss_kib": 170656,
-     "name": "WindowServer"
-    },
-    {
-     "pid": 57364,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 198112,
-     "name": "corespotlightd"
-    },
-    {
-     "pid": 57399,
-     "ppid": 1,
-     "cpu": 0.2,
-     "rss_kib": 508352,
-     "name": "Google Chrome"
-    },
-    {
-     "pid": 57420,
-     "ppid": 1,
-     "cpu": 2.0,
-     "rss_kib": 153520,
-     "name": "ghostty"
-    },
-    {
-     "pid": 57452,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 1952,
-     "name": "chrome_crashpad_handler"
-    },
-    {
-     "pid": 57458,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 213056,
-     "name": "spotlightknowledged.updater"
-    },
-    {
-     "pid": 57484,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 229040,
-     "name": "Google Chrome Helper"
-    },
-    {
-     "pid": 57490,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 128816,
-     "name": "Google Chrome Helper"
-    },
-    {
-     "pid": 57527,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 119616,
-     "name": "Spotlight"
-    },
-    {
-     "pid": 57544,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 34736,
-     "name": "Google Chrome Helper"
-    },
-    {
-     "pid": 57578,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 15072,
-     "name": "Google Chrome Helper (Alerts)"
-    },
-    {
-     "pid": 57604,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 127360,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 58096,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 13520,
-     "name": "VTDecoderXPCService"
-    },
-    {
-     "pid": 59877,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 57488,
-     "name": "VTDecoderXPCService"
-    },
-    {
-     "pid": 61124,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 134848,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 61272,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 1456,
-     "name": "VTDecoderXPCService"
-    },
-    {
-     "pid": 61492,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 1776,
-     "name": "VTEncoderXPCService"
-    },
-    {
-     "pid": 62594,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 82352,
-     "name": "spotlightknowledged"
-    },
-    {
-     "pid": 64041,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 26544,
-     "name": "VTDecoderXPCService"
-    },
-    {
-     "pid": 64957,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 12448,
-     "name": "VTEncoderXPCService"
-    },
-    {
-     "pid": 66775,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 1488,
-     "name": "VTDecoderXPCService"
-    },
-    {
-     "pid": 71437,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 969296,
-     "name": "kev-serve"
-    },
-    {
-     "pid": 72857,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 131424,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 73240,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 130336,
-     "name": "Google Chrome Helper"
-    },
-    {
-     "pid": 73596,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 125248,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 73610,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 486752,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 75096,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 1840,
-     "name": "VTEncoderXPCService"
-    },
-    {
-     "pid": 75097,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 22432,
-     "name": "Google Chrome Helper"
-    },
-    {
-     "pid": 75098,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 32480,
-     "name": "Google Chrome Helper"
-    },
-    {
-     "pid": 75118,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 19968,
-     "name": "VTDecoderXPCService"
-    },
-    {
-     "pid": 75174,
-     "ppid": 75172,
-     "cpu": 0.0,
-     "rss_kib": 143344,
-     "name": "kev-serve"
-    },
-    {
-     "pid": 88157,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 185056,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 88640,
-     "ppid": 57399,
-     "cpu": 0.0,
-     "rss_kib": 435280,
-     "name": "Google Chrome Helper (Renderer)"
-    },
-    {
-     "pid": 89623,
-     "ppid": 1,
-     "cpu": 0.0,
-     "rss_kib": 56160,
-     "name": "TGOnDeviceInferenceProviderService"
-    },
-    {
-     "pid": 61057,
-     "ppid": 60642,
-     "cpu": 1.2,
-     "rss_kib": 273584,
-     "name": "devin"
-    },
-    {
-     "pid": 61058,
-     "ppid": 61057,
-     "cpu": 26.1,
-     "rss_kib": 308720,
-     "name": "devin"
-    }
-   ]
-  }
- ],
- "after": {
-  "utc": "2026-09-21T16:49:26.897920+00:00",
+  "utc": "2026-09-21T16:49:26.985848+00:00",
   "processes": [
    {
     "pid": 408,
@@ -921,7 +48,7 @@
    {
     "pid": 17808,
     "ppid": 57399,
-    "cpu": 1.5,
+    "cpu": 0.9,
     "rss_kib": 1763920,
     "name": "Google Chrome Helper (Renderer)"
    },
@@ -1054,7 +181,7 @@
    {
     "pid": 57049,
     "ppid": 1,
-    "cpu": 34.0,
+    "cpu": 33.4,
     "rss_kib": 170672,
     "name": "WindowServer"
    },
@@ -1068,7 +195,7 @@
    {
     "pid": 57399,
     "ppid": 1,
-    "cpu": 0.9,
+    "cpu": 0.4,
     "rss_kib": 507184,
     "name": "Google Chrome"
    },
@@ -1089,7 +216,7 @@
    {
     "pid": 57458,
     "ppid": 1,
-    "cpu": 0.1,
+    "cpu": 0.0,
     "rss_kib": 213264,
     "name": "spotlightknowledged.updater"
    },
@@ -1103,7 +230,7 @@
    {
     "pid": 57490,
     "ppid": 57399,
-    "cpu": 1.2,
+    "cpu": 0.7,
     "rss_kib": 128656,
     "name": "Google Chrome Helper"
    },
@@ -1201,7 +328,7 @@
    {
     "pid": 71437,
     "ppid": 1,
-    "cpu": 0.1,
+    "cpu": 0.0,
     "rss_kib": 1028768,
     "name": "kev-serve"
    },
@@ -1278,7 +405,7 @@
    {
     "pid": 61057,
     "ppid": 60642,
-    "cpu": 1.3,
+    "cpu": 1.2,
     "rss_kib": 273584,
     "name": "devin"
    },
@@ -1287,6 +414,844 @@
     "ppid": 61057,
     "cpu": 0.0,
     "rss_kib": 308896,
+    "name": "devin"
+   }
+  ]
+ },
+ "samples": [
+  {
+   "utc": "2026-09-21T16:49:27.057343+00:00",
+   "processes": [
+    {
+     "pid": 408,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 7280,
+     "name": "corebrightnessd"
+    },
+    {
+     "pid": 1589,
+     "ppid": 1588,
+     "cpu": 0.0,
+     "rss_kib": 2223248,
+     "name": "kev-serve"
+    },
+    {
+     "pid": 3500,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 183072,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 10900,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 44624,
+     "name": "managedcorespotlightd"
+    },
+    {
+     "pid": 13515,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 17792,
+     "name": "VTEncoderXPCService"
+    },
+    {
+     "pid": 15799,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 444480,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 17808,
+     "ppid": 57399,
+     "cpu": 0.5,
+     "rss_kib": 1763920,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 17825,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 345920,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 18410,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 32,
+     "name": "lev-serve"
+    },
+    {
+     "pid": 26904,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 16048,
+     "name": "filevaultd"
+    },
+    {
+     "pid": 30146,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 32,
+     "name": "lev-serve"
+    },
+    {
+     "pid": 32721,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 465488,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 34829,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 484864,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 36951,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 32,
+     "name": "lev-serve"
+    },
+    {
+     "pid": 39903,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 32,
+     "name": "lev-serve"
+    },
+    {
+     "pid": 44956,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 67120,
+     "name": "TGOnDeviceInferenceProviderService"
+    },
+    {
+     "pid": 49201,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 6832,
+     "name": "VTDecoderXPCService"
+    },
+    {
+     "pid": 49727,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 415152,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 49777,
+     "ppid": 49773,
+     "cpu": 0.0,
+     "rss_kib": 217792,
+     "name": "coder"
+    },
+    {
+     "pid": 50286,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 100080,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 51734,
+     "ppid": 49777,
+     "cpu": 0.0,
+     "rss_kib": 78624,
+     "name": "devin"
+    },
+    {
+     "pid": 51735,
+     "ppid": 49777,
+     "cpu": 0.0,
+     "rss_kib": 77664,
+     "name": "devin"
+    },
+    {
+     "pid": 51736,
+     "ppid": 51734,
+     "cpu": 0.0,
+     "rss_kib": 115552,
+     "name": "devin"
+    },
+    {
+     "pid": 51737,
+     "ppid": 51735,
+     "cpu": 0.2,
+     "rss_kib": 123760,
+     "name": "devin"
+    },
+    {
+     "pid": 53946,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 1264,
+     "name": "IMTranscoderAgent"
+    },
+    {
+     "pid": 57049,
+     "ppid": 1,
+     "cpu": 32.7,
+     "rss_kib": 170672,
+     "name": "WindowServer"
+    },
+    {
+     "pid": 57364,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 198288,
+     "name": "corespotlightd"
+    },
+    {
+     "pid": 57399,
+     "ppid": 1,
+     "cpu": 0.2,
+     "rss_kib": 507184,
+     "name": "Google Chrome"
+    },
+    {
+     "pid": 57420,
+     "ppid": 1,
+     "cpu": 2.2,
+     "rss_kib": 153520,
+     "name": "ghostty"
+    },
+    {
+     "pid": 57452,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 1952,
+     "name": "chrome_crashpad_handler"
+    },
+    {
+     "pid": 57458,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 213264,
+     "name": "spotlightknowledged.updater"
+    },
+    {
+     "pid": 57484,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 227600,
+     "name": "Google Chrome Helper"
+    },
+    {
+     "pid": 57490,
+     "ppid": 57399,
+     "cpu": 0.4,
+     "rss_kib": 128656,
+     "name": "Google Chrome Helper"
+    },
+    {
+     "pid": 57527,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 119616,
+     "name": "Spotlight"
+    },
+    {
+     "pid": 57544,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 34576,
+     "name": "Google Chrome Helper"
+    },
+    {
+     "pid": 57578,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 15072,
+     "name": "Google Chrome Helper (Alerts)"
+    },
+    {
+     "pid": 57604,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 127424,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 58096,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 13520,
+     "name": "VTDecoderXPCService"
+    },
+    {
+     "pid": 59877,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 57488,
+     "name": "VTDecoderXPCService"
+    },
+    {
+     "pid": 61124,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 134848,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 61272,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 1456,
+     "name": "VTDecoderXPCService"
+    },
+    {
+     "pid": 61492,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 1776,
+     "name": "VTEncoderXPCService"
+    },
+    {
+     "pid": 62594,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 82368,
+     "name": "spotlightknowledged"
+    },
+    {
+     "pid": 64041,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 26544,
+     "name": "VTDecoderXPCService"
+    },
+    {
+     "pid": 64957,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 12448,
+     "name": "VTEncoderXPCService"
+    },
+    {
+     "pid": 66775,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 1488,
+     "name": "VTDecoderXPCService"
+    },
+    {
+     "pid": 71437,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 1028768,
+     "name": "kev-serve"
+    },
+    {
+     "pid": 73240,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 106736,
+     "name": "Google Chrome Helper"
+    },
+    {
+     "pid": 73596,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 125248,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 73610,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 486752,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 75096,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 1840,
+     "name": "VTEncoderXPCService"
+    },
+    {
+     "pid": 75097,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 22272,
+     "name": "Google Chrome Helper"
+    },
+    {
+     "pid": 75098,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 32480,
+     "name": "Google Chrome Helper"
+    },
+    {
+     "pid": 75118,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 19968,
+     "name": "VTDecoderXPCService"
+    },
+    {
+     "pid": 79296,
+     "ppid": 79294,
+     "cpu": 5.4,
+     "rss_kib": 143328,
+     "name": "kev-serve"
+    },
+    {
+     "pid": 88157,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 185056,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 88640,
+     "ppid": 57399,
+     "cpu": 0.0,
+     "rss_kib": 435328,
+     "name": "Google Chrome Helper (Renderer)"
+    },
+    {
+     "pid": 89623,
+     "ppid": 1,
+     "cpu": 0.0,
+     "rss_kib": 56160,
+     "name": "TGOnDeviceInferenceProviderService"
+    },
+    {
+     "pid": 61057,
+     "ppid": 60642,
+     "cpu": 0.9,
+     "rss_kib": 273584,
+     "name": "devin"
+    },
+    {
+     "pid": 61058,
+     "ppid": 61057,
+     "cpu": 0.0,
+     "rss_kib": 308896,
+     "name": "devin"
+    }
+   ]
+  }
+ ],
+ "after": {
+  "utc": "2026-09-21T16:50:55.245363+00:00",
+  "processes": [
+   {
+    "pid": 408,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 7264,
+    "name": "corebrightnessd"
+   },
+   {
+    "pid": 1589,
+    "ppid": 1588,
+    "cpu": 0.0,
+    "rss_kib": 2223248,
+    "name": "kev-serve"
+   },
+   {
+    "pid": 3500,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 183008,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 10900,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 44624,
+    "name": "managedcorespotlightd"
+   },
+   {
+    "pid": 13515,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 17792,
+    "name": "VTEncoderXPCService"
+   },
+   {
+    "pid": 15799,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 444480,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 17808,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 1764320,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 17825,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 345168,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 18410,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 32,
+    "name": "lev-serve"
+   },
+   {
+    "pid": 26904,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 16048,
+    "name": "filevaultd"
+   },
+   {
+    "pid": 30146,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 32,
+    "name": "lev-serve"
+   },
+   {
+    "pid": 32721,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 465488,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 34829,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 484864,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 36951,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 32,
+    "name": "lev-serve"
+   },
+   {
+    "pid": 39903,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 32,
+    "name": "lev-serve"
+   },
+   {
+    "pid": 44956,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 67120,
+    "name": "TGOnDeviceInferenceProviderService"
+   },
+   {
+    "pid": 49201,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 6832,
+    "name": "VTDecoderXPCService"
+   },
+   {
+    "pid": 49727,
+    "ppid": 57399,
+    "cpu": 0.6,
+    "rss_kib": 414672,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 49777,
+    "ppid": 49773,
+    "cpu": 0.0,
+    "rss_kib": 217792,
+    "name": "coder"
+   },
+   {
+    "pid": 50286,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 100080,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 51734,
+    "ppid": 49777,
+    "cpu": 0.0,
+    "rss_kib": 78640,
+    "name": "devin"
+   },
+   {
+    "pid": 51735,
+    "ppid": 49777,
+    "cpu": 0.0,
+    "rss_kib": 77664,
+    "name": "devin"
+   },
+   {
+    "pid": 51736,
+    "ppid": 51734,
+    "cpu": 0.0,
+    "rss_kib": 115680,
+    "name": "devin"
+   },
+   {
+    "pid": 51737,
+    "ppid": 51735,
+    "cpu": 0.0,
+    "rss_kib": 123888,
+    "name": "devin"
+   },
+   {
+    "pid": 53946,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 1264,
+    "name": "IMTranscoderAgent"
+   },
+   {
+    "pid": 57049,
+    "ppid": 1,
+    "cpu": 41.2,
+    "rss_kib": 170608,
+    "name": "WindowServer"
+   },
+   {
+    "pid": 57364,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 200720,
+    "name": "corespotlightd"
+   },
+   {
+    "pid": 57399,
+    "ppid": 1,
+    "cpu": 0.5,
+    "rss_kib": 505072,
+    "name": "Google Chrome"
+   },
+   {
+    "pid": 57420,
+    "ppid": 1,
+    "cpu": 1.9,
+    "rss_kib": 153520,
+    "name": "ghostty"
+   },
+   {
+    "pid": 57452,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 1952,
+    "name": "chrome_crashpad_handler"
+   },
+   {
+    "pid": 57458,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 213184,
+    "name": "spotlightknowledged.updater"
+   },
+   {
+    "pid": 57484,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 227600,
+    "name": "Google Chrome Helper"
+   },
+   {
+    "pid": 57490,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 128656,
+    "name": "Google Chrome Helper"
+   },
+   {
+    "pid": 57527,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 119584,
+    "name": "Spotlight"
+   },
+   {
+    "pid": 57544,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 34576,
+    "name": "Google Chrome Helper"
+   },
+   {
+    "pid": 57578,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 15072,
+    "name": "Google Chrome Helper (Alerts)"
+   },
+   {
+    "pid": 57604,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 127552,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 58096,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 13520,
+    "name": "VTDecoderXPCService"
+   },
+   {
+    "pid": 59877,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 57488,
+    "name": "VTDecoderXPCService"
+   },
+   {
+    "pid": 61124,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 134848,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 61272,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 1456,
+    "name": "VTDecoderXPCService"
+   },
+   {
+    "pid": 61492,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 1776,
+    "name": "VTEncoderXPCService"
+   },
+   {
+    "pid": 62594,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 82400,
+    "name": "spotlightknowledged"
+   },
+   {
+    "pid": 64041,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 26544,
+    "name": "VTDecoderXPCService"
+   },
+   {
+    "pid": 64957,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 12448,
+    "name": "VTEncoderXPCService"
+   },
+   {
+    "pid": 66775,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 1488,
+    "name": "VTDecoderXPCService"
+   },
+   {
+    "pid": 71437,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 1035456,
+    "name": "kev-serve"
+   },
+   {
+    "pid": 73596,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 125248,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 73610,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 486752,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 75096,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 1840,
+    "name": "VTEncoderXPCService"
+   },
+   {
+    "pid": 75097,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 22272,
+    "name": "Google Chrome Helper"
+   },
+   {
+    "pid": 75098,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 32480,
+    "name": "Google Chrome Helper"
+   },
+   {
+    "pid": 75118,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 19968,
+    "name": "VTDecoderXPCService"
+   },
+   {
+    "pid": 88157,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 185056,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 88640,
+    "ppid": 57399,
+    "cpu": 0.0,
+    "rss_kib": 435360,
+    "name": "Google Chrome Helper (Renderer)"
+   },
+   {
+    "pid": 89623,
+    "ppid": 1,
+    "cpu": 0.0,
+    "rss_kib": 56160,
+    "name": "TGOnDeviceInferenceProviderService"
+   },
+   {
+    "pid": 61057,
+    "ppid": 60642,
+    "cpu": 1.0,
+    "rss_kib": 273616,
+    "name": "devin"
+   },
+   {
+    "pid": 61058,
+    "ppid": 61057,
+    "cpu": 0.0,
+    "rss_kib": 308768,
     "name": "devin"
    }
   ]
