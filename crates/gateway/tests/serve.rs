@@ -3364,6 +3364,50 @@ async fn classify_review_keeps_the_original_when_the_reviewed_answer_fails_contr
 }
 
 #[tokio::test]
+async fn classify_review_keeps_the_score_when_the_reviewer_answers_none() {
+    // A score unit re-judged under `always`: the reviewer's reply
+    // carries no score answer at all — an absent answer is never
+    // invented, and `keep-original` leaves the primary's rubric
+    // position standing.
+    let (primary, _) = backend(honest(
+        artifact('b'),
+        json!({"model":"kev-0.6b",
+               "answers":{"q0":{"type":"score","score":1.2,"confidence":0.9,
+                                "legend":{"0":"weak","1":"fair","2":"strong"},
+                                "selected":"1",
+                                "probabilities":{"0":0.2,"1":0.6,"2":0.2}}},
+               "usage":{"input_tokens":4,"output_tokens":2}}),
+    ))
+    .await;
+    let (reviewer, reviewer_forwards) = backend(honest(
+        artifact('c'),
+        json!({"model":"kev-0.6b","answers":{}}),
+    ))
+    .await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let mut call = json!({
+        "v":"openagents.classify.v1","model":"acme-kev","capacity":"dedicated",
+        "policy":{"v":"openagents.classify-policy.v1","name":"rubric",
+          "select":{"score":{"order":"descending"}},
+          "review":{}},
+        "inputs":[{"id":"a","text":"a-input"}],
+        "mode":"score","levels":["weak","fair","strong"]
+    });
+    call["policy"]["review"] = review_policy("acme-kev-review", "always", "keep-original");
+    let (status, body) = send_classification(&deployment, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(reviewer_forwards.load(Ordering::SeqCst), 1);
+    let unit = &body["results"][0]["units"][0];
+    assert_eq!(unit["selected"], 1, "{unit}");
+    assert_eq!(unit["raw"]["score"], 1.2);
+    assert_eq!(unit["final_source"], "primary");
+    assert_eq!(unit["review"]["outcome"], "unavailable");
+    assert_eq!(body["review"]["reviewed"], 1);
+    assert_eq!(body["review"]["review_answered"], 0);
+}
+
+#[tokio::test]
 async fn classify_review_strict_governs_when_the_review_does_not_answer() {
     // Under `strict`, an unanswered review replaces the selection: the
     // unit reports the review's failure with the primary's whole answer
