@@ -182,7 +182,10 @@ fn answered_unit(mode: &str, unit: &Value, id: &str) -> Value {
                     ("ONE", "b") => 0.2,
                     _ => 0.9,
                 };
-                raw.insert(label.to_string(), json!({"type": "noul", "noul": probability}));
+                raw.insert(
+                    label.to_string(),
+                    json!({"type": "noul", "noul": probability}),
+                );
                 if probability >= 0.5 && id != "WEAK" {
                     selected.push(json!(label));
                 }
@@ -204,15 +207,19 @@ fn answered_unit(mode: &str, unit: &Value, id: &str) -> Value {
             }
         }
         _ => {
-            let score = match id {
-                "HIGH" => 2.6,
-                "LOW" => 0.4,
-                _ => 1.5,
+            let score: f64 = match id {
+                "HIGH" => 1.7,
+                "LOW" => 0.3,
+                _ => 1.0,
             };
             let levels = unit["levels"].as_array().map_or(3, |levels| levels.len());
             let probabilities: serde_json::Map<String, Value> = (0..levels)
                 .map(|level| {
-                    let weight = if level as f64 == score.round() { 0.8 } else { 0.1 };
+                    let weight = if level as f64 == score.round() {
+                        0.8
+                    } else {
+                        0.1
+                    };
                     (level.to_string(), json!(weight))
                 })
                 .collect();
@@ -415,7 +422,11 @@ fn classify_doc(request: &Value, force: Option<&str>) -> Value {
             if let Some(dimension) = unit.get("dimension") {
                 aggregate["dimension"] = dimension.clone();
             }
-            let counts_key = if unit["mode"] == "score" { "levels" } else { "labels" };
+            let counts_key = if unit["mode"] == "score" {
+                "levels"
+            } else {
+                "labels"
+            };
             aggregate[counts_key] = Value::Object(per_unit_labels[index].clone());
             if per_unit_no_match[index] > 0 {
                 aggregate["no_match"] = json!(per_unit_no_match[index]);
