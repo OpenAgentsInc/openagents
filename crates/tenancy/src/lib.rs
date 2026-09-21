@@ -66,6 +66,7 @@ mod manifest;
 pub mod money;
 pub mod quota;
 mod registry;
+pub mod workspaces;
 
 pub use accounts::{
     ACCOUNTS_SCHEMA, Account, Accounts, Invitation, InviteStatus, Invited, MemberRef, MemberStatus,
