@@ -1342,7 +1342,7 @@ impl Runtime {
                 set,
                 PROGRAM_CALL,
                 &json!({ "request": request }),
-                &Fill::Options(options),
+                &Fill::Options(options.clone()),
                 trace,
                 |read| format!("program {read}"),
             )
@@ -1364,12 +1364,17 @@ impl Runtime {
         if choice == NO_PROGRAM {
             return Ok(Selected::None);
         }
-        match self.survey.programs.get(&choice).is_some() {
+        // The answer is held to the option set the question offered: a
+        // door naming a program this host resolved but would not run —
+        // inadmissible, ungranted in capability, uninstalled — is the
+        // same refusal as one naming a program it never heard of, not a
+        // selection a later check has to catch.
+        match options.iter().any(|(slug, _)| *slug == choice) {
             true => Ok(Selected::Program(choice)),
             false => Err(Refused::at(
                 "",
                 "no_program_chosen",
-                format!("the door named {choice}, which this host did not resolve"),
+                format!("the door named {choice}, which this host did not offer it"),
             )),
         }
     }
@@ -4424,6 +4429,90 @@ mod tests {
             );
             let refused = runtime.select("run it", None).await.unwrap_err();
             assert_eq!(refused.code, code, "status {status}");
+        }
+    }
+
+    /// A door's choice is held to the option set the question offered:
+    /// naming a program this host resolved but would not run is the
+    /// same refusal as naming one it never heard of — executor
+    /// selection considers only host-authorized candidates, and a
+    /// selection cannot exceed what the host admitted.
+    #[tokio::test]
+    async fn a_selection_is_held_to_the_offered_programs() {
+        let questions_dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            questions_dir.path().join("program.json"),
+            serde_json::to_string(&json!({
+                "v": 1,
+                "id": PROGRAM_QUESTION,
+                "name": "Which program applies",
+                "gate": "program",
+                "questions": {
+                    "program": {
+                        "type": "choice",
+                        "instructions": "Which program does this request ask for?",
+                        "options": "supplied",
+                        "criteria": {"none": "This request asks for no program."}
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let programs = tempfile::tempdir().unwrap();
+        // Admitted: a query step asks nothing this host lacks.
+        stage_program(
+            programs.path(),
+            "ask-only",
+            r#"[{"name": "look", "kind": "query", "bounds": {}}]"#,
+        );
+        // Resolved but inadmissible: a decide step on wording this host
+        // never resolved is a program it would not run.
+        stage_program(
+            programs.path(),
+            "needs-wording",
+            r#"[{"name": "judge", "kind": "decide", "question": "openagents.missing.v1", "bounds": {}}]"#,
+        );
+
+        for (choice, expected) in [
+            // The registry resolved it, but admission never offered it:
+            // naming it is not a selection.
+            ("needs-wording", None),
+            // The one admitted program selects.
+            ("ask-only", Some("ask-only")),
+            // And none is an answer, not an error.
+            ("none", None),
+        ] {
+            let port = serve_answer(json!({
+                "model": "stub",
+                "answers": {
+                    "program": {
+                        "type": "choice",
+                        "choice": choice,
+                        "confidence": 0.9,
+                        "probabilities": {"ask-only": 0.5, "needs-wording": 0.3, "none": 0.2}
+                    }
+                }
+            }))
+            .await;
+            let mut runtime = empty_runtime();
+            runtime.survey.programs =
+                crate::program::Registry::open(&[programs.path().to_path_buf()]);
+            runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
+            runtime.door = Some(
+                jev::Client::new(jev::Config::local(
+                    format!("http://127.0.0.1:{port}"),
+                    "stub",
+                ))
+                .unwrap(),
+            );
+
+            match (runtime.select("run it", None).await, expected) {
+                (Ok(Selected::Program(slug)), Some(wanted)) => assert_eq!(slug, wanted),
+                (Ok(Selected::None), None) if choice == "none" => {}
+                (Err(refused), None) => assert_eq!(refused.code, "no_program_chosen"),
+                (answered, _) => panic!("{choice} answered {answered:?}"),
+            }
         }
     }
 
