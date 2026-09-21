@@ -604,6 +604,75 @@ mod tests {
                 .admitted()
                 .is_ok()
         );
+        let record = Record::evaluate(&plan, &evidence).unwrap();
+        let base = record.base();
+        let binding = crate::Binding {
+            lane: crate::Lane::Dedicated,
+            artifact: crate::Expected {
+                model: base.model.clone(),
+                adapter: base.adapter.clone(),
+                artifact_signature: base.artifact_signature.clone(),
+                execution: base.execution.clone(),
+            },
+            capacity: Some(crate::Capacity {
+                concurrency: Some(3),
+                requests_per_minute: Some(60),
+            }),
+            promotion: None,
+            scope: vec![],
+        };
+        let tenant = crate::Tenant {
+            credential: "key-ref:fixture/key".into(),
+            principals: vec!["fixture-owner".into()],
+            doors: [("fixture-door".into(), binding.clone())].into(),
+            quota: None,
+        };
+        let manifest = crate::Manifest {
+            v: crate::SCHEMA.into(),
+            sequence: 0,
+            supersedes: None,
+            shared: BTreeMap::new(),
+            tenants: [("fixture-tenant".into(), tenant.clone())].into(),
+            digest: String::new(),
+        };
+        let registry_dir = dir.path().join("registry");
+        let installed = crate::Registry::install(&registry_dir, manifest).unwrap();
+        let original_digest = installed.manifest().digest.clone();
+        let promoted =
+            crate::Registry::activate(&registry_dir, "fixture-tenant", "fixture-door", &record)
+                .unwrap();
+        let current = &promoted.manifest().tenants["fixture-tenant"];
+        assert_eq!(current.credential, tenant.credential);
+        assert_eq!(current.principals, tenant.principals);
+        assert_eq!(current.doors["fixture-door"].capacity, binding.capacity);
+        assert_eq!(current.doors["fixture-door"].scope, plan.scope);
+        assert_eq!(
+            current.doors["fixture-door"].promotion.as_deref(),
+            Some(record.reference())
+        );
+        assert!(
+            crate::Registry::activate(&registry_dir, "fixture-tenant", "fixture-door", &record)
+                .is_err()
+        );
+        let rolled_back = crate::Registry::rollback(&registry_dir).unwrap();
+        assert_eq!(rolled_back.manifest().sequence, 2);
+        assert_eq!(
+            rolled_back.manifest().tenants["fixture-tenant"].doors["fixture-door"],
+            binding
+        );
+        assert_eq!(
+            crate::Registry::revision(&registry_dir, &original_digest)
+                .unwrap()
+                .digest,
+            original_digest
+        );
+        assert_eq!(
+            crate::Registry::revision(&registry_dir, &promoted.manifest().digest)
+                .unwrap()
+                .sequence,
+            1
+        );
+
         let mut missing = evidence.clone();
         missing.reports.locked = None;
         assert_ne!(
