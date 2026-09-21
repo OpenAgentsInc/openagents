@@ -1591,6 +1591,7 @@ async fn classify_admitted(
                 "latency_ms": review.latency_ms,
                 "max_spend": review.max_spend,
             },
+            "attempts": book.attempts,
             "reviewed": book.reviewed,
             "review_answered": book.review_answered,
             "fallback_dispatched": book.fallback_dispatched,
@@ -1908,6 +1909,8 @@ struct DispatchOutcome {
     attempt_id: String,
     /// The reservation reference it settled against, when it held one.
     usage_ref: Option<String>,
+    /// The sealed receipt reference, absent when the receipt write failed.
+    receipt: Option<String>,
     /// The receipt-level outcome.
     outcome: Outcome,
     /// The recorded cause: the refusal's typed code, or the failure's
@@ -1971,7 +1974,6 @@ async fn dispatch(
             Some(failed.code.clone()),
         ),
     };
-    write_receipt(state, &naming, outcome, cause.as_deref(), started, &ctx).await;
     let dispatched = result.is_ok();
     let (body, model, usage) = match &result {
         Ok(Forwarded::Served { body, .. } | Forwarded::Refused { body, .. }) => {
@@ -1988,7 +1990,10 @@ async fn dispatch(
         }
         _ => (None, None, None),
     };
+    ctx.result_digest = body.as_ref().map(|body| digest_bytes(body));
+    let receipt = write_receipt(state, &naming, outcome, cause.as_deref(), started, &ctx).await;
     DispatchOutcome {
+        receipt,
         attempt_id: sub.attempt_id.clone(),
         usage_ref: ctx.usage.clone(),
         outcome,
@@ -2155,10 +2160,16 @@ fn phase_stop(
     if Instant::now() >= deadline {
         return Some("the review phase's `latency_ms` bound is spent");
     }
-    if let (Some(max_spend), Some(quote)) = (policy.max_spend, quote)
-        && book.spend.saturating_add(quote) > max_spend
-    {
-        return Some("the review policy's `max_spend` cannot cover the door's worst-case hold");
+    if policy.max_spend.is_some() && quote.is_none() {
+        return Some("the review policy's `max_spend` requires a known configured price");
+    }
+    if let Some(quote) = quote {
+        let Some(total) = book.spend.checked_add(quote) else {
+            return Some("the review phase's spend accounting would overflow");
+        };
+        if policy.max_spend.is_some_and(|maximum| total > maximum) {
+            return Some("the review policy's `max_spend` cannot cover the door's worst-case hold");
+        }
     }
     None
 }
@@ -2215,6 +2226,8 @@ fn dispatch_attempt(role: &str, door: &str, result: &DispatchOutcome) -> Value {
         &result.attempt_id,
         Some(result.latency.as_millis() as u64),
     );
+    record["receipt"] = json!(result.receipt);
+    record["served"] = json!(result.served);
     if let Some(code) = &result.code {
         record["code"] = json!(code);
     }
@@ -2522,12 +2535,21 @@ async fn review_phase(
             };
             if let Some(stop) = stop {
                 unresolved = true;
-                item["units"][unit_index]["review"] = json!({
+                let unit = &mut item["units"][unit_index];
+                if policy.on_failure == classify::ReviewFailure::Strict {
+                    let original = unit.clone();
+                    *unit = unit_failure(&plan.units[unit_index], "unattempted", stop);
+                    unit["original"] = original;
+                    unit["final_source"] = json!("reviewer");
+                } else {
+                    unit["final_source"] = json!("primary");
+                }
+                unit["review"] = json!({
                     "reason": reason,
                     "outcome": "unattempted",
+                    "selected": null,
                     "cause": stop,
                 });
-                item["units"][unit_index]["final_source"] = json!("primary");
                 continue;
             }
             // The body names the reviewer door's bound artifact; the

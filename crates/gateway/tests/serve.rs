@@ -3793,3 +3793,89 @@ async fn classify_review_holds_money_for_every_attempted_dispatch() {
     assert_eq!(balance["balance"]["reserved"], 0);
     assert_eq!(balance["balance"]["settled"], 2 * CHARGE + 2 * 120);
 }
+
+#[tokio::test]
+async fn classify_strict_review_never_retains_an_unconfirmed_selection_at_a_bound() {
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let (reviewer, reviewer_forwards) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    for bound in ["max_items", "max_attempts"] {
+        let mut policy = review_policy("acme-kev-review", "uncertain", "strict");
+        policy[bound] = json!(1);
+        let before = reviewer_forwards.load(Ordering::SeqCst);
+        let (status, body) = send_classification(&deployment, &review_call(policy)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["outcome"], "mixed");
+        assert_eq!(reviewer_forwards.load(Ordering::SeqCst) - before, 1);
+        let unit = &body["results"][1]["units"][0];
+        assert_eq!(unit["outcome"], "unattempted", "{body}");
+        assert!(unit["selected"].is_null());
+        assert!(unit.get("raw").is_none());
+        assert_eq!(unit["original"]["selected"], "a");
+        assert!(unit["review"]["cause"].as_str().unwrap().contains(bound));
+        assert_eq!(body["aggregates"][0]["outcomes"]["unattempted"], 1);
+    }
+}
+
+#[tokio::test]
+async fn classify_review_requires_known_pricing_to_enforce_a_spending_bound() {
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let (reviewer, reviewer_forwards) = backend(honest(artifact('c'), corrected_answer())).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    for failure in ["keep-original", "strict"] {
+        let mut policy = review_policy("acme-kev-review", "uncertain", failure);
+        policy["max_spend"] = json!(100);
+        let (_, body) = send_classification(&deployment, &review_call(policy)).await;
+        assert_eq!(reviewer_forwards.load(Ordering::SeqCst), 0);
+        assert_eq!(body["review"]["attempts"], 0);
+        for item in body["results"].as_array().unwrap() {
+            let unit = &item["units"][0];
+            assert_eq!(unit["review"]["outcome"], "unattempted");
+            assert!(
+                unit["review"]["cause"]
+                    .as_str()
+                    .unwrap()
+                    .contains("known configured price")
+            );
+            if failure == "strict" {
+                assert!(unit["selected"].is_null());
+                assert_eq!(unit["original"]["selected"], "a");
+            } else {
+                assert_eq!(unit["selected"], "a");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn classify_review_attempts_reference_receipts_that_bind_the_actual_response() {
+    let answer = corrected_answer();
+    let (primary, _) = backend(honest(artifact('b'), uncertain_answer())).await;
+    let (reviewer, _) = backend(honest(artifact('c'), answer.clone())).await;
+    let (fallback, _) = backend(honest(artifact('d'), choice_answer())).await;
+    let deployment = review_deployment(primary, reviewer, fallback).await;
+    let (_, body) = send_classification(
+        &deployment,
+        &review_call(review_policy("acme-kev-review", "uncertain", "strict")),
+    )
+    .await;
+    let receipts = receipt_log(&deployment.dir);
+    for item in body["results"].as_array().unwrap() {
+        let attempt = &item["attempts"][1];
+        let reference = attempt["receipt"].as_str().unwrap();
+        let receipt = receipts
+            .iter()
+            .find(|receipt| receipt.digest == reference)
+            .unwrap();
+        use sha2::Digest;
+        let expected = format!(
+            "sha256:{:x}",
+            sha2::Sha256::digest(serde_json::to_vec(&answer).unwrap())
+        );
+        assert_eq!(receipt.result_digest.as_deref(), Some(expected.as_str()));
+        assert_eq!(attempt["served"], json!(receipt.served));
+        assert_eq!(attempt["served"]["artifact_signature"], artifact('c'));
+    }
+}

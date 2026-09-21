@@ -66,8 +66,8 @@ field is declared; nothing activates from a missing field.
   primary fan-out's completion and never beyond the call's own deadline.
 - `max_spend` caps the worst-case spend the phase's monetary holds may
   take — the sum of the doors' quoted maximum reservations, in the
-  account's millionths. Inert when the gateway runs no monetary
-  admission.
+  account's millionths. A declared spending bound requires a known
+  configured price; without one, the secondary work remains unattempted.
 - `fallback` is the list of retry destinations, first match per cause
   winning.
 
@@ -129,7 +129,9 @@ produced:
 - `attempts` — every dispatch's row: role (`primary`, `review`,
   `fallback`), the door and the artifact that answered, the outcome and
   cause, the attempt identity, latency, and the settlement and usage
-  reference the reservation carried.
+  reference the reservation carried. Secondary attempt records also include
+  the sealed receipt reference and full served identity. A receipt-write failure
+  leaves the receipt reference null, rather than inventing evidence.
 - `units[].original` — the primary unit's whole result, present whenever
   a review or fallback rewrote the unit.
 - `units[].review` — the review's own record: the trigger's reason, the
@@ -170,3 +172,8 @@ the outcome `unattempted` and the cause naming the bound — `max_items`,
 the sum of worst-case holds already taken against the next dispatch's
 quoted maximum, so the phase never takes a hold the declared budget could
 not cover.
+
+A stopped review obeys `on_failure` too. Under `strict`, budget exhaustion
+retains the primary under `original` but leaves the final selection null.
+Unknown prices cannot satisfy a declared spending limit, and spend arithmetic
+overflow stops further secondary work.
