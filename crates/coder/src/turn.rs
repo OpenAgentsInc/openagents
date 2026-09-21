@@ -12,7 +12,8 @@
 //! one, the classify verdict, any judgment line the door emits, each shell
 //! proposal and outcome, and the reply's deltas as they stream. The
 //! terminal draws them; `--print` writes the ones that belong on standard
-//! error and keeps standard output for the reply.
+//! error and keeps standard output for the reply — or, under `--json`,
+//! writes each of them there as an object ahead of the summary.
 //!
 //! # Two things a turn can be
 //!

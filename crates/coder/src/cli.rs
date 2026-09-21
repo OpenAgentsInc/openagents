@@ -37,8 +37,10 @@ pub struct Print {
     pub prompt: String,
     /// Where the trace lands, when the caller named a file.
     pub trace: Option<PathBuf>,
-    /// Report the turn as one JSON object rather than as the reply text.
+    /// Report the turn as a JSON stream rather than as the reply text.
     pub json: bool,
+    /// With `--json`, stream the reply's deltas too, as `delta` objects.
+    pub json_deltas: bool,
     /// The program slugs this turn may run, when `--programs` granted any.
     pub programs: Option<String>,
 }
@@ -57,8 +59,12 @@ Options:
                          Read the prompt from a file. Implies --print.
       --trace <PATH>     Write this session's trace to PATH. Recording a
                          named file outranks CODER_TRACE.
-      --json             With --print, report the turn as one JSON object:
-                         the reply, the trace path, and how it finished.
+      --json             With --print, report the turn as a JSON stream:
+                         one object per turn event on stdout, then the
+                         summary object.
+      --json-deltas      With --json, also stream the reply's deltas as
+                         `delta` objects. Off by default — deltas can
+                         flood a pipe.
       --programs <SPEC>  Grant the named programs this session's runs, as
                          CODER_PROGRAMS does: a comma-separated slug list
                          or `all`. With neither set, a program a turn
@@ -91,6 +97,7 @@ gemini or glm — or any model id the gateway serves.";
 pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
     let mut print = false;
     let mut json = false;
+    let mut json_deltas = false;
     let mut trace: Option<PathBuf> = None;
     let mut prompt: Option<String> = None;
     let mut prompt_file: Option<PathBuf> = None;
@@ -134,6 +141,7 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
                 }
             }
             "--json" => json = true,
+            "--json-deltas" => json_deltas = true,
             "--trace" => trace = Some(PathBuf::from(value("--trace")?)),
             "--prompt-file" => prompt_file = Some(PathBuf::from(value("--prompt-file")?)),
             "--programs" => {
@@ -164,6 +172,11 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
     if prompt_file.is_some() {
         print = true;
     }
+    // The deltas flag tunes the stream, so it asks for the stream rather
+    // than implying it — the same way --json asks for --print.
+    if json_deltas && !json {
+        return Err("--json-deltas needs --json".to_string());
+    }
     if !print {
         if json {
             return Err("--json needs --print".to_string());
@@ -188,6 +201,7 @@ pub fn parse(arguments: &[String]) -> Result<Invocation, String> {
         prompt,
         trace,
         json,
+        json_deltas,
         programs,
     }))
 }
@@ -220,6 +234,7 @@ mod tests {
             prompt: "count the crates".to_string(),
             trace: Some(PathBuf::from("/tmp/one.jsonl")),
             json: true,
+            json_deltas: false,
             programs: None,
         });
         for arguments in [
@@ -256,6 +271,20 @@ mod tests {
         };
         assert_eq!(print.prompt, "one\ntwo\n");
         assert!(!print.json);
+        assert!(!print.json_deltas);
+    }
+
+    /// Deltas are opt-in and only mean something to the JSON stream, so
+    /// the flag asks for `--json` rather than implying it.
+    #[test]
+    fn json_deltas_ask_for_the_stream() {
+        let Invocation::Print(print) = parse_of(&["-p", "hi", "--json", "--json-deltas"]).unwrap()
+        else {
+            panic!("expected print mode");
+        };
+        assert!(print.json && print.json_deltas);
+        let error = parse_of(&["-p", "hi", "--json-deltas"]).unwrap_err();
+        assert!(error.contains("--json"), "{error}");
     }
 
     /// The wrong command line says what is wrong with it.
@@ -266,6 +295,10 @@ mod tests {
             (vec!["-p", "  "], "the prompt is empty"),
             (vec!["-p", "a", "b"], "one prompt, or --prompt-file"),
             (vec!["--json"], "--json needs --print"),
+            (
+                vec!["-p", "a", "--json-deltas"],
+                "--json-deltas needs --json",
+            ),
             (vec!["-p", "a", "--trace"], "--trace needs a value"),
             (vec!["--verbose"], "unknown option --verbose"),
             (vec!["hello"], "a prompt needs --print"),

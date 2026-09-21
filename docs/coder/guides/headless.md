@@ -29,7 +29,8 @@ coder -p --json --trace runs/one.atif.jsonl "count the crates"
 | `-p`, `--print <PROMPT>` | Run one turn without a terminal. |
 | `--prompt-file <FILE>` | Read the prompt from a file, newlines and all. Implies `--print`. |
 | `--trace <PATH>` | Write this session's trace to `PATH`. |
-| `--json` | Report the turn as one JSON object instead of as text. |
+| `--json` | Report the turn as a JSON stream: one object per turn event, then the summary object. |
+| `--json-deltas` | With `--json`, also stream the reply's deltas as `delta` objects. |
 | `--programs <SPEC>` | Grant named program slugs, subject to the environment effect ceiling. |
 | `-h`, `--help` | Print the usage text. |
 
@@ -95,10 +96,12 @@ second attempt would repeat it. The failure says which happened: read
 
 ## What lands where
 
-**Standard output** is the reply and nothing else, or, with `--json`, one
-object:
+**Standard output** is the reply and nothing else, or, with `--json`, a
+stream of objects — one line per event the turn reports, then the summary
+object that closes it:
 
 ```json
+{"event":"classified","route":"respond","halt":null,"action":{"choice":"respond","confidence":0.91,"probabilities":{"respond":0.91,"clarify":0.05,"end_conversation":0.02,"none":0.02}},"note":null}
 {
   "reply": "atif, coder, coder-terminal, gym, jev, kev, lev, nostr, nostr-relay.",
   "trace": "/Users/you/.openagents/traces/20260919T142233Z-4f1a9c02.atif.jsonl",
@@ -108,13 +111,28 @@ object:
   "usage": { "input_tokens": 812, "output_tokens": 24 },
   "error": null,
   "cause": null,
-  "refusal": null
+  "refusal": null,
+  "events": true
 }
 ```
 
-The keys are always present. `reply`, `route`, and `usage` are null when
-the turn did not finish; `error`, `cause`, and `refusal` are null when it
-did. A script parses one thing.
+Each event object carries an `event` name and the values the terminal
+draws, under their own names: `program` (the selected slug), `classified`
+(the verdict's `route` and the `action` answer behind it, a halt's reason
+in `halt`, or the `note` saying classify did not run), `judgment` (a
+remote worker's feedback line), and `shell_proposed`, `shell_outcome`,
+and `shell_verdict` — the command and its reason, its status and output,
+and the judge's line. A field an event does not have is `null`, not a
+stand-in. `delta` objects — the reply as it streams — come only with
+`--json-deltas`: the reply lands whole in the summary, and a reply's
+worth of deltas is a flood a pipe should opt into.
+
+The summary's keys are always present. `reply`, `route`, and `usage` are
+null when the turn did not finish; `error`, `cause`, and `refusal` are
+null when it did. `events` says whether event lines came before it:
+`false` means the run ended before the turn started and the object is the
+whole output, so a reader holding only the last line can still tell a
+stream from a bare result.
 
 `program` is the slug of the program the turn ran, and null on an ordinary
 turn — which is nearly every turn. A turn that runs a program takes no
