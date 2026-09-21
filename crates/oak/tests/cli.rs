@@ -49,7 +49,7 @@ fn typed(status: u16, code: &str, message: &str) -> Response {
 
 /// The shared admission check: the bearer key, then the workspace when
 /// the stub requires membership.
-fn admitted(stub: &Stub, headers: &HeaderMap) -> Result<(), Response> {
+fn admitted(stub: &Stub, headers: &HeaderMap) -> Option<Response> {
     stub.workspaces.lock().unwrap().push(
         headers
             .get("x-workspace-id")
@@ -58,18 +58,18 @@ fn admitted(stub: &Stub, headers: &HeaderMap) -> Result<(), Response> {
     );
     if headers.get("authorization").and_then(|v| v.to_str().ok()) != Some(&format!("Bearer {KEY}"))
     {
-        return Err(typed(401, "unauthenticated", "the credential was refused"));
+        return Some(typed(401, "unauthenticated", "the credential was refused"));
     }
     if stub.require_workspace.load(Ordering::SeqCst)
         && headers.get("x-workspace-id").and_then(|v| v.to_str().ok()) != Some(WORKSPACE)
     {
-        return Err(typed(
+        return Some(typed(
             400,
             "workspace_required",
             "one X-Workspace-Id header is required",
         ));
     }
-    Ok(())
+    None
 }
 
 async fn systemone(
@@ -78,7 +78,7 @@ async fn systemone(
     body: axum::body::Bytes,
 ) -> Response {
     stub.calls.fetch_add(1, Ordering::SeqCst);
-    if let Err(refusal) = admitted(&stub, &headers) {
+    if let Some(refusal) = admitted(&stub, &headers) {
         return refusal;
     }
     // A settled idempotency key rejects changed content.
@@ -132,7 +132,7 @@ async fn systemone(
 }
 
 async fn models(State(stub): State<Arc<Stub>>, headers: HeaderMap) -> Response {
-    if let Err(refusal) = admitted(&stub, &headers) {
+    if let Some(refusal) = admitted(&stub, &headers) {
         return refusal;
     }
     Json(json!({"models": [{
@@ -492,7 +492,7 @@ async fn classify(
             .unwrap_or("")
             .to_string(),
     );
-    if let Err(refusal) = admitted(&stub, &headers) {
+    if let Some(refusal) = admitted(&stub, &headers) {
         return refusal;
     }
     let request: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
