@@ -143,6 +143,14 @@ report.
 defines the flagship product vision, the existing implementation, and the
 issues that connect typed decisions to bounded programs and verified work.
 
+The [TypeSafe-native Coder analysis](docs/coder/typesafe-agent-analysis.md)
+and [delivery roadmap](docs/coder/typesafe-agent-roadmap.md) apply the
+TypeSafe founder's coding-agent proposal to Coder: shared evidence,
+task-specific context, native coding operations, progressive tools, and
+bounded parallel/background work. The
+[project snapshot](docs/coder/2026-09-21-project-roadmap-snapshot.md) maps
+that plan to the consumer and Decision Router work in flight.
+
 [Delegate work to Devin with Coder](docs/coder/devin-delegation-runbook.md)
 is the operator runbook for local setup, six-session batches, remote workers,
 result checks, and supervised integration.

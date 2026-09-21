@@ -8,6 +8,24 @@ The worked case throughout is delegating to the Devin CLI, because it is the
 one an operator here actually has and wants used. It is a row in a table,
 not a special case, and the last section says what generalizes.
 
+## Current delivery direction
+
+The [TypeSafe-native Coder roadmap](coder/typesafe-agent-roadmap.md) places
+these programs over shared evidence and task-specific context. The earlier
+reference-design discussion below explains the concepts; it is not a claim
+that every proposed capability or composition rule is implemented here.
+Use [the consumer inventory](coder/coder-as-decision-router-consumer.md)
+for current scope.
+
+Explicit [program grants](coder/program-authority.md),
+[scoped tracker intake](coder/tracker-intake.md),
+[project supervision](coder/project-supervision.md), and a bounded typed
+[`run-suite` host path](coder/artifact-verification.md) now exist. Full
+program recovery, typed composition, portable package resolution, and the
+proposed evidence/context store remain delivery work. The new roadmap
+extends these components; it does not introduce a separate private program
+runtime.
+
 ## The word
 
 "Plugin" is the wrong word, and the reasons are not stylistic.

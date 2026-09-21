@@ -31,7 +31,7 @@ No answer becomes context for another.
 | Where it runs | TypeSafe's service | this machine, our code | this machine, Apple's runtime |
 | Weights | closed, hosted | open adapter and head on an open base | closed, on-device, shipped by the OS |
 | Readout | direct, trained against outcomes | pointer head, cross-entropy | none; estimated from behaviour |
-| Cost per request | metered | our hardware | none |
+| Usage cost | metered service usage | local hardware and execution time | local hardware and execution time; no per-call provider bill |
 | Docs | [`jev/`](jev/) | [`../kev/`](../kev/) | [`../lev/`](../lev/) |
 
 `crates/jev` is the client for all three. A caller picks by `base_url`.
@@ -40,6 +40,22 @@ identity. The [2026-09-20 Kev review](../kev/2026-09-20-upstream-review.md)
 finds that the current upstream 0.6B, 4B, and 8B weights differ from the
 ones pinned here, and recommends evaluating the new 4B on Coder's current
 questions before changing the default. That [evaluation](../kev/measurements/2026-09-20-candidate-4b.md) now finds a promising shell-outcome candidate, input coverage failures for action, and failed program-selection acceptance. The default remains unchanged.
+
+## Coder integration direction
+
+The [TypeSafe-native Coder analysis](../coder/typesafe-agent-analysis.md)
+and [roadmap](../coder/typesafe-agent-roadmap.md) use the measurements here
+to assign decision models by function. Evidence relevance, operation
+selection, and context allocation are proposed new workloads. Existing
+transport compatibility or calibration on another family does not admit a
+model for them. Jev provides a hosted reference where permitted; Kev and
+Lev need workload-specific comparisons with refusals, input coverage,
+latency, and resource costs retained.
+
+The roadmap introduces shared evidence and task-specific context before
+broader generation routing and background work. Historical measurements in
+this directory remain unchanged; they are evidence with a stated scope,
+not results for the proposed architecture.
 
 ## Where to start
 

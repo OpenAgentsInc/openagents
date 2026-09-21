@@ -10,6 +10,13 @@ is whether anything runs at all.
 Status: implemented in `crates/coder` (`permit.rs`, `shell.rs`,
 `agent.rs::turn`, `classify.rs` shell questions).
 
+The [TypeSafe-native roadmap](typesafe-agent-roadmap.md#phase-2-close-the-native-coding-loop)
+proposes native coding operations and context selection over retained
+observation artifacts. Those changes are not implemented by the current
+shell loop. Its short deadlines, round cap, and output heads remain actual
+limits; a useful coding executor needs measured workload-specific bounds
+and access to diagnostics before context selection can help.
+
 ## Why a loop, not a tool call
 
 The first version of the agent answered every project question from
