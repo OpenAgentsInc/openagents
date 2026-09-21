@@ -911,6 +911,51 @@ mod tests {
         ));
     }
 
+    /// The same path at the same span observed twice with different
+    /// content is two candidates, not one: a changed artifact stays
+    /// distinguishable — each observation keeps its own option name and
+    /// its own digest, so the door judges the bytes that were actually
+    /// read and a ranking maps back to the observation it picked.
+    #[test]
+    fn a_changed_artifact_stays_distinguishable_by_its_digest() {
+        let mut earlier = read("src/f.rs", None, Readness::Full);
+        earlier.digest = Some("aa".repeat(32));
+        let mut later = read("src/f.rs", None, Readness::Full);
+        later.digest = Some("bb".repeat(32));
+        let set = Candidates {
+            candidates: vec![earlier, later],
+            omitted: Vec::new(),
+        };
+        let request = Select::request("a task", &set);
+        let options = options_of(&request);
+        assert_eq!(
+            options,
+            [
+                "none",
+                "src/f.rs (the whole file)",
+                "src/f.rs (the whole file) (2)"
+            ],
+            "identical names get a distinguishing suffix rather than colliding"
+        );
+
+        let state = state_of(&request);
+        let listed = state["candidates"].as_array().unwrap();
+        assert_eq!(listed[0]["digest"], json!("aa".repeat(32)));
+        assert_eq!(listed[1]["digest"], json!("bb".repeat(32)));
+
+        // A ranking over the second observation reads back to it.
+        let answered = response(
+            "src/f.rs (the whole file) (2)",
+            &[
+                ("none", 0.05),
+                ("src/f.rs (the whole file)", 0.25),
+                ("src/f.rs (the whole file) (2)", 0.7),
+            ],
+        );
+        let ranking = Select::ranking(&answered, &set).expect("a ranking");
+        assert_eq!(ranking.verdict, Verdict::Chosen(1));
+    }
+
     #[test]
     fn an_unanswered_gate_cannot_rank() {
         let body = json!({

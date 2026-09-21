@@ -1,0 +1,380 @@
+{
+  "v": 1,
+  "id": "evidence-select-dev-v1",
+  "labels": "author",
+  "note": "Development-suite counterpart to evidence-select-v1 for openagents.evidence-relevance.v1: ten disjoint task-plus-candidate items used to select the abstention floor, never to confirm it. Truth labels are the suite author's.",
+  "items": [
+    {
+      "id": "dev-01",
+      "task": "Fix the panic when a config file holds an empty array.",
+      "candidates": [
+        {
+          "path": "src/config/parse.rs",
+          "readness": "full",
+          "bytes": 8200,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/config/defaults.rs",
+          "readness": "full",
+          "bytes": 3400,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "tests/cli.rs",
+          "readness": "full",
+          "bytes": 11000,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "chosen": "src/config/parse.rs",
+        "span": null,
+        "any_relevant": true,
+        "coverage": true
+      }
+    },
+    {
+      "id": "dev-02",
+      "task": "Find where request IDs are minted for outbound calls.",
+      "candidates": [
+        {
+          "path": "src/net/request_id.rs",
+          "readness": "full",
+          "bytes": 2100,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/net/pool.rs",
+          "readness": "full",
+          "bytes": 9800,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/net/tls.rs",
+          "readness": "full",
+          "bytes": 14200,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "chosen": "src/net/request_id.rs",
+        "span": null,
+        "any_relevant": true,
+        "coverage": true
+      }
+    },
+    {
+      "id": "dev-03",
+      "task": "Add keyboard shortcuts to the diff viewer.",
+      "candidates": [
+        {
+          "path": "src/queue/worker.rs",
+          "readness": "full",
+          "bytes": 7600,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "docs/deploy.md",
+          "readness": "full",
+          "bytes": 5100,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/billing/invoice.rs",
+          "readness": "full",
+          "bytes": 12300,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "chosen": null,
+        "span": null,
+        "any_relevant": false,
+        "coverage": false
+      }
+    },
+    {
+      "id": "dev-04",
+      "task": "Update the signature the token endpoint returns for revoked keys.",
+      "candidates": [
+        {
+          "path": "src/keys/revoke.rs",
+          "readness": "refused",
+          "bytes": 0,
+          "observation": "read",
+          "present": true,
+          "withheld": "denied by the read grant"
+        },
+        {
+          "path": "src/keys/format.rs",
+          "readness": "full",
+          "bytes": 4400,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "tests/keys.rs",
+          "readness": "full",
+          "bytes": 6800,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "chosen": "src/keys/revoke.rs",
+        "span": null,
+        "any_relevant": true,
+        "coverage": true
+      }
+    },
+    {
+      "id": "dev-05",
+      "task": "Fix the overflow when a trace file passes the capture cap.",
+      "candidates": [
+        {
+          "path": "src/trace/capture.rs",
+          "readness": "truncated",
+          "bytes": 9000,
+          "observation": "read",
+          "present": true,
+          "span": {
+            "start": 200,
+            "end": 480
+          }
+        },
+        {
+          "path": "src/trace/format.rs",
+          "readness": "full",
+          "bytes": 5300,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/trace/mod.rs",
+          "readness": "full",
+          "bytes": 1800,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "chosen": "src/trace/capture.rs",
+        "span": {
+          "start": 200,
+          "end": 480
+        },
+        "any_relevant": true,
+        "coverage": true
+      }
+    },
+    {
+      "id": "dev-06",
+      "task": "Change the default page size the list endpoint returns.",
+      "candidates": [
+        {
+          "path": "src/api/list.rs",
+          "readness": "full",
+          "bytes": 6100,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/api/mod.rs",
+          "readness": "full",
+          "bytes": 2600,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "docs/pagination.md",
+          "readness": "full",
+          "bytes": 3300,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/db/index.rs",
+          "readness": "full",
+          "bytes": 15400,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "chosen": "src/api/list.rs",
+        "span": null,
+        "any_relevant": true,
+        "coverage": true
+      }
+    },
+    {
+      "id": "dev-07",
+      "task": "Review the new compression branch in the archive writer.",
+      "candidates": [
+        {
+          "path": "src/archive/write.rs",
+          "readness": "truncated",
+          "bytes": 7000,
+          "observation": "read",
+          "present": true,
+          "span": {
+            "start": 1,
+            "end": 140
+          }
+        },
+        {
+          "path": "src/archive/write.rs",
+          "readness": "full",
+          "bytes": 21000,
+          "observation": "read",
+          "present": true,
+          "span": {
+            "start": 141,
+            "end": 640
+          }
+        },
+        {
+          "path": "src/archive/read.rs",
+          "readness": "full",
+          "bytes": 8800,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "chosen": "src/archive/write.rs",
+        "span": {
+          "start": 141,
+          "end": 640
+        },
+        "any_relevant": true,
+        "coverage": true
+      }
+    },
+    {
+      "id": "dev-08",
+      "task": "Add the missing test for the scheduler's lease expiry.",
+      "candidates": [
+        {
+          "path": "src/sched/lease.rs",
+          "readness": "full",
+          "bytes": 5600,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [
+        {
+          "path": "tests/sched/lease.rs",
+          "reason": "denied",
+          "bytes": 0
+        }
+      ],
+      "truth": {
+        "chosen": "src/sched/lease.rs",
+        "span": null,
+        "any_relevant": true,
+        "coverage": false
+      }
+    },
+    {
+      "id": "dev-09",
+      "task": "Rename the header the metrics request carries.",
+      "candidates": [
+        {
+          "path": "src/metrics/report.rs",
+          "readness": "full",
+          "bytes": 4700,
+          "observation": "search",
+          "present": true
+        },
+        {
+          "path": "src/metrics/labels.rs",
+          "readness": "full",
+          "bytes": 3900,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/http/headers.rs",
+          "readness": "full",
+          "bytes": 2900,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [
+        {
+          "path": "src/metrics/legacy.rs",
+          "reason": "denied",
+          "bytes": 0
+        }
+      ],
+      "truth": {
+        "chosen": "src/metrics/report.rs",
+        "span": null,
+        "any_relevant": true,
+        "coverage": true
+      }
+    },
+    {
+      "id": "dev-10",
+      "task": "Explain why the cache evicts entries before the configured TTL.",
+      "candidates": [
+        {
+          "path": "src/cache/evict.rs",
+          "readness": "truncated",
+          "bytes": 6400,
+          "observation": "read",
+          "present": true,
+          "span": {
+            "start": 40,
+            "end": 210
+          }
+        },
+        {
+          "path": "src/cache/store.rs",
+          "readness": "full",
+          "bytes": 11700,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "benches/cache.rs",
+          "readness": "full",
+          "bytes": 5400,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "chosen": "src/cache/evict.rs",
+        "span": {
+          "start": 40,
+          "end": 210
+        },
+        "any_relevant": true,
+        "coverage": true
+      }
+    }
+  ],
+  "digest": "5a1714660ccf6c625ab97e5aa1711d8e93a54ad60e828015c8f9ab6e1d8b448d"
+}
