@@ -143,9 +143,7 @@ impl Set {
         if !is_question_id(&self.id) {
             return Err(format!("{:?} is not a question-set identifier", self.id));
         }
-        if self.questions.is_empty()
-            && self.per_requirement.is_none()
-            && self.per_finding.is_none()
+        if self.questions.is_empty() && self.per_requirement.is_none() && self.per_finding.is_none()
         {
             return Err("a question set with no questions asks nothing".to_string());
         }
@@ -156,9 +154,7 @@ impl Set {
             );
         }
         if !self.questions.is_empty() && self.template().is_some() {
-            return Err(
-                "a set is a fixed set or a template, and this one is both".to_string(),
-            );
+            return Err("a set is a fixed set or a template, and this one is both".to_string());
         }
         let named: Vec<(&str, &Value)> = self
             .questions
@@ -169,11 +165,7 @@ impl Set {
                     .iter()
                     .map(|template| (REQUIREMENT, template)),
             )
-            .chain(
-                self.per_finding
-                    .iter()
-                    .map(|template| (FINDING, template)),
-            )
+            .chain(self.per_finding.iter().map(|template| (FINDING, template)))
             .collect();
         for (id, question) in named {
             if question.get("type").and_then(Value::as_str).is_none() {
