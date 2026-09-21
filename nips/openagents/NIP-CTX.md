@@ -6,6 +6,10 @@ are normative. [NIP-RUN](NIP-RUN.md) records execution; this NIP describes
 the state supplied to it. The [design addendum](../../docs/coder/design/typesafe-agent-protocol-addendum.md)
 maps the source proposal to host and protocol responsibilities.
 
+Task state is domain-independent. Repository evidence is Coder's specialization;
+document, dataset, conversation, and external-resource observations use the
+same task/context lifecycle with admitted source adapters.
+
 ## Transport and authority
 
 Artifacts can remain local, travel inside admitted CJ execution inputs/results,
@@ -59,12 +63,22 @@ never changes the user's objective without host acceptance.
 A snapshot has `v: "openagents.snapshot.v1"`, `scope` (opaque host scope ID),
 `captured_at`, `sources`, and `coverage` (`complete`, `partial`, or `unknown`).
 Each source contains `id` (opaque within scope), `version` (ArtifactRef),
-`kind` (`repository`, `tool`, `conversation`, or `document`), and
+`kind` (`repository`, `tool`, `conversation`, `document`, or `external`), and
 `availability` (`retained`, `deleted`, or `unavailable`). A repository version
 binds the admitted base and captured working-tree contents, including relevant
 uncommitted inputs; a branch name alone is insufficient. The registered source
 adapter fixes its version schema. No claim of complete coverage extends beyond
 the declared scope. Evidence uses the shared `openagents.evidence.v1` descriptor.
+
+An `external` source additionally requires `adapter: DefinitionRef`; version
+must reference `openagents.observation.v1` from the shared contracts. Resource
+identity and adapter must match that observation. This admits service records,
+datasets, or sensor captures without inventing a Git commit. The snapshot is
+a manifest of observations; it does not imply a globally atomic live view.
+Current-state claims and mutations must meet the adapter's freshness and
+precondition checks. Retaining bytes makes the capture immutable, not the world
+it described. Hosts can use a task-scoped empty snapshot for work with no source
+observations; it establishes no facts about an external resource.
 
 A representation has `v: "openagents.representation.v1"`, `evidence`
 (descriptor ArtifactRef), `snapshot` (ArtifactRef), `mode`, `content`
@@ -171,6 +185,10 @@ Clients can display source expansion, representation choices, omissions, and
 stale snapshots. A relevance heatmap is a view of recorded scores and anchors,
 not a claim about a generator's internal attention. Formatting, highlighting,
 summary generation, tokenization, indexing, and storage remain host/client work.
+Binary and multimodal evidence retains its MIME type and typed schemas. The
+byte anchors above identify stored bytes; they do not define image regions,
+audio timing, spatial coordinates, or permission to send media to a model.
+Those require explicit supported domain formats and recipient capabilities.
 
 ## Conformance
 

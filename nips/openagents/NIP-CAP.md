@@ -11,6 +11,12 @@ This NIP defines portable execution descriptions and operator preferences.
 components, and the [shared contracts](contracts.md) define identity,
 references, schemas, effects, limits, and refusal behavior.
 
+Capabilities describe general agent operations. Coding executors and workspace
+probes are one specialization. Other bindings can read documents, query datasets,
+or act on scoped service resources. The host must implement the domain's
+identity, freshness, credentials, effect confirmation, and enforcement rules;
+publishing the same interface does not make those guarantees interchangeable.
+
 ## Description, binding, and grant
 
 | Object | Meaning | Authority |
@@ -138,7 +144,8 @@ unknown. A probe approval is not approval for subsequent delegated work.
 | `unknown` | Observation could not establish usability. |
 
 Only `present` can become a route, with separate admission. Cached observations
-bind definition, implementation, workspace, and freshness identity. Local
+bind definition, implementation, resource/account scope, and freshness identity;
+the workspace is that scope for a coding binding. Local
 presence MUST NOT appear in public heads. Deliberate encrypted fleet inventory
 requires a separately consented application.
 

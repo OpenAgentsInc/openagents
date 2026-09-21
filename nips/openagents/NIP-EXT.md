@@ -9,6 +9,12 @@ This NIP distributes immutable component packages with signed provenance.
 It does not grant execution, synchronize private machine inventories, or
 require the catalog to be online for every local invocation.
 
+Packages can specialize any supported agent domain. A domain profile is an
+assembly of existing schemas, sources, operations, programs, guidance, and
+evaluations plus host-owned bindings and policy. It is not a new component kind
+or permission mechanism. Coding packages add repository-specific behavior;
+document, research, or business packages use the same distribution contract.
+
 ## Kinds
 
 These are OpenAgents draft assignments, not upstream registrations.
@@ -118,7 +124,7 @@ A skill definition has `v: "openagents.skill.v1"`, `requires`, `id`,
 `description`, `body` (ArtifactRef), `applicability` (format/task-class IDs),
 `allowed_operations` (qualified IDs), `lifetime` (`operation`, `task`, or
 `session`), and `hooks` (possibly empty). Optional bodies are progressively
-loaded and revision-checked. Mandatory host/user/repository constraints are
+loaded and revision-checked. Mandatory host/user/scope constraints are
 resolved by scope and precedence independently of semantic relevance.
 
 A hook has `event`, `operation: DefinitionRef`, typed `input`, `bounds`,

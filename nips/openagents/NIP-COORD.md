@@ -10,7 +10,9 @@ All artifacts include `v`, `requires`, and optional inert `meta`. Private
 `3188` envelopes carry separately signed proposals/receipts. RUN records refer
 to accepted transitions. No additional event kind or consensus algorithm is
 introduced. One admitted coordinator owns each scope; hosts can use this
-contract locally without a relay or additional model calls.
+contract locally without a relay or additional model calls. Tasks can target
+documents, datasets, business records, or other admitted resources; a repository
+and a writing worktree are optional domain mechanisms.
 
 ## Coordinator admission and operations
 
@@ -19,7 +21,7 @@ A coordinator descriptor has `v: "openagents.coordinator.v1"`, `scope`
 (RUN identity), `capability` (DefinitionRef), `policy` (ArtifactRef), and
 `resources` (ArtifactRef to the exact resource namespace). The owner admits
 this descriptor independently. A self-published descriptor cannot acquire
-control over another workspace. Restart cannot reset the epoch or claim counter.
+control over another resource scope. Restart cannot reset the epoch or claim counter.
 
 CAP bindings expose operations using typed input and output SchemaRefs. Remote
 operations use CJ execution v1, so signer, deadline, idempotency, replay,
@@ -78,9 +80,9 @@ A claim request has `v: "openagents.claim-request.v1"`, `proposal`
 Resources are entries `{id, mode, snapshot}`: exact coordinator resource ID,
 `read` or `write`, and snapshot ArtifactRef or null. Immutable snapshot reads
 can share; unsnapshotted live reads conflict with writes. Multiple writes to
-one resource conflict. Canonical paths, symlink/case aliases, repository-wide
-locks, and logical resource overlap are resolved by the host namespace before
-claiming. A model's claim that edits are independent cannot override overlap.
+one resource conflict. Canonical paths, symlink/case aliases, account/resource
+aliases, collection-wide locks, and logical overlap are resolved by the host
+namespace before claiming. A model's claim of independence cannot override overlap.
 Validate requested expiry against the coordinator's trusted clock and maximum
 lease duration; stale or excessively future requests refuse. Published event
 timestamps cannot extend a lease.
@@ -102,6 +104,14 @@ automatically frees unknown reservations. Unsupported fencing confines writers
 to isolated workspaces with a protected integration gate, or refuses shared
 writing. Host clocks, transactional storage, and process termination implement
 these guarantees; relay timestamps and addressable heads cannot do so.
+
+For external systems, a local claim controls only participating dispatchers.
+It cannot prevent a person or independent service from changing the same
+record. Bind provider version/precondition checks and downstream idempotency
+to the operation; follow the shared external-effect assurance contract. Isolated
+drafts can protect proposal preparation, but their acceptance still needs a
+supported conditional update or explicitly admitted weaker assurance. A Git
+worktree does not isolate an email, payment, or physical side effect.
 
 A control has `v: "openagents.coordination-control.v1"`, `coordinator`,
 `proposal`, `claim` (ArtifactRef or null), `action` (`renew`, `release`,
@@ -135,28 +145,38 @@ Task closure disables new background triggers after its one admitted closure
 notification. Derived background results never recursively trigger themselves.
 
 Read-only source access can still cost money and disclose data. Background
-plans cannot write the primary workspace, change policy, publish externally,
+plans cannot mutate authoritative domain resources, change policy, publish externally,
 train a model, or mirror live traffic merely by selecting `view`. Such effects
 require a separately admitted operation and explicit scope. Store proposed
-tests/patches as artifacts; execution, integration, and publishing remain
-separate. Apply foreground priority, cancellation, total concurrency/spend,
+tests, patches, messages, or record updates as proposal artifacts; execution,
+integration, and publishing remain separate. Apply foreground priority,
+cancellation, total concurrency/spend,
 and fair resource accounting at the host scheduler.
 
 ## Findings and integration
 
 A finding has `v: "openagents.finding.v1"`, `proposal`, `frame`, `snapshot`,
 `context` (ArtifactRefs), `producer` (pubkey), `kind` (`explanation`, `review`,
-`test_proposal`, `patch_proposal`, `evaluation`, or `fact`), `content`
+`proposal`, `test_proposal`, `patch_proposal`, `evaluation`, or `fact`), `content`
 (ArtifactRef), `evidence` (descriptor ArtifactRefs), `receipts`, `valid_until`,
 `verification`, and `integration`. Receipts are ArtifactRefs; the last two
 fields use common states. Authenticate producer and admitted attempt through
 the original CJ result or its signed envelope. A free-standing finding is an
 attributable proposal, never authority to merge or proof of task completion.
 
+Generic `proposal` content must use the admitted operation's output SchemaRef
+and identify the proposed domain action and target. Coding-specific
+`test_proposal` and `patch_proposal` remain supported specializations. Merely
+reading a proposal cannot send a message, update a record, or apply a patch.
+
 Before using a finding, compare task revision, snapshot, policy, and acceptance
 identities. Changed inputs mark it stale; use for history or explicitly
-revalidate. Integration requires current resource claims, exact proposed/base
-artifact identity, independent checks, and an authorized atomic application.
+revalidate. Integration requires current resource claims, exact proposal and
+target-state identities, independent checks, and authorized application under
+the admitted effect contract. Use atomic application where the destination
+supports it; otherwise record the explicitly accepted weaker assurance and
+confirmation/reconciliation evidence. Never report atomicity for a sequence
+of unrelated API calls.
 Parallel successful children do not establish parent success. Show pending,
 rejected, stale, and unknown findings separately from accepted results.
 

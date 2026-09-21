@@ -2,6 +2,10 @@
 
 Product direction, architecture proposals, and implementation plans.
 
+Coder is the first specialization of [OpenAgents' general agent infrastructure](../../agents/README.md).
+These documents focus on coding; shared protocols and runtime contracts also
+serve other domains through explicit adapters and policy.
+
 [Documentation index](../README.md)
 
 The [program and extension specification](../../extensions/README.md) applies

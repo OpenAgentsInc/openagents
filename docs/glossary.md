@@ -93,11 +93,20 @@ does for plugins and packages.
 | Comparison | Implemented | What two sets of rows may be read as: a door comparison when the items and question text match, a question-text comparison when the items match and the text differs, and nothing at all when the items differ. |
 | Regression check | Implemented | `gym regress` compares a door against its own previous run at the same perturbation and suite digest. It refuses the comparison when either has moved. |
 
+## Agent infrastructure
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| General agent infrastructure | Partial | The reusable decision, workflow, extension, evidence, authority, execution, coordination, and evaluation contracts. Coder is the first specialization; broader profile support requires concrete bindings and workload evidence. See [the architecture](agents/README.md). |
+| Domain profile | Designed | An assembly of existing schemas, sources, operations, programs, guidance, and evaluation plus host-owned bindings and policy for a class of work. It is not a new Nostr kind, EXT component kind, or grant. |
+| Resource | Designed | A host-scoped object or effect destination whose identity includes its authoritative system and tenant/account scope, such as a file, document, dataset, or service record. Shared NIP contracts require domain-specific version and effect semantics. |
+| External observation | Designed | A versioned capture under a pinned source adapter with declared immutable, conditional, or observational consistency. Captured bytes do not establish an atomic live snapshot. See [shared contracts](../nips/openagents/contracts.md#external-observations). |
+
 ## Coder
 
 | Term | Status | Definition |
 | --- | --- | --- |
-| Coder | Implemented | The agent in `crates/coder`. `classify` routes each turn through a decision model, and `generate` answers through an Open Responses door. |
+| Coder | Implemented | OpenAgents' first agent specialization, for coding, in `crates/coder`. `classify` routes each turn through a decision model, and `generate` answers through an Open Responses door. |
 | Coder Terminal | Implemented | The terminal interface in `crates/coder-terminal`: the amber intensity ladder, the framed composer, and the shell they draw. |
 | Shell round | Implemented | One cycle of the shell loop. The model proposes a plan, the terminal runs the commands, and the outcomes return for the next judgment. |
 | Plan | Implemented | A reply that is one JSON object carrying the schema version, commands, and the reason for each, rather than prose. A reply is a plan only if it is one whole object under the supported version, so a reply that quotes one as an example is prose. |
@@ -171,7 +180,7 @@ implemented in OpenAgents.
 | Term | Status | Definition |
 | --- | --- | --- |
 | Relay | Implemented | The Nostr relay in `crates/nostr-relay`: one binary and one Postgres database, serving `relay.openagents.com`. |
-| NIP-CJ | Partial | Coder jobs. Conversation, decision, and execution families carry requests, results, and feedback with NIP-44 payloads and NIP-42 socket authentication. Conversation transport is implemented; the other network families need implementation. See [NIP-CJ](../nips/openagents/NIP-CJ.md). |
+| NIP-CJ | Partial | Agent jobs, retaining the historical CJ identifier. Conversation, decision, and execution families carry requests, results, and feedback with NIP-44 payloads and NIP-42 socket authentication. Decision/execution contracts are domain-independent. Conversation transport is implemented; the other network families need implementation. See [NIP-CJ](../nips/openagents/NIP-CJ.md). |
 | NIP-PRG | Partial | Programs. Addressable `30182` events discover typed workflows with pinned dependencies and per-step bounds. The local runtime implements an earlier subset; revised v1 also defines composition, native invocation, and the plugin ABI. Unsupported semantics refuse the whole program. |
 | NIP-CAP | Partial | Capabilities. Addressable `30180` and `30181` events carry portable execution definitions and operator preferences. Revised v1 separates definitions, host bindings, and grants; the earlier local readers require migration. |
 | NIP-EXT | Designed | Extension distribution: releases, listings, descriptors, revocation checkpoints, and namespace migration. See [NIP-EXT](../nips/openagents/NIP-EXT.md). |

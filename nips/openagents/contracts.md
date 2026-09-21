@@ -9,6 +9,22 @@ MUST validate the complete required contract before any effect. Signatures
 establish authorship; hashes establish identity; neither grants permission or
 proves execution, safety, calibration, or continued availability.
 
+## Domain scope
+
+These are general agent contracts. Coder is the first specialization, not a
+required runtime or data model. Tasks need an objective, scoped inputs, admitted
+operations, and acceptance criteria; they do not require a repository, shell,
+patch, or terminal. Programs and component schemas carry domain-specific
+types. A host supports only the adapters and semantics it can actually validate
+and enforce. See the [architecture](../../docs/agents/README.md).
+
+A resource is a host-scoped object or effect destination: for example a file,
+document, dataset, account record, message destination, or calendar. Its scope
+includes the tenant/account and authoritative system. Names, URLs, and matching
+display IDs do not establish that two resources share identity or authority.
+Bindings define canonical identity, version/precondition checks, conflict
+scope, read consistency, and the evidence available after an operation.
+
 ## Encoding and compatibility
 
 New bodies are UTF-8 JSON objects with a required `v`. Reject duplicate object
@@ -107,6 +123,29 @@ host; the last three are booleans. Empty arrays and false deny those effects.
 Raw paths, credentials, or wildcard grants MUST NOT be inferred from a scope
 name. Unknown effects are not equivalent to read-only behavior.
 
+`writes` covers all external mutations, including sending messages, changing
+records, publishing, and actuating a device; it is not limited to filesystem
+writes. `network` permits only admitted destinations and is not permission to
+mutate them. An adapter must declare both when an API call performs a mutation.
+Credential acquisition and use remain host-owned and scoped to the actual
+tenant, account, recipient, purpose, and operation.
+
+For an external mutation, the binding's pinned contract MUST define the
+resource/expected-version checks, downstream idempotency support, confirmation
+evidence, cancellation limits, and reconciliation operation where available.
+A transport acknowledgment is not confirmation that the intended domain effect
+occurred. Missing confirmation remains unknown. A local claim cannot fence
+another system's independent writers; require a supported conditional mutation,
+trusted serialization contract, or explicit weaker assurance accepted by policy.
+If the task requires a guarantee that none can supply, refuse.
+
+Compensation is a separately admitted action with its own possible failure;
+it does not erase the original effect or establish atomic rollback. A sent
+message, external payment, or physical action cannot be made reversible by
+running its invocation in a worktree. Domain-specific effect limits belong in
+supported operation schemas and policy; do not silently treat the compute
+budget as a cap on the amount a business operation can transfer or commit.
+
 Bounds use this initial vocabulary:
 
 | Bound | Meaning |
@@ -142,8 +181,12 @@ An evidence descriptor has `v: "openagents.evidence.v1"`, `requires`, `id`
 `source`, `capture`, `derived_from`, and `scope`:
 
 - `source`: `{kind, identity, version}`. `kind` is `repository`, `command`,
-  `decision`, `plugin`, `delegate`, or `document`; identity/version are stable
-  scoped strings whose interpretation is fixed by the producing adapter.
+  `decision`, `plugin`, `delegate`, `document`, or `external`; identity/version
+  are stable scoped strings whose interpretation is fixed by the producing
+  adapter. For `external`, source additionally requires `adapter` (DefinitionRef)
+  and `observation` (ArtifactRef to the observation contract below); `version`
+  equals that observation ArtifactRef's digest. External means an admitted
+  domain source, such as a service record, dataset, or device observation.
 - `capture`: `{complete, omitted_bytes, reason}`. `complete` is boolean;
   omitted bytes is a nonnegative integer or `null` when unknown; reason is
   `null` or a typed string supplied by the capture profile. Incomplete input
@@ -173,6 +216,38 @@ and context inside recipient-scoped encrypted storage or transport. Public
 package metadata never contains private task evidence. A local evidence ID
 does not imply a globally readable event or force a network read.
 
+### External observations
+
+An observation has `v: "openagents.observation.v1"`, `requires`, `resource`
+(`{scope, id}` with opaque host-scoped strings), `adapter` (DefinitionRef),
+`captured_at` (Unix seconds), `provider_revision` (opaque string or null),
+`content` (ArtifactRef or null), `consistency`, `valid_until` (Unix seconds
+or null), and optional inert `meta`. Consistency is `immutable`, `conditional`,
+or `observational`. At least a revision or retained content is required;
+otherwise record unavailability instead of fabricating a version.
+
+`immutable` identifies an immutable version under the pinned adapter's
+contract. `conditional` requires a provider revision usable as a precondition
+on a subsequent operation. `observational` records what was seen without a
+guarantee that the live resource stayed unchanged. A content hash alone never
+converts a live read into a transactional snapshot. Multiple observations at
+similar times do not establish an atomic snapshot across services. If supplied,
+validity expiry must follow capture time; expiry limits reuse but does not
+prove freshness until that time. Read freshness and write preconditions are
+separate checks at use/dispatch.
+
+The host records canonical resource identity and available provider evidence,
+retains partial-collection information in the evidence descriptor, and applies
+recipient policy to names, revisions, and content. For external evidence,
+`source.identity` equals `resource.id`, and the host validates `resource.scope`
+against the admitted namespace. Adapter references must match exactly. A CTX
+external source's `id` likewise identifies that resource within its scope.
+If observation content is present, it must agree with the source capture that
+the evidence describes; transformed content needs a derived evidence record.
+Unknown source schemas
+or assurance refuse where required, rather than being treated as repository
+snapshots. Locally sampled data can use the same contract without a network call.
+
 ## Outcomes and records
 
 Shared execution outcomes are `completed`, `refused`, `failed`, `cancelled`,
@@ -181,6 +256,14 @@ not evidence that a dispatched effect did not occur. Record `dispatched`
 separately. Verification is `passed`, `failed`, `unverifiable`, or `not_run`;
 integration is `accepted`, `rejected`, `pending`, or `not_requested`.
 These fields MUST NOT collapse into one success boolean.
+
+Verification means checking domain acceptance against the exact observed or
+produced state: tests for code, citation checks for research, reconciliation
+for a record update, or another admitted checker. Integration means accepting
+a proposal into the authoritative destination when requested; it is not
+synonymous with a Git merge. Domains with no such adoption step record
+`not_requested`. A successful analysis or a prepared draft does not establish
+that a separate external action occurred.
 
 Common refusal codes are `malformed`, `unsupported_version`,
 `unsupported_feature`, `not_admitted`, `unavailable`, `content_unavailable`,

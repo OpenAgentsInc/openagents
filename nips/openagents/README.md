@@ -1,21 +1,23 @@
 # OpenAgents protocols
 
-These specifications describe how OpenAgents Coder can share capabilities,
-workflows, context, and work across tools, models, and machines. They give
+OpenAgents is building general agent infrastructure. Coding agents are the
+first specialization, delivered through Coder. These specifications describe
+how agents can share capabilities, workflows, context, and work across tools,
+models, and machines. They give
 clients and workers a common way to answer practical questions: What can this
 agent do? What is it allowed to see or change? Which version ran? What evidence
 supports its answer? What happens if the connection breaks?
 
 ## Why this exists
 
-The goal is a coding agent whose work you can inspect, reuse, and control.
+The goal is agent work you can inspect, reuse, and control across domains.
 A task should retain its objective, instructions, source evidence, budget,
 and results as it moves between operations or machines. That makes it possible
 to give different models relevant context, share observations with parallel
 tasks, and recover interrupted work while preserving what is still unknown.
 
-This supports the TypeSafe coding-agent design: small typed model judgments
-help select relevant evidence and useful operations, while ordinary code owns
+The TypeSafe coding-agent design is the first concrete application: small typed
+model judgments help select relevant evidence and useful operations, while code owns
 permissions, scheduling, budgets, and execution. Programs describe reusable
 workflows. Extensions distribute their tools, Wasm plugins, skills, and other
 components. The protocols define how these pieces identify themselves and
@@ -23,8 +25,8 @@ exchange information so that different implementations can work together.
 
 For users, the intended benefits are portable extensions, explicit control
 over where private context goes, understandable approvals, recoverable tasks,
-and results linked to the code and checks that produced them. Evaluation
-records let you assess whether context selection, model routing, or background
+and results linked to the inputs, actions, and checks that produced them.
+Evaluation records let you assess whether context selection, model routing, or background
 assistance improves the complete task, including its cost and failures.
 
 ## Why use Nostr
@@ -37,9 +39,33 @@ without depending on one application's private message format.
 
 Hosts enforce access, run tools, manage credentials, and coordinate effects.
 Relays store and deliver the records under their configured privacy and
-retention policies. The same artifact formats also work locally; using Coder
+retention policies. The same artifact formats also work locally; using an agent
 on one machine does not require publishing each observation or making a relay
 round trip for each action.
+
+## What generalizes and what is specific to coding
+
+The shared core is identity, typed operations and workflows, extension
+distribution, evidence and context, permissions, routing, budgets, task
+coordination, recovery, and evaluation. Research, document, data-analysis,
+and business-workflow agents can use those same contracts with their own
+sources, operations, policies, and acceptance criteria. They do not need a Git
+repository, terminal, shell, or coding model to participate.
+
+Coder supplies the first domain adapters: repository snapshots, code search,
+compiler diagnostics, shell execution, worktrees, patch review, tests, and Git
+integration. A research agent could instead capture documents and produce a
+cited report; a business-workflow agent could inspect records and propose an
+authorized update. Resource versions, evidence, grants, and verification still
+matter, but each domain defines what they mean and how they are enforced.
+
+General protocols do not make every domain ready to use. Hosts need concrete
+adapters, effect controls, credentials, and workload evaluations. The
+[general agent architecture](../../docs/agents/README.md) defines that boundary;
+the [remaining architecture work](../../docs/agents/roadmap.md) tracks external
+effects, durable waits, event-driven work, and other needs beyond the initial
+coding specialization. The `CJ` identifier is retained for compatibility;
+its decision and execution families are domain-independent.
 
 ## How the pieces fit together
 

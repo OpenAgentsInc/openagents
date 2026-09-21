@@ -11,6 +11,13 @@ locally by default. Private reports use the scoped `3188` envelope; approved
 public reports may use `3189` below. Execution/decision receipts, ATIF, and
 Gym result identities are retained and referenced, not rewritten.
 
+Suites are domain-specific and reports are general. A coding suite may check
+tests and patches; research may check citations and coverage; a records workflow
+may check correct fields, recipients, and confirmed effects. Task success,
+harmful error directions, human escalation, and irreversible outcomes must be
+defined for the actual workload. A coding benchmark cannot admit an agent for
+another domain merely because both use the same model or NIP schemas.
+
 ## Suite identity and intended claim
 
 A suite has `v: "openagents.eval-suite.v1"`, `id` (qualified component ID),

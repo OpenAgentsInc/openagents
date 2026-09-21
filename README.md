@@ -1,10 +1,16 @@
 # OpenAgents
 
-OpenAgents is building **Coder**: a coding agent that lives in your
-terminal, thinks in two stages, runs shell commands on your machine, and
-talks to its backend over a public Nostr relay — no account, no bearer
-token, no HTTP API. This repository is its home: the agent, the relay,
-the protocol, and the SDKs, all in Rust, all public.
+OpenAgents is building **general agent infrastructure**: typed decisions,
+programs, extensions, evidence, permissions, execution, and coordination that
+can serve many kinds of agents. **Coder**, the terminal coding agent, is the
+first specialization. It supplies concrete repository, shell, test, and code
+review workflows that exercise those shared foundations.
+
+This repository contains the agent, decision-model services and SDKs, relay,
+and public protocols. Product implementation is Rust, with the documented Swift
+bridge for Apple's on-device model. The [general agent architecture](docs/agents/README.md)
+separates reusable contracts from domain adapters and records what remains
+before other specializations can claim support.
 
 ## What Coder is
 
@@ -104,10 +110,12 @@ tune, and test — not a paragraph you hope a bigger model got right.
 
 `nips/` holds three lanes: `official/` (synced from nostr-protocol),
 `block/` (synced from block/buzz — the app-logic-as-NIPs model), and
-`coder/` (authored here — NIP-CJ and whatever follows). `manifest.json`
-pins the synced lanes; `scripts/sync-nips.sh` checks parity. Design docs
-live in `docs/coder/`: the service spec, the relay backend plan, and
-`shell-loop.md` for the command loop.
+`openagents/` (authored here — the shared agent protocols). `manifest.json`
+pins the synced lanes; `scripts/sync-nips.sh` checks parity. The
+[protocol overview](nips/openagents/README.md) explains how the contracts fit
+together. [General architecture](docs/agents/README.md) covers the shared
+infrastructure; [Coder design](docs/coder/design/README.md) covers the first
+specialization.
 
 ## Run it
 

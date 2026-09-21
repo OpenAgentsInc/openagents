@@ -6,6 +6,12 @@ The [shared contracts](contracts.md) and [NIP-CJ](NIP-CJ.md) define payload
 identity and remote admission. Nostr transports attributable records; it does
 not provide a transactional job lock or exactly-once effects.
 
+Runs are domain-independent. A task/base identity names the admitted input
+state or external observations; it need not be a Git commit. Domain adapters
+define confirmation and reconciliation evidence. Receipt of an API response,
+acceptance of a proposal, verification, and the actual external effect remain
+distinct facts, including when the effect is irreversible.
+
 ## Kinds and privacy
 
 | Kind | Class | Record |

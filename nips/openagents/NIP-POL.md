@@ -55,16 +55,20 @@ Entries have:
 | --- | --- |
 | `id`, `body` | Stable slug and exact content ArtifactRef. |
 | `source` | Authenticated source ArtifactRef, including repository/source version where applicable. |
-| `authority` | `host`, `user`, `repository`, or `optional`; determined by the host's provenance rules. |
+| `authority` | `host`, `user`, `scope`, `repository`, or `optional`; determined by the host's provenance rules. `scope` covers an independently trusted organization, project, account, or collection policy; `repository` is the coding-specific source. |
 | `scope` | `{task, resources, operations}`: task ID or null and exact host resource/operation IDs. Empty resource/operation lists mean all within the parent grant, never wider. |
 | `mandatory` | Boolean fixed by host resolution, not by relevance ranking. |
 | `lifetime` | `operation`, `task`, or `session`. |
 | `activation` | `{kind, evidence}`: `mechanical`, `explicit`, or `semantic`, with receipt/source ArtifactRefs. |
 | `expires_at` | Unix seconds or null; task/session closure still expires its entries. |
 
-Host/user/repository scope resolution precedes optional relevance. Canonical
-path, directory ancestry, configuration, and source revisions are host facts;
-the protocol does not standardize every repository's filename convention.
+Host, user, and admitted scope-policy resolution precedes optional relevance.
+Repository ancestry is one scope mechanism; account, document-collection, and
+organization membership use their own trusted adapters. Canonical resource
+identity, configuration, membership, and source revisions are host facts.
+The host establishes the policy issuer's authority over that scope independently;
+neither document content nor an organization name establishes it. The protocol
+does not standardize every repository's filename convention or organization hierarchy.
 Semantic activation applies only to optional entries. Mandatory instructions
 remain in the task frame across compaction, routing, restart, and delegation.
 An unsatisfied mandatory instruction blocks the affected operation. Preserve
@@ -86,6 +90,11 @@ An action artifact has `v: "openagents.action.v1"`, `task_frame`, `snapshot`,
 is the approval subject. Script review binds interpreter, executable/script,
 argument-file, working-directory, and relevant configuration identities in the
 binding/preconditions. Mutable executable bytes invalidate prior review.
+For non-code actions, bind the exact target account/resource, recipient,
+typed payload, provider revision, and domain limits instead. Authorizing a
+draft, analysis, or proposed mutation does not authorize sending or applying it.
+One approval covers the named action only; threshold/multi-party approvals
+need a separate supported policy and are not implied by a list of signatures.
 
 An approval request has `v: "openagents.approval-request.v1"`, `request`,
 `action` (ArtifactRef), `requester`, `approver` (pubkeys), `expires_at`, and

@@ -10,6 +10,12 @@ unchanged. The [analysis](typesafe-agent-analysis.md),
 [extension opportunity assessment](../../extensions/opportunities.md) provide
 the product rationale and proposed measurements.
 
+Coding is the first specialization of the [general agent architecture](../../agents/README.md).
+The shared state, permission, workflow, coordination, and evaluation contracts
+apply across domains. This document retains coding examples to explain the
+source proposal; the [general architecture notes](../../agents/roadmap.md)
+cover domain adapters and remaining gaps beyond that initial specialization.
+
 The main missing capability is reusable, versioned state that can serve many
 recipients and tasks. Nostr should make that state, its authority, and its
 outcomes exchangeable. Hosts must collect it, decide what to supply, enforce

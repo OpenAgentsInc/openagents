@@ -1,15 +1,22 @@
-# Coder programs and extensions
+# OpenAgents programs and extensions
 
 Status: target specification, 2026-09-21. This directory adapts the plugin
-system documented in the reference Coder repository to OpenAgents' TypeSafe
-coding-agent architecture. It specifies new behavior; it does not install a
-plugin host, enable a package, or claim a measured improvement.
+system documented in the reference Coder repository to OpenAgents' general
+agent architecture, with Coder as the first specialization. It specifies new
+behavior; it does not install a plugin host, enable a package, or claim a
+measured improvement.
 
 The product is a **program and extension system**. Programs define reusable
 workflows. Plugins provide bounded WebAssembly operations within those
 workflows. Skills provide scoped guidance. Native and external adapters connect
 host capabilities. A package distributes these components together without
 making their execution or permission models interchangeable.
+
+These component contracts generalize across domains. The examples and initial
+host implementation here focus on coding. Other profiles supply their own
+sources, operations, policies, and acceptance criteria through the same
+contracts; see [general agent infrastructure](../agents/README.md) and its
+[remaining work](../agents/roadmap.md).
 
 A developer should be able to install a Rust investigation package, ask Coder
 to diagnose a failure, and inspect which workflow ran, what evidence it used,

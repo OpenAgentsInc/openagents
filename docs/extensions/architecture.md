@@ -31,6 +31,12 @@ Wasm host or make a model call behind the host's accounting.
 
 ## Component ownership
 
+This is shared agent infrastructure with Coder as its first consumer. Repository,
+shell, compiler, and Git operations are domain adapters. A research or records
+profile supplies different adapters through the same component, context,
+authority, and execution boundaries. The [general architecture](../agents/README.md)
+defines that separation and the guarantees each domain must supply.
+
 ```mermaid
 flowchart TD
     Request[User request and host policy] --> Task[Task frame]

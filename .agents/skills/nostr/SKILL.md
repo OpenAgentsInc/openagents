@@ -59,6 +59,8 @@ Read the spec before the code. The files you need most often:
 - `docs/coder/design/typesafe-agent-protocol-addendum.md` — what belongs in
   Nostr and what hosts/clients must implement; complete source-proposal coverage.
 - `docs/protocol/implementation-plan.md` — implementation across all lanes.
+- `docs/agents/README.md` and `docs/agents/roadmap.md` — general agent
+  infrastructure, Coder's domain boundary, and remaining non-code contracts.
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.
 

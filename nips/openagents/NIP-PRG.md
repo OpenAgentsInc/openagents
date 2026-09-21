@@ -12,6 +12,12 @@ and contains no arbitrary executable expressions. The
 governs bindings, [NIP-EXT](NIP-EXT.md) distribution, and
 [NIP-RUN](NIP-RUN.md) durable execution records.
 
+Programs are domain-independent. Their sources, operations, typed schemas,
+and acceptance criteria provide the specialization. A research workflow can
+query documents, assess evidence, and produce a report without a repository;
+a business workflow can invoke an admitted record operation. Code edits and
+test runs are examples, not required step semantics.
+
 ## Discovery and immutable execution
 
 Kind `30182` remains an addressable program discovery head, with one `d`
@@ -188,6 +194,14 @@ Entries contain child `handle`, `name`, `type`, and `version`; type is `file`
 or `directory`. Cursors/handles are invocation-scoped. Reads count against
 aggregate budgets. Only granted snapshots produce handles. Traversal, symlink
 escape, cross-run handles, and changed snapshot versions refuse.
+
+These are virtual snapshot entries, not ambient filesystem access. A host can
+materialize a document, dataset partition, or service capture as a `file` and
+an admitted collection as a `directory`. The entry's version binds retained
+bytes and their source observation. Its name is a logical label, not permission
+to access an OS path or call an API. Collect live data through a separately
+admitted source operation before exposing its snapshot to a guest. This keeps
+the same bounded ABI usable beyond coding without adding guest network effects.
 
 Validate imports before instantiation and authorize every import invocation.
 Import names cannot prove which resource a call accesses. Bound compilation,

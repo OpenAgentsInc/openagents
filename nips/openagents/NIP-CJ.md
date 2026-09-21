@@ -1,4 +1,4 @@
-# NIP-CJ — Coder Jobs
+# NIP-CJ — Agent jobs
 
 `draft` `optional`
 
@@ -6,6 +6,14 @@ A family of request/response protocols carried over Nostr. Conversation jobs
 retain their existing integer versions, decision jobs retain the System One
 contract, and the new execution family is `openagents.execution.v1`. The
 families have distinct kinds and MUST NOT reinterpret each other's payloads.
+
+`CJ` is the historical identifier from Coder, the first specialization. It is
+retained along with existing kind numbers and schema IDs. Decision and execution
+jobs are domain-independent: a compatible host can run a document, research,
+data, or business operation under the same contracts. The conversation examples
+below describe the existing Coder terminal profile; they do not require every
+agent to use a terminal, repository, or shell. Domain schemas and host admission
+determine which tasks a worker can actually accept.
 
 The relay transports encrypted traffic and does not authorize execution.
 Conversation/decision traffic remains ephemeral. Execution jobs require durable

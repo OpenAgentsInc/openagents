@@ -12,6 +12,15 @@ and public evaluation declaration `3189`. These extend the target backlog;
 the earlier issue descriptions and baseline below are not proof that the new
 contracts are implemented.
 
+These workstreams build general agent infrastructure, with coding as the first
+specialization. The [general architecture](../agents/README.md) separates the
+shared core from domain adapters. Its [roadmap](../agents/roadmap.md) adds
+non-code conformance cases and records follow-up designs for external effects,
+durable waits, external event triggers, and richer authority/media contracts.
+Shared-schema work must include external observations, scope instructions,
+generic proposals, and domain-appropriate confirmation; Git/test behavior alone
+cannot establish general interoperability.
+
 ## Scope and baseline
 
 The baseline is repository revision `fdfe937d51b743d8bf6967423d34616b429da33b`.
