@@ -167,6 +167,28 @@ The same contract is what `gym` scores. The caller-side flow:
 `docs/gym/measured-records.md` is the reference. A caller's own labelled
 items build the same way — `docs/gym/` covers the suite schema.
 
+## Install and support
+
+`oak` ships in this repository and builds with the workspace toolchain:
+
+```bash
+cargo build -p oak --release   # binary at target/release/oak
+oak version                    # reports the crate version
+```
+
+Versioning follows the crate version in `crates/oak/Cargo.toml`; packaged
+installers, checksums, and foreign-language SDKs are tracked separately in
+the roadmap and do not exist yet.
+
+| Surface | Status |
+|---|---|
+| `oak ask` — state, lines, NDJSON, `--select`, `--uncertain-below`, `--request-id`, bounded concurrency and retries | Supported |
+| `oak models` | Supported |
+| `oak version` | Supported |
+| Labels, dimensions, multi-label output | Proposed — lands with the classification route |
+| Capacity and review selection | Proposed — lands with the review route |
+| Packaged SDKs (Python, Go) | Proposed — tracked under the packaging work |
+
 ## Limits and honesty
 
 - The service bounds body bytes, questions per call, total options,

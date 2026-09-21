@@ -148,6 +148,10 @@ fn main() {
     let mut quiet = false;
     let mut timeout = Duration::from_secs(60);
     match verb.as_str() {
+        "version" | "--version" => {
+            println!("oak {}", env!("CARGO_PKG_VERSION"));
+            std::process::exit(EXIT_ANSWERED);
+        }
         "models" => {
             while let Some(flag) = args.next() {
                 match flag.as_str() {
