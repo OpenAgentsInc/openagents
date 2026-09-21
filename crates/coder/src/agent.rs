@@ -17,8 +17,8 @@ use serde_json::Value;
 use crate::about::About;
 use crate::capability;
 use crate::classify::{
-    Judgment, Route, ShellRoute, judgment_of, questions, route, shell_questions, shell_verdict_of,
-    state_of,
+    Judgment, Route, ShellRoute, judgment_of, questions, questions_provenance, route,
+    shell_provenance, shell_questions, shell_verdict_of, state_of,
 };
 use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
 use crate::permit::Permit;
@@ -551,40 +551,52 @@ impl Agent {
             Ok(response) => {
                 let judgment = judgment_of(&response);
                 let route = route(&judgment);
-                self.record_decision(Decision {
-                    id: String::new(),
-                    name: "classify".to_string(),
-                    door: classify.base_url().to_string(),
-                    model: response.model.clone(),
-                    request: asked,
-                    answers: answers_value(&response.answers),
-                    route: Some(route.word().to_string()),
-                    error: None,
-                    milliseconds,
-                });
+                self.record_decision(
+                    questions_provenance(),
+                    Decision {
+                        id: String::new(),
+                        name: "classify".to_string(),
+                        door: classify.base_url().to_string(),
+                        model: response.model.clone(),
+                        request: asked,
+                        answers: answers_value(&response.answers),
+                        route: Some(route.word().to_string()),
+                        error: None,
+                        milliseconds,
+                    },
+                );
                 Classified::Judged(Verdict { route, judgment })
             }
             Err(error) => {
-                self.record_decision(Decision {
-                    id: String::new(),
-                    name: "classify".to_string(),
-                    door: classify.base_url().to_string(),
-                    model: classify.default_model().to_string(),
-                    request: asked,
-                    answers: Value::Null,
-                    route: None,
-                    error: Some(error.to_string()),
-                    milliseconds,
-                });
+                self.record_decision(
+                    questions_provenance(),
+                    Decision {
+                        id: String::new(),
+                        name: "classify".to_string(),
+                        door: classify.base_url().to_string(),
+                        model: classify.default_model().to_string(),
+                        request: asked,
+                        answers: Value::Null,
+                        route: None,
+                        error: Some(error.to_string()),
+                        milliseconds,
+                    },
+                );
                 Classified::Skipped(format!("classify failed ({error}) — generating unrouted"))
             }
         }
     }
 
-    /// Puts one decision call in the trace, when there is one.
-    fn record_decision(&mut self, decision: Decision) {
+    /// Puts one decision call in the trace, when there is one, with the
+    /// wording record beside it — the same fields a file-defined
+    /// question set's provenance carries on a program's `decide` step.
+    fn record_decision(&mut self, provenance: Value, decision: Decision) {
         if let Some(trace) = &mut self.trace {
-            trace.decision(decision);
+            let mut call = decision.call();
+            if let Some(fields) = provenance.as_object() {
+                call.extra.extend(fields.clone());
+            }
+            trace.decision_call(call);
         }
     }
 
@@ -834,32 +846,38 @@ impl Agent {
             Ok(response) => {
                 let verdict = shell_verdict_of(&response);
                 let route = verdict.route();
-                self.record_decision(Decision {
-                    id: String::new(),
-                    name: "shell_judge".to_string(),
-                    door: classify.base_url().to_string(),
-                    model: response.model.clone(),
-                    request: asked,
-                    answers: answers_value(&response.answers),
-                    route: Some(route.word().to_string()),
-                    error: None,
-                    milliseconds,
-                });
+                self.record_decision(
+                    shell_provenance(),
+                    Decision {
+                        id: String::new(),
+                        name: "shell_judge".to_string(),
+                        door: classify.base_url().to_string(),
+                        model: response.model.clone(),
+                        request: asked,
+                        answers: answers_value(&response.answers),
+                        route: Some(route.word().to_string()),
+                        error: None,
+                        milliseconds,
+                    },
+                );
                 shell(ShellEvent::Verdict(verdict.line()));
                 route
             }
             Err(error) => {
-                self.record_decision(Decision {
-                    id: String::new(),
-                    name: "shell_judge".to_string(),
-                    door: classify.base_url().to_string(),
-                    model: classify.default_model().to_string(),
-                    request: asked,
-                    answers: Value::Null,
-                    route: None,
-                    error: Some(error.to_string()),
-                    milliseconds,
-                });
+                self.record_decision(
+                    shell_provenance(),
+                    Decision {
+                        id: String::new(),
+                        name: "shell_judge".to_string(),
+                        door: classify.base_url().to_string(),
+                        model: classify.default_model().to_string(),
+                        request: asked,
+                        answers: Value::Null,
+                        route: None,
+                        error: Some(error.to_string()),
+                        milliseconds,
+                    },
+                );
                 ShellRoute::Pass
             }
         }

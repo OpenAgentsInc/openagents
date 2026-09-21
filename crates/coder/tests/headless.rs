@@ -354,6 +354,77 @@ fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
     assert!(stub_answer(&String::from_utf8_lossy(&output.stdout)));
 }
 
+/// A routed turn's decision call names the function it asked: the
+/// trace records the same question-set identity, wording digest, and
+/// gate a file-defined set's provenance carries on a program step.
+#[test]
+fn a_routed_turn_records_the_functions_provenance() {
+    use std::io::{Read, Write};
+    use std::time::{Duration, Instant};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut socket = loop {
+            match listener.accept() {
+                Ok((socket, _)) => break socket,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "decision call was not made");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        };
+        socket.set_nonblocking(false).unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut buffer = [0u8; 8192];
+        let _ = socket.read(&mut buffer).unwrap();
+        let body=serde_json::json!({"model":"local-model","answers":{"action":{"type":"choice","choice":"respond","confidence":1.0,"probabilities":{"respond":1.0,"clarify":0.0,"end_conversation":0.0,"none":0.0}}}}).to_string();
+        write!(
+            socket,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let trace = dir.path().join("turn.atif.jsonl");
+    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+        .env_clear()
+        .current_dir(dir.path())
+        .env("HOME", dir.path())
+        .env("CODER_DECISION_PROFILE", "direct_local")
+        .env("CODER_DECISION_URL", url)
+        .env("CODER_DECISION_MODEL", "local-model")
+        .args(["-p", "hello", "--trace"])
+        .arg(&trace)
+        .output()
+        .unwrap();
+    server.join().unwrap();
+    assert!(output.status.success(), "{output:?}");
+
+    let recording = atif::log::read(&trace).expect("the trace reads back");
+    let document = recording.document();
+    let call = document["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|step| {
+            step["tool_calls"]
+                .as_array()
+                .and_then(|calls| calls.first())
+        })
+        .find(|call| call["function_name"] == "classify")
+        .expect("the turn asked the classify function");
+    assert_eq!(call["extra"]["question_set"], "coder-turns-v2");
+    assert_eq!(call["extra"]["gate"], "action");
+    assert_eq!(call["extra"]["set_digest"].as_str().unwrap().len(), 64);
+}
+
 /// The hosted profile keeps its two identities on the wire: the bearer
 /// credential travels in the `authorization` header, and the request
 /// names the model the profile asked for — what a gateway revalidates

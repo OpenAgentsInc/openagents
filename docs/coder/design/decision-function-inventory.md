@@ -10,8 +10,8 @@ that issue.
 
 | Function or set | Definition | Input and output | Consumer and evidence boundary |
 | --- | --- | --- | --- |
-| `coder-turns-v2` / `action` | `classify::questions` in `crates/coder/src/classify.rs` | Bounded conversation state; Choice among respond, clarify, end conversation, and none | Routes a turn; code-defined wording is not yet a file-registry function. See the [question baseline](../../decision-models/measurements/2026-09-20-coder-question-baselines.md). |
-| `coder-turns-v2` / `outcome` | `classify::shell_questions` in the same module | Shell-round context; Choice consumed by `ShellVerdict::route` | Decides how the loop continues; execution permission remains a separate host decision. The same baseline records the retained and retired questions. |
+| `coder-turns-v2` / `action` | `classify::questions` in `crates/coder/src/classify.rs` | Bounded conversation state; Choice among respond, clarify, end conversation, and none | Routes a turn. The trace records the same `question_set`, `set_digest`, and `gate` provenance a file-defined set emits, through `classify::questions_provenance`. See the [question baseline](../../decision-models/measurements/2026-09-20-coder-question-baselines.md). |
+| `coder-turns-v2` / `outcome` | `classify::shell_questions` in the same module | Shell-round context; Choice consumed by `ShellVerdict::route` | Decides how the loop continues; execution permission remains a separate host decision. Its trace record is `classify::shell_provenance`. The same baseline records the retained and retired questions. |
 | `openagents.program.v1` | `questions/program.json` | Request plus resolved program options; Choice including none | Selects only among programs the host resolved. [Program-selection evidence](../../decision-models/measurements/2026-09-19-program-selection.md) is workload-specific. |
 | `openagents.independence.v1` | `questions/independence.json` | Six-task wording; Noul independence, read-only, and tool-restriction judgments | Bound by no program since 2026-09-21; retained so the digests earlier runs recorded stay resolvable. |
 | `openagents.independence.v2` | `questions/independence-v2.json` | Listed tasks of any length; the same three Noul roles | Referenced by `programs/delegate-fan-out.json` and `programs/burn-down.json`. Host write footprints, dependency checks, and resource reservations remain authoritative. |
@@ -19,10 +19,14 @@ that issue.
 | `openagents.review-finding.v1` | `questions/review-finding.json` | One finding and captured change evidence; Noul judgment | Used by `programs/review-changes.json` after mechanical verification. Pinned reviewer execution and evidence bounds do not establish semantic accuracy. |
 
 File-defined sets carry schema version `v: 1` and their own IDs. Their contents
-are digested independently of the program that names them. A future unified
-function identity must preserve those historical digests and bind the actual
-question/options served, including supplied program choices. Renaming an entry
-cannot make different wording the same measured function.
+are digested independently of the program that names them. Code-defined
+functions share the contract: `coder-turns-v2` keeps its measured name, each
+function's wording digests through `questions::wording_digest` on the same
+`atif::digest` path a `Set` takes, and every decision call the turn records
+carries the resulting `question_set`, `set_digest`, `gate`, and
+`policy_version` fields beside the answer. A unified function identity
+preserves the historical digests and binds the actual wording served —
+renaming an entry cannot make different wording the same measured function.
 
 ## State and authority
 
@@ -45,8 +49,11 @@ held-out evidence before they can support a quality claim.
 
 ## Remaining integration
 
-1. Give code-defined turn and shell functions the same versioned contract and
-   digest path as file-defined sets, without changing measured wording.
+1. ~~Give code-defined turn and shell functions the same versioned contract and
+   digest path as file-defined sets, without changing measured wording.~~
+   Done: `questions_provenance` and `shell_provenance` emit the
+   `Set::provenance` record over the code-built wording, and the turn's
+   decision calls carry it.
 2. Bind each function to input/output schemas, state limits, allowed artifact
    profiles, evaluation/calibration evidence, and a versioned abstention policy.
 3. Connect opt-in review/fallback to the original result, reviewer result,
