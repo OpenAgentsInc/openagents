@@ -54,6 +54,8 @@ A run leaves everything in `~/.openagents/voyager/runs/<stamp>-<world>/`:
 
 To watch live, join the server with any Minecraft client at
 `127.0.0.1:25565` while the episode runs, or read the trace.
+[docs/minecraft/voyager-runbook.md](../minecraft/voyager-runbook.md) is
+the full runbook, spectator mode included.
 
 ## The bridge protocol
 
