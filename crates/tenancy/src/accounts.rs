@@ -481,6 +481,10 @@ impl From<std::io::Error> for Trouble {
 /// Why an account, membership, or authorization operation was refused.
 #[derive(Debug)]
 pub enum Refusal {
+    /// The presented key did not authenticate. This contains no bearer secret.
+    Authentication(crate::keys::AuthRefusal),
+    /// The authenticated key belongs to another tenant.
+    TenantMismatch,
     /// The store itself failed — not a membership answer.
     Store(Trouble),
     /// The named account is not one this store holds.
@@ -541,6 +545,8 @@ pub enum Refusal {
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Authentication(cause) => write!(f, "{cause}"),
+            Self::TenantMismatch => write!(f, "the key does not belong to this workspace's tenant"),
             Self::Store(trouble) => write!(f, "{trouble}"),
             Self::UnknownAccount(account) => {
                 write!(f, "`{account}` is not an account this store holds")
@@ -928,6 +934,30 @@ impl Accounts {
         })
     }
 
+    /// Authenticate a bearer key and authorize its current workspace membership.
+    /// The manifest must come from the caller's validated registry snapshot.
+    /// Key validity, tenant binding, and membership are separate checks; model
+    /// and action permissions still belong to the gateway's admission path.
+    /// These reads establish admission, not cancellation of already admitted work.
+    pub fn authenticate_key(
+        &self,
+        manifest: &crate::Manifest,
+        workspace: &str,
+        token: &str,
+    ) -> Result<MemberRef, Refusal> {
+        let key = crate::keys::authenticate(&self.dir, manifest, token)
+            .map_err(Refusal::Authentication)?;
+        let store = load(&self.dir).map_err(Refusal::Store)?;
+        let ws = store
+            .workspaces
+            .get(workspace)
+            .ok_or_else(|| Refusal::UnknownWorkspace(workspace.to_owned()))?;
+        if ws.tenant != key.tenant {
+            return Err(Refusal::TenantMismatch);
+        }
+        Self::principal_in_store(&store, workspace, &format!("key:{}", key.key_id))
+    }
+
     /// Resolve an external principal to its account, then authorize.
     ///
     /// This is the key-authorization half of the call: `authenticate`
@@ -940,6 +970,14 @@ impl Accounts {
         principal: &str,
     ) -> Result<MemberRef, Refusal> {
         let store = load(&self.dir).map_err(Refusal::Store)?;
+        Self::principal_in_store(&store, workspace, principal)
+    }
+
+    fn principal_in_store(
+        store: &Store,
+        workspace: &str,
+        principal: &str,
+    ) -> Result<MemberRef, Refusal> {
         let account = store
             .accounts
             .values()
@@ -1685,6 +1723,87 @@ mod tests {
                 & 0o777,
             0o600
         );
+    }
+
+    #[test]
+    fn key_authentication_checks_tenant_rotation_and_membership_revocation() {
+        let (dir, accounts) = installed();
+        let mut manifest = crate::Manifest {
+            v: crate::SCHEMA.into(),
+            sequence: 0,
+            supersedes: None,
+            shared: BTreeMap::new(),
+            tenants: BTreeMap::new(),
+            digest: String::new(),
+        };
+        for tenant in ["acme", "globex"] {
+            manifest.tenants.insert(
+                tenant.into(),
+                crate::Tenant {
+                    credential: format!("key-ref:{tenant}"),
+                    principals: vec![],
+                    doors: BTreeMap::new(),
+                    quota: None,
+                },
+            );
+        }
+        let registry = crate::Registry::install(dir.path(), manifest).unwrap();
+        let manifest = registry.manifest();
+        let owner = account(&accounts, "owner");
+        let key = crate::keys::issue(dir.path(), manifest, "acme").unwrap();
+        let user = accounts
+            .create_account("user", &[format!("key:{}", key.key.id)])
+            .unwrap();
+        let ws = org(&accounts, &owner, None);
+        let other = accounts
+            .create_workspace(
+                &user.id,
+                "other",
+                WorkspaceKind::Organization,
+                "globex",
+                None,
+            )
+            .unwrap();
+        let invite = accounts
+            .invite(&owner.id, &ws.id, Role::Member, 60)
+            .unwrap();
+        accounts.accept(&user.id, &invite.token).unwrap();
+        assert_eq!(
+            accounts
+                .authenticate_key(manifest, &ws.id, &key.token)
+                .unwrap()
+                .account,
+            user.id
+        );
+        assert!(matches!(
+            accounts.authenticate_key(manifest, &other.id, &key.token),
+            Err(Refusal::TenantMismatch)
+        ));
+        let rotated = crate::keys::rotate(dir.path(), &key.key.id).unwrap();
+        assert!(matches!(
+            accounts.authenticate_key(manifest, &ws.id, &key.token),
+            Err(Refusal::Authentication(_))
+        ));
+        // A new credential does not silently inherit an account binding.
+        assert!(matches!(
+            accounts.authenticate_key(manifest, &ws.id, &rotated.token),
+            Err(Refusal::UnknownPrincipal(_))
+        ));
+        accounts
+            .update_principals(&user.id, &[format!("key:{}", rotated.key.id)])
+            .unwrap();
+        assert!(
+            accounts
+                .authenticate_key(manifest, &ws.id, &rotated.token)
+                .is_ok()
+        );
+        accounts.remove_member(&owner.id, &ws.id, &user.id).unwrap();
+        assert!(matches!(
+            accounts.authenticate_key(manifest, &ws.id, &rotated.token),
+            Err(Refusal::Revoked { .. })
+        ));
+        assert_eq!(accounts.workspace(&ws.id).unwrap().unwrap().tenant, "acme");
+        assert!(crate::keys::authenticate(dir.path(), manifest, &rotated.token).is_ok());
     }
 
     #[test]

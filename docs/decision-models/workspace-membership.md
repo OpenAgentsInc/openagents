@@ -150,3 +150,14 @@ accounting obligations. Principal references accept only a 16-digit hexadecimal
 key ID or a 64-digit hexadecimal Nostr public key; bearer secrets are rejected.
 Store documents are limited to 16 MiB. Installation and mutations share the
 writer lock, and persisted files are synchronized before publication.
+
+## Authenticate a workspace key
+
+`Accounts::authenticate_key` composes the existing key authenticator with a
+fresh membership read. Pass the validated registry manifest, workspace ID,
+and bearer token. It rejects a revoked or invalid key, a key whose tenant
+differs from the workspace binding, an unbound principal, and a removed
+member. Key rotation needs an explicit principal-binding update; it does not
+move the workspace or reset quota. Model and action authorization remain
+separate gateway checks. These reads establish admission and do not cancel
+work admitted before a revocation. The gateway does not call this helper yet.
