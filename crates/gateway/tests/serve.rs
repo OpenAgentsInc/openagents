@@ -829,6 +829,16 @@ async fn discovery_lists_the_callers_doors() {
         .filter_map(|card| card["id"].as_str())
         .collect();
     assert_eq!(ids, ["acme-kev", "shared-kev"]);
+    for card in body["models"].as_array().unwrap() {
+        assert_eq!(card["admission"]["scope"], json!([]));
+        assert!(card["admission"]["record"].is_null());
+        assert!(
+            card["admission"]["registry_digest"]
+                .as_str()
+                .is_some_and(|v| !v.is_empty())
+        );
+        assert_eq!(card["admission"]["registry_sequence"], 0);
+    }
 
     // globex sees only the shared door — another tenant's dedicated
     // door is invisible, not merely unreachable.

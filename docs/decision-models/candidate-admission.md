@@ -96,6 +96,12 @@ reference into a new revision. A stale base refuses activation. Ordinary
 registry installation and updates cannot introduce a trained binding by naming
 a promotion digest.
 
+Authorized `GET /v1/models` cards expose `admission.scope`, the admission record
+reference in `admission.record`, and the registry digest and sequence that
+published them. Base bindings report an empty scope and a null record, which
+make no admission claim. Discovery exposes only doors visible to the caller;
+the record reference identifies evidence, not permission to read private stores.
+
 `Registry::rollback` restores the prior binding as another revision. Earlier
 revisions remain readable; rollback does not rewrite historical receipts.
 Registry mutations serialize through the registry lock. Keep registry writes

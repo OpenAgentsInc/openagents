@@ -261,6 +261,12 @@ async fn models(
                 "model": binding.artifact.model,
                 "artifact_signature": binding.artifact.artifact_signature,
                 "lane": tenancy::lane_name(binding.lane),
+                "admission": {
+                    "scope": binding.scope,
+                    "record": binding.promotion,
+                    "registry_digest": manifest.digest,
+                    "registry_sequence": manifest.sequence,
+                },
                 "classification": classification_card(&state, door, binding),
             }))
         })
