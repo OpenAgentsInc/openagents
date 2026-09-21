@@ -377,19 +377,47 @@ impl Set {
     /// answer.
     #[must_use]
     pub fn provenance(&self) -> Value {
-        json!({
-            "question_set": self.id,
-            "set_digest": self.digest(),
-            "gate": match self.gate.is_empty() {
-                true => Value::Null,
-                false => json!(self.gate),
-            },
-            "policy_version": match self.policy.v {
-                0 => Value::Null,
-                v => json!(v),
-            },
-        })
+        record(&self.id, &self.gate, self.digest(), self.policy.v)
     }
+}
+
+/// The record a trace carries about the wording a decision asked from:
+/// the function's identity, the wording's digest, the gate that read
+/// it, and the policy revision that bound it. One shape for a set the
+/// host read from a file and a function it builds in code.
+fn record(id: &str, gate: &str, digest: String, policy: u32) -> Value {
+    json!({
+        "question_set": id,
+        "set_digest": digest,
+        "gate": match gate.is_empty() {
+            true => Value::Null,
+            false => json!(gate),
+        },
+        "policy_version": match policy {
+            0 => Value::Null,
+            v => json!(v),
+        },
+    })
+}
+
+/// The same record for a function the host builds in code rather than
+/// reads from a file — [`classify`](crate::classify)'s turn and round
+/// questions. A code-built function carries no policy yet, so the
+/// record names no revision; when one binds, it binds through `Set`'s
+/// policy field and this record.
+#[must_use]
+pub fn function(id: &str, gate: &str, digest: String) -> Value {
+    record(id, gate, digest, 0)
+}
+
+/// The digest of the wording a host asks from, for a function it
+/// builds in code rather than reads from a file. The same
+/// `atif::digest` path [`Set::digest`] takes, over the questions as
+/// they stand — so a trace can tell two runs of the same wording from
+/// a wording that changed between them.
+#[must_use]
+pub fn wording_digest(questions: &Questions) -> String {
+    atif::digest(&json!({ "questions": questions }))
 }
 
 /// One file a host would not ask from, and why.

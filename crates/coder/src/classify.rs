@@ -92,6 +92,35 @@ impl Route {
     }
 }
 
+/// `coder-turns-v2`: the measured family the turn and round questions
+/// belong to — the stable identity both functions' trace records name,
+/// the name the retained baselines and the retired `coder-turns-v1`
+/// suite answer under.
+pub const TURNS: &str = "coder-turns-v2";
+
+/// What a trace records about the turn question: the same
+/// set-identity, wording-digest, and gate record a file-defined
+/// question set's provenance emits, over the wording this host builds
+/// in code.
+#[must_use]
+pub fn questions_provenance() -> Value {
+    crate::questions::function(
+        TURNS,
+        "action",
+        crate::questions::wording_digest(&questions()),
+    )
+}
+
+/// The same record for the round question [`shell_questions`] builds.
+#[must_use]
+pub fn shell_provenance() -> Value {
+    crate::questions::function(
+        TURNS,
+        "outcome",
+        crate::questions::wording_digest(&shell_questions()),
+    )
+}
+
 /// The turn question: `action`, the one answer [`route`] reads.
 pub fn questions() -> Questions {
     Questions::new()
@@ -549,5 +578,33 @@ mod tests {
         for action in [Action::Respond, Action::Clarify, Action::End, Action::None] {
             assert_eq!(Action::parse(action.name()), Some(action));
         }
+    }
+
+    /// The code-built functions record the same provenance shape a
+    /// file-defined set emits — identity, the wording's digest, the
+    /// gate — so a trace reader needs no second path for them.
+    #[test]
+    fn the_code_built_functions_carry_the_sets_provenance_shape() {
+        let turn = questions_provenance();
+        assert_eq!(turn["question_set"], TURNS);
+        assert_eq!(turn["gate"], "action");
+        assert_eq!(
+            turn["set_digest"].as_str().unwrap().len(),
+            64,
+            "the same digest form a Set records"
+        );
+        assert!(turn["policy_version"].is_null());
+
+        // The round question is the same family under its own gate, and
+        // its wording digests to a different record than the turn's —
+        // which is what a digest is for.
+        let shell = shell_provenance();
+        assert_eq!(shell["question_set"], TURNS);
+        assert_eq!(shell["gate"], "outcome");
+        assert_ne!(shell["set_digest"], turn["set_digest"]);
+
+        // Asking twice digests twice identically: the wording is fixed
+        // in code, so the record is stable across runs.
+        assert_eq!(questions_provenance()["set_digest"], turn["set_digest"]);
     }
 }
