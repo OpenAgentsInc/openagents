@@ -45,6 +45,7 @@ fn manifest(requests_per_day: Option<u64>) -> Manifest {
             },
             capacity: None,
             promotion: None,
+            scope: vec![],
         },
     );
     let mut acme_doors = BTreeMap::new();
@@ -63,6 +64,7 @@ fn manifest(requests_per_day: Option<u64>) -> Manifest {
                 requests_per_minute: None,
             }),
             promotion: None,
+            scope: vec![],
         },
     );
     let mut tenants = BTreeMap::new();
