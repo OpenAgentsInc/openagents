@@ -59,7 +59,7 @@ pub mod document;
 pub mod log;
 
 pub use document::{
-    AGENT_NAME, Call, DECISION_CALL_SCHEMA, Decision, EXPORTER, Outcome, SCHEMA_VERSION, Session,
-    Source, Step, Usage, digest, document, intent, iso, now_ms, stamp,
+    AGENT_NAME, Attempt, Call, DECISION_CALL_SCHEMA, Decision, EXPORTER, Outcome, SCHEMA_VERSION,
+    Session, Source, Step, Usage, digest, document, intent, iso, now_ms, stamp,
 };
 pub use log::{Fault, FaultKind, Log, Recording};

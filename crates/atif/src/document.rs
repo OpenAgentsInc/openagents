@@ -334,6 +334,36 @@ impl Session {
     }
 }
 
+/// One dispatch of a decision call that asked more than once.
+///
+/// A reviewed or retried call spends several dispatches; each keeps its
+/// own model, answers, usage, timing, and outcome so the record
+/// attributes every attempt to the artifact that produced it rather
+/// than folding the chain into the answer that was finally selected.
+#[derive(Clone, Debug)]
+pub struct Attempt {
+    /// What the dispatch was in the chain: `primary`, `fallback:<cause>`,
+    /// or `review`.
+    pub role: String,
+    /// The model the door reported answering with, or the identity the
+    /// dispatch requested when it never answered.
+    pub model: String,
+    /// The typed answers, or null when the dispatch produced none. A
+    /// reviewer that answered without a scored gate records its own
+    /// answers — never the primary's confidence under another model's
+    /// name.
+    pub answers: Value,
+    /// The usage the door reported — either side nullable when the door
+    /// reports incompletely.
+    pub input_tokens: Option<u64>,
+    /// See `input_tokens`.
+    pub output_tokens: Option<u64>,
+    /// Wall time this dispatch took.
+    pub milliseconds: u64,
+    /// `answered`, or the failure cause the dispatch ended in.
+    pub outcome: String,
+}
+
 /// One decision-model call, on its way to becoming a [`Call`].
 ///
 /// A door answering `POST /v1/systemone` is the half of a session the Gym's
@@ -353,12 +383,22 @@ pub struct Decision {
     pub model: String,
     /// The body that went out, `state` and `questions` and all.
     pub request: Value,
-    /// The typed answers, or null when the call did not return any.
+    /// The typed answers the call selected — the reviewed answer when a
+    /// review answered, the original when it did not — or null when the
+    /// call produced none.
     pub answers: Value,
     /// What the host did with the answers.
     pub route: Option<String>,
     /// Why the call produced no answers, when it produced none.
     pub error: Option<String>,
+    /// Every dispatch the call spent, primary first. The `answers`
+    /// field above is the selected attempt's; this is the whole
+    /// chain's attribution.
+    pub attempts: Vec<Attempt>,
+    /// What a declared review did, when one ran: why it triggered, what
+    /// it answered, and what became of the original — recorded even
+    /// when it changed nothing.
+    pub review: Option<Value>,
     /// Wall time the call took.
     pub milliseconds: u64,
 }
@@ -386,6 +426,28 @@ impl Decision {
         }
         if let Some(error) = &self.error {
             extra.insert("error".to_string(), json!(error));
+        }
+        if !self.attempts.is_empty() {
+            extra.insert(
+                "attempts".to_string(),
+                json!(
+                    self.attempts
+                        .iter()
+                        .map(|attempt| json!({
+                            "role": attempt.role,
+                            "model": attempt.model,
+                            "answers": attempt.answers,
+                            "input_tokens": attempt.input_tokens,
+                            "output_tokens": attempt.output_tokens,
+                            "milliseconds": attempt.milliseconds,
+                            "outcome": attempt.outcome,
+                        }))
+                        .collect::<Vec<_>>()
+                ),
+            );
+        }
+        if let Some(review) = &self.review {
+            extra.insert("review".to_string(), review.clone());
         }
         Call {
             id: self.id,
@@ -862,6 +924,8 @@ mod tests {
             answers: json!({"action": {"choice": "respond", "confidence": 0.8}}),
             route: Some("respond".to_string()),
             error: None,
+            attempts: Vec::new(),
+            review: None,
             milliseconds: 240,
         }
         .call();
@@ -890,12 +954,73 @@ mod tests {
             answers: Value::Null,
             route: None,
             error: Some("connection refused".to_string()),
+            attempts: Vec::new(),
+            review: None,
             milliseconds: 30,
         }
         .call();
         assert_eq!(call.outcome, Outcome::Failed);
         assert_eq!(call.output, "connection refused");
         assert_eq!(call.extra["error"], "connection refused");
+    }
+
+    /// A reviewed call records every dispatch it spent: the selected
+    /// answer is the call's, and the chain keeps each attempt's own
+    /// model, usage, timing, and outcome beside the review record that
+    /// says what became of the original.
+    #[test]
+    fn a_reviewed_decision_records_its_attempts() {
+        let call = Decision {
+            id: "call-4".to_string(),
+            name: "judge".to_string(),
+            door: "https://api.typesafe.ai".to_string(),
+            model: "reviewer".to_string(),
+            request: json!({"state": {}, "model": "stub", "questions": {"q": {"type": "noul"}}}),
+            answers: json!({"q": {"type": "noul", "noul": 0.95}}),
+            route: Some("q 0.95".to_string()),
+            error: None,
+            attempts: vec![
+                Attempt {
+                    role: "primary".to_string(),
+                    model: "stub".to_string(),
+                    answers: json!({"q": {"type": "noul", "noul": 0.4}}),
+                    input_tokens: Some(100),
+                    output_tokens: Some(12),
+                    milliseconds: 200,
+                    outcome: "answered".to_string(),
+                },
+                Attempt {
+                    role: "review".to_string(),
+                    model: "reviewer".to_string(),
+                    answers: json!({"q": {"type": "noul", "noul": 0.95}}),
+                    input_tokens: None,
+                    output_tokens: None,
+                    milliseconds: 180,
+                    outcome: "answered".to_string(),
+                },
+            ],
+            review: Some(json!({
+                "reason": "q answered 0.40, under 0.6",
+                "reviewer": "reviewer",
+                "original": {"model": "stub", "gate": 0.4},
+                "reviewed": {"model": "reviewer", "gate": 0.95},
+                "outcome": "changed",
+            })),
+            milliseconds: 380,
+        }
+        .call();
+        let attempts = &call.extra["attempts"];
+        assert_eq!(attempts[0]["role"], "primary");
+        assert_eq!(attempts[0]["model"], "stub");
+        assert_eq!(attempts[0]["answers"]["q"]["noul"], 0.4);
+        assert_eq!(attempts[1]["role"], "review");
+        assert_eq!(attempts[1]["model"], "reviewer");
+        assert_eq!(attempts[1]["input_tokens"], Value::Null);
+        // The selected answer is the reviewer's; the original stays
+        // recorded in the chain, not overwritten by it.
+        assert_eq!(call.extra["answers"]["q"]["noul"], 0.95);
+        assert_eq!(call.extra["review"]["outcome"], "changed");
+        assert_eq!(call.extra["review"]["original"]["gate"], 0.4);
     }
 
     /// Decision calls count as decisions and not as tool calls, so a turn
@@ -911,6 +1036,8 @@ mod tests {
             answers: json!({}),
             route: Some("respond".to_string()),
             error: None,
+            attempts: Vec::new(),
+            review: None,
             milliseconds: 100,
         }
         .call();

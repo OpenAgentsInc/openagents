@@ -562,6 +562,8 @@ impl Agent {
                         answers: answers_value(&response.answers),
                         route: Some(route.word().to_string()),
                         error: None,
+                        attempts: Vec::new(),
+                        review: None,
                         milliseconds,
                     },
                 );
@@ -579,6 +581,8 @@ impl Agent {
                         answers: Value::Null,
                         route: None,
                         error: Some(error.to_string()),
+                        attempts: Vec::new(),
+                        review: None,
                         milliseconds,
                     },
                 );
@@ -857,6 +861,8 @@ impl Agent {
                         answers: answers_value(&response.answers),
                         route: Some(route.word().to_string()),
                         error: None,
+                        attempts: Vec::new(),
+                        review: None,
                         milliseconds,
                     },
                 );
@@ -875,6 +881,8 @@ impl Agent {
                         answers: Value::Null,
                         route: None,
                         error: Some(error.to_string()),
+                        attempts: Vec::new(),
+                        review: None,
                         milliseconds,
                     },
                 );
