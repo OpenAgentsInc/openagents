@@ -245,6 +245,7 @@ async fn deploy_tuned(
         v: SCHEMA.to_string(),
         listen: "127.0.0.1:0".to_string(),
         registry: dir.path().to_path_buf(),
+        require_workspace_membership: false,
         max_body_bytes: 1_048_576,
         max_response_bytes: 4_194_304,
         forward_timeout_ms: 10_000,
@@ -302,6 +303,132 @@ async fn send_call(
         request = request.bearer_auth(token);
     }
     request.send().await.unwrap()
+}
+
+#[tokio::test]
+async fn workspace_mode_enforces_membership_on_decisions_and_discovery() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), json!({"answers":{"q1":0.9}}))).await;
+    let deployment = deploy_tuned(
+        manifest(None),
+        [(
+            "acme-kev".into(),
+            Door {
+                endpoint,
+                classify: None,
+                classify_item_concurrency: 1,
+            },
+        )]
+        .into_iter()
+        .collect(),
+        |config| config.require_workspace_membership = true,
+    )
+    .await;
+    let registry = Registry::open(deployment.dir.path()).unwrap();
+    let key = keys::authenticate(
+        deployment.dir.path(),
+        registry.manifest(),
+        &deployment.tokens["acme"],
+    )
+    .unwrap();
+    let accounts = tenancy::Accounts::install(deployment.dir.path()).unwrap();
+    let owner = accounts.create_account("owner", &[]).unwrap();
+    let member = accounts
+        .create_account("member", &[format!("key:{}", key.key_id)])
+        .unwrap();
+    let ws = accounts
+        .create_workspace(
+            &owner.id,
+            "team",
+            tenancy::WorkspaceKind::Organization,
+            "acme",
+            None,
+        )
+        .unwrap();
+    let other = accounts
+        .create_workspace(
+            &member.id,
+            "other",
+            tenancy::WorkspaceKind::Organization,
+            "globex",
+            None,
+        )
+        .unwrap();
+    let invite = accounts
+        .invite(&owner.id, &ws.id, tenancy::Role::Member, 60)
+        .unwrap();
+    accounts.accept(&member.id, &invite.token).unwrap();
+    let client = reqwest::Client::new();
+    let post = |workspace: &str| {
+        client
+            .post(format!("{}/v1/systemone", deployment.address))
+            .bearer_auth(&deployment.tokens["acme"])
+            .header("x-workspace-id", workspace)
+            .json(&call("acme-kev"))
+    };
+    assert_eq!(
+        send_call(&deployment, &call("acme-kev"), None)
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send_call(
+            &deployment,
+            &call("acme-kev"),
+            Some(&deployment.tokens["acme"])
+        )
+        .await
+        .status(),
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        post(&other.id).send().await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(post(&ws.id).send().await.unwrap().status(), StatusCode::OK);
+    let models = || {
+        client
+            .get(format!("{}/v1/models", deployment.address))
+            .bearer_auth(&deployment.tokens["acme"])
+            .header("x-workspace-id", &ws.id)
+    };
+    assert_eq!(models().send().await.unwrap().status(), StatusCode::OK);
+    assert_eq!(
+        post(&ws.id)
+            .header("x-workspace-id", &other.id)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    accounts
+        .remove_member(&owner.id, &ws.id, &member.id)
+        .unwrap();
+    assert_eq!(
+        post(&ws.id).send().await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        models().send().await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    let classification = client
+        .post(format!("{}/v1/classify", deployment.address))
+        .bearer_auth(&deployment.tokens["acme"])
+        .header("x-workspace-id", &ws.id)
+        .json(&classify_batch(1))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(classification.status(), StatusCode::FORBIDDEN);
+    assert_eq!(forwards.load(Ordering::SeqCst), 1);
+    // Missing storage fails closed instead of reverting to legacy admission.
+    std::fs::remove_file(deployment.dir.path().join("accounts.json")).unwrap();
+    assert_eq!(
+        post(&ws.id).send().await.unwrap().status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
 }
 
 #[tokio::test]

@@ -53,6 +53,10 @@ pub struct Config {
     /// The registry directory — `registry.json`, `keys.json`,
     /// `quota-ledger.jsonl`, and `receipts.jsonl` all live there.
     pub registry: PathBuf,
+    /// Require an authenticated workspace membership on every public decision
+    /// and discovery request. Legacy tenant-key admission is the default.
+    #[serde(default)]
+    pub require_workspace_membership: bool,
     /// The largest request body admitted, in bytes. Default 1 MiB —
     /// a decision request is state plus questions, never a bulk upload.
     #[serde(default = "default_body_max")]

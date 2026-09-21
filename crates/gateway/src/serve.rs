@@ -264,6 +264,13 @@ fn authenticate(
         )
     })?;
     let Some(header) = headers.get("authorization") else {
+        if state.config.require_workspace_membership {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                "unauthenticated",
+                "workspace membership requires a bearer key".into(),
+            ));
+        }
         return Ok((
             registry,
             Caller {
@@ -294,6 +301,53 @@ fn authenticate(
                 format!("the credential was refused: {refusal}"),
             )
         })?;
+    if state.config.require_workspace_membership {
+        let mut values = headers.get_all("x-workspace-id").iter();
+        let workspace = values
+            .next()
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "workspace_required",
+                    "one X-Workspace-Id header is required".into(),
+                )
+            })?;
+        if values.next().is_some() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "workspace_required",
+                "one X-Workspace-Id header is required".into(),
+            ));
+        }
+        let accounts = tenancy::Accounts::open(&state.dir).map_err(|_| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "membership_unavailable",
+                "the workspace membership store is unavailable".into(),
+            )
+        })?;
+        accounts
+            .authenticate_key(registry.manifest(), workspace, token)
+            .map_err(|cause| match cause {
+                tenancy::accounts::Refusal::Store(_) => (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "membership_unavailable",
+                    "the workspace membership store is unavailable".into(),
+                ),
+                tenancy::accounts::Refusal::Authentication(_) => (
+                    StatusCode::UNAUTHORIZED,
+                    "unauthenticated",
+                    "the credential is no longer valid".into(),
+                ),
+                _ => (
+                    StatusCode::FORBIDDEN,
+                    "workspace_forbidden",
+                    "the credential has no active membership in this workspace and tenant".into(),
+                ),
+            })?;
+    }
     Ok((
         registry,
         Caller {

@@ -68,7 +68,7 @@ orphaning members the next read would refuse to load.
 
 ## The call flow a future HTTP adapter runs
 
-No membership HTTP adapter exists today. When one lands in front of this store, a
+No membership-management HTTP adapter exists today. When one lands in front of this store, a
 request runs the same sequence the gateway already runs for decision
 calls:
 
@@ -160,4 +160,24 @@ differs from the workspace binding, an unbound principal, and a removed
 member. Key rotation needs an explicit principal-binding update; it does not
 move the workspace or reset quota. Model and action authorization remain
 separate gateway checks. These reads establish admission and do not cancel
-work admitted before a revocation. The gateway does not call this helper yet.
+work admitted before a revocation. The gateway uses this helper when workspace membership is required.
+
+## Enforce membership at the gateway
+
+Set `require_workspace_membership: true` in `gateway.json` and provision the
+account store and key-principal bindings in the registry directory. Every
+public decision and discovery request must then include a bearer key and one
+`X-Workspace-Id` header. Authentication checks the key, the workspace's tenant,
+and fresh membership before forwarding or quota reservation. Removed members
+are refused on the next request without restarting the gateway. Invalid keys
+receive 401, missing or duplicate workspace headers receive 400, denied
+membership receives 403, and unavailable membership storage receives 503.
+Anonymous inference is refused in this mode; no anonymous budget is invented.
+
+The default is `false` for existing tenant-key deployments. Enable the setting
+to require the new check; creating an account store alone does not change the
+serving policy. Membership authorizes workspace access, while the existing
+registry still controls reachable models and quota. This does not add browser
+sessions, management HTTP endpoints, account recovery, or cancellation of work
+admitted before revocation. Receipts retain existing key attribution; a
+workspace-membership revision field remains future integration work.
