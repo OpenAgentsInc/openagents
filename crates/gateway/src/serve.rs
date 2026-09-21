@@ -1006,10 +1006,13 @@ async fn money_hold(
         Ok(hold) => Ok(Some(hold)),
         Err(refusal) => {
             drop(ledger);
-            // The reserve left nothing standing — free the call's quota
-            // reservation rather than holding budget it cannot spend.
-            state.release(naming.request, naming.attempt).await;
+            // A duplicate belongs to the original execution. Preserve its
+            // quota reservation; other refusals release the fresh reservation.
+            if !matches!(refusal, money::Refusal::Duplicate) {
+                state.release(naming.request, naming.attempt).await;
+            }
             let (status, code) = match &refusal {
+                money::Refusal::Duplicate => (StatusCode::CONFLICT, "idempotency_conflict"),
                 money::Refusal::Funds(_) => (StatusCode::PAYMENT_REQUIRED, "insufficient_funds"),
                 money::Refusal::Price(_) => (StatusCode::SERVICE_UNAVAILABLE, "price_invalid"),
                 money::Refusal::Ledger(_) => {

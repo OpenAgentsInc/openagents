@@ -80,12 +80,14 @@ backend dispatch, reserves the worst-case spend:
 3. The money reservation is atomic inside the ledger's writer lock. It binds
    the attempt `{idempotency-key}#{x-attempt}`, the request digest, the price
    terms, and `maximum_usage`. Concurrent calls serialize on the ledger — a
-   workspace cannot overspend, and a replayed `(request, attempt)` finds its
-   own standing hold rather than charging twice.
+   workspace cannot overspend. An existing `(request, attempt)` refuses with
+   `409 idempotency_conflict` before dispatch and preserves the original hold.
+   Concurrent retries cannot execute twice against one reservation.
 4. Only then does the backend's published identity get verified and the
    request forwarded.
 
-A refusal at step 3 never reaches the backend and frees the call's quota
+A refusal at step 3 never reaches the backend. An existing attempt preserves
+its original quota reservation; other monetary refusals release a fresh quota
 reservation:
 
 | Refusal | Status | Cause |

@@ -2579,7 +2579,7 @@ async fn money_concurrent_calls_never_overspend() {
 #[tokio::test]
 async fn money_a_retried_attempt_is_charged_once() {
     // Two concurrent sends of one (idempotency-key, attempt) pair
-    // share the hold: both answer, the workspace pays once.
+    // reserve once: one answers and the duplicate cannot dispatch.
     let stub = Backend {
         delay_ms: 150,
         ..honest(
@@ -2633,10 +2633,31 @@ async fn money_a_retried_attempt_is_charged_once() {
     };
     let (first, second) = (send(), send());
     let (first, second) = tokio::join!(first, second);
-    for (status, settlement) in [first.unwrap(), second.unwrap()] {
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(settlement.as_deref(), Some("settled"));
-    }
+    let responses = [first.unwrap(), second.unwrap()];
+    assert_eq!(
+        responses
+            .iter()
+            .filter(|(status, _)| *status == StatusCode::OK)
+            .count(),
+        1
+    );
+    assert_eq!(
+        responses
+            .iter()
+            .filter(|(status, _)| *status == StatusCode::CONFLICT)
+            .count(),
+        1
+    );
+    assert_eq!(
+        responses
+            .iter()
+            .find(|(status, _)| *status == StatusCode::OK)
+            .unwrap()
+            .1
+            .as_deref(),
+        Some("settled")
+    );
+    assert_eq!(forwards.load(Ordering::SeqCst), 1);
     let token = deployment.deployment.tokens["acme"].clone();
     let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
     assert_eq!(balance["balance"]["settled"], CHARGE, "{balance}");
@@ -2663,7 +2684,7 @@ async fn money_a_retried_attempt_is_charged_once() {
     )
     .await;
     assert_eq!(replay.status(), StatusCode::CONFLICT);
-    assert_eq!(forwards.load(Ordering::SeqCst), 2);
+    assert_eq!(forwards.load(Ordering::SeqCst), 1);
     let (_, balance) = get_balance(&deployment, Some(&token), Some(&deployment.workspace)).await;
     assert_eq!(balance["balance"]["settled"], CHARGE);
 }

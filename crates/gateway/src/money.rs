@@ -67,6 +67,8 @@ pub struct Priced {
 /// Why a monetary reservation was refused.
 #[derive(Debug)]
 pub enum Refusal {
+    /// This attempt already has a durable hold and cannot dispatch again.
+    Duplicate,
     /// The workspace cannot fund the hold — no provisioned account, or
     /// the hold exceeds its available balance or remaining spend.
     Funds(String),
@@ -81,6 +83,10 @@ pub enum Refusal {
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Duplicate => write!(
+                f,
+                "this monetary attempt already exists; reconcile or use a new attempt"
+            ),
             Self::Funds(message) | Self::Price(message) | Self::Ledger(message) => {
                 write!(f, "{message}")
             }
@@ -117,10 +123,9 @@ fn wire(resource: Resource) -> &'static str {
 /// Reserve the worst-case authorized spend for one attempt — durably,
 /// before any backend dispatch.
 ///
-/// A hold already standing under this attempt is the same reservation
-/// replaying — an in-flight retry is not a second spend — and the
-/// result says which happened so the caller knows whether a later
-/// refusal may free the call's quota reservation.
+/// An existing attempt refuses redispatch. Its original quota and monetary
+/// reservations stay intact until the original execution or reconciliation
+/// resolves them.
 pub fn reserve(
     ledger: &mut Ledger,
     workspace: &str,
@@ -133,11 +138,7 @@ pub fn reserve(
 ) -> Result<Hold, Refusal> {
     let key = format!("{request}#{attempt}");
     if ledger.hold(workspace, &key).is_some() {
-        return Ok(Hold {
-            workspace: workspace.to_string(),
-            attempt: key,
-            price: priced.price.clone(),
-        });
+        return Err(Refusal::Duplicate);
     }
     let price = &priced.price;
     if price.policy != POLICY {
@@ -236,9 +237,7 @@ impl Settlement {
 /// (over-bound usage, a write failure) marks the attempt unknown: the
 /// reservation stays outstanding either way.
 pub fn settle(ledger: &mut Ledger, hold: &Hold, usage: Option<Usage>, receipt: &str) -> Settlement {
-    // A duplicated attempt can reach settlement twice — an in-flight
-    // retry shares the hold. Report the resolution that already stands
-    // rather than rewriting a terminal phase.
+    // Reconciliation may revisit settlement. Preserve a terminal result.
     if let Some(existing) = ledger.hold(&hold.workspace, &hold.attempt) {
         match existing.phase {
             Phase::Settled => return Settlement::Settled,
@@ -287,8 +286,7 @@ pub fn unknown(ledger: &mut Ledger, hold: &Hold) -> Settlement {
 /// release for any other cause; an unknown hold is reconciled only by
 /// an operator with evidence no charge is due.
 pub fn release(ledger: &mut Ledger, hold: &Hold) -> Settlement {
-    // The same duplicated-attempt guard as settle: a twin that never
-    // dispatched must not rewrite a hold the original already resolved.
+    // Preserve a terminal settlement or unresolved dispatched work.
     if let Some(existing) = ledger.hold(&hold.workspace, &hold.attempt) {
         match existing.phase {
             Phase::Settled => return Settlement::Settled,
@@ -297,17 +295,19 @@ pub fn release(ledger: &mut Ledger, hold: &Hold) -> Settlement {
             Phase::Held => {}
         }
     }
-    ledger
-        .apply(Mutation {
-            workspace: hold.workspace.clone(),
-            source: format!("gateway:{}:release", hold.attempt),
-            audit: hold.attempt.clone(),
-            operation: Operation::Release {
-                attempt: hold.attempt.clone(),
-            },
-        })
-        .ok();
-    Settlement::Released
+    let result = ledger.apply(Mutation {
+        workspace: hold.workspace.clone(),
+        source: format!("gateway:{}:release", hold.attempt),
+        audit: hold.attempt.clone(),
+        operation: Operation::Release {
+            attempt: hold.attempt.clone(),
+        },
+    });
+    if result.is_ok() {
+        Settlement::Released
+    } else {
+        Settlement::Outstanding
+    }
 }
 
 /// The usage one response reports under the price's resources — `None`
