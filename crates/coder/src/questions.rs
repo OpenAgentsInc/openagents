@@ -81,6 +81,55 @@ pub struct Set {
     /// The template a `per_finding` step asks once per review finding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub per_finding: Option<Value>,
+    /// The workload policy the set binds: which models may answer it,
+    /// how large a state it asks over, the policy revision a trace
+    /// records, and the confidence under which it abstains. Absent is
+    /// unbound — a set that declares no policy asks under whatever the
+    /// host allows.
+    #[serde(default, skip_serializing_if = "Policy::is_empty")]
+    pub policy: Policy,
+}
+
+/// The workload policy a decision function binds.
+///
+/// A set's policy is a claim about itself the host enforces, the way a
+/// program's bounds are a claim the host enforces: a state bigger than
+/// `state_max_bytes`, a requested or answering model outside `models`,
+/// and a gated confidence under `abstain_below` are each a refusal, not
+/// a quieter answer. `v` is the policy revision — carried into every
+/// recorded decision so two runs under different policies are never
+/// read as the same measurement.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Policy {
+    /// The policy revision. `0` declares no revision.
+    #[serde(default)]
+    pub v: u32,
+    /// The model or artifact identities the function admits answers
+    /// from, by the name the door requests and the answer reports.
+    /// Empty admits any model.
+    #[serde(default)]
+    pub models: Vec<String>,
+    /// The largest state, in bytes as serialized, the function asks
+    /// over. A bigger state refuses rather than truncating.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_max_bytes: Option<u64>,
+    /// The confidence under which a gated answer abstains: the gate's
+    /// probability below the floor is the typed abstention the set
+    /// declares, not a read a caller treats as an answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abstain_below: Option<f64>,
+}
+
+impl Policy {
+    /// Whether the policy declares nothing — serialized away so a set
+    /// without one keeps the digest it has always had.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.v == 0
+            && self.models.is_empty()
+            && self.state_max_bytes.is_none()
+            && self.abstain_below.is_none()
+    }
 }
 
 /// Which template a set is, when it is one.
@@ -152,6 +201,17 @@ impl Set {
                 "a set is asked once per requirement or once per finding, and this one claims both"
                     .to_string(),
             );
+        }
+        if let Some(floor) = self.policy.abstain_below
+            && !(0.0..=1.0).contains(&floor)
+        {
+            return Err(format!("policy abstain_below is {floor}, outside 0 to 1"));
+        }
+        if self.policy.state_max_bytes == Some(0) {
+            return Err("a state bound of zero asks over nothing".to_string());
+        }
+        if self.policy.models.iter().any(|model| model.is_empty()) {
+            return Err("policy names an empty model identity".to_string());
         }
         if !self.questions.is_empty() && self.template().is_some() {
             return Err("a set is a fixed set or a template, and this one is both".to_string());
@@ -323,6 +383,10 @@ impl Set {
             "gate": match self.gate.is_empty() {
                 true => Value::Null,
                 false => json!(self.gate),
+            },
+            "policy_version": match self.policy.v {
+                0 => Value::Null,
+                v => json!(v),
             },
         })
     }
@@ -630,6 +694,29 @@ mod tests {
     }
 
     #[test]
+    fn a_bound_set_names_its_policy_revision_in_what_a_trace_records() {
+        let set: Set = serde_json::from_str(
+            r#"{"v":1,"id":"openagents.bound.v1","gate":"q",
+                "questions":{"q":{"type":"noul"}},
+                "policy":{"v":3,"models":["kev-0.5b"],"abstain_below":0.6}}"#,
+        )
+        .unwrap();
+        set.validate().unwrap();
+        let provenance = set.provenance();
+        assert_eq!(provenance["policy_version"], 3);
+        assert_eq!(provenance["question_set"], "openagents.bound.v1");
+        assert!(provenance["set_digest"].is_string());
+
+        // An unbound set records no revision — a trace cannot invent a
+        // policy the wording never declared.
+        let unbound: Set = serde_json::from_str(
+            r#"{"v":1,"id":"openagents.unbound.v1","questions":{"q":{"type":"noul"}}}"#,
+        )
+        .unwrap();
+        assert!(unbound.provenance()["policy_version"].is_null());
+    }
+
+    #[test]
     fn a_set_this_host_does_not_read_is_refused() {
         for (body, expected) in [
             (
@@ -655,6 +742,18 @@ mod tests {
             (
                 r#"{"v":1,"id":"openagents.a.v1","questions":{"q":{"type":"choice","options":"supplied","criteria":["none"]}}}"#,
                 "not an option set",
+            ),
+            (
+                r#"{"v":1,"id":"openagents.a.v1","questions":{"q":{"type":"noul"}},"policy":{"abstain_below":1.5}}"#,
+                "outside 0 to 1",
+            ),
+            (
+                r#"{"v":1,"id":"openagents.a.v1","questions":{"q":{"type":"noul"}},"policy":{"state_max_bytes":0}}"#,
+                "zero",
+            ),
+            (
+                r#"{"v":1,"id":"openagents.a.v1","questions":{"q":{"type":"noul"}},"policy":{"models":[""]}}"#,
+                "empty model identity",
             ),
         ] {
             let set: Set = serde_json::from_str(body).unwrap();

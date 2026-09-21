@@ -1346,8 +1346,7 @@ impl Runtime {
                 trace,
                 |read| format!("program {read}"),
             )
-            .await
-            .map_err(|error| door_refused("", &error))?;
+            .await?;
         let choice = answers
             .answers
             .get(&set.gate)
@@ -2904,8 +2903,7 @@ impl Runtime {
         };
         let response = self
             .ask(set, &step.name, &state, &fill, trace, route)
-            .await
-            .map_err(|error| door_refused(&step.name, &error))?;
+            .await?;
         run.answers
             .insert(step.name.clone(), answers_value(&response.answers));
 
@@ -3076,7 +3074,7 @@ impl Runtime {
             .await
         {
             Ok(response) => response,
-            Err(reason) => {
+            Err(refused) => {
                 run.review = Some(crate::review::Reviewed {
                     asked: askable.len(),
                     confirmed: 0,
@@ -3087,7 +3085,7 @@ impl Runtime {
                     findings: judged,
                     evidence,
                 });
-                return Err(door_refused(&step.name, &reason));
+                return Err(refused);
             }
         };
         run.answers
@@ -3461,21 +3459,56 @@ impl Runtime {
         fill: &Fill,
         trace: Option<&mut Recorder>,
         route: impl FnOnce(String) -> String,
-    ) -> Result<jev::SystemOneResponse, jev::Error> {
+    ) -> Result<jev::SystemOneResponse, Refused> {
         let door = self.door.as_ref().ok_or_else(|| {
             // A resolution that failed keeps its reason: the refusal a
             // caller surfaces is the one the resolver named, not a
             // quieter "nothing configured".
-            jev::Error::Config(
+            Refused::at(
+                name,
+                "door_unavailable",
                 self.door_error
                     .clone()
                     .unwrap_or_else(|| "no decision door is configured".to_string()),
             )
         })?;
-        let questions = set.build(fill).map_err(|message| jev::Error::Question {
-            id: set.id.clone(),
-            message,
-        })?;
+        // The set's policy binds before anything goes out: a state
+        // bigger than the function declares, or a requested model the
+        // function does not admit, refuses rather than asking.
+        if let Some(max) = set.policy.state_max_bytes {
+            let size = state.to_string().len() as u64;
+            if size > max {
+                return Err(Refused::at(
+                    name,
+                    "state_over_bound",
+                    format!(
+                        "{} asks over {size} bytes of state and its policy admits {max}",
+                        set.id
+                    ),
+                ));
+            }
+        }
+        if !set.policy.models.is_empty()
+            && !set
+                .policy
+                .models
+                .iter()
+                .any(|model| model == door.default_model())
+        {
+            return Err(Refused::at(
+                name,
+                "unbound_model",
+                format!(
+                    "{} admits answers from [{}] and this door requests {}",
+                    set.id,
+                    set.policy.models.join(", "),
+                    door.default_model()
+                ),
+            ));
+        }
+        let questions = set
+            .build(fill)
+            .map_err(|message| Refused::at(name, "question_invalid", message))?;
         let request = SystemOneRequest::new(state.clone(), questions);
         // The body is what goes on the wire; reading it here is what a
         // recorded exchange means.
@@ -3501,13 +3534,56 @@ impl Runtime {
                 decision.model = response.model.clone();
                 decision.answers = answers_value(&response.answers);
                 decision.route = Some(route(read_of(&response, &set.gate)));
+                // The policy binds what came back, too: an answer
+                // reporting a model the function does not admit, or a
+                // gated confidence under its abstention floor, is the
+                // typed outcome — not a read a caller treats as an
+                // answer.
+                let refused = if !set.policy.models.is_empty()
+                    && !set.policy.models.contains(&response.model)
+                {
+                    Some(Refused::at(
+                        name,
+                        "unbound_model",
+                        format!(
+                            "{} admits answers from [{}] and this answer came from {}",
+                            set.id,
+                            set.policy.models.join(", "),
+                            response.model
+                        ),
+                    ))
+                } else {
+                    set.policy.abstain_below.and_then(|floor| {
+                        response
+                            .answers
+                            .get(&set.gate)
+                            .and_then(probability)
+                            .filter(|read| *read < floor)
+                            .map(|read| {
+                                Refused::at(
+                                    name,
+                                    "abstained",
+                                    format!(
+                                        "{} abstains: {} came back at {read:.2}, under the policy's {floor}",
+                                        set.id, set.gate
+                                    ),
+                                )
+                            })
+                    })
+                };
+                if let Some(refused) = &refused {
+                    decision.error = Some(refused.to_string());
+                }
                 self.record_decision(trace, set, decision);
-                Ok(response)
+                match refused {
+                    Some(refused) => Err(refused),
+                    None => Ok(response),
+                }
             }
             Err(error) => {
                 decision.error = Some(error.to_string());
                 self.record_decision(trace, set, decision);
-                Err(error)
+                Err(door_refused(name, &error))
             }
         }
     }
@@ -4349,6 +4425,141 @@ mod tests {
             let refused = runtime.select("run it", None).await.unwrap_err();
             assert_eq!(refused.code, code, "status {status}");
         }
+    }
+
+    /// A door answering every request with one System One body — the
+    /// answer a set's policy is held against.
+    async fn serve_answer(body: Value) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 1 << 16];
+                let _ = socket.read(&mut buf).await;
+                let body = body.to_string();
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = socket.write_all(head.as_bytes()).await;
+                let _ = socket.write_all(body.as_bytes()).await;
+            }
+        });
+        port
+    }
+
+    /// A question set under `dir` carrying `policy` — the binding a run
+    /// is held to.
+    fn policy_questions(dir: &Path, policy: &str) {
+        std::fs::write(
+            dir.join("policy.json"),
+            serde_json::to_string(&json!({
+                "v": 1,
+                "id": "test.policy.v1",
+                "name": "A bound function",
+                "gate": "q",
+                "questions": {"q": {"type": "noul", "instructions": "Whether the work may run."}},
+                "policy": serde_json::from_str::<Value>(policy).unwrap()
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
+    /// A `decide` step asking the policy-bound set.
+    fn policy_program() -> Program {
+        serde_json::from_value(json!({
+            "v": 1, "slug": "policy-run",
+            "steps": [{"name": "judge", "kind": "decide", "question": "test.policy.v1", "bounds": {}}]
+        }))
+        .unwrap()
+    }
+
+    /// A question set's policy binds before dispatch: a state bigger
+    /// than the function declares, and a requested model the function
+    /// does not admit, each refuse the step before the door is asked —
+    /// a binding is a claim the host enforces, not a note.
+    #[tokio::test]
+    async fn a_sets_policy_binds_before_the_door_is_asked() {
+        for (policy, code) in [
+            (r#"{"state_max_bytes": 8}"#, "state_over_bound"),
+            (r#"{"models": ["other-model"]}"#, "unbound_model"),
+        ] {
+            let questions_dir = tempfile::tempdir().unwrap();
+            policy_questions(questions_dir.path(), policy);
+            let mut runtime = empty_runtime();
+            runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
+            runtime.door = Some(dead_door());
+            let inputs = Inputs::read("do the list\n- one", "stub-local");
+
+            let run = runtime
+                .run(&policy_program(), &inputs, &Grant::all(), None)
+                .await;
+            assert_eq!(
+                run.stopped.as_ref().map(|refused| refused.code.as_str()),
+                Some(code),
+                "policy {policy}"
+            );
+        }
+    }
+
+    /// And it binds what comes back: an answer reporting a model the
+    /// set does not admit is refused, and a gated confidence under the
+    /// abstention floor is the typed abstention — not a read a caller
+    /// treats as an answer.
+    #[tokio::test]
+    async fn a_sets_policy_binds_the_answer() {
+        // The requested model is admitted; the reported one is not.
+        let questions_dir = tempfile::tempdir().unwrap();
+        policy_questions(questions_dir.path(), r#"{"models": ["stub"]}"#);
+        let port = serve_answer(json!({
+            "model": "other-model",
+            "answers": {"q": {"type": "noul", "noul": 0.9}}
+        }))
+        .await;
+        let mut runtime = empty_runtime();
+        runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
+        runtime.door = Some(
+            jev::Client::new(jev::Config::local(
+                format!("http://127.0.0.1:{port}"),
+                "stub",
+            ))
+            .unwrap(),
+        );
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let run = runtime
+            .run(&policy_program(), &inputs, &Grant::all(), None)
+            .await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some("unbound_model")
+        );
+
+        // A gated answer under the floor abstains, stated as such.
+        let questions_dir = tempfile::tempdir().unwrap();
+        policy_questions(questions_dir.path(), r#"{"abstain_below": 0.5, "v": 2}"#);
+        let port = serve_answer(json!({
+            "model": "stub",
+            "answers": {"q": {"type": "noul", "noul": 0.3}}
+        }))
+        .await;
+        let mut runtime = empty_runtime();
+        runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
+        runtime.door = Some(
+            jev::Client::new(jev::Config::local(
+                format!("http://127.0.0.1:{port}"),
+                "stub",
+            ))
+            .unwrap(),
+        );
+        let run = runtime
+            .run(&policy_program(), &inputs, &Grant::all(), None)
+            .await;
+        assert_eq!(
+            run.stopped.as_ref().map(|refused| refused.code.as_str()),
+            Some("abstained")
+        );
     }
 
     /// The work is the list the sentence carries, in the order it was
