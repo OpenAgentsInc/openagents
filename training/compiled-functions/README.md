@@ -3,7 +3,7 @@
 What our 98 `routing` labels bought, against an adapter a hypernetwork wrote
 from the question text alone. This directory holds the harness and the
 records for openagents#9387; the reading lives in
-[`docs/decision-models/2026-09-20-compiled-functions.md`](../../docs/decision-models/2026-09-20-compiled-functions.md).
+[`docs/decision-models/measurements/2026-09-20-compiled-functions.md`](../../docs/decision-models/measurements/2026-09-20-compiled-functions.md).
 
 `measure.py` sends a spec to the hosted ProgramAsWeights compiler
 (`paw-4b-qwen3-0.6b`), loads the compiled adapter through the vendor SDK, asks

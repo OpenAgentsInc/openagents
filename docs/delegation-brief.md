@@ -240,7 +240,7 @@ test and a recording of something else doing what it should do.
   directory for creation/removal across Coder processes and linked checkouts,
   while delegated work stays concurrent. Cancellation now keeps the checkout
   alive until the supervisor reaps the executor. See
-  [worktree coordination](coder/delegate.md#coordinate-checkout-creation-and-cleanup).
+  [worktree coordination](coder/runtime/delegate.md#coordinate-checkout-creation-and-cleanup).
   The earlier concurrency test's fixed 1.5-second ceiling was separately
   replaced by a comparison against summed delegation time in #9416.
 - **Use a separate Cargo target directory per worktree.** During this handoff,

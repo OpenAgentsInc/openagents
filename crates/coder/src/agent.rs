@@ -335,7 +335,7 @@ impl Agent {
     ///
     /// With neither set, no program a turn selects may run: a selection
     /// is a proposal, and this is the grant it is proposed under. See
-    /// `docs/coder/program-authority.md`.
+    /// `docs/coder/guides/program-authority.md`.
     pub fn with_program_grant(mut self, spec: Option<&str>) -> Self {
         self.program_grant = spec.map(str::to_string);
         self

@@ -10,17 +10,17 @@ not a special case, and the last section says what generalizes.
 
 ## Current delivery direction
 
-The [TypeSafe-native Coder roadmap](coder/typesafe-agent-roadmap.md) places
+The [TypeSafe-native Coder roadmap](coder/design/typesafe-agent-roadmap.md) places
 these programs over shared evidence and task-specific context. The earlier
 reference-design discussion below explains the concepts; it is not a claim
 that every proposed capability or composition rule is implemented here.
-Use [the consumer inventory](coder/coder-as-decision-router-consumer.md)
+Use [the consumer inventory](coder/design/coder-as-decision-router-consumer.md)
 for current scope.
 
-Explicit [program grants](coder/program-authority.md),
-[scoped tracker intake](coder/tracker-intake.md),
-[project supervision](coder/project-supervision.md), and a bounded typed
-[`run-suite` host path](coder/artifact-verification.md) now exist. Full
+Explicit [program grants](coder/guides/program-authority.md),
+[scoped tracker intake](coder/guides/tracker-intake.md),
+[project supervision](coder/guides/project-supervision.md), and a bounded typed
+[`run-suite` host path](coder/guides/artifact-verification.md) now exist. Full
 program recovery, typed composition, portable package resolution, and the
 proposed evidence/context store remain delivery work. The new roadmap
 extends these components; it does not introduce a separate private program
@@ -345,7 +345,7 @@ risk.
 
 The turn asks one anyway, because nothing else reaches the runtime from an
 operator's sentence, and it does join them — measured rather than assumed in
-[`decision-models/2026-09-19-program-selection.md`](decision-models/2026-09-19-program-selection.md).
+[`decision-models/2026-09-19-program-selection.md`](decision-models/measurements/2026-09-19-program-selection.md).
 On 32 real turns the constant scores 0.969 and hosted Jev scores 0.938,
 which is the warning above coming true. What the measurement adds is the
 shape of the error: **no program request was missed**, three ordinary turns
@@ -405,7 +405,7 @@ engine's job is admission and safety.
 The one question that *is* asked before the operator's sentence is read as
 work — which program, or none — is the one the turn needs to reach a program
 at all, and it is measured with the same suspicion:
-[the program-selection report](decision-models/2026-09-19-program-selection.md)
+[the program-selection report](decision-models/measurements/2026-09-19-program-selection.md)
 publishes its baseline and headroom before its accuracy, and counts the two
 errors apart.
 
@@ -445,7 +445,7 @@ the program is mostly mechanism, and the decision model is asked only where
 a judgment is genuinely required.
 
 `coder::runtime` runs all five from the file, and
-[`coder/delegate.md`](coder/delegate.md) covers the `fan_out` step in
+[`coder/delegate.md`](coder/runtime/delegate.md) covers the `fan_out` step in
 detail: what it records, how it is bounded, and why a refusal, a timeout,
 and a failure are three outcomes.
 
@@ -635,8 +635,8 @@ by looking.
 
 ## Operator authority and project supervision
 
-Program selection proposes a program; [operator authority](coder/program-authority.md)
-determines whether it may run. [Scoped tracker intake](coder/tracker-intake.md)
+Program selection proposes a program; [operator authority](coder/guides/program-authority.md)
+determines whether it may run. [Scoped tracker intake](coder/guides/tracker-intake.md)
 feeds host-prepared tasks into the existing source contract. The
-[project supervisor](coder/project-supervision.md) adds a durable outer queue with
+[project supervisor](coder/guides/project-supervision.md) adds a durable outer queue with
 resource admission, immediate refill, and independent result review.

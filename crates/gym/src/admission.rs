@@ -61,7 +61,7 @@
 //! `admission:<sha256>` over the same canonicalization the tenancy manifest
 //! uses. `tenancy::admission` replays this evaluator before activation; a
 //! self-digested serialized claim alone is not admission evidence.
-//! `docs/decision-models/candidate-admission.md` states the contract.
+//! `docs/decision-models/service/candidate-admission.md` states the contract.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;

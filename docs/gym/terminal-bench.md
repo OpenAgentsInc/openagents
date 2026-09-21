@@ -143,7 +143,7 @@ This is the strongest fit for the contract in the whole suite:
   says whether the artifact was right, so every Noul gets an outcome label
   for free.
 - The threshold **gates an action**, which is exactly the case
-  [`../decision-models/choosing.md`](../decision-models/choosing.md) says
+  [`../decision-models/choosing.md`](../decision-models/guides/choosing.md) says
   calibration stops being optional.
 
 And it repairs a live defect. On real `coder` turns the `action` question is

@@ -63,7 +63,7 @@ read-only worktrees were cleaned up before the episode was graded.
 
 The earlier eight-item lookup panel measured Kev-4b and Kev-0.5b; its rows
 and verdicts remain in the historical sidecar. The later
-[program-selection measurement](../../decision-models/2026-09-19-program-selection.md)
+[program-selection measurement](../../decision-models/measurements/2026-09-19-program-selection.md)
 includes hosted Jev, a constant baseline, and real-turn error structure.
 Neither a small lookup panel nor this successful episode establishes that a
 local door can safely judge arbitrary task independence. The measured collision
@@ -109,11 +109,11 @@ own residue rather than a delegate's: `.coder`, `.coder/worktrees`, and
 did not see them because that checkout already held them. Coder now locks
 the common Git directory itself and removes the empty checkout parents when
 the last checkout leaves, so the workspace comparison reads clean on a fresh
-clone. Read [`delegate.md`](../delegate.md#coordinate-checkout-creation-and-cleanup).
+clone. Read [`delegate.md`](../runtime/delegate.md#coordinate-checkout-creation-and-cleanup).
 
 One environment fact the preflight depends on remains: the Devin CLI's
 state directory must sit inside the approval's writable grant
-(`XDG_DATA_HOME`), as [`worker-executor.md`](../worker-executor.md)
+(`XDG_DATA_HOME`), as [`worker-executor.md`](../guides/worker-executor.md)
 describes. The `origin` check reads the checkout's configured
 `remote.origin.url`, so a host whose Git configuration rewrites URLs
 through a proxy no longer needs `GIT_CONFIG_GLOBAL=/dev/null` for the run.

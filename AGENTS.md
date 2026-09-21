@@ -58,7 +58,7 @@ uses, and marks which are implemented and which are only specified.
   call is a first-class `Call`, so a Jev, Kev, or Lev question and a
   shell command record the same way. Reimplemented from the Harbor
   trajectory RFC's reference implementation; `serde` and `sha2` only, no
-  network. Read `docs/coder/traces.md`.
+  network. Read `docs/coder/runtime/traces.md`.
 - `crates/gym` — the measurement and control plane for decision models:
   pinned suites, a receipt-chained result store, digested acceptance gates,
   and the terminal that reads them. It scores whatever answers
@@ -92,7 +92,7 @@ uses, and marks which are implemented and which are only specified.
   its own doors; `GET /healthz` is process liveness only. The
   `gateway` binary reads one `gateway.json` — listen address, registry
   directory, and each door's backend endpoint. Read
-  `docs/decision-models/gateway.md` before changing a refusal code, a
+  `docs/decision-models/service/gateway.md` before changing a refusal code, a
   bound, or the reservation lifecycle.
 - `crates/jev` — the Rust SDK for TypeSafe's System One API.
 - `crates/oak` — the caller's CLI for the decision API: `oak ask` sends a
@@ -102,7 +102,7 @@ uses, and marks which are implemented and which are only specified.
   own loop — the service settles quota by `(request, attempt)`, so each
   retry keeps the `Idempotency-Key` and bumps `x-attempt`. Credentials
   come from `OPENAGENTS_API_KEY` or a `0600` config file, never a flag.
-  `docs/decision-models/caller.md` is the caller's guide.
+  `docs/decision-models/guides/caller.md` is the caller's guide.
 - `crates/kev` — the Rust port of the kev decision model: packed prefill,
   block-causal question isolation, pointer readout, and `kev-serve`, a
   TypeSafe-compatible `POST /v1/systemone` server. Documentation and
@@ -122,12 +122,12 @@ uses, and marks which are implemented and which are only specified.
   anything generates and narrowing from there; a reply becomes an
   executable plan only under a permit that runs one, so keep execution
   policy there rather than in what the model is told.
-  `docs/coder/headless.md` covers the headless flags and
+  `docs/coder/guides/headless.md` covers the headless flags and
   the exit codes. Every conversation records itself to
-  `~/.openagents/traces/` as it runs; `docs/coder/traces.md` covers the
+  `~/.openagents/traces/` as it runs; `docs/coder/runtime/traces.md` covers the
   location, the opt-out, and what a trace holds. `delegate` hands a
   bounded task to an executor and runs a fan-out of them under a stated
-  bound; read `docs/coder/delegate.md` before changing it, and do not
+  bound; read `docs/coder/runtime/delegate.md` before changing it, and do not
   offer delegation to the model as a tool it may elect. `capability`
   re-exports the shared `crates/capability` contract. These readers load
   `capabilities/`, `programs/`, `questions/`, and `sources/`, so what a
@@ -135,13 +135,13 @@ uses, and marks which are implemented and which are only specified.
   rather than hardcoded, and `runtime` runs a program's steps from the
   program. The turn reaches it by asking which program a request wants, or
   **none**, which is nearly every turn and leaves the turn unchanged;
-  `docs/decision-models/2026-09-19-program-selection.md` is that question's
+  `docs/decision-models/measurements/2026-09-19-program-selection.md` is that question's
   baseline, headroom, and error rates, counted apart because a missed
   program costs a retry and a spurious one runs a program nobody asked for.
   `docs/programs.md` covers all five. The crate's second binary,
   `coder-worker`, is the other end of the relay door: it answers NIP-CJ
   job requests from a relay through an Open Responses door.
-  `docs/coder/relay-transport.md` is the measured proof that the two ends
+  `docs/coder/measurements/relay-transport.md` is the measured proof that the two ends
   meet, and it holds the per-transport latency and the refusal causes.
 - `crates/capability` — the capability manifest contract `coder` and
   `coderbench` share. Reading a registry is inert; an executable probe
@@ -160,7 +160,7 @@ uses, and marks which are implemented and which are only specified.
   its own, a deadline or a cancelled caller terminates that group and reaps
   the direct child before the job reports, and stdout and stderr are held
   to their caps as they are read. Unix only, stated rather than assumed.
-  Read `docs/coder/subprocesses.md` before changing a deadline, a cap, or a
+  Read `docs/coder/runtime/subprocesses.md` before changing a deadline, a cap, or a
   call site that spawns a process.
 - `crates/lev` — the same contract answered by Apple's on-device foundation
   model, through the in-repo Swift helper in `swift/lev-bridge`. Build the

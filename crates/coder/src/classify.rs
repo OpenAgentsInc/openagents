@@ -11,7 +11,7 @@
 //! per round of shell commands, `outcome`. `coder-turns-v1` also asked
 //! `needs_code`, `risk`, and `progress` on the turn and `useful` and
 //! `damage` on the round, and
-//! `docs/decision-models/2026-09-20-coder-question-baselines.md` retired
+//! `docs/decision-models/measurements/2026-09-20-coder-question-baselines.md` retired
 //! the five: on real turns each scores no better than the constant that
 //! would replace it, and no decision read any of them. The v1 text stays
 //! in `crates/gym/questions/coder-turns-v1.json`, where the rows that
@@ -136,7 +136,7 @@ pub fn questions() -> Questions {
 /// answered states up to 12,101 bytes and refused `branch_too_long` from
 /// 10,704 bytes, so the budget is [`STATE_BUDGET`], and these caps are the
 /// rung of the measured ladder where every real turn state lands under it.
-/// `docs/decision-models/2026-09-20-state-budget.md` holds the ladder, the
+/// `docs/decision-models/measurements/2026-09-20-state-budget.md` holds the ladder, the
 /// sizes, and what hosted Jev's accuracy did at each rung.
 ///
 /// The caps take the largest contributor first. Command output was

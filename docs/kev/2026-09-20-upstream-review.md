@@ -16,7 +16,7 @@ perform here.
 ## Implementation follow-up
 
 Artifact acquisition, content identity, and fp32 merging are implemented
-and verified in #9454–#9456. The [current program baseline](../decision-models/2026-09-20-program-selection-v2.md)
+and verified in #9454–#9456. The [current program baseline](../decision-models/measurements/2026-09-20-program-selection-v2.md)
 completed #9457. The [replacement 4B evaluation](measurements/2026-09-20-candidate-4b.md)
 records conformance and 461 open items per door, with paired comparisons
 and per-family recommendations. It does not admit a general replacement.

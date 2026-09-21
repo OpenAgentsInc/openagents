@@ -89,10 +89,10 @@ caller's policy and should be measured on the caller's labelled data.
 
 ## Where to read more
 
-- `docs/decision-models/caller.md` — the caller's guide end to end.
-- `docs/decision-models/gateway.md` — the service's admission, bounds, and
+- `docs/decision-models/guides/caller.md` — the caller's guide end to end.
+- `docs/decision-models/service/gateway.md` — the service's admission, bounds, and
   refusal codes.
-- `docs/decision-models/openapi.yaml` — the machine-readable contract.
+- `docs/decision-models/api/openapi.yaml` — the machine-readable contract.
 - `docs/decision-models/examples/` — runnable curl and `oak` examples.
 - `docs/gym/measured-records.md` — how suites, runs, and report
   commitments measure a door.

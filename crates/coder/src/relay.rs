@@ -22,7 +22,7 @@
 //! field rather than as prose: [`GenerateError::Relay`] when nothing
 //! reached a worker, [`GenerateError::Silent`] when the relay took the job
 //! and no answer came back, and [`GenerateError::Refused`] when a worker
-//! answered by declining. `docs/coder/relay-transport.md` measures all
+//! answered by declining. `docs/coder/measurements/relay-transport.md` measures all
 //! three.
 //!
 //! The relay is transport, not authority. Its subscription labels are

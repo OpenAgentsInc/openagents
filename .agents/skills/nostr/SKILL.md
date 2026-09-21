@@ -211,7 +211,7 @@ Environment, worker side (`crates/coder/src/bin/coder-worker.rs`):
 `CODER_DOOR_KEY` with `CODER_DOOR_URL` and `CODER_WORKER_MODEL` for an
 Open Responses door, or `CODER_EXECUTOR=<capability slug>` for a local
 approved executor such as `devin-local` (see
-`docs/coder/worker-executor.md`). Setting both is refused. The
+`docs/coder/guides/worker-executor.md`). Setting both is refused. The
 worker prints its pubkey on start; that value is what the terminal's
 `CODER_WORKER` names. `--once` answers one job and exits; `--decline
 <CODE>` refuses every job with a typed status error, for measuring the
@@ -225,7 +225,7 @@ the bound is refused before anything runs, with a typed `busy` status,
 and the refusal releases the slot. The worker's key and the terminal's
 key must differ.
 
-`docs/coder/relay-transport.md` is the measured proof that both ends
+`docs/coder/measurements/relay-transport.md` is the measured proof that both ends
 meet, with per-transport latency and refusal causes.
 
 ## Capabilities and programs (NIP-CAP, NIP-PRG)

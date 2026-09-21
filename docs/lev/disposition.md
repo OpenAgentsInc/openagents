@@ -110,7 +110,7 @@ stale: the choice release has matching adapter-specific calibration records.
 
 Those calibration grants rest on in-domain evidence. They do not establish
 transfer to coding questions or external labels. The
-[domain-gap record](../decision-models/2026-09-20-lev-domain-gap.md) retains
+[domain-gap record](../decision-models/measurements/2026-09-20-lev-domain-gap.md) retains
 out-of-domain observations separately from the calibration grants; adding an
 `observationRef` never admits a family. On `coder-turns-v1`, choice answers
 67/95 correctly and band and permutation each answer 69/95 correctly, with

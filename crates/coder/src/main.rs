@@ -34,12 +34,12 @@
 //! terminal invocation. `CODER_TRACE_DIR` moves that directory,
 //! `--trace <PATH>` names the file outright, and `CODER_TRACE=off` turns
 //! recording off; the session's first detail line says which. See
-//! `docs/coder/traces.md`.
+//! `docs/coder/runtime/traces.md`.
 //!
 //! The terminal is held by a [`Guard`] that hands it back on every exit
 //! path, the turn reports on two lanes so a command outcome is never lost
 //! behind streamed text, and the scrollback is bounded and wraps each line
-//! once per width. `docs/coder/terminal.md` covers all three.
+//! once per width. `docs/coder/runtime/terminal.md` covers all three.
 
 mod cli;
 mod headless;

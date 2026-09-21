@@ -29,7 +29,7 @@
 //! credential the inviter delivers out of band, and the store keeps only
 //! the token's digest. The HTTP adapter that will sit in front of these
 //! calls is specified in
-//! `docs/decision-models/workspace-membership.md`, not implemented here.
+//! `docs/decision-models/service/workspace-membership.md`, not implemented here.
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};

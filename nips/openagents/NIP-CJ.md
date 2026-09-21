@@ -237,7 +237,7 @@ parties; tags carry only routing metadata (kind, `e`, `p`).
 relay-side decision caller exists yet. The wire shapes are defined here;
 the service contract — principal mapping, admission order, quota
 settlement, deadlines, cancellation, and the test matrix — is
-[docs/decision-models/relay-decision-contract.md](../../docs/decision-models/relay-decision-contract.md).
+[docs/decision-models/api/relay-decision-contract.md](../../docs/decision-models/api/relay-decision-contract.md).
 
 A decision job carries one `POST /v1/systemone` call — `state` plus typed
 `questions` — instead of a conversation turn. The family has its own

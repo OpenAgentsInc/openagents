@@ -43,7 +43,7 @@ oak ask --questions questions.json --model shared-kev \
   | jq 'select(.uncertain == true)'
 ```
 
-`docs/decision-models/caller.md` covers input modes, exit codes, retries,
+`docs/decision-models/guides/caller.md` covers input modes, exit codes, retries,
 and what each answer field means. These examples run against any door
 speaking the contract — a deployed gateway, a local `kev-serve`, or
 TypeSafe's `api.typesafe.ai` with a `ts-` key.

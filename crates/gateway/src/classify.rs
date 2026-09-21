@@ -3,7 +3,7 @@
 //! envelope produces.
 //!
 //! This module is a slice of the facade described in
-//! `docs/decision-models/decision-api.md`: it defines what a caller may
+//! `docs/decision-models/api/decision-api.md`: it defines what a caller may
 //! send and checks it completely, before any route, handler, or backend
 //! exists. Nothing here runs inference, picks a threshold, guesses a
 //! backend's capacity, or reports a successful outcome — a [`Plan`]

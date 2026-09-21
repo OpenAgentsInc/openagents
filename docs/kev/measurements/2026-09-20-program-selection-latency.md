@@ -1,7 +1,7 @@
 # Program selection latency, per Kev checkpoint
 
 The latency behind
-[`docs/decision-models/2026-09-20-program-selection-local-doors.md`](../../decision-models/2026-09-20-program-selection-local-doors.md):
+[`docs/decision-models/measurements/2026-09-20-program-selection-local-doors.md`](../../decision-models/measurements/2026-09-20-program-selection-local-doors.md):
 three Kev checkpoints answering the `program-selection-v1` question on the
 44 open items of the suite of the same name, eight passes each, one door at
 a time. That record reads the numbers; this one keeps the per-block tables
@@ -102,7 +102,7 @@ servers were idle during each. No call was refused or lost in any block.
   than a slow block throughout. Quote the p50 and give the p95 as a range.
 - `kev-4b` at 3.2 s median is about six times `kev-0.5b` and about
   seventeen times the hosted Jev median of 192 ms recorded in
-  [`docs/decision-models/2026-09-19-program-selection.md`](../../decision-models/2026-09-19-program-selection.md).
+  [`docs/decision-models/measurements/2026-09-19-program-selection.md`](../../decision-models/measurements/2026-09-19-program-selection.md).
   Its worst block p95 is 12.7 s.
 - These are CPU fp32 numbers on a server-class Xeon. They say nothing about
   a GPU or an Apple device, and nothing about `kev-8b`, which was not

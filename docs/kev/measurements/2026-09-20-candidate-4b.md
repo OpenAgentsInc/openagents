@@ -26,7 +26,7 @@ raising the bound after seeing responses would be a separate experiment.
 The hosted service reports its model name but no verifiable weight digest.
 
 The program-selection acceptance rule is the one frozen in
-[the v2 baseline](../../decision-models/2026-09-20-program-selection-v2.md).
+[the v2 baseline](../../decision-models/measurements/2026-09-20-program-selection-v2.md).
 For other families, report paired errors, Wilson accuracy intervals, and
 paired bootstrap intervals separately by family and split. These are
 benchmark descriptions, not independent deployment trials. No locked read

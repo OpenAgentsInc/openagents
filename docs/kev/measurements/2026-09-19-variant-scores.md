@@ -216,7 +216,7 @@ than an edit to a rule whose digest is already in 785 rows.
 
 ## Where the checkpoints differ by family
 
-**Agreement ceiling, added 2026-09-20.** A second reader, labelling blind, agreed with the stored labels on `routing` 50/51 (0.980, kappa 0.971), `urgency` 29/31 (0.935, kappa 0.870), and `severity` 18/18 (1.000, kappa 1.000), on a 100-item sample of these same 196 items. Read each family accuracy against that ceiling, not against 1.0; the intervals and the three disputed items are in [`../decision-models/2026-09-20-instrument-validity.md`](../../decision-models/2026-09-20-instrument-validity.md).
+**Agreement ceiling, added 2026-09-20.** A second reader, labelling blind, agreed with the stored labels on `routing` 50/51 (0.980, kappa 0.971), `urgency` 29/31 (0.935, kappa 0.870), and `severity` 18/18 (1.000, kappa 1.000), on a 100-item sample of these same 196 items. Read each family accuracy against that ceiling, not against 1.0; the intervals and the three disputed items are in [`../decision-models/2026-09-20-instrument-validity.md`](../../decision-models/measurements/2026-09-20-instrument-validity.md).
 
 | Door | `routing`, 80 items | `urgency`, 48 items | `severity`, 29 items |
 | --- | --- | --- | --- |

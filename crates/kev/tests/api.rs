@@ -78,7 +78,7 @@ fn a_score_reports_the_weighted_mean_while_a_reader_argmaxes() {
     // probability-weighted mean and can land between levels, and the level
     // an evaluator scores is the argmax of `probabilities`. The two
     // disagree on a skew and on an exact tie, and both disagreements are
-    // pinned here because docs/decision-models/2026-09-20-score-contract.md
+    // pinned here because docs/decision-models/measurements/2026-09-20-score-contract.md
     // rests on them.
     let meta = vec![
         Meta {

@@ -128,7 +128,7 @@ with the greatest probability instead: [Do not read this checkpoint's `score`
 as a position](model-cards.md#do-not-read-this-checkpoints-score-as-a-position).
 The convention that level is read under — argmax over `probabilities`, ties
 to the last level listed — is stated for every door in
-[`../decision-models/2026-09-20-score-contract.md`](../decision-models/2026-09-20-score-contract.md).
+[`../decision-models/2026-09-20-score-contract.md`](../decision-models/measurements/2026-09-20-score-contract.md).
 Two wire details follow from that. The numbers kev reports — `noul`,
 `score`, `confidence`, and every `probabilities` entry — are rounded to two
 decimals before they leave the door, so a reader should not compare them

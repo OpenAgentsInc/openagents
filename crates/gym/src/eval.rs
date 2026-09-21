@@ -170,7 +170,7 @@ fn refusal_code(body: &jev::ResponseBody) -> Option<String> {
 ///
 /// The `score` field is not read here: it is the probability-weighted
 /// position the contract promises, a different statistic from the level
-/// scored, and `docs/decision-models/2026-09-20-score-contract.md` keeps
+/// scored, and `docs/decision-models/measurements/2026-09-20-score-contract.md` keeps
 /// the two apart.
 #[must_use]
 pub fn read_answer(answer: &jev::Answer) -> Disposition {

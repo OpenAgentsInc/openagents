@@ -1,6 +1,6 @@
 # Workstation validation of the Devin delegation runbook
 
-The [runbook](../devin-delegation-runbook.md) was exercised on an Apple silicon
+The [runbook](../guides/devin-delegation-runbook.md) was exercised on an Apple silicon
 Mac with Devin CLI `3000.10.31`, the `sandbox-exec` boundary, and hosted Jev
 reporting `jev-1.13.0`. The Coder runtime and delegated baseline were
 `db22fead007a3bffd43842bdd7639b270da4b732`. The new runbook, smoke list,
@@ -29,7 +29,7 @@ checking the actual delegation transport. Routing generation over a relay did
 not by itself establish that the delegated work crossed it.
 
 Historical proofs remain in the [observed fan-out record](../measurements/2026-09-20-observed-fanout.md)
-and [relay transport record](../relay-transport.md). They are distinct from the
+and [relay transport record](../measurements/relay-transport.md). They are distinct from the
 new runs below.
 
 ## New runs

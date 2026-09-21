@@ -483,9 +483,9 @@ complete retained inventory and measured time accounting.
 ## How a TypeSafe-native Coder could prevent this failure
 
 This recommendation applies the Jev founder's
-[original coding-agent document](../../coder/thoughts-on-a-typesafe-coding-agent.md),
-the [Coder architecture analysis](../../coder/typesafe-agent-analysis.md), and the
-[delivery roadmap](../../coder/typesafe-agent-roadmap.md) to the failures measured
+[original coding-agent document](../../coder/design/thoughts-on-a-typesafe-coding-agent.md),
+the [Coder architecture analysis](../../coder/design/typesafe-agent-analysis.md), and the
+[delivery roadmap](../../coder/design/typesafe-agent-roadmap.md) to the failures measured
 above. The Jev founder's relevant ideas are query-specific context, explicit shared
 state, subgoal deduplication, and background consumers of existing observations.
 The roadmap supplies the crucial implementation boundary: Rust owns authority,

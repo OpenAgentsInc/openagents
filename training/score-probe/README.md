@@ -10,7 +10,7 @@ This probe asks each door the same Score questions and measures three things
 that separate an ordered readout from an unordered one.
 
 The record it produced is
-[`docs/decision-models/2026-09-19-score-ordinality.md`](../../docs/decision-models/2026-09-19-score-ordinality.md).
+[`docs/decision-models/measurements/2026-09-19-score-ordinality.md`](../../docs/decision-models/measurements/2026-09-19-score-ordinality.md).
 
 ## Why this is Python
 

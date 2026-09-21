@@ -29,7 +29,7 @@ pricing.
 ## The labels question, which is the only one that mattered
 
 This page was opened because a compiler that turns English into a working
-adapter *without labels* would make [`../choosing.md`](../choosing.md) wrong
+adapter *without labels* would make [`../choosing.md`](../guides/choosing.md) wrong
 at the root.
 
 **The API takes one string.** The entire compile request body is

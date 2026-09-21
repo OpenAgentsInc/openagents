@@ -150,7 +150,7 @@ pub struct ScoreAnswer {
     /// between levels. The wire shape carries no categorical level: a
     /// reader that wants one takes the argmax of `probabilities`, and the
     /// retained categorical accuracy measurements compare that level with
-    /// the label. `docs/decision-models/2026-09-20-score-contract.md`
+    /// the label. `docs/decision-models/measurements/2026-09-20-score-contract.md`
     /// states both, and the tie convention.
     ///
     /// Kev serves no calibration map, so the pick is always the argmax and

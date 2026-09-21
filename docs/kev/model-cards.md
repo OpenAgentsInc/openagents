@@ -197,7 +197,7 @@ checkpoint never reports a score below 0.60 or above 1.83 on items whose
 true levels span the whole scale.
 
 Full method, per-door numbers, intervals, and what would change the reading:
-[`docs/decision-models/2026-09-19-score-ordinality.md`](../decision-models/2026-09-19-score-ordinality.md).
+[`docs/decision-models/measurements/2026-09-19-score-ordinality.md`](../decision-models/measurements/2026-09-19-score-ordinality.md).
 
 ## Historical preview checkpoints pinned here
 

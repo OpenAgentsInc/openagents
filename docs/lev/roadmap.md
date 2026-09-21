@@ -100,7 +100,7 @@ measured noise floor; see
   references remain to be completed and reconciled.
 - #9398 remains open: the base state-budget sweep is retained, but the
   admitted choice adapter still needs the same eleven rungs. See
-  [`../decision-models/2026-09-20-state-budget.md`](../decision-models/2026-09-20-state-budget.md).
+  [`../decision-models/2026-09-20-state-budget.md`](../decision-models/measurements/2026-09-20-state-budget.md).
 - #9382, #9393, and #9426 track quiet timing, deployment comparisons, and the
   remaining hardware verification. Do not treat implementation status here
   as evidence that those measurements ran.

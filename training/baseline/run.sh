@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Produces every row in docs/decision-models/2026-09-19-frozen-embedding-baseline.md.
+# Produces every row in docs/decision-models/measurements/2026-09-19-frozen-embedding-baseline.md.
 #
 # Two suites, four featurizers, one command. The encoder revisions are pinned
 # here so a rerun on a later day is the same run and not a different one.

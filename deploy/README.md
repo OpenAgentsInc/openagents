@@ -25,7 +25,7 @@ the relay for kind-`25900` job requests that name its public key, decrypts
 each one, answers through a door, and publishes the reply. The relay stores
 none of it, so a worker that is not connected when a request goes out never
 sees it. That is why the worker is a service and not a shell session.
-[`docs/coder/relay-transport.md`](../docs/coder/relay-transport.md) is the
+[`docs/coder/measurements/relay-transport.md`](../docs/coder/measurements/relay-transport.md) is the
 measured proof of the transport;
 [NIP-CJ](../nips/openagents/NIP-CJ.md) is the wire contract.
 
@@ -154,7 +154,7 @@ sudo systemd-analyze security --no-pager coder-worker.service
 
 A gateway worker is done at step 3. The alternative door answers jobs
 through an approved local executor instead of the gateway — read
-[`docs/coder/worker-executor.md`](../docs/coder/worker-executor.md) for
+[`docs/coder/guides/worker-executor.md`](../docs/coder/guides/worker-executor.md) for
 what that door is and the layout its boundary accepts. On a host, three
 things change.
 

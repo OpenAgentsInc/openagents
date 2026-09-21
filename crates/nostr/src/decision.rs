@@ -4,7 +4,7 @@
 //! One decision job carries one `POST /v1/systemone` call — `state` plus
 //! typed `questions` — over the relay instead of HTTP. The wire shapes are
 //! `nips/openagents/NIP-CJ.md` ("Decision jobs"); the service semantics are
-//! `docs/decision-models/relay-decision-contract.md`. This module is the
+//! `docs/decision-models/api/relay-decision-contract.md`. This module is the
 //! protocol half both ends share: envelope construction, the checks a
 //! signature can back, and the bounds every field lives under.
 //!

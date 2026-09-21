@@ -13,7 +13,7 @@
 //! the old text stays comparable with the items it was asked about.
 //! `coder-turns-v1` is that older set: its five retired questions are no
 //! longer sent, and its file and rows stay as the measurement that retired
-//! them (`docs/decision-models/2026-09-20-coder-question-baselines.md`).
+//! them (`docs/decision-models/measurements/2026-09-20-coder-question-baselines.md`).
 //!
 //! To print the set for the generator:
 //!
@@ -125,7 +125,7 @@ fn committed_selection() -> BTreeMap<String, Value> {
 /// The question the selection suite scores is the one the host sends.
 ///
 /// A measurement of a copy of the question measures the copy.
-/// `docs/decision-models/2026-09-19-program-selection.md` reports what this
+/// `docs/decision-models/measurements/2026-09-19-program-selection.md` reports what this
 /// wording scored, and this test is what keeps that report about the
 /// wording still in `questions/program.json`.
 #[test]

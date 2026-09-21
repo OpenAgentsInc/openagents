@@ -63,7 +63,7 @@ Options:
                          CODER_PROGRAMS does: a comma-separated slug list
                          or `all`. With neither set, a program a turn
                          selects is refused rather than run — see
-                         docs/coder/program-authority.md.
+                         docs/coder/guides/program-authority.md.
   -h, --help             Show this text.
 
 Exit codes with --print:

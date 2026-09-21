@@ -1,6 +1,6 @@
 # Source and verification notes
 
-The [transcription](../thoughts-on-a-typesafe-coding-agent.md) preserves the
+The [transcription](../design/thoughts-on-a-typesafe-coding-agent.md) preserves the
 content of the public Google Doc
 [[public] thoughts on a typesafe coding agent](https://docs.google.com/document/d/1G61uUB0FifUnmmrPzFQojZ3KpczYKmXGpgEXDJ2l_Zg/preview),
 retrieved on 2026-09-21.

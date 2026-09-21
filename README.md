@@ -61,7 +61,7 @@ Coder's backend is a relay, not a service.
   Quotas, judgment, and streaming all live worker-side, expressed as
   events — application logic as NIPs, the pattern the Block lane uses
   for Buzz. `cargo run -p coder --bin coder-worker` is one;
-  `docs/coder/relay-transport.md` measures what it costs to route a turn
+  `docs/coder/measurements/relay-transport.md` measures what it costs to route a turn
   through it.
 - **One relay serves everything — and it's yours if you want it.**
   `wss://relay.openagents.com` runs the same `nostr-relay` binary this
@@ -136,22 +136,22 @@ or `source` the file that defines the alias, after changing it.
 
 `-p` runs one turn without a terminal, writes the reply to standard
 output, and exits 0 for an answer, 2 for a declined turn, and 1 for one
-that did not finish. `docs/coder/headless.md` has the flags and the JSON
+that did not finish. `docs/coder/guides/headless.md` has the flags and the JSON
 report.
 
-[Coder as a Decision Router consumer](docs/coder/coder-as-decision-router-consumer.md)
+[Coder as a Decision Router consumer](docs/coder/design/coder-as-decision-router-consumer.md)
 defines the flagship product vision, the existing implementation, and the
 issues that connect typed decisions to bounded programs and verified work.
 
-The [TypeSafe-native Coder analysis](docs/coder/typesafe-agent-analysis.md)
-and [delivery roadmap](docs/coder/typesafe-agent-roadmap.md) apply the
+The [TypeSafe-native Coder analysis](docs/coder/design/typesafe-agent-analysis.md)
+and [delivery roadmap](docs/coder/design/typesafe-agent-roadmap.md) apply the
 TypeSafe founder's coding-agent proposal to Coder: shared evidence,
 task-specific context, native coding operations, progressive tools, and
 bounded parallel/background work. The
-[project snapshot](docs/coder/2026-09-21-project-roadmap-snapshot.md) maps
+[project snapshot](docs/coder/design/2026-09-21-project-roadmap-snapshot.md) maps
 that plan to the consumer and Decision Router work in flight.
 
-[Delegate work to Devin with Coder](docs/coder/devin-delegation-runbook.md)
+[Delegate work to Devin with Coder](docs/coder/guides/devin-delegation-runbook.md)
 is the operator runbook for local setup, six-session batches, remote workers,
 result checks, and supervised integration.
 
@@ -162,7 +162,7 @@ relay; none of it falls back to the stub. Naming two doors at once is
 refused rather than resolved. `CODER_MODEL` takes a lane — `gemini` for
 `google/gemini-3.8-flash`, `glm` for `zai/glm-5.3-flash` — or any model
 id the gateway serves. To answer those jobs from the other side, run
-`cargo run -p coder --bin coder-worker`; `docs/coder/relay-transport.md`
+`cargo run -p coder --bin coder-worker`; `docs/coder/measurements/relay-transport.md`
 has the walkthrough and what the round trip costs. To run a relay
 locally, `docs/deployment/runbook-local-dev.md` has the walkthrough.
 

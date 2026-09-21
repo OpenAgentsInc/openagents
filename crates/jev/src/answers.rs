@@ -72,7 +72,7 @@ pub struct ScoreAnswer {
     /// The probability-weighted mean level, which falls between levels.
     /// A caller that needs a categorical level reads `selected`, or falls
     /// back to the argmax of `probabilities` when the answer lacks it.
-    /// `docs/decision-models/2026-09-20-score-contract.md` states the rule.
+    /// `docs/decision-models/measurements/2026-09-20-score-contract.md` states the rule.
     pub score: f64,
     /// How sharp the distribution is, as the API reports it.
     pub confidence: f64,

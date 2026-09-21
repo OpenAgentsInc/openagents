@@ -76,7 +76,7 @@ those scores hold on labelled data we did not author?
 100 MultiNLI validation-matched items as a three-way choice family, labels
 the sets' own, question text the only authored part, 80 calibration, 80
 development, 40 locked and unread.
-[`../../decision-models/2026-09-20-instrument-validity.md`](../../decision-models/2026-09-20-instrument-validity.md)
+[`../../decision-models/2026-09-20-instrument-validity.md`](../../decision-models/measurements/2026-09-20-instrument-validity.md)
 built it and scored hosted Jev on it; this session added the two Kev doors
 to the same store.
 

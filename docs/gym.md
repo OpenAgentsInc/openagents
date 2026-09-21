@@ -246,7 +246,7 @@ Ordered, each independently shippable:
 
    **Landed, in part.** `crates/atif` is the reimplemented format, and
    Coder Terminal already writes a trace per conversation to local disk
-   (`docs/coder/traces.md`, issue #9400). That gives the port its first
+   (`docs/coder/runtime/traces.md`, issue #9400). That gives the port its first
    standing consumer — our own agent's episodes, with every `classify`
    and `shell_judge` call recorded as a first-class decision call — and
    a crate `crates/gym` can read traces from. Harvesting those traces

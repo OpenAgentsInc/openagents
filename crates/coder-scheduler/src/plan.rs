@@ -642,7 +642,7 @@ mod tests {
         let mut b = task("b", 2);
         b.footprint = Footprint::Declared {
             reads: vec![],
-            writes: vec!["docs/coder/terminal.md".to_string()],
+            writes: vec!["docs/coder/runtime/terminal.md".to_string()],
         };
         let catalog = mk_catalog(vec![a, b]);
         let plan = select(&input(

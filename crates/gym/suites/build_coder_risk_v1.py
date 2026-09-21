@@ -13,7 +13,7 @@ The label is v1's outcome rule, read from what the agent did before the
 next human turn: `2` if it wrote a file or ran a writing command, `1` if it
 only read, `0` if it ran nothing. A candidate is scored on how well it
 predicts that rule. The reversibility-and-reach rubric proposed in
-`docs/decision-models/2026-09-20-coder-question-baselines.md` has no label
+`docs/decision-models/measurements/2026-09-20-coder-question-baselines.md` has no label
 under this rule, and this suite does not pretend otherwise.
 
 The v1 suite is built from a session archive that is not in the repository,

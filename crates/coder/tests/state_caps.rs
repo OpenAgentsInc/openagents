@@ -10,7 +10,7 @@
 //! and nothing else.
 //!
 //! The sweep itself is ignored: it asks hosted Jev, needs `TYPESAFE_API_KEY`,
-//! and writes rows. `docs/decision-models/2026-09-20-state-budget.md` is the
+//! and writes rows. `docs/decision-models/measurements/2026-09-20-state-budget.md` is the
 //! record it produced. To run it:
 //!
 //! ```text
@@ -18,7 +18,7 @@
 //! ```
 //!
 //! `STATE_SWEEP_ROWS` names the JSON Lines file the rows go to; by default
-//! `docs/decision-models/2026-09-20-state-budget.jsonl`, beside the record.
+//! `docs/decision-models/measurements/2026-09-20-state-budget.jsonl`, beside the record.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -303,7 +303,7 @@ fn sweep() {
     let rows_path = std::env::var("STATE_SWEEP_ROWS").map_or_else(
         |_| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../docs/decision-models/2026-09-20-state-budget.jsonl")
+                .join("../../docs/decision-models/measurements/2026-09-20-state-budget.jsonl")
         },
         PathBuf::from,
     );

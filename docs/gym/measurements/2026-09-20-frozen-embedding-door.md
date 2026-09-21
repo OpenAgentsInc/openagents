@@ -4,7 +4,7 @@ openagents#9377 asked for the frozen-embedding baseline to be scored the way
 every other door is: through `POST /v1/systemone`, by the unchanged Gym, into
 the receipt-chained store. This note records what the harness did with a door
 that refuses two of the three primitives by type. The measurement itself is
-[`docs/decision-models/2026-09-20-frozen-embedding-door.md`](../../decision-models/2026-09-20-frozen-embedding-door.md).
+[`docs/decision-models/measurements/2026-09-20-frozen-embedding-door.md`](../../decision-models/measurements/2026-09-20-frozen-embedding-door.md).
 
 ## The door
 

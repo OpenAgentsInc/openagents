@@ -1,7 +1,7 @@
 # Terminal lifecycle smoke test, 2026-09-20
 
 This record captures the interactive verification for the terminal guard
-described in [terminal.md](../terminal.md). It answers the acceptance item in
+described in [terminal.md](../runtime/terminal.md). It answers the acceptance item in
 issue #9432 that asks for a real-pty run with a normal exit and a `Ctrl-C`
 exit, followed by a check that the shell is still sane.
 

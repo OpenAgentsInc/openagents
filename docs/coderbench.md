@@ -37,7 +37,7 @@ the same path with the run step removed, for a trace somebody already has.
 | `--timeout <SECS>` | Override the task's own timeout. |
 
 The trace is named rather than searched for, which is what
-[`--trace`](coder/headless.md) is for, and the path must not already exist:
+[`--trace`](coder/guides/headless.md) is for, and the path must not already exist:
 a session never writes over another session's record. Standard output and
 standard error land beside it as `<trace>.stdout` and `<trace>.stderr`, so
 what the agent said is readable next to what it did. Those two files are
@@ -47,7 +47,7 @@ probe that overruns it is marked truncated rather than read as clean.
 
 A run that passes its timeout takes its whole process tree with it, so an
 agent stopped on one task is not still running against the repository
-during the next one. Read [`coder/subprocesses.md`](coder/subprocesses.md).
+during the next one. Read [`coder/subprocesses.md`](coder/runtime/subprocesses.md).
 
 | Exit code | Meaning |
 | --- | --- |
@@ -383,7 +383,7 @@ correct path for a wrong answer nothing depended on.
 ### Two corrections to this call
 
 Both from
-[`decision-models/2026-09-19-restatement-and-polarity.md`](decision-models/2026-09-19-restatement-and-polarity.md),
+[`decision-models/2026-09-19-restatement-and-polarity.md`](decision-models/measurements/2026-09-19-restatement-and-polarity.md),
 which measured it.
 
 **This call does not replay.** `kev-serve` is deterministic, and the program

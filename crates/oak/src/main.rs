@@ -17,8 +17,8 @@
 //! list. The endpoint comes from `--url`, `OPENAGENTS_BASE_URL`, or the
 //! file's `base_url`; the workspace from `--workspace`,
 //! `OPENAGENTS_WORKSPACE`, or the file's `workspace`. Read
-//! `docs/decision-models/caller.md` and
-//! `docs/decision-models/classification-callers.md`.
+//! `docs/decision-models/guides/caller.md` and
+//! `docs/decision-models/guides/classification-callers.md`.
 
 use std::io::{BufWriter, IsTerminal, Read, Write};
 use std::path::PathBuf;

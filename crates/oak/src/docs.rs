@@ -30,21 +30,26 @@ macro_rules! document {
 }
 
 static DOCUMENTS: &[Document] = &[
-    document!("caller", "Decision API caller guide", "caller.md", false),
+    document!(
+        "caller",
+        "Decision API caller guide",
+        "guides/caller.md",
+        false
+    ),
     document!(
         "classification",
         "Classification callers",
-        "classification-callers.md",
+        "guides/classification-callers.md",
         false
     ),
-    document!("gateway", "Gateway admission", "gateway.md", false),
+    document!("gateway", "Gateway admission", "service/gateway.md", false),
     document!(
         "api-spec",
         "Decision API specification",
-        "decision-api.md",
+        "api/decision-api.md",
         false
     ),
-    document!("openapi", "OpenAPI contract", "openapi.yaml", false),
+    document!("openapi", "OpenAPI contract", "api/openapi.yaml", false),
     document!(
         "classification-schema",
         "Classification request schema",
@@ -60,13 +65,13 @@ static DOCUMENTS: &[Document] = &[
     document!(
         "candidate-admission",
         "Candidate admission",
-        "candidate-admission.md",
+        "service/candidate-admission.md",
         false
     ),
     document!(
         "mcp-documentation",
         "MCP documentation tools",
-        "mcp-documentation.md",
+        "guides/mcp-documentation.md",
         false
     ),
     document!("examples", "Caller examples", "examples/README.md", true),

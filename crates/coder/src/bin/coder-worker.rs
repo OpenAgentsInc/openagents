@@ -65,14 +65,14 @@
 //! writing one rather than answering an edit with prose. The worker holds
 //! the bound itself too: a run still unanswered thirty seconds past its
 //! stated minutes is refused `timed_out`, so no request is left without
-//! an answer. Read [`docs/coder/worker-executor.md`] for that path.
+//! an answer. Read [`docs/coder/guides/worker-executor.md`] for that path.
 //!
 //! One request is answered once. An event whose ID the worker has already
 //! seen is set aside, and a request whose `created_at` is more than ten
 //! minutes old is refused `stale`: nothing on this path is stored, so an
 //! old request arriving now is a replay, not a job.
 //!
-//! Read [`docs/coder/relay-transport.md`] for the proof this binary was
+//! Read [`docs/coder/measurements/relay-transport.md`] for the proof this binary was
 //! written to make possible.
 
 use std::collections::VecDeque;

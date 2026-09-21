@@ -7,11 +7,11 @@ This started as a measurement harness and is now also a door. `baseline.py`
 answers one question offline: on `support-v2`, does the cheapest supervised
 method beat the decision models we built? The answer, and what it implies,
 live in
-[`docs/decision-models/2026-09-19-frozen-embedding-baseline.md`](../../docs/decision-models/2026-09-19-frozen-embedding-baseline.md).
+[`docs/decision-models/measurements/2026-09-19-frozen-embedding-baseline.md`](../../docs/decision-models/measurements/2026-09-19-frozen-embedding-baseline.md).
 `door.py` serves the same head as a TypeSafe-compatible `POST /v1/systemone`
 server so the Gym scores it through the store like every other door; that run
 is
-[`docs/decision-models/2026-09-20-frozen-embedding-door.md`](../../docs/decision-models/2026-09-20-frozen-embedding-door.md).
+[`docs/decision-models/measurements/2026-09-20-frozen-embedding-door.md`](../../docs/decision-models/measurements/2026-09-20-frozen-embedding-door.md).
 
 ## Why this is Python
 

@@ -35,7 +35,7 @@
 //! rather than a grant: [`crate::program_authority`] is the operator's
 //! answer to whether a selected program may run, and a run the grant
 //! does not cover is refused before its first step.
-//! `docs/decision-models/2026-09-19-program-selection.md`
+//! `docs/decision-models/measurements/2026-09-19-program-selection.md`
 //! measures them apart, against the baseline of answering `none` every
 //! time.
 

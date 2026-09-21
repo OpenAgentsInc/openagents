@@ -6,8 +6,8 @@
 //! trusted; how a bounded read works; and how one HTTP call runs — its
 //! timeout, its retry loop honoring `Retry-After`, and its
 //! `(Idempotency-Key, X-Attempt)` settlement pair. Read
-//! `docs/decision-models/caller.md` and
-//! `docs/decision-models/classification-callers.md`.
+//! `docs/decision-models/guides/caller.md` and
+//! `docs/decision-models/guides/classification-callers.md`.
 
 pub mod docs;
 

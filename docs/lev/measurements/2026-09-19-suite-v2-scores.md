@@ -60,7 +60,7 @@ Every `severity` number on this page is an argmax number.
 
 That distinction was checked on 2026-09-19, after a probe asked whether a
 Score's ordering means anything at all on each door:
-[`2026-09-19-score-ordinality.md`](../../decision-models/2026-09-19-score-ordinality.md).
+[`2026-09-19-score-ordinality.md`](../../decision-models/measurements/2026-09-19-score-ordinality.md).
 Lev's ordering held — tau +0.98 on a twelve-ramp walk, 92% of errors landing
 on an adjacent level against a 0.44 null, and no bimodal distribution on 96
 items. **Nothing on this page is withdrawn.** `kev-0.5b`'s weighted mean did
