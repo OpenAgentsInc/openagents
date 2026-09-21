@@ -14,10 +14,7 @@ use std::path::PathBuf;
 use coder::runstate::{Claim, Mark, Outcome, Refusal, State, Store};
 
 fn dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "runstate-recovery-{name}-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("runstate-recovery-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -141,7 +138,11 @@ fn a_torn_tail_from_a_crash_mid_append_is_not_corruption() {
             .open(&path)
             .unwrap();
         use std::io::Write;
-        write!(file, "{{\"schema\":\"runstate/v1\",\"record\":\"run\",\"sta").unwrap();
+        write!(
+            file,
+            "{{\"schema\":\"runstate/v1\",\"record\":\"run\",\"sta"
+        )
+        .unwrap();
     }
     let mut store = Store::open(&dir).unwrap();
     // The fold treats the torn tail as a crashed append, not corruption:
@@ -205,7 +206,10 @@ fn recovery_is_idempotent_across_duplicate_resumes() {
     // The record file itself shows exactly two unknown marks — one per
     // unfinished record, none per resume.
     let text = std::fs::read_to_string(dir.join("run-f.jsonl")).unwrap();
-    let unknowns = text.lines().filter(|line| line.contains(r#""state":"unknown""#)).count();
+    let unknowns = text
+        .lines()
+        .filter(|line| line.contains(r#""state":"unknown""#))
+        .count();
     assert_eq!(unknowns, 2, "one unknown mark per record, none per resume");
 }
 
