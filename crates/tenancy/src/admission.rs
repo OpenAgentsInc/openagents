@@ -372,8 +372,11 @@ mod tests {
             workload: Workload {
                 suite: suite.name.clone(),
                 suite_digest: suite.digest.clone(),
-                question_set: None,
-                question_digest: None,
+                question_set: suite.questions.clone(),
+                question_digest: suite
+                    .questions
+                    .as_ref()
+                    .map(|_| "fixture-question-digest".into()),
                 partitions: vec![Partition::Development],
                 gate_digest: None,
             },
@@ -404,8 +407,11 @@ mod tests {
                     suite: "fixture-transfer".into(),
                     suite_digest: format!("sha256:{}", "c".repeat(64)),
                     partitions: vec![Partition::Development],
-                    question_set: None,
-                    question_digest: None,
+                    question_set: suite.questions.clone(),
+                    question_digest: suite
+                        .questions
+                        .as_ref()
+                        .map(|_| "fixture-question-digest".into()),
                     max_regression_sigmas: unknown.clone(),
                 },
                 deployment: DeploymentGuard {
@@ -461,6 +467,52 @@ mod tests {
                 .admitted()
                 .is_err()
         );
+    }
+
+    #[test]
+    fn admission_revalidates_suite_contents_and_declared_wording() {
+        let suite = Suite::load(include_str!(
+            "../../gym/tests/fixtures/caller-v1/suite.json"
+        ))
+        .unwrap();
+        let original = plan(&suite);
+        for mutation in 0..3 {
+            let mut suite = suite.clone();
+            let mut plan = original.clone();
+            match mutation {
+                0 => suite.items[0].state = serde_json::json!("Changed after loading"),
+                1 => {
+                    plan.workload.question_set = None;
+                    plan.workload.question_digest = None;
+                    plan.seal();
+                }
+                _ => {
+                    plan.workload.question_digest = Some(String::new());
+                    plan.seal();
+                }
+            }
+            let evidence = Evidence {
+                suite: &suite,
+                development: Side {
+                    base: &[],
+                    candidate: &[],
+                    store_head: None,
+                },
+                locked: None,
+                transfer: None,
+                deployment: None,
+                decided_at: "fixture".into(),
+                commitment: None,
+            };
+            let decision = plan.decide(&evidence).unwrap();
+            assert_eq!(decision.ruling, gym::admission::Ruling::Refused);
+            assert!(
+                Record::evaluate(&plan, &evidence)
+                    .unwrap()
+                    .admitted()
+                    .is_err()
+            );
+        }
     }
 
     #[test]
@@ -561,6 +613,8 @@ mod tests {
         base.recorded_at = "2026-09-21T00:00:00Z".into();
         base.split = "development".into();
         base.family = item.family.clone();
+        base.question_set = plan.guards.transfer.question_set.clone();
+        base.question_digest = plan.guards.transfer.question_digest.clone();
         base.estimator = plan.instrument.estimator.clone();
         base.door_identity = plan.base.identity.clone();
         base.check().unwrap();

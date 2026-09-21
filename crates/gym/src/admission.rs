@@ -579,6 +579,11 @@ impl Plan {
                 self.workload.suite_digest,
             ));
         }
+        refusals.extend(check_suite_contract(
+            evidence.suite,
+            self.workload.question_set.as_deref(),
+            self.workload.question_digest.as_deref(),
+        ));
         for family in &self.scope {
             if !evidence.suite.families().contains(family) {
                 refusals.push(format!(
@@ -657,6 +662,11 @@ impl Plan {
 
         // The transfer suite must be the one the plan froze.
         if let Some(transfer) = &evidence.transfer {
+            refusals.extend(check_suite_contract(
+                transfer.suite,
+                self.guards.transfer.question_set.as_deref(),
+                self.guards.transfer.question_digest.as_deref(),
+            ));
             if transfer.suite.digest != self.guards.transfer.suite_digest
                 || transfer.suite.name != self.guards.transfer.suite
             {
@@ -1952,4 +1962,30 @@ fn canonicalize(value: &Value) -> String {
         }
         other => serde_json::to_string(other).expect("a value serializes"),
     }
+}
+
+/// Revalidate public suite data at the admission boundary and bind its wording.
+fn check_suite_contract(
+    suite: &Suite,
+    question_set: Option<&str>,
+    question_digest: Option<&str>,
+) -> Vec<String> {
+    let mut refusals = Vec::new();
+    let checked = serde_json::to_string(suite)
+        .map_err(|error| error.to_string())
+        .and_then(|document| Suite::load(&document).map_err(|error| error.to_string()));
+    if let Err(error) = checked {
+        refusals.push(format!("invalid admission suite `{}`: {error}", suite.name));
+    }
+    if suite.questions.as_deref() != question_set
+        || question_set.is_some_and(|value| value.trim().is_empty())
+        || question_set.is_some() != question_digest.is_some()
+        || question_digest.is_some_and(|value| value.trim().is_empty())
+    {
+        refusals.push(format!(
+            "suite `{}` requires its declared question set and a nonempty question digest",
+            suite.name
+        ));
+    }
+    refusals
 }
