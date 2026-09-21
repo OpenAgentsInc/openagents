@@ -1,0 +1,656 @@
+{
+  "v": 1,
+  "id": "openagents.evidence-select.v1",
+  "labels": "author",
+  "note": "Held-out evidence-selection suite for openagents.evidence-relevance.v1. Items are synthetic task-plus-candidate records the question set was not authored against; truth labels are the suite author's. The door sees only observable records - path, span, readness, size - never content, exactly the way Select::request renders them.",
+  "items": [
+    {
+      "id": "es-01",
+      "task": "Fix the retry backoff in the HTTP client so a 429 honors Retry-After.",
+      "candidates": [
+        {
+          "path": "crates/net/src/retry.rs",
+          "readness": "full",
+          "bytes": 4210,
+          "observation": "read",
+          "present": true,
+          "digest": "a1f4c2d8b93e7f061a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5",
+          "base": "9f2e1c4"
+        },
+        {
+          "path": "crates/net/src/client.rs",
+          "readness": "full",
+          "bytes": 12800,
+          "observation": "read",
+          "present": true,
+          "digest": "b2e5d3f9c4a8e1f72b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6",
+          "base": "9f2e1c4"
+        },
+        {
+          "path": "docs/net/usage.md",
+          "readness": "full",
+          "bytes": 3100,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "crates/net/tests/retry.rs",
+          "readness": "full",
+          "bytes": 2950,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "crates/net/src/retry.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-02",
+      "task": "Update the install command in the project README to the new package name.",
+      "candidates": [
+        {
+          "path": "README.md",
+          "readness": "full",
+          "bytes": 6800,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/main.rs",
+          "readness": "full",
+          "bytes": 15400,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "CHANGELOG.md",
+          "readness": "full",
+          "bytes": 22000,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "README.md",
+        "span": null
+      }
+    },
+    {
+      "id": "es-03",
+      "task": "Add a dark-mode toggle to the settings panel.",
+      "candidates": [
+        {
+          "path": "src/network/socket.rs",
+          "readness": "full",
+          "bytes": 9100,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "tests/load.rs",
+          "readness": "full",
+          "bytes": 5600,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "docs/api.md",
+          "readness": "full",
+          "bytes": 12400,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": false,
+        "coverage": false,
+        "chosen": null,
+        "span": null
+      }
+    },
+    {
+      "id": "es-04",
+      "task": "Find where bearer tokens are validated before a request is admitted.",
+      "candidates": [
+        {
+          "path": "src/auth/tokens.rs",
+          "readness": "refused",
+          "bytes": 0,
+          "observation": "exists",
+          "present": true,
+          "withheld": "outside the declared read set"
+        },
+        {
+          "path": "src/net/pool.rs",
+          "readness": "full",
+          "bytes": 8300,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "README.md",
+          "readness": "full",
+          "bytes": 5400,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "src/auth/tokens.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-05",
+      "task": "Review the migration that adds the users table index.",
+      "candidates": [
+        {
+          "path": "migrations/0042_users.sql",
+          "span": {
+            "start": 1,
+            "end": 120
+          },
+          "readness": "truncated",
+          "bytes": 4800,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/db.rs",
+          "readness": "full",
+          "bytes": 19200,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "docs/schema.md",
+          "readness": "full",
+          "bytes": 7300,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "migrations/0042_users.sql",
+        "span": {
+          "start": 1,
+          "end": 120
+        }
+      }
+    },
+    {
+      "id": "es-06",
+      "task": "Raise the per-tenant rate limit and update the test that asserts the old limit.",
+      "candidates": [
+        {
+          "path": "src/ratelimit.rs",
+          "readness": "full",
+          "bytes": 6600,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": false,
+        "chosen": "src/ratelimit.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-07",
+      "task": "Raise the per-tenant rate limit and update the test that asserts the old limit.",
+      "candidates": [
+        {
+          "path": "src/ratelimit.rs",
+          "readness": "full",
+          "bytes": 6600,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "tests/ratelimit.rs",
+          "readness": "full",
+          "bytes": 3100,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "src/ratelimit.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-08",
+      "task": "Fix the panic when the JSON parser gets an empty input.",
+      "candidates": [
+        {
+          "path": "src/json/parser.rs",
+          "readness": "full",
+          "bytes": 11400,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/json/mod.rs",
+          "readness": "full",
+          "bytes": 2900,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/yaml/parser.rs",
+          "readness": "full",
+          "bytes": 9800,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/main.rs",
+          "readness": "full",
+          "bytes": 5100,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "src/json/parser.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-09",
+      "task": "Change the log line emitted when a session expires.",
+      "candidates": [
+        {
+          "path": "src/session.rs",
+          "span": {
+            "start": 1,
+            "end": 80
+          },
+          "readness": "full",
+          "bytes": 3400,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/session.rs",
+          "span": {
+            "start": 81,
+            "end": 200
+          },
+          "readness": "full",
+          "bytes": 4900,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/logging.rs",
+          "readness": "full",
+          "bytes": 7200,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "src/session.rs",
+        "span": {
+          "start": 81,
+          "end": 200
+        }
+      }
+    },
+    {
+      "id": "es-10",
+      "task": "Find the function that computes a file's content digest.",
+      "candidates": [
+        {
+          "path": "src/hash.rs",
+          "span": {
+            "start": 88,
+            "end": 88
+          },
+          "readness": "refused",
+          "bytes": 0,
+          "observation": "search",
+          "present": true,
+          "withheld": "search hit names a line, not content"
+        },
+        {
+          "path": "src/fs/walk.rs",
+          "readness": "full",
+          "bytes": 6100,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "docs/hashing.md",
+          "readness": "full",
+          "bytes": 2800,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "src/hash.rs",
+        "span": {
+          "start": 88,
+          "end": 88
+        }
+      }
+    },
+    {
+      "id": "es-11",
+      "task": "Extend the allocator's large-block path for inputs above one megabyte.",
+      "candidates": [
+        {
+          "path": "src/alloc/mod.rs",
+          "readness": "full",
+          "bytes": 5800,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/alloc/block.rs",
+          "readness": "full",
+          "bytes": 9300,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [
+        {
+          "path": "src/alloc/large.rs",
+          "reason": "oversize"
+        }
+      ],
+      "truth": {
+        "any_relevant": true,
+        "coverage": false,
+        "chosen": "src/alloc/block.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-12",
+      "task": "Rename the config key cache.ttl to cache.ttl_seconds everywhere it is read.",
+      "candidates": [
+        {
+          "path": "src/config.rs",
+          "readness": "full",
+          "bytes": 8700,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/cache.rs",
+          "readness": "full",
+          "bytes": 7500,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "tests/config.rs",
+          "readness": "full",
+          "bytes": 4100,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "src/config.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-13",
+      "task": "Update the CLI's --version output to include the build digest.",
+      "candidates": [
+        {
+          "path": "src/cli/args.rs",
+          "readness": "full",
+          "bytes": 5400,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/cli/version.rs",
+          "readness": "full",
+          "bytes": 1800,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "build.rs",
+          "readness": "full",
+          "bytes": 2600,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "src/cli/version.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-14",
+      "task": "Explain why the export command skips empty directories.",
+      "candidates": [
+        {
+          "path": "src/export/walk.rs",
+          "readness": "full",
+          "bytes": 6900,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/export/tar.rs",
+          "readness": "full",
+          "bytes": 11300,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "tests/export.rs",
+          "span": {
+            "start": 40,
+            "end": 72
+          },
+          "readness": "truncated",
+          "bytes": 2100,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "src/export/walk.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-15",
+      "task": "Add a regression test for the timezone bug fixed last week.",
+      "candidates": [
+        {
+          "path": "tests/time.rs",
+          "readness": "full",
+          "bytes": 4800,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/time/zone.rs",
+          "readness": "full",
+          "bytes": 10200,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/main.rs",
+          "readness": "full",
+          "bytes": 3900,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "tests/time.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-16",
+      "task": "Fix the SQL injection in the search query builder.",
+      "candidates": [
+        {
+          "path": "src/search/query.rs",
+          "readness": "full",
+          "bytes": 7900,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/search/index.rs",
+          "readness": "full",
+          "bytes": 13600,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "src/db/pool.rs",
+          "readness": "full",
+          "bytes": 5700,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "docs/search.md",
+          "readness": "full",
+          "bytes": 4400,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "src/search/query.rs",
+        "span": null
+      }
+    },
+    {
+      "id": "es-17",
+      "task": "Pick the file a reviewer should read to check the new license header rule.",
+      "candidates": [
+        {
+          "path": "tools/lint/headers.py",
+          "readness": "refused",
+          "bytes": 0,
+          "observation": "exists",
+          "present": true,
+          "withheld": "outside the declared read set"
+        },
+        {
+          "path": "tools/lint/names.py",
+          "readness": "refused",
+          "bytes": 0,
+          "observation": "exists",
+          "present": true,
+          "withheld": "outside the declared read set"
+        },
+        {
+          "path": "LICENSE",
+          "readness": "full",
+          "bytes": 11400,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "tools/lint/headers.py",
+        "span": null
+      }
+    },
+    {
+      "id": "es-18",
+      "task": "Update the Dockerfile base image to the new pinned digest.",
+      "candidates": [
+        {
+          "path": "Dockerfile",
+          "readness": "full",
+          "bytes": 1900,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "deploy/compose.yaml",
+          "readness": "full",
+          "bytes": 2300,
+          "observation": "read",
+          "present": true
+        },
+        {
+          "path": "scripts/sync-nips.sh",
+          "readness": "full",
+          "bytes": 3400,
+          "observation": "read",
+          "present": true
+        }
+      ],
+      "omitted": [],
+      "truth": {
+        "any_relevant": true,
+        "coverage": true,
+        "chosen": "Dockerfile",
+        "span": null
+      }
+    }
+  ],
+  "digest": "2f72d3e41cf851b87c49448a89b6efc8cfab4342d530fed1447a1b66c0eabebc"
+}
