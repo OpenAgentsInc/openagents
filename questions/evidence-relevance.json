@@ -25,7 +25,8 @@
   "policy": {
     "v": 1,
     "evidence": [
-      "docs/coder/measurements/2026-09-21-evidence-select.md"
+      "docs/coder/measurements/2026-09-21-evidence-select.md",
+      "docs/coder/measurements/2026-09-22-evidence-select-dev-threshold.md"
     ]
   }
 }
