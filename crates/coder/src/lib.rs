@@ -53,6 +53,7 @@ pub mod executor_door;
 pub mod generate;
 pub mod package;
 pub mod permit;
+pub mod profiles;
 pub mod program;
 pub mod program_authority;
 pub mod questions;
