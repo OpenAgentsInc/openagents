@@ -314,6 +314,43 @@ happens before a slot is held — a congestion refusal never holds quota.
   as an error. The retry's next `attempt` settles against its own
   reservation, and the ledger reconciles the orphaned one.
 
+## Replay, retry, and durable ownership
+
+Every kind in this family is ephemeral: the relay fans an event out to
+open subscriptions and never stores it. A relay event is therefore
+neither a durable queue nor evidence of exactly-once completion — a
+delivered event proves at most that the relay saw it, and an
+undelivered one proves nothing. Exactly-once is a property of the
+worker's settlement, not of the transport.
+
+The `(request, attempt)` pair is the idempotency identity, scoped by the
+principal and tenant. A retry keeps `request`, bumps `attempt`, and
+publishes a new event with a new `id`; the event `id` is the attempt's
+transport identity and settles nothing on its own.
+
+- A replayed or duplicated request event — the same `(request, attempt)`
+  delivered again, whether under the same event `id` or a fresh one —
+  must not settle twice. The worker resolves the pair against its
+  ledger once: a second delivery with the same request digest gets the
+  recorded result republished, and one with a different digest is
+  refused `idempotency_conflict`.
+- Durable ownership of request and attempt state lives in the worker's
+  settlement ledger, not in relay history. Ephemeral kinds leave no
+  relay history to consult; the ledger holds the reservation, the
+  settled outcome, and the crash-recovery marks, and it is the only
+  state a later delivery is resolved against.
+- An interrupted connection does not make an attempt's outcome unknown
+  to the protocol. The worker settles every admitted attempt
+  deterministically — `answered`, `refused`, `unattempted`,
+  `unavailable`, or a stated `unknown` — whether or not the caller's
+  socket lived to receive the result. The terminal result stays
+  retrievable by `(request, attempt)`: the worker republishes the
+  recorded result event for a settled pair, and a `cancel` resolves an
+  in-flight one. `unknown` remains an explicit settlement outcome — the
+  worker's stated inability to establish completion — never a synonym
+  for a dropped socket; what the socket's loss changes is the caller's
+  observation until a later delivery resolves it.
+
 ## Why the family does not share kind `25900`
 
 A shared-kind envelope was considered and rejected; the reasoning is
