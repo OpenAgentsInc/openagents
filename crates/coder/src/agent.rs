@@ -252,7 +252,7 @@ impl Agent {
             Err(error) => (None, Some(error)),
         };
         Ok(Self {
-            classify: jev::Client::from_env().ok(),
+            classify: crate::decision::from_env()?,
             generate,
             transcript: Vec::new(),
             repo,

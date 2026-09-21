@@ -15,8 +15,14 @@ use serde_json::Value;
 
 /// The variables that would otherwise let one machine's environment decide
 /// what these tests measure.
-const CREDENTIALS: [&str; 7] = [
+const CREDENTIALS: [&str; 13] = [
     "TYPESAFE_API_KEY",
+    "TYPESAFE_BASE_URL",
+    "TYPESAFE_DEFAULT_MODEL",
+    "CODER_DECISION_PROFILE",
+    "CODER_DECISION_URL",
+    "CODER_DECISION_MODEL",
+    "CODER_DECISION_KEY",
     "CODER_DOOR_KEY",
     "CODER_AI_GATEWAY_KEY",
     "CODER_DOOR_URL",
@@ -244,4 +250,94 @@ fn two_configured_doors_end_the_run_rather_than_measuring_one() {
         atif::log::list(dir.path()).unwrap().is_empty(),
         "a run that cannot name its door records nothing"
     );
+}
+
+#[test]
+fn malformed_decision_profiles_stop_headless_startup() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+        .env_clear()
+        .current_dir(dir.path())
+        .env("HOME", dir.path())
+        .env("CODER_TRACE", "off")
+        .env("CODER_DECISION_PROFILE", "unknown")
+        .args(["-p", "hello"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("CODER_DECISION_PROFILE"));
+}
+
+#[test]
+fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
+    use std::io::{Read, Write};
+    use std::time::{Duration, Instant};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut socket = loop {
+            match listener.accept() {
+                Ok((socket, _)) => break socket,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "decision call was not made");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        };
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 8192];
+        loop {
+            let count = socket.read(&mut buffer).unwrap();
+            assert!(count > 0);
+            bytes.extend_from_slice(&buffer[..count]);
+            assert!(bytes.len() < 65536);
+            if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                let headers = String::from_utf8_lossy(&bytes[..end]).to_lowercase();
+                let length = headers
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length: "))
+                    .unwrap()
+                    .parse::<usize>()
+                    .unwrap();
+                if bytes.len() >= end + 4 + length {
+                    assert!(!headers.contains("authorization:"));
+                    let request: Value =
+                        serde_json::from_slice(&bytes[end + 4..end + 4 + length]).unwrap();
+                    assert_eq!(request["model"], "local-model");
+                    break;
+                }
+            }
+        }
+        let body=serde_json::json!({"model":"local-model","answers":{"action":{"type":"choice","choice":"respond","confidence":1.0,"probabilities":{"respond":1.0,"clarify":0.0,"end_conversation":0.0,"none":0.0}}}}).to_string();
+        write!(
+            socket,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+        .env_clear()
+        .current_dir(dir.path())
+        .env("HOME", dir.path())
+        .env("CODER_TRACE", "off")
+        .env("CODER_DECISION_PROFILE", "local")
+        .env("CODER_DECISION_URL", url)
+        .env("CODER_DECISION_MODEL", "local-model")
+        .env("TYPESAFE_API_KEY", "fixture-must-not-be-forwarded")
+        .args(["-p", "hello"])
+        .output()
+        .unwrap();
+    server.join().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(stub_answer(&String::from_utf8_lossy(&output.stdout)));
 }

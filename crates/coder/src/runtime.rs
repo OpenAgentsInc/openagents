@@ -470,6 +470,7 @@ pub struct Runtime {
     survey: Survey,
     questions: questions::Registry,
     door: Option<jev::Client>,
+    door_error: Option<String>,
     relay: Option<RelayDoor>,
     repository: Option<PathBuf>,
     host: Host,
@@ -496,10 +497,15 @@ impl Runtime {
     /// selection against it.
     #[must_use]
     pub fn using(survey: Survey, repository: Option<&Path>) -> Self {
+        let (door, door_error) = match crate::decision::from_env() {
+            Ok(door) => (door, None),
+            Err(error) => (None, Some(error)),
+        };
         Runtime {
             survey,
             questions: questions::Registry::open(&questions::search(repository)),
-            door: jev::Client::from_env().ok(),
+            door,
+            door_error,
             relay: None,
             verification: None,
             repository: repository.map(Path::to_path_buf),
@@ -514,11 +520,16 @@ impl Runtime {
     /// without the machine's own answers.
     #[must_use]
     pub fn over(survey: Survey, questions: questions::Registry, host: Host) -> Self {
+        let (door, door_error) = match crate::decision::from_env() {
+            Ok(door) => (door, None),
+            Err(error) => (None, Some(error)),
+        };
         Runtime {
             repository: Some(survey.workspace.clone()),
             survey,
             questions,
-            door: jev::Client::from_env().ok(),
+            door,
+            door_error,
             relay: None,
             verification: None,
             host,
@@ -542,6 +553,7 @@ impl Runtime {
     #[must_use]
     pub fn asking(mut self, door: Option<jev::Client>) -> Self {
         self.door = door;
+        self.door_error = None;
         self
     }
 
@@ -764,6 +776,9 @@ impl Runtime {
                 "bound_unenforceable",
                 format!("{id} names no question to gate on, so a refuse_below bound reads nothing"),
             );
+        }
+        if let Some(error) = &self.door_error {
+            return refuse("door_configuration", error.clone());
         }
         match self.door.is_some() {
             true => Ok(()),
@@ -2069,6 +2084,7 @@ mod tests {
             },
             questions: questions::Registry::open(&[]),
             door: None,
+            door_error: None,
             relay: None,
             verification: None,
             repository: None,
