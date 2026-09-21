@@ -59,6 +59,7 @@ pub mod profiles;
 pub mod program;
 pub mod program_authority;
 pub mod questions;
+pub mod reattach;
 pub mod reconcile;
 pub mod relay;
 pub mod repo;
