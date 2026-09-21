@@ -592,6 +592,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                quota: None,
             },
         );
         tenants.insert(
@@ -600,6 +601,7 @@ mod tests {
                 credential: "key-ref:globex/2026-09".to_string(),
                 principals: vec![],
                 doors: BTreeMap::new(),
+                quota: None,
             },
         );
         Manifest {

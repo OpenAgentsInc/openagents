@@ -84,6 +84,34 @@ pub struct Binding {
     pub promotion: Option<String>,
 }
 
+/// A tenant's budget, when the agreement names one.
+///
+/// The units are resources, not money: requests, questions, input bytes,
+/// and how many calls may be outstanding at once. A quota is not a price —
+/// what a unit costs is the pricing contract's business, and this field
+/// says nothing about it.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Quota {
+    /// Requests admitted per UTC day.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requests_per_day: Option<u64>,
+    /// Questions answered per UTC day.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub questions_per_day: Option<u64>,
+    /// Input bytes admitted per UTC day — a question over a long state is
+    /// not the same work as a short one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_bytes_per_day: Option<u64>,
+    /// Reservations a tenant may hold at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concurrency: Option<u64>,
+    /// The settlement policy's name — which outcomes count against the
+    /// budget. The quota module implements `quota-v1`; anything else is
+    /// refused rather than guessed at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<String>,
+}
+
 /// A tenant: a stable identity, a credential reference, and its doors.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Tenant {
@@ -100,6 +128,9 @@ pub struct Tenant {
     /// The doors this tenant may reach beyond the shared set.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub doors: BTreeMap<String, Binding>,
+    /// The tenant's budget, when the agreement names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quota: Option<Quota>,
 }
 
 /// The manifest: every tenant, every shared door, one digest.
@@ -244,18 +275,23 @@ pub fn lane_name(lane: Lane) -> &'static str {
 
 /// Canonical JSON: keys sorted, whitespace gone, so two writers digest the
 /// same content to the same bytes. The same canonicalization the suite
-/// digests use.
+/// digests use. The keys are sorted here rather than trusted to the map:
+/// `preserve_order` makes a `serde_json` map insertion-ordered whenever a
+/// sibling crate enables it, and the digest agreement must not depend on
+/// who wrote the bytes.
 fn canonicalize(value: &Value) -> String {
     match value {
         Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
             let mut out = String::from("{");
-            for (index, (key, item)) in map.iter().enumerate() {
+            for (index, key) in keys.iter().enumerate() {
                 if index > 0 {
                     out.push(',');
                 }
                 out.push_str(&serde_json::to_string(key).expect("a key serializes"));
                 out.push(':');
-                out.push_str(&canonicalize(item));
+                out.push_str(&canonicalize(&map[*key]));
             }
             out.push('}');
             out

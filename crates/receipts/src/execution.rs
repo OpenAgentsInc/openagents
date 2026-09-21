@@ -325,18 +325,23 @@ pub fn digest_request(envelope: &Value) -> String {
 }
 
 /// Canonical JSON: keys sorted, whitespace gone. The same
-/// canonicalization every digest in this workspace shares.
+/// canonicalization every digest in this workspace shares. The keys are
+/// sorted here rather than trusted to the map: `preserve_order` makes a
+/// `serde_json` map insertion-ordered whenever a sibling crate enables
+/// it, and the digest agreement must not depend on who wrote the bytes.
 fn canonicalize(value: &Value) -> String {
     match value {
         Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
             let mut out = String::from("{");
-            for (index, (key, item)) in map.iter().enumerate() {
+            for (index, key) in keys.iter().enumerate() {
                 if index > 0 {
                     out.push(',');
                 }
                 out.push_str(&serde_json::to_string(key).expect("a key serializes"));
                 out.push(':');
-                out.push_str(&canonicalize(item));
+                out.push_str(&canonicalize(&map[*key]));
             }
             out.push('}');
             out
