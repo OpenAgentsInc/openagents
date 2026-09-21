@@ -27,6 +27,7 @@
 //!   width.
 
 mod composer;
+pub mod decision;
 mod editor;
 pub mod events;
 pub mod guard;
