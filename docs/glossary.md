@@ -136,11 +136,17 @@ implement this shared context system.
 | Term | Status | Definition |
 | --- | --- | --- |
 | Voyager | Partial | The open-ended agent program after arXiv:2305.16291: an agent lives in an open-ended environment, proposes its own tasks, acts, verifies, and banks what worked as skills. `crates/voyager` runs bounded episodes; curriculum, critic, and skill library are mechanical or absent for now. See [voyager](voyager/README.md). |
-| World manifest | Implemented | A `voyager.world/v1` document in `worlds/` naming a Minecraft version, seed, difficulty, gamerules, and episode bounds. Its SHA-256 is the world's identity. |
+| World manifest | Implemented | A `voyager.world/v1` document in `worlds/` naming a Minecraft version, seed, difficulty, gamerules, episode bounds, and optionally enrolled agents, deposits, an economy, and world effects. Its SHA-256 is the world's identity. |
 | `mc-bridge` | Implemented | The nightly-built helper in `mc-bridge/` that plays the game through azalea and speaks one JSON object per line on stdin and stdout. A supervised child process, never a dependency — the `swift/lev-bridge` precedent. |
 | Episode | Partial | One bounded run of a world: server up, bot in, tasks attempted, every exchange and event in an ATIF trace under the run directory. |
 | Curriculum | Partial | What proposes the next task. Phase 1 is a fixed program — survey, explore, gather; a model-driven curriculum is proposed, not implemented. |
 | Skill library | Designed | Reusable behavior banked between episodes. Nothing is banked yet; retrieval and storage are proposed. |
+| Guild | Implemented | A named team in a multi-agent world. Every enrolled agent belongs to one; deposits may be owned by a guild and the ledger keeps balances per guild. |
+| Ensemble episode | Implemented | A world whose manifest lists `agents` runs one `mc-bridge` child per member in a single server, rather than the solo curriculum. |
+| Deposit | Implemented | A manifest-registered set of block positions worth credits when dug: an id, an optional owning guild (absent means contested), a required block kind, and a per-block award. |
+| Compute ledger | Implemented | `ledger.jsonl` in a run directory: append-only `award`/`reserve`/`settle`/`release` events replayed into per-guild balances. Awards dedupe on `(deposit, pos)`; an unsettled hold stays reserved across a crash. |
+| Agent key | Implemented | A member's Nostr identity, derived as `sha256("voyager-agent-key:" + username)` — only pubkeys live in manifests; secrets are re-derived at run time. |
+| World effect | Implemented | A named console command in the manifest's `effects` map that a verified quest may run. A quest names an effect; it never supplies commands. |
 
 ## Capabilities and programs
 

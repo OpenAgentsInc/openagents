@@ -29,8 +29,20 @@ pub struct World {
     pub name: String,
     /// How the server is configured.
     pub minecraft: Minecraft,
-    /// Who the bot joins as.
+    /// Who the bot joins as. Single-agent worlds use this; multi-agent
+    /// worlds list `agents` instead.
     pub agent: Agent,
+    /// Every embodied agent the episode runs, with its guild and pubkey.
+    /// Empty means the single `agent` plays alone.
+    pub agents: Vec<Member>,
+    /// Registered minable deposits. A block only earns when a bound agent
+    /// digs a listed position — placed ore, gifts, and replays cannot.
+    pub deposits: Vec<Deposit>,
+    /// The finite compute budget the episode works under.
+    pub economy: Economy,
+    /// Named console commands a verified quest may run — the allowlisted
+    /// world effects. A quest names an effect; it never writes commands.
+    pub effects: BTreeMap<String, String>,
     /// How long one episode may run.
     pub episode: Bounds,
 }
@@ -80,6 +92,57 @@ pub struct Agent {
     pub username: String,
 }
 
+/// An enrolled agent: an offline-mode player bound to a guild and a Nostr
+/// pubkey. The binding is the manifest's claim; the episode refuses a bot
+/// whose username is not enrolled.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Member {
+    /// The offline-mode username the bot joins as.
+    pub username: String,
+    /// The guild it mines and spends for.
+    pub guild: String,
+    /// The Nostr pubkey (hex) the agent's messages sign under. Empty in
+    /// phase 1 — the field exists so the binding lands before the wire.
+    #[serde(default)]
+    pub pubkey: String,
+    /// Where the agent stands when idle: `[x, y, z]` of its camp.
+    #[serde(default)]
+    pub camp: Option<[f64; 3]>,
+}
+
+/// A registered deposit: a named set of block positions worth credits
+/// when a bound agent digs them. `guild` scopes a deposit to one guild;
+/// absent means contested — any guild may earn it.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Deposit {
+    /// Its name in ledger records, such as `ferro_iron` or `contested_diamond`.
+    pub id: String,
+    /// The guild that may earn it, or `None` for contested.
+    #[serde(default)]
+    pub guild: Option<String>,
+    /// The block positions that make it up: `[x, y, z]` integer triples.
+    pub blocks: Vec<[i32; 3]>,
+    /// Credits one dug block of this deposit awards.
+    #[serde(default = "default_award")]
+    pub award: u64,
+    /// The block kind the position must still hold, such as
+    /// `minecraft:iron_ore`. A dug block of the wrong kind does not award —
+    /// placed blocks and substitutions are not mining.
+    #[serde(default)]
+    pub kind: String,
+}
+
+/// The `economy` section: how mining converts to compute.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Economy {
+    /// Credits each guild holds before the first block is dug.
+    #[serde(default)]
+    pub starting_credits: u64,
+    /// The most credits one quest may reserve at once.
+    #[serde(default)]
+    pub max_reservation: u64,
+}
+
 /// The `episode` section: the bounds an episode may not cross.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Bounds {
@@ -112,6 +175,9 @@ fn default_max_actions() -> u32 {
 fn default_max_seconds() -> u64 {
     600
 }
+fn default_award() -> u64 {
+    1
+}
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -120,6 +186,14 @@ struct Manifest {
     minecraft: Minecraft,
     #[serde(default)]
     agent: Agent,
+    #[serde(default)]
+    agents: Vec<Member>,
+    #[serde(default)]
+    deposits: Vec<Deposit>,
+    #[serde(default)]
+    economy: Economy,
+    #[serde(default)]
+    effects: BTreeMap<String, String>,
     #[serde(default)]
     episode: Bounds,
 }
@@ -164,14 +238,61 @@ impl World {
             return Err(Error::world(format!("{}: name is empty", path.display())));
         }
         let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
-        Ok(World {
+        let world = World {
             path: path.to_path_buf(),
             digest,
             name: manifest.name,
             minecraft: manifest.minecraft,
             agent: manifest.agent,
+            agents: manifest.agents,
+            deposits: manifest.deposits,
+            economy: manifest.economy,
+            effects: manifest.effects,
             episode: manifest.episode,
-        })
+        };
+        world.check()?;
+        Ok(world)
+    }
+
+    /// The enrollment and deposit rules a manifest must keep, checked
+    /// once at load so a run never discovers them mid-episode.
+    fn check(&self) -> Result<()> {
+        let mut usernames = std::collections::HashSet::new();
+        for member in &self.agents {
+            if !usernames.insert(member.username.as_str()) {
+                return Err(Error::world(format!(
+                    "{}: duplicate agent username {:?}",
+                    self.path.display(),
+                    member.username
+                )));
+            }
+        }
+        let mut positions = std::collections::HashSet::new();
+        for deposit in &self.deposits {
+            if deposit.id.trim().is_empty() {
+                return Err(Error::world(format!(
+                    "{}: a deposit id is empty",
+                    self.path.display()
+                )));
+            }
+            for block in &deposit.blocks {
+                if !positions.insert(block) {
+                    return Err(Error::world(format!(
+                        "{}: deposit {:?} shares a block position",
+                        self.path.display(),
+                        deposit.id
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The registered deposit covering `pos`, if any. One position may
+    /// sit in at most one deposit — the loader enforces it.
+    #[must_use]
+    pub fn deposit_at(&self, pos: [i32; 3]) -> Option<&Deposit> {
+        self.deposits.iter().find(|d| d.blocks.contains(&pos))
     }
 
     /// The `server.properties` body the server reads at boot.
@@ -274,6 +395,59 @@ mod tests {
         let commands = world.boot_commands();
         assert_eq!(commands[0], "gamerule doDaylightCycle false");
         assert_eq!(commands[1], "time set day");
+    }
+
+    const ARENA: &str = r#"{
+        "kind": "voyager.world/v1",
+        "name": "arena",
+        "minecraft": {"version": "1.21.11"},
+        "agents": [
+            {"username": "ferro_1", "guild": "ferro", "pubkey": "aa"},
+            {"username": "lumen_1", "guild": "lumen", "pubkey": "bb", "camp": [20.5, 0.0, 0.5]}
+        ],
+        "deposits": [
+            {"id": "ferro_iron", "guild": "ferro", "kind": "minecraft:iron_ore",
+             "award": 2, "blocks": [[-24, 0, -1], [-24, 0, 0]]},
+            {"id": "contested", "kind": "minecraft:diamond_ore",
+             "award": 5, "blocks": [[0, 0, -6]]}
+        ],
+        "economy": {"starting_credits": 0, "max_reservation": 12},
+        "effects": {"open_bridge": "fill -1 0 -11 1 0 -10 minecraft:oak_planks"}
+    }"#;
+
+    #[test]
+    fn agents_deposits_and_effects_parse() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("arena.json");
+        std::fs::write(&path, ARENA).unwrap();
+        let world = World::load(&path).unwrap();
+        assert_eq!(world.agents.len(), 2);
+        assert_eq!(world.agents[1].camp, Some([20.5, 0.0, 0.5]));
+        assert_eq!(world.deposits.len(), 2);
+        let contested = world.deposit_at([0, 0, -6]).unwrap();
+        assert_eq!(contested.id, "contested");
+        assert!(contested.guild.is_none());
+        assert!(world.deposit_at([9, 9, 9]).is_none());
+        assert_eq!(
+            world.effects.get("open_bridge").map(String::as_str),
+            Some("fill -1 0 -11 1 0 -10 minecraft:oak_planks")
+        );
+    }
+
+    #[test]
+    fn duplicate_agent_usernames_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("arena.json");
+        std::fs::write(&path, ARENA.replace("\"lumen_1\"", "\"ferro_1\"")).unwrap();
+        assert!(matches!(World::load(&path), Err(Error::World(_))));
+    }
+
+    #[test]
+    fn deposits_sharing_a_position_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("arena.json");
+        std::fs::write(&path, ARENA.replace("[[0, 0, -6]]", "[[-24, 0, -1]]")).unwrap();
+        assert!(matches!(World::load(&path), Err(Error::World(_))));
     }
 
     #[test]

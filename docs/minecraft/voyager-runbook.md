@@ -43,6 +43,12 @@ The terminal narrates as it goes — `bot says:` lines are the agent's own
 chat, `bot:` lines are helper feedback, `chat:` lines are what the
 server saw.
 
+`cargo run -p voyager -- run --world arena` runs the multi-agent episode
+instead: four enrolled bots in two guilds on a flat world, mining
+registered deposits for ledger credits. The run directory gains a
+`ledger.jsonl` alongside the trace, and the spectator advice below
+works the same — there is just more to watch.
+
 ## Watch in the world
 
 Start the episode, then in the Minecraft client:

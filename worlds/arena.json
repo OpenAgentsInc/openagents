@@ -1,0 +1,115 @@
+{
+  "kind": "voyager.world/v1",
+  "name": "arena",
+  "minecraft": {
+    "version": "1.21.11",
+    "level_type": "minecraft:flat",
+    "generator_settings": "{\"layers\":[{\"block\":\"minecraft:bedrock\",\"height\":1},{\"block\":\"minecraft:stone\",\"height\":59},{\"block\":\"minecraft:dirt\",\"height\":3},{\"block\":\"minecraft:grass_block\",\"height\":1}],\"biome\":\"minecraft:plains\",\"features\":false,\"lakes\":false,\"structures\":{\"structures\":{}}}",
+    "difficulty": "peaceful",
+    "gamemode": "survival",
+    "view_distance": 8,
+    "gamerules": {
+      "advance_time": "false",
+      "advance_weather": "false",
+      "spawn_mobs": "false",
+      "keep_inventory": "true",
+      "mob_griefing": "false"
+    },
+    "setup_commands": [
+      "setworldspawn 0 1 8",
+      "forceload add -40 -16 40 16",
+      "time set day",
+      "weather clear",
+      "fill -22 0 -2 -18 0 2 minecraft:white_wool",
+      "fill 18 0 -2 22 0 2 minecraft:yellow_wool",
+      "fill -24 0 -1 -24 1 1 minecraft:iron_ore",
+      "fill 24 0 -1 24 1 1 minecraft:iron_ore",
+      "fill 0 0 -6 1 1 -5 minecraft:diamond_ore",
+      "fill -40 -3 -11 40 -1 -10 minecraft:air",
+      "fill 0 0 -16 1 1 -15 minecraft:emerald_ore",
+      "setblock -18 0 -3 minecraft:blast_furnace",
+      "setblock -19 0 -3 minecraft:anvil",
+      "setblock 18 0 -3 minecraft:blast_furnace",
+      "setblock 19 0 -3 minecraft:anvil",
+      "fill 0 0 3 0 2 3 minecraft:oak_log",
+      "setblock 0 3 3 minecraft:torch"
+    ]
+  },
+  "agents": [
+    {
+      "username": "ferro_1",
+      "guild": "ferro",
+      "pubkey": "591e5f3940760a06eaf6c5a0194d6ba53e13c7bc0c95fd7e609454a78a1f40ae",
+      "camp": [-20.5, 0.0, 0.5]
+    },
+    {
+      "username": "ferro_2",
+      "guild": "ferro",
+      "pubkey": "dc62bf2cbd668b1f24329dc9505409cb09744b9cf6f65fbca7ea71d17aac7c29",
+      "camp": [-19.5, 0.0, 2.5]
+    },
+    {
+      "username": "lumen_1",
+      "guild": "lumen",
+      "pubkey": "f3c8307e6d3c5c6ee7871cb4ee901ddfc8cc045848494d78e38b8dce1a44a6f4",
+      "camp": [20.5, 0.0, 0.5]
+    },
+    {
+      "username": "lumen_2",
+      "guild": "lumen",
+      "pubkey": "a93325196e92bbdb93690bb3c04e8ccbd1cb68e5e0d84f82f82cb20a4d29115c",
+      "camp": [19.5, 0.0, 2.5]
+    }
+  ],
+  "deposits": [
+    {
+      "id": "ferro_iron",
+      "guild": "ferro",
+      "kind": "minecraft:iron_ore",
+      "award": 2,
+      "blocks": [
+        [-24, 0, -1], [-24, 0, 0], [-24, 0, 1],
+        [-24, 1, -1], [-24, 1, 0], [-24, 1, 1]
+      ]
+    },
+    {
+      "id": "lumen_iron",
+      "guild": "lumen",
+      "kind": "minecraft:iron_ore",
+      "award": 2,
+      "blocks": [
+        [24, 0, -1], [24, 0, 0], [24, 0, 1],
+        [24, 1, -1], [24, 1, 0], [24, 1, 1]
+      ]
+    },
+    {
+      "id": "contested_diamond",
+      "kind": "minecraft:diamond_ore",
+      "award": 5,
+      "blocks": [
+        [0, 0, -6], [1, 0, -6], [0, 0, -5], [1, 0, -5],
+        [0, 1, -6], [1, 1, -6], [0, 1, -5], [1, 1, -5]
+      ]
+    },
+    {
+      "id": "gated_emerald",
+      "kind": "minecraft:emerald_ore",
+      "award": 8,
+      "blocks": [
+        [0, 0, -16], [1, 0, -16], [0, 0, -15], [1, 0, -15],
+        [0, 1, -16], [1, 1, -16], [0, 1, -15], [1, 1, -15]
+      ]
+    }
+  ],
+  "economy": {
+    "starting_credits": 0,
+    "max_reservation": 12
+  },
+  "effects": {
+    "open_bridge": "fill -1 0 -11 1 0 -10 minecraft:oak_planks"
+  },
+  "episode": {
+    "max_actions": 80,
+    "max_seconds": 900
+  }
+}
