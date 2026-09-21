@@ -1,0 +1,3107 @@
+{
+  "schema": "openagents.audit-timing.v1",
+  "cutoff_utc": "2026-09-21T12:03:30Z",
+  "summary": {
+    "gate_count": 46,
+    "gate_phase_seconds": 12901.7,
+    "unfinished_heartbeat_seconds": 60.0,
+    "process_seconds": 29965.188,
+    "command_and_wait_union_seconds": 3744.701,
+    "explicit_wait_union_seconds": 3029.413,
+    "five_hours_command_wait_seconds": 1988.849,
+    "five_hours_explicit_wait_seconds": 1643.897,
+    "takeover_command_wait_seconds": 3174.56,
+    "takeover_explicit_wait_seconds": 2696.551
+  },
+  "gates": [
+    {
+      "start": "2026-09-21T02:51:03.306Z",
+      "log_sha256": "1d5c9dad9c194badf5528eb94babb52dbd7c37a6ae22387a0e6b96514eeaaeb6",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 22.6,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 14.3,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 169.1,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 148.2,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 39.4,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 15.5,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.3,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 13.2,
+          "exit": 101
+        }
+      ],
+      "seconds": 424.3,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G01",
+      "log": "delegation/manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T03:10:18.090Z",
+      "log_sha256": "022230cd212c70093ec63e4ba6ce9f9227d47789d346439624092515f10bfe84",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.5,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 0.5,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 0.4,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 62.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 67.9,
+          "exit": 0
+        }
+      ],
+      "seconds": 132.2,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "incomplete records",
+      "id": "G02",
+      "log": "delegation/manual-gate-final.log"
+    },
+    {
+      "start": "2026-09-21T03:17:03.915Z",
+      "log_sha256": "a82442be063d47281da6bac27862122e251f810f351169bccff38d26a65db6f8",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 6.1,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 107.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 70.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.0,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 55.9,
+          "exit": 0
+        }
+      ],
+      "seconds": 244.4,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G03",
+      "log": "delegation/manual-gate-integrated.log"
+    },
+    {
+      "start": "2026-09-21T04:29:41.851Z",
+      "log_sha256": "7bc7175d664e9b5eddba03584ba36d4cfa1ce349bdb90cd768dfd0fecffeab05",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 2.4,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 97.1,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 99.6,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 18.7,
+          "exit": 0
+        }
+      ],
+      "seconds": 223.0,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G04",
+      "log": "supervision/manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T05:00:51.768Z",
+      "log_sha256": "8202993d25f4e0795e6d9c580fcfc71f38a1c68164da69be9b7e1419162eacb9",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 3.7,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 3.2,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 102.7,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 108.2,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 3.0,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.5,
+          "exit": 0
+        }
+      ],
+      "seconds": 242.8,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G05",
+      "log": "supervision/verification-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T05:07:26.582Z",
+      "log_sha256": "ba6c0356498edf95b44e4b7dedff7489ff8866e71c54a100784e7d7c1423e56e",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 1.6,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 1.0,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 87.6,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 90.3,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 1.3,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 18.9,
+          "exit": 0
+        }
+      ],
+      "seconds": 203.0,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G06",
+      "log": "supervision/artifact-integration-gate.log"
+    },
+    {
+      "start": "2026-09-21T05:20:36.759Z",
+      "source": "printed records; original log overwritten",
+      "phases": [
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 2.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 1.3,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 105.9,
+          "exit": 101
+        }
+      ],
+      "seconds": 110.0,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G07",
+      "log": "supervision/money-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T05:23:57.821Z",
+      "log_sha256": "c522aab1d5f0a3cff0e5b0c60a8f52c77ddc2351b0021d5bcb174d14aa918b9b",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 0.5,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 120.9,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 130.0,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 2.7,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.3,
+          "exit": 0
+        }
+      ],
+      "seconds": 276.0,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G08",
+      "log": "supervision/money-manual-gate-retry.log"
+    },
+    {
+      "start": "2026-09-21T05:32:38.358Z",
+      "log_sha256": "c833ee38971fe3cd1d850360500b96393d951500b25686e3d8360f5133e888b2",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 16.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 17.5,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 195.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 210.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 18.1,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.0,
+          "exit": 0
+        }
+      ],
+      "seconds": 478.6,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G09",
+      "log": "supervision/local-client-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T05:44:36.120Z",
+      "log_sha256": "5caad638c8af38851583c657b8524cf200566fbdc8655ffea449a4bb058aac0f",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 1
+        }
+      ],
+      "seconds": 1.3,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G10",
+      "log": "supervision/suite-integration-gate.log"
+    },
+    {
+      "start": "2026-09-21T05:48:14.654Z",
+      "log_sha256": "e1f49b2fb0d25e4a1930fc7633253faaf23d03e9f9a8e1db633b743f4b59fdfe",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 4.1,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 4.0,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 102.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 108.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 4.0,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.2,
+          "exit": 0
+        }
+      ],
+      "seconds": 244.2,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G11",
+      "log": "supervision/suite-integration-gate-retry.log"
+    },
+    {
+      "start": "2026-09-21T05:56:24.642Z",
+      "log_sha256": "fac1f3a6676d757269abc3ec5e85b18f8d7ae990a92df893d53e495e5ec1e432",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 0.8,
+          "exit": 101
+        }
+      ],
+      "seconds": 2.1,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G12",
+      "log": "supervision/relay-protocol-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T05:56:44.721Z",
+      "log_sha256": "38edb948298bdf5b87697fe72f6c3cc7640eeb2a7d69baafd426cee4c6045d86",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 7.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 4.2,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 149.2,
+          "exit": 0
+        }
+      ],
+      "seconds": 161.9,
+      "unfinished_heartbeat_seconds": 60.0,
+      "status": "incomplete records",
+      "id": "G13",
+      "log": "supervision/relay-protocol-manual-gate-retry.log"
+    },
+    {
+      "start": "2026-09-21T06:02:08.047Z",
+      "log_sha256": "c8c4c635b5fa69fff65b32812536ad103d2fef63fe43b2b42b43db4f4b979531",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 83.1,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 48.3,
+          "exit": 101
+        }
+      ],
+      "seconds": 133.2,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G14",
+      "log": "supervision/relay-protocol-manual-gate-complete.log"
+    },
+    {
+      "start": "2026-09-21T06:11:59.312Z",
+      "log_sha256": "89bcdf4a399b2050a3007f15ee39c36bb61779a724a23ab9757cf2e13de56e05",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 1.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 1.2,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 89.9,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 94.9,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 8.3,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 68.4,
+          "exit": 0
+        }
+      ],
+      "seconds": 266.3,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G15",
+      "log": "supervision/relay-classification-combined-gate.log"
+    },
+    {
+      "start": "2026-09-21T06:24:33.698Z",
+      "log_sha256": "8a91d9989c549bfb217cd940fcb44fe3fe39c676c0a14160bdff79581d04ca07",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 6.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 5.9,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 113.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 119.0,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 5.6,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.8,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.1,
+          "exit": 0
+        }
+      ],
+      "seconds": 271.6,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G16",
+      "log": "supervision/decision-profile-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T06:32:11.436Z",
+      "log_sha256": "c6b2f91ab8bdc131155ed92ff49c9628eba26ac68daf63de9e2500a4dbc4428e",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 6.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 5.9,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 108.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 115.3,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 5.7,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.0,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.1,
+          "exit": 0
+        }
+      ],
+      "seconds": 263.2,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G17",
+      "log": "supervision/scorable-bound-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T06:38:35.801Z",
+      "log_sha256": "2c3023df7627f73d57ea5f63058f61edcafa86e6f63c2463a4900f43952b19ee",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 5.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 5.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 108.9,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 113.4,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 5.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.0,
+          "exit": 0
+        }
+      ],
+      "seconds": 260.6,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G18",
+      "log": "supervision/repo-bounds-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T06:44:40.148Z",
+      "log_sha256": "7bae0606506db60c02e70f551f778718cace73910dc795c51819aaca28bc76d9",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 93.6,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 98.1,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 9.3,
+          "exit": 101
+        }
+      ],
+      "seconds": 209.8,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G19",
+      "log": "supervision/classification-modes-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T06:51:37.066Z",
+      "log_sha256": "bad875f7f57575129392a4717a383a89ea384b667364e755003753ee6b1ae8f6",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.2,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 0.4,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 69.6,
+          "exit": 101
+        }
+      ],
+      "seconds": 72.8,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G20",
+      "log": "supervision/classification-backup-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T06:54:48.379Z",
+      "log_sha256": "7e7b4fb39d4555f2add4dd007007d3eef4086f7e98f5c00e23630f1730e0a2e0",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 0.4,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 85.6,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 90.0,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 0.4,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.8,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.0,
+          "exit": 0
+        }
+      ],
+      "seconds": 199.3,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G21",
+      "log": "supervision/classification-backup-final-gate.log"
+    },
+    {
+      "start": "2026-09-21T07:10:21.623Z",
+      "log_sha256": "11439456e43ef880848750f57e4825eda91c4822845a5d19f39c727d771a368d",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.5,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 75.4,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 21.2,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 304.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 209.3,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 106.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 43.8,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.1,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 152.7,
+          "exit": 0
+        }
+      ],
+      "seconds": 917.7,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G22",
+      "log": "supervision/gym-suite-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T07:26:38.409Z",
+      "log_sha256": "6c30f8fc69b6daf8e332d5e8b3249d190deef842cbbd4a6719b124f1436f7fa2",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.3,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 9.9,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 8.1,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 155.5,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 152.2,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 9.7,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 20.5,
+          "exit": 0
+        }
+      ],
+      "seconds": 359.6,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G23",
+      "log": "supervision/repository-evidence-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T07:34:05.833Z",
+      "log_sha256": "a0d942d4a359152e8635ffdfd8ccb58adc71438de441596d81cbafb0de5c9a5c",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.3,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 99.7,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 105.3,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.1,
+          "exit": 0
+        }
+      ],
+      "seconds": 234.2,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G24",
+      "log": "supervision/classification-summaries-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T07:40:37.400Z",
+      "log_sha256": "61cdfbb6cf3981e9951733c5ca9a513ad3bf38fd404645b34ab4f41cd6e3b993",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 7.1,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 7.1,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 123.5,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 41.8,
+          "exit": 101
+        }
+      ],
+      "seconds": 182.2,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G25",
+      "log": "supervision/context-manifest-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T07:44:20.362Z",
+      "log_sha256": "1a1eef1da3439694ed954e6022a7c2641c3e1c57dcb1c015c10d8d979b202aa4",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.2,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 0.4,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 0.4,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 93.3,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 109.1,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 6.9,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.1,
+          "exit": 0
+        }
+      ],
+      "seconds": 232.8,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G26",
+      "log": "supervision/context-manifest-final-gate.log"
+    },
+    {
+      "start": "2026-09-21T07:52:52.500Z",
+      "log_sha256": "aa160ad9cdd2e9ff0635d26eed46cddbcfa2e77243bbbebb600079e26097c2a0",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.5,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 4.5,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 2.3,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 109.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 107.9,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 4.1,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.2,
+          "exit": 0
+        }
+      ],
+      "seconds": 250.8,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G27",
+      "log": "supervision/membership-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T08:03:20.940Z",
+      "log_sha256": "732d4ef4e0c938dcceec5d8c0b7a637ba5a8003db5b08185b9d25a274c0abb0d",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 3.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 1.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 105.6,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 105.3,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 2.9,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.0,
+          "exit": 0
+        }
+      ],
+      "seconds": 241.5,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G28",
+      "log": "supervision/membership-key-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T08:12:45.928Z",
+      "log_sha256": "f1844a53801ea61ef909f63b32898cb7bde5fd84ff38d995068cf9e873dcc616",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 3.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 2.5,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 106.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 110.8,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.0,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.3,
+          "exit": 0
+        }
+      ],
+      "seconds": 248.1,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G29",
+      "log": "supervision/batch-membership-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T08:24:45.542Z",
+      "log_sha256": "3c9c9e4047ea8a858d46cb52a22c6718c93ab109a475025d7ba39bf42b4162d7",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 2.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 2.0,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 104.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 108.7,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.0,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.1,
+          "exit": 0
+        }
+      ],
+      "seconds": 241.5,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G30",
+      "log": "supervision/discovery-limits-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T08:44:15.265Z",
+      "source": "printed records; original log overwritten",
+      "phases": [
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 2.1,
+          "exit": 101
+        }
+      ],
+      "seconds": 2.1,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G31",
+      "log": "supervision/review-workflow-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T08:44:49.674Z",
+      "log_sha256": "d64f10c5bd661ee5235a750101c1345b601b0b3637c2e52250573e3aeb775c9e",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.2,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 6.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 5.8,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 170.9,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 177.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 5.8,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 20.1,
+          "exit": 0
+        }
+      ],
+      "seconds": 389.8,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G32",
+      "log": "supervision/review-workflow-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T09:13:45.345Z",
+      "source": "printed records; original log overwritten",
+      "phases": [
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 3.3,
+          "exit": 101
+        }
+      ],
+      "seconds": 3.3,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G33",
+      "log": "supervision/classification-callers-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T09:14:15.605Z",
+      "log_sha256": "d840b626ff3378d28eff6d1c95b9d879e7c70385b773bbd04a73367370bba120",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.2,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 14.3,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 15.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 229.7,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 244.2,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 20.7,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.1,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 20.2,
+          "exit": 0
+        }
+      ],
+      "seconds": 548.6,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G34",
+      "log": "supervision/classification-callers-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T09:32:44.086Z",
+      "source": "printed records; original log overwritten",
+      "phases": [
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 1.8,
+          "exit": 101
+        }
+      ],
+      "seconds": 1.8,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "failed",
+      "id": "G35",
+      "log": "supervision/money-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T09:33:14.297Z",
+      "log_sha256": "90999626b840b25af3e4b12de13cf5afce244ae08535d325972dba8a6e4c8f64",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 2.3,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 2.5,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 156.9,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 163.0,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 2.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.3,
+          "exit": 0
+        }
+      ],
+      "seconds": 350.4,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G36",
+      "log": "supervision/money-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T09:51:53.378Z",
+      "log_sha256": "5a22f15dc4251d39b243c34807c0e61d2e643f691a88de18b545a6710bf2f27b",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.3,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 20.7,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 20.6,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 256.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 270.4,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 21.6,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.1,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.7,
+          "exit": 0
+        }
+      ],
+      "seconds": 613.2,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G37",
+      "log": "supervision/admission-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T10:02:29.855Z",
+      "log_sha256": "04f8c1f391af37f98681c56c7a21a6fe27b4bebf0a42bcd1d7c6c28adb41e316",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 18.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 19.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 250.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 261.8,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 19.9,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.2,
+          "exit": 0
+        }
+      ],
+      "seconds": 593.2,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G38",
+      "log": "supervision/admission-combined-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T10:20:13.855Z",
+      "log_sha256": "7dc835c452fe15c32eba18cc0857a102a53c5c325c70cc0ad256671cbc14c3bb",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 0.5,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 151.5,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 153.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 0.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.4,
+          "exit": 0
+        }
+      ],
+      "seconds": 330.7,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G39",
+      "log": "supervision/classification-contract-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T10:32:34.543Z",
+      "log_sha256": "b4e7dbd5f01c06652f41e542f658212ef3423f0256800c731be8c71c9c60a600",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.3,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 2.7,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 158.3,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 165.6,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 2.4,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.7,
+          "exit": 0
+        }
+      ],
+      "seconds": 354.3,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G40",
+      "log": "supervision/mcp-docs-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T10:38:49.450Z",
+      "log_sha256": "6b17d93f186aae871b3120eb96a1c5a1ef735670f7e68e92c013c1aa7d47d255",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.3,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 157.5,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 162.3,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.3,
+          "exit": 0
+        }
+      ],
+      "seconds": 348.3,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G41",
+      "log": "supervision/mcp-docs-final-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T11:04:26.562Z",
+      "log_sha256": "0fa790b567d8679fde598de59a9fefeeb2a827a7acc323744fcdb1d9ef20fe1b",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 48.8,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 14.0,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 237.0,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 191.6,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 57.7,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 24.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.2,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 92.2,
+          "exit": 0
+        }
+      ],
+      "seconds": 669.4,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G42",
+      "log": "supervision/review-policy-final-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T11:18:15.792Z",
+      "log_sha256": "d8efb2d9da0962d557ef072838214f03e8dbd749a4f2d4c666a78fdffd3144e9",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.5,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 4.3,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 6.8,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 180.4,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 176.6,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 9.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.9,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 22.4,
+          "exit": 0
+        }
+      ],
+      "seconds": 404.0,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G43",
+      "log": "supervision/classification-response-final-manual-gate.log"
+    },
+    {
+      "start": "2026-09-21T11:26:42.770Z",
+      "log_sha256": "cef4949fe7a1eac442916faa3cdf6b1e3f9859a6b4f29988dc3e1f4db10bae2c",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.3,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 119.3,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 124.7,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 2.4,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 0.8,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.2,
+          "exit": 0
+        }
+      ],
+      "seconds": 273.6,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G44",
+      "log": "supervision/classification-review-response-final-gate.log"
+    },
+    {
+      "start": "2026-09-21T11:32:01.317Z",
+      "log_sha256": "d4c13f887716feae3f0633fd0d7535b98263158e3ad080d15003923f9a3f9289",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 1.4,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 3.3,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 3.4,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 125.1,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 129.2,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 3.5,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.0,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 19.1,
+          "exit": 0
+        }
+      ],
+      "seconds": 287.5,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G45",
+      "log": "supervision/gateway-backend-boundary-final-gate.log"
+    },
+    {
+      "start": "2026-09-21T11:54:13.138Z",
+      "log_sha256": "7ae343266f0e180161bcbe3a0ac77e67dcf5342514a68265d1f244b06d7d7f89",
+      "source": "retained log",
+      "phases": [
+        {
+          "name": "Artifact acquisition tests",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Delegation evidence checks",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "Backup collection tests",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Workspace formatting",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace Clippy",
+          "seconds": 17.1,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace Clippy",
+          "seconds": 6.5,
+          "exit": 0
+        },
+        {
+          "name": "Default workspace tests",
+          "seconds": 143.7,
+          "exit": 0
+        },
+        {
+          "name": "Feature workspace tests",
+          "seconds": 137.3,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.95 workspace check",
+          "seconds": 25.2,
+          "exit": 0
+        },
+        {
+          "name": "Rust 1.94 Kev check",
+          "seconds": 14.7,
+          "exit": 0
+        },
+        {
+          "name": "Dependency policy",
+          "seconds": 1.1,
+          "exit": 0
+        },
+        {
+          "name": "PostgreSQL acceptance",
+          "seconds": 53.3,
+          "exit": 0
+        }
+      ],
+      "seconds": 402.5,
+      "unfinished_heartbeat_seconds": 0,
+      "status": "completed",
+      "id": "G46",
+      "log": "supervision/final-classification-gate.log"
+    }
+  ],
+  "processes": [
+    {
+      "record": "queue-smoke-2/attempts/att-a02d72f7e4eeed27bdefbec25724ac45-000001/result.json",
+      "task": "queue-authority",
+      "seconds": 23.885,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "f75094a38f4075cb05b14e724936e294a783c0c0d24d283bb7d11afe506b5548"
+    },
+    {
+      "record": "queue-smoke-2/attempts/att-a02d72f7e4eeed27bdefbec25724ac45-000002/result.json",
+      "task": "queue-effects",
+      "seconds": 26.952,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "975f8635b4bbbf88f6a8182cc4a93f882c7a3e0eca01427f77cebbb4ba374598"
+    },
+    {
+      "record": "queue-smoke-2/attempts/att-a02d72f7e4eeed27bdefbec25724ac45-000003/result.json",
+      "task": "queue-tracker",
+      "seconds": 24.979,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "82a33614388b780ac5eccf055f2edf1d4f1bb4c758efdfb722e2ef2ea7b3c7f1"
+    },
+    {
+      "record": "project16-money/attempts/att-414585874051a923582568267802abb5-000001/result.json",
+      "task": null,
+      "seconds": null,
+      "status": "no execution status",
+      "artifact_verified": false,
+      "sha256": "e7ec4351ade9ae2a563433b188d89c4cc185d787ee0416eacb142de8a2c50f3a"
+    },
+    {
+      "record": "project16-batch/attempts/att-55b8232a9aac424d4089d8b9461186b4-000001/result.json",
+      "task": "9483-bounded-classification-concurrency",
+      "seconds": 1475.722,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "1497ab6e81dec421465df03b4c74ab58d6d0328e666e3d0784efea3e5e86b1e4"
+    },
+    {
+      "record": "project16-decision-worker/attempts/att-892f33c9a98339ca24bda23bd3a5a7f0-000001/result.json",
+      "task": "9469-decision-relay-worker",
+      "seconds": 2708.006,
+      "status": "timed out",
+      "artifact_verified": false,
+      "sha256": "2b7676c207dea5382049d211f0d821552ab3539347e934b37ebc4c2a14ef6e0b"
+    },
+    {
+      "record": "project16-review-changes/attempts/att-2f051fba9185181347010b33c02a0c45-000001/result.json",
+      "task": "9509-review-changes",
+      "seconds": 1806.458,
+      "status": "timed out",
+      "artifact_verified": false,
+      "sha256": "3fe08c321b13f48dd01ab73f008e5fc37fb889d2b6226ad307d6e44f6b438edb"
+    },
+    {
+      "record": "queue-smoke-1/attempts/att-3dcce94340cc67faa243e2ec05562f97-000001/result.json",
+      "task": "queue-authority",
+      "seconds": 35.519,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "0d9746d0be8347bae71605529f40ccc856145462f12b336fb5a71c1cf24d6b30"
+    },
+    {
+      "record": "queue-smoke-1/attempts/att-3dcce94340cc67faa243e2ec05562f97-000002/result.json",
+      "task": "queue-effects",
+      "seconds": 26.706,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "5e1182b50ba840776ca5a115c5e5a80b386847de8cd4c041fd6f5b220425fd0d"
+    },
+    {
+      "record": "queue-smoke-1/attempts/att-3dcce94340cc67faa243e2ec05562f97-000003/result.json",
+      "task": "queue-tracker",
+      "seconds": 25.501,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "a59f980047d45771d2a1a6aa06c2dbc5fe60510270b4f870f664752d243f4a4c"
+    },
+    {
+      "record": "project16-membership/attempts/att-03a12763641b1339ba83a8aea524d91d-000001/result.json",
+      "task": "9490-workspace-membership",
+      "seconds": 1101.848,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "93d3ed6ca057e0ffdb5d51ec0b6bfb8934139f5690d8604dfb96e5701f5d74c9"
+    },
+    {
+      "record": "project16-money-retry/attempts/att-ec32dbc4b95cc2dc6a9b52ebb448b2a9-000001/result.json",
+      "task": "9491-gateway-monetary-holds",
+      "seconds": 1997.199,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "ee9af480ce76a9710b6558f26d0d036dcdacf28e72717145c24f955afbbbf95d"
+    },
+    {
+      "record": "adapter-smoke-1/result.json",
+      "task": "adapter-smoke",
+      "seconds": 20.501,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "301e550c900a7e4a0c8a65ce4179f387b4978b78acca8ef4cd1f6c49cba343e7"
+    },
+    {
+      "record": "decision-worker-recovery/attempts/att-c1409c3d470e00c3d94389a6326853e6-000001/result.json",
+      "task": "9469-worker-recovery",
+      "seconds": 0.0,
+      "status": null,
+      "artifact_verified": false,
+      "sha256": "edd34a4b3807e536cd9cdd6c008246f537b1d9d0f8d4eb7b0de60d87915fa6c6"
+    },
+    {
+      "record": "9507-intake-hardening/result.json",
+      "task": "9507-intake-hardening",
+      "seconds": 906.442,
+      "status": "no execution status",
+      "artifact_verified": false,
+      "sha256": "18e4b1a595095b18259b1fd82a5bba69123a0ea56463890b89afc2386f4ff75f"
+    },
+    {
+      "record": "decision-worker-recovery-retry/attempts/att-7f943dfc34a60df8d8df9466e9126499-000001/result.json",
+      "task": "9469-worker-recovery",
+      "seconds": 2219.479,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "dbb4b4c9051bc13087d2faedaf26e9b7a3a15ae6207f977d0fa5a37c5f874c08"
+    },
+    {
+      "record": "project16-production/attempts/att-7816a2a7c31b4e9311dc351bb85e31e7-000002/result.json",
+      "task": "9469-relay-decision-contract",
+      "seconds": 521.49,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "053f58e0b6c1a1f6985573dc5d9ba71f0356d51eb290ca38a0b336ec75008b54"
+    },
+    {
+      "record": "project16-production/attempts/att-7816a2a7c31b4e9311dc351bb85e31e7-000005/result.json",
+      "task": "9482-classification-http",
+      "seconds": 1818.329,
+      "status": "timed out",
+      "artifact_verified": false,
+      "sha256": "aac344b5dbf6b3750d27e4fadbc2c2b112e4c27483333e38e40ef05f4e40245d"
+    },
+    {
+      "record": "project16-production/attempts/att-7816a2a7c31b4e9311dc351bb85e31e7-000004/result.json",
+      "task": "9469-decision-protocol",
+      "seconds": 1618.601,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "e3b9312057d4c03e183730df8c62acef9d6df883b5caa70663fb8311d9604251"
+    },
+    {
+      "record": "project16-production/attempts/att-7816a2a7c31b4e9311dc351bb85e31e7-000003/result.json",
+      "task": "9486-backend-capability-record",
+      "seconds": 616.883,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "fac4e2b387a4f5ff2a94cff9744acf5ca2fb2c5506a8c059a07aac4c29417c2b"
+    },
+    {
+      "record": "project16-production/attempts/att-7816a2a7c31b4e9311dc351bb85e31e7-000008/result.json",
+      "task": "9509-suite-adapter",
+      "seconds": 1812.271,
+      "status": "timed out",
+      "artifact_verified": false,
+      "sha256": "86a98379609ed172d99872ea6cad7e2223f799a3de77a053513047a42d36747b"
+    },
+    {
+      "record": "project16-production/attempts/att-7816a2a7c31b4e9311dc351bb85e31e7-000006/result.json",
+      "task": "9509-run-suite-host",
+      "seconds": 1416.275,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "b1e0165955677c847dc6cc9c23be5f9da53e4d7fd0f975df75b1d3aeaa6bcf25"
+    },
+    {
+      "record": "project16-production/attempts/att-7816a2a7c31b4e9311dc351bb85e31e7-000001/result.json",
+      "task": "9482-classification-envelope",
+      "seconds": 451.05,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "e2e77805507c19b26b3d6d73b5222bcf3d18f29924dadc4fc2dfbae49f410f36"
+    },
+    {
+      "record": "project16-production/attempts/att-7816a2a7c31b4e9311dc351bb85e31e7-000007/result.json",
+      "task": "9482-classification-modes",
+      "seconds": 1258.154,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "09e53b5f916fb2ecc0de3cbb7aca29166169ae827076c4b8755f9e4cf585acd6"
+    },
+    {
+      "record": "project16-production/attempts/att-7816a2a7c31b4e9311dc351bb85e31e7-000009/result.json",
+      "task": "9482-classification-summaries",
+      "seconds": 1043.967,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "7fcac3d392c29e2c76900c0aedf158839ee752010eec7cd96f7dd167bea6ac1f"
+    },
+    {
+      "record": "9504-authority-completion/result.json",
+      "task": "9504-authority-completion",
+      "seconds": 906.445,
+      "status": "no execution status",
+      "artifact_verified": false,
+      "sha256": "91039f5e1f6854f5170440e9da7b8c44ab3dba31ccb2efe5d13c5f929893016a"
+    },
+    {
+      "record": "project16-review-policy/attempts/att-93a686e0829b141d5ac3fe9b80fe87e4-000001/result.json",
+      "task": "9485-gateway-review-policy",
+      "seconds": 2489.402,
+      "status": "answered",
+      "artifact_verified": false,
+      "sha256": "2f8e3b58a224b096176f505ac6c36fe6f15e08ce6b91b8ffe0327c310905f17e"
+    },
+    {
+      "record": "project16-callers/attempts/att-5072df152782661c46bbaaf18646a444-000001/result.json",
+      "task": "9482-classification-callers",
+      "seconds": 1806.549,
+      "status": "timed out",
+      "artifact_verified": false,
+      "sha256": "d8d9ea74119aab82c7a2db1cef5c219e8d1b8bbacc992811475b0051093ce2c9"
+    },
+    {
+      "record": "project16-admission/attempts/att-613901c119e9a5f896ca5eb85f62d841-000001/result.json",
+      "task": "9473-candidate-admission",
+      "seconds": 1806.575,
+      "status": "timed out",
+      "artifact_verified": false,
+      "sha256": "9b5bd033fd31198dc0933b5398c3c0d3e5ac8fbae8178a4429a035895ff1e4a4"
+    }
+  ],
+  "delegation_smoke_metrics": [
+    {
+      "record": "local-smoke-1.metrics.json",
+      "seconds": 67.13,
+      "exit": 0
+    },
+    {
+      "record": "local-smoke-2.metrics.json",
+      "seconds": 57.39,
+      "exit": 0
+    },
+    {
+      "record": "relay-six.metrics.json",
+      "seconds": 20.42,
+      "exit": 0
+    },
+    {
+      "record": "relay-two.metrics.json",
+      "seconds": 22.22,
+      "exit": 0
+    },
+    {
+      "record": "six-read-1.metrics.json",
+      "seconds": 44.21,
+      "exit": 0
+    },
+    {
+      "record": "six-read-2.metrics.json",
+      "seconds": 74.55,
+      "exit": 0
+    },
+    {
+      "record": "six-write-2.metrics.json",
+      "seconds": 807.15,
+      "exit": 0
+    },
+    {
+      "record": "six-write.metrics.json",
+      "seconds": 6.91,
+      "exit": 2
+    }
+  ]
+}
