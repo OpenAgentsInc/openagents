@@ -434,6 +434,211 @@ mod tests {
     }
 
     #[test]
+    fn complete_retained_evidence_admits_a_measured_winner() {
+        use gym::gate::{Cost, Deployment, Profile};
+        use gym::suite::{LockedLedger, Spend};
+        let suite = Suite::load(include_str!(
+            "../../gym/tests/fixtures/caller-v1/suite.json"
+        ))
+        .unwrap();
+        let mut transfer = suite.clone();
+        transfer.name = "fixture-transfer".into();
+        transfer.items[0].state = serde_json::json!("Independent transfer fixture");
+        transfer.digest = transfer.compute_digest().unwrap();
+        let mut plan = plan(&suite);
+        let bound = |value| Bound {
+            value: Some(value),
+            basis: Basis::Derived,
+            evidence: vec![],
+            why: "Synthetic acceptance fixture only.".into(),
+        };
+        plan.rule.metric_order[0].block_sigma = bound(0.01);
+        plan.rule.effect_size_sigmas = bound(1.0);
+        plan.rule.family_regression_sigmas = bound(1.0);
+        plan.rule.min_blocks_per_side = bound(1.0);
+        plan.guards.max_new_refusals = bound(0.0);
+        plan.guards.max_new_confident_errors = bound(0.0);
+        for floor in &mut plan.guards.calibration {
+            floor.block_sigma = bound(0.01);
+        }
+        plan.guards.transfer.suite_digest = transfer.digest.clone();
+        plan.guards.transfer.block_sigma = bound(0.01);
+        plan.guards.transfer.max_regression_sigmas = bound(1.0);
+        plan.guards.deployment.rule.min_calls = bound(1.0);
+        plan.guards.deployment.rule.latency_block_sigma_relative = bound(0.01);
+        plan.guards.deployment.rule.regression_sigmas = bound(1.0);
+        plan.guards.deployment.budget.max_latency_ms = Some(100.0);
+        plan.guards.deployment.budget.max_cost_per_decision_usd = Some(1.0);
+        plan.guards.deployment.budget.max_refusal_rate = Some(0.0);
+        plan.seal();
+        let dir = tempfile::tempdir().unwrap();
+        let ledger = LockedLedger::at(dir.path().join("locked.jsonl"));
+        let subject = plan.ledger_subject();
+        ledger
+            .read_locked(
+                &suite,
+                &Spend {
+                    subject: &subject,
+                    reason: "Synthetic acceptance fixture",
+                    at: "2026-09-21T00:00:00Z",
+                    adapter: "",
+                },
+            )
+            .unwrap();
+        let report = |suite: &Suite, partition: Partition, file: &str| {
+            let path = dir.path().join(file);
+            let store = gym::store::Store::at(&path);
+            for pin in [&plan.base, &plan.candidate] {
+                for item in suite
+                    .items
+                    .iter()
+                    .filter(|item| item.partition == partition)
+                {
+                    let mut row =
+                        gym::row::Row::new(&suite.name, &suite.digest, &item.id, &pin.door).scored(
+                            [("yes".into(), 0.8), ("no".into(), 0.2)]
+                                .into_iter()
+                                .collect(),
+                            pin.door == plan.candidate.door,
+                        );
+                    row.recorded_at = "2026-09-21T00:00:00Z".into();
+                    row.split = partition.as_str().into();
+                    row.family = item.family.clone();
+                    row.estimator = plan.instrument.estimator.clone();
+                    row.door_identity = pin.identity.clone();
+                    row.question_set = plan.workload.question_set.clone();
+                    row.question_digest = plan.workload.question_digest.clone();
+                    row.check().unwrap();
+                    store.append(&row).unwrap();
+                }
+            }
+            let rows: Vec<gym::row::Row> = store
+                .verified_rows()
+                .unwrap()
+                .into_iter()
+                .map(|v| serde_json::from_value(v).unwrap())
+                .collect();
+            let doors = vec![plan.base.door.clone(), plan.candidate.door.clone()];
+            let expected =
+                gym::coverage::Expected::of(suite, &[partition], None, None, doors.clone())
+                    .unwrap();
+            let commitment = gym::commitment::Commitment::of(
+                suite,
+                &expected,
+                gym::commitment::Selection {
+                    partitions: vec![partition.as_str().into()],
+                    family: None,
+                    items: None,
+                    doors,
+                },
+                &rows,
+                store.head().unwrap(),
+                None,
+            );
+            let base: Vec<_> = rows
+                .iter()
+                .filter(|r| r.door == plan.base.door)
+                .cloned()
+                .collect();
+            let candidate: Vec<_> = rows
+                .iter()
+                .filter(|r| r.door == plan.candidate.door)
+                .cloned()
+                .collect();
+            (rows, commitment, base, candidate)
+        };
+        let dev = report(&suite, Partition::Development, "development.jsonl");
+        let locked = report(&suite, Partition::Locked, "confirmation.jsonl");
+        let transfer_rows = report(&transfer, Partition::Development, "transfer.jsonl");
+        let profile = Profile::timed(&[10.0, 10.0])
+            .refusing(0)
+            .costing(Cost::Metered {
+                usd_per_decision: 0.01,
+            });
+        let evidence = Evidence {
+            reports: Reports {
+                development: Some(ReportEvidence {
+                    commitment: &dev.1,
+                    rows: &dev.0,
+                }),
+                locked: Some(ReportEvidence {
+                    commitment: &locked.1,
+                    rows: &locked.0,
+                }),
+                transfer: Some(ReportEvidence {
+                    commitment: &transfer_rows.1,
+                    rows: &transfer_rows.0,
+                }),
+            },
+            suite: &suite,
+            development: Side {
+                base: &dev.2,
+                candidate: &dev.3,
+                store_head: dev.1.head.clone(),
+            },
+            locked: Some(Locked {
+                base: &locked.2,
+                candidate: &locked.3,
+                ledger: &ledger,
+                store_head: locked.1.head.clone(),
+            }),
+            transfer: Some(Transfer {
+                suite: &transfer,
+                base: &transfer_rows.2,
+                candidate: &transfer_rows.3,
+                store_head: transfer_rows.1.head.clone(),
+            }),
+            deployment: Some(Deployment::new("fixture", profile, profile)),
+            decided_at: "2026-09-21T00:00:00Z".into(),
+            commitment: None,
+        };
+        let decision = plan.decide(&evidence).unwrap();
+        assert_eq!(
+            decision.ruling,
+            gym::admission::Ruling::Passed,
+            "{decision:#?}"
+        );
+        assert!(
+            Record::evaluate(&plan, &evidence)
+                .unwrap()
+                .admitted()
+                .is_ok()
+        );
+        let mut missing = evidence.clone();
+        missing.reports.locked = None;
+        assert_ne!(
+            plan.decide(&missing).unwrap().ruling,
+            gym::admission::Ruling::Passed
+        );
+        assert!(
+            Record::evaluate(&plan, &missing)
+                .unwrap()
+                .admitted()
+                .is_err()
+        );
+        let mut expensive = evidence.clone();
+        expensive.deployment.as_mut().unwrap().candidate.cost = Some(Cost::Metered {
+            usd_per_decision: 2.0,
+        });
+        assert_eq!(
+            plan.decide(&expensive).unwrap().ruling,
+            gym::admission::Ruling::Failed
+        );
+        let mut edited_rows = dev.3.clone();
+        edited_rows[0].latency_ms = Some(0.1);
+        let mut changed = evidence.clone();
+        changed.development.candidate = &edited_rows;
+        let changed_decision = plan.decide(&changed).unwrap();
+        assert_eq!(changed_decision.ruling, gym::admission::Ruling::Refused);
+        assert!(
+            changed_decision
+                .refusals
+                .iter()
+                .any(|r| r.contains("evaluated rows differ"))
+        );
+    }
+
+    #[test]
     fn replay_rejects_a_resealed_success_claim_over_missing_evidence() {
         let suite = Suite::load(include_str!(
             "../../gym/tests/fixtures/caller-v1/suite.json"
