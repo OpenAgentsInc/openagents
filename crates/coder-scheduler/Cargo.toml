@@ -1,0 +1,19 @@
+[package]
+name = "coder-scheduler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The deterministic backlog scheduler: a versioned task catalog, a pure admission plan, a durable ledger, and a reproducible simulation."
+publish.workspace = true
+
+[dependencies]
+getrandom = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
