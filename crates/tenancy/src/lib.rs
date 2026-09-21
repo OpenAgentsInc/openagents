@@ -50,5 +50,5 @@ pub mod quota;
 mod registry;
 
 pub use keys::{AuthRefusal, Authenticated, Issued, Key, KeyStore, KeyTrouble, Status};
-pub use manifest::{Binding, Capacity, Expected, Lane, Manifest, Quota, SCHEMA, Tenant};
+pub use manifest::{Binding, Capacity, Expected, Lane, Manifest, Quota, SCHEMA, Tenant, lane_name};
 pub use registry::{Admission, Fault, Published, Refusal, Registry, Trouble};

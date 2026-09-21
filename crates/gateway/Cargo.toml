@@ -1,0 +1,23 @@
+[package]
+name = "gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The keyed HTTP gateway in front of decision doors: authenticate, authorize, reserve quota, verify backend identity, forward bounded work, and record a receipt."
+publish.workspace = true
+
+[dependencies]
+axum = "0.8"
+receipts = { path = "../receipts" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tenancy = { path = "../tenancy" }
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

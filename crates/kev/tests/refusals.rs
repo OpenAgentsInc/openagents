@@ -688,6 +688,10 @@ async fn an_error_body_without_a_code_stays_harness() {
             }
         };
         let timeout = Some(std::time::Duration::from_secs(5));
+        // macOS accepted sockets inherit the listener's O_NONBLOCK —
+        // without this, the first read can race the request's arrival
+        // and return WouldBlock before the timeouts below even apply.
+        stream.set_nonblocking(false).expect("blocking stream");
         stream.set_read_timeout(timeout).expect("read timeout");
         stream.set_write_timeout(timeout).expect("write timeout");
         let mut buf = [0u8; 8192];

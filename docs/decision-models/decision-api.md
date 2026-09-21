@@ -260,6 +260,17 @@ options, questions, queue depth, active forwards, and per-tenant resources.
 Cancellation and restart must not leave unbounded work running.
 Owner: [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468).
 
+The admission path is landed in `crates/gateway`: authenticate the
+bearer key, authorize the named door, bound the door's declared
+capacity and the process's forward count, reserve quota durably, verify
+the backend's published model card against the binding, forward, settle
+once, and leave a sealed receipt in `receipts.jsonl`. The native
+`POST /v1/systemone` contract, `GET /v1/models` discovery, idempotency
+semantics, refusal codes, deployment shape, and retention rules are in
+[gateway.md](gateway.md). The classification, batch, and job routes the
+expanded product names still follow — each joins this same admission
+path rather than growing a second one.
+
 Keep the existing native routes and add the classification and job routes
 through versioned contracts. Specify any root POST, batch, or GET
 compatibility aliases before exposing them. GET quick examples use public

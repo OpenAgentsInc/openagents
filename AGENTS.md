@@ -78,6 +78,18 @@ uses, and marks which are implemented and which are only specified.
   identities, a typed outcome, timing, and digests of the request and
   result rather than their content. An attributable claim, never remote
   attestation.
+- `crates/gateway` — the keyed HTTP front of the serving half: one
+  admission path for `POST /v1/systemone` — authenticate the bearer key,
+  authorize the door against `tenancy`'s registry, bound the door's
+  declared capacity and the process's forward count, reserve quota
+  durably, verify the backend's published model card against the bound
+  identity before a byte is forwarded, then settle and leave a sealed
+  receipt in `receipts.jsonl`. `GET /v1/models` is the caller's view of
+  its own doors; `GET /healthz` is process liveness only. The
+  `gateway` binary reads one `gateway.json` — listen address, registry
+  directory, and each door's backend endpoint. Read
+  `docs/decision-models/gateway.md` before changing a refusal code, a
+  bound, or the reservation lifecycle.
 - `crates/jev` — the Rust SDK for TypeSafe's System One API.
 - `crates/kev` — the Rust port of the kev decision model: packed prefill,
   block-causal question isolation, pointer readout, and `kev-serve`, a
