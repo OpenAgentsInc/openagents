@@ -470,11 +470,7 @@ impl Plan {
             return Err(PlanError::NoScope);
         }
         if self.workload.partitions.is_empty()
-            || self
-                .workload
-                .partitions
-                .iter()
-                .any(|partition| *partition == Partition::Locked)
+            || self.workload.partitions.contains(&Partition::Locked)
         {
             return Err(PlanError::BadPartitions);
         }
@@ -1756,7 +1752,7 @@ fn measure(rows: &[Row]) -> Measured {
 }
 
 /// The rows of one family, borrowed in row order.
-fn of_family<'a>(rows: &'a [Row], family: &str) -> Vec<Row> {
+fn of_family(rows: &[Row], family: &str) -> Vec<Row> {
     rows.iter()
         .filter(|row| row.family == family)
         .cloned()

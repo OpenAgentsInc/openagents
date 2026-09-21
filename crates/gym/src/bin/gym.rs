@@ -152,12 +152,16 @@ struct Options {
     plan: Option<String>,
     /// The store `admit` reads the locked-confirmation rows from.
     locked: Option<String>,
+    /// Retained report for the locked store.
+    locked_commitment: Option<String>,
     /// The ledger `admit` checks the locked read was spent under.
     ledger: Option<String>,
     /// The transfer suite `admit` checks the candidate against.
     transfer_suite: Option<String>,
     /// The store `admit` reads the transfer rows from.
     transfer_store: Option<String>,
+    /// Retained report for the transfer store.
+    transfer_commitment: Option<String>,
     /// When `admit` dates the decision; now by default.
     at: Option<String>,
 }
@@ -296,6 +300,8 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--from" => options.from.extend(args.next()),
             "--expect" => options.expect.extend(args.next()),
             "--commitment" => options.commitment = args.next(),
+            "--locked-commitment" => options.locked_commitment = args.next(),
+            "--transfer-commitment" => options.transfer_commitment = args.next(),
             "--out" => options.out = args.next(),
             "--input" => options.input = args.next(),
             "--name" => options.name = args.next(),
@@ -2850,8 +2856,12 @@ fn admit_command(options: &Options) -> Result<(), String> {
     let dev_base = rows_for(&development, &plan.base.door);
     let dev_candidate = rows_for(&development, &plan.candidate.door);
 
-    let locked = match (options.locked.as_deref(), options.ledger.as_deref()) {
-        (Some(path), Some(ledger_path)) => {
+    let locked = match (
+        options.locked.as_deref(),
+        options.ledger.as_deref(),
+        options.locked_commitment.as_deref(),
+    ) {
+        (Some(path), Some(ledger_path), Some(report_path)) => {
             let rows = read_rows(path)?;
             let head = Store::at(path).head().map_err(|error| error.to_string())?;
             let ledger = gym::suite::LockedLedger::at(ledger_path);
@@ -2860,12 +2870,14 @@ fn admit_command(options: &Options) -> Result<(), String> {
                 rows_for(&rows, &plan.candidate.door),
                 head,
                 ledger,
+                rows,
+                gym::commitment::Commitment::load(report_path)?,
             ))
         }
-        (None, None) => None,
+        (None, None, None) => None,
         _ => {
             return Err(
-                "--locked and --ledger go together; the confirmation is a read the ledger \
+                "--locked, --ledger, and --locked-commitment go together; the confirmation is a read the ledger \
                  recorded, not rows a caller points at"
                     .to_string(),
             );
@@ -2875,8 +2887,9 @@ fn admit_command(options: &Options) -> Result<(), String> {
     let transfer = match (
         options.transfer_suite.as_deref(),
         options.transfer_store.as_deref(),
+        options.transfer_commitment.as_deref(),
     ) {
-        (Some(suite_path), Some(store_path)) => {
+        (Some(suite_path), Some(store_path), Some(report_path)) => {
             let transfer_suite = Suite::load_file(suite_path).map_err(|error| error.to_string())?;
             let rows = read_rows(store_path)?;
             let head = Store::at(store_path)
@@ -2887,12 +2900,14 @@ fn admit_command(options: &Options) -> Result<(), String> {
                 rows_for(&rows, &plan.base.door),
                 rows_for(&rows, &plan.candidate.door),
                 head,
+                rows,
+                gym::commitment::Commitment::load(report_path)?,
             ))
         }
-        (None, None) => None,
+        (None, None, None) => None,
         _ => {
             return Err(
-                "--transfer-suite and --transfer-store go together; the check needs both the \
+                "--transfer-suite, --transfer-store, and --transfer-commitment go together; the check needs both the \
                  suite the plan froze and the rows scored on it"
                     .to_string(),
             );
@@ -2905,7 +2920,12 @@ fn admit_command(options: &Options) -> Result<(), String> {
                 commitment: &commitment,
                 rows: &development,
             }),
-            ..gym::admission::Reports::default()
+            locked: locked.as_ref().map(|(_, _, _, _, rows, commitment)| {
+                gym::admission::ReportEvidence { rows, commitment }
+            }),
+            transfer: transfer.as_ref().map(|(_, _, _, _, rows, commitment)| {
+                gym::admission::ReportEvidence { rows, commitment }
+            }),
         },
         suite: &suite,
         development: gym::admission::Side {
@@ -2915,16 +2935,18 @@ fn admit_command(options: &Options) -> Result<(), String> {
         },
         locked: locked
             .as_ref()
-            .map(|(base, candidate, head, ledger)| gym::admission::Locked {
-                base,
-                candidate,
-                ledger,
-                store_head: head.clone(),
-            }),
+            .map(
+                |(base, candidate, head, ledger, _, _)| gym::admission::Locked {
+                    base,
+                    candidate,
+                    ledger,
+                    store_head: head.clone(),
+                },
+            ),
         transfer: transfer
             .as_ref()
             .map(
-                |(transfer_suite, base, candidate, head)| gym::admission::Transfer {
+                |(transfer_suite, base, candidate, head, _, _)| gym::admission::Transfer {
                     suite: transfer_suite,
                     base,
                     candidate,
