@@ -152,6 +152,7 @@ impl ServeState {
             .append(true)
             .open(config.registry.join(RECEIPTS))?;
         let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_millis(config.forward_timeout_ms))
             .build()
             .map_err(|error| Trouble::Io(std::io::Error::other(error.to_string())))?;
@@ -3629,9 +3630,8 @@ async fn published_identity(
             response.status()
         ));
     }
-    let body: Value = response
-        .json()
-        .await
+    let bytes = backend_response_bytes(response, state.config.max_response_bytes).await?;
+    let body: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("the door's identity did not parse: {error}"))?;
     let cards = body
         .get("models")
@@ -3701,10 +3701,35 @@ enum Forwarded {
     Unavailable { message: String },
 }
 
+/// Bound both model-card and inference bodies before parsing or retaining them.
+async fn backend_response_bytes(
+    mut response: reqwest::Response,
+    limit: usize,
+) -> Result<Bytes, String> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > limit as u64)
+    {
+        return Err(format!("the door's response exceeded {limit} bytes"));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("the door's response could not be read: {error}"))?
+    {
+        if chunk.len() > limit.saturating_sub(bytes.len()) {
+            return Err(format!("the door's response exceeded {limit} bytes"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(Bytes::from(bytes))
+}
+
 /// Forward the request body to the backend's `systemone`, bounded by the
 /// configured timeout and response cap.
 async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded {
-    let mut response = match state
+    let response = match state
         .client
         .post(format!("{endpoint}/v1/systemone"))
         .header("content-type", "application/json")
@@ -3720,35 +3745,15 @@ async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded 
         }
     };
     let status = response.status();
-    let limit = state.config.max_response_bytes;
-    if response
-        .content_length()
-        .is_some_and(|length| length as usize > limit)
-    {
+    if status.is_redirection() {
         return Forwarded::Unavailable {
-            message: format!("the door's answer exceeded {limit} bytes"),
+            message: "the configured door redirected inference; no redirect was followed".into(),
         };
     }
-    let mut bytes = Vec::new();
-    loop {
-        match response.chunk().await {
-            Ok(Some(chunk)) => {
-                if chunk.len() > limit.saturating_sub(bytes.len()) {
-                    return Forwarded::Unavailable {
-                        message: format!("the door's answer exceeded {limit} bytes"),
-                    };
-                }
-                bytes.extend_from_slice(&chunk);
-            }
-            Ok(None) => break,
-            Err(error) => {
-                return Forwarded::Unavailable {
-                    message: format!("the door's answer could not be read: {error}"),
-                };
-            }
-        }
-    }
-    let body = Bytes::from(bytes);
+    let body = match backend_response_bytes(response, state.config.max_response_bytes).await {
+        Ok(body) => body,
+        Err(message) => return Forwarded::Unavailable { message },
+    };
     if status.is_success() {
         Forwarded::Served { status, body }
     } else if status.is_client_error() {

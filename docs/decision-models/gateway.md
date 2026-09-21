@@ -35,6 +35,13 @@ Every `POST /v1/systemone` runs the same sequence:
    once, and a sealed `ExecutionReceipt` appends to `receipts.jsonl`
    beside the registry.
 
+Backend identity reads and inference stay on the configured endpoint. The
+client follows no HTTP redirects. Both response paths enforce
+`max_response_bytes` while reading, including chunked responses with no declared
+length. A redirected or oversized identity document refuses before inference;
+a redirected inference response is unavailable, with potentially attempted work
+retained for settlement.
+
 ## Configuration
 
 `gateway --config gateway.json` reads one document:

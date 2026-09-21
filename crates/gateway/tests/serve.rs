@@ -4103,3 +4103,146 @@ async fn classify_public_failure_fixtures_match_runtime() {
         classification_response_fixture(name, &body);
     }
 }
+
+#[tokio::test]
+async fn backend_redirects_never_change_the_authorized_destination() {
+    for redirect_identity in [true, false] {
+        for classification in [true, false] {
+            let reached = Arc::new(AtomicUsize::new(0));
+            let identity_reached = reached.clone();
+            let inference_reached = reached.clone();
+            let destination = axum::Router::new()
+                .route(
+                    "/v1/models",
+                    get(move || {
+                        identity_reached.fetch_add(1, Ordering::SeqCst);
+                        async {
+                            Json(json!({"models":[{"id":"kev-0.6b",
+                        "artifact_identity":{"digest":artifact('b')}}]}))
+                        }
+                    }),
+                )
+                .route(
+                    "/v1/systemone",
+                    post(move || {
+                        inference_reached.fetch_add(1, Ordering::SeqCst);
+                        async { Json(choice_answer()) }
+                    }),
+                );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let destination_url = format!("http://{}", listener.local_addr().unwrap());
+            tokio::spawn(axum::serve(listener, destination).into_future());
+            let models_url = format!("{destination_url}/v1/models");
+            let inference_url = format!("{destination_url}/v1/systemone");
+            let source = axum::Router::new()
+                .route(
+                    "/v1/models",
+                    get(move || {
+                        let location = models_url.clone();
+                        async move {
+                            if redirect_identity {
+                                (StatusCode::TEMPORARY_REDIRECT, [("location", location)])
+                                    .into_response()
+                            } else {
+                                Json(json!({"models":[{"id":"kev-0.6b",
+                                "artifact_identity":{"digest":artifact('b')}}]}))
+                                .into_response()
+                            }
+                        }
+                    }),
+                )
+                .route(
+                    "/v1/systemone",
+                    post(move || {
+                        let location = inference_url.clone();
+                        async move { (StatusCode::TEMPORARY_REDIRECT, [("location", location)]) }
+                    }),
+                );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let source_url = format!("http://{}", listener.local_addr().unwrap());
+            tokio::spawn(axum::serve(listener, source).into_future());
+            let deployment = classification_deployment(source_url).await;
+            let status = if classification {
+                send_classification(&deployment, &classify_call()).await.0
+            } else {
+                send_call(
+                    &deployment,
+                    &call("acme-kev"),
+                    Some(&deployment.tokens["acme"]),
+                )
+                .await
+                .status()
+            };
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(reached.load(Ordering::SeqCst), 0);
+            let receipts = receipt_log(&deployment.dir);
+            assert_eq!(receipts.len(), 1);
+            assert_eq!(
+                receipts[0].outcome,
+                if redirect_identity {
+                    receipts::execution::Outcome::Unattempted
+                } else {
+                    receipts::execution::Outcome::Unavailable
+                }
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn oversized_identity_bodies_refuse_before_inference_or_read_to_end() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    for chunked in [false, true] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 1024];
+            loop {
+                let count = socket.read(&mut buffer).await.unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&buffer[..count]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+                assert!(request.len() < 8192);
+            }
+            assert!(request.starts_with(b"GET /v1/models"));
+            if chunked {
+                socket
+                    .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n401\r\n")
+                    .await
+                    .unwrap();
+                socket.write_all(&vec![b'x'; 1025]).await.unwrap();
+            } else {
+                socket
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1025\r\n\r\n")
+                    .await
+                    .unwrap();
+            }
+            // Neither response completes: a read-to-end implementation times out.
+            std::future::pending::<()>().await;
+        });
+        let deployment = classification_deployment_tuned(endpoint, 1, |config| {
+            config.max_response_bytes = 128;
+            config.forward_timeout_ms = 5000;
+        })
+        .await;
+        let (status, body) = tokio::time::timeout(
+            Duration::from_secs(2),
+            send_classification(&deployment, &classify_call()),
+        )
+        .await
+        .expect("the byte cap must refuse before the five-second read deadline");
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        assert!(body.to_string().contains("exceeded 128 bytes"), "{body}");
+        let receipts = receipt_log(&deployment.dir);
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(
+            receipts[0].outcome,
+            receipts::execution::Outcome::Unattempted
+        );
+        server.abort();
+    }
+}
