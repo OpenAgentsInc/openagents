@@ -1521,10 +1521,20 @@ impl Delegator {
         // The poll width is a buffer size, which cannot be zero; the
         // refusal lives in `unrunnable`, and refused tasks need no
         // parallelism.
-        stream::iter(tasks.into_iter().map(|task| self.run(task)))
-            .buffered(self.concurrent_max.max(1))
-            .collect()
-            .await
+        // Preserve presentation order after execution. An ordered stream
+        // holds completed later tasks behind its first unfinished task and
+        // prevents their slots from admitting more work.
+        let mut completed: Vec<_> = stream::iter(
+            tasks
+                .into_iter()
+                .enumerate()
+                .map(|(index, task)| async move { (index, self.run(task).await) }),
+        )
+        .buffer_unordered(self.concurrent_max.max(1))
+        .collect()
+        .await;
+        completed.sort_unstable_by_key(|(index, _)| *index);
+        completed.into_iter().map(|(_, result)| result).collect()
     }
 
     /// Assembles one finished delegation.
@@ -2310,6 +2320,51 @@ mod tests {
         assert!(
             sequential > parallel,
             "a width of one is the sequential case: {sequential:?} against {parallel:?}"
+        );
+    }
+
+    /// A completed later task releases its slot even while the first task waits.
+    #[tokio::test]
+    async fn a_free_slot_refills_before_the_first_task_finishes() {
+        if !boundary_supported() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let state = tempfile::tempdir().unwrap();
+        let marker = state.path().join("third-started");
+        let binary = stub(
+            dir.path(),
+            "refill",
+            &format!(
+                "for a in \"$@\"; do prompt=\"$a\"; done\n\
+                 case \"$prompt\" in\n\
+                 first) i=0; while [ ! -f '{}' ] && [ \"$i\" -lt 100 ]; do sleep 0.05; i=$((i+1)); done; test -f '{}' || exit 17 ;;\n\
+                 third) touch '{}' ;;\n\
+                 esac\nprintf '%s\\n' \"$prompt\"",
+                marker.display(),
+                marker.display(),
+                marker.display()
+            ),
+        );
+        let tasks = ["first", "second", "third"]
+            .into_iter()
+            .map(|name| {
+                Task::reading(name, "a.rs")
+                    .expecting(name)
+                    .bounded(Bounds::within(Duration::from_secs(10)))
+            })
+            .collect();
+        let results =
+            Delegator::new(executor(&binary).under(Policy::empty().granting(state.path())))
+                .in_directory(dir.path())
+                .bounded_to(2)
+                .fan_out(tasks)
+                .await;
+        assert_eq!(results.len(), 3);
+        assert!(results.iter().all(Delegation::answered), "{results:?}");
+        assert_eq!(
+            results.iter().map(Delegation::answer).collect::<Vec<_>>(),
+            ["first", "second", "third"]
         );
     }
 

@@ -77,6 +77,10 @@ every recorded call carries the width it ran under.
 
 Results come back in the order the tasks were given, whatever order they
 finished in, so a caller can pair an answer with the question it asked.
+Each completed task releases its slot immediately. A slow first task cannot
+hold completed later tasks in the execution buffer and delay the next dispatch.
+The returned vector is ordered after execution; this does not provide a durable
+project queue or a machine-wide capacity limit.
 
 A live run of the golden's six questions from this repository, at a width of
 six:
