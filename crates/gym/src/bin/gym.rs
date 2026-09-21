@@ -166,6 +166,14 @@ struct Options {
     transfer_commitment: Option<String>,
     /// When `admit` dates the decision; now by default.
     at: Option<String>,
+    /// The snapshot directory `verify` checks a store against, or the root
+    /// `publish` writes into. `publish` uses `--out` for the root; this
+    /// flag names an existing snapshot directory for `verify`.
+    snapshot: Option<String>,
+    /// The per-door cost declarations `publish` renders, as a JSON list.
+    costs: Option<String>,
+    /// The live-status note `publish` renders beside the evidence.
+    status: Option<String>,
 }
 
 fn main() {
@@ -183,6 +191,7 @@ fn main() {
         "permute" => run(permute_command(options)),
         "latency" => run(latency_command(options)),
         "report" => run(report_command(&options)),
+        "publish" => run(publish_command(&options)),
         "verify" => run(verify_command(&options)),
         "build" => run(build_command(&options)),
         "regress" => run(regress_command(&options)),
@@ -207,6 +216,7 @@ gym permute  measure how much option order moves the answer, or read it back
              from a store with --store
 gym latency  measure how much wall clock moves when nothing else does
 gym report   render a measured record from recorded rows
+gym publish  write a public benchmark and status snapshot from a store
 gym verify   walk a store's receipt chain and say where it breaks
 gym build    turn a caller's labelled JSONL into a suite and question set
 gym regress  compare a door with its own last recorded run
@@ -222,8 +232,14 @@ gym admit    judge a frozen admission plan against recorded evidence and
   --family name       the one family to ask; every family by default
   --expect name       a door `report` was told the run was meant to ask;
                       repeatable
-  --commitment path   where `report` writes the record's commitment, or
-                      the file `verify` checks the store against
+  --commitment path   where `report` writes the record's commitment, the
+                      file `verify` checks the store against, or the
+                      commitment `publish` copies into the snapshot
+  --snapshot dir      the snapshot directory `verify` checks a store's
+                      claims against
+  --costs path        the per-door cost declarations `publish` renders
+  --status path       the live-status note `publish` renders beside the
+                      historical evidence
   --fit               fit one map per family and judge it
   --record path       append every row to this store
   --records dir       write one calibration record per family here
@@ -327,6 +343,9 @@ fn read_options(args: impl Iterator<Item = String>) -> Options {
             "--transfer-suite" => options.transfer_suite = args.next(),
             "--transfer-store" => options.transfer_store = args.next(),
             "--at" => options.at = args.next(),
+            "--snapshot" => options.snapshot = args.next(),
+            "--costs" => options.costs = args.next(),
+            "--status" => options.status = args.next(),
             other => eprintln!("unknown flag {other}"),
         }
     }
@@ -1526,6 +1545,191 @@ fn report_command(options: &Options) -> Result<(), String> {
     Ok(())
 }
 
+/// Write a public benchmark and status snapshot: the rendered page, the
+/// manifest every claim reproduces from, and the preserved index.
+///
+/// `report` renders the measured record for the caller who ran the
+/// evaluation; `publish` renders the page a stranger reads. The evidence
+/// rules are the ones [`gym::views`] keeps: complete only against a
+/// declared selection, each run identity its own workload, refused and
+/// missing work stated beside accuracy, unknown cost unknown, live status
+/// a separately sourced section, and every claim reproducible with
+/// `gym verify --store … --snapshot …`.
+fn publish_command(options: &Options) -> Result<(), String> {
+    let path = options
+        .store
+        .as_deref()
+        .ok_or_else(|| "publish reads recorded rows; pass --store path".to_string())?;
+    let root = options
+        .out
+        .as_deref()
+        .ok_or_else(|| "publish writes a snapshot directory; pass --out dir".to_string())?;
+    let bytes = std::fs::read(path).map_err(|error| format!("{path}: {error}"))?;
+    let values = Store::at(path).rows().map_err(|error| error.to_string())?;
+    let head = match verify_chain(&values) {
+        ChainVerdict::Ok { head, .. } => head,
+        ChainVerdict::Broken { detail, .. } => return Err(detail),
+    };
+    let rows: Vec<Row> = values
+        .into_iter()
+        .map(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
+        .collect::<Result<_, _>>()?;
+    if rows.is_empty() {
+        return Err(format!("{path} holds no rows"));
+    }
+
+    // The declared selection follows `report`'s rule: `--suite` with the
+    // narrowing the run used, and a suite no row pins is refused rather
+    // than lent to these rows.
+    let provenance = match options.suite.as_deref() {
+        Some(file) => {
+            let suite = Suite::load_file(file).map_err(|error| error.to_string())?;
+            if !rows.iter().any(|row| row.suite_digest == suite.digest) {
+                return Err(format!(
+                    "{file} digests to {}, which no row in this store names",
+                    suite.digest
+                ));
+            }
+            let text = std::fs::read_to_string(file).map_err(|error| format!("{file}: {error}"))?;
+            let value: Value =
+                serde_json::from_str(&text).map_err(|error| format!("{file}: {error}"))?;
+            Some((suite, value.get("provenance").cloned()))
+        }
+        None => None,
+    };
+    let declared = match provenance.as_ref() {
+        Some((suite, _)) => {
+            let subset = options.items.as_deref().map(read_item_ids).transpose()?;
+            let wanted = declared_partitions(options)?;
+            let mut doors = options.expect.clone();
+            for door in doors_of(&rows) {
+                if !doors.contains(&door) {
+                    doors.push(door);
+                }
+            }
+            Some(Expected::of(
+                suite,
+                &wanted,
+                options.family.as_deref(),
+                subset.as_ref(),
+                doors,
+            )?)
+        }
+        None => None,
+    };
+
+    // The commitment is the anchor published beside the page. It must be
+    // this store's commitment: a file that does not check against these
+    // rows would carry the page's authority to a different record.
+    let commitment = match options.commitment.as_deref() {
+        Some(file) => {
+            let commitment = gym::commitment::Commitment::load(file)?;
+            let faults = gym::commitment::check(&commitment, &rows);
+            if !faults.is_empty() {
+                return Err(format!(
+                    "{file} does not match this store: {}",
+                    faults.join("; ")
+                ));
+            }
+            Some((file.to_string(), commitment))
+        }
+        None => None,
+    };
+
+    let costs: Vec<gym::views::DeclaredCost> = match options.costs.as_deref() {
+        Some(file) => {
+            let text = std::fs::read_to_string(file).map_err(|error| format!("{file}: {error}"))?;
+            let costs: Vec<gym::views::DeclaredCost> =
+                serde_json::from_str(&text).map_err(|error| format!("{file}: {error}"))?;
+            for declared in &costs {
+                declared
+                    .check()
+                    .map_err(|error| format!("{file}: {error}"))?;
+            }
+            costs
+        }
+        None => Vec::new(),
+    };
+    let status: Option<gym::views::StatusNote> = match options.status.as_deref() {
+        Some(file) => {
+            let text = std::fs::read_to_string(file).map_err(|error| format!("{file}: {error}"))?;
+            Some(serde_json::from_str(&text).map_err(|error| format!("{file}: {error}"))?)
+        }
+        None => None,
+    };
+
+    let generated_at = gym::eval::now_utc();
+    let id = gym::views::snapshot_id(&generated_at, head.as_deref());
+    let directory = std::path::Path::new(root).join(&id);
+    if directory.exists() {
+        return Err(format!(
+            "{} already exists — a snapshot is immutable; publish again under a new id",
+            directory.display()
+        ));
+    }
+    let mut snapshot = gym::views::build(
+        &id,
+        &generated_at,
+        &rows,
+        declared.as_ref(),
+        provenance.as_ref().map(|(suite, _)| suite),
+        provenance.as_ref().and_then(|(_, value)| value.as_ref()),
+        gym::views::StoreRef {
+            sha256: gym::views::sha256_hex(&bytes),
+            head: head.clone(),
+            rows: rows.len(),
+        },
+        commitment
+            .as_ref()
+            .map(|(_, commitment)| gym::views::CommitmentRef {
+                digest: commitment.digest.clone(),
+                file: "commitment.json".to_string(),
+            }),
+        status,
+        &costs,
+    );
+
+    // Earlier snapshots are evidence too: the index is append-only, and
+    // the page renders the history it joins.
+    let index_path = std::path::Path::new(root).join(gym::views::INDEX_FILE);
+    let mut index: Vec<gym::views::IndexEntry> = match std::fs::read_to_string(&index_path) {
+        Ok(text) => serde_json::from_str(&text)
+            .map_err(|error| format!("{}: {error}", index_path.display()))?,
+        Err(_) => Vec::new(),
+    };
+    let page = gym::views::render(&snapshot, &index);
+
+    std::fs::create_dir_all(&directory)
+        .map_err(|error| format!("{}: {error}", directory.display()))?;
+    let document = directory.join(gym::views::DOCUMENT_FILE);
+    std::fs::write(&document, &page).map_err(|error| format!("{}: {error}", document.display()))?;
+    snapshot.document = Some(gym::views::DocumentRef {
+        file: gym::views::DOCUMENT_FILE.to_string(),
+        sha256: gym::views::sha256_hex(page.as_bytes()),
+    });
+    let manifest = directory.join(gym::views::MANIFEST_FILE);
+    let text = serde_json::to_string_pretty(&snapshot).map_err(|error| error.to_string())?;
+    std::fs::write(&manifest, text + "\n")
+        .map_err(|error| format!("{}: {error}", manifest.display()))?;
+    if let Some((file, _)) = &commitment {
+        let destination = directory.join("commitment.json");
+        std::fs::copy(file, &destination)
+            .map_err(|error| format!("{}: {error}", destination.display()))?;
+    }
+    index.push(snapshot.index_entry());
+    let text = serde_json::to_string_pretty(&index).map_err(|error| error.to_string())?;
+    std::fs::write(&index_path, text + "\n")
+        .map_err(|error| format!("{}: {error}", index_path.display()))?;
+    println!(
+        "Wrote snapshot `{}` — coverage {}. Verify with \
+         `gym verify --store {path} --snapshot {}`.",
+        directory.display(),
+        snapshot.coverage_word(),
+        directory.display()
+    );
+    Ok(())
+}
+
 /// The partitions a report's declared selection covers: `--partition` as a
 /// comma list, defaulting to the open partitions `eval` asks. The locked
 /// partition is declarable here — a run that spent it through the ledger
@@ -2032,6 +2236,112 @@ fn verify_command(options: &Options) -> Result<(), String> {
             commitment.digest
         );
     }
+    if let Some(directory) = options.snapshot.as_deref() {
+        verify_snapshot(path, directory, &rows)?;
+    }
+    Ok(())
+}
+
+/// Check a store against a published snapshot: the manifest's claims
+/// recomputed over the store's prefix, the rendered page's digest, and
+/// the commitment the snapshot carries.
+///
+/// The snapshot's horizon is `store.rows` in its manifest: the store's
+/// first that many rows are the rows the page was rendered from, and a
+/// store that has grown since is checked over that prefix — growth is not
+/// a fault, a changed prefix is.
+fn verify_snapshot(path: &str, directory: &str, rows: &[Value]) -> Result<(), String> {
+    let manifest_path = std::path::Path::new(directory).join(gym::views::MANIFEST_FILE);
+    let text = std::fs::read_to_string(&manifest_path)
+        .map_err(|error| format!("{}: {error}", manifest_path.display()))?;
+    let snapshot: gym::views::Snapshot = serde_json::from_str(&text)
+        .map_err(|error| format!("{}: {error}", manifest_path.display()))?;
+    if snapshot.schema != gym::views::SNAPSHOT_SCHEMA {
+        return Err(format!(
+            "{}: schema `{}` is not `{}`",
+            manifest_path.display(),
+            snapshot.schema,
+            gym::views::SNAPSHOT_SCHEMA
+        ));
+    }
+    if rows.len() < snapshot.store.rows {
+        return Err(format!(
+            "`{path}` holds {} rows; the snapshot was taken over {}",
+            rows.len(),
+            snapshot.store.rows
+        ));
+    }
+    // The binding check is the chain head over the published horizon: a
+    // store whose first `rows` recompute to a different head is different
+    // evidence, whatever its tail holds.
+    let prefix: Vec<Value> = rows[..snapshot.store.rows].to_vec();
+    match verify_chain(&prefix) {
+        ChainVerdict::Ok { head, .. } if head != snapshot.store.head => {
+            return Err(format!(
+                "`{path}`: the first {} rows head to `{}`, not the published `{}`",
+                snapshot.store.rows,
+                head.as_deref().unwrap_or("none"),
+                snapshot.store.head.as_deref().unwrap_or("none")
+            ));
+        }
+        ChainVerdict::Broken { detail, .. } => return Err(detail),
+        _ => {}
+    }
+    let typed: Vec<Row> = prefix
+        .iter()
+        .cloned()
+        .map(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
+        .collect::<Result<_, _>>()?;
+    let divergences = gym::views::check(&snapshot, &typed);
+    if !divergences.is_empty() {
+        for divergence in &divergences {
+            eprintln!("against `{directory}`: {divergence}");
+        }
+        return Err(format!(
+            "the store does not reproduce the snapshot in {directory}"
+        ));
+    }
+    if let Some(document) = &snapshot.document {
+        let file = std::path::Path::new(directory).join(&document.file);
+        let bytes = std::fs::read(&file).map_err(|error| format!("{}: {error}", file.display()))?;
+        if gym::views::sha256_hex(&bytes) != document.sha256 {
+            return Err(format!(
+                "{}: the page was edited after publication",
+                file.display()
+            ));
+        }
+    }
+    if let Some(reference) = &snapshot.commitment {
+        let file = std::path::Path::new(directory).join(&reference.file);
+        let commitment = gym::commitment::Commitment::load(file.to_str().unwrap_or_default())
+            .map_err(|error| format!("{}: {error}", file.display()))?;
+        if commitment.digest != reference.digest {
+            return Err(format!(
+                "{}: commitment digest `{}` is not the published `{}`",
+                file.display(),
+                commitment.digest,
+                reference.digest
+            ));
+        }
+        let all: Vec<Row> = rows
+            .iter()
+            .cloned()
+            .map(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
+            .collect::<Result<_, _>>()?;
+        let faults = gym::commitment::check(&commitment, &all);
+        if !faults.is_empty() {
+            return Err(format!(
+                "the store does not match the snapshot's commitment: {}",
+                faults.join("; ")
+            ));
+        }
+    }
+    let grown = rows.len() - snapshot.store.rows;
+    let note = match grown {
+        0 => String::new(),
+        grown => format!("; {grown} rows appended since the snapshot"),
+    };
+    println!("`{path}` reproduces the snapshot in `{directory}`{note}.");
     Ok(())
 }
 
@@ -4169,5 +4479,230 @@ mod tests {
         .unwrap_err();
         assert!(trouble.contains("--commitment needs --suite"), "{trouble}");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A published snapshot reproduces: the manifest's claims, the page's
+    /// digest, and the commitment all check against the store they cite.
+    #[test]
+    fn a_published_snapshot_verifies_against_its_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let (suite, suite_path) = caller_suite();
+        let store = chained(dir.path(), "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let out = dir.path().join("snapshots");
+        publish_command(&Options {
+            store: Some(store.clone()),
+            suite: Some(suite_path),
+            partition: Some("development".to_string()),
+            expect: vec!["stub".to_string()],
+            out: Some(out.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+        let entries: Vec<std::path::PathBuf> = std::fs::read_dir(&out)
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.is_dir())
+            .collect();
+        assert_eq!(entries.len(), 1);
+        let snapshot = &entries[0];
+        for file in ["snapshot.md", "manifest.json"] {
+            assert!(snapshot.join(file).exists(), "{file} missing");
+        }
+        let index: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(out.join("index.json")).unwrap())
+                .unwrap();
+        assert_eq!(index.as_array().unwrap().len(), 1);
+        assert_eq!(index[0]["coverage"], "complete");
+        verify_command(&Options {
+            store: Some(store),
+            snapshot: Some(snapshot.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+    }
+
+    /// A gap in coverage publishes as partial — the snapshot cannot read
+    /// as a completed evaluation, in the page and in the index.
+    #[test]
+    fn a_snapshot_with_missing_work_is_published_partial() {
+        let dir = tempfile::tempdir().unwrap();
+        let (suite, suite_path) = caller_suite();
+        let store = chained(dir.path(), "store.jsonl", &dev_rows(&suite, "stub", &[0]));
+        let out = dir.path().join("snapshots");
+        publish_command(&Options {
+            store: Some(store),
+            suite: Some(suite_path),
+            partition: Some("development".to_string()),
+            expect: vec!["stub".to_string()],
+            out: Some(out.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+        let snapshot = std::fs::read_dir(&out)
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .find(|path| path.is_dir())
+            .unwrap();
+        let page = std::fs::read_to_string(snapshot.join("snapshot.md")).unwrap();
+        assert!(page.contains("**partial**"), "{page}");
+        assert!(page.contains("1 missing"), "{page}");
+        let index: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(out.join("index.json")).unwrap())
+                .unwrap();
+        assert_eq!(index[0]["coverage"], "partial");
+    }
+
+    /// A snapshot with no declared selection says so first — the page
+    /// carries the record but cannot read as a completed evaluation.
+    #[test]
+    fn a_snapshot_without_a_suite_is_undeclared() {
+        let dir = tempfile::tempdir().unwrap();
+        let (suite, _) = caller_suite();
+        let store = chained(dir.path(), "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let out = dir.path().join("snapshots");
+        publish_command(&Options {
+            store: Some(store),
+            out: Some(out.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+        let snapshot = std::fs::read_dir(&out)
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .find(|path| path.is_dir())
+            .unwrap();
+        let page = std::fs::read_to_string(snapshot.join("snapshot.md")).unwrap();
+        assert!(page.contains("Coverage is not declared"), "{page}");
+    }
+
+    /// A commitment over different rows cannot ride into the snapshot:
+    /// publish refuses it rather than lending the page's authority to
+    /// another record.
+    #[test]
+    fn publish_refuses_a_commitment_from_another_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let (suite, suite_path) = caller_suite();
+        let store = chained(dir.path(), "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let commitment = dir.path().join("commitment.json");
+        report_command(&Options {
+            store: Some(chained(
+                dir.path(),
+                "other.jsonl",
+                &dev_rows(&suite, "stub", &[0, 1]),
+            )),
+            suite: Some(suite_path.clone()),
+            partition: Some("development".to_string()),
+            expect: vec!["stub".to_string()],
+            commitment: Some(commitment.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+        let trouble = publish_command(&Options {
+            store: Some(store),
+            suite: Some(suite_path),
+            partition: Some("development".to_string()),
+            commitment: Some(commitment.to_str().unwrap().to_string()),
+            out: Some(dir.path().join("snapshots").to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap_err();
+        assert!(trouble.contains("does not match this store"), "{trouble}");
+    }
+
+    /// A page edited after publication is detectable: the manifest holds
+    /// the document's digest, and verify names the change.
+    #[test]
+    fn an_edited_page_fails_verification() {
+        let dir = tempfile::tempdir().unwrap();
+        let (suite, suite_path) = caller_suite();
+        let store = chained(dir.path(), "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let out = dir.path().join("snapshots");
+        publish_command(&Options {
+            store: Some(store.clone()),
+            suite: Some(suite_path),
+            partition: Some("development".to_string()),
+            out: Some(out.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap();
+        let snapshot = std::fs::read_dir(&out)
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .find(|path| path.is_dir())
+            .unwrap();
+        let page = snapshot.join("snapshot.md");
+        let mut text = std::fs::read_to_string(&page).unwrap();
+        text.push_str("\nThis line was added after publication.\n");
+        std::fs::write(&page, text).unwrap();
+        let trouble = verify_command(&Options {
+            store: Some(store),
+            snapshot: Some(snapshot.to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap_err();
+        assert!(trouble.contains("edited after publication"), "{trouble}");
+    }
+
+    /// Earlier snapshots stay referenced: a second publication preserves
+    /// the first in the index and renders the history it joins.
+    #[test]
+    fn earlier_snapshots_are_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let (suite, suite_path) = caller_suite();
+        let store = chained(dir.path(), "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let out = dir.path().join("snapshots");
+        for _ in 0..2 {
+            publish_command(&Options {
+                store: Some(store.clone()),
+                suite: Some(suite_path.clone()),
+                partition: Some("development".to_string()),
+                out: Some(out.to_str().unwrap().to_string()),
+                ..Options::default()
+            })
+            .unwrap();
+            // Snapshot ids carry the generation second; keep them distinct.
+            std::thread::sleep(std::time::Duration::from_millis(1_100));
+        }
+        let index: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(out.join("index.json")).unwrap())
+                .unwrap();
+        assert_eq!(index.as_array().unwrap().len(), 2);
+        let latest = std::fs::read_dir(&out)
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.is_dir())
+            .max()
+            .unwrap();
+        let page = std::fs::read_to_string(latest.join("snapshot.md")).unwrap();
+        assert!(page.contains("Earlier snapshots are preserved"), "{page}");
+    }
+
+    /// A metered price without provenance is refused at publish, not
+    /// rendered and hoped past.
+    #[test]
+    fn an_unsourced_price_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let (suite, suite_path) = caller_suite();
+        let store = chained(dir.path(), "store.jsonl", &dev_rows(&suite, "stub", &[]));
+        let costs = dir.path().join("costs.json");
+        std::fs::write(
+            &costs,
+            serde_json::json!([{
+                "door": "stub",
+                "cost": {"lane": "metered", "usd_per_decision": 0.002}
+            }])
+            .to_string(),
+        )
+        .unwrap();
+        let trouble = publish_command(&Options {
+            store: Some(store),
+            suite: Some(suite_path),
+            partition: Some("development".to_string()),
+            costs: Some(costs.to_str().unwrap().to_string()),
+            out: Some(dir.path().join("snapshots").to_str().unwrap().to_string()),
+            ..Options::default()
+        })
+        .unwrap_err();
+        assert!(trouble.contains("needs its source"), "{trouble}");
     }
 }

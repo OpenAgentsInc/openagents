@@ -142,3 +142,8 @@ the remaining gap are the open work the issue list names.
 A caller's labels remain the caller's evidence: `label_source` names them,
 `label_rule` says how the labels were produced, and the record prints both
 rather than letting the numbers read as authored truth.
+
+`gym publish` renders the public view over the same store — the
+status-and-benchmark page a stranger reads, with the manifest a reader
+recomputes and the preserved snapshot index.
+`docs/gym/published-snapshots.md` covers what its numbers may claim.

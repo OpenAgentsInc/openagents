@@ -30,7 +30,9 @@
 //!   screens the result, and confirms the win on blocks nobody has drawn.
 //! - [`admission`] — the frozen plan a cross-artifact candidate is admitted
 //!   under, and the digested decision a registry activates from.
-//! - [`views`] — rendering where unknown reads as unknown and never as zero.
+//! - [`views`] — the public benchmark and status snapshot: the page a
+//!   stranger reads, the manifest its claims reproduce from, and the
+//!   rendering where unknown reads as unknown and never as zero.
 //! - [`calibrate`] — the reliability table that turns a raw signal into a
 //!   probability, and the record that says what it was fitted against.
 //! - [`coverage`] — the declared selection a run was meant to ask, and the
