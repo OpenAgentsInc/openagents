@@ -21,7 +21,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::execution::{
-    Evaluation, ExecutionReceipt, Outcome, ReceiptError, Registry, SCHEMA, Served, Timing,
+    Evaluation, ExecutionReceipt, Lane, Outcome, ReceiptError, Registry, SCHEMA, Served, Timing,
 };
 
 /// What the caller's trace knows about one step's decision call.
@@ -76,6 +76,15 @@ pub struct StepRef {
     pub origin_authenticated: bool,
     /// What the call cost the caller, when anyone can say.
     pub cost: Cost,
+    /// The spend lane the caller attributed this call to, when it
+    /// recorded one — the same vocabulary the receipt's `lane` uses,
+    /// so a disagreement is a field-level check rather than prose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<Lane>,
+    /// The attempt this call revises — a review's or a fallback's
+    /// original — when the caller recorded the link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revises: Option<String>,
 }
 
 /// What a call cost, said exactly.
@@ -143,6 +152,15 @@ pub struct References {
     /// quota reservation or usage record the ledger knows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<String>,
+    /// The spend lane the receipt claims for the attempt, when it
+    /// claims one. Unknown stays unknown — never smoothed into a
+    /// decision call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<Lane>,
+    /// The attempt this attempt revises, when the receipt says so —
+    /// the original's attempt id for a review or fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revises: Option<String>,
     /// The evaluation context, when the call carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evaluation: Option<Evaluation>,
@@ -246,6 +264,15 @@ pub enum Problem {
         /// The attempt claimed more than once.
         attempt: u32,
     },
+    /// A review or fallback names an original nobody recorded — a
+    /// `revises` pointing at an attempt that is not in the evidence.
+    /// An orphaned revision is a broken chain, not a standalone call.
+    OrphanRevision {
+        /// The attempt the revision claims to revise.
+        revises: String,
+        /// The revision's own attempt id.
+        attempt_id: String,
+    },
 }
 
 impl std::fmt::Display for Problem {
@@ -283,6 +310,14 @@ impl std::fmt::Display for Problem {
             Self::DuplicateRequestAttempt { request, attempt } => {
                 write!(f, "{request} attempt {attempt} was claimed more than once")
             }
+            Self::OrphanRevision {
+                revises,
+                attempt_id,
+            } => write!(
+                f,
+                "attempt `{attempt_id}` claims to revise `{revises}`, which no record \
+                 names"
+            ),
         }
     }
 }
@@ -394,6 +429,35 @@ impl Join {
             orphaned.push(receipt.clone());
         }
 
+        // A revision that names an original nobody recorded is a broken
+        // chain — the review or fallback happened, but the evidence
+        // cannot say what it revised. That is a problem, not a join.
+        let known: BTreeSet<&str> = receipts
+            .iter()
+            .map(|receipt| receipt.attempt_id.as_str())
+            .chain(steps.iter().filter_map(|step| step.job.as_deref()))
+            .collect();
+        for receipt in &receipts {
+            if let Some(revises) = &receipt.revises
+                && !known.contains(revises.as_str())
+            {
+                problems.push(Problem::OrphanRevision {
+                    revises: revises.clone(),
+                    attempt_id: receipt.attempt_id.clone(),
+                });
+            }
+        }
+        for step in &steps {
+            if let Some(revises) = &step.revises
+                && !known.contains(revises.as_str())
+            {
+                problems.push(Problem::OrphanRevision {
+                    revises: revises.clone(),
+                    attempt_id: format!("{}/{}/{}", step.session, step.turn, step.step),
+                });
+            }
+        }
+
         Joined {
             rows,
             unreceipted,
@@ -443,6 +507,19 @@ fn pair(step: &StepRef, receipt: &ExecutionReceipt) -> Result<Row, Problem> {
         .is_some_and(|job| job != &receipt.attempt_id)
     {
         return Err(mismatch(step, receipt, "attempt_id"));
+    }
+    // A lane or a revision link either side recorded is a claim the
+    // other side can contradict. A disagreement is a problem; a lane
+    // only one side recorded simply cannot be checked.
+    if let (Some(caller), Some(service)) = (&step.lane, &receipt.lane)
+        && caller != service
+    {
+        return Err(mismatch(step, receipt, "lane"));
+    }
+    if let (Some(caller), Some(service)) = (&step.revises, &receipt.revises)
+        && caller != service
+    {
+        return Err(mismatch(step, receipt, "revises"));
     }
 
     let verified = !step.request_digest.is_empty()
@@ -496,6 +573,8 @@ fn references_of(receipt: &ExecutionReceipt) -> References {
         requested: receipt.requested.clone(),
         served: receipt.served.clone(),
         tenant: receipt.tenant.clone(),
+        lane: receipt.lane,
+        revises: receipt.revises.clone(),
         policy: None,
         registry: receipt.registry.clone(),
         usage: receipt.usage.clone(),
@@ -590,6 +669,8 @@ mod tests {
                 millionths: 42,
                 currency: "USD".to_string(),
             },
+            lane: None,
+            revises: None,
         }
     }
 
@@ -749,6 +830,108 @@ mod tests {
                 millionths: 42,
                 currency: "USD".to_string()
             }
+        );
+    }
+
+    #[test]
+    fn lanes_stay_separated_and_an_unknown_lane_stays_unknown() {
+        let mut decided = step();
+        decided.lane = Some(Lane::Decision);
+        let mut decided_receipt = answered();
+        decided_receipt.lane = Some(Lane::Decision);
+        decided_receipt.seal();
+        let joined = Join::of(vec![decided], vec![decided_receipt]);
+        assert_eq!(joined.rows[0].references.lane, Some(Lane::Decision));
+
+        // Generation and executor work are not decision work — three
+        // lanes, three rows, no collapse.
+        let mut generated = answered();
+        generated.request = "req-gen".to_string();
+        generated.attempt_id = "att-gen".to_string();
+        generated.lane = Some(Lane::Generation);
+        generated.seal();
+        let mut delegated = answered();
+        delegated.request = "req-exec".to_string();
+        delegated.attempt_id = "att-exec".to_string();
+        delegated.lane = Some(Lane::Executor);
+        delegated.seal();
+        let joined = Join::of(Vec::new(), vec![generated, delegated]);
+        assert_eq!(joined.orphaned[0].lane, Some(Lane::Generation));
+        assert_eq!(joined.orphaned[1].lane, Some(Lane::Executor));
+        assert!(joined.problems().is_empty());
+
+        // And a receipt that never named a lane carries none through.
+        let joined = Join::of(vec![step()], vec![answered()]);
+        assert!(joined.rows[0].references.lane.is_none());
+    }
+
+    #[test]
+    fn a_lane_disagreement_is_a_problem_not_a_join() {
+        let mut caller = step();
+        caller.lane = Some(Lane::Decision);
+        let mut receipt = answered();
+        receipt.lane = Some(Lane::Generation);
+        receipt.seal();
+        let joined = Join::of(vec![caller], vec![receipt]);
+        assert!(joined.rows.is_empty());
+        assert!(matches!(
+            joined.problems().as_slice(),
+            [Problem::MismatchedIdentity { field, .. }] if field == "lane"
+        ));
+    }
+
+    #[test]
+    fn a_review_chain_links_to_its_original() {
+        // The original call and the review that revised it, in order.
+        let original = answered();
+        let mut review = answered();
+        review.request = "req-2".to_string();
+        review.attempt_id = "att-review".to_string();
+        review.revises = Some("att-1".to_string());
+        review.seal();
+        let mut review_step = step();
+        review_step.step = "step-4".to_string();
+        review_step.request = "req-2".to_string();
+        review_step.revises = Some("att-1".to_string());
+        let joined = Join::of(vec![step(), review_step], vec![original, review]);
+        assert_eq!(joined.rows.len(), 2);
+        assert!(joined.problems().is_empty());
+        // The revision names its original — the chain is the record's.
+        assert_eq!(joined.rows[1].references.revises.as_deref(), Some("att-1"));
+    }
+
+    #[test]
+    fn a_revision_without_its_original_is_a_problem() {
+        let mut review = answered();
+        review.attempt_id = "att-review".to_string();
+        review.revises = Some("att-gone".to_string());
+        review.seal();
+        let joined = Join::of(Vec::new(), vec![review]);
+        assert!(matches!(
+            joined.problems().as_slice(),
+            [Problem::OrphanRevision { revises, attempt_id }]
+                if revises == "att-gone" && attempt_id == "att-review"
+        ));
+    }
+
+    #[test]
+    fn a_revises_disagreement_is_a_problem_not_a_join() {
+        let mut caller = step();
+        caller.revises = Some("att-0".to_string());
+        let mut receipt = answered();
+        receipt.revises = Some("att-9".to_string());
+        receipt.seal();
+        // Both revisions name originals nobody recorded — orphan
+        // problems on both sides plus the disagreement.
+        let joined = Join::of(vec![caller], vec![receipt]);
+        assert!(joined.rows.is_empty());
+        let problems = joined.problems();
+        assert!(
+            problems.iter().any(|problem| matches!(
+                problem,
+                Problem::MismatchedIdentity { field, .. } if field == "revises"
+            )),
+            "{problems:?}"
         );
     }
 

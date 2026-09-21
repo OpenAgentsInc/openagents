@@ -1000,6 +1000,8 @@ mod tests {
                 millionths: 42,
                 currency: "USD".to_string(),
             },
+            lane: None,
+            revises: None,
         }
     }
 

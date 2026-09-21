@@ -922,6 +922,7 @@ fn problem_kind(problem: &Problem) -> &'static str {
         Problem::InconsistentDigest { .. } => "inconsistent-digest",
         Problem::MismatchedIdentity { .. } => "mismatched-identity",
         Problem::DuplicateRequestAttempt { .. } => "duplicate-request-attempt",
+        Problem::OrphanRevision { .. } => "orphan-revision",
     }
 }
 
@@ -1067,6 +1068,8 @@ mod tests {
                 millionths: 42,
                 currency: "USD".to_string(),
             },
+            lane: None,
+            revises: None,
         }
     }
 

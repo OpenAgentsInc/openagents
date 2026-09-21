@@ -75,6 +75,25 @@ pub struct Timing {
     pub resolved_at: Option<String>,
 }
 
+/// The spend lane a call belongs to.
+///
+/// Decision calls, generation calls, and external-executor jobs are
+/// different expenses on the same ledger: a caller that can only say
+/// "the run cost this much" cannot separate what a review decided from
+/// what a delegate did. `Absent` is not a variant — a receipt that does
+/// not know its lane carries no `lane` field, and no reader upgrades a
+/// missing lane into a guessed one.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Lane {
+    /// A System One decision call — routing, judging, selecting.
+    Decision,
+    /// A reply or plan generation call.
+    Generation,
+    /// An external executor or delegate job.
+    Executor,
+}
+
 /// The evaluation context a call carried, when it carried one.
 ///
 /// Ordinary inference has none of this, and the receipt does not invent
@@ -159,6 +178,17 @@ pub struct ExecutionReceipt {
     /// reservation or usage record id — when the service keeps one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<String>,
+    /// The spend lane this attempt belongs to, when anyone recorded it.
+    /// Absent stays absent — a lane nobody wrote down is an unknown
+    /// lane, not a decision call by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<Lane>,
+    /// The attempt this attempt revises, when it is a review or a
+    /// fallback rather than a first call — the original attempt's own
+    /// id. A revision names its original so the chain is the record's,
+    /// not a reader's guess; an original carries nothing here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revises: Option<String>,
     /// The evaluation context, when the call carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evaluation: Option<Evaluation>,
@@ -244,6 +274,8 @@ impl ExecutionReceipt {
             request_digest: request_digest.into(),
             result_digest: None,
             usage: None,
+            lane: None,
+            revises: None,
             evaluation: None,
             digest: String::new(),
         }
@@ -499,6 +531,39 @@ mod tests {
         // served, bound into the operation, not a later /v1/models lookup.
         assert_ne!(receipt.served, drifted);
         assert_eq!(receipt.requested.model, receipt.served.model);
+    }
+
+    #[test]
+    fn a_receipt_without_a_lane_keeps_none() {
+        let receipt = answered();
+        assert!(receipt.lane.is_none());
+        let parsed = ExecutionReceipt::parse(&receipt.to_json()).unwrap();
+        // Absent stays absent through the round trip — nobody upgraded
+        // it to a guessed lane.
+        assert!(parsed.lane.is_none());
+        assert!(parsed.revises.is_none());
+    }
+
+    #[test]
+    fn a_lane_and_a_revision_survive_the_round_trip() {
+        let mut reviewed = answered();
+        reviewed.lane = Some(Lane::Decision);
+        reviewed.revises = Some("att-0".to_string());
+        reviewed.attempt_id = "att-1-review".to_string();
+        reviewed.seal();
+        let parsed = ExecutionReceipt::parse(&reviewed.to_json()).unwrap();
+        assert_eq!(parsed.lane, Some(Lane::Decision));
+        assert_eq!(parsed.revises.as_deref(), Some("att-0"));
+        // A generation call and an executor job are lanes of their own —
+        // the enum does not collapse them into decision work.
+        let mut generated = answered();
+        generated.lane = Some(Lane::Generation);
+        generated.seal();
+        let mut delegated = answered();
+        delegated.lane = Some(Lane::Executor);
+        delegated.seal();
+        assert_ne!(generated.lane, delegated.lane);
+        assert_ne!(generated.lane, reviewed.lane);
     }
 
     #[test]
