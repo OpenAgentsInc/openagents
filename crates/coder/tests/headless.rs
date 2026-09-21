@@ -353,3 +353,158 @@ fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
     assert!(output.status.success(), "{output:?}");
     assert!(stub_answer(&String::from_utf8_lossy(&output.stdout)));
 }
+
+/// The hosted profile keeps its two identities on the wire: the bearer
+/// credential travels in the `authorization` header, and the request
+/// names the model the profile asked for — what a gateway revalidates
+/// on every dispatch.
+#[test]
+fn hosted_profile_forwards_its_key_and_model() {
+    use std::io::{Read, Write};
+    use std::time::{Duration, Instant};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut socket = loop {
+            match listener.accept() {
+                Ok((socket, _)) => break socket,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "decision call was not made");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        };
+        socket.set_nonblocking(false).unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 8192];
+        loop {
+            let count = socket.read(&mut buffer).unwrap();
+            assert!(count > 0);
+            bytes.extend_from_slice(&buffer[..count]);
+            assert!(bytes.len() < 65536);
+            if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                let headers = String::from_utf8_lossy(&bytes[..end]).to_lowercase();
+                let length = headers
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length: "))
+                    .unwrap()
+                    .parse::<usize>()
+                    .unwrap();
+                if bytes.len() >= end + 4 + length {
+                    assert_eq!(
+                        headers
+                            .lines()
+                            .find_map(|line| line.strip_prefix("authorization: ")),
+                        Some("bearer oak_test.secret"),
+                        "the profile's key did not reach the door: {headers}"
+                    );
+                    let request: Value =
+                        serde_json::from_slice(&bytes[end + 4..end + 4 + length]).unwrap();
+                    assert_eq!(request["model"], "hosted-model");
+                    break;
+                }
+            }
+        }
+        let body=serde_json::json!({"model":"hosted-model","answers":{"action":{"type":"choice","choice":"respond","confidence":1.0,"probabilities":{"respond":1.0,"clarify":0.0,"end_conversation":0.0,"none":0.0}}}}).to_string();
+        write!(
+            socket,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+        .env_clear()
+        .current_dir(dir.path())
+        .env("HOME", dir.path())
+        .env("CODER_TRACE", "off")
+        .env("CODER_DECISION_PROFILE", "hosted_http")
+        .env("CODER_DECISION_URL", url)
+        .env("CODER_DECISION_MODEL", "hosted-model")
+        .env("CODER_DECISION_KEY", "oak_test.secret")
+        .args(["-p", "hello"])
+        .output()
+        .unwrap();
+    server.join().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(stub_answer(&String::from_utf8_lossy(&output.stdout)));
+}
+
+/// A door that refuses permission does not stop the turn — program
+/// selection degrades to an ordinary chat — but the degradation is
+/// visible: the trace records the refusal the door answered, rather
+/// than the turn silently carrying on.
+#[test]
+fn a_door_refusing_permission_degrades_visibly() {
+    use std::io::{Read, Write};
+    use std::time::{Duration, Instant};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut socket = loop {
+            match listener.accept() {
+                Ok((socket, _)) => break socket,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "decision call was not made");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        };
+        socket.set_nonblocking(false).unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut buffer = [0u8; 8192];
+        let _ = socket.read(&mut buffer).unwrap();
+        let body = r#"{"error":{"message":"the key may not reach this door"}}"#;
+        write!(
+            socket,
+            "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_coder"))
+        .env_clear()
+        .current_dir(dir.path())
+        .env("HOME", dir.path())
+        .env("CODER_DECISION_PROFILE", "direct_local")
+        .env("CODER_DECISION_URL", url)
+        .env("CODER_DECISION_MODEL", "local-model")
+        .args(["-p", "hello"])
+        .output()
+        .unwrap();
+    server.join().unwrap();
+    // The refusal degraded the turn to an ordinary chat, and the chat
+    // still answered — the refusal narrowed what ran, never widened it.
+    assert!(output.status.success(), "{output:?}");
+    assert!(stub_answer(&String::from_utf8_lossy(&output.stdout)));
+    // And the degradation is recorded where an operator reads it.
+    let traces = dir.path().join(".openagents/traces");
+    let recording = std::fs::read_dir(&traces)
+        .unwrap()
+        .filter_map(Result::ok)
+        .find_map(|entry| std::fs::read_to_string(entry.path()).ok())
+        .expect("a degraded turn still records its trace");
+    assert!(
+        recording.contains("no program selected"),
+        "the trace does not show the refused selection: {recording}"
+    );
+    assert!(
+        recording.contains("403"),
+        "the trace does not name the door's answer: {recording}"
+    );
+}
