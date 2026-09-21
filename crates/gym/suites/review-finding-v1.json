@@ -1,0 +1,381 @@
+{
+  "v": 1,
+  "id": "review-finding-v1",
+  "labels": "author",
+  "note": "Baseline suite for openagents.review-finding.v1: twelve synthetic diffs with eighteen labeled findings — genuine defects the diff contains and anchored false positives (misreads, invented preconditions, nitpicks, correct-behavior complaints, and a finding that names pre-existing context lines as the change's own). Truth labels are the suite author's.",
+  "items": [
+    {
+      "id": "rf-01",
+      "diff": [
+        {
+          "path": "src/orders.rs",
+          "truncated": false,
+          "text": "@@ -40,6 +40,10 @@ fn apply_discount(order: &mut Order, code: &str) {\n+    let discount = DISCOUNTS.get(code).unwrap();\n+    order.total -= order.total * discount / 100;\n+    order.discount_code = Some(code.to_string());\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/orders.rs",
+          "severity": "high",
+          "summary": "`DISCOUNTS.get(code).unwrap()` panics on an unknown code; the caller does not validate `code` first.",
+          "span": {
+            "start": 41,
+            "end": 41
+          }
+        }
+      ],
+      "truth": {
+        "f1": true
+      }
+    },
+    {
+      "id": "rf-02",
+      "diff": [
+        {
+          "path": "src/pool.rs",
+          "truncated": false,
+          "text": "@@ -88,4 +88,9 @@ impl Pool {\n+    pub fn acquire(&self) -> Conn {\n+        let conn = self.inner.lock().unwrap().pop().unwrap();\n+        conn\n+    }\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/pool.rs",
+          "severity": "medium",
+          "summary": "Two unwraps: the mutex lock can poison and the pop can be empty — but both were already the file's convention and callers accept the panic."
+        },
+        {
+          "id": "f2",
+          "path": "src/pool.rs",
+          "severity": "low",
+          "summary": "`acquire` should log the pool depth for observability.",
+          "span": {
+            "start": 89,
+            "end": 92
+          }
+        }
+      ],
+      "truth": {
+        "f1": false,
+        "f2": false
+      }
+    },
+    {
+      "id": "rf-03",
+      "diff": [
+        {
+          "path": "src/query.rs",
+          "truncated": false,
+          "text": "@@ -12,3 +12,7 @@ fn search(conn: &Conn, term: &str) -> Vec<Row> {\n+    let sql = format!(\"SELECT * FROM docs WHERE title LIKE '%{}%'\", term);\n+    conn.query(&sql)\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/query.rs",
+          "severity": "critical",
+          "summary": "`term` is interpolated into SQL unescaped — a quote in the search term is an injection.",
+          "span": {
+            "start": 13,
+            "end": 13
+          }
+        }
+      ],
+      "truth": {
+        "f1": true
+      }
+    },
+    {
+      "id": "rf-04",
+      "diff": [
+        {
+          "path": "src/retry.rs",
+          "truncated": false,
+          "text": "@@ -55,6 +55,8 @@ async fn send(&self) -> Result<Resp> {\n+        if resp.status() == 429 {\n+            std::thread::sleep(Duration::from_secs(1));\n+            return self.send().await;\n+        }\n         Ok(resp)\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/retry.rs",
+          "severity": "high",
+          "summary": "Blocking `std::thread::sleep` inside async code stalls the executor; use tokio::time::sleep.",
+          "span": {
+            "start": 56,
+            "end": 56
+          }
+        },
+        {
+          "id": "f2",
+          "path": "src/retry.rs",
+          "severity": "medium",
+          "summary": "The recursion in `send` is unbounded — a persistent 429 grows the stack until it overflows.",
+          "span": {
+            "start": 58,
+            "end": 58
+          }
+        }
+      ],
+      "truth": {
+        "f1": true,
+        "f2": true
+      }
+    },
+    {
+      "id": "rf-05",
+      "diff": [
+        {
+          "path": "src/names.rs",
+          "truncated": false,
+          "text": "@@ -20,7 +20,7 @@ fn normalize(name: &str) -> String {\n-    name.trim().to_lowercase()\n+    name.trim().to_uppercase()\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/names.rs",
+          "severity": "medium",
+          "summary": "The diff changes normalization to uppercase, which the diff does contain.",
+          "span": {
+            "start": 21,
+            "end": 21
+          }
+        },
+        {
+          "id": "f2",
+          "path": "src/names.rs",
+          "severity": "medium",
+          "summary": "normalize() allocates twice; use a single pass."
+        }
+      ],
+      "truth": {
+        "f1": false,
+        "f2": false
+      }
+    },
+    {
+      "id": "rf-06",
+      "diff": [
+        {
+          "path": "src/ledger.rs",
+          "truncated": false,
+          "text": "@@ -130,4 +130,8 @@ fn settle(&mut self, entry: Entry) {\n+    self.balance += entry.amount;\n+    if self.balance < 0 {\n+        self.overdrafts.push(entry.id);\n+    }\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/ledger.rs",
+          "severity": "high",
+          "summary": "`entry.amount` may be negative, so `balance += entry.amount` can underflow an unsigned balance.",
+          "span": {
+            "start": 131,
+            "end": 131
+          }
+        },
+        {
+          "id": "f2",
+          "path": "src/ledger.rs",
+          "severity": "medium",
+          "summary": "`self.balance` overflows on values near the integer maximum — the code does not check for overflow.",
+          "span": {
+            "start": 131,
+            "end": 131
+          }
+        }
+      ],
+      "truth": {
+        "f1": false,
+        "f2": false
+      }
+    },
+    {
+      "id": "rf-07",
+      "diff": [
+        {
+          "path": "src/http.rs",
+          "truncated": false,
+          "text": "@@ -77,5 +77,10 @@ impl Client {\n+    pub fn get(&self, url: &str) -> Result<Resp> {\n+        let resp = self.inner.get(url).send()?;\n+        if !resp.status().is_success() {\n+            return Err(Error::Status(resp.status()));\n+        }\n+        resp.json().map_err(Error::Body)\n+    }\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/http.rs",
+          "severity": "medium",
+          "summary": "`resp.json()` can fail on a successful-but-empty body — no finding, it is handled by map_err into Error::Body which is the declared contract.",
+          "span": {
+            "start": 82,
+            "end": 82
+          }
+        }
+      ],
+      "truth": {
+        "f1": false
+      }
+    },
+    {
+      "id": "rf-08",
+      "diff": [
+        {
+          "path": "src/walk.rs",
+          "truncated": true,
+          "text": "@@ -200,6 +200,12 @@ fn visit(dir: &Path, depth: usize) {\n+        if depth > MAX_DEPTH {\n+            return;\n+        }\n         for entry in dir.read_dir().unwrap() {\n             visit(&entry.path(), depth + 1);\n         }\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/walk.rs",
+          "severity": "high",
+          "summary": "`read_dir().unwrap()` panics on a permission error or a removed directory — a walk should record and continue.",
+          "span": {
+            "start": 204,
+            "end": 204
+          }
+        },
+        {
+          "id": "f2",
+          "path": "src/walk.rs",
+          "severity": "medium",
+          "summary": "The recursion visits symlinks without a cycle check; a symlink loop ignores MAX_DEPTH because depth still increments — the bound does hold, so the loop terminates; this is a nitpick."
+        }
+      ],
+      "truth": {
+        "f1": false,
+        "f2": false
+      }
+    },
+    {
+      "id": "rf-09",
+      "diff": [
+        {
+          "path": "src/format.rs",
+          "truncated": false,
+          "text": "@@ -10,5 +10,9 @@ fn render(row: &Row) -> String {\n+    let mut out = String::new();\n+    for col in &row.cols {\n+        out.push_str(&col.to_string());\n+        out.push(',');\n+    }\n+    out\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/format.rs",
+          "severity": "low",
+          "summary": "The trailing comma is never trimmed — `render` emits `a,b,c,` for every row.",
+          "span": {
+            "start": 14,
+            "end": 15
+          }
+        },
+        {
+          "id": "f2",
+          "path": "src/format.rs",
+          "severity": "low",
+          "summary": "`col.to_string()` allocates per column; a join would be clearer."
+        }
+      ],
+      "truth": {
+        "f1": true,
+        "f2": false
+      }
+    },
+    {
+      "id": "rf-10",
+      "diff": [
+        {
+          "path": "src/auth.rs",
+          "truncated": false,
+          "text": "@@ -45,6 +45,11 @@ fn admit(req: &Request) -> bool {\n+    let key = req.header(\"x-api-key\").unwrap_or_default();\n+    let admitted = KEYS.contains(&key);\n+    if !admitted {\n+        log::warn!(\"rejected request\");\n+    }\n+    admitted\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/auth.rs",
+          "severity": "critical",
+          "summary": "The API key is compared with `==` inside `KEYS.contains` — a timing-safe comparison is required or a caller can measure the prefix.",
+          "span": {
+            "start": 47,
+            "end": 47
+          }
+        },
+        {
+          "id": "f2",
+          "path": "src/auth.rs",
+          "severity": "high",
+          "summary": "`unwrap_or_default` on a missing header produces an empty key, which `KEYS.contains` rejects — behavior is correct; the claim that it admits empty keys is wrong.",
+          "span": {
+            "start": 46,
+            "end": 46
+          }
+        }
+      ],
+      "truth": {
+        "f1": true,
+        "f2": false
+      }
+    },
+    {
+      "id": "rf-11",
+      "diff": [
+        {
+          "path": "src/sort.rs",
+          "truncated": false,
+          "text": "@@ -5,3 +5,8 @@ fn dedupe(ids: &mut Vec<u64>) {\n+    ids.sort_unstable();\n+    ids.dedup();\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/sort.rs",
+          "severity": "medium",
+          "summary": "`dedup` removes consecutive duplicates only — but `sort_unstable` first makes duplicates consecutive, so the pair is correct; the finding misses the sort.",
+          "span": {
+            "start": 7,
+            "end": 7
+          }
+        }
+      ],
+      "truth": {
+        "f1": false
+      }
+    },
+    {
+      "id": "rf-12",
+      "diff": [
+        {
+          "path": "src/cache.rs",
+          "truncated": false,
+          "text": "@@ -60,6 +60,10 @@ impl Cache {\n+    pub fn get(&self, key: &str) -> Option<Value> {\n+        let mut inner = self.inner.write().unwrap();\n+        inner.refresh(key);\n+        inner.get(key).cloned()\n+    }\n }"
+        }
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "path": "src/cache.rs",
+          "severity": "high",
+          "summary": "`get` takes a write lock to refresh — readers now serialize against each other and a read-heavy path becomes a writer.",
+          "span": {
+            "start": 61,
+            "end": 61
+          }
+        },
+        {
+          "id": "f2",
+          "path": "src/cache.rs",
+          "severity": "medium",
+          "summary": "`inner.get(key)` after `refresh` may still miss and return None — but Option is the declared return, so this is correct behavior mislabeled as a bug.",
+          "span": {
+            "start": 63,
+            "end": 63
+          }
+        }
+      ],
+      "truth": {
+        "f1": true,
+        "f2": false
+      }
+    }
+  ],
+  "digest": "f9939f55486e5b2ab64108252e88959a562fe967c61bfa00a577d8d5df340ba8"
+}
