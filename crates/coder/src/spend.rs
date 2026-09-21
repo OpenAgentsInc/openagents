@@ -70,6 +70,19 @@ pub enum Bound {
     None,
 }
 
+impl Bound {
+    /// The ceiling the bound states, when it states one — what a
+    /// child's declared bound is checked against when it asks for more
+    /// than the room that is left.
+    #[must_use]
+    pub fn ceiling(self) -> Option<u64> {
+        match self {
+            Self::Hard(micros) | Self::Soft(micros) => Some(micros),
+            Self::None => Option::None,
+        }
+    }
+}
+
 /// The book's answer to one charge.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Charge {
