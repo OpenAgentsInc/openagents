@@ -6,6 +6,48 @@ Run the manual gate from a contributor machine or non-GitHub infrastructure:
 ./scripts/verify-rust.sh
 ```
 
+A bare run is the full gate and the evidence a push needs. While iterating,
+scope the run instead of paying full-workspace cost for every check:
+
+```sh
+./scripts/verify-rust.sh --list                    # phase slugs
+./scripts/verify-rust.sh --print                   # the resolved plan, unrun
+./scripts/verify-rust.sh --phases fmt,clippy,tests # selected phases only
+./scripts/verify-rust.sh --crates coder,gym        # cargo phases on these packages
+./scripts/verify-rust.sh --changed                 # packages changed since origin/main
+./scripts/verify-rust.sh --changed=HEAD~5          # or against an explicit ref
+./scripts/verify-rust.sh --keep-going              # record every phase, not just to first failure
+```
+
+`--changed` maps `crates/<name>/` paths to packages, maps the data
+directories `coder` loads (`programs/`, `questions/`, `capabilities/`,
+`sources/`) to it, and escalates to the whole workspace when
+workspace-wide files (`Cargo.toml`, `Cargo.lock`, the toolchain pins) moved.
+A change that touches no crates scopes the cargo phases out entirely and
+records that honestly. Feature flags narrow the same way: scoped runs enable
+only the features of selected packages. A scoped or skipped run reports
+`partial`, never `passed` — the record is the evidence, and it says exactly
+what it covered.
+
+Every run writes `.coder/verification/<run-id>/run.json` (override with
+`--record-dir`, disable with `--no-record`): run ID, start and end UTC,
+elapsed, the tree it covered (HEAD, dirty flag, diff digest), the phases
+requested, each phase's command, exit, elapsed, attempts, and log path, the
+skipped phases and why, and the result. A pass binds to that tree; it is not
+a standing fact about "the gate." Reuse it only for the coverage it names.
+
+The `preflight` phase runs first and fails fast on the environmental
+prerequisites the later phases assume: a file-descriptor limit of at least
+2048 (worktree fan-out tests exhaust less; the script first tries raising
+the soft limit itself), `cargo`, `python3`, `git`, and `rustup` on PATH, the
+1.95.0 and 1.94.0 toolchains when their phases are selected, and free disk.
+Fix what it names and rerun; it does not skip or weaken a check.
+
+When a phase fails and its log shows resource exhaustion — file-descriptor
+pressure, address reuse, or `EAGAIN` — the gate retries it once and records
+both attempts. `--no-retry` disables that. A retry triggered by a signature
+is not a pass over a defect; the log names why it ran.
+
 [`rust-toolchain.toml`](../rust-toolchain.toml) pins Rust, Clippy, and rustfmt
 to **1.97.1**. [`rustfmt.toml`](../rustfmt.toml) pins Rust and formatter style
 editions to **2024**. Run the pinned formatter once for formatting-only
@@ -130,10 +172,12 @@ matrix, not a successful full gate; #9426 stays open.
 
 Each manual-gate phase prints its name when it starts, an elapsed-time heartbeat
 at least every 30 seconds while its command runs, and its elapsed time and exit
-status when it finishes. Command output streams directly to the terminal. Cargo
+status when it finishes. Command output streams directly to the terminal and,
+when a run record is being kept, is teed to that phase's log file. Cargo
 tests use `--nocapture`, so test diagnostics appear while tests run rather than
-only after a failure. The gate still stops at the first failing phase; a
-heartbeat reports activity, not success or a timeout extension.
+only after a failure. The gate still stops at the first failing phase unless
+`--keep-going` was passed; a heartbeat reports activity, not success or a
+timeout extension.
 
 The phase runner forwards interrupt, termination, and hangup signals to the
 command's process group and waits for the direct child. It does not add a test

@@ -5,6 +5,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import unittest
 
 RUNNER = Path(__file__).with_name('run-verification-phase.py')
@@ -22,6 +23,21 @@ class PhaseTests(unittest.TestCase):
         self.assertIn('child output', process.stdout)
         self.assertIn('PHASE RUNNING: fake', process.stdout)
         self.assertIn('exit 7', process.stdout)
+
+    def test_log_writes_the_phase_output_while_streaming(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'phase.log'
+            process = subprocess.run(
+                [sys.executable, str(RUNNER), '--heartbeat-seconds', '0.05',
+                 '--log', str(log), 'logged', '--',
+                 sys.executable, '-u', '-c',
+                 'print("streamed"); import sys; sys.exit(3)'],
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(process.returncode, 3)
+            self.assertIn('streamed', process.stdout)
+            written = log.read_text()
+            self.assertIn('streamed', written)
+            self.assertIn('exit 3', written)
 
     def test_termination_reaches_child_group(self):
         process = subprocess.Popen(
