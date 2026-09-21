@@ -1,0 +1,178 @@
+{
+ "schema": "openagents.gym.suite.v1",
+ "name": "review-policy-eval-v1",
+ "created": "2026-09-21",
+ "description": "Twenty support-desk classification items for the gateway's review/fallback policy on `POST /v1/classify` (openagents#9485). Each item is one typed question — noul, choice, or score — over one input, sent as one classify call with one unit under the mode its kind maps to: noul -> binary, choice -> single-label, score -> score. Items name a shared `sets` entry so the label set or rubric wording is identical wherever it appears. Partitions mark what the uncertainty gate should do: `answerable` items a calibrated door should answer confidently, `ambiguous` items where the honest outcome is the `uncertain` flag and a triggered review, and `near-threshold` items authored to land either side of a review cut. Labels are self-applied: every `expected` and `flag` is the suite author's own judgment, stated per item in `label_rule`; no second annotator or adjudication exists. The suite measures the policy, not the model — an item's `flag` says what the gate ought to report, and `expected` is the author's best answer even where flagging is the correct behavior.",
+ "tier": "smoke",
+ "issue": "openagents#9485",
+ "endpoint": "POST /v1/classify",
+ "kind_modes": {"noul": "binary", "choice": "single-label", "score": "score"},
+ "labeling": "author self-labeled, single annotator, unadjudicated",
+ "sets": {
+  "route": [
+   {"id": "billing", "description": "Charges, invoices, refunds, plan pricing, and payment methods."},
+   {"id": "technical", "description": "Product behavior that is broken, slow, or unexpected."},
+   {"id": "account", "description": "Sign-in, password, profile, and user-management requests."},
+   {"id": "other", "description": "Anything that fits none of the other teams."}
+  ],
+  "severity": [
+   "Cosmetic or internal only — no user-facing impact.",
+   "Minor — an inconvenience or a small subset of users affected; a workaround exists.",
+   "Major — a core workflow is impaired for many users.",
+   "Critical — the service is down, data is lost, or security is breached."
+  ],
+  "sentiment": [
+   "Dissatisfied — the author is unhappy or frustrated.",
+   "Neutral — no clear sentiment either way.",
+   "Satisfied — the author is happy or complimentary."
+  ],
+  "refund-request": [{"id": "refund-request", "description": "The customer asks for money back — a refund, a credit, or a reversal of a charge."}],
+  "cancellation-request": [{"id": "cancellation-request", "description": "The customer is asking to cancel their account or subscription now — not asking how cancellation works."}],
+  "urgent-escalation": [{"id": "urgent-escalation", "description": "The customer demands immediate or same-day resolution, or threatens to leave."}],
+  "bug-report": [{"id": "bug-report", "description": "The customer reports product behavior that is broken or wrong, not a question about how a feature works."}],
+  "complaint": [{"id": "complaint", "description": "The message expresses dissatisfaction with the product or the service."}]
+ },
+ "items": [
+  {
+   "id": "review-policy/noul-refund-clear", "kind": "noul", "partition": "answerable",
+   "state": "I was charged twice on the March invoice and I want the duplicate charge refunded.",
+   "instructions": "Decide what the customer is asking for.", "set": "refund-request",
+   "expected": "yes", "flag": "confident", "label_source": "author",
+   "label_rule": "The message explicitly asks for a refund of a duplicate charge."
+  },
+  {
+   "id": "review-policy/noul-invoice-copy-clear", "kind": "noul", "partition": "answerable",
+   "state": "Where can I download a PDF copy of last month's invoice?",
+   "instructions": "Decide what the customer is asking for.", "set": "refund-request",
+   "expected": "no", "flag": "confident", "label_source": "author",
+   "label_rule": "A document request with no ask for money back."
+  },
+  {
+   "id": "review-policy/noul-cancellation-ambiguous", "kind": "noul", "partition": "ambiguous",
+   "state": "I've been going back and forth on whether to keep the subscription — what would cancelling actually involve?",
+   "instructions": "Decide what the customer is asking for.", "set": "cancellation-request",
+   "expected": "no", "flag": "uncertain", "label_source": "author",
+   "label_rule": "The customer asks about the process rather than requesting it, but the wavering intent makes this a judgment a gate should flag rather than a confident no."
+  },
+  {
+   "id": "review-policy/noul-urgency-ambiguous", "kind": "noul", "partition": "ambiguous",
+   "state": "This has been glitchy for weeks and honestly I'm losing patience with it.",
+   "instructions": "Decide how the customer is asking to be treated.", "set": "urgent-escalation",
+   "expected": "no", "flag": "uncertain", "label_source": "author",
+   "label_rule": "Clear frustration but no demand, deadline, or threat; whether that counts as urgent is a genuine borderline the gate should flag."
+  },
+  {
+   "id": "review-policy/noul-bug-borderline", "kind": "noul", "partition": "near-threshold",
+   "state": "Every so often the export button just spins — maybe one time in five, and a refresh fixes it.",
+   "instructions": "Decide what the customer is reporting.", "set": "bug-report",
+   "expected": "yes", "flag": "either", "label_source": "author",
+   "label_rule": "Intermittent but clearly broken behavior; the low severity and self-fixing workaround may pull the probability near the cut."
+  },
+  {
+   "id": "review-policy/noul-praise-clear", "kind": "noul", "partition": "answerable",
+   "state": "The new dashboard is fantastic — the whole team noticed the speedup this morning.",
+   "instructions": "Decide what the message expresses.", "set": "complaint",
+   "expected": "no", "flag": "confident", "label_source": "author",
+   "label_rule": "Unambiguous praise; nothing about it is a complaint."
+  },
+  {
+   "id": "review-policy/noul-refund-borderline", "kind": "noul", "partition": "near-threshold",
+   "state": "The charge looked wrong to me, though maybe I misread the plan terms — can someone check?",
+   "instructions": "Decide what the customer is asking for.", "set": "refund-request",
+   "expected": "no", "flag": "either", "label_source": "author",
+   "label_rule": "A verification ask, not a money-back ask — but it sits close enough to refund intent that a gate may flag it."
+  },
+  {
+   "id": "review-policy/choice-route-billing-clear", "kind": "choice", "partition": "answerable",
+   "state": "My invoice shows a charge from a plan I cancelled back in February.",
+   "instructions": "Route the support message to the team that should own it.", "set": "route",
+   "expected": "billing", "flag": "confident", "label_source": "author",
+   "label_rule": "An unexplained charge on an invoice is a billing matter outright."
+  },
+  {
+   "id": "review-policy/choice-route-technical-clear", "kind": "choice", "partition": "answerable",
+   "state": "The app crashes every single time I open the export dialog.",
+   "instructions": "Route the support message to the team that should own it.", "set": "route",
+   "expected": "technical", "flag": "confident", "label_source": "author",
+   "label_rule": "A reproducible crash is broken product behavior."
+  },
+  {
+   "id": "review-policy/choice-route-mixed-ambiguous", "kind": "choice", "partition": "ambiguous",
+   "state": "I can't sign in, and also the last invoice looks wrong — oh, and how do I add a teammate?",
+   "instructions": "Route the support message to the team that should own it.", "set": "route",
+   "expected": "account", "flag": "uncertain", "label_source": "author",
+   "label_rule": "Three competing intents in one message; the author reads the sign-in lead as account work, but a correct policy flags this rather than picking confidently."
+  },
+  {
+   "id": "review-policy/choice-route-vague-ambiguous", "kind": "choice", "partition": "ambiguous",
+   "state": "Hi — quick question about my account.",
+   "instructions": "Route the support message to the team that should own it.", "set": "route",
+   "expected": "other", "flag": "uncertain", "label_source": "author",
+   "label_rule": "No actual request is stated — the mention of an account does not make it a sign-in or profile task — but the vagueness should spread the distribution and flag."
+  },
+  {
+   "id": "review-policy/choice-route-billing-borderline", "kind": "choice", "partition": "near-threshold",
+   "state": "Why did my plan price change right after the trial ended?",
+   "instructions": "Route the support message to the team that should own it.", "set": "route",
+   "expected": "billing", "flag": "either", "label_source": "author",
+   "label_rule": "A pricing question is billing work, though the account-settings framing could split the distribution near the cut."
+  },
+  {
+   "id": "review-policy/choice-route-technical-borderline", "kind": "choice", "partition": "near-threshold",
+   "state": "Reports with a few thousand rows take a while to load.",
+   "instructions": "Route the support message to the team that should own it.", "set": "route",
+   "expected": "technical", "flag": "either", "label_source": "author",
+   "label_rule": "Slow product behavior is technical work, but the mild wording could read as a general observation and sit near the cut."
+  },
+  {
+   "id": "review-policy/choice-route-account-clear", "kind": "choice", "partition": "answerable",
+   "state": "How do I reset my password?",
+   "instructions": "Route the support message to the team that should own it.", "set": "route",
+   "expected": "account", "flag": "confident", "label_source": "author",
+   "label_rule": "A password reset is the account label's own example."
+  },
+  {
+   "id": "review-policy/score-severity-critical-clear", "kind": "score", "partition": "answerable",
+   "state": "Production is down — every user sees a 500 error at sign-in and no work is getting done.",
+   "instructions": "Rate how severe the reported issue is for the affected users.", "set": "severity",
+   "expected": 3, "flag": "confident", "label_source": "author",
+   "label_rule": "A full outage for every user is the rubric's top level by definition."
+  },
+  {
+   "id": "review-policy/score-severity-cosmetic-clear", "kind": "score", "partition": "answerable",
+   "state": "Small thing: the settings page header reads 'Prefernces'.",
+   "instructions": "Rate how severe the reported issue is for the affected users.", "set": "severity",
+   "expected": 0, "flag": "confident", "label_source": "author",
+   "label_rule": "A typo with no functional impact is the rubric's bottom level."
+  },
+  {
+   "id": "review-policy/score-severity-vague-ambiguous", "kind": "score", "partition": "ambiguous",
+   "state": "Something looks off in the quarterly numbers, but I can't pin down what.",
+   "instructions": "Rate how severe the reported issue is for the affected users.", "set": "severity",
+   "expected": 1, "flag": "uncertain", "label_source": "author",
+   "label_rule": "An unverifiable symptom could be cosmetic or could be data corruption; the author labels the minor level as the least-bad read while the item exists to be flagged."
+  },
+  {
+   "id": "review-policy/score-severity-intermittent-borderline", "kind": "score", "partition": "near-threshold",
+   "state": "The nightly sync drops a handful of files, but the morning retry always picks them up.",
+   "instructions": "Rate how severe the reported issue is for the affected users.", "set": "severity",
+   "expected": 1, "flag": "either", "label_source": "author",
+   "label_rule": "Real failures with a working retry sit between minor and major; the author reads minor but either side of the cut is defensible."
+  },
+  {
+   "id": "review-policy/score-sentiment-positive-clear", "kind": "score", "partition": "answerable",
+   "state": "Absolutely loving the new release — the app has never felt this fast.",
+   "instructions": "Rate the author's sentiment toward the product.", "set": "sentiment",
+   "expected": 2, "flag": "confident", "label_source": "author",
+   "label_rule": "Unqualified praise is the rubric's top level."
+  },
+  {
+   "id": "review-policy/score-sentiment-tepid-borderline", "kind": "score", "partition": "near-threshold",
+   "state": {"message": "It's fine, I guess. The old version had its quirks too.", "channel": "feedback-form"},
+   "instructions": "Rate the author's sentiment toward the product.", "set": "sentiment",
+   "expected": 1, "flag": "either", "label_source": "author",
+   "label_rule": "Faint praise; the author reads neutral but satisfied is defensible — the record form exercises a non-text input."
+  }
+ ],
+ "digest": "0c06abfb7635a9a0f9fa5444d88e779d823d9204998203009b7d3ca4705c9c0d"
+}
