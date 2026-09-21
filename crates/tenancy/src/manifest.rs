@@ -91,6 +91,12 @@ pub struct Tenant {
     /// The secret itself never appears in this document: the
     /// authentication layer resolves the reference.
     pub credential: String,
+    /// Authenticated external principals that resolve to this tenant — a
+    /// relay's NIP-42 pubkey as `nostr:<hex>`, for instance. An HTTP key
+    /// and a relay principal land on the same record, so one binding
+    /// decides both transports.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub principals: Vec<String>,
     /// The doors this tenant may reach beyond the shared set.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub doors: BTreeMap<String, Binding>,

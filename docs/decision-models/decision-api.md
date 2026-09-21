@@ -380,6 +380,24 @@ protections. Retain access history and redact secrets. Authentication before
 inference remains [#9466](https://github.com/OpenAgentsInc/openagents/issues/9466); customer account/workspace lifecycle is
 [#9490](https://github.com/OpenAgentsInc/openagents/issues/9490).
 
+The concrete first-service protocol is landed in `crates/tenancy`:
+`Authorization: Bearer oak_<id>.<secret>`, where the store
+(`keys.json` beside `registry.json`) keeps only the secret's SHA-256
+digest. The `tenant-keys` binary is the operator provisioning path —
+`issue`, `rotate`, `revoke`, `list` — and a secret is printed once, at
+issuance, never to the store or a log. Authentication resolves the key
+to its tenant; authorization is then the registry's `authorize` lookup,
+so a caller-supplied model name cannot escape the bound doors, and a
+rotated key inherits the tenant's doors and quota rather than resetting
+them. Anonymous access is an explicit operator choice and reaches only
+the manifest's `shared` bindings — never a dedicated or trained door.
+On the relay lane, the authenticated NIP-42 principal maps to the same
+tenant record before authorization, so one binding decides both
+transports. The trusted boundary is the gateway: a directly reachable
+door is a misconfiguration, and the deployment policy is that backends
+bind a private interface and accept forwarded calls only from the
+gateway's identity.
+
 ## Pricing and monetary accounting
 
 Quota accounting controls resource admission. It does not collect payment

@@ -44,8 +44,10 @@
 //! contract. And a verified binding still cannot attest remote weights —
 //! it proves the serving process claims the identity the registry bound.
 
+pub mod keys;
 mod manifest;
 mod registry;
 
+pub use keys::{AuthRefusal, Authenticated, Issued, Key, KeyStore, KeyTrouble, Status};
 pub use manifest::{Binding, Capacity, Expected, Lane, Manifest, SCHEMA, Tenant};
 pub use registry::{Admission, Fault, Published, Refusal, Registry, Trouble};
