@@ -1369,6 +1369,7 @@ async fn classify_admitted(
             slots: slots.clone(),
             halt: halt.clone(),
             deadline,
+            attempt_id: format!("{}:{index}", naming.attempt_id),
         }));
     }
     let mut done: Vec<Option<ItemResult>> = (0..request.inputs.len()).map(|_| None).collect();
@@ -1384,7 +1385,7 @@ async fn classify_admitted(
     // as dispatched-unavailable — potentially attempted work never
     // reads as unattempted or answered.
     let mut items = Vec::with_capacity(done.len());
-    let mut counts = Counts::default();
+    let mut primaries = Vec::with_capacity(done.len());
     let mut forwards = 0_u64;
     let mut input_tokens = CompleteCounter::default();
     let mut output_tokens = CompleteCounter::default();
@@ -1402,6 +1403,7 @@ async fn classify_admitted(
                 None,
             ),
             usage: None,
+            attempt_id: format!("{}:{index}", naming.attempt_id),
         });
         if result.dispatched {
             forwards += 1;
@@ -1421,7 +1423,52 @@ async fn classify_admitted(
             );
             dispatched_reports.push(result.usage.clone());
         }
-        for unit in result.item["units"].as_array().into_iter().flatten() {
+        primaries.push(PrimaryRecord {
+            attempt_id: result.attempt_id.clone(),
+            outcome: result.item["outcome"]
+                .as_str()
+                .unwrap_or("unavailable")
+                .to_string(),
+            cause: result
+                .item
+                .get("cause")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            latency_ms: result
+                .item
+                .get("latency_ms")
+                .and_then(Value::as_u64),
+        });
+        items.push(result.item);
+    }
+
+    // A declared review policy runs its bounded phase over the
+    // assembled primaries: declared-cause fallbacks first, then the
+    // triggered re-judgments — every dispatch through the full
+    // admission path under its own recorded identity.
+    let mut book = ReviewBook::default();
+    if let Some(review) = &plan.policy.review {
+        book = review_phase(
+            state,
+            &registry,
+            &caller,
+            &request,
+            &plan,
+            review,
+            &artifact,
+            &mut items,
+            &primaries,
+            naming,
+            deadline,
+        )
+        .await;
+    }
+
+    // The outcome tally reads the items' final state — a strict review
+    // that did not answer is counted under its own outcome.
+    let mut counts = Counts::default();
+    for item in &items {
+        for unit in item["units"].as_array().into_iter().flatten() {
             match unit.get("outcome").and_then(Value::as_str) {
                 Some("answered") => counts.answered += 1,
                 Some("refused") => counts.refused += 1,
@@ -1429,7 +1476,6 @@ async fn classify_admitted(
                 _ => counts.unattempted += 1,
             }
         }
-        items.push(result.item);
     }
 
     let total = plan.inputs * plan.units.len() as u64;
@@ -1479,7 +1525,7 @@ async fn classify_admitted(
     // silently absent — and the per-unit tallies every unit reports.
     let selections = corpus_selections(&plan, &items);
     let aggregates = corpus_aggregates(&plan, &items);
-    let response = json!({
+    let mut response = json!({
         "v": classify::SCHEMA,
         "model": request.model,
         "capacity": request.capacity,
@@ -1498,6 +1544,64 @@ async fn classify_admitted(
         "usage": usage,
         "timing": {"latency_ms": started.elapsed().as_millis() as u64},
     });
+    // A declared review policy reports its own accounting: the digested
+    // policy document, the bound identities it dispatched under, and
+    // the usage its dispatches carried separately from the primary's.
+    if let Some(review) = &plan.policy.review {
+        usage["review"] = json!({
+            "forwards": book.review_forwards,
+            "input_tokens_complete": book.review_input.total().is_some(),
+            "output_tokens_complete": book.review_output.total().is_some(),
+        });
+        if let Some(tokens) = book.review_input.total() {
+            usage["review"]["input_tokens"] = json!(tokens);
+        }
+        if let Some(tokens) = book.review_output.total() {
+            usage["review"]["output_tokens"] = json!(tokens);
+        }
+        usage["fallback"] = json!({
+            "forwards": book.fallback_dispatched,
+            "input_tokens_complete": book.fallback_input.total().is_some(),
+            "output_tokens_complete": book.fallback_output.total().is_some(),
+        });
+        if let Some(tokens) = book.fallback_input.total() {
+            usage["fallback"]["input_tokens"] = json!(tokens);
+        }
+        if let Some(tokens) = book.fallback_output.total() {
+            usage["fallback"]["output_tokens"] = json!(tokens);
+        }
+        response["usage"] = usage;
+        let mut summary = json!({
+            "v": classify::REVIEW_SCHEMA,
+            "policy_digest": digest_request(
+                &serde_json::to_value(review).unwrap_or_default()
+            ),
+            "reviewer": review.reviewer,
+            "trigger": match review.trigger {
+                classify::ReviewTrigger::Uncertain => "uncertain",
+                classify::ReviewTrigger::NoMatch => "no-match",
+                classify::ReviewTrigger::Always => "always",
+            },
+            "on_failure": match review.on_failure {
+                classify::ReviewFailure::KeepOriginal => "keep-original",
+                classify::ReviewFailure::Strict => "strict",
+            },
+            "bounds": {
+                "max_items": review.max_items,
+                "max_attempts": review.max_attempts,
+                "latency_ms": review.latency_ms,
+                "max_spend": review.max_spend,
+            },
+            "reviewed": book.reviewed,
+            "review_answered": book.review_answered,
+            "fallback_dispatched": book.fallback_dispatched,
+            "fallback_answered": book.fallback_answered,
+        });
+        if state.config.money.is_some() {
+            summary["reserved_spend"] = json!(book.spend);
+        }
+        response["review"] = summary;
+    }
     let body_out = Bytes::from(serde_json::to_vec(&response).unwrap_or_default());
     ctx.result_digest = Some(digest_bytes(&body_out));
     let attempted = quota::Units {
@@ -1591,6 +1695,9 @@ struct ItemWork {
     halt: Arc<AtomicBool>,
     /// The call's execution deadline — queue waits and forwards share it.
     deadline: Instant,
+    /// This forward's recorded identity within the call's attempt —
+    /// the attempt chain's name for it when a review policy runs.
+    attempt_id: String,
 }
 
 /// What one scheduled input produced.
@@ -1603,6 +1710,8 @@ struct ItemResult {
     item: Value,
     /// The door's own usage report, when it sent one.
     usage: Option<Value>,
+    /// The forward's recorded identity within the call's attempt.
+    attempt_id: String,
 }
 
 /// One input's scheduled forward: take the call's fan-out slot, then
@@ -1625,12 +1734,14 @@ async fn classify_item(work: ItemWork) -> ItemResult {
         slots,
         halt,
         deadline,
+        attempt_id,
     } = work;
     let unattempted = |cause: &'static str| ItemResult {
         index,
         dispatched: false,
         item: unattempted_item(&input, &plan, cause),
         usage: None,
+        attempt_id: attempt_id.clone(),
     };
     // The call's own fan-out bound. The pool closes on halt, which is
     // how a stopped call frees its queue instead of waiting it out.
@@ -1703,6 +1814,7 @@ async fn classify_item(work: ItemWork) -> ItemResult {
         dispatched: true,
         item,
         usage,
+        attempt_id,
     }
 }
 
@@ -1716,6 +1828,859 @@ async fn door_slots(state: &ServeState, door: &str) -> Option<Arc<Semaphore>> {
         .await
         .get(door)
         .and_then(|bounds| bounds.slots.clone())
+}
+
+/// A review or fallback dispatch's identities and work: a secondary
+/// call under the caller's own credentials, admitted end to end like
+/// the primary's — never a bypass around authorization, bounds, quota,
+/// monetary admission, identity, or the receipt.
+struct SubCall {
+    /// The door this dispatch names — a bound door, authorized fresh.
+    door: String,
+    /// The reservation and hold request id: `{request}:{role}:{seq}` —
+    /// a new logical request under the caller's pair, never the
+    /// caller's own key.
+    request: String,
+    /// The caller's claimed attempt — the pair stays unique on
+    /// `request`.
+    attempt: u32,
+    /// This dispatch's own recorded attempt identity.
+    attempt_id: String,
+    /// The sub-envelope's canonical digest.
+    request_digest: String,
+    /// The serialized sub-envelope.
+    body: Bytes,
+    /// The reservation's unit cost.
+    units: quota::Units,
+    /// The dispatch's deadline — the phase's, inside the call's own.
+    deadline: Instant,
+}
+
+/// Why a sub-dispatch could not dispatch — the admission step's own
+/// refusal, recorded rather than collapsed into a generic failure.
+struct Fail {
+    /// The step's recorded outcome: refused for a declined admission,
+    /// unattempted for work the deadline or identity check stopped.
+    outcome: Outcome,
+    /// The refusal's typed code — what a `refused` fallback's `codes`
+    /// would match.
+    code: String,
+    /// The step's own message, kept for the record.
+    message: String,
+}
+
+impl Fail {
+    /// A dispatch the deadline stopped before it held anything.
+    fn unattempted(message: &str) -> Self {
+        Self {
+            outcome: Outcome::Unattempted,
+            code: "unattempted".to_string(),
+            message: message.to_string(),
+        }
+    }
+}
+
+/// Fold an admission step's refusal verdict into the dispatch's own
+/// failure record — the code and message the step produced, kept.
+fn fail(verdict: Verdict) -> Fail {
+    match verdict {
+        Verdict::Refused {
+            code,
+            message,
+            outcome,
+            ..
+        } => Fail {
+            outcome,
+            code: code.to_string(),
+            message,
+        },
+        Verdict::Forwarded { .. } => Fail {
+            outcome: Outcome::Unavailable,
+            code: "unavailable".to_string(),
+            message: "the dispatch produced no typed refusal".to_string(),
+        },
+    }
+}
+
+/// What a sub-dispatch produced — dispatched or not, everything the
+/// review or fallback record reports.
+struct DispatchOutcome {
+    /// The dispatch's recorded attempt identity.
+    attempt_id: String,
+    /// The reservation reference it settled against, when it held one.
+    usage_ref: Option<String>,
+    /// The receipt-level outcome.
+    outcome: Outcome,
+    /// The recorded cause: the refusal's typed code, or the failure's
+    /// message.
+    cause: Option<String>,
+    /// The typed code the refusal carried, when one did — what a
+    /// `refused` fallback's `codes` matches.
+    code: Option<String>,
+    /// Whether a forward reached the backend — dispatched work is
+    /// charged work.
+    dispatched: bool,
+    /// The response body, when the door answered.
+    body: Option<Bytes>,
+    /// The response's own model claim.
+    model: Option<String>,
+    /// The response's usage report.
+    usage: Option<Value>,
+    /// The identity the backend published, when it was reached.
+    served: Served,
+    /// How long the dispatch took, admission through answer.
+    latency: Duration,
+    /// How the dispatch's monetary hold resolved, when it held one.
+    settlement: Option<&'static str>,
+}
+
+/// One review or fallback dispatch through the full admission path:
+/// authorize the door under the caller's credentials, wait inside the
+/// deadline for the door's and process's slots, reserve quota and
+/// monetary spend under its own request identity, verify the backend's
+/// published card against the binding, forward, settle, and leave a
+/// sealed receipt — every secondary call audited like the primary's.
+async fn dispatch(
+    state: &ServeState,
+    registry: &Registry,
+    caller: &Caller,
+    sub: &SubCall,
+) -> DispatchOutcome {
+    let started = Instant::now();
+    let mut ctx: Context = Box::new(ReceiptContext {
+        tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),
+        ..ReceiptContext::default()
+    });
+    let naming = Naming {
+        request: &sub.request,
+        attempt: sub.attempt,
+        attempt_id: sub.attempt_id.clone(),
+        request_digest: &sub.request_digest,
+    };
+    let result = dispatch_admitted(state, registry, caller, sub, &naming, &mut ctx).await;
+    let (outcome, cause, code) = match &result {
+        Ok(Forwarded::Served { .. }) => (Outcome::Answered, None, None),
+        Ok(Forwarded::Refused { cause, .. }) => {
+            (Outcome::Refused, Some(cause.clone()), Some(cause.clone()))
+        }
+        Ok(Forwarded::Unavailable { message }) => {
+            (Outcome::Unavailable, Some(message.clone()), None)
+        }
+        Err(failed) => (
+            failed.outcome,
+            Some(failed.code.clone()),
+            Some(failed.code.clone()),
+        ),
+    };
+    write_receipt(state, &naming, outcome, cause.as_deref(), started, &ctx).await;
+    let dispatched = result.is_ok();
+    let (body, model, usage) = match &result {
+        Ok(Forwarded::Served { body, .. } | Forwarded::Refused { body, .. }) => {
+            let parsed = serde_json::from_slice::<Value>(body).ok();
+            (
+                Some(body.clone()),
+                parsed
+                    .as_ref()
+                    .and_then(|body| body.get("model"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                parsed
+                    .as_ref()
+                    .and_then(|body| body.get("usage"))
+                    .cloned(),
+            )
+        }
+        _ => (None, None, None),
+    };
+    DispatchOutcome {
+        attempt_id: sub.attempt_id.clone(),
+        usage_ref: ctx.usage.clone(),
+        outcome,
+        cause: match result {
+            Err(failed) => Some(failed.message.clone()),
+            _ => cause,
+        },
+        code,
+        dispatched,
+        body,
+        model,
+        usage,
+        served: ctx.served.clone(),
+        latency: started.elapsed(),
+        settlement: ctx.settlement,
+    }
+}
+
+/// The sub-dispatch's passage through admission — the same steps the
+/// primary route runs, in the same order, against the dispatch's own
+/// reservation identity.
+async fn dispatch_admitted(
+    state: &ServeState,
+    registry: &Registry,
+    caller: &Caller,
+    sub: &SubCall,
+    naming: &Naming<'_>,
+    ctx: &mut Context,
+) -> Result<Forwarded, Fail> {
+    // Authorize the named door — a reviewer or fallback the caller's
+    // bindings do not name is refused here, never dispatched.
+    let (admission, backend) = authorized(state, registry, caller, &sub.door, ctx)
+        .map_err(fail)?;
+    let capacity = admission.binding.capacity.clone().unwrap_or_default();
+    windowed(state, &sub.door, &capacity, ctx).await.map_err(fail)?;
+    let cutoff = tokio::time::Instant::from_std(sub.deadline);
+    // The door's declared concurrency and the process's forward bound,
+    // waited on inside the phase deadline like the primary fan-out's.
+    let _door = match door_slots(state, &sub.door).await {
+        Some(pool) => match tokio::time::timeout_at(cutoff, pool.acquire_owned()).await {
+            Ok(Ok(permit)) => Some(permit),
+            _ => {
+                return Err(Fail::unattempted(
+                    "the phase's deadline passed while the door's slots were full",
+                ));
+            }
+        },
+        None => None,
+    };
+    let _host = match tokio::time::timeout_at(cutoff, state.in_flight.clone().acquire_owned()).await
+    {
+        Ok(Ok(permit)) => permit,
+        _ => {
+            return Err(Fail::unattempted(
+                "the phase's deadline passed while the gateway's slots were full",
+            ));
+        }
+    };
+    reserved(state, registry, caller, naming, &sub.units, ctx)
+        .await
+        .map_err(fail)?;
+    let hold = money_hold(state, caller, &sub.door, &admission, naming, ctx)
+        .await
+        .map_err(fail)?;
+    verified(state, &backend.endpoint, &admission, naming, ctx, &hold)
+        .await
+        .map_err(fail)?;
+    let forwarded = tokio::time::timeout_at(cutoff, forward(state, &backend.endpoint, &sub.body))
+        .await
+        .unwrap_or_else(|_| Forwarded::Unavailable {
+            message: "the dispatch exceeded the review phase's deadline".to_string(),
+        });
+    let outcome = match &forwarded {
+        Forwarded::Served { .. } => Outcome::Answered,
+        Forwarded::Refused { .. } => Outcome::Refused,
+        Forwarded::Unavailable { .. } => Outcome::Unavailable,
+    };
+    settled(state, naming, outcome, &sub.units).await;
+    if let Some(held) = &hold {
+        // A dispatched secondary attempt settles the usage its own door
+        // reported — anything unpriceable stays outstanding, never zero.
+        let usage = match &forwarded {
+            Forwarded::Served { body, .. } | Forwarded::Refused { body, .. } => {
+                serde_json::from_slice::<Value>(body)
+                    .ok()
+                    .and_then(|body| money::observed(&held.price, &body))
+            }
+            Forwarded::Unavailable { .. } => None,
+        };
+        ctx.settlement = money_settle(state, &hold, naming, usage).await;
+    }
+    Ok(forwarded)
+}
+
+/// The primary forward's own record in an item's attempt chain.
+struct PrimaryRecord {
+    /// The item's recorded attempt identity within the call.
+    attempt_id: String,
+    /// The item's outcome before review or fallback ran.
+    outcome: String,
+    /// The failure's cause, when the item failed.
+    cause: Option<String>,
+    /// The forward's latency, when it dispatched.
+    latency_ms: Option<u64>,
+}
+
+/// What the review phase accounted for — the response's review summary
+/// and usage reads draw from it.
+#[derive(Default)]
+struct ReviewBook {
+    /// Dispatches spent against the policy's `max_attempts`.
+    attempts: u64,
+    /// Units dispatched to the reviewer against `max_items`.
+    reviewed: u64,
+    /// Review dispatches that answered.
+    review_answered: u64,
+    /// Fallback dispatches that reached a backend.
+    fallback_dispatched: u64,
+    /// Fallback dispatches that answered.
+    fallback_answered: u64,
+    /// The worst-case spend the phase's holds reserved, in millionths —
+    /// zero when monetary admission is not configured.
+    spend: u64,
+    /// Review dispatches that reached a backend.
+    review_forwards: u64,
+    /// Review usage accounting, complete only when every dispatched
+    /// review reported the counter.
+    review_input: CompleteCounter,
+    /// The review forwards' output tokens.
+    review_output: CompleteCounter,
+    /// Fallback usage accounting.
+    fallback_input: CompleteCounter,
+    /// The fallback forwards' output tokens.
+    fallback_output: CompleteCounter,
+    /// The dispatch sequence — every secondary call's identity suffix.
+    seq: u64,
+}
+
+/// The worst-case reservation a dispatch to `door` would take under
+/// monetary admission — `None` when money is off or the door is
+/// unpriced (the dispatch itself then refuses `unpriced`).
+fn spend_quote(state: &ServeState, door: &str) -> Option<u64> {
+    state
+        .config
+        .money
+        .as_ref()?
+        .doors
+        .get(door)
+        .and_then(|priced| priced.price.quote(&priced.maximum_usage).ok())
+}
+
+/// Why the phase may not spend another dispatch — the cause the
+/// record reports. `None` means the bounds admit one more.
+fn phase_stop(
+    book: &ReviewBook,
+    policy: &classify::Review,
+    deadline: Instant,
+    quote: Option<u64>,
+) -> Option<&'static str> {
+    if book.attempts >= policy.max_attempts {
+        return Some("the review policy's `max_attempts` bound is spent");
+    }
+    if Instant::now() >= deadline {
+        return Some("the review phase's `latency_ms` bound is spent");
+    }
+    if let (Some(max_spend), Some(quote)) = (policy.max_spend, quote)
+        && book.spend.saturating_add(quote) > max_spend
+    {
+        return Some("the review policy's `max_spend` cannot cover the door's worst-case hold");
+    }
+    None
+}
+
+/// One attempt's row in an item's `attempts` chain: who dispatched,
+/// what it produced, and the identity it was recorded under.
+fn attempt_record(
+    role: &str,
+    door: &str,
+    model: &str,
+    outcome: &str,
+    cause: Option<&str>,
+    attempt_id: &str,
+    latency_ms: Option<u64>,
+) -> Value {
+    let mut record = json!({
+        "role": role,
+        "door": door,
+        "model": model,
+        "outcome": outcome,
+        "attempt_id": attempt_id,
+    });
+    if let Some(cause) = cause {
+        record["cause"] = json!(cause);
+    }
+    if let Some(latency_ms) = latency_ms {
+        record["latency_ms"] = json!(latency_ms);
+    }
+    record
+}
+
+/// The primary's row in an item's attempt chain — the call's own
+/// forward, recorded the same way the secondary dispatches are.
+fn primary_attempt(
+    request: &ClassifyRequest,
+    artifact: &str,
+    primary: &PrimaryRecord,
+) -> Value {
+    attempt_record(
+        "primary",
+        &request.model,
+        artifact,
+        &primary.outcome,
+        primary.cause.as_deref(),
+        &primary.attempt_id,
+        primary.latency_ms,
+    )
+}
+
+/// A dispatch's row in an item's attempt chain.
+fn dispatch_attempt(role: &str, door: &str, result: &DispatchOutcome) -> Value {
+    let mut record = attempt_record(
+        role,
+        door,
+        &result.served.model,
+        outcome_label(result.outcome),
+        result.cause.as_deref(),
+        &result.attempt_id,
+        Some(result.latency.as_millis() as u64),
+    );
+    if let Some(code) = &result.code {
+        record["code"] = json!(code);
+    }
+    if let Some(usage_ref) = &result.usage_ref {
+        record["usage_ref"] = json!(usage_ref);
+    }
+    if let Some(settlement) = result.settlement {
+        record["settlement"] = json!(settlement);
+    }
+    record
+}
+
+/// Push a row onto an item's `attempts` chain, opening it with the
+/// primary's own record when the chain does not exist yet.
+fn push_attempt(
+    item: &mut Value,
+    request: &ClassifyRequest,
+    artifact: &str,
+    primary: &PrimaryRecord,
+    record: Value,
+) {
+    if item.get("attempts").and_then(Value::as_array).is_none() {
+        item["attempts"] = json!([primary_attempt(request, artifact, primary)]);
+    }
+    item["attempts"]
+        .as_array_mut()
+        .map(|attempts| attempts.push(record));
+}
+
+/// The item's outcome from its units' final outcomes — the same
+/// answered-or-partial read `served_item` makes, kept uniform when a
+/// strict review rewrites a unit's outcome.
+fn item_outcome(units: &[Value]) -> &'static str {
+    let answered = units
+        .iter()
+        .filter(|unit| unit.get("outcome").and_then(Value::as_str) == Some("answered"))
+        .count();
+    if answered == units.len() {
+        return "answered";
+    }
+    if answered > 0 {
+        return "mixed";
+    }
+    if units
+        .iter()
+        .all(|unit| unit.get("outcome").and_then(Value::as_str) == Some("refused"))
+    {
+        return "refused";
+    }
+    if units
+        .iter()
+        .all(|unit| unit.get("outcome").and_then(Value::as_str) == Some("unattempted"))
+    {
+        return "unattempted";
+    }
+    "unavailable"
+}
+
+/// The review and fallback phase a declared review policy runs after
+/// the primary fan-out: first retry the items whose declared cause a
+/// fallback entry covers, then re-judge the units the declared trigger
+/// names. Every dispatch passes the full admission path under its own
+/// identity; every bound the policy declared stops further work
+/// visibly — an exhausted budget is a recorded outcome, never a
+/// silently skipped review.
+async fn review_phase(
+    state: &ServeState,
+    registry: &Registry,
+    caller: &Caller,
+    request: &ClassifyRequest,
+    plan: &Arc<classify::Plan>,
+    policy: &classify::Review,
+    artifact: &str,
+    items: &mut [Value],
+    primaries: &[PrimaryRecord],
+    naming: &Naming<'_>,
+    call_deadline: Instant,
+) -> ReviewBook {
+    let deadline = call_deadline.min(Instant::now() + Duration::from_millis(policy.latency_ms));
+    let mut book = ReviewBook::default();
+
+    // Fallback first: an item the primary never got a decided answer
+    // for retries through the door its cause's entry names — one hop,
+    // and only the causes the policy declared.
+    for (index, item) in items.iter_mut().enumerate() {
+        let class = match item["outcome"].as_str() {
+            Some("unavailable") => classify::FallbackCause::Transport,
+            Some("unattempted") => classify::FallbackCause::Capacity,
+            Some("refused") => classify::FallbackCause::Refused,
+            _ => continue,
+        };
+        let cause = item["cause"].as_str().unwrap_or_default().to_string();
+        let Some(entry) = policy.fallback.iter().find(|entry| entry.on == class) else {
+            item["fallback"] = json!({
+                "on": class.name(),
+                "outcome": "skipped",
+                "cause": "the policy names no fallback for this cause",
+            });
+            continue;
+        };
+        if class == classify::FallbackCause::Refused
+            && !entry
+                .codes
+                .as_ref()
+                .is_some_and(|codes| codes.iter().any(|code| *code == cause))
+        {
+            // A semantic refusal the entry did not enumerate is an
+            // answer, not a retryable failure — the item keeps it.
+            item["fallback"] = json!({
+                "on": class.name(),
+                "outcome": "skipped",
+                "cause": "the refusal's cause is not among the entry's declared `codes`",
+            });
+            continue;
+        }
+        let quote = spend_quote(state, &entry.model);
+        if let Some(stop) = phase_stop(&book, policy, deadline, quote) {
+            item["fallback"] = json!({
+                "on": class.name(),
+                "door": entry.model,
+                "outcome": "unattempted",
+                "cause": stop,
+            });
+            continue;
+        }
+        // The body names the fallback door's bound artifact — the same
+        // questions and state the primary carried.
+        let fallback_artifact = registry
+            .authorize(caller.tenant.as_deref(), &entry.model)
+            .map(|admission| admission.binding.artifact.model.clone())
+            .unwrap_or_else(|_| entry.model.clone());
+        let (envelope, asked) =
+            forward_envelope(request, plan, &request.inputs[index], &fallback_artifact);
+        let body = Bytes::from(serde_json::to_vec(&envelope).unwrap_or_default());
+        book.seq += 1;
+        let sub = SubCall {
+            door: entry.model.clone(),
+            request: format!("{}:fb:{}", naming.request, book.seq),
+            attempt: naming.attempt,
+            attempt_id: format!("{}:fb:{}", naming.attempt_id, book.seq),
+            request_digest: digest_request(&envelope),
+            units: units_of(&envelope, body.len()),
+            body,
+            deadline,
+        };
+        let result = dispatch(state, registry, caller, &sub).await;
+        book.attempts += 1;
+        book.spend += quote.unwrap_or(0);
+        if result.dispatched {
+            book.fallback_dispatched += 1;
+            book.fallback_input.add(
+                result
+                    .usage
+                    .as_ref()
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(Value::as_u64),
+            );
+            book.fallback_output.add(
+                result
+                    .usage
+                    .as_ref()
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(Value::as_u64),
+            );
+            if result.outcome == Outcome::Answered {
+                book.fallback_answered += 1;
+            }
+        }
+        push_attempt(
+            item,
+            request,
+            artifact,
+            &primaries[index],
+            dispatch_attempt("fallback", &entry.model, &result),
+        );
+        // Rebuild the item from what the fallback produced, keeping the
+        // primary's own record under `original`.
+        let input = request.inputs[index].id.clone();
+        let rebuilt = match result.outcome {
+            Outcome::Answered => match &result.body {
+                Some(body) => {
+                    served_item(&input, plan, &asked, &fallback_artifact, body, result.latency).0
+                }
+                None => failed_item(&input, plan, "unavailable", "the fallback answered nothing", Some(result.latency)),
+            },
+            Outcome::Refused => failed_item(
+                &input,
+                plan,
+                "refused",
+                result.cause.as_deref().unwrap_or("refused"),
+                Some(result.latency),
+            ),
+            Outcome::Unavailable => failed_item(
+                &input,
+                plan,
+                "unavailable",
+                result.cause.as_deref().unwrap_or("unavailable"),
+                Some(result.latency),
+            ),
+            _ => failed_item(
+                &input,
+                plan,
+                "unattempted",
+                result.cause.as_deref().unwrap_or("unattempted"),
+                Some(result.latency),
+            ),
+        };
+        // The original item survives whole — its units and outputs are
+        // the primary's record, never discarded by the retry. The
+        // attempt chain carries onto the item the fallback produced.
+        let original = item.clone();
+        let attempts = original.get("attempts").cloned();
+        *item = rebuilt;
+        if let Some(attempts) = attempts {
+            item["attempts"] = attempts;
+        }
+        item["original"] = original;
+        item["fallback"] = json!({
+            "on": class.name(),
+            "door": entry.model,
+            "model": result.served.model,
+            "outcome": outcome_label(result.outcome),
+            "attempt_id": result.attempt_id,
+        });
+        if let Some(cause) = &result.cause {
+            item["fallback"]["cause"] = json!(cause);
+        }
+        if let Some(usage) = &result.usage {
+            item["usage"] = usage.clone();
+        }
+        if let Some(settlement) = result.settlement {
+            item["fallback"]["settlement"] = json!(settlement);
+        }
+    }
+
+    // Then review: the declared trigger names the units a second model
+    // re-judges — the same state and questions, an independent read.
+    for (index, item) in items.iter_mut().enumerate() {
+        if !matches!(
+            item["outcome"].as_str(),
+            Some("answered") | Some("mixed")
+        ) {
+            continue;
+        }
+        let mut triggered = false;
+        let mut unresolved = false;
+        for unit_index in 0..plan.units.len() {
+            let unit = &item["units"][unit_index];
+            let unit_outcome = unit["outcome"].as_str().unwrap_or_default();
+            let fired = match policy.trigger {
+                classify::ReviewTrigger::Uncertain => {
+                    unit["uncertain"].as_bool() == Some(true)
+                }
+                classify::ReviewTrigger::NoMatch => unit["no_match"].as_bool() == Some(true),
+                classify::ReviewTrigger::Always => {
+                    matches!(unit_outcome, "answered" | "unavailable")
+                }
+            };
+            if !fired {
+                continue;
+            }
+            triggered = true;
+            let reason = match policy.trigger {
+                classify::ReviewTrigger::Uncertain => "uncertain",
+                classify::ReviewTrigger::NoMatch => "no-match",
+                classify::ReviewTrigger::Always => "always",
+            };
+            // A bound that stops the dispatch is itself recorded —
+            // an exhausted budget is visible on the unit it stopped.
+            let stop = if book.reviewed >= policy.max_items {
+                Some("the review policy's `max_items` bound is spent")
+            } else {
+                phase_stop(&book, policy, deadline, spend_quote(state, &policy.reviewer))
+            };
+            if let Some(stop) = stop {
+                unresolved = true;
+                item["units"][unit_index]["review"] = json!({
+                    "reason": reason,
+                    "outcome": "unattempted",
+                    "cause": stop,
+                });
+                item["units"][unit_index]["final_source"] = json!("primary");
+                continue;
+            }
+            // The body names the reviewer door's bound artifact; the
+            // dispatch itself re-authorizes fresh under the caller.
+            let reviewer_artifact = registry
+                .authorize(caller.tenant.as_deref(), &policy.reviewer)
+                .map(|admission| admission.binding.artifact.model.clone())
+                .unwrap_or_else(|_| policy.reviewer.clone());
+            let (envelope, asked) = unit_forward_envelope(
+                request,
+                plan,
+                &request.inputs[index],
+                unit_index,
+                &reviewer_artifact,
+            );
+            let body = Bytes::from(serde_json::to_vec(&envelope).unwrap_or_default());
+            book.seq += 1;
+            let sub = SubCall {
+                door: policy.reviewer.clone(),
+                request: format!("{}:rev:{}", naming.request, book.seq),
+                attempt: naming.attempt,
+                attempt_id: format!("{}:rev:{}", naming.attempt_id, book.seq),
+                request_digest: digest_request(&envelope),
+                units: units_of(&envelope, body.len()),
+                body,
+                deadline,
+            };
+            let result = dispatch(state, registry, caller, &sub).await;
+            book.attempts += 1;
+            book.reviewed += 1;
+            book.spend += spend_quote(state, &policy.reviewer).unwrap_or(0);
+            if result.dispatched {
+                book.review_forwards += 1;
+                book.review_input.add(
+                    result
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.get("input_tokens"))
+                        .and_then(Value::as_u64),
+                );
+                book.review_output.add(
+                    result
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.get("output_tokens"))
+                        .and_then(Value::as_u64),
+                );
+            }
+            let mut review = json!({
+                "reason": reason,
+                "attempt_id": result.attempt_id,
+                "latency_ms": result.latency.as_millis() as u64,
+                "usage": result.usage.clone().unwrap_or(Value::Null),
+            });
+            if !result.served.model.is_empty() {
+                review["model"] = json!(result.served.model);
+                if !result.served.artifact_signature.is_empty() {
+                    review["artifact"] = json!(result.served.artifact_signature);
+                }
+            }
+            if let Some(settlement) = result.settlement {
+                review["settlement"] = json!(settlement);
+            }
+            // Read the reviewer's answer through the same contract the
+            // primary's answers are held to — a review that cannot be
+            // validated is a review that did not answer.
+            let resolved = if result.outcome == Outcome::Answered {
+                match result
+                    .body
+                    .as_ref()
+                    .and_then(|body| serde_json::from_slice::<Value>(body).ok())
+                    .filter(|_| result.model.as_deref() == Some(reviewer_artifact.as_str()))
+                    .and_then(|parsed| {
+                        parsed.get("answers").and_then(Value::as_object).cloned()
+                    }) {
+                    Some(answers) => Some(unit_result(
+                        unit_index,
+                        &plan.units[unit_index],
+                        plan,
+                        &asked,
+                        &answers,
+                    )),
+                    None => Some(unit_failure(
+                        &plan.units[unit_index],
+                        "unavailable",
+                        "the reviewer's answer did not parse or names another model",
+                    )),
+                }
+            } else {
+                None
+            };
+            push_attempt(
+                item,
+                request,
+                artifact,
+                &primaries[index],
+                dispatch_attempt("review", &policy.reviewer, &result),
+            );
+            let unit = &mut item["units"][unit_index];
+            let old = unit.clone();
+            match resolved {
+                // The reviewer answered and its answer held to the
+                // unit's contract: it becomes the final selection, with
+                // the primary's whole result preserved under `original`.
+                Some(resolved)
+                    if resolved["outcome"].as_str() == Some("answered") =>
+                {
+                    book.review_answered += 1;
+                    review["outcome"] = json!("answered");
+                    review["raw"] = resolved["raw"].clone();
+                    review["selected"] = resolved["selected"].clone();
+                    review["changed"] = json!(resolved["selected"] != old["selected"]);
+                    if resolved.get("no_match").and_then(Value::as_bool) == Some(true) {
+                        review["no_match"] = json!(true);
+                    }
+                    if resolved.get("uncertain").and_then(Value::as_bool) == Some(true) {
+                        review["uncertain"] = json!(true);
+                    }
+                    *unit = resolved;
+                    unit["original"] = old;
+                    unit["review"] = review;
+                    unit["final_source"] = json!("reviewer");
+                }
+                // The review did not produce a usable answer: a refused
+                // or unreachable reviewer, an answer that fails the
+                // contract, or a dispatch the bounds stopped. The
+                // policy's `on_failure` decides whether the primary's
+                // output stands or the review's outcome governs.
+                other => {
+                    unresolved = true;
+                    let (outcome, cause) = match other {
+                        Some(failed) => (
+                            failed["outcome"].as_str().unwrap_or("unavailable").to_string(),
+                            failed["cause"].as_str().map(str::to_string),
+                        ),
+                        None => (
+                            outcome_label(result.outcome).to_string(),
+                            result.cause.clone(),
+                        ),
+                    };
+                    review["outcome"] = json!(outcome);
+                    review["selected"] = Value::Null;
+                    if let Some(cause) = &cause {
+                        review["cause"] = json!(cause);
+                    }
+                    match policy.on_failure {
+                        classify::ReviewFailure::KeepOriginal => {
+                            unit["review"] = review;
+                            unit["final_source"] = json!("primary");
+                        }
+                        classify::ReviewFailure::Strict => {
+                            *unit = unit_failure(&plan.units[unit_index], &outcome, cause.as_deref().unwrap_or("the review did not answer"));
+                            unit["original"] = old;
+                            unit["review"] = review;
+                            unit["final_source"] = json!("reviewer");
+                        }
+                    }
+                }
+            }
+        }
+        if !triggered {
+            item["review_status"] = json!("not-reviewed");
+        } else if unresolved {
+            item["review_status"] = json!("review-incomplete");
+        } else {
+            item["review_status"] = json!("reviewed");
+        }
+        if triggered {
+            // The item's outcome reads its units' final state — a
+            // strict review that did not answer can move an item off
+            // `answered`.
+            item["outcome"] = json!(item_outcome(
+                item["units"].as_array().cloned().unwrap_or_default().as_slice()
+            ));
+        }
+    }
+    book
 }
 
 /// A total exists only when every dispatched input reports the counter.
@@ -1751,6 +2716,128 @@ struct Counts {
     unattempted: u64,
 }
 
+/// One unit's questions, numbered from `first`: the question map
+/// entries and the (unit, qid, label) rows the answers are read
+/// through.
+fn unit_questions(
+    request: &ClassifyRequest,
+    unit: &classify::Unit,
+    unit_index: usize,
+    first: u64,
+) -> (serde_json::Map<String, Value>, Vec<(usize, String, Option<String>)>, u64) {
+    let mut questions = serde_json::Map::new();
+    let mut asked = Vec::new();
+    let mut next = first;
+    match unit.mode {
+        Mode::SingleLabel => {
+            let qid = format!("q{next}");
+            next += 1;
+            let mut criteria = serde_json::Map::new();
+            for label in &unit.labels {
+                criteria.insert(
+                    label.id.clone(),
+                    label
+                        .description
+                        .clone()
+                        .map(Value::String)
+                        .unwrap_or(Value::Null),
+                );
+            }
+            let instructions = instructions_for(
+                request,
+                unit,
+                "Pick exactly one of the options that best describes the input.",
+            );
+            questions.insert(
+                qid.clone(),
+                json!({"type": "choice", "instructions": instructions,
+                       "criteria": criteria}),
+            );
+            asked.push((unit_index, qid, None));
+        }
+        Mode::MultiLabel | Mode::Binary => {
+            for label in &unit.labels {
+                let qid = format!("q{next}");
+                next += 1;
+                let framing = match &label.description {
+                    Some(description) => format!(
+                        "Decide whether the label `{}` applies to the input. \
+                         The label means: {description}",
+                        label.id
+                    ),
+                    None => format!(
+                        "Decide whether the label `{}` applies to the input.",
+                        label.id
+                    ),
+                };
+                let instructions = instructions_for(request, unit, &framing);
+                questions.insert(
+                    qid.clone(),
+                    json!({"type": "noul", "instructions": instructions}),
+                );
+                asked.push((unit_index, qid, Some(label.id.clone())));
+            }
+        }
+        Mode::Score => {
+            let qid = format!("q{next}");
+            next += 1;
+            let criteria: Vec<Value> = unit
+                .levels
+                .iter()
+                .map(|level| Value::String(level.clone()))
+                .collect();
+            let instructions = instructions_for(
+                request,
+                unit,
+                "Place the input on the rubric's ordered levels; level 0 is the \
+                 first criterion.",
+            );
+            questions.insert(
+                qid.clone(),
+                json!({"type": "score", "instructions": instructions,
+                       "criteria": criteria}),
+            );
+            asked.push((unit_index, qid, None));
+        }
+    }
+    (questions, asked, next)
+}
+
+/// The input's `state` value: its text, its record, or null — `plan()`
+/// already proved exactly one content form per input.
+fn input_state(input: &classify::Input) -> Value {
+    match (&input.text, &input.record) {
+        (Some(text), None) => Value::String(text.clone()),
+        (None, Some(record)) => Value::Object(record.clone()),
+        _ => Value::Null,
+    }
+}
+
+/// The `systemone` envelope one input's forward carries, and the map
+/// from question id back to (unit, label) the answers are read
+/// through.
+fn forward_envelope(
+    request: &ClassifyRequest,
+    plan: &classify::Plan,
+    input: &classify::Input,
+    model: &str,
+) -> (Value, Vec<(usize, String, Option<String>)>) {
+    let mut questions = serde_json::Map::new();
+    let mut asked = Vec::new();
+    let mut next = 0_u64;
+    for (unit_index, unit) in plan.units.iter().enumerate() {
+        let (unit_questions, unit_asked, after) =
+            unit_questions(request, unit, unit_index, next);
+        questions.extend(unit_questions);
+        asked.extend(unit_asked);
+        next = after;
+    }
+    (
+        json!({"model": model, "state": input_state(input), "questions": questions}),
+        asked,
+    )
+}
+
 /// The questions one input's forward asks, and the map from question
 /// id back to (unit, label) the answers are read through.
 fn forward_body(
@@ -1759,96 +2846,29 @@ fn forward_body(
     input: &classify::Input,
     model: &str,
 ) -> (Bytes, Vec<(usize, String, Option<String>)>) {
-    let mut questions = serde_json::Map::new();
-    let mut asked = Vec::new();
-    let mut next = 0_u64;
-    for (unit_index, unit) in plan.units.iter().enumerate() {
-        match unit.mode {
-            Mode::SingleLabel => {
-                let qid = format!("q{next}");
-                next += 1;
-                let mut criteria = serde_json::Map::new();
-                for label in &unit.labels {
-                    criteria.insert(
-                        label.id.clone(),
-                        label
-                            .description
-                            .clone()
-                            .map(Value::String)
-                            .unwrap_or(Value::Null),
-                    );
-                }
-                let instructions = instructions_for(
-                    request,
-                    unit,
-                    "Pick exactly one of the options that best describes the input.",
-                );
-                questions.insert(
-                    qid.clone(),
-                    json!({"type": "choice", "instructions": instructions,
-                           "criteria": criteria}),
-                );
-                asked.push((unit_index, qid, None));
-            }
-            Mode::MultiLabel | Mode::Binary => {
-                for label in &unit.labels {
-                    let qid = format!("q{next}");
-                    next += 1;
-                    let framing = match &label.description {
-                        Some(description) => format!(
-                            "Decide whether the label `{}` applies to the input. \
-                             The label means: {description}",
-                            label.id
-                        ),
-                        None => format!(
-                            "Decide whether the label `{}` applies to the input.",
-                            label.id
-                        ),
-                    };
-                    let instructions = instructions_for(request, unit, &framing);
-                    questions.insert(
-                        qid.clone(),
-                        json!({"type": "noul", "instructions": instructions}),
-                    );
-                    asked.push((unit_index, qid, Some(label.id.clone())));
-                }
-            }
-            Mode::Score => {
-                let qid = format!("q{next}");
-                next += 1;
-                let criteria: Vec<Value> = unit
-                    .levels
-                    .iter()
-                    .map(|level| Value::String(level.clone()))
-                    .collect();
-                let instructions = instructions_for(
-                    request,
-                    unit,
-                    "Place the input on the rubric's ordered levels; level 0 is the \
-                     first criterion.",
-                );
-                questions.insert(
-                    qid.clone(),
-                    json!({"type": "score", "instructions": instructions,
-                           "criteria": criteria}),
-                );
-                asked.push((unit_index, qid, None));
-            }
-        }
-    }
-    let state = match (&input.text, &input.record) {
-        (Some(text), None) => Value::String(text.clone()),
-        (None, Some(record)) => Value::Object(record.clone()),
-        // plan() already proved exactly one content form per input.
-        _ => Value::Null,
-    };
-    let body = serde_json::to_vec(&json!({
-        "model": model,
-        "state": state,
-        "questions": questions,
-    }))
-    .unwrap_or_default();
-    (Bytes::from(body), asked)
+    let (envelope, asked) = forward_envelope(request, plan, input, model);
+    (
+        Bytes::from(serde_json::to_vec(&envelope).unwrap_or_default()),
+        asked,
+    )
+}
+
+/// The `systemone` envelope a review forward carries for one unit of
+/// one input — the same state and the same questions the primary
+/// asked, nothing more: a second model's independent read, never the
+/// first model's answer handed back for confirmation.
+fn unit_forward_envelope(
+    request: &ClassifyRequest,
+    plan: &classify::Plan,
+    input: &classify::Input,
+    unit_index: usize,
+    model: &str,
+) -> (Value, Vec<(usize, String, Option<String>)>) {
+    let (questions, asked, _) = unit_questions(request, &plan.units[unit_index], unit_index, 0);
+    (
+        json!({"model": model, "state": input_state(input), "questions": questions}),
+        asked,
+    )
 }
 
 /// The instructions one question carries: the request's own, the

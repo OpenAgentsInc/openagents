@@ -342,6 +342,202 @@ pub struct Policy {
     pub name: String,
     /// The selection rules, per mode.
     pub select: Select,
+    /// The opt-in review and fallback policy. Absent means strict
+    /// model-pinned operation: the bound door's answers are the call's
+    /// answers, and no second backend ever sees the inputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<Review>,
+}
+
+/// The schema tag a review-and-fallback policy document carries.
+pub const REVIEW_SCHEMA: &str = "openagents.classify-review.v1";
+
+/// Which units a review pass re-judges.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReviewTrigger {
+    /// Units a declared `uncertain_below` cut flagged — nothing
+    /// triggers when no rule declares a cut.
+    Uncertain,
+    /// Units whose selection resolved to the no-match outcome.
+    NoMatch,
+    /// Every unit the primary forward produced a result for, answered
+    /// or not — the reviewer's independent second read of everything.
+    Always,
+}
+
+/// What a unit reports when a triggered review does not answer.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReviewFailure {
+    /// The primary's output stands as the final selection; the failed
+    /// review stays recorded on the unit.
+    KeepOriginal,
+    /// The review governs: an unanswered review leaves the unit with
+    /// the review's own outcome and no selection — the caller declared
+    /// the primary's answer is not to be trusted unconfirmed.
+    Strict,
+}
+
+/// The failure class a fallback entry covers. The classes are distinct
+/// causes, not interchangeable retries: a transport failure means the
+/// door never produced a decided answer, a capacity failure means the
+/// call's own bounds stopped the dispatch, and a refusal is the door's
+/// typed semantic answer — which never falls back by default.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FallbackCause {
+    /// The forward never produced a decided answer: a dead door, a
+    /// 5xx, a deadline, or an unreadable response.
+    Transport,
+    /// The item was never dispatched: it waited out a bound or the
+    /// call's deadline.
+    Capacity,
+    /// The door's typed 4xx refusal. An entry covering `refused` must
+    /// also name the refusal codes it may carry — a semantic refusal
+    /// is an answer, and bypassing it is a declared decision, never a
+    /// default.
+    Refused,
+}
+
+impl FallbackCause {
+    /// The cause's wire name.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Transport => "transport",
+            Self::Capacity => "capacity",
+            Self::Refused => "refused",
+        }
+    }
+}
+
+/// One fallback destination: the failure class it covers and the door
+/// the item retries through, authorized and priced like the primary.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fallback {
+    /// The failure class this entry covers — the first entry matching
+    /// an item's cause wins; a cause with no entry never falls back.
+    pub on: FallbackCause,
+    /// The door the item retries through — a bound door name, admitted
+    /// under the caller's own authorization like `model`.
+    pub model: String,
+    /// For `refused` entries: the exact refusal codes this entry may
+    /// retry elsewhere. Required and nonempty there — a semantic
+    /// refusal does not fall back by default — and refused on every
+    /// other cause.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codes: Option<Vec<String>>,
+}
+
+/// The opt-in review and fallback policy: which door re-judges which
+/// units, what an unanswered review means, which declared causes may
+/// retry through which other doors, and the bounds the whole secondary
+/// phase runs inside. Every field is declared — nothing activates from
+/// a missing field, and nothing here makes the primary's output go
+/// away.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Review {
+    /// The review schema tag — `openagents.classify-review.v1`.
+    pub v: String,
+    /// The door review forwards dispatch to — a bound door name,
+    /// authorized under the caller's own credentials like `model`.
+    pub reviewer: String,
+    /// Which units the review pass re-judges.
+    pub trigger: ReviewTrigger,
+    /// What a unit reports when its triggered review does not answer.
+    pub on_failure: ReviewFailure,
+    /// The most units one call's review pass may dispatch.
+    pub max_items: u64,
+    /// The most backend dispatches — review and fallback together —
+    /// one call may spend past its primary forwards.
+    pub max_attempts: u64,
+    /// The review phase's own wall-clock bound in milliseconds,
+    /// measured from the primary fan-out's completion and never beyond
+    /// the call's own deadline.
+    pub latency_ms: u64,
+    /// The most worst-case spend — the sum of the doors' quoted maximum
+    /// reservations — the phase's monetary holds may take, in the
+    /// account's millionths. Inert when the gateway runs no monetary
+    /// admission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_spend: Option<u64>,
+    /// The fallback entries, first match per cause winning.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallback: Vec<Fallback>,
+}
+
+impl Review {
+    /// The checks the review policy's own values pass: a declared
+    /// bound admits at least one, and a `refused` fallback names the
+    /// codes it may carry — semantic refusals never fall back by
+    /// default.
+    fn check(&self) -> Result<(), Refusal> {
+        if self.v != REVIEW_SCHEMA {
+            return Err(Refusal::InvalidRequest(format!(
+                "the review policy's `v` is `{}`, not `{REVIEW_SCHEMA}`",
+                self.v
+            )));
+        }
+        if self.reviewer.trim().is_empty() {
+            return Err(Refusal::InvalidRequest(
+                "the review policy's `reviewer` is empty".to_string(),
+            ));
+        }
+        for (field, value) in [
+            ("max_items", self.max_items),
+            ("max_attempts", self.max_attempts),
+            ("latency_ms", self.latency_ms),
+        ] {
+            if value == 0 {
+                return Err(Refusal::InvalidRequest(format!(
+                    "the review policy's `{field}` of 0 admits no work"
+                )));
+            }
+        }
+        if self.max_spend == Some(0) {
+            return Err(Refusal::InvalidRequest(
+                "the review policy's `max_spend` of 0 reserves no spend".to_string(),
+            ));
+        }
+        let mut covered = HashSet::new();
+        for entry in &self.fallback {
+            if entry.model.trim().is_empty() {
+                return Err(Refusal::InvalidRequest(
+                    "a fallback's `model` is empty".to_string(),
+                ));
+            }
+            match entry.on {
+                FallbackCause::Refused => match &entry.codes {
+                    Some(codes)
+                        if !codes.is_empty() && codes.iter().all(|code| !code.is_empty()) => {}
+                    _ => {
+                        return Err(Refusal::InvalidRequest(
+                            "a `refused` fallback must name the refusal `codes` it may \
+                             carry — a semantic refusal never falls back by default"
+                                .to_string(),
+                        ));
+                    }
+                },
+                _ => {
+                    if entry.codes.is_some() {
+                        return Err(Refusal::InvalidRequest(
+                            "only a `refused` fallback carries `codes`".to_string(),
+                        ));
+                    }
+                }
+            }
+            if !covered.insert(entry.on) {
+                return Err(Refusal::InvalidRequest(format!(
+                    "the review policy declares `on: {}` twice",
+                    entry.on.name()
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// The limits the selected backend publishes, checked against the
@@ -487,6 +683,9 @@ impl Policy {
                     "the policy's `top_n` of 0 ranks no inputs".to_string(),
                 ));
             }
+        }
+        if let Some(review) = &self.review {
+            review.check()?;
         }
         Ok(())
     }
