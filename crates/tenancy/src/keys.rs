@@ -13,7 +13,7 @@
 //! Rotation binds a new key to the same tenant — a rotated tenant's quota
 //! and doors are untouched, because the tenant record never moved.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -39,13 +39,66 @@ pub struct Key {
     pub tenant: String,
     /// SHA-256 of the secret, hex.
     pub digest: String,
-    /// `active` or `revoked`.
+    /// `active`, `paused`, or `revoked`.
     pub status: Status,
     /// When the key was issued, as RFC 3339 in UTC.
     pub created: String,
     /// The key id this one replaced, when it is a rotation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotated_from: Option<String>,
+    /// The operator's name for the key — `default` when never named. A
+    /// name is a label for the record, not part of the credential.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// What the key may reach — the doors and actions it was scoped to
+    /// at issue. `None` is an unscoped key, which is what every key was
+    /// before scopes existed; a scoped key may do only what it names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scopes: Option<Scopes>,
+    /// The key id this one was copied from, when it is a copy. A copy
+    /// is a fresh credential carrying the source's name and scopes, so
+    /// the lineage stays auditable like a rotation's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copied_from: Option<String>,
+}
+
+/// What a scoped key may do.
+///
+/// A scope is a narrowing, never a grant: a scoped key's reach is the
+/// intersection of what it names and what its tenant's registry binding
+/// already allows. A scope naming a door the tenant cannot reach does
+/// not open it.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Scopes {
+    /// The door names the key may call. `None` — or an absent field —
+    /// leaves the tenant's binding as the only bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub models: Option<BTreeSet<String>>,
+    /// The actions the key may take — `inference`, `models`, `balance`,
+    /// and whatever the service names next. `None` leaves every action
+    /// the tenant could take.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actions: Option<BTreeSet<String>>,
+}
+
+impl Scopes {
+    /// Whether the scope admits a door — absent or `None` admits what
+    /// the tenant's binding does.
+    #[must_use]
+    pub fn permits_model(&self, door: &str) -> bool {
+        self.models
+            .as_ref()
+            .is_none_or(|models| models.contains(door))
+    }
+
+    /// Whether the scope admits an action — same rule.
+    #[must_use]
+    pub fn permits_action(&self, action: &str) -> bool {
+        self.actions
+            .as_ref()
+            .is_none_or(|actions| actions.contains(action))
+    }
 }
 
 /// Whether a key stands.
@@ -54,6 +107,11 @@ pub struct Key {
 pub enum Status {
     /// Authenticates.
     Active,
+    /// Held: refuses for now, resumes on request. A pause is an
+    /// operator's switch, not an end — unlike a revocation it comes
+    /// back, and the record keeps its identity so what it did while
+    /// active stays attributable.
+    Paused,
     /// Refused on sight.
     Revoked,
 }
@@ -77,6 +135,10 @@ pub struct Authenticated {
     /// The key that authenticated — per-key accounting, revocation, and
     /// rotation all need the id, not just the tenant.
     pub key_id: String,
+    /// What the key was scoped to, when it was scoped. The caller checks
+    /// the door and action it is about to take against these; an
+    /// unscoped key passes `None` and the tenant's binding bounds it.
+    pub scopes: Option<Scopes>,
 }
 
 /// Why a presented credential was refused.
@@ -88,6 +150,8 @@ pub enum AuthRefusal {
     Malformed,
     /// The id names no key the store holds.
     Unknown(String),
+    /// The key exists and is paused — a held key, not a dead one.
+    Paused(String),
     /// The key exists and is revoked.
     Revoked(String),
     /// The secret does not match the stored digest.
@@ -105,6 +169,7 @@ impl std::fmt::Display for AuthRefusal {
                 write!(f, "the credential is not an `{PREFIX}_<id>.<secret>` key")
             }
             Self::Unknown(id) => write!(f, "key `{id}` is not one this store issued"),
+            Self::Paused(id) => write!(f, "key `{id}` is paused"),
             Self::Revoked(id) => write!(f, "key `{id}` is revoked"),
             Self::WrongSecret(id) => {
                 write!(f, "key `{id}`'s secret does not match")
@@ -227,6 +292,20 @@ fn save(dir: &Path, store: &KeyStore) -> Result<(), KeyTrouble> {
 
 /// Issue a key for a tenant the registry binds.
 pub fn issue(dir: &Path, manifest: &Manifest, tenant: &str) -> Result<Issued, KeyTrouble> {
+    issue_scoped(dir, manifest, tenant, None, None)
+}
+
+/// Issue a named, optionally scoped key for a tenant the registry
+/// binds. The secret crosses this boundary exactly once — the `Issued`
+/// token is the only copy that ever exists, which is the display rule:
+/// show it now or lose it, the store cannot produce it again.
+pub fn issue_scoped(
+    dir: &Path,
+    manifest: &Manifest,
+    tenant: &str,
+    name: Option<&str>,
+    scopes: Option<Scopes>,
+) -> Result<Issued, KeyTrouble> {
     if !manifest.tenants.contains_key(tenant) {
         return Err(KeyTrouble::UnknownTenant(tenant.to_string()));
     }
@@ -240,6 +319,9 @@ pub fn issue(dir: &Path, manifest: &Manifest, tenant: &str) -> Result<Issued, Ke
         status: Status::Active,
         created: crate::registry::now_utc(),
         rotated_from: None,
+        name: name.map(str::to_string),
+        scopes,
+        copied_from: None,
     };
     store.keys.insert(id.to_string(), key.clone());
     save(dir, &store)?;
@@ -247,6 +329,68 @@ pub fn issue(dir: &Path, manifest: &Manifest, tenant: &str) -> Result<Issued, Ke
         key,
         token: format!("{PREFIX}_{id}.{secret}"),
     })
+}
+
+/// Copy a key: a fresh credential under the same tenant, name, and
+/// scopes. A copy is how an operator hands a second holder the same
+/// reach without sharing a secret — the copy records `copied_from`, and
+/// revoking one never touches the other.
+pub fn copy(dir: &Path, key_id: &str) -> Result<Issued, KeyTrouble> {
+    let mut store = load(dir)?;
+    let source = store
+        .keys
+        .get(key_id)
+        .ok_or_else(|| KeyTrouble::UnknownKey(key_id.to_string()))?
+        .clone();
+    let id = &fresh()?[..16];
+    let secret = fresh()?;
+    let key = Key {
+        id: id.to_string(),
+        tenant: source.tenant.clone(),
+        digest: digest_secret(&secret),
+        status: Status::Active,
+        created: crate::registry::now_utc(),
+        rotated_from: None,
+        name: source.name.clone(),
+        scopes: source.scopes.clone(),
+        copied_from: Some(source.id.clone()),
+    };
+    store.keys.insert(id.to_string(), key.clone());
+    save(dir, &store)?;
+    Ok(Issued {
+        key,
+        token: format!("{PREFIX}_{id}.{secret}"),
+    })
+}
+
+/// Pause a key: it refuses until resumed. A pause holds a key without
+/// ending it — the record, its attribution, and its scopes all survive,
+/// which is what separates a held key from a revoked one.
+pub fn pause(dir: &Path, key_id: &str) -> Result<(), KeyTrouble> {
+    let mut store = load(dir)?;
+    let key = store
+        .keys
+        .get_mut(key_id)
+        .ok_or_else(|| KeyTrouble::UnknownKey(key_id.to_string()))?;
+    key.status = Status::Paused;
+    save(dir, &store)
+}
+
+/// Resume a paused key. A revoked key does not come back — `resume` on
+/// one refuses rather than resurrecting it.
+pub fn resume(dir: &Path, key_id: &str) -> Result<(), KeyTrouble> {
+    let mut store = load(dir)?;
+    let key = store
+        .keys
+        .get_mut(key_id)
+        .ok_or_else(|| KeyTrouble::UnknownKey(key_id.to_string()))?;
+    if key.status == Status::Revoked {
+        return Err(KeyTrouble::Invalid(format!(
+            "key `{key_id}` is revoked — a revoked key never resumes"
+        )));
+    }
+    key.status = Status::Active;
+    save(dir, &store)
 }
 
 /// Rotate a key: issue a fresh one for the same tenant and revoke the old.
@@ -270,6 +414,9 @@ pub fn rotate(dir: &Path, key_id: &str) -> Result<Issued, KeyTrouble> {
         status: Status::Active,
         created: crate::registry::now_utc(),
         rotated_from: Some(old.id.clone()),
+        name: old.name.clone(),
+        scopes: old.scopes.clone(),
+        copied_from: None,
     };
     store.keys.insert(id.to_string(), key.clone());
     store.keys.get_mut(key_id).unwrap().status = Status::Revoked;
@@ -309,8 +456,10 @@ pub fn authenticate(
         .keys
         .get(&id)
         .ok_or_else(|| AuthRefusal::Unknown(id.clone()))?;
-    if key.status == Status::Revoked {
-        return Err(AuthRefusal::Revoked(id));
+    match key.status {
+        Status::Paused => return Err(AuthRefusal::Paused(id)),
+        Status::Revoked => return Err(AuthRefusal::Revoked(id)),
+        Status::Active => {}
     }
     if key.digest != digest_secret(&secret) {
         return Err(AuthRefusal::WrongSecret(id));
@@ -324,6 +473,7 @@ pub fn authenticate(
     Ok(Authenticated {
         tenant: key.tenant.clone(),
         key_id: key.id.clone(),
+        scopes: key.scopes.clone(),
     })
 }
 
@@ -495,6 +645,107 @@ mod tests {
                 tenant: "acme".to_string(),
                 key: issued.key.id.clone()
             })
+        );
+    }
+
+    #[test]
+    fn a_named_scoped_key_round_trips_its_name_and_scopes() {
+        let (dir, manifest) = installed();
+        let scopes = Scopes {
+            models: Some(BTreeSet::from(["jev-latest".to_string()])),
+            actions: Some(BTreeSet::from(["inference".to_string()])),
+        };
+        let issued = issue_scoped(
+            dir.path(),
+            &manifest,
+            "acme",
+            Some("ci"),
+            Some(scopes.clone()),
+        )
+        .unwrap();
+        assert_eq!(issued.key.name.as_deref(), Some("ci"));
+        let authenticated = authenticate(dir.path(), &manifest, &issued.token).unwrap();
+        assert_eq!(authenticated.scopes, Some(scopes));
+    }
+
+    #[test]
+    fn a_scope_narrows_it_never_grants() {
+        let scopes = Scopes {
+            models: Some(BTreeSet::from(["jev-latest".to_string()])),
+            actions: Some(BTreeSet::from(["inference".to_string()])),
+        };
+        assert!(scopes.permits_model("jev-latest"));
+        assert!(!scopes.permits_model("kev-latest"));
+        assert!(scopes.permits_action("inference"));
+        assert!(!scopes.permits_action("balance"));
+        // An absent scope admits what the tenant's binding does.
+        let open = Scopes::default();
+        assert!(open.permits_model("anything") && open.permits_action("anything"));
+    }
+
+    #[test]
+    fn a_paused_key_refuses_and_resumes_a_revoked_one_never_does() {
+        let (dir, manifest) = installed();
+        let issued = issue(dir.path(), &manifest, "acme").unwrap();
+        pause(dir.path(), &issued.key.id).unwrap();
+        assert_eq!(
+            authenticate(dir.path(), &manifest, &issued.token),
+            Err(AuthRefusal::Paused(issued.key.id.clone()))
+        );
+        resume(dir.path(), &issued.key.id).unwrap();
+        assert!(authenticate(dir.path(), &manifest, &issued.token).is_ok());
+        revoke(dir.path(), &issued.key.id).unwrap();
+        assert!(matches!(
+            resume(dir.path(), &issued.key.id),
+            Err(KeyTrouble::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn a_copy_keeps_the_reach_and_loses_the_secret() {
+        let (dir, manifest) = installed();
+        let scopes = Scopes {
+            models: Some(BTreeSet::from(["jev-latest".to_string()])),
+            actions: None,
+        };
+        let source = issue_scoped(
+            dir.path(),
+            &manifest,
+            "acme",
+            Some("ci"),
+            Some(scopes.clone()),
+        )
+        .unwrap();
+        let copied = copy(dir.path(), &source.key.id).unwrap();
+        assert_ne!(copied.key.id, source.key.id);
+        assert_eq!(copied.key.name.as_deref(), Some("ci"));
+        assert_eq!(copied.key.scopes, Some(scopes));
+        assert_eq!(
+            copied.key.copied_from.as_deref(),
+            Some(source.key.id.as_str())
+        );
+        // The copy's token authenticates on its own — the source's
+        // secret is not shared between them.
+        assert!(authenticate(dir.path(), &manifest, &copied.token).is_ok());
+        revoke(dir.path(), &source.key.id).unwrap();
+        assert!(authenticate(dir.path(), &manifest, &copied.token).is_ok());
+    }
+
+    #[test]
+    fn a_store_from_before_names_and_scopes_still_reads() {
+        let (dir, manifest) = installed();
+        let issued = issue(dir.path(), &manifest, "acme").unwrap();
+        let text = std::fs::read_to_string(dir.path().join(KEYS)).unwrap();
+        // Records from before `name`/`scopes`/`copied_from` existed are
+        // the same records minus those fields — the serde defaults are
+        // what keep a deployed store readable after the upgrade.
+        assert!(!text.contains("\"name\""));
+        assert!(!text.contains("\"scopes\""));
+        assert_eq!(
+            authenticate(dir.path(), &manifest, &issued.token)
+                .unwrap()
+                .scopes,
+            None
         );
     }
 }

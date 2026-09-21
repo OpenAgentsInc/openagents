@@ -82,6 +82,7 @@ fn main() {
                     record.tenant,
                     match record.status {
                         keys::Status::Active => "active",
+                        keys::Status::Paused => "paused",
                         keys::Status::Revoked => "revoked",
                     },
                     record.created
