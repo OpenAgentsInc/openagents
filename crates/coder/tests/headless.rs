@@ -288,6 +288,9 @@ fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
                 Err(error) => panic!("{error}"),
             }
         };
+        // Accepted sockets can inherit the listener's nonblocking mode.
+        // Use the bounded blocking read below on every supported host.
+        socket.set_nonblocking(false).unwrap();
         socket
             .set_read_timeout(Some(Duration::from_secs(5)))
             .unwrap();
