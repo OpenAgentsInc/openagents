@@ -186,6 +186,18 @@ pub fn handles(name: &str) -> bool {
 /// Refuses unknown fields, stale or mismatched cursors, invalid bounds, and
 /// missing documents. Document IDs never resolve to filesystem paths or URLs.
 pub fn call(name: &str, arguments: Value) -> Result<Value, Error> {
+    let allowed: &[&str] = match name {
+        "list_docs" | "get_examples" => &["cursor", "limit"],
+        "search_docs" => &["query", "cursor", "limit"],
+        "read_doc" => &["id", "cursor", "max_bytes"],
+        _ => return Err(invalid("unknown documentation tool")),
+    };
+    let object = arguments
+        .as_object()
+        .ok_or_else(|| invalid("documentation arguments must be an object"))?;
+    if object.keys().any(|key| !allowed.contains(&key.as_str())) {
+        return Err(invalid("this tool does not accept the supplied argument"));
+    }
     let args: Args = serde_json::from_value(arguments)
         .map_err(|_| invalid("invalid documentation arguments"))?;
     if name == "read_doc" {
@@ -371,6 +383,9 @@ mod tests {
             ("search_docs", json!({"query":""})),
             ("search_docs", json!({"query":"x".repeat(257)})),
             ("list_docs", json!({"api_key":"forbidden"})),
+            ("list_docs", json!({"id":null})),
+            ("get_examples", json!({"query":null})),
+            ("read_doc", json!({"id":"caller","limit":null})),
             (
                 "read_doc",
                 json!({"id":"caller","cursor":cursor("read_doc:caller",usize::MAX)}),
