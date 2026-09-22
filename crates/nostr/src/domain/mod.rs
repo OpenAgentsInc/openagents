@@ -57,8 +57,10 @@ mod replacement;
 mod report;
 mod repost;
 mod snippet;
+mod status;
 mod storage;
 mod subject;
+mod thread;
 mod timestamp;
 mod torrent;
 mod vending;
@@ -214,11 +216,13 @@ pub use replacement::{
 pub use report::{REPORT_TYPES, Report, ReportTarget, open_report};
 pub use repost::{Repost, open_repost};
 pub use snippet::{Snippet, SnippetLicense, SnippetRepo, open_snippet};
+pub use status::{StatusType, UserStatus, is_live, open_user_status};
 pub use storage::{
     FileServers, ProcessingStatus, StorageDocument, StoragePlan, UploadResponse, UploadedFile,
     open_file_servers, parse_processing_status, parse_storage_document, parse_upload_response,
 };
 pub use subject::{SUBJECT_BOUND, reply_subject, subject, subject_fits};
+pub use thread::{ForumThread, is_thread_reply, open_thread};
 pub use timestamp::TimestampPolicy;
 pub use torrent::{
     CatalogId, Torrent, TorrentComment, TorrentFile, magnet_uri, open_torrent, open_torrent_comment,

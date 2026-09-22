@@ -998,6 +998,32 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "38.md",
+        domain: "kind 30315 is an addressable live status — d names the type (general, music, or another), content the text, r/p/e/a an optional link, expiration the end; empty content clears it",
+        client: "open_user_status reads the typed status and is_live applies the clear-and-expiry rule",
+        server: "admission requires a non-empty d and validates any link tag for its kind; NIP-01 expiry drops a lapsed status",
+        paths: "crates/nostr/src/domain/status.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; NIP-38 is a draft and the kind is not added to the NIP-11 list",
+        fixture: "a music status with a spotify link and expiry, a general status, a custom type, and a cleared one",
+        acceptance: "domain::status::tests::a_status_names_its_type_and_may_link_and_expire",
+        limitations: "status types beyond general and music pass through as Other; the link's reachability is not checked",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
+    Evidence {
+        file: "7D.md",
+        domain: "kind 11 is a forum thread that SHOULD carry a title; replies are kind 1111 comments rooted at the thread — never nested",
+        client: "open_thread reads the title and content; is_thread_reply checks a comment's root E scope and K=11 hint",
+        server: "admission validates a title when present; the NIP-22 comment admission already covers kind 1111",
+        paths: "crates/nostr/src/domain/thread.rs; crates/nostr/src/domain/comment.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; NIP-7D is a draft and the kind is not added to the NIP-11 list",
+        fixture: "a titled thread, its rooted reply, a comment rooted elsewhere, and a kind 1 that is never a reply",
+        acceptance: "domain::thread::tests::a_thread_carries_its_title_and_a_reply_points_at_the_root",
+        limitations: "title is a SHOULD and stays optional; a reply's target event is not fetched, so an E id is trusted as naming a kind 11",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

@@ -1,5 +1,4 @@
 [
-    Shape { file: "38.md", kind: 30315, tag: "d" },
     Shape { file: "13.md", kind: 1, tag: "nonce" },
     Shape { file: "28.md", kind: 40, tag: "p" },
     Shape { file: "48.md", kind: 1, tag: "proxy" },
@@ -11,5 +10,4 @@
     Shape { file: "34.md", kind: 30617, tag: "d" },
     Shape { file: "51.md", kind: 30000, tag: "d" },
     Shape { file: "71.md", kind: 21, tag: "imeta" },
-    Shape { file: "7D.md", kind: 11, tag: "title" },
 ]

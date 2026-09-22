@@ -582,6 +582,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 24 {
         super::public_message::open_public_message(event)?;
     }
+    if event.kind == 30_315 {
+        super::status::open_user_status(event)?;
+    }
+    if event.kind == 11 {
+        super::thread::open_thread(event)?;
+    }
     if event.kind == 9 {
         super::chat::open_chat(event)?;
     }

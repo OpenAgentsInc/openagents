@@ -833,6 +833,22 @@ requires. NIP-08 is unrecommended — NIP-27 `nostr:` links supersede
 it — so it stays off the NIP-11 list. Acceptance is
 `domain::mentions::tests::an_index_mention_resolves_to_its_e_or_p_tag_only`.
 
+NIP-38 is `configured-and-proven`. `open_user_status` reads a kind
+`30315` addressable event: the `d` tag names `general`, `music`, or a
+client-defined type; `r`, `p`, `e`, and `a` tags link a URL, profile,
+note, or address; `expiration` ends it; empty content clears it.
+`is_live` applies that rule against a timestamp. Admission requires
+the `d` identifier and validates link values for their kind. NIP-38 is
+a draft, so the kind stays off the NIP-11 list. Acceptance is
+`domain::status::tests::a_status_names_its_type_and_may_link_and_expire`.
+
+NIP-7D is `configured-and-proven`. `open_thread` reads a kind `11`
+thread and its recommended `title`; `is_thread_reply` accepts only a
+kind `1111` comment whose root `E` scope names the thread and whose
+`K` hint is `11`, so reply hierarchies never nest. NIP-7D is a draft,
+so the kind stays off the NIP-11 list. Acceptance is
+`domain::thread::tests::a_thread_carries_its_title_and_a_reply_points_at_the_root`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event
