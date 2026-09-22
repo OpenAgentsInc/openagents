@@ -624,6 +624,26 @@ or swap a token. The pinned NIP-65 text does not define URL
 normalization, so a mint matches only as written. Acceptance is
 `domain::nutzap::tests::a_nutzap_uses_the_recipients_mint_and_lock_key`.
 
+NIP-66 is `configured-and-proven`. Kind `30166` is an addressable
+observation of one relay. The `d` tag is a normalized `ws://` or
+`wss://` URL, or a 32-byte hex pubkey when the relay has no URL.
+`normalize_relay_url` lowercases the scheme and host, drops the
+default port, and uses `/` when the path is empty. The stored `d` tag
+must already be in that form. Optional tags report the network, the
+relay type, supported NIPs, requirements, topics, accepted and
+rejected kinds, a geohash, and round-trip times. Non-empty content is
+a JSON object, the monitor's copy of the NIP-11 document. Kind `10166`
+is a replaceable announcement. It names a frequency in seconds, the
+checks the monitor runs, and optional timeouts. The pinned example
+puts the check name before the milliseconds. The prose puts the
+milliseconds first. Both forms are accepted. A newer observation with
+the same `d` tag replaces the older one. A newer announcement replaces
+the older one. NIP-66 is a draft, so these kinds are not added to the
+NIP-11 list. The relay does not open a socket, fetch a NIP-11
+document, or measure round-trip time. Percent-encoded relay URLs are
+refused. Acceptance is
+`domain::monitor::tests::a_relay_observation_replaces_and_a_monitor_lists_its_checks`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

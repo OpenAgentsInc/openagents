@@ -33,6 +33,7 @@ mod label;
 mod listing;
 mod live;
 mod market;
+mod monitor;
 mod note;
 mod nsite;
 mod nutzap;
@@ -144,6 +145,10 @@ pub use market::{
     PaymentRequest, Product, ShippingZone, Stall, auction_end, bid_confirmation_matches,
     open_auction, open_bid, open_bid_confirmation, open_checkout, open_marketplace, open_product,
     open_stall, product_shipping_extra, shipping_cost, shipping_zone, validate_marketplace,
+};
+pub use monitor::{
+    MonitorAnnouncement, MonitorTimeout, RelayDiscovery, RelayNetwork, RelayRequirement,
+    normalize_relay_url, open_monitor_announcement, open_relay_discovery,
 };
 pub use note::{NoteQuote, NoteRef, TextNote, is_direct_reply, open_note, reply_participants};
 pub use nsite::{
