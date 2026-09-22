@@ -95,7 +95,10 @@ version negotiation, `notifications/initialized`, `ping`, `tools/list`, and
 `tools/call`. It supports protocol versions `2025-11-25` and `2025-06-18`, preferring
 `2025-11-25` when the requested version is unsupported. Initialization requires
 client capabilities and client name/version. It advertises only the tools
-capability; it does not offer resources, prompts, sampling, tasks, or HTTP MCP.
+capability; it does not offer resources, prompts, sampling, or tasks. The same
+tool set also serves over Streamable HTTP through `oak-mcp-http`; the
+[MCP server guide](mcp-server.md) covers both transports, sessions, and
+per-request credential forwarding.
 
 The tools are:
 
@@ -103,6 +106,11 @@ The tools are:
 - `classify`: `request` is the complete classification envelope; optional
   `request_id` supplies an idempotency key. Endpoint, credentials, and workspace
   are operator configuration and are refused as tool arguments.
+- `classify_texts`, `classify_dimensions`, `classify_multi_label`,
+  `count_labels`, `review_uncertain`, and `decide`: the bounded inference
+  tools — label sets and dimensions as arguments rather than raw envelopes,
+  `decide` reaching `/v1/systemone` directly. The
+  [MCP server guide](mcp-server.md) has the full table and bounds.
 - `list_docs`, `read_doc`, `search_docs`, and `get_examples`: read the versioned
   public documentation bundled into the binary without resolving inference
   configuration or contacting a service. See the [documentation tools](mcp-documentation.md).

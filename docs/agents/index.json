@@ -66,6 +66,7 @@
   "related": [
     {"path": "docs/decision-models/guides/caller.md", "content": "The end-to-end caller's guide: credentials, asking, batching, exit codes, retries, and receipts."},
     {"path": "docs/decision-models/guides/classification-callers.md", "content": "The oak classify and oak-mcp caller contract."},
+    {"path": "docs/decision-models/guides/mcp-server.md", "content": "The MCP server over stdio and Streamable HTTP: sessions, protocol versions, per-request bearer forwarding, the server card, and client configurations."},
     {"path": "docs/decision-models/service/gateway.md", "content": "The implemented admission path, bounds, refusal-code table, and retention rules."},
     {"path": "docs/decision-models/service/monetary-accounting.md", "content": "Optional monetary admission, settlement rules, and the conditional balance route."},
     {"path": "docs/decision-models/api/decision-api.md", "content": "The target product contract — specifies surfaces that are not implemented; the catalog's unimplemented list names them."},

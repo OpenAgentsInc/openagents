@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 
 ALL_SLUGS="preflight gate-tooling artifacts delegation backup fmt clippy clippy-features tests tests-features rust-1.95 rust-1.94 deps postgres metal-clippy metal-tests soak"
 CARGO_SCOPED="clippy clippy-features tests tests-features rust-1.95"
-features='kev/serve,lev/serve,gym/tui,jev/blocking'
+features='kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http'
 
 postgres=1
 metal=0

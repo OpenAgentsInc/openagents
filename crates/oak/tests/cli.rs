@@ -961,7 +961,7 @@ fn documentation_tools_work_without_inference_configuration() {
         let replies = rows(&output);
         assert_eq!(replies[0]["result"]["protocolVersion"], version);
         let tools = replies[1]["result"]["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 12);
         let classify = tools
             .iter()
             .find(|tool| tool["name"] == "classify")
@@ -1030,7 +1030,7 @@ async fn classification_cli_and_mcp_preserve_all_gateway_fields() {
         let replies = rows(&output);
         assert_eq!(replies.len(), 3);
         assert_eq!(replies[0]["result"]["protocolVersion"], "2025-06-18");
-        assert_eq!(replies[1]["result"]["tools"].as_array().unwrap().len(), 6);
+        assert_eq!(replies[1]["result"]["tools"].as_array().unwrap().len(), 12);
         assert_eq!(replies[2]["result"]["structuredContent"], expected);
         let text: Value =
             serde_json::from_str(replies[2]["result"]["content"][0]["text"].as_str().unwrap())

@@ -1,9 +1,10 @@
 # MCP documentation tools
 
-`oak-mcp` serves four public documentation tools over its existing stdio
-transport. These tools do not read credentials, resolve inference configuration,
-or contact a network service. Inference tools retain their separate configured
-authentication. This implementation does not add Streamable HTTP or OAuth.
+`oak-mcp` serves four public documentation tools over both its stdio and
+Streamable HTTP transports. These tools do not read credentials, resolve
+inference configuration, or contact a network service. Inference tools retain
+their separate configured authentication. This implementation does not add
+OAuth.
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
@@ -18,8 +19,9 @@ SHA-256, byte length, and example flag. The corpus digest binds the ordered IDs,
 titles, paths, contents, and example flags. Source links use the repository's
 `main` branch and can change; hashes identify the exact bundled content.
 
-The corpus includes the caller, classification, gateway, admission, API, OpenAPI,
-and classification-schema documents, plus native and classification examples.
+The corpus includes the caller, classification, gateway, admission, API,
+OpenAPI, classification-schema, and MCP server documents, plus native and
+classification examples.
 It preserves each document's statements about implemented and planned behavior.
 Reading a specification does not establish deployment availability. Example
 model IDs and synthetic policy values require caller-specific configuration
@@ -55,7 +57,7 @@ without endpoint or key configuration, compare structured and text results,
 and confirm inference still fails without its configuration.
 
 The tools follow the MCP [tools contract](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
-Protocol fixture clients are not evidence of interoperability with two separate
-third-party agent applications. That integration, Streamable HTTP, and the
-remaining inference/review tools are tracked in
-[#9487](https://github.com/OpenAgentsInc/openagents/issues/9487).
+Protocol fixture clients are not evidence of interoperability with specific
+third-party agent applications; that evidence stays with the operators who
+deploy it. The Streamable HTTP transport and the inference tool set are
+covered in the [MCP server guide](mcp-server.md).

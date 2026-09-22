@@ -10,6 +10,8 @@
 //! `docs/decision-models/guides/classification-callers.md`.
 
 pub mod docs;
+#[cfg(feature = "mcp-http")]
+pub mod mcp_http;
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -88,6 +90,15 @@ pub const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
 /// The schema tag a classification envelope and report carry.
 pub const CLASSIFY_SCHEMA: &str = "openagents.classify.v1";
 
+/// The schema tag the decision policy a classify envelope carries.
+pub const CLASSIFY_POLICY_SCHEMA: &str = "openagents.classify-policy.v1";
+
+/// The schema tag a review-and-fallback policy document carries.
+pub const CLASSIFY_REVIEW_SCHEMA: &str = "openagents.classify-review.v1";
+
+/// The native decision route.
+pub const SYSTEMONE_PATH: &str = "/v1/systemone";
+
 /// The classification route.
 pub const CLASSIFY_PATH: &str = "/v1/classify";
 
@@ -149,6 +160,24 @@ impl Settings {
         workspace: Option<String>,
         config: Option<PathBuf>,
     ) -> Result<Self, String> {
+        Self::resolve_key(url, model, workspace, config, None)
+    }
+
+    /// The same resolution with a caller-supplied credential checked
+    /// first — an MCP client presenting its own `oak_` key works under
+    /// its own identity without touching the operator's configuration.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Settings::resolve`]; a missing `key` falls through to
+    /// the environment and config file as before.
+    pub fn resolve_key(
+        url: Option<String>,
+        model: Option<String>,
+        workspace: Option<String>,
+        config: Option<PathBuf>,
+        key: Option<String>,
+    ) -> Result<Self, String> {
         let file = load_config(config)?;
         let base_url = url
             .or_else(|| env("OPENAGENTS_BASE_URL"))
@@ -158,11 +187,14 @@ impl Settings {
                  `base_url` in the config file"
                     .to_string()
             })?;
-        let api_key = env("OPENAGENTS_API_KEY").or(file.api_key).ok_or_else(|| {
-            "no credential: set OPENAGENTS_API_KEY or name `api_key` in the config \
-             file — a key never goes on the command line"
-                .to_string()
-        })?;
+        let api_key = key
+            .or_else(|| env("OPENAGENTS_API_KEY"))
+            .or(file.api_key)
+            .ok_or_else(|| {
+                "no credential: present an `oak_` bearer key, set OPENAGENTS_API_KEY, or \
+             name `api_key` in the config file — a key never goes on the command line"
+                    .to_string()
+            })?;
         let model = model.or_else(|| env("OPENAGENTS_MODEL")).or(file.model);
         let workspace = workspace
             .or_else(|| env("OPENAGENTS_WORKSPACE"))
@@ -392,6 +424,26 @@ impl Transport {
         self.exchange(reqwest::Method::GET, MODELS_PATH, None, opts)
     }
 
+    /// `POST /v1/systemone`, sending the request bytes as received.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CallError`] when the call never produced a usable reply,
+    /// or when a `2xx` body does not carry a typed `answers` object.
+    pub fn post_systemone(&self, envelope: &[u8], opts: &CallOpts) -> Result<Reply, CallError> {
+        let reply = self.exchange(reqwest::Method::POST, SYSTEMONE_PATH, Some(envelope), opts)?;
+        if let Reply::Document { body, .. } = &reply
+            && (!body.get("answers").is_some_and(Value::is_object)
+                || !body.get("model").is_some_and(Value::is_string))
+        {
+            return Err(CallError {
+                code: "invalid_response",
+                message: "the service did not return a decision answer".into(),
+            });
+        }
+        Ok(reply)
+    }
+
     /// `POST /v1/classify`, sending the envelope bytes as received.
     ///
     /// # Errors
@@ -617,11 +669,12 @@ pub mod mcp {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use serde_json::{Value, json};
+    use serde_json::{Map, Value, json};
 
     use super::{
-        CLASSIFY_SCHEMA, CallOpts, MAX_ENVELOPE_BYTES, MAX_MCP_MESSAGE_BYTES, MAX_REQUEST_ID_CHARS,
-        Reply, Settings, Transport,
+        CLASSIFY_POLICY_SCHEMA, CLASSIFY_REVIEW_SCHEMA, CLASSIFY_SCHEMA, CallOpts,
+        MAX_ENVELOPE_BYTES, MAX_MCP_MESSAGE_BYTES, MAX_REQUEST_ID_CHARS, Reply, Settings,
+        Transport,
     };
 
     /// The protocol version this build reports when it cannot answer the
@@ -646,7 +699,7 @@ pub mod mcp {
 
     /// What `oak-mcp` was started with: the operator configuration the
     /// tool calls resolve against. No flag carries a credential.
-    #[derive(Default)]
+    #[derive(Clone, Default)]
     pub struct Options {
         /// `--url`: the service root override.
         pub url: Option<String>,
@@ -663,7 +716,7 @@ pub mod mcp {
     /// The lifecycle phase: `initialize`, then the `initialized`
     /// notification, then operation.
     #[derive(Clone, Copy, PartialEq)]
-    enum Phase {
+    pub(crate) enum Phase {
         /// Nothing negotiated yet — only `initialize` and `ping` answer.
         Start,
         /// `initialize` answered; waiting on `notifications/initialized`.
@@ -717,7 +770,7 @@ pub mod mcp {
                     continue;
                 }
             };
-            if let Some(response) = handle(&mut phase, options, &message)
+            if let Some(response) = handle(&mut phase, options, None, &message)
                 && !emit(&mut output, &response)
             {
                 return 0;
@@ -808,8 +861,15 @@ pub mod mcp {
     }
 
     /// Dispatch one parsed message. `None` means nothing answers — a
-    /// notification, or a response addressed to us.
-    fn handle(phase: &mut Phase, options: &Options, message: &Value) -> Option<Value> {
+    /// notification, or a response addressed to us. `credential` is a
+    /// caller-presented bearer key — the HTTP transport's `Authorization`
+    /// header — which inference tools prefer over operator configuration.
+    pub(crate) fn handle(
+        phase: &mut Phase,
+        options: &Options,
+        credential: Option<&str>,
+        message: &Value,
+    ) -> Option<Value> {
         let id = message.get("id").cloned();
         if id
             .as_ref()
@@ -860,7 +920,7 @@ pub mod mcp {
             "ping" => Some(result(&id, json!({}))),
             "tools/list" if *phase == Phase::Ready => Some(result(&id, tool_list())),
             "tools/call" if *phase == Phase::Ready => {
-                call_tool(options, &id, message.get("params"))
+                call_tool(options, credential, &id, message.get("params"))
             }
             "tools/list" | "tools/call" => Some(error(
                 id,
@@ -933,7 +993,7 @@ pub mod mcp {
 
     /// The tools this server serves. No schema accepts a credential
     /// or an endpoint: those stay in operator configuration.
-    fn tool_list() -> Value {
+    pub(crate) fn tool_list() -> Value {
         let mut list = json!({
             "tools": [
                 {
@@ -972,13 +1032,187 @@ pub mod mcp {
         let tools = list["tools"].as_array_mut().expect("tool list is an array");
         tools[0]["annotations"] = json!({"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true,"openWorldHint":true});
         tools[1]["annotations"] = json!({"readOnlyHint":false,"destructiveHint":false,"idempotentHint":false,"openWorldHint":true});
+        tools.extend(inference_tools());
         tools.extend(super::docs::tools());
         list
     }
 
+    /// The bounded inference tools: one schema per facade shape, all of
+    /// them building the same `openagents.classify.v1` envelope or the
+    /// native `POST /v1/systemone` request. None accepts a credential or
+    /// an endpoint — inference tools spend the presented or configured
+    /// identity, so every one is annotated as a call that can consume
+    /// quota or money without changing external content.
+    fn inference_tools() -> Vec<Value> {
+        let inference = json!({"readOnlyHint":false,"destructiveHint":false,"idempotentHint":false,"openWorldHint":true});
+        let texts = json!({
+            "type": "array", "minItems": 1, "maxItems": 1000,
+            "items": {"type": "string", "minLength": 1},
+            "description": "The input texts, in the order results preserve.",
+        });
+        let labels = json!({
+            "type": "array", "minItems": 1, "maxItems": 100,
+            "items": {"anyOf": [
+                {"type": "string", "minLength": 1},
+                {"type": "object", "properties": {"id": {"type": "string"}, "description": {"type": "string"}}, "required": ["id"], "additionalProperties": false},
+            ]},
+            "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+        });
+        let cut =
+            |what: &str| json!({"type": "number", "minimum": 0, "maximum": 1, "description": what});
+        let model = json!({"type": "string", "description": "The bound door name; absent falls back to the configured default model."});
+        let capacity = json!({"type": "string", "description": "The capacity lane the binding declares — `shared` unless the caller's lane differs.", "default": "shared"});
+        let request_id = json!({"type": "string", "maxLength": MAX_REQUEST_ID_CHARS, "description": "An idempotency key for the call; retries reuse it and bump the attempt."});
+        let instructions = json!({"type": "string", "maxLength": 16384, "description": "Instructions shared by every judgment in the request."});
+        let meta = |required: &[&str]| {
+            let mut properties = serde_json::Map::new();
+            properties.insert("model".into(), model.clone());
+            properties.insert("capacity".into(), capacity.clone());
+            properties.insert("request_id".into(), request_id.clone());
+            properties.insert("instructions".into(), instructions.clone());
+            json!({"type": "object", "properties": properties, "required": required, "additionalProperties": false})
+        };
+        let tool = |name: &str, title: &str, description: &str, schema: Value| json!({"name": name, "title": title, "description": description, "inputSchema": schema, "annotations": inference.clone()});
+        let mut single = meta(&["texts", "labels"]);
+        let props = single["properties"]
+            .as_object_mut()
+            .expect("an object schema");
+        props.insert("texts".into(), texts.clone());
+        props.insert("labels".into(), labels.clone());
+        props.insert(
+            "min_probability".into(),
+            cut("Abstain to the no-match outcome below this top probability."),
+        );
+        props.insert(
+            "uncertain_below".into(),
+            cut("Flag the unit `uncertain` below this top probability."),
+        );
+        vec![
+            tool(
+                "classify_texts",
+                "Classify texts into one label",
+                "One categorical judgment per text: the labels form one distribution and each input selects one label or the no-match outcome. Returns the full ordered report — use count_labels when only aggregates matter.",
+                single,
+            ),
+            {
+                let mut schema = meta(&["inputs", "dimensions"]);
+                let props = schema["properties"]
+                    .as_object_mut()
+                    .expect("an object schema");
+                props.insert("inputs".into(), json!({
+                    "type": "array", "minItems": 1, "maxItems": 1000,
+                    "items": {"anyOf": [
+                        {"type": "string", "minLength": 1},
+                        {"type": "object", "properties": {"id": {"type": "string"}, "text": {"type": "string"}, "record": {"type": "object"}}, "required": ["id"], "additionalProperties": false},
+                    ]},
+                    "description": "The inputs: texts, or {id, text|record} objects.",
+                }));
+                props.insert("dimensions".into(), json!({
+                    "type": "array", "minItems": 1, "maxItems": 20,
+                    "items": {"type": "object", "properties": {
+                        "id": {"type": "string"},
+                        "mode": {"type": "string", "enum": ["single-label", "multi-label", "binary", "score"]},
+                        "labels": labels.clone(),
+                        "levels": {"type": "array", "minItems": 2, "maxItems": 10, "items": {"type": "string"}},
+                        "instructions": {"type": "string"},
+                    }, "required": ["id", "mode"], "additionalProperties": false},
+                    "description": "Named dimensions judged independently: single-label needs labels; multi-label and binary need labels plus a request-level threshold; score needs levels.",
+                }));
+                props.insert("threshold".into(), cut("Required when any dimension is multi-label or binary: the probability a label must reach to be selected."));
+                props.insert("top_n".into(), json!({"type": "integer", "minimum": 1, "description": "A cap on selected labels for multi-label dimensions."}));
+                props.insert(
+                    "uncertain_below".into(),
+                    cut("Flag units `uncertain` below this top probability."),
+                );
+                tool(
+                    "classify_dimensions",
+                    "Classify inputs on named dimensions",
+                    "Several independent judgments over the same inputs — each dimension carries its own mode and label set or rubric. Returns the full ordered report.",
+                    schema,
+                )
+            },
+            {
+                let mut schema = meta(&["texts", "labels", "threshold"]);
+                let props = schema["properties"]
+                    .as_object_mut()
+                    .expect("an object schema");
+                props.insert("texts".into(), texts.clone());
+                props.insert("labels".into(), labels.clone());
+                props.insert("threshold".into(), cut("The probability a label must reach to be selected — required; the caller's own cut, not a default."));
+                props.insert("top_n".into(), json!({"type": "integer", "minimum": 1, "description": "A cap on selected labels per input."}));
+                props.insert(
+                    "uncertain_below".into(),
+                    cut("Flag the unit `uncertain` when any label's winning side is below this."),
+                );
+                tool(
+                    "classify_multi_label",
+                    "Classify texts with independent labels",
+                    "One independent probability per text per label — labels do not sum to one. Every label at or above the caller's threshold is selected. Returns the full ordered report.",
+                    schema,
+                )
+            },
+            {
+                let mut schema = meta(&["texts", "labels"]);
+                let props = schema["properties"]
+                    .as_object_mut()
+                    .expect("an object schema");
+                props.insert("texts".into(), texts.clone());
+                props.insert("labels".into(), labels.clone());
+                props.insert(
+                    "min_probability".into(),
+                    cut("Abstain to the no-match outcome below this top probability."),
+                );
+                tool(
+                    "count_labels",
+                    "Count texts per label",
+                    "The same single-label judgment as classify_texts, but returns only aggregates: per-label counts, the no-match and unavailable counts, and usage. Per-input selections never enter the context.",
+                    schema,
+                )
+            },
+            {
+                let mut schema = meta(&["texts", "labels", "uncertain_below"]);
+                let props = schema["properties"]
+                    .as_object_mut()
+                    .expect("an object schema");
+                props.insert("texts".into(), texts.clone());
+                props.insert("labels".into(), labels.clone());
+                props.insert("uncertain_below".into(), cut("Required: flag a unit `uncertain` when its top label probability is below this."));
+                props.insert("reviewer".into(), json!({"type": "string", "description": "A bound door that re-judges the flagged units through the facade's review phase — bounds 200 items, 400 attempts, 30 s, keep-original on failure."}));
+                props.insert("show".into(), json!({"type": "integer", "minimum": 1, "maximum": 100, "default": 25, "description": "The most uncertain items to list; the corpus itself never enters the context."}));
+                tool(
+                    "review_uncertain",
+                    "List uncertain classifications",
+                    "Runs the single-label judgment with the caller's uncertainty cut and returns the flagged items — input id, selection, and top probability — bounded by `show`, plus outcome counts. With `reviewer`, the flagged units are re-judged by that door first.",
+                    schema,
+                )
+            },
+            {
+                let schema = json!({"type": "object", "properties": {
+                    "state": {"description": "The JSON or text under judgment."},
+                    "questions": {"type": "object", "minProperties": 1, "maxProperties": 64, "description": "Typed questions by caller-chosen id: {type: noul|choice|score, instructions, criteria?}."},
+                    "model": model,
+                    "request_id": request_id,
+                }, "required": ["state", "questions"], "additionalProperties": false});
+                tool(
+                    "decide",
+                    "Answer typed questions over a state",
+                    "POSTs /v1/systemone directly: Noul, Choice, and Score questions over one state, answered with the door's own probabilities. Returns the typed answers verbatim.",
+                    schema,
+                )
+            },
+        ]
+    }
+
     /// One `tools/call`: the tool's name and bounded arguments, then the
-    /// shared caller.
-    fn call_tool(options: &Options, id: &Value, params: Option<&Value>) -> Option<Value> {
+    /// shared caller. `credential` is the caller-presented bearer key the
+    /// HTTP transport forwards; `None` leaves resolution to operator
+    /// configuration.
+    fn call_tool(
+        options: &Options,
+        credential: Option<&str>,
+        id: &Value,
+        params: Option<&Value>,
+    ) -> Option<Value> {
         let Some(name) = params
             .and_then(|params| params.get("name"))
             .and_then(Value::as_str)
@@ -1019,8 +1253,16 @@ pub mod mcp {
                         "`list_models` takes no arguments",
                     ));
                 }
-                run(options, |transport, opts| transport.get_models(&opts))
+                run(options, credential, |transport, opts| {
+                    transport.get_models(&opts)
+                })
             }
+            "classify_texts"
+            | "classify_multi_label"
+            | "classify_dimensions"
+            | "count_labels"
+            | "review_uncertain" => classify_call(options, credential, name, arguments),
+            "decide" => decide_call(options, credential, arguments),
             "classify" => {
                 let mut request_id = None;
                 for (key, value) in arguments {
@@ -1087,7 +1329,7 @@ pub mod mcp {
                     ));
                 }
                 let opts_extra = request_id;
-                run_with(options, opts_extra, |transport, opts| {
+                run_with(options, credential, opts_extra, |transport, opts| {
                     transport.post_classify(&envelope, &opts)
                 })
             }
@@ -1102,52 +1344,777 @@ pub mod mcp {
         Some(result(id, reply))
     }
 
-    /// Resolve the operator configuration and run one call.
-    fn run(
-        options: &Options,
-        call: impl FnOnce(&Transport, CallOpts) -> Result<Reply, super::CallError>,
-    ) -> Value {
-        run_with(options, None, call)
+    /// The most characters a tool's concise text rendering carries —
+    /// beyond it the text ends with a truncation marker; the structured
+    /// content always holds the full document.
+    const MAX_TOOL_TEXT_CHARS: usize = 4_000;
+
+    /// The most uncertain items `review_uncertain` lists.
+    const MAX_UNCERTAIN_SHOWN: u64 = 100;
+
+    /// The bounds `review_uncertain` puts on the facade's review phase
+    /// when a caller names a reviewer door.
+    const REVIEW_MAX_ITEMS: u64 = 200;
+    /// Total secondary dispatches the review phase may spend.
+    const REVIEW_MAX_ATTEMPTS: u64 = 400;
+    /// The review phase's wall-clock bound.
+    const REVIEW_LATENCY_MS: u64 = 30_000;
+
+    /// Reject arguments a tool does not declare — silently ignoring a
+    /// field the caller believes took effect is worse than refusing.
+    fn check_args(arguments: &Map<String, Value>, allowed: &[&str]) -> Result<(), String> {
+        for (key, value) in arguments {
+            if !allowed.contains(&key.as_str()) {
+                return Err(format!("unknown argument `{key}`"));
+            }
+            if value.is_null() {
+                return Err(format!("`{key}` is null — omit optional arguments"));
+            }
+        }
+        Ok(())
     }
 
-    /// Resolve the operator configuration and run one call with an
-    /// idempotency key.
-    fn run_with(
+    /// One optional string argument.
+    fn string_arg<'a>(
+        arguments: &'a Map<String, Value>,
+        key: &str,
+    ) -> Result<Option<&'a str>, String> {
+        match arguments.get(key) {
+            None => Ok(None),
+            Some(value) => value
+                .as_str()
+                .map(Some)
+                .ok_or_else(|| format!("`{key}` must be a string")),
+        }
+    }
+
+    /// One optional probability argument — finite and from 0 to 1.
+    fn probability_arg(arguments: &Map<String, Value>, key: &str) -> Result<Option<f64>, String> {
+        match arguments.get(key).and_then(Value::as_f64) {
+            Some(value) if (0.0..=1.0).contains(&value) => Ok(Some(value)),
+            Some(_) => Err(format!("`{key}` must be a probability between 0 and 1")),
+            None if arguments.contains_key(key) => {
+                Err(format!("`{key}` must be a number between 0 and 1"))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// One optional count argument.
+    fn count_arg(arguments: &Map<String, Value>, key: &str) -> Result<Option<u64>, String> {
+        match arguments.get(key).and_then(Value::as_u64) {
+            Some(value) if value >= 1 => Ok(Some(value)),
+            Some(_) => Err(format!("`{key}` of 0 admits no work")),
+            None if arguments.contains_key(key) => {
+                Err(format!("`{key}` must be a positive integer"))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// The shared `request_id` check — the same rule `classify` applies.
+    fn request_id_arg(arguments: &Map<String, Value>) -> Result<Option<String>, String> {
+        let Some(text) = string_arg(arguments, "request_id")? else {
+            return Ok(None);
+        };
+        if text.is_empty()
+            || text.chars().count() > MAX_REQUEST_ID_CHARS
+            || reqwest::header::HeaderValue::from_str(text).is_err()
+        {
+            return Err("`request_id` is empty, overlong, or not a header value".to_string());
+        }
+        Ok(Some(text.to_string()))
+    }
+
+    /// A label entry from a string id or an `{id, description}` object.
+    fn label_of(value: &Value) -> Result<Value, String> {
+        match value {
+            Value::String(id) if !id.is_empty() && id.chars().count() <= 256 => {
+                Ok(json!({"id": id}))
+            }
+            Value::Object(object) => {
+                for key in object.keys() {
+                    if key != "id" && key != "description" {
+                        return Err(format!(
+                            "a label carries only `id` and `description`, not `{key}`"
+                        ));
+                    }
+                }
+                let id = object
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "a label's `id` must be a string".to_string())?;
+                if id.is_empty() || id.chars().count() > 256 {
+                    return Err("a label's `id` is empty or overlong".to_string());
+                }
+                match object.get("description") {
+                    None | Some(Value::Null) => Ok(json!({"id": id})),
+                    Some(Value::String(text)) => Ok(json!({"id": id, "description": text})),
+                    _ => Err("a label's `description` must be a string".to_string()),
+                }
+            }
+            _ => Err("a label is an id string or an {id, description} object".to_string()),
+        }
+    }
+
+    /// The label set argument: 1–100 unique labels.
+    fn labels_arg(arguments: &Map<String, Value>) -> Result<Vec<Value>, String> {
+        let values = arguments
+            .get("labels")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                "`labels` must be an array of label ids or {id, description} objects".to_string()
+            })?;
+        if values.is_empty() || values.len() > 100 {
+            return Err("`labels` must hold 1 to 100 labels".to_string());
+        }
+        let mut labels = Vec::with_capacity(values.len());
+        let mut seen = std::collections::HashSet::new();
+        for value in values {
+            let label = label_of(value)?;
+            if !seen.insert(label["id"].as_str().unwrap_or_default().to_string()) {
+                return Err(format!("label id `{}` repeats", label["id"]));
+            }
+            labels.push(label);
+        }
+        Ok(labels)
+    }
+
+    /// `texts` as envelope inputs: strings become `{id, text}` in order.
+    fn texts_arg(arguments: &Map<String, Value>) -> Result<Vec<Value>, String> {
+        let values = arguments
+            .get("texts")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "`texts` must be an array of input texts".to_string())?;
+        if values.is_empty() || values.len() > 1000 {
+            return Err("`texts` must hold 1 to 1000 inputs".to_string());
+        }
+        values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                value
+                    .as_str()
+                    .filter(|text| !text.is_empty())
+                    .map(|text| json!({"id": format!("i{index}"), "text": text}))
+                    .ok_or_else(|| format!("text {index} must be a nonempty string"))
+            })
+            .collect()
+    }
+
+    /// `inputs` as envelope inputs: a string is one text, an object is
+    /// `{id, text|record}`; generated ids run `i0` up in order.
+    fn inputs_arg(arguments: &Map<String, Value>) -> Result<Vec<Value>, String> {
+        let values = arguments
+            .get("inputs")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                "`inputs` must be an array of texts or {id, text|record} objects".to_string()
+            })?;
+        if values.is_empty() || values.len() > 1000 {
+            return Err("`inputs` must hold 1 to 1000 inputs".to_string());
+        }
+        let mut inputs = Vec::with_capacity(values.len());
+        let mut seen = std::collections::HashSet::new();
+        for (index, value) in values.iter().enumerate() {
+            let input = match value {
+                Value::String(text) if !text.is_empty() => {
+                    json!({"id": format!("i{index}"), "text": text})
+                }
+                Value::Object(object) => {
+                    for key in object.keys() {
+                        if key != "id" && key != "text" && key != "record" {
+                            return Err(format!(
+                                "an input carries only `id`, `text`, and `record`, not `{key}`"
+                            ));
+                        }
+                    }
+                    let id = object
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    let id = if id.is_empty() {
+                        format!("i{index}")
+                    } else {
+                        id
+                    };
+                    let mut input = json!({"id": id});
+                    match (object.get("text"), object.get("record")) {
+                        (Some(Value::String(text)), None) => input["text"] = json!(text),
+                        (None, Some(record @ Value::Object(_))) => input["record"] = record.clone(),
+                        _ => {
+                            return Err(format!(
+                                "input {index} needs exactly one of `text` or `record`"
+                            ));
+                        }
+                    }
+                    input
+                }
+                _ => {
+                    return Err(format!(
+                        "input {index} must be a text or an {{id, text|record}} object"
+                    ));
+                }
+            };
+            if !seen.insert(input["id"].as_str().unwrap_or_default().to_string()) {
+                return Err(format!("input id `{}` repeats", input["id"]));
+            }
+            inputs.push(input);
+        }
+        Ok(inputs)
+    }
+
+    /// The selection rule for one mode, as the tool's arguments declare
+    /// it. The contract's defaults are the honest ones: first-declared
+    /// ties, a null no-match, an empty multi-label selection, descending
+    /// score order — every cut the caller did not declare stays absent.
+    fn select_for(mode: &str, arguments: &Map<String, Value>) -> Result<(String, Value), String> {
+        let uncertain = probability_arg(arguments, "uncertain_below")?;
+        let mut rule = serde_json::Map::new();
+        match mode {
+            "single-label" => {
+                rule.insert("ties".into(), json!("first-declared"));
+                rule.insert("no_match".into(), json!({"kind": "null"}));
+                if let Some(cut) = probability_arg(arguments, "min_probability")? {
+                    rule.insert("min_probability".into(), json!(cut));
+                }
+            }
+            "multi-label" => {
+                let threshold = probability_arg(arguments, "threshold")?.ok_or_else(|| {
+                    "`threshold` is required for multi-label work — it is the caller's cut, not a default".to_string()
+                })?;
+                rule.insert("threshold".into(), json!(threshold));
+                rule.insert("ties".into(), json!("include-all"));
+                rule.insert("no_match".into(), json!("empty"));
+                if let Some(cap) = count_arg(arguments, "top_n")? {
+                    rule.insert("top_n".into(), json!(cap));
+                }
+            }
+            "binary" => {
+                let threshold = probability_arg(arguments, "threshold")?.ok_or_else(|| {
+                    "`threshold` is required for binary work — it is the caller's cut, not a default".to_string()
+                })?;
+                rule.insert("threshold".into(), json!(threshold));
+            }
+            "score" => {
+                rule.insert("order".into(), json!("descending"));
+                if let Some(cap) = count_arg(arguments, "top_n")? {
+                    rule.insert("top_n".into(), json!(cap));
+                }
+            }
+            _ => return Err(format!("mode `{mode}` is not a facade mode")),
+        }
+        if let Some(cut) = uncertain {
+            rule.insert("uncertain_below".into(), json!(cut));
+        }
+        Ok((mode.replace('-', "_"), Value::Object(rule)))
+    }
+
+    /// The shared classify envelope: the caller's arguments laid into
+    /// the `openagents.classify.v1` shape, policy included.
+    fn envelope_of(
+        name: &str,
+        model: &str,
+        arguments: &Map<String, Value>,
+        inputs: Vec<Value>,
+        mut request: Map<String, Value>,
+        select: Map<String, Value>,
+        review: Option<Value>,
+    ) -> Result<Vec<u8>, String> {
+        let mut policy = json!({
+            "v": CLASSIFY_POLICY_SCHEMA,
+            "name": format!("mcp-{name}"),
+            "select": Value::Object(select),
+        });
+        if let Some(review) = review {
+            policy["review"] = review;
+        }
+        request.insert("v".into(), json!(CLASSIFY_SCHEMA));
+        request.insert("model".into(), json!(model));
+        request.insert(
+            "capacity".into(),
+            json!(
+                string_arg(arguments, "capacity")?
+                    .unwrap_or("shared")
+                    .to_string()
+            ),
+        );
+        request.insert("policy".into(), policy);
+        if let Some(instructions) = string_arg(arguments, "instructions")? {
+            if instructions.len() > 16_384 {
+                return Err("`instructions` exceeds the 16384-byte bound".to_string());
+            }
+            request.insert("instructions".into(), json!(instructions));
+        }
+        request.insert("inputs".into(), json!(inputs));
+        let envelope = serde_json::to_vec(&Value::Object(request))
+            .map_err(|error| format!("the envelope did not serialize: {error}"))?;
+        if envelope.len() as u64 > MAX_ENVELOPE_BYTES {
+            return Err("the envelope exceeds the byte bound".to_string());
+        }
+        Ok(envelope)
+    }
+
+    /// The `model` a call resolves: the argument first, then the
+    /// configured default.
+    fn model_of(arguments: &Map<String, Value>, settings: &Settings) -> Result<String, String> {
+        string_arg(arguments, "model")?
+            .map(str::to_string)
+            .or_else(|| settings.model.clone())
+            .ok_or_else(|| {
+                "name a `model` — or set OPENAGENTS_MODEL / `model` in the config file".to_string()
+            })
+    }
+
+    /// Build the envelope for the tools that classify on one label set,
+    /// then post it and shape the report per tool.
+    fn classify_call(
         options: &Options,
-        request_id: Option<String>,
-        call: impl FnOnce(&Transport, CallOpts) -> Result<Reply, super::CallError>,
+        credential: Option<&str>,
+        name: &str,
+        arguments: &Map<String, Value>,
     ) -> Value {
-        let outcome = (|| {
-            let settings = Settings::resolve(
-                options.url.clone(),
-                None,
-                options.workspace.clone(),
-                options.config.clone(),
-            )?;
-            let transport = settings.transport()?;
-            call(
-                &transport,
-                CallOpts {
+        let invalid = |message: String| {
+            tool_error(
+                format!("oak-mcp: {message}"),
+                json!({"error": {"code": "invalid_arguments", "message": message}}),
+            )
+        };
+        let (settings, transport) = match connect(options, credential) {
+            Ok(pair) => pair,
+            Err(message) => {
+                return tool_error(
+                    format!("oak-mcp: {message}"),
+                    json!({"error": {"code": "unavailable", "message": message}}),
+                );
+            }
+        };
+        let model = match model_of(arguments, &settings) {
+            Ok(model) => model,
+            Err(message) => return invalid(message),
+        };
+        let built = match name {
+            "classify_texts" => {
+                check_args(
+                    arguments,
+                    &[
+                        "texts",
+                        "labels",
+                        "min_probability",
+                        "uncertain_below",
+                        "model",
+                        "capacity",
+                        "instructions",
+                        "request_id",
+                    ],
+                )
+                .and_then(|()| {
+                    let labels = labels_arg(arguments)?;
+                    if labels.len() < 2 {
+                        return Err("`labels` needs at least two labels for a categorical choice".into());
+                    }
+                    let inputs = texts_arg(arguments)?;
+                    let (key, rule) = select_for("single-label", arguments)?;
+                    let mut select = serde_json::Map::new();
+                    select.insert(key, rule);
+                    let mut request = serde_json::Map::new();
+                    request.insert("mode".into(), json!("single-label"));
+                    request.insert("labels".into(), json!(labels));
+                    envelope_of(name, &model, arguments, inputs, request, select, None)
+                })
+            }
+            "classify_multi_label" => {
+                check_args(
+                    arguments,
+                    &[
+                        "texts",
+                        "labels",
+                        "threshold",
+                        "top_n",
+                        "uncertain_below",
+                        "model",
+                        "capacity",
+                        "instructions",
+                        "request_id",
+                    ],
+                )
+                .and_then(|()| {
+                    let labels = labels_arg(arguments)?;
+                    let inputs = texts_arg(arguments)?;
+                    if inputs.len() * labels.len() > 1000 {
+                        return Err(format!(
+                            "{} inputs times {} labels plans {} judgments — the call's bound is 1000",
+                            inputs.len(),
+                            labels.len(),
+                            inputs.len() * labels.len()
+                        ));
+                    }
+                    let (key, rule) = select_for("multi-label", arguments)?;
+                    let mut select = serde_json::Map::new();
+                    select.insert(key, rule);
+                    let mut request = serde_json::Map::new();
+                    request.insert("mode".into(), json!("multi-label"));
+                    request.insert("labels".into(), json!(labels));
+                    envelope_of(name, &model, arguments, inputs, request, select, None)
+                })
+            }
+            "classify_dimensions" => {
+                check_args(
+                    arguments,
+                    &[
+                        "inputs",
+                        "dimensions",
+                        "threshold",
+                        "top_n",
+                        "uncertain_below",
+                        "model",
+                        "capacity",
+                        "instructions",
+                        "request_id",
+                    ],
+                )
+                .and_then(|()| {
+                    let inputs = inputs_arg(arguments)?;
+                    let dims = arguments
+                        .get("dimensions")
+                        .and_then(Value::as_array)
+                        .ok_or_else(|| "`dimensions` must be an array".to_string())?;
+                    if dims.is_empty() || dims.len() > 20 {
+                        return Err("`dimensions` must hold 1 to 20 dimensions".to_string());
+                    }
+                    let mut select = serde_json::Map::new();
+                    let mut out = Vec::with_capacity(dims.len());
+                    let mut seen = std::collections::HashSet::new();
+                    for (index, value) in dims.iter().enumerate() {
+                        let object = value.as_object().ok_or_else(|| {
+                            format!("dimension {index} must be an object")
+                        })?;
+                        for key in object.keys() {
+                            if !["id", "mode", "labels", "levels", "instructions"].contains(&key.as_str()) {
+                                return Err(format!("a dimension carries only id/mode/labels/levels/instructions, not `{key}`"));
+                            }
+                        }
+                        let mode = object
+                            .get("mode")
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| format!("dimension {index} needs a `mode`"))?;
+                        let id_text = object
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .filter(|id| !id.is_empty())
+                            .unwrap_or("d")
+                            .to_string();
+                        if !seen.insert(format!("{id_text}:{mode}")) {
+                            return Err(format!("dimension `{id_text}` repeats"));
+                        }
+                        let mut dim = serde_json::Map::new();
+                        dim.insert("id".into(), json!(id_text));
+                        dim.insert("mode".into(), json!(mode));
+                        let mut dim_args = object.clone();
+                        for key in ["threshold", "top_n", "uncertain_below", "min_probability"] {
+                            if let Some(v) = arguments.get(key) {
+                                dim_args.insert(key.to_string(), v.clone());
+                            }
+                        }
+                        match mode {
+                            "score" => {
+                                let levels = object
+                                    .get("levels")
+                                    .and_then(Value::as_array)
+                                    .filter(|levels| (2..=10).contains(&levels.len()))
+                                    .ok_or_else(|| "a score dimension needs 2 to 10 `levels`".to_string())?;
+                                dim.insert("levels".into(), json!(levels));
+                            }
+                            "binary" => {
+                                let labels = labels_arg(object)?;
+                                if labels.len() != 1 {
+                                    return Err("a binary dimension takes exactly one label".into());
+                                }
+                                dim.insert("labels".into(), json!(labels));
+                            }
+                            "single-label" | "multi-label" => {
+                                let labels = labels_arg(object)?;
+                                if mode == "single-label" && labels.len() < 2 {
+                                    return Err("a single-label dimension needs at least two labels".into());
+                                }
+                                dim.insert("labels".into(), json!(labels));
+                            }
+                            other => return Err(format!("dimension mode `{other}` is not a facade mode")),
+                        }
+                        if let Some(instructions) = object
+                            .get("instructions")
+                            .and_then(Value::as_str)
+                        {
+                            if instructions.len() > 16_384 {
+                                return Err("a dimension's `instructions` exceeds the bound".into());
+                            }
+                            dim.insert("instructions".into(), json!(instructions));
+                        }
+                        let (key, rule) = select_for(mode, &dim_args)?;
+                        if select.insert(key.clone(), rule).is_some() {
+                            return Err(format!("mode `{mode}` appears more than once — one selection rule serves every {mode} dimension"));
+                        }
+                        out.push(Value::Object(dim));
+                    }
+                    if inputs.len() * out.len() > 1000 {
+                        return Err(format!(
+                            "{} inputs times {} dimensions plans {} judgments — the call's bound is 1000",
+                            inputs.len(),
+                            out.len(),
+                            inputs.len() * out.len()
+                        ));
+                    }
+                    let mut request = serde_json::Map::new();
+                    request.insert("dimensions".into(), json!(out));
+                    envelope_of(name, &model, arguments, inputs, request, select, None)
+                })
+            }
+            "count_labels" => check_args(
+                arguments,
+                &[
+                    "texts",
+                    "labels",
+                    "min_probability",
+                    "model",
+                    "capacity",
+                    "instructions",
+                    "request_id",
+                ],
+            )
+            .and_then(|()| {
+                let labels = labels_arg(arguments)?;
+                if labels.len() < 2 {
+                    return Err("`labels` needs at least two labels for a categorical choice".into());
+                }
+                let inputs = texts_arg(arguments)?;
+                let (key, rule) = select_for("single-label", arguments)?;
+                let mut select = serde_json::Map::new();
+                select.insert(key, rule);
+                let mut request = serde_json::Map::new();
+                request.insert("mode".into(), json!("single-label"));
+                request.insert("labels".into(), json!(labels));
+                envelope_of(name, &model, arguments, inputs, request, select, None)
+            }),
+            "review_uncertain" => check_args(
+                arguments,
+                &[
+                    "texts",
+                    "labels",
+                    "uncertain_below",
+                    "reviewer",
+                    "show",
+                    "model",
+                    "capacity",
+                    "instructions",
+                    "request_id",
+                ],
+            )
+            .and_then(|()| {
+                let labels = labels_arg(arguments)?;
+                if labels.len() < 2 {
+                    return Err("`labels` needs at least two labels for a categorical choice".into());
+                }
+                probability_arg(arguments, "uncertain_below")?
+                    .ok_or_else(|| "`uncertain_below` is required — it is the caller's review cut".to_string())?;
+                if let Some(show) = count_arg(arguments, "show")?
+                    && show > MAX_UNCERTAIN_SHOWN
+                {
+                    return Err(format!("`show` is capped at {MAX_UNCERTAIN_SHOWN}"));
+                }
+                let inputs = texts_arg(arguments)?;
+                let (key, rule) = select_for("single-label", arguments)?;
+                let mut select = serde_json::Map::new();
+                select.insert(key, rule);
+                let review = match string_arg(arguments, "reviewer")? {
+                    Some(reviewer) if reviewer.trim().is_empty() => {
+                        return Err("`reviewer` must name a bound door".into());
+                    }
+                    Some(reviewer) => Some(json!({
+                        "v": CLASSIFY_REVIEW_SCHEMA,
+                        "reviewer": reviewer,
+                        "trigger": "uncertain",
+                        "on_failure": "keep-original",
+                        "max_items": REVIEW_MAX_ITEMS,
+                        "max_attempts": REVIEW_MAX_ATTEMPTS,
+                        "latency_ms": REVIEW_LATENCY_MS,
+                    })),
+                    None => None,
+                };
+                let mut request = serde_json::Map::new();
+                request.insert("mode".into(), json!("single-label"));
+                request.insert("labels".into(), json!(labels));
+                envelope_of(name, &model, arguments, inputs, request, select, review)
+            }),
+            _ => unreachable!("the dispatch names only classify tools"),
+        };
+        let envelope = match built {
+            Ok(envelope) => envelope,
+            Err(message) => return invalid(message),
+        };
+        let request_id = match request_id_arg(arguments) {
+            Ok(request_id) => request_id,
+            Err(message) => return invalid(message),
+        };
+        let reply = transport
+            .post_classify(
+                &envelope,
+                &CallOpts {
                     timeout: options.timeout,
                     retries: options.retries,
                     request_id,
                 },
             )
-            .map_err(|error| error.message)
-        })();
-        match outcome {
+            .map_err(|error| error.message);
+        match reply {
             Err(message) => tool_error(
                 format!("oak-mcp: {message}"),
                 json!({"error": {"code": "unavailable", "message": message}}),
             ),
-            Ok(Reply::Document { body, .. }) => tool_result(&body),
-            Ok(Reply::Refused {
+            Ok(Reply::Document { body, .. }) => {
+                let shaped = match name {
+                    "count_labels" => counts_of(&body),
+                    "review_uncertain" => uncertain_of(arguments, &body),
+                    _ => body,
+                };
+                tool_result(&shaped)
+            }
+            Ok(reply) => reply_value(reply, report_text),
+        }
+    }
+
+    /// The native decision tool: the caller's state and typed questions
+    /// straight to `POST /v1/systemone`.
+    fn decide_call(
+        options: &Options,
+        credential: Option<&str>,
+        arguments: &Map<String, Value>,
+    ) -> Value {
+        let envelope = (|| -> Result<Vec<u8>, String> {
+            check_args(arguments, &["state", "questions", "model", "request_id"])?;
+            if !arguments.contains_key("state") {
+                return Err("`decide` requires a `state`".into());
+            }
+            let questions = arguments
+                .get("questions")
+                .and_then(Value::as_object)
+                .ok_or_else(|| "`questions` must be an object of typed questions".to_string())?;
+            if questions.is_empty() || questions.len() > 64 {
+                return Err("`questions` must hold 1 to 64 questions".to_string());
+            }
+            for (qid, question) in questions {
+                let kind = question
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("question `{qid}` needs a `type`"))?;
+                if !matches!(kind, "noul" | "choice" | "score") {
+                    return Err(format!(
+                        "question `{qid}` has type `{kind}` — the contract serves noul, choice, and score"
+                    ));
+                }
+                if !question.get("instructions").is_some_and(|v| v.is_string()) {
+                    return Err(format!("question `{qid}` needs string `instructions`"));
+                }
+            }
+            let mut request = json!({
+                "state": arguments["state"],
+                "questions": arguments["questions"],
+            });
+            if let Some(model) = string_arg(arguments, "model")? {
+                request["model"] = json!(model);
+            }
+            let bytes = serde_json::to_vec(&request)
+                .map_err(|error| format!("the request did not serialize: {error}"))?;
+            if bytes.len() as u64 > MAX_ENVELOPE_BYTES {
+                return Err("the request exceeds the byte bound".into());
+            }
+            Ok(bytes)
+        })();
+        let envelope = match envelope {
+            Ok(envelope) => envelope,
+            Err(message) => {
+                return tool_error(
+                    format!("oak-mcp: {message}"),
+                    json!({"error": {"code": "invalid_arguments", "message": message}}),
+                );
+            }
+        };
+        let request_id = match request_id_arg(arguments) {
+            Ok(request_id) => request_id,
+            Err(message) => {
+                return tool_error(
+                    format!("oak-mcp: {message}"),
+                    json!({"error": {"code": "invalid_arguments", "message": message}}),
+                );
+            }
+        };
+        let call =
+            move |transport: &Transport, opts: CallOpts| transport.post_systemone(&envelope, &opts);
+        match call_service(options, credential, request_id, call) {
+            Err(message) => tool_error(
+                format!("oak-mcp: {message}"),
+                json!({"error": {"code": "unavailable", "message": message}}),
+            ),
+            Ok(reply) => reply_value(reply, decide_text),
+        }
+    }
+
+    /// Resolve the credential the caller presented or the operator
+    /// configured, then build the transport from the resolved settings.
+    fn connect(
+        options: &Options,
+        credential: Option<&str>,
+    ) -> Result<(Settings, Transport), String> {
+        let settings = Settings::resolve_key(
+            options.url.clone(),
+            None,
+            options.workspace.clone(),
+            options.config.clone(),
+            credential.map(str::to_string),
+        )?;
+        let transport = settings.transport()?;
+        Ok((settings, transport))
+    }
+
+    /// The shared service call: resolve the credential the caller
+    /// presented or the operator configured, then run the transport.
+    fn call_service(
+        options: &Options,
+        credential: Option<&str>,
+        request_id: Option<String>,
+        call: impl FnOnce(&Transport, CallOpts) -> Result<Reply, super::CallError>,
+    ) -> Result<Reply, String> {
+        let (_settings, transport) = connect(options, credential)?;
+        call(
+            &transport,
+            CallOpts {
+                timeout: options.timeout,
+                retries: options.retries,
+                request_id,
+            },
+        )
+        .map_err(|error| error.message)
+    }
+
+    /// A reply as a tool result — a document as structured content plus
+    /// the concise text `render` gives it, a refusal as a typed error.
+    fn reply_value(reply: Reply, render: impl FnOnce(&Value) -> String) -> Value {
+        match reply {
+            Reply::Document { body, .. } => Value::Object(serde_json::Map::from_iter([
+                (
+                    "content".into(),
+                    json!([{"type": "text", "text": render(&body)}]),
+                ),
+                ("structuredContent".into(), body),
+                ("isError".into(), json!(false)),
+            ])),
+            Reply::Refused {
                 status,
                 code,
                 message,
                 request_id,
                 ..
-            }) => {
+            } => {
                 let mut detail = json!({
                     "error": {"code": code, "message": message},
                     "status": status,
@@ -1157,6 +2124,186 @@ pub mod mcp {
                 }
                 tool_error(format!("oak-mcp: {status} {code}: {message}"), detail)
             }
+        }
+    }
+
+    /// One line per input for a classify report: the selection, or the
+    /// outcome when no selection reported.
+    fn report_text(body: &Value) -> String {
+        let mut text = format!(
+            "outcome: {}\n",
+            body["outcome"].as_str().unwrap_or("unknown")
+        );
+        for item in body["results"].as_array().into_iter().flatten() {
+            let input = item["input"].as_str().unwrap_or("?");
+            let mut parts = Vec::new();
+            for unit in item["units"].as_array().into_iter().flatten() {
+                let name = unit["dimension"].as_str().unwrap_or("unit");
+                let selected = match unit["outcome"].as_str() {
+                    Some("answered") => match &unit["selected"] {
+                        Value::Null => "no-match".to_string(),
+                        value => value.to_string(),
+                    },
+                    other => other.unwrap_or("unavailable").to_string(),
+                };
+                let flag = if unit["uncertain"].as_bool() == Some(true) {
+                    " (uncertain)"
+                } else {
+                    ""
+                };
+                parts.push(format!("{name}: {selected}{flag}"));
+            }
+            text.push_str(&format!("{input} → {}\n", parts.join(", ")));
+            if text.len() > MAX_TOOL_TEXT_CHARS {
+                text.truncate(MAX_TOOL_TEXT_CHARS);
+                text.push_str("… truncated");
+                return text;
+            }
+        }
+        text
+    }
+
+    /// One line per question for a native decision answer.
+    fn decide_text(body: &Value) -> String {
+        let mut text = String::new();
+        for (qid, answer) in body["answers"].as_object().into_iter().flatten() {
+            let line = match answer["type"].as_str() {
+                Some("noul") => format!("{qid}: noul {}", answer["noul"]),
+                Some("choice") => format!(
+                    "{qid}: choice {} ({})",
+                    answer["choice"], answer["confidence"]
+                ),
+                Some("score") => format!(
+                    "{qid}: score {} ({})",
+                    answer["score"], answer["confidence"]
+                ),
+                _ => format!("{qid}: {answer}"),
+            };
+            text.push_str(&line);
+            text.push('\n');
+            if text.len() > MAX_TOOL_TEXT_CHARS {
+                text.truncate(MAX_TOOL_TEXT_CHARS);
+                text.push_str("… truncated");
+                return text;
+            }
+        }
+        text
+    }
+
+    /// `count_labels`' reduced document: per-label counts and the
+    /// failure tallies — never a per-input selection.
+    fn counts_of(body: &Value) -> Value {
+        let mut counts = serde_json::Map::new();
+        let mut no_match = 0_u64;
+        let mut unanswered = 0_u64;
+        let mut inputs = 0_u64;
+        for item in body["results"].as_array().into_iter().flatten() {
+            inputs += 1;
+            let mut counted = false;
+            for unit in item["units"].as_array().into_iter().flatten() {
+                if unit["outcome"].as_str() != Some("answered") {
+                    continue;
+                }
+                counted = true;
+                match &unit["selected"] {
+                    Value::String(label) => {
+                        let entry = counts.entry(label.clone()).or_insert_with(|| json!(0_u64));
+                        *entry = json!(entry.as_u64().unwrap_or(0) + 1);
+                    }
+                    _ => no_match += 1,
+                }
+            }
+            if !counted {
+                unanswered += 1;
+            }
+        }
+        json!({
+            "v": "openagents.mcp-counts.v1",
+            "model": body["model"],
+            "outcome": body["outcome"],
+            "inputs": inputs,
+            "counts": counts,
+            "no_match": no_match,
+            "unanswered": unanswered,
+            "usage": body["usage"],
+        })
+    }
+
+    /// `review_uncertain`'s reduced document: the flagged units,
+    /// bounded — the corpus's other inputs stay out of the context.
+    fn uncertain_of(arguments: &Map<String, Value>, body: &Value) -> Value {
+        let show = arguments
+            .get("show")
+            .and_then(Value::as_u64)
+            .unwrap_or(25)
+            .min(MAX_UNCERTAIN_SHOWN) as usize;
+        let mut items = Vec::new();
+        let mut flagged = 0_u64;
+        let mut inputs = 0_u64;
+        for item in body["results"].as_array().into_iter().flatten() {
+            inputs += 1;
+            for unit in item["units"].as_array().into_iter().flatten() {
+                if unit["uncertain"].as_bool() != Some(true) {
+                    continue;
+                }
+                flagged += 1;
+                if items.len() >= show {
+                    continue;
+                }
+                let top = unit["raw"]["probabilities"]
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(_, p)| p.as_f64())
+                    .fold(f64::NEG_INFINITY, f64::max);
+                let top = if top.is_finite() {
+                    json!(top)
+                } else {
+                    Value::Null
+                };
+                items.push(json!({
+                    "input": item["input"],
+                    "selected": unit["selected"],
+                    "top_probability": top,
+                    "review": unit.get("review").and_then(|r| r.get("selected")).cloned().unwrap_or(Value::Null),
+                }));
+            }
+        }
+        json!({
+            "v": "openagents.mcp-uncertain.v1",
+            "model": body["model"],
+            "outcome": body["outcome"],
+            "inputs": inputs,
+            "uncertain": items,
+            "uncertain_count": flagged,
+            "uncertain_truncated": flagged as usize > items.len(),
+            "usage": body["usage"],
+        })
+    }
+
+    /// Resolve the operator configuration and run one call.
+    fn run(
+        options: &Options,
+        credential: Option<&str>,
+        call: impl FnOnce(&Transport, CallOpts) -> Result<Reply, super::CallError>,
+    ) -> Value {
+        run_with(options, credential, None, call)
+    }
+
+    /// Resolve the operator configuration and run one call with an
+    /// idempotency key.
+    fn run_with(
+        options: &Options,
+        credential: Option<&str>,
+        request_id: Option<String>,
+        call: impl FnOnce(&Transport, CallOpts) -> Result<Reply, super::CallError>,
+    ) -> Value {
+        match call_service(options, credential, request_id, call) {
+            Err(message) => tool_error(
+                format!("oak-mcp: {message}"),
+                json!({"error": {"code": "unavailable", "message": message}}),
+            ),
+            Ok(reply) => reply_value(reply, |body| body.to_string()),
         }
     }
 }

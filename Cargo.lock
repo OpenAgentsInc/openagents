@@ -2863,6 +2863,7 @@ dependencies = [
  "gateway",
  "jev",
  "reqwest",
+ "secp256k1",
  "serde",
  "serde_json",
  "sha2 0.10.9",

@@ -74,6 +74,12 @@ static DOCUMENTS: &[Document] = &[
         "guides/mcp-documentation.md",
         false
     ),
+    document!(
+        "mcp-server",
+        "MCP server guide",
+        "guides/mcp-server.md",
+        false
+    ),
     document!("examples", "Caller examples", "examples/README.md", true),
     document!(
         "native-questions",
