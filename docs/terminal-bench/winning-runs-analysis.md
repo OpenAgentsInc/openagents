@@ -115,6 +115,9 @@ cache writes. Claude Code writes its system prompt and the briefing to a
 **one-hour** cache on the first call, billed at 2× the input rate ($8 per
 million for Opus 5.5), and these runs finish in seconds, so the long cache
 lifetime buys nothing. Output is another 35.1% at $20 per million.
+[The captured request](claude-code-delegate-prompt/README.md) shows exactly
+what goes into that write: about 5,500 characters of system prompt, six tool
+definitions, and the briefing, all under `ttl: 1h` markers.
 
 ## Where each winner loses to the other
 
@@ -157,8 +160,10 @@ turns, while spending less on Jev. Five changes, in the order they matter:
    on build-heavy tasks at a cost that applies only when it fires.
 
 For the Opus track, two further changes are worth measuring separately:
-running Claude Code with a five-minute cache instead of one hour, which
-would cut its cache-write cost by about 37%, and the same batch-mode
+running Claude Code with a five-minute cache instead of one hour
+(`CLAUDE_CODE_PROMPT_CACHE_TTL=5m`, confirmed in
+[the captured request](claude-code-delegate-prompt/README.md#can-it-be-changed)),
+which would cut its cache-write cost by about 37%, and the same batch-mode
 directions.
 
 ## How to test it
