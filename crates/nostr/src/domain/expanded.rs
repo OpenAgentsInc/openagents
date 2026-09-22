@@ -650,6 +650,15 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 1_244 {
         super::voice::open_voice_reply(event)?;
     }
+    if event.kind == 38_172 {
+        super::ecash::open_cashu_mint(event)?;
+    }
+    if event.kind == 38_173 {
+        super::ecash::open_fedimint(event)?;
+    }
+    if event.kind == 38_000 {
+        super::ecash::open_mint_recommendation(event)?;
+    }
     if matches!(event.kind, 78 | 30_078) {
         super::app_data::open_app_data(event)?;
     }

@@ -472,6 +472,20 @@ over 60 seconds is kept. The suggestion of fewer than 100 waveform
 amplitudes is not enforced. Acceptance is
 `domain::voice::tests::a_voice_message_keeps_its_audio_url_and_a_reply_threads_to_it`.
 
+NIP-87 is `configured-and-proven`. Kind `38172` announces a Cashu mint,
+kind `38173` announces a Fedimint, and kind `38000` recommends one of
+them. A mint names one `d` identifier, one or more `u` endpoints, and
+a network of `mainnet`, `testnet`, `signet`, or `regtest`. A Cashu
+mint lists `nuts`. A Fedimint lists `modules`. A Cashu `d` tag is a
+32-byte pubkey. Empty mint content is kept, and non-empty content must
+be a JSON object. A recommendation's `k` and `d` name that mint, and
+each `a` tag repeats the same address. A newer announcement or
+recommendation with the same identifier replaces the older one. NIP-87
+is a draft, so these kinds are not added to the NIP-11 list. The relay
+does not contact a mint, decode an invite code, or read a kind `0`
+profile when content is empty. Acceptance is
+`domain::ecash::tests::a_mint_announcement_replaces_and_a_recommendation_names_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

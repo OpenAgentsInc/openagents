@@ -14,6 +14,7 @@ mod calendar;
 mod comment;
 mod deletion;
 mod draft;
+mod ecash;
 mod error;
 mod event;
 mod expanded;
@@ -76,6 +77,10 @@ pub use draft::{
     Checkpoint, DraftWrap, PrivateRelayList, RECOMMENDED_DRAFT_TTL_SECONDS, UnsignedDraft,
     open_checkpoint, open_draft_wrap, open_private_relays, seal_checkpoint, seal_draft,
     seal_private_relays, validate_checkpoint, validate_draft_wrap, validate_private_relays,
+};
+pub use ecash::{
+    EcashNetwork, MintAnnouncement, MintEndpoint, MintKind, MintPointer, MintRecommendation,
+    open_cashu_mint, open_fedimint, open_mint_recommendation,
 };
 pub use error::DomainError;
 pub use event::{EXTENDED_INDEXED_TAG_NAMES, Event, Tag, is_indexed_tag_name};
