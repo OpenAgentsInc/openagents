@@ -35,6 +35,19 @@ off the NIP-11 list because the pinned text marks it unrecommended. There is
 no MAC. Acceptance is
 `nip04::tests::a_direct_message_round_trips_and_keeps_a_mention_as_text`.
 
+NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
+kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
+must name a replacement address whose pubkey is the request author. The
+client hides an event only when `deletes` matches that author, and an
+address version only when its `created_at` is less than or equal to the
+request. The server stores the request, writes the same tombstones in
+`apply_deletion`, and rejects a later event that matches one. NIP-11 lists
+`9` with no extra setting. `k` tags are optional and do not choose targets.
+A request that names another kind `5` event deletes nothing. Acceptance is
+`lane::tests::nip09_deletion_requests_hide_the_authors_events_through_the_request_time`.
+The live store path is `deletion_before_event` in
+`crates/nostr-relay/tests/store_postgres.rs`.
+
 NIP-29 is `configured-and-proven`. The domain role is `GroupMetadata` and
 `GroupAction` in `crates/nostr/src/domain/expanded.rs`. The server role is
 admission, query filtering, and metadata regeneration in
@@ -49,11 +62,11 @@ metadata from non-members. The limitation is that kinds 9003, 9004, 9006, and
 empty because this process does not run LiveKit. The `nostr` and `nostr-relay`
 crates own the row. Its status is distinct from a kind-and-tag check.
 
-Event-shaped files other than NIP-29 are still a `Shape`: the kind and one
-tag that occur in the pinned text. That check is partial. It signs an event
-with that kind and tag, accepts it, and refuses the same event with the tag
-removed. It does not re-state every optional field, and it is not
-configured-and-proven.
+Event-shaped files other than the rows above are still a `Shape`: the kind
+and one tag that occur in the pinned text. That check is partial. It signs
+an event with that kind and tag, accepts it, and refuses the same event
+with the tag removed. It does not re-state every optional field, and it is
+not configured-and-proven.
 
 Files whose body says the rules moved to NIP-01 are not a second protocol.
 The check requires that sentence and still verifies a signed NIP-01 event.

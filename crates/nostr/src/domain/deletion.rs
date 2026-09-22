@@ -4,6 +4,11 @@ use super::hex::decode_lower_hex;
 use super::{DomainError, Event, ReplacementAddress};
 
 /// A validated view of a NIP-09 kind 5 event.
+///
+/// `k` tags name the kinds the author wants removed. They are optional, and
+/// a tombstone does not consult them. A request with no well-formed
+/// same-author `e` or `a` reference still parses: it creates no tombstone,
+/// and the relay keeps the request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeletionRequest {
     pub request_id: String,

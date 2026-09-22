@@ -271,6 +271,19 @@ pub static PROVEN: &[Evidence] = &[
         status: "configured-and-proven",
     },
     Evidence {
+        file: "09.md",
+        domain: "kind 5 names event ids and same-author replacement addresses; a request does not delete kind 5",
+        client: "DeletionRequest::from_event, tombstones, and deletes",
+        server: "admit stores the request, apply_deletion writes tombstones, and a later matching event is rejected",
+        paths: "crates/nostr/src/domain/deletion.rs; crates/nostr-relay/src/store/mod.rs; crates/nostr-relay/src/store/statements.rs",
+        configuration: "no setting; NIP-11 lists 9 because kind 5 admission and tombstones run on every relay",
+        fixture: "the pinned kind 5 example: e and a references, optional k tags, and a reason in content",
+        acceptance: "lane::tests::nip09_deletion_requests_hide_the_authors_events_through_the_request_time",
+        limitations: "a request with no well-formed same-author reference creates no tombstone and is still stored; k tags do not select targets; relays that already published the event may still hold a copy",
+        owner: "nostr and nostr-relay",
+        status: "configured-and-proven",
+    },
+    Evidence {
         file: "29.md",
         domain: "GroupMetadata and GroupAction, including private, hidden, restricted, and one parent",
         client: "GroupMetadata::from_tags and parent_would_cycle",
@@ -310,8 +323,8 @@ mod tests {
     use serde_json::json;
 
     use crate::domain::{
-        DeletionRequest, EventClass, GroupMetadata, RelaySigner, ReplacementDecision, Tag,
-        compare_replacement, displayed_petname, parse_follow_list, search_matches,
+        DeletionRequest, DomainError, EventClass, GroupMetadata, RelaySigner, ReplacementDecision,
+        Tag, compare_replacement, displayed_petname, parse_follow_list, search_matches,
     };
     use crate::negentropy::{self, Item};
     use crate::nip19;
@@ -395,6 +408,131 @@ mod tests {
         assert!(bad.validate_structure().is_err());
         let _ = GroupMetadata::from_tags(&[Tag::new(vec!["private".into()])]).unwrap();
         assert!(PROVEN.iter().any(|row| row.file == "29.md"));
+    }
+
+    #[test]
+    fn nip09_deletion_requests_hide_the_authors_events_through_the_request_time() {
+        let text = fs::read_to_string(official_dir().join("09.md")).unwrap();
+        assert!(text.contains("deletion request"));
+        assert!(text.contains("identical `pubkey`"));
+        assert!(text.contains("has no effect"));
+        let row = PROVEN.iter().find(|row| row.file == "09.md").unwrap();
+        assert_eq!(row.status, "configured-and-proven");
+        assert!(SHAPES.iter().all(|shape| shape.file != "09.md"));
+
+        let author = RelaySigner::from_secret_hex(&"11".repeat(32)).unwrap();
+        let other = RelaySigner::from_secret_hex(&"22".repeat(32)).unwrap();
+        let note = author.sign(1_700_000_000, 1, Vec::new(), "accidental".into());
+        let foreign_note = other.sign(1_700_000_000, 1, Vec::new(), "not mine".into());
+        let address = author.sign(
+            1_700_000_010,
+            30_023,
+            vec![Tag::new(vec!["d".into(), "post".into()])],
+            "draft".into(),
+        );
+        let boundary = author.sign(
+            1_700_000_020,
+            30_023,
+            vec![Tag::new(vec!["d".into(), "post".into()])],
+            "same timestamp".into(),
+        );
+        let later = author.sign(
+            1_700_000_050,
+            30_023,
+            vec![Tag::new(vec!["d".into(), "post".into()])],
+            "kept".into(),
+        );
+        let foreign_address = other.sign(
+            1_700_000_010,
+            30_023,
+            vec![Tag::new(vec!["d".into(), "post".into()])],
+            "someone else".into(),
+        );
+        let reason = "these posts were published by accident";
+        let request_event = author.sign(
+            1_700_000_020,
+            5,
+            vec![
+                Tag::new(vec!["e".into(), note.id.clone()]),
+                Tag::new(vec!["e".into(), foreign_note.id.clone()]),
+                Tag::new(vec!["e".into(), "dcd59".into()]),
+                Tag::new(vec!["e".into(), note.id.to_uppercase()]),
+                Tag::new(vec!["a".into(), format!("30023:{}:post", author.pubkey())]),
+                Tag::new(vec!["a".into(), format!("30023:{}:post", other.pubkey())]),
+                Tag::new(vec!["k".into(), "1".into()]),
+                Tag::new(vec!["k".into(), "30023".into()]),
+            ],
+            reason.into(),
+        );
+        request_event.validate_structure().unwrap();
+        assert_eq!(request_event.class(), EventClass::Regular);
+        assert_eq!(request_event.content, reason);
+
+        let request = DeletionRequest::from_event(&request_event).unwrap();
+        assert!(request.event_ids.contains(&note.id));
+        assert!(request.event_ids.contains(&foreign_note.id));
+        assert_eq!(request.event_ids.len(), 2);
+        assert_eq!(
+            request
+                .addresses
+                .iter()
+                .map(|address| address.to_string())
+                .collect::<Vec<_>>(),
+            vec![format!("30023:{}:post", author.pubkey())]
+        );
+        assert_eq!(request.tombstones().count(), 3);
+        assert!(request.deletes(&note));
+        let mut spoofed = note.clone();
+        spoofed.pubkey = other.pubkey().to_owned();
+        assert!(!request.deletes(&spoofed));
+        assert!(!request.deletes(&foreign_note));
+        assert!(request.deletes(&address));
+        assert!(request.deletes(&boundary));
+        assert!(!request.deletes(&later));
+        assert!(!request.deletes(&foreign_address));
+
+        let unrelated = author.sign(1_700_000_000, 1, Vec::new(), "other note".into());
+        assert!(!request.deletes(&unrelated));
+        let without_kinds = author.sign(
+            1_700_000_020,
+            5,
+            vec![Tag::new(vec!["e".into(), note.id.clone()])],
+            String::new(),
+        );
+        assert!(
+            DeletionRequest::from_event(&without_kinds)
+                .unwrap()
+                .deletes(&note)
+        );
+
+        let retraction = author.sign(
+            1_700_000_030,
+            5,
+            vec![Tag::new(vec!["e".into(), request_event.id.clone()])],
+            String::new(),
+        );
+        assert!(
+            !DeletionRequest::from_event(&retraction)
+                .unwrap()
+                .deletes(&request_event)
+        );
+        assert!(request.deletes(&note));
+
+        let empty = author.sign(
+            1_700_000_040,
+            5,
+            vec![Tag::new(vec!["e".into(), "zz".into()])],
+            "nothing actionable".into(),
+        );
+        let empty_request = DeletionRequest::from_event(&empty).unwrap();
+        assert!(empty_request.tombstones().next().is_none());
+        assert!(!empty_request.deletes(&note));
+
+        let not_a_request = author.sign(1, 1, Vec::new(), String::new());
+        assert!(matches!(
+            DeletionRequest::from_event(&not_a_request),
+            Err(DomainError::NotDeletionRequest)
+        ));
     }
 
     #[test]
