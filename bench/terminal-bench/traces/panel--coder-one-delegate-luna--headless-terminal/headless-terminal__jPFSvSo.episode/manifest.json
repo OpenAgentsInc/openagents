@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 8,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "fb22c10acbd4f4ee1d3930650ae92d244fb110140da06ef795117180d22b6713",
+        "chars": 3877,
+        "bytes": 3889,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file base_terminal.py",
+          "command 1",
+          "command 2",
+          "command 3",
+          "command 4",
+          "command 5",
+          "command 6",
+          "last command output"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 8,
+      "api_calls": null,
+      "total_cost_usd": 0.00299258,
+      "milliseconds": 57741,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 7187,
+        "kept_bytes": 7187,
+        "truncated": false,
+        "sha256": "1c02ca767ae7641a4c4ae6d1f6237d6413b3011b5286150e0cef69b606d46660"
+      },
+      "close": {
+        "done": 0.53,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a9c712f158b)",
+    "sha256": "fc676468ae4270dc3e28fb4e3b02f5f48dfd0d75e31061b884efd737a91608a3"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "step",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:05:06.984Z",
+  "updated_at": "2026-09-22T20:06:42.309Z",
+  "outcome": "delegated",
+  "steps": 6,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 67959,
+      "sha256": "ca423dac3305e5b75d17fb6784444f7e63a8f59b77d4dd176a9cc95fa8670671"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1915,
+      "sha256": "155652f4adec7cdca9f774f94dd5861b682602832877097f5d9e2b753326dc96"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 5757,
+      "sha256": "afda4a42ef7752ed37edb129684e73b6e77ffcc40b8b88cc64d9e5496516e3f5"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3889,
+      "sha256": "fb22c10acbd4f4ee1d3930650ae92d244fb110140da06ef795117180d22b6713"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 7187,
+      "sha256": "1c02ca767ae7641a4c4ae6d1f6237d6413b3011b5286150e0cef69b606d46660"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement HeadlessTerminal subclassing BaseTerminal in /app/headless_terminal.py",
+    "summary": "Implemented [headless_terminal.py](/app/headless_terminal.py) with `HeadlessTerminal(BaseTerminal)`. It starts interactive Bash on a PTY, forwards typed text and control characters, drains output in the background, and provides `read_output()` and `close()`.\n\nVerified Python compilation, startup-file sourcing, command execution, Ctrl-C recovery, and child-process cleanup. No additional dependencies were needed.",
+    "delegate_status": "answered"
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 2,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "539b21fddc781ecdc80e8800dbe1fdeb213b3d384ebfe456770340b2819a663c",
+        "chars": 3325,
+        "bytes": 3329,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file _layouts/default.html",
+          "file css/bootstrap.min.css",
+          "file .gitignore",
+          "file _posters/frank2017sensing.md",
+          "file biblib/bib.py",
+          "file _publications/merrillTransformingWearableData2024a.md",
+          "file _publications/tanAreLanguageModels2024.md",
+          "file _publications/merrillLanguageModelsStill2024.md",
+          "command 1",
+          "last command output"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 5,
+      "api_calls": 5,
+      "total_cost_usd": 0.0971744,
+      "milliseconds": 15271,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 36787,
+        "kept_bytes": 36787,
+        "truncated": false,
+        "sha256": "c705cd1671e01dfac266e77dd432962eca6f182e1f5b7a9e80441afaf13c295b"
+      },
+      "close": {
+        "done": 0.88,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a9c712f158b)",
+    "sha256": "fc676468ae4270dc3e28fb4e3b02f5f48dfd0d75e31061b884efd737a91608a3"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "step",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:05:50.787Z",
+  "updated_at": "2026-09-22T20:06:16.689Z",
+  "outcome": "delegated",
+  "steps": 1,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 58591,
+      "sha256": "91b5d29c18b58e3f976a8d4de8831a99b3bfd1b17f32012d90714366c46da549"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1920,
+      "sha256": "6e776ab0fdb771396cd3c8922bd70c9e05718cbf07585f2baf53e865e1e9afad"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1186,
+      "sha256": "2c9b2ccf74284f5cd37f47361cecd92bb1b8c21f167c8dee57aa9df3f80c21b5"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4943,
+      "sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3329,
+      "sha256": "539b21fddc781ecdc80e8800dbe1fdeb213b3d384ebfe456770340b2819a663c"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 36787,
+      "sha256": "c705cd1671e01dfac266e77dd432962eca6f182e1f5b7a9e80441afaf13c295b"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Dangling commit 'Move to Stanford' (c499730) created on detached HEAD needs to be merged into master",
+    "summary": "I found your changes and merged them into master.\n\n**What happened:** you checked out `HEAD~1`, which put git in \"detached HEAD\" mode, and made a commit there called \"Move to Stanford\" (`c499730`). When you switched back to master, no branch pointed at that commit, so it looked lost. `git reflog` still had a record of it.\n\n**What I did:**\n- Merged `c499730` into master. The result is merge commit `898485d`.\n- The `_layouts/default.html` changes merged cleanly.\n- `_includes/about.md` had a conflict. Master's \"off the job market woo\" commit changed the intro to \"sixth PhD candidate\", and your Stanford commit rewrote it. Both versions removed the \"looking for a job\" line. I kept your newer Stanford version: \"I am a Postdoctoral Researcher at Stanford CS.\"\n\n**How I checked:**\n- master's history now includes both commits.\n- The working tree is clean.\n- The merged files are identical to your Stanford commit.\n\nIf you wanted any of master's wording kept, you can edit `_includes/about.md`. Nothing has been pushed.",
+    "delegate_status": "answered"
+  }
+}

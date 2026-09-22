@@ -1,0 +1,61 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "off"
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (9f31630ac600)",
+    "sha256": "fa4b38e06c9aee1955b154dee846b1a5c1a2b7ed53a559d0cecb0d268c464f92"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T19:30:12.089Z",
+  "updated_at": "2026-09-22T19:35:04.222Z",
+  "outcome": "finished",
+  "steps": 46,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 1331767,
+      "sha256": "a95c155c84beb333957d2f2d55f2c49779fdc399856baeeaf3be94fc23142588"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1159,
+      "sha256": "042888983284cfa38605bc9fde0a834183102d09cf05cadbef8460ea4390b644"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 140301,
+      "sha256": "578a6d458fdeb2911eac6733f3ca36e3e606082cca03331303b175d2b3164960"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Fix NumPy 2.0+ compatibility and compile Cython extensions for pyknotid",
+    "summary": "Cloned pyknotid 0.5.3 to /app/pyknotid, resolved NumPy 2.0+ compatibility issues by replacing deprecated NumPy scalar types (n.float, n.int, n.bool, n.complex) with built-in Python types, fixed Python 3.13 math.gcd import, compiled all Cython extensions (chelpers, ccomplexity, cinvariants, coctree), and installed pyknotid into the system environment. Verified the README snippet and test suite pass without errors."
+  }
+}

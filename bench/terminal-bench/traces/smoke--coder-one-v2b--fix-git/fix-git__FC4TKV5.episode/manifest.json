@@ -1,0 +1,66 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "off"
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (9f31630ac600)",
+    "sha256": "fa4b38e06c9aee1955b154dee846b1a5c1a2b7ed53a559d0cecb0d268c464f92"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "step",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T19:22:22.771Z",
+  "updated_at": "2026-09-22T19:23:39.486Z",
+  "outcome": "finished",
+  "steps": 17,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 400702,
+      "sha256": "fb4c34fc3c9c46f6b55cdb2b5b8995b7239d2c3dbf02be8755876b2570429567"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1164,
+      "sha256": "96e0a52cf2956414c4923da2c9158895c3bc72efd3de89c14e794220b0fd5fb4"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 26761,
+      "sha256": "65d6394f073346c693f55d12271eb0909ba9c01f92275c709029370f4a3150fe"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4943,
+      "sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Merge lost commit 'Move to Stanford' into master",
+    "summary": "Located the dangling commit c499730 ('Move to Stanford') in the reflog, merged it into the master branch, resolved conflicts in _includes/about.md, and finalized the merge commit."
+  }
+}

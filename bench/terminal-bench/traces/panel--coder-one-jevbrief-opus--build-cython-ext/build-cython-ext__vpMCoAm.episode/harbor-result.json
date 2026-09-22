@@ -1,0 +1,34 @@
+{
+  "task_name": "terminal-bench/build-cython-ext",
+  "trial_name": "build-cython-ext__vpMCoAm",
+  "started_at": "2026-09-22T20:10:39.978513Z",
+  "finished_at": "2026-09-22T20:15:08.805088Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T20:10:40.033772Z",
+    "finished_at": "2026-09-22T20:10:45.460047Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T20:10:45.460107Z",
+    "finished_at": "2026-09-22T20:13:26.080421Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T20:13:26.080502Z",
+    "finished_at": "2026-09-22T20:14:53.224725Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T20:14:53.435407Z",
+    "finished_at": "2026-09-22T20:14:57.525552Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "exception_info": null,
+  "agent_result": {
+    "n_input_tokens": 245511,
+    "n_cache_tokens": 226512,
+    "n_output_tokens": 4329,
+    "cost_usd": null
+  }
+}

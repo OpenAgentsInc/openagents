@@ -94,9 +94,10 @@ roughly 10 to 15 times a minute, so:
   agent time. Check a trial for `generation failed: the free lane takes 20
   generations a minute` in its trajectory before you analyze its time.
 - Commit `7e810c3a5` in `OpenAgentsInc/coder` exempts operator admins
-  (`CODER_ADMINS`, `AtlantisPleb` when unset) from the limit. It is pushed
-  but not yet live: check that `curl -s https://openagents.com/health`
-  reports that commit or a later one before you rely on the exemption.
+  (`CODER_ADMINS`, `AtlantisPleb` when unset) from the limit. It is live
+  since `0773a7fdf` (2026-09-22): 50 free-lane calls in a minute all
+  answered. With the operator's session token, Coder One trials can run in
+  parallel; any other account still needs them one at a time.
 
 ## Pin the Coder One artifact
 
@@ -124,6 +125,7 @@ an arm's profile sets:
 | `CODER_ONE_DEEP=on` | `coder-one-deep` | A parallel Jev survey of up to 100 files before the first step, a "done and checked" question every step, and repeated-command hints. |
 | `CODER_ONE_JEV=off` | `coder-one-no-jev` | The ablation: no Jev calls. |
 | `CODER_ONE_DELEGATE=always` or `auto` | the delegate arms | Delegate mode; see the delegate runbook. |
+| `CODER_ONE_EXPLORE_STEPS=0` with `CODER_ONE_DEEP=on` | `coder-one-jevbrief-opus`, `coder-one-jevbrief-luna` | Jev-brief: no Gemini explorer; the Jev survey's files go straight into the delegate's briefing. |
 
 ## Name jobs so results don't collide
 

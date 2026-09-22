@@ -1,0 +1,118 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "f9df763bd17665806e4539b5b9bddef5bac210588ceb5c6c921e4b6614b42d83",
+        "chars": 2257,
+        "bytes": 2257,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 31,
+      "api_calls": null,
+      "total_cost_usd": 0.019827760000000003,
+      "milliseconds": 208777,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 71694,
+        "kept_bytes": 71694,
+        "truncated": false,
+        "sha256": "c58f4a9170a7b1fba76674a90bd8b9901c296dca32ae9473433e422241aa715d"
+      },
+      "close": {
+        "done": 0.69,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (d6626285b583)",
+    "sha256": "e2a92884eba12a7b9ff8a6dfa5e18304c12241f37ea842dc3d419562e783a4a7"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:12:32.374Z",
+  "updated_at": "2026-09-22T20:16:01.665Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 16821,
+      "sha256": "2b0057636ca3912e81d52ef5055349972c8378e41790dba65a50fc61b821908c"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1898,
+      "sha256": "f2518845720082f4d63a16ab1fbcb04d5eb2a9f6a4562741b357cc32a9ee39b2"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1896,
+      "sha256": "9284abd4e3f7f4df335488a8ae125d5a924759d207f3f833bd6521b4bf50e84c"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2257,
+      "sha256": "f9df763bd17665806e4539b5b9bddef5bac210588ceb5c6c921e4b6614b42d83"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 71694,
+      "sha256": "c58f4a9170a7b1fba76674a90bd8b9901c296dca32ae9473433e422241aa715d"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "pyknotid is a Python package for computational topology and knot theory.",
+    "summary": "Compiled and installed pyknotid 0.5.3 from `/app/pyknotid` into the system Python environment with NumPy 2.3.0. Updated deprecated NumPy aliases and replaced the removed `fractions.gcd` import with `math.gcd`.\n\nThe README example runs and returns approximately `7`. The compiled `chelpers`, `ccomplexity`, and `cinvariants` modules load from the installed package. Checks: `tests/test_spacecurve.py` and `tests/test_knot.py` passed (18 tests), and `git diff --check` passed.",
+    "delegate_status": "answered"
+  }
+}

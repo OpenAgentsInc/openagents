@@ -1,0 +1,136 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 8,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "d24cb358bdc9bab700fd1c12717661819ef20c2350b4479f88575df83e312e20",
+        "chars": 7033,
+        "bytes": 7047,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file pyknotid/setup.py",
+          "file pyknotid/pyknotid/spacecurves/periodic.py",
+          "file pyknotid/pyknotid/spacecurves/knot.py",
+          "file pyknotid/pyknotid/invariants.py",
+          "file pyknotid/pyknotid/spacecurves/link.py",
+          "file pyknotid/pyknotid/spacecurves/spacecurve.py",
+          "file pyknotid/pyknotid/spacecurves/__init__.py",
+          "file pyknotid/pyknotid/spacecurves/periodiccell.py",
+          "command 1",
+          "command 2",
+          "command 3",
+          "command 4",
+          "command 5",
+          "command 6",
+          "command 7",
+          "last command output"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 28,
+      "api_calls": null,
+      "total_cost_usd": 0.0151537,
+      "milliseconds": 164883,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 63885,
+        "kept_bytes": 63885,
+        "truncated": false,
+        "sha256": "ae66bf8810ae6fd203c6143a0de5c39b2a48406b657334772e4f6323c1b241ed"
+      },
+      "close": {
+        "done": 0.73,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a9c712f158b)",
+    "sha256": "fc676468ae4270dc3e28fb4e3b02f5f48dfd0d75e31061b884efd737a91608a3"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "step",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:04:45.798Z",
+  "updated_at": "2026-09-22T20:08:27.258Z",
+  "outcome": "delegated",
+  "steps": 7,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 165870,
+      "sha256": "c5c3f9f274b1a1348a352cee08d39e3f596357640fbc52e1fceb4a01ff3318c4"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1908,
+      "sha256": "256651dfebdb1f3506368a0b11b30166232934bb6d6afcfc7929877fba5f6bd3"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 15077,
+      "sha256": "1758502c661806c5a93716aeaeed9fc3385816b432cf18fcf778eaaa42a21d2a"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 7047,
+      "sha256": "d24cb358bdc9bab700fd1c12717661819ef20c2350b4479f88575df83e312e20"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 63885,
+      "sha256": "ae66bf8810ae6fd203c6143a0de5c39b2a48406b657334772e4f6323c1b241ed"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "pyknotid Cython extensions and codebase incompatible with NumPy >= 2.0",
+    "summary": "**pyknotid 0.5.3 is installed globally** in `/usr/local/lib/python3.13/site-packages` and its Cython extensions were compiled against NumPy 2.3.0. I fixed removed NumPy aliases and the Python 3.13 `fractions.gcd` import in the source.\n\nThe README example ran successfully and returned `6.999999999999998`. The requested test set passed: **18 passed**, excluding `test_random_curves.py` and `test_catalogue.py`. The checkout is at `/app/pyknotid`.",
+    "delegate_status": "answered"
+  }
+}

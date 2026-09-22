@@ -39,6 +39,13 @@ impl Shell for Checkout {
             .env("PAGER", "cat")
             .env("GIT_PAGER", "cat")
             .env("PYTHONDONTWRITEBYTECODE", "1");
+        // The agent's commands never see a credential. An episode once ran
+        // `env` and wrote the Jev key into its trajectory.
+        for (name, _) in std::env::vars_os() {
+            if name.to_str().is_some_and(is_credential) {
+                prepared.env_remove(&name);
+            }
+        }
         let ended = supervise::Job::from_command(prepared)
             .bounded(supervise::Limits::within(self.deadline).keeping(STREAM_CAP))
             .run()
@@ -101,6 +108,26 @@ impl Shell for Checkout {
     }
 }
 
+/// Whether an environment variable holds a credential the agent's commands
+/// must not inherit: the doors' and delegates' keys by name, and any name
+/// that ends like one.
+fn is_credential(name: &str) -> bool {
+    const NAMED: &[&str] = &[
+        "OPENAGENTS_API_KEY",
+        "TYPESAFE_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "OPENAI_API_KEY",
+        "CODEX_AUTH_JSON_PATH",
+    ];
+    let upper = name.to_ascii_uppercase();
+    NAMED.contains(&upper.as_str())
+        || upper.ends_with("_API_KEY")
+        || upper.ends_with("_TOKEN")
+        || upper.ends_with("_SECRET")
+}
+
 fn print_tail(output: &str) {
     let lines: Vec<&str> = output.lines().collect();
     let skip = lines.len().saturating_sub(CONSOLE_LINES);
@@ -109,5 +136,32 @@ fn print_tail(output: &str) {
     }
     for line in &lines[skip..] {
         println!("  │ {line}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_credential;
+
+    #[test]
+    fn credentials_are_recognized_and_ordinary_variables_are_not() {
+        for name in [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "GITHUB_TOKEN",
+            "some_service_secret",
+        ] {
+            assert!(is_credential(name), "{name}");
+        }
+        for name in [
+            "PATH",
+            "HOME",
+            "PYTHONDONTWRITEBYTECODE",
+            "CODER_ONE_DEEP",
+            "TOKENIZERS_PARALLELISM",
+        ] {
+            assert!(!is_credential(name), "{name}");
+        }
     }
 }

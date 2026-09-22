@@ -1,0 +1,60 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "off"
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a9c712f158b)",
+    "sha256": "fc676468ae4270dc3e28fb4e3b02f5f48dfd0d75e31061b884efd737a91608a3"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "enabled": false
+    }
+  },
+  "jev_mode": "off",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:02:05.239Z",
+  "updated_at": "2026-09-22T20:06:10.551Z",
+  "outcome": "finished",
+  "steps": 34,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 169806,
+      "sha256": "3c1aa8a1351a506e7252afa7843118d9aaf11c852c2c6c17c4e239b4294bbecf"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1181,
+      "sha256": "4be781f1f2062ee94d37242c08742a8768143d4eaa0e6145cedb6dda8a7f5685"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 119584,
+      "sha256": "dfd30fa4ccf4288329f6469d6238fb3fcd861a8f0cb471bedc63998903bfde4e"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Fix NumPy 2.x compatibility and build Cython extensions for pyknotid",
+    "summary": "Cloned pyknotid v0.5.3 into /app/pyknotid, resolved compatibility issues with NumPy 2.x and Python 3.13 (replaced deprecated numpy scalar aliases np.float, np.int, np.complex, np.bool with builtins, and updated fractions.gcd import to math.gcd), compiled Cython extensions (chelpers, ccomplexity, cinvariants, coctree), installed pyknotid into the global Python environment, and verified test suite execution and the README example snippet."
+  }
+}

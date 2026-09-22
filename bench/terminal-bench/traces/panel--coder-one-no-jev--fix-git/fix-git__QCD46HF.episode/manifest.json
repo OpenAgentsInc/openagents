@@ -1,0 +1,65 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "off"
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a9c712f158b)",
+    "sha256": "fc676468ae4270dc3e28fb4e3b02f5f48dfd0d75e31061b884efd737a91608a3"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "enabled": false
+    }
+  },
+  "jev_mode": "off",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:02:00.860Z",
+  "updated_at": "2026-09-22T20:03:12.655Z",
+  "outcome": "finished",
+  "steps": 14,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 45632,
+      "sha256": "3555ede947731959419fd4dffe78b61a6d1b88c7e4fad64b9a8c545701f80c7b"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1179,
+      "sha256": "f69119184ce9b2b14fe0dbe75f6edd9493ddb0cfc8009fdc75bdf36406c45574"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 26294,
+      "sha256": "1612a9f0b2d64d0c26fc3d850c0c381bfd3f87a76e67b112b5f780f9903a3c8b"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4943,
+      "sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Merge lost commit c499730 ('Move to Stanford') into master",
+    "summary": "Located the detached commit c499730 ('Move to Stanford') from git reflog, merged it into the master branch, resolved the merge conflict in _includes/about.md, and finalized the merge commit."
+  }
+}

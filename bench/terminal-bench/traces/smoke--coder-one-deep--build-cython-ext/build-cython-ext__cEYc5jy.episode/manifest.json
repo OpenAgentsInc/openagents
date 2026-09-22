@@ -1,0 +1,55 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (99e647a7a974)",
+    "sha256": "342830f4c2792dd93a26dd86c985922f57c346a5693ac0d8393584d04e9e0043"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T19:10:57.525Z",
+  "updated_at": "2026-09-22T19:11:53.765Z",
+  "outcome": "generation_failed",
+  "steps": 5,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 116031,
+      "sha256": "9e63c797b4fab4bcf8f7d773e217c87d7a4c6a1b1985a59f9d2db8f4f6beaf7f"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 855,
+      "sha256": "8fa0d64368701c1d938b17a7af029524ae89bae589af870d4813c68d51a21e2b"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 12330,
+      "sha256": "abe3824ec89e36252879acb943f8a6ec73eb11c230872ac5044fac46bcbb4e7a"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "error": "the free lane takes 20 generations a minute for one account"
+}

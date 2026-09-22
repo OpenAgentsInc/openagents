@@ -1,0 +1,119 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "2f1e02f8686c51907da1d3d70a63ca1444c4bc2bf22a5fb6975070d9cae35329",
+        "chars": 1867,
+        "bytes": 1867,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 9,
+      "api_calls": null,
+      "total_cost_usd": 0.0035799,
+      "milliseconds": 72546,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 8274,
+        "kept_bytes": 8274,
+        "truncated": false,
+        "sha256": "ce20da9b171dd9f85e843fbc99670f76b99340a0af7e9ae9e4a48090da39ccfc"
+      },
+      "close": {
+        "done": 0.5,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (d6626285b583)",
+    "sha256": "e2a92884eba12a7b9ff8a6dfa5e18304c12241f37ea842dc3d419562e783a4a7"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:14:27.509Z",
+  "updated_at": "2026-09-22T20:15:40.672Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 17236,
+      "sha256": "9a482a0c3cc9f99082acedf78e4a9b5243063235133c0c36a8b56a171b44f7ce"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1873,
+      "sha256": "17261dcb0b1f9ab2990e02997231e95577aabb612b91262b63c7c6b3a8da0eb0"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1631,
+      "sha256": "dbaed78fa2f3bcd5d34fd09b65783de8e63256517aa2640ebccb7c33d6054331"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 1867,
+      "sha256": "2f1e02f8686c51907da1d3d70a63ca1444c4bc2bf22a5fb6975070d9cae35329"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 8274,
+      "sha256": "ce20da9b171dd9f85e843fbc99670f76b99340a0af7e9ae9e4a48090da39ccfc"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "Implemented `HeadlessTerminal` in [headless_terminal.py](/app/headless_terminal.py). It runs interactive bash on a PTY, loads `~/.bashrc`, supports interactive input and control characters such as Ctrl-C, and captures output through `output` and `read_output()`.\n\nChecked bashrc loading, command execution after Ctrl-C, and Python compilation.",
+    "delegate_status": "answered"
+  }
+}

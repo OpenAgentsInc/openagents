@@ -1,0 +1,34 @@
+{
+  "task_name": "terminal-bench/fix-git",
+  "trial_name": "fix-git__QCD46HF",
+  "started_at": "2026-09-22T20:01:59.106702Z",
+  "finished_at": "2026-09-22T20:03:34.269497Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T20:01:59.164528Z",
+    "finished_at": "2026-09-22T20:02:00.082621Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T20:02:00.082688Z",
+    "finished_at": "2026-09-22T20:02:00.763599Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T20:02:00.763726Z",
+    "finished_at": "2026-09-22T20:03:12.701200Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T20:03:12.921728Z",
+    "finished_at": "2026-09-22T20:03:22.978344Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "exception_info": null,
+  "agent_result": {
+    "n_input_tokens": 52279,
+    "n_cache_tokens": 0,
+    "n_output_tokens": 4390,
+    "cost_usd": 0.055679
+  }
+}

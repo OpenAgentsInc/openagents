@@ -1,0 +1,60 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "off"
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a9c712f158b)",
+    "sha256": "fc676468ae4270dc3e28fb4e3b02f5f48dfd0d75e31061b884efd737a91608a3"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "enabled": false
+    }
+  },
+  "jev_mode": "off",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:02:00.823Z",
+  "updated_at": "2026-09-22T20:08:02.367Z",
+  "outcome": "finished",
+  "steps": 48,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 112240,
+      "sha256": "c83b179d4f8f42a3e73dc724779cd2ac16d5f8b803701767b569d77441c7ebbc"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1181,
+      "sha256": "4b55f28404790591a5d08339ec7931e84963b895c64c40bd70e26d0da3af3a86"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 40716,
+      "sha256": "7b9140de1dc2c857ee46ab38237d212d15965b8651b2b74935197746497b006f"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement HeadlessTerminal subclassing BaseTerminal",
+    "summary": "Implemented `HeadlessTerminal(BaseTerminal)` in `/app/headless_terminal.py`. The class allocates a pseudo-terminal (pty) and forks an interactive bash shell (`bash -i`), setting up a controlling terminal session. It sends keystrokes including modifier keys like `\\x03` (Ctrl+C) to standard input, sources shell startup files like `~/.bashrc`, supports interactive commands, and provides background output buffering and cleanup."
+  }
+}

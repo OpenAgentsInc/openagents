@@ -1,0 +1,61 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "off"
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (9f31630ac600)",
+    "sha256": "fa4b38e06c9aee1955b154dee846b1a5c1a2b7ed53a559d0cecb0d268c464f92"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "step",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T19:25:51.259Z",
+  "updated_at": "2026-09-22T19:29:48.267Z",
+  "outcome": "finished",
+  "steps": 30,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 891703,
+      "sha256": "00187dc44ef1a3ac54cdf71cfb254a0ff0f22d905e1d66aaa83583d104410a13"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1144,
+      "sha256": "20e22434d1c1e63ccb27ebcb7647cad14513442b38f448e5706aee37dfa1fc29"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 105338,
+      "sha256": "6367f1d26fc0daa8d218aa03000c47f5e1067b443c314a4e8628a4c69e0b619a"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Build and install pyknotid with Cython extensions and NumPy 2.x compatibility",
+    "summary": "Cloned pyknotid branch 0.5.3 to /app/pyknotid, resolved NumPy 2.x compatibility issues by replacing deprecated NumPy scalar type aliases (np.float, np.int, np.complex, np.bool) with built-in types, updated fractions.gcd import to math.gcd for Python 3.13 compatibility, compiled all Cython extensions (chelpers, ccomplexity, cinvariants, coctree), installed pyknotid into the system's global Python environment, and verified that both the README snippet and test suite pass successfully."
+  }
+}

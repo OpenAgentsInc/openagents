@@ -1,0 +1,61 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "off"
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (9f31630ac600)",
+    "sha256": "fa4b38e06c9aee1955b154dee846b1a5c1a2b7ed53a559d0cecb0d268c464f92"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "step",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T19:35:30.230Z",
+  "updated_at": "2026-09-22T19:45:28.020Z",
+  "outcome": "finished",
+  "steps": 49,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 683828,
+      "sha256": "9c621981aff3ce248a8c19ced996bc41a963f4520aa455e457badd77a8a81094"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1164,
+      "sha256": "ab004f577f1bc36f4cc63f96df00a65d592b1bb234035fb8440ecb3555eb7787"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 183626,
+      "sha256": "bd75561ef7b789a057b6f1ee7740338320fc3716a6556821371403aa6449cec7"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement HeadlessTerminal subclassing BaseTerminal",
+    "summary": "Implemented `HeadlessTerminal(BaseTerminal)` in `/app/headless_terminal.py` which launches an interactive bash shell attached to a pseudo-terminal (pty). It supports sending keystrokes including modifier keys like Ctrl+C (`\\x03`), running interactive programs, sourcing shell startup files such as `~/.bashrc`, and capturing terminal output. Verified functionality with test scripts."
+  }
+}

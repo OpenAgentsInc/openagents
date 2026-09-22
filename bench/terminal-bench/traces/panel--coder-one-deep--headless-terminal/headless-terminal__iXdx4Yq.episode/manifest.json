@@ -1,0 +1,61 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "off"
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a9c712f158b)",
+    "sha256": "fc676468ae4270dc3e28fb4e3b02f5f48dfd0d75e31061b884efd737a91608a3"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:02:01.107Z",
+  "updated_at": "2026-09-22T20:09:52.684Z",
+  "outcome": "finished",
+  "steps": 49,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 566912,
+      "sha256": "d527306820b14c62692791056acd1fa4b68f4f96258115a6447b125f56988e1f"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1210,
+      "sha256": "d02c29944d9042f80eea294b14ed053e88b867cd7648721eee3ed85397f22333"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 38804,
+      "sha256": "2d7945078ce96cf4f810cb5787a062b842eb718fc2ffe2622f760886183788ef"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement HeadlessTerminal BaseTerminal interface",
+    "summary": "Implemented `HeadlessTerminal(BaseTerminal)` in `/app/headless_terminal.py` using `pexpect` to spawn an interactive bash shell (`bash -i`). Installed `pexpect` in the system Python environment. Supported modifier keys such as `\\x03` (Control-C), interactive commands, background pty reading to prevent deadlock, and automatic sourcing of startup files (`~/.bashrc`). Verified the implementation against keystroke sending, signals, and interactive commands."
+  }
+}

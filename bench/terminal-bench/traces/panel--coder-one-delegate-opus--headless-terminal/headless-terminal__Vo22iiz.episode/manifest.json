@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 8,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "ce0f80d7095fb47bf62487c3a03865cb33abcddcd3c33a8e5bd53d0f28507926",
+        "chars": 3918,
+        "bytes": 3930,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file base_terminal.py",
+          "command 1",
+          "command 2",
+          "command 3",
+          "command 4",
+          "command 5",
+          "command 6",
+          "last command output"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 4,
+      "api_calls": 4,
+      "total_cost_usd": 0.14579479999999995,
+      "milliseconds": 36373,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 32651,
+        "kept_bytes": 32651,
+        "truncated": false,
+        "sha256": "ff4199271676ce17986e6094701442734b06df46ffcf7f0837305c441d02295b"
+      },
+      "close": {
+        "done": 0.51,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (9f31630ac600)",
+    "sha256": "fa4b38e06c9aee1955b154dee846b1a5c1a2b7ed53a559d0cecb0d268c464f92"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "step",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T19:47:51.739Z",
+  "updated_at": "2026-09-22T19:48:59.789Z",
+  "outcome": "delegated",
+  "steps": 6,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 69556,
+      "sha256": "c9388a1c0d12f95573d3b4d7d5dbe5cf928408033b26648e24db9b59554bb4ea"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1870,
+      "sha256": "8940b3eb5c3513d7b4c2f92983085379807b2fef83e9bfcb78a17191ec04bc39"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 4592,
+      "sha256": "76eca8ef67489868cec7beb09f9ea60c2a1a19e262ec464a930edb63fad8d37c"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3930,
+      "sha256": "ce0f80d7095fb47bf62487c3a03865cb33abcddcd3c33a8e5bd53d0f28507926"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 32651,
+      "sha256": "ff4199271676ce17986e6094701442734b06df46ffcf7f0837305c441d02295b"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement HeadlessTerminal subclassing BaseTerminal for interactive bash sessions",
+    "summary": "I've written `HeadlessTerminal(BaseTerminal)` in `/app/headless_terminal.py`, and it imports as `from headless_terminal import HeadlessTerminal`. It runs an interactive bash shell and passes your keystrokes straight to it, so control keys like `\\x03` for Ctrl+C work as they would in a real terminal.\n\n**How it works:**\n- It uses only Python's standard library (`pty`, `os`, `select`, `termios` and `threading`), so there was nothing to install into the system Python.\n- It starts `/bin/bash -i` in a pseudo-terminal with `TERM=xterm-256color` and an 80×24 window. Because bash is interactive on a real terminal device, it sources `~/.bashrc`.\n- `send_keystrokes(keystrokes, wait_sec)` writes the characters exactly as given, then sleeps for `wait_sec` seconds.\n- I added some extras beyond the required method: a background thread that keeps the shell's output (`read_output()` / `get_output()`, `clear_output()`), `is_alive()`, and `close()`, which ends the shell and its child processes. It also works in a `with` block and cleans up when the object is deleted.\n\n**What I tested:**\n- **Startup file:** I added a temporary variable export to `~/.bashrc`, and echoing it in the terminal printed its value. I then put `~/.bashrc` back as it was.\n- **Ctrl+C:** `sleep 100` stopped after `\\x03`, and the next command ran normally.\n- **Interactive program:** I typed a statement into the `python3` prompt and it created a file. Then `\\x04` (Ctrl+D) exited Python back to bash.\n\nI also tried vim, but it isn't installed in this environment, so that check didn't run.",
+    "delegate_status": "answered"
+  }
+}

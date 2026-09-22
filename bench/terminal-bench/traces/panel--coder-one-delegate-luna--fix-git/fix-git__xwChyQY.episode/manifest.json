@@ -1,0 +1,138 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 8,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "ad60716a6178fd6e8556d48565edabacc6cb250c446e2ec5aee75b89b3880f5d",
+        "chars": 4992,
+        "bytes": 5004,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file _layouts/default.html",
+          "file _posters/frank2017sensing.md",
+          "file .gitignore",
+          "file css/bootstrap.min.css",
+          "file _publications/merrillTransformingWearableData2024a.md",
+          "file _publications/merrillLanguageModelsStill2024.md",
+          "file _publications/tseng2016ubicomp.md",
+          "file _publications/tanAreLanguageModels2024.md",
+          "command 1",
+          "command 2",
+          "command 3",
+          "command 4",
+          "last command output"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 11,
+      "api_calls": null,
+      "total_cost_usd": 0.00280236,
+      "milliseconds": 29523,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 13441,
+        "kept_bytes": 13441,
+        "truncated": false,
+        "sha256": "29831301b3fd3554a77dfe19e2f4bd10a66f3c99887cf72cd453215408951a12"
+      },
+      "close": {
+        "done": 0.75,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a9c712f158b)",
+    "sha256": "fc676468ae4270dc3e28fb4e3b02f5f48dfd0d75e31061b884efd737a91608a3"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "step",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:04:52.005Z",
+  "updated_at": "2026-09-22T20:05:55.323Z",
+  "outcome": "delegated",
+  "steps": 4,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 149439,
+      "sha256": "f95c67459175294a4df66bccf18856ed5ef0b086adb12aca5462cc502e214f7d"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1910,
+      "sha256": "c6e61b5e258f4795456a2cf4ff402f0c4dbc242ca2d138952a77639382b6123d"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 20258,
+      "sha256": "0614d398890833e0a338dd84e44d2b82cc4f50ca6f3ed8969af7f26b7b7f793b"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4915,
+      "sha256": "e9abef8652d2595c760c40df17973faf7631d1473404509aa87f733b99c4b7c8"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 5004,
+      "sha256": "ad60716a6178fd6e8556d48565edabacc6cb250c446e2ec5aee75b89b3880f5d"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 13441,
+      "sha256": "29831301b3fd3554a77dfe19e2f4bd10a66f3c99887cf72cd453215408951a12"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Lost commit c499730 created in detached HEAD state needs merging into master",
+    "summary": "Merged the recovered Stanford changes into `master` in merge commit `3f6f08f`. The bio now says “Postdoctoral Researcher at Stanford CS.”, and the layout says “Postdoc @ Stanford”; the prior experience paragraph is preserved.\n\nVerified the merge history and both affiliation lines. The worktree is clean.",
+    "delegate_status": "answered"
+  }
+}

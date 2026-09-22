@@ -1,0 +1,123 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "db9f0033f3cee049dd3b8e5ec8e8832c4fbfcb8a2678c2cf5029ef99c662eb5b",
+        "chars": 801,
+        "bytes": 801,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 15,
+      "api_calls": null,
+      "total_cost_usd": 0.0060718199999999995,
+      "milliseconds": 75685,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 27674,
+        "kept_bytes": 27674,
+        "truncated": false,
+        "sha256": "3207734b3fea8a1a343de174cab6ae3f93240650401b6bef2bb198547dddc809"
+      },
+      "close": {
+        "done": 0.79,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (d6626285b583)",
+    "sha256": "e2a92884eba12a7b9ff8a6dfa5e18304c12241f37ea842dc3d419562e783a4a7"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:14:16.426Z",
+  "updated_at": "2026-09-22T20:15:32.877Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 104891,
+      "sha256": "0e09efb6289e57759d226faff908e23d9c0c4704fde4a8b1b25c71b1f268f7a9"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1889,
+      "sha256": "41b2bd90c23d49b14d7d0292257ceae442462d2545ff36fabf99a2be00b4d135"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 485,
+      "sha256": "47bb074d02f1aa302b8916cc2fe8f2524fbd681604fc42c8582f158fba61f86b"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 657128,
+      "sha256": "59deedadbeedc1c6f057e5e0db8ca8bf5ae4dfa8e77f5a0c6bf0214f05e58591"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 801,
+      "sha256": "db9f0033f3cee049dd3b8e5ec8e8832c4fbfcb8a2678c2cf5029ef99c662eb5b"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 27674,
+      "sha256": "3207734b3fea8a1a343de174cab6ae3f93240650401b6bef2bb198547dddc809"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "Recovered and merged both lost histories into `master`. The merge keeps the newer Anthropic role and Terminal-Bench updates, along with the Stanford changes and Google Scholar note.\n\n`master` is clean at `2fcf769`. I confirmed both recovered commits are ancestors of `master` and `git diff --cached --check` passed.",
+    "delegate_status": "answered"
+  }
+}
