@@ -21,6 +21,7 @@ Admission, execution, review, membership, and accounting contracts.
 | [monetary-accounting](monetary-accounting.md) | Monetary accounting |
 | [monetary-ledger](monetary-ledger.md) | Monetary ledger |
 | [operations](operations.md) | Status, contacts, capacity, and commercial policies |
+| [playground](playground.md) | The playground and bounded chat demo |
 | [privacy](privacy.md) | Retention, access, subprocessors, and encryption boundaries |
 | [recipes](recipes.md) | The versioned decision recipe library |
 | [review-policies](review-policies.md) | Review and fallback policies for classification |

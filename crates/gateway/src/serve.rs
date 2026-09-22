@@ -325,6 +325,7 @@ const CREDENTIALED_GET: &[&str] = &[
     "/v1/submissions",
     "/v1/updates",
     "/dashboard",
+    "/playground",
 ];
 
 /// Does a credential protect this path? The public surface — the
@@ -439,6 +440,7 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
         routes.extend(crate::accounts::routes());
         routes.extend(crate::usage::routes());
         routes.extend(crate::dashboard::routes());
+        routes.extend(crate::playground::routes());
     }
     if state.config.billing.is_some() {
         routes.extend(crate::billing::routes());
@@ -473,7 +475,7 @@ async fn healthz() -> impl IntoResponse {
 /// This is the registry's claim — which doors exist for this caller and
 /// what they are pinned to — not a statement about which backends are
 /// currently reachable or what weights a remote host actually loaded.
-async fn models(
+pub(crate) async fn models(
     State(state): State<Arc<ServeState>>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, Response> {
@@ -1059,7 +1061,7 @@ async fn systemone(
     owned_request(state, headers, body, false).await
 }
 
-async fn classify(
+pub(crate) async fn classify(
     State(state): State<Arc<ServeState>>,
     headers: HeaderMap,
     body: Bytes,

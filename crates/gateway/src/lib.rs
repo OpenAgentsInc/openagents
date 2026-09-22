@@ -47,6 +47,8 @@ pub mod discovery;
 pub mod feedback;
 pub mod jobs;
 pub mod money;
+#[allow(clippy::result_large_err)]
+pub mod playground;
 pub mod relay_worker;
 pub mod serve;
 #[allow(clippy::result_large_err)]

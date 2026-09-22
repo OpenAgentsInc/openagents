@@ -9,7 +9,7 @@ publish.workspace = true
 [dependencies]
 discovery = { path = "../discovery" }
 jev = { path = "../jev" }
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 hmac = "0.12.1"
 nostr = { path = "../nostr" }

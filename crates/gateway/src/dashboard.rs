@@ -58,7 +58,7 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
 /// HTML-escape every value a page interpolates — receipts carry
 /// caller-chosen strings (request ids, model names) that must never
 /// render as markup.
-fn esc(text: &str) -> String {
+pub(crate) fn esc(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -80,7 +80,7 @@ fn amount(value: u64) -> String {
 
 /// The page shell — one stylesheet, the amber-on-dark terminal theme
 /// the rest of the product uses, semantic markup a reader navigates.
-fn page(title: &str, workspace: Option<&str>, body: &str) -> Html<String> {
+pub(crate) fn page(title: &str, workspace: Option<&str>, body: &str) -> Html<String> {
     let nav = match workspace {
         Some(ws) => {
             let ws = esc(ws);
@@ -128,7 +128,7 @@ form.filters {{ margin: .5rem 0 1rem; }}
 
 /// An HTML error page — the dashboard answers a failure in the medium
 /// the browser asked for, with the same status the API would return.
-fn page_error(status: StatusCode, title: &str, detail: &str) -> Response {
+pub(crate) fn page_error(status: StatusCode, title: &str, detail: &str) -> Response {
     (
         status,
         page(
@@ -144,7 +144,7 @@ fn page_error(status: StatusCode, title: &str, detail: &str) -> Response {
 }
 
 /// The session cookie's token, when one rides the request.
-fn cookie_token(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn cookie_token(headers: &HeaderMap) -> Option<String> {
     let header = headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
     for pair in header.split(';') {
         let pair = pair.trim();
@@ -160,7 +160,10 @@ fn cookie_token(headers: &HeaderMap) -> Option<String> {
 /// Resolve the cookie to a principal — by handing the token to the
 /// same `principal()` path an `Authorization` header takes, so a
 /// closed or anonymous session refuses exactly as it would over JSON.
-fn principal_of(state: &ServeState, headers: &HeaderMap) -> Result<accounts::Principal, Response> {
+pub(crate) fn principal_of(
+    state: &ServeState,
+    headers: &HeaderMap,
+) -> Result<accounts::Principal, Response> {
     let token = cookie_token(headers).ok_or_else(|| {
         page_error(
             StatusCode::UNAUTHORIZED,
@@ -276,13 +279,16 @@ async fn home(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Respo
 }
 
 #[derive(Deserialize)]
-struct SessionForm {
+pub(crate) struct SessionForm {
     token: String,
 }
 
 /// `POST /dashboard/session` — validate the pasted token through the
 /// real principal path, then set the cookie only on success.
-async fn session(State(state): State<Arc<ServeState>>, Form(form): Form<SessionForm>) -> Response {
+pub(crate) async fn session(
+    State(state): State<Arc<ServeState>>,
+    Form(form): Form<SessionForm>,
+) -> Response {
     let mut forwarded = HeaderMap::new();
     let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", form.token.trim())) else {
         return page_error(

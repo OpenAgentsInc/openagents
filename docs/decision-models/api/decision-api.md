@@ -640,6 +640,22 @@ content as data. Specify session/input retention, deletion, upload limits,
 cancellation, quota feedback, and accessible mobile behavior. Owner:
 [#9494](https://github.com/OpenAgentsInc/openagents/issues/9494).
 
+Landed in `crates/gateway::playground`, mounted with `accounts`:
+`GET /playground` is the session-signed form (the dashboard's `sess_`
+cookie), `POST /playground/run` builds a real `openagents.classify.v1`
+envelope and either hands the session token to the live
+`POST /v1/classify` admission path in-process — quota, backend, sealed
+receipt — or answers the deterministic **SIMULATED** lane that derives
+answers from the request digest and bills nothing. Results render
+per-input outcomes, selected labels, raw distributions, uncertainty and
+review status, refusal causes, served model identity, usage, timing, the
+`x-receipt` digest, and the equivalent request for export. Uploads are
+bounded at 64 KiB and runs at 100 items / 20 labels. `/playground/chat`
+is the bounded chat demo: 10 turns, one classify call per turn, replies
+composed only of the tool's actual answers, and a transcript that lives
+in the page's form state — nothing persists and nothing fetches.
+[The playground contract](../service/playground.md) is the full shape.
+
 ## Skill directory and recipes
 
 Publish a versioned directory of reusable decision skills with browse,
