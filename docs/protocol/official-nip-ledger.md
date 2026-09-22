@@ -445,6 +445,21 @@ relay does not run the job, fetch inputs, or pay invoices. An
 Kind `5` deletion still follows NIP-09. Acceptance is
 `domain::vending::tests::a_job_result_uses_the_request_kind_plus_one_thousand`.
 
+NIP-96 is `configured-and-proven`. Kind `10096` is a replaceable
+list of `https://` file servers. `parse_storage_document` reads
+`/.well-known/nostr/nip96.json`. A normal document requires `api_url`.
+A delegated document has an empty `api_url`, a `delegated_to_url`, and
+no other fields. The free plan defaults `is_nip98_required` to true.
+`parse_upload_response` requires `url` and `ox` on a successful upload.
+`ox` is the SHA-256 of the original file. `parse_processing_status`
+reads a delayed job whose percentage is an integer from 0 to 100. A
+newer server list replaces the older one. NIP-96 is unrecommended, so
+kind `10096` is not added to the NIP-11 list. The relay does not
+upload, download, or delete files. HTTP status codes and a NIP-98
+payload hash are not checked. A blurred or resized file is not fetched.
+Acceptance is
+`domain::storage::tests::a_file_server_list_replaces_and_an_upload_keeps_the_original_hash`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

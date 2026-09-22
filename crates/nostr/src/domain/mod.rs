@@ -38,6 +38,7 @@ mod replacement;
 mod report;
 mod repost;
 mod snippet;
+mod storage;
 mod timestamp;
 mod torrent;
 mod vending;
@@ -132,6 +133,10 @@ pub use replacement::{
 pub use report::{REPORT_TYPES, Report, ReportTarget, open_report};
 pub use repost::{Repost, open_repost};
 pub use snippet::{Snippet, SnippetLicense, SnippetRepo, open_snippet};
+pub use storage::{
+    FileServers, ProcessingStatus, StorageDocument, StoragePlan, UploadResponse, UploadedFile,
+    open_file_servers, parse_processing_status, parse_storage_document, parse_upload_response,
+};
 pub use timestamp::TimestampPolicy;
 pub use torrent::{
     CatalogId, Torrent, TorrentComment, TorrentFile, magnet_uri, open_torrent, open_torrent_comment,

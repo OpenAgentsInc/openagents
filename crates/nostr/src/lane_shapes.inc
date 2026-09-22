@@ -1,5 +1,4 @@
 [
-    Shape { file: "96.md", kind: 10096, tag: "server" },
     Shape { file: "A0.md", kind: 1222, tag: "t" },
     Shape { file: "87.md", kind: 38173, tag: "d" },
     Shape { file: "75.md", kind: 9041, tag: "amount" },

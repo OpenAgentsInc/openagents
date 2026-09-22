@@ -630,6 +630,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == HTTP_AUTH_KIND {
         validate_http_auth_event(event)?;
     }
+    if event.kind == 10_096 {
+        super::storage::open_file_servers(event)?;
+    }
     if event.kind == 10_063 {
         let servers = event.tag_values("server").collect::<Vec<_>>();
         if servers.is_empty() || servers.iter().any(|server| !valid_http_url(server)) {
