@@ -35,7 +35,7 @@ use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{MethodRouter, get, post};
 use receipts::execution::{
     ExecutionReceipt, Outcome, Registry as ReceiptRegistry, Served, Timing, digest_request,
 };
@@ -218,29 +218,53 @@ impl ServeState {
 /// Build the axum router over the state.
 pub fn router(state: Arc<ServeState>) -> axum::Router {
     let body_max = state.config.max_body_bytes;
-    let router = axum::Router::new()
-        .route("/v1/systemone", post(systemone))
-        .route("/v1/classify", post(classify))
-        .route("/v1/jobs", post(jobs::submit))
-        .route("/v1/jobs/{id}", get(jobs::status).delete(jobs::remove))
-        .route("/v1/jobs/{id}/cancel", post(jobs::cancel))
-        .route("/v1/jobs/{id}/results", get(jobs::results))
-        .route("/v1/jobs/{id}/notify/rotate", post(jobs::rotate_notify))
-        .route("/v1/models", get(models))
-        .route("/healthz", get(healthz));
-    // The balance read exists only under monetary admission — absent the
-    // mode there is no ledger behind it and no route at all.
-    let router = if state.config.money.is_some() {
-        router.route("/v1/balance", get(balance))
-    } else {
-        router
-    };
+    let mut router = axum::Router::new();
+    for (path, method) in api_routes(&state) {
+        router = router.route(path, method);
+    }
+    for (path, method) in crate::discovery::routes() {
+        router = router.route(path, method);
+    }
     // Queued jobs and pending webhook deliveries resume inside the
     // runtime — `ServeState::open` is synchronous and cannot spawn them.
     jobs::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
         .with_state(state)
+}
+
+/// The authenticated API routes this gateway mounts, as `(path,
+/// method-router)` pairs — the catalog test enumerates the same list,
+/// so a route cannot exist without being listed. The balance read
+/// exists only under monetary admission — absent the mode there is no
+/// ledger behind it and no route at all.
+fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
+    let mut routes = vec![
+        ("/v1/systemone", post(systemone)),
+        ("/v1/classify", post(classify)),
+        ("/v1/jobs", post(jobs::submit)),
+        ("/v1/jobs/{id}", get(jobs::status).delete(jobs::remove)),
+        ("/v1/jobs/{id}/cancel", post(jobs::cancel)),
+        ("/v1/jobs/{id}/results", get(jobs::results)),
+        ("/v1/jobs/{id}/notify/rotate", post(jobs::rotate_notify)),
+        ("/v1/models", get(models)),
+        ("/healthz", get(healthz)),
+    ];
+    if state.config.money.is_some() {
+        routes.push(("/v1/balance", get(balance)));
+    }
+    routes
+}
+
+/// Every mounted path — the API routes plus the public discovery
+/// surface. The catalog validation test holds the served
+/// `api-catalog.json` to this list.
+pub fn mounted_paths(state: &ServeState) -> Vec<&'static str> {
+    api_routes(state)
+        .iter()
+        .map(|(path, _)| *path)
+        .chain(crate::discovery::routes().iter().map(|(path, _)| *path))
+        .collect()
 }
 
 /// `GET /healthz`: the process is up — readiness for a load balancer.

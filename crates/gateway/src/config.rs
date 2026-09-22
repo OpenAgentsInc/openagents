@@ -150,6 +150,14 @@ pub struct Config {
     /// restart at the wrong offset.
     #[serde(default = "default_job_cursor_ttl_ms")]
     pub job_cursor_ttl_ms: u64,
+    /// The absolute origin the public discovery documents fold into
+    /// canonical links, sitemap entries, and card URLs, such as
+    /// `https://api.example.com`. Absent means each request's own
+    /// `Host` over plain HTTP — correct for direct local serving; set
+    /// it when the deployment answers behind TLS or a reverse proxy
+    /// under a public name.
+    #[serde(default)]
+    pub public_origin: Option<String>,
 }
 
 fn default_body_max() -> usize {
@@ -298,6 +306,22 @@ impl Config {
                         name.display()
                     )
                 })?;
+            }
+        }
+        if let Some(origin) = &self.public_origin {
+            let scheme = origin
+                .strip_prefix("https://")
+                .or_else(|| origin.strip_prefix("http://"));
+            let valid = scheme.is_some_and(|rest| {
+                !rest.is_empty() && !rest.contains('/') && !rest.contains(['?', '#', ' '])
+            });
+            if !valid {
+                return Err(format!(
+                    "{}: public_origin `{origin}` must be an `http://` or `https://` \
+                     origin with no path, query, or fragment — it names where the \
+                     deployment answers, not a route",
+                    name.display()
+                ));
             }
         }
         for (door, backend) in &self.doors {

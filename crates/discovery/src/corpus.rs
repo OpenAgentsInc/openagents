@@ -22,8 +22,8 @@ macro_rules! document {
         Document {
             id: $id,
             title: $title,
-            path: concat!("docs/decision-models/", $path),
-            content: include_str!(concat!("../../../docs/decision-models/", $path)),
+            path: concat!("docs/", $path),
+            content: include_str!(concat!("../../../docs/", $path)),
             example: $example,
         }
     };
@@ -33,84 +33,114 @@ static DOCUMENTS: &[Document] = &[
     document!(
         "caller",
         "Decision API caller guide",
-        "guides/caller.md",
+        "decision-models/guides/caller.md",
         false
     ),
     document!(
         "classification",
         "Classification callers",
-        "guides/classification-callers.md",
+        "decision-models/guides/classification-callers.md",
         false
     ),
-    document!("gateway", "Gateway admission", "service/gateway.md", false),
+    document!(
+        "gateway",
+        "Gateway admission",
+        "decision-models/service/gateway.md",
+        false
+    ),
     document!(
         "api-spec",
         "Decision API specification",
-        "api/decision-api.md",
+        "decision-models/api/decision-api.md",
         false
     ),
-    document!("openapi", "OpenAPI contract", "api/openapi.yaml", false),
+    document!(
+        "openapi",
+        "OpenAPI contract",
+        "decision-models/api/openapi.yaml",
+        false
+    ),
     document!(
         "classification-schema",
         "Classification request schema",
-        "schemas/classify-request-v1.json",
+        "decision-models/schemas/classify-request-v1.json",
         false
     ),
     document!(
         "classification-response-schema",
         "Classification response schema",
-        "schemas/classify-response-v1.json",
+        "decision-models/schemas/classify-response-v1.json",
         false
     ),
     document!(
         "candidate-admission",
         "Candidate admission",
-        "service/candidate-admission.md",
+        "decision-models/service/candidate-admission.md",
         false
     ),
     document!(
         "mcp-documentation",
         "MCP documentation tools",
-        "guides/mcp-documentation.md",
+        "decision-models/guides/mcp-documentation.md",
         false
     ),
     document!(
         "mcp-server",
         "MCP server guide",
-        "guides/mcp-server.md",
+        "decision-models/guides/mcp-server.md",
         false
     ),
-    document!("examples", "Caller examples", "examples/README.md", true),
+    document!(
+        "examples",
+        "Caller examples",
+        "decision-models/examples/README.md",
+        true
+    ),
     document!(
         "native-questions",
         "Native question example",
-        "examples/questions.json",
+        "decision-models/examples/questions.json",
         true
     ),
     document!(
         "classification-single",
         "Single-label example",
-        "fixtures/classify-v1/single.json",
+        "decision-models/fixtures/classify-v1/single.json",
         true
     ),
     document!(
         "classification-multi",
         "Independent multi-label example",
-        "fixtures/classify-v1/overlapping-labels.json",
+        "decision-models/fixtures/classify-v1/overlapping-labels.json",
         true
     ),
     document!(
         "classification-score",
         "Score example",
-        "fixtures/classify-v1/score.json",
+        "decision-models/fixtures/classify-v1/score.json",
         true
     ),
     document!(
         "classification-binary",
         "Binary example",
-        "fixtures/classify-v1/binary.json",
+        "decision-models/fixtures/classify-v1/binary.json",
         true
     ),
+    document!("agents", "Agent entry document", "agents/agents.md", false),
+    document!("auth", "Authentication", "agents/auth.md", false),
+    document!(
+        "skill",
+        "Call the decision API from an agent",
+        "agents/skills.md",
+        false
+    ),
+    document!(
+        "api-catalog",
+        "API route catalog",
+        "agents/api-catalog.json",
+        false
+    ),
+    document!("llms-txt", "llms.txt index", "agents/llms.txt", false),
 ];
 
 fn digest(bytes: &[u8]) -> String {

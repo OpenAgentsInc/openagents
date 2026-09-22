@@ -1,0 +1,733 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Return the gateway's GET /v1/models document: the doors the configured credential may name, each with its bound artifact, lane, and classification discovery object.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "name": "list_models",
+    "title": "List reachable doors"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "POST an openagents.classify.v1 envelope to the configured gateway's /v1/classify and return the report verbatim: ordered per-input results, selections, per-unit aggregates, and usage. This can consume quota or money even if no content changes.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "request": {
+          "description": "The openagents.classify.v1 envelope: v, model, capacity, policy, inputs, and labels, levels, or dimensions.",
+          "type": "object"
+        },
+        "request_id": {
+          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "maxLength": 512,
+          "type": "string"
+        }
+      },
+      "required": [
+        "request"
+      ],
+      "type": "object"
+    },
+    "name": "classify",
+    "title": "Classify inputs through a door"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "One categorical judgment per text: the labels form one distribution and each input selects one label or the no-match outcome. Returns the full ordered report \u2014 use count_labels when only aggregates matter.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {
+          "default": "shared",
+          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "type": "string"
+        },
+        "instructions": {
+          "description": "Instructions shared by every judgment in the request.",
+          "maxLength": 16384,
+          "type": "string"
+        },
+        "labels": {
+          "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "min_probability": {
+          "description": "Abstain to the no-match outcome below this top probability.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "model": {
+          "description": "The bound door name; absent falls back to the configured default model.",
+          "type": "string"
+        },
+        "request_id": {
+          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "maxLength": 512,
+          "type": "string"
+        },
+        "texts": {
+          "description": "The input texts, in the order results preserve.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "uncertain_below": {
+          "description": "Flag the unit `uncertain` below this top probability.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "texts",
+        "labels"
+      ],
+      "type": "object"
+    },
+    "name": "classify_texts",
+    "title": "Classify texts into one label"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Several independent judgments over the same inputs \u2014 each dimension carries its own mode and label set or rubric. Returns the full ordered report.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {
+          "default": "shared",
+          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "type": "string"
+        },
+        "dimensions": {
+          "description": "Named dimensions judged independently: single-label needs labels; multi-label and binary need labels plus a request-level threshold; score needs levels.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "instructions": {
+                "type": "string"
+              },
+              "labels": {
+                "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+                "items": {
+                  "anyOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "description": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "maxItems": 100,
+                "minItems": 1,
+                "type": "array"
+              },
+              "levels": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "minItems": 2,
+                "type": "array"
+              },
+              "mode": {
+                "enum": [
+                  "single-label",
+                  "multi-label",
+                  "binary",
+                  "score"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        },
+        "inputs": {
+          "description": "The inputs: texts, or {id, text|record} objects.",
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "record": {
+                    "type": "object"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "instructions": {
+          "description": "Instructions shared by every judgment in the request.",
+          "maxLength": 16384,
+          "type": "string"
+        },
+        "model": {
+          "description": "The bound door name; absent falls back to the configured default model.",
+          "type": "string"
+        },
+        "request_id": {
+          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "maxLength": 512,
+          "type": "string"
+        },
+        "threshold": {
+          "description": "Required when any dimension is multi-label or binary: the probability a label must reach to be selected.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "top_n": {
+          "description": "A cap on selected labels for multi-label dimensions.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "uncertain_below": {
+          "description": "Flag units `uncertain` below this top probability.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "inputs",
+        "dimensions"
+      ],
+      "type": "object"
+    },
+    "name": "classify_dimensions",
+    "title": "Classify inputs on named dimensions"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "One independent probability per text per label \u2014 labels do not sum to one. Every label at or above the caller's threshold is selected. Returns the full ordered report.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {
+          "default": "shared",
+          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "type": "string"
+        },
+        "instructions": {
+          "description": "Instructions shared by every judgment in the request.",
+          "maxLength": 16384,
+          "type": "string"
+        },
+        "labels": {
+          "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "model": {
+          "description": "The bound door name; absent falls back to the configured default model.",
+          "type": "string"
+        },
+        "request_id": {
+          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "maxLength": 512,
+          "type": "string"
+        },
+        "texts": {
+          "description": "The input texts, in the order results preserve.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "threshold": {
+          "description": "The probability a label must reach to be selected \u2014 required; the caller's own cut, not a default.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "top_n": {
+          "description": "A cap on selected labels per input.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "uncertain_below": {
+          "description": "Flag the unit `uncertain` when any label's winning side is below this.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "texts",
+        "labels",
+        "threshold"
+      ],
+      "type": "object"
+    },
+    "name": "classify_multi_label",
+    "title": "Classify texts with independent labels"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "The same single-label judgment as classify_texts, but returns only aggregates: per-label counts, the no-match and unavailable counts, and usage. Per-input selections never enter the context.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {
+          "default": "shared",
+          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "type": "string"
+        },
+        "instructions": {
+          "description": "Instructions shared by every judgment in the request.",
+          "maxLength": 16384,
+          "type": "string"
+        },
+        "labels": {
+          "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "min_probability": {
+          "description": "Abstain to the no-match outcome below this top probability.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "model": {
+          "description": "The bound door name; absent falls back to the configured default model.",
+          "type": "string"
+        },
+        "request_id": {
+          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "maxLength": 512,
+          "type": "string"
+        },
+        "texts": {
+          "description": "The input texts, in the order results preserve.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "texts",
+        "labels"
+      ],
+      "type": "object"
+    },
+    "name": "count_labels",
+    "title": "Count texts per label"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Runs the single-label judgment with the caller's uncertainty cut and returns the flagged items \u2014 input id, selection, and top probability \u2014 bounded by `show`, plus outcome counts. With `reviewer`, the flagged units are re-judged by that door first.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {
+          "default": "shared",
+          "description": "The capacity lane the binding declares \u2014 `shared` unless the caller's lane differs.",
+          "type": "string"
+        },
+        "instructions": {
+          "description": "Instructions shared by every judgment in the request.",
+          "maxLength": 16384,
+          "type": "string"
+        },
+        "labels": {
+          "description": "The label set: ids, or {id, description} objects the judgment reads as criteria.",
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "model": {
+          "description": "The bound door name; absent falls back to the configured default model.",
+          "type": "string"
+        },
+        "request_id": {
+          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "maxLength": 512,
+          "type": "string"
+        },
+        "reviewer": {
+          "description": "A bound door that re-judges the flagged units through the facade's review phase \u2014 bounds 200 items, 400 attempts, 30 s, keep-original on failure.",
+          "type": "string"
+        },
+        "show": {
+          "default": 25,
+          "description": "The most uncertain items to list; the corpus itself never enters the context.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "texts": {
+          "description": "The input texts, in the order results preserve.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "uncertain_below": {
+          "description": "Required: flag a unit `uncertain` when its top label probability is below this.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "texts",
+        "labels",
+        "uncertain_below"
+      ],
+      "type": "object"
+    },
+    "name": "review_uncertain",
+    "title": "List uncertain classifications"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "POSTs /v1/systemone directly: Noul, Choice, and Score questions over one state, answered with the door's own probabilities. Returns the typed answers verbatim.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "The bound door name; absent falls back to the configured default model.",
+          "type": "string"
+        },
+        "questions": {
+          "description": "Typed questions by caller-chosen id: {type: noul|choice|score, instructions, criteria?}.",
+          "maxProperties": 64,
+          "minProperties": 1,
+          "type": "object"
+        },
+        "request_id": {
+          "description": "An idempotency key for the call; retries reuse it and bump the attempt.",
+          "maxLength": 512,
+          "type": "string"
+        },
+        "state": {
+          "description": "The JSON or text under judgment."
+        }
+      },
+      "required": [
+        "state",
+        "questions"
+      ],
+      "type": "object"
+    },
+    "name": "decide",
+    "title": "Answer typed questions over a state"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List bundled documentation metadata",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "description": "Cursor from this tool for the same corpus and query.",
+          "maxLength": 160,
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "list_docs"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read a bounded UTF-8 page by stable document ID",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "description": "Cursor from this tool for the same corpus and query.",
+          "maxLength": 160,
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "max_bytes": {
+          "maximum": 16384,
+          "minimum": 4,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "read_doc"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Search the bundled corpus; return at most one bounded snippet per document",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "description": "Cursor from this tool for the same corpus and query.",
+          "maxLength": 160,
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "search_docs"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List bundled examples; use read_doc to retrieve their contents",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "description": "Cursor from this tool for the same corpus and query.",
+          "maxLength": 160,
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_examples"
+  }
+]

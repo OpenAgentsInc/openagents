@@ -1,51 +1,73 @@
 {
   "v": "openagents.agents-index.v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "generated_by": "hand-maintained",
-  "generated_on": "2026-09-21",
+  "generated_on": "2026-09-22",
   "directory": "docs/agents",
-  "description": "The machine-readable discovery document set for agents calling the OpenAgents decision API. Every document describes implemented behavior only; api-catalog.json's unimplemented list names advertised surfaces that do not exist.",
+  "description": "The machine-readable discovery document set for agents calling the OpenAgents decision API. Every document describes implemented behavior only; api-catalog.json's unimplemented list names advertised surfaces that do not exist. A deployed gateway serves this set at its origin — llms.txt, agents.md, auth.md, skills.md, the catalog, the OpenAPI fragment, and the generated agent card and skills index.",
   "documents": [
     {
       "path": "docs/agents/llms.txt",
       "kind": "llms.txt",
+      "version": "1.1.0",
+      "generated_by": "hand-maintained",
+      "served_at": "/llms.txt",
+      "content": "llms.txt-convention entry point: the project one-liner and links to every discovery document."
+    },
+    {
+      "path": "docs/agents/agents.md",
+      "kind": "agent-guide",
       "version": "1.0.0",
       "generated_by": "hand-maintained",
-      "content": "llms.txt-convention entry point: the project one-liner and links to every discovery document."
+      "served_at": "/agents.md",
+      "content": "The agent-facing entry document: what the service is, the order to read the discovery set in, and the honest limits."
     },
     {
       "path": "docs/agents/auth.md",
       "kind": "guide",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "generated_by": "hand-maintained",
-      "content": "Authentication contract: oak_ bearer keys via OPENAGENTS_API_KEY or a mode-0600 config file, workspace membership, anonymous access, the typed refusal shape, and operator-side provisioning."
+      "served_at": "/auth.md",
+      "content": "Authentication contract: oak_ bearer keys via OPENAGENTS_API_KEY or a mode-0600 config file, oak-mcp-http per-request bearer forwarding, workspace membership, anonymous access, the typed refusal shape, which surfaces need no credential, and operator-side provisioning."
     },
     {
       "path": "docs/agents/api-catalog.json",
       "kind": "catalog",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "generated_by": "hand-maintained",
-      "content": "Versioned route catalog: every implemented route with method, path, request and response shape references, the complete refusal-code map, and an explicit unimplemented list."
+      "served_at": "/api-catalog.json",
+      "content": "Versioned route catalog: every implemented route — including the public discovery documents and the /v1/docs corpus API — with method, path, request and response shape references, the complete refusal-code map, and an explicit unimplemented list."
     },
     {
       "path": "docs/agents/openapi.yaml",
       "kind": "openapi-3.1-fragment",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "generated_by": "hand-maintained",
-      "content": "OpenAPI 3.1 fragment covering exactly the implemented routes with real request/response schemas and the documented refusal codes."
+      "served_at": "/openapi.yaml",
+      "content": "OpenAPI 3.1 fragment covering exactly the implemented API routes — systemone, classify, the jobs family, models, the docs corpus API, balance, and healthz — with real request/response schemas and the documented refusal codes."
     },
     {
       "path": "docs/agents/skills.md",
       "kind": "skill",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "generated_by": "hand-maintained",
-      "content": "What an agent needs to call the API — the oak CLI, the oak-mcp MCP server, or raw HTTP — supported versions, and honest limits."
+      "served_at": "/skills.md",
+      "content": "What an agent needs to call the API — the oak CLI, the oak-mcp and oak-mcp-http MCP servers, or raw HTTP — supported versions, and honest limits."
+    },
+    {
+      "path": "docs/agents/mcp-tools.json",
+      "kind": "mcp-tool-snapshot",
+      "version": "1.0.0",
+      "generated_by": "generated",
+      "served_at": "/mcp-tools.json",
+      "content": "The tools/list snapshot the mirrored MCP server card serves; oak's test suite asserts it equals the live tool_list() output."
     },
     {
       "path": "docs/agents/index.json",
       "kind": "index",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "generated_by": "hand-maintained",
+      "served_at": "/index.json",
       "content": "This file — the versioned index of the discovery document set."
     },
     {
@@ -63,11 +85,24 @@
       "content": "Remaining design and implementation work for general agents. Predates this index and carries no version field."
     }
   ],
+  "served": [
+    {"route": "/", "content": "The discovery home page — the document set with digests and links, HTML or JSON."},
+    {"route": "/api", "content": "The API index: every surface this origin serves, its version tag, and its contract document."},
+    {"route": "/.well-known/agent-card.json", "content": "The A2A-format agent card generated from the bundled catalog."},
+    {"route": "/.well-known/agent-skills/index.json", "content": "The agent-skills discovery index with the digest of the served SKILL.md bytes."},
+    {"route": "/.well-known/agent-skills/openagents-decision-api/SKILL.md", "content": "The canonical skill document."},
+    {"route": "/mcp/server-card.json", "content": "The MCP server card mirrored from oak-mcp-http's GET /mcp/card."},
+    {"route": "/v1/docs", "content": "The versioned docs API — list/read/search/examples over the bundled corpus, no credential."},
+    {"route": "/sitemap.xml", "content": "One entry per public document route."},
+    {"route": "/robots.txt", "content": "Crawlers may read discovery; inference routes are disallowed."},
+    {"route": "/plugins/", "content": "The declarative Claude- and Codex-compatible plugin packages with manual installation instructions."}
+  ],
   "related": [
     {"path": "docs/decision-models/guides/caller.md", "content": "The end-to-end caller's guide: credentials, asking, batching, exit codes, retries, and receipts."},
     {"path": "docs/decision-models/guides/classification-callers.md", "content": "The oak classify and oak-mcp caller contract."},
     {"path": "docs/decision-models/guides/mcp-server.md", "content": "The MCP server over stdio and Streamable HTTP: sessions, protocol versions, per-request bearer forwarding, the server card, and client configurations."},
     {"path": "docs/decision-models/service/gateway.md", "content": "The implemented admission path, bounds, refusal-code table, and retention rules."},
+    {"path": "docs/decision-models/service/durable-jobs.md", "content": "The durable-jobs submission, status, cancellation, export, and webhook contract."},
     {"path": "docs/decision-models/service/monetary-accounting.md", "content": "Optional monetary admission, settlement rules, and the conditional balance route."},
     {"path": "docs/decision-models/api/decision-api.md", "content": "The target product contract — specifies surfaces that are not implemented; the catalog's unimplemented list names them."},
     {"path": "docs/decision-models/api/openapi.yaml", "content": "The API group's own OpenAPI document; this set's fragment stays scoped to implemented routes."},

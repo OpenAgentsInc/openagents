@@ -31,17 +31,19 @@ use secp256k1::rand::Rng;
 use serde_json::{Value, json};
 
 use crate::MAX_MCP_MESSAGE_BYTES;
-use crate::mcp::{self, Options, PROTOCOL_VERSIONS, Phase, SERVER_NAME};
+use crate::mcp::{self, Options, PROTOCOL_VERSIONS, Phase};
 
 /// The session header the specification defines.
 const SESSION_HEADER: &str = "mcp-session-id";
 /// The negotiated-version header the specification defines.
 const VERSION_HEADER: &str = "mcp-protocol-version";
-/// The most live sessions one process holds.
-const MAX_SESSIONS: usize = 256;
+/// The most live sessions one process holds — the bound the discovery
+/// surface's server card publishes.
+const MAX_SESSIONS: usize = discovery::site::MCP_SESSION_BOUND;
 /// The idle bound after which a session is forgotten — a stale id then
-/// answers 404 and the client re-initializes.
-const SESSION_TTL: Duration = Duration::from_secs(30 * 60);
+/// answers 404 and the client re-initializes. The server card publishes
+/// the same number.
+const SESSION_TTL: Duration = Duration::from_secs(discovery::site::MCP_SESSION_TTL_SECS);
 
 /// Operator configuration plus the transport's own settings.
 #[derive(Default)]
@@ -101,27 +103,7 @@ pub async fn serve(options: HttpOptions, listener: tokio::net::TcpListener) -> i
 /// protocol versions, the session contract, and the auth model — what
 /// a client or operator reads before configuring against it.
 async fn card() -> Json<Value> {
-    Json(json!({
-        "v": "openagents.mcp-server.v1",
-        "name": SERVER_NAME,
-        "title": "oak — the decision API caller",
-        "version": env!("CARGO_PKG_VERSION"),
-        "transport": "streamable-http",
-        "endpoint": "/mcp",
-        "protocol_versions": PROTOCOL_VERSIONS,
-        "session": {
-            "header": "Mcp-Session-Id",
-            "issued_on": "initialize",
-            "terminate": "DELETE /mcp",
-            "idle_ttl_seconds": SESSION_TTL.as_secs(),
-            "bound": MAX_SESSIONS,
-        },
-        "auth": {
-            "scheme": "bearer",
-            "detail": "an `oak_` key forwarded for that call only; no key falls back to the operator's OPENAGENTS_API_KEY or config file",
-        },
-        "tools": mcp::tool_list()["tools"].clone(),
-    }))
+    Json(discovery::site::mcp_card(mcp::tool_list()["tools"].clone()))
 }
 
 /// `GET /mcp` is the server-initiated SSE stream in the specification.

@@ -1172,6 +1172,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "discovery"
+version = "0.1.0"
+dependencies = [
+ "pulldown-cmark",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "dispatch2"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1519,6 +1529,7 @@ name = "gateway"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "discovery",
  "futures-util",
  "hmac 0.12.1",
  "jev",
@@ -2860,6 +2871,7 @@ name = "oak"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "discovery",
  "gateway",
  "jev",
  "reqwest",
@@ -3334,8 +3346,15 @@ checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
 dependencies = [
  "bitflags 2.13.2",
  "memchr",
+ "pulldown-cmark-escape",
  "unicase",
 ]
+
+[[package]]
+name = "pulldown-cmark-escape"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
 name = "pulley-interpreter"

@@ -9,7 +9,7 @@
 //! `docs/decision-models/guides/caller.md` and
 //! `docs/decision-models/guides/classification-callers.md`.
 
-pub mod docs;
+pub use discovery::corpus as docs;
 #[cfg(feature = "mcp-http")]
 pub mod mcp_http;
 
@@ -679,13 +679,15 @@ pub mod mcp {
 
     /// The protocol version this build reports when it cannot answer the
     /// client's — the latest it serves.
-    pub const PROTOCOL_VERSION: &str = "2025-11-25";
+    pub const PROTOCOL_VERSION: &str = PROTOCOL_VERSIONS[0];
 
-    /// Every protocol version this build serves, latest first.
-    pub const PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18"];
+    /// Every protocol version this build serves, latest first — the same
+    /// list the discovery surface publishes.
+    pub use discovery::site::MCP_PROTOCOL_VERSIONS as PROTOCOL_VERSIONS;
 
-    /// The `serverInfo.name` the handshake reports.
-    pub const SERVER_NAME: &str = "oak-mcp";
+    /// The `serverInfo.name` the handshake reports — the name the
+    /// discovery surface's server card publishes.
+    pub use discovery::site::MCP_SERVER_NAME as SERVER_NAME;
 
     // JSON-RPC 2.0 error codes.
     /// The message was not valid JSON — or exceeded the read bound.

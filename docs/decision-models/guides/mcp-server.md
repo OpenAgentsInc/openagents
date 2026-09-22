@@ -131,6 +131,10 @@ self-description: name and version, the endpoint, the served protocol
 versions, the session contract (header, issue point, `DELETE`, idle
 bound, capacity), the auth model, and the tool list. Read it to
 configure a client or to confirm a deployment before sending traffic.
+A deployed gateway mirrors the same card — generated from the same
+shape and the bundled tool snapshot — at `GET /mcp/server-card.json`
+on its public discovery surface, so an agent can read it without
+reaching the MCP listener at all.
 
 ## Bounds and failure modes
 

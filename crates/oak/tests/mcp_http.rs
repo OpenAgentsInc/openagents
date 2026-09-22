@@ -285,6 +285,10 @@ async fn session_lifecycle_notifications_and_the_server_card() {
         .unwrap();
     assert_eq!(card["v"], "openagents.mcp-server.v1");
     assert_eq!(card["protocol_versions"], json!(PROTOCOL_VERSIONS));
+    // The card the discovery surface mirrors is generated from this same
+    // answer — the bundled snapshot is what the gateway serves, so the
+    // two surfaces cannot drift apart.
+    assert_eq!(card["tools"], discovery::site::mcp_tools());
     let tools = card["tools"].as_array().unwrap();
     for name in [
         "classify_texts",

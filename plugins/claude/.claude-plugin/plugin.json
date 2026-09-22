@@ -1,0 +1,15 @@
+{
+  "name": "openagents-decision-api",
+  "version": "1.0.0",
+  "description": "Call the OpenAgents decision API — typed decisions, batch classification, and durable jobs — through oak, oak-mcp, or raw HTTP.",
+  "author": {
+    "name": "OpenAgents",
+    "url": "https://github.com/OpenAgentsInc/openagents"
+  },
+  "homepage": "https://github.com/OpenAgentsInc/openagents/tree/main/docs/agents",
+  "repository": "https://github.com/OpenAgentsInc/openagents",
+  "license": "Apache-2.0",
+  "keywords": ["decision-api", "classification", "mcp", "oak"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

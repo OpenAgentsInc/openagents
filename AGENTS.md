@@ -101,6 +101,13 @@ uses, and marks which are implemented and which are only specified.
   directory, and each door's backend endpoint. Read
   `docs/decision-models/service/gateway.md` before changing a refusal code, a
   bound, or the reservation lifecycle.
+- `crates/discovery` — the public discovery surface every origin shares:
+  the bundled documentation corpus the MCP documentation tools and the
+  `/v1/docs` API read, the machine-readable document set under
+  `docs/agents/` served at `/`, the well-known agent card and
+  agent-skills index, the MCP server card shape, and the plugin
+  manifests under `plugins/`. Nothing in it authenticates or answers a
+  decision call.
 - `crates/jev` — the Rust SDK for TypeSafe's System One API.
 - `crates/oak` — the caller's CLI for the decision API: `oak ask` sends a
   state and a questions file through `POST /v1/systemone`, `--input

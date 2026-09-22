@@ -40,6 +40,12 @@ in a URL or query string, never in a log line, never in a source file,
 and never in an MCP tool argument; `oak-mcp` accepts no credential in
 tool input.
 
+`oak-mcp-http` adds one more channel: a caller may put its own
+`Authorization: Bearer oak_…` on an MCP request, and the server forwards
+it to the decision API for that call only — it is not stored, not tied
+to the session, and not sent anywhere else. A request without the
+header falls back to the operator credential above.
+
 ## Workspace membership
 
 A deployment that sets `require_workspace_membership` also requires
@@ -81,10 +87,22 @@ The authentication-adjacent codes:
 
 Calls that pass through the owned admission path — `POST /v1/systemone`
 and `POST /v1/classify` — also carry `x-request-id` and `x-attempt`
-response headers; quote the request id when you report a call. The full
+response headers; quote the request id when you report a call. The
+durable-jobs family (`/v1/jobs`) authenticates the same way. The full
 refusal-code table lives in the
 [gateway service document](../decision-models/service/gateway.md) and the
 [catalog](api-catalog.json).
+
+## What needs no credential
+
+The discovery documents and the documentation corpus are public by
+design: `GET /v1/docs` and its `search`, `examples`, and `{id}` routes,
+`GET /healthz`, and every discovery document under `/` (this page,
+`api-catalog.json`, `openapi.yaml`, the agent card, the skills index)
+answer without `Authorization`. A credential on a discovery call is
+accepted and ignored. Public access to documents never grants access to
+inference — `POST /v1/systemone`, `/v1/classify`, and `/v1/jobs` always
+authenticate.
 
 ## Rotation and revocation
 
@@ -97,11 +115,11 @@ a key changes nothing the account holds.
 ## Compatible doors
 
 The native `POST /v1/systemone` contract is also served by compatible
-backends directly — a local `kev-serve`, or TypeSafe's hosted
-`api.typesafe.ai`, which takes its own `ts-` credential
+backends directly — a local `kev-serve` or `laya-serve`, or TypeSafe's
+hosted `api.typesafe.ai`, which takes its own `ts-` credential
 (`TYPESAFE_API_KEY` in `crates/jev`). The gateway's own routes —
-`/v1/classify`, `/v1/balance`, and the keyed `GET /v1/models` view —
-exist only on the gateway.
+`/v1/classify`, `/v1/jobs`, `/v1/balance`, and the keyed `GET /v1/models`
+view — exist only on the gateway.
 
 ## Related documents
 
@@ -111,6 +129,6 @@ exist only on the gateway.
 - [Monetary accounting](../decision-models/service/monetary-accounting.md) — workspace membership and the conditional balance route.
 
 ---
-Version 1.0.0 · generated-by: hand-maintained · 2026-09-21
+Version 1.1.0 · generated-by: hand-maintained · 2026-09-22
 
 VALIDATED: JSON examples parse; internal links resolve to repo paths. Exact commands are in the commit message.

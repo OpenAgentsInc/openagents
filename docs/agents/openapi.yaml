@@ -1,166 +1,146 @@
 openapi: 3.1.0
 info:
   title: OpenAgents decision API — implemented routes
-  version: "1.0.0"
+  version: 1.0.0
   x-generated-by: hand-maintained
-  description: >-
-    An OpenAPI 3.1 fragment scoped to the routes `crates/gateway` serves
-    today: `POST /v1/systemone`, `POST /v1/classify`, `GET /v1/models`,
-    `GET /healthz`, and — only under monetary admission — `GET
-    /v1/balance`. It claims nothing else: no OAuth flow, no streaming, no
-    image or multimodal input, no batch or job endpoints, no hosted
-    public origin, and no pricing tiers. `docs/agents/api-catalog.json`
-    enumerates the advertised surfaces that remain unimplemented, and
-    `docs/decision-models/api/openapi.yaml` is the API group's own
-    contract document.
+  description: 'An OpenAPI 3.1 fragment scoped to the routes `crates/gateway` serves today: `POST /v1/systemone`,
+    `POST /v1/classify`, the durable `/v1/jobs` family, `GET /v1/models`, `GET /healthz`, the public `/v1/docs`
+    corpus API, and — only under monetary admission — `GET /v1/balance`. It claims nothing else: no OAuth
+    flow, no streaming, no image or multimodal input, no hosted public origin, and no pricing tiers. `docs/agents/api-catalog.json`
+    enumerates the advertised surfaces that remain unimplemented, the discovery document routes, and `docs/decision-models/api/openapi.yaml`
+    is the API group''s own contract document.'
 servers:
-  - url: http://127.0.0.1:8080
-    description: A locally deployed gateway. Deployments choose their origin; no public endpoint is published.
+- url: http://127.0.0.1:8080
+  description: A locally deployed gateway. Deployments choose their origin; no public endpoint is published.
 paths:
   /healthz:
     get:
       summary: Process liveness
-      description: >-
-        The process is up. Liveness only — it is not readiness and says
-        nothing about doors or backends; identity verification runs per
-        request.
+      description: The process is up. Liveness only — it is not readiness and says nothing about doors
+        or backends; identity verification runs per request.
       security: []
       responses:
-        "200":
+        '200':
           description: The process is up.
           content:
             application/json:
               schema:
                 type: object
-                required: [status]
+                required:
+                - status
                 properties:
                   status:
                     type: string
-                    enum: [ok]
+                    enum:
+                    - ok
   /v1/models:
     get:
       summary: List the caller's doors
-      description: >-
-        The doors this credential may name in a request's `model` field,
-        with the identity each is bound to. Anonymous callers see only
-        `shared` doors; a tenant sees its bound doors plus the shared
-        lane. This is the registry's claim — not a statement about
-        backend health, and never remote attestation. A listed door can
-        still refuse at identity check.
+      description: The doors this credential may name in a request's `model` field, with the identity
+        each is bound to. Anonymous callers see only `shared` doors; a tenant sees its bound doors plus
+        the shared lane. This is the registry's claim — not a statement about backend health, and never
+        remote attestation. A listed door can still refuse at identity check.
       responses:
-        "200":
+        '200':
           description: The visible door cards.
           content:
             application/json:
               schema:
                 type: object
-                required: [models]
+                required:
+                - models
                 properties:
                   models:
                     type: array
                     items:
-                      $ref: "#/components/schemas/ModelCard"
-        "400":
-          $ref: "#/components/responses/TypedError"
-        "401":
-          $ref: "#/components/responses/TypedError"
-        "403":
-          $ref: "#/components/responses/TypedError"
-        "500":
-          $ref: "#/components/responses/TypedError"
-        "503":
-          $ref: "#/components/responses/TypedError"
+                      $ref: '#/components/schemas/ModelCard'
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '500':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
   /v1/systemone:
     post:
       summary: Answer typed questions about one state
-      description: >-
-        One state, one set of typed questions, one typed answer per
-        question with probabilities. The `model` field names a door the
-        credential is bound to; the gateway verifies the backend's
-        published identity against the binding before a byte is
-        forwarded, and a forwarded answer arrives verbatim with the
-        backend's status. Independent questions over one state belong in
-        one request; questions cannot read each other's answers.
+      description: One state, one set of typed questions, one typed answer per question with probabilities.
+        The `model` field names a door the credential is bound to; the gateway verifies the backend's
+        published identity against the binding before a byte is forwarded, and a forwarded answer arrives
+        verbatim with the backend's status. Independent questions over one state belong in one request;
+        questions cannot read each other's answers.
       parameters:
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-          description: >-
-            The request's stable identity. Retries repeat it with an
-            incrementing `X-Attempt`; a settled pair refuses reuse, and
-            a pair reused against different content is `409
-            idempotency_conflict`.
-        - name: X-Attempt
-          in: header
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-          description: The attempt number of this request; `1` when absent.
-        - name: X-Workspace-Id
-          in: header
-          required: false
-          schema:
-            type: string
-          description: >-
-            Exactly one is required when the deployment enforces
-            workspace membership — always the case under monetary
-            admission.
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+        description: The request's stable identity. Retries repeat it with an incrementing `X-Attempt`;
+          a settled pair refuses reuse, and a pair reused against different content is `409 idempotency_conflict`.
+      - name: X-Attempt
+        in: header
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+        description: The attempt number of this request; `1` when absent.
+      - name: X-Workspace-Id
+        in: header
+        required: false
+        schema:
+          type: string
+        description: Exactly one is required when the deployment enforces workspace membership — always
+          the case under monetary admission.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Call"
+              $ref: '#/components/schemas/Call'
       responses:
-        "200":
+        '200':
           description: The door answered — the backend's document verbatim.
           headers:
             x-request-id:
-              $ref: "#/components/headers/RequestId"
+              $ref: '#/components/headers/RequestId'
             x-attempt:
-              $ref: "#/components/headers/Attempt"
+              $ref: '#/components/headers/Attempt'
             x-outcome:
-              $ref: "#/components/headers/Outcome"
+              $ref: '#/components/headers/Outcome'
             x-receipt:
-              $ref: "#/components/headers/Receipt"
+              $ref: '#/components/headers/Receipt'
             x-settlement:
-              $ref: "#/components/headers/Settlement"
+              $ref: '#/components/headers/Settlement'
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Result"
-        "400":
-          $ref: "#/components/responses/TypedError"
-        "401":
-          $ref: "#/components/responses/TypedError"
-        "402":
-          description: >-
-            Monetary admission only — `insufficient_funds`: no
-            provisioned account, or the hold exceeds the available
-            balance or remaining authorized spend.
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '402':
+          description: 'Monetary admission only — `insufficient_funds`: no provisioned account, or the
+            hold exceeds the available balance or remaining authorized spend.'
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TypedError"
-        "403":
-          $ref: "#/components/responses/TypedError"
-        "409":
-          $ref: "#/components/responses/TypedError"
-        "413":
-          description: >-
-            The body exceeded the configured `max_body_bytes` (default
-            1048576). This platform refusal may not carry the typed
-            error shape.
-        "422":
-          $ref: "#/components/responses/TypedError"
-        "429":
-          description: >-
-            Rate, concurrency, or daily-quota bound — `rate_limited`,
-            `busy`, `overloaded`, or `quota_exhausted`. `Retry-After`
-            accompanies the response; `quota_exhausted` is a spent
+                $ref: '#/components/schemas/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          description: The body exceeded the configured `max_body_bytes` (default 1048576). This platform
+            refusal may not carry the typed error shape.
+        '422':
+          $ref: '#/components/responses/TypedError'
+        '429':
+          description: Rate, concurrency, or daily-quota bound — `rate_limited`, `busy`, `overloaded`,
+            or `quota_exhausted`. `Retry-After` accompanies the response; `quota_exhausted` is a spent
             budget that retrying cannot fix.
           headers:
             Retry-After:
@@ -168,107 +148,100 @@ paths:
                 type: integer
               description: Seconds to wait before retrying.
             x-request-id:
-              $ref: "#/components/headers/RequestId"
+              $ref: '#/components/headers/RequestId'
             x-attempt:
-              $ref: "#/components/headers/Attempt"
+              $ref: '#/components/headers/Attempt'
             x-outcome:
-              $ref: "#/components/headers/Outcome"
+              $ref: '#/components/headers/Outcome'
             x-receipt:
-              $ref: "#/components/headers/Receipt"
+              $ref: '#/components/headers/Receipt'
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TypedError"
-        "500":
-          $ref: "#/components/responses/TypedError"
-        "503":
-          $ref: "#/components/responses/TypedError"
+                $ref: '#/components/schemas/TypedError'
+        '500':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
   /v1/classify:
     post:
       summary: Classify ordered inputs under an explicit selection policy
-      description: >-
-        A facade over per-input `systemone` calls: single-label Choice,
-        independent multi-label Noul, binary Noul filtering, and Score
-        ranking, including named dimensions and opt-in review/fallback
-        policies. The door must declare classify limits in the gateway
-        configuration — undeclared support is refused, never inferred.
-        Results reassemble in input order and preserve refused,
-        unavailable, and unattempted items rather than dropping them.
+      description: 'A facade over per-input `systemone` calls: single-label Choice, independent multi-label
+        Noul, binary Noul filtering, and Score ranking, including named dimensions and opt-in review/fallback
+        policies. The door must declare classify limits in the gateway configuration — undeclared support
+        is refused, never inferred. Results reassemble in input order and preserve refused, unavailable,
+        and unattempted items rather than dropping them.'
       parameters:
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Caller-owned request identity; retain it across retry attempts.
-        - name: X-Attempt
-          in: header
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-          description: Attempt number, defaulting to 1; increment for a new attempt.
-        - name: X-Workspace-Id
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Required when the deployment enforces workspace membership.
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+        description: Caller-owned request identity; retain it across retry attempts.
+      - name: X-Attempt
+        in: header
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+        description: Attempt number, defaulting to 1; increment for a new attempt.
+      - name: X-Workspace-Id
+        in: header
+        required: false
+        schema:
+          type: string
+        description: Required when the deployment enforces workspace membership.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "../decision-models/schemas/classify-request-v1.json"
+              $ref: ../decision-models/schemas/classify-request-v1.json
       responses:
-        "200":
-          description: >-
-            An ordered classification report — `answered` when every
-            dispatched unit answered, `mixed` when some did not.
+        '200':
+          description: An ordered classification report — `answered` when every dispatched unit answered,
+            `mixed` when some did not.
           headers:
             x-request-id:
-              $ref: "#/components/headers/RequestId"
+              $ref: '#/components/headers/RequestId'
             x-attempt:
-              $ref: "#/components/headers/Attempt"
+              $ref: '#/components/headers/Attempt'
             x-outcome:
-              $ref: "#/components/headers/Outcome"
+              $ref: '#/components/headers/Outcome'
             x-receipt:
-              $ref: "#/components/headers/Receipt"
+              $ref: '#/components/headers/Receipt'
             x-settlement:
-              $ref: "#/components/headers/Settlement"
+              $ref: '#/components/headers/Settlement'
           content:
             application/json:
               schema:
-                $ref: "../decision-models/schemas/classify-response-v1.json"
-        "400":
-          $ref: "#/components/responses/TypedError"
-        "401":
-          $ref: "#/components/responses/TypedError"
-        "402":
+                $ref: ../decision-models/schemas/classify-response-v1.json
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '402':
           description: Monetary admission only — `insufficient_funds`.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TypedError"
-        "403":
-          $ref: "#/components/responses/TypedError"
-        "409":
-          $ref: "#/components/responses/TypedError"
-        "413":
-          description: >-
-            The body exceeded the configured `max_body_bytes`. This
-            platform refusal may not carry the typed error shape.
-        "422":
-          description: >-
-            A typed envelope refusal, or a report whose dispatched units
-            were all refused.
+                $ref: '#/components/schemas/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          description: The body exceeded the configured `max_body_bytes`. This platform refusal may not
+            carry the typed error shape.
+        '422':
+          description: A typed envelope refusal, or a report whose dispatched units were all refused.
           content:
             application/json:
               schema:
                 oneOf:
-                  - $ref: "#/components/schemas/TypedError"
-                  - $ref: "../decision-models/schemas/classify-response-v1.json"
-        "429":
+                - $ref: '#/components/schemas/TypedError'
+                - $ref: ../decision-models/schemas/classify-response-v1.json
+        '429':
           description: Rate, concurrency, or daily-quota bound. `Retry-After` accompanies the response.
           headers:
             Retry-After:
@@ -276,77 +249,463 @@ paths:
                 type: integer
               description: Seconds to wait before retrying.
             x-request-id:
-              $ref: "#/components/headers/RequestId"
+              $ref: '#/components/headers/RequestId'
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TypedError"
-        "500":
-          $ref: "#/components/responses/TypedError"
-        "503":
-          description: >-
-            An admission failure, or a report carrying unavailable or
-            unattempted work. A completed report is still a report —
-            inspect it rather than retrying it as unattempted.
+                $ref: '#/components/schemas/TypedError'
+        '500':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          description: An admission failure, or a report carrying unavailable or unattempted work. A completed
+            report is still a report — inspect it rather than retrying it as unattempted.
           content:
             application/json:
               schema:
                 oneOf:
-                  - $ref: "#/components/schemas/TypedError"
-                  - $ref: "../decision-models/schemas/classify-response-v1.json"
+                - $ref: '#/components/schemas/TypedError'
+                - $ref: ../decision-models/schemas/classify-response-v1.json
   /v1/balance:
     get:
       summary: Read the caller's workspace account position
-      description: >-
-        The workspace's exact monetary position — credited, reserved,
-        settled, refunded, available, and remaining authorized spend —
-        plus the price versions the configured doors charge under. A
-        caller can only ever read a workspace it belongs to. There is no
-        top-up, payment, or credit mutation over HTTP.
-      x-conditional: >-
-        This route exists only when the deployment configures monetary
-        admission (a `money` document in `gateway.json`, which requires
-        `require_workspace_membership`). Under a configuration without
-        `money` the route is not registered at all.
+      description: The workspace's exact monetary position — credited, reserved, settled, refunded, available,
+        and remaining authorized spend — plus the price versions the configured doors charge under. A
+        caller can only ever read a workspace it belongs to. There is no top-up, payment, or credit mutation
+        over HTTP.
+      x-conditional: This route exists only when the deployment configures monetary admission (a `money`
+        document in `gateway.json`, which requires `require_workspace_membership`). Under a configuration
+        without `money` the route is not registered at all.
       parameters:
-        - name: X-Workspace-Id
-          in: header
-          required: true
-          schema:
-            type: string
-          description: The workspace account the read is scoped to.
+      - name: X-Workspace-Id
+        in: header
+        required: true
+        schema:
+          type: string
+        description: The workspace account the read is scoped to.
       responses:
-        "200":
+        '200':
           description: The account position and configured door prices.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Balance"
-        "400":
-          $ref: "#/components/responses/TypedError"
-        "401":
-          $ref: "#/components/responses/TypedError"
-        "403":
-          $ref: "#/components/responses/TypedError"
-        "404":
-          description: "`account_missing` — the workspace holds no monetary account."
+                $ref: '#/components/schemas/Balance'
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          description: '`account_missing` — the workspace holds no monetary account.'
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TypedError"
-        "500":
-          $ref: "#/components/responses/TypedError"
-        "503":
-          $ref: "#/components/responses/TypedError"
+                $ref: '#/components/schemas/TypedError'
+        '500':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+  /v1/jobs:
+    post:
+      summary: Submit a durable classification job
+      description: 'Accepts a `POST /v1/classify` envelope inside a job envelope, persists the manifest
+        and status before acknowledging, and runs the work outside the submitting connection. The Idempotency-Key
+        binds the tenant''s credential and the request content: an identical replay returns the same job,
+        a changed payload is a conflict. `service/durable-jobs.md` is the contract.'
+      parameters:
+      - name: X-Workspace-Id
+        in: header
+        required: false
+        schema:
+          type: string
+        description: Required when the deployment enforces workspace membership.
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+        description: Caller-owned submission identity; binds tenant and content. Absent, a key is minted
+          and the submission cannot replay.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobEnvelope'
+      responses:
+        '202':
+          description: The job's accepted status document, state `queued`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '200':
+          description: An identical replay — the job's current status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          description: The key already named different content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TypedError'
+        '410':
+          description: A replay whose job record was deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TypedError'
+        '422':
+          $ref: '#/components/responses/TypedError'
+  /v1/jobs/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Read a job's status
+      description: State, outcome counts, receipt digest, and cause. Another tenant's job answers `job_not_found`.
+      responses:
+        '200':
+          description: The job's status document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+    delete:
+      summary: Delete a terminal job's record
+      description: Removes the manifest, status, items, events, and deliveries of a completed, cancelled,
+        or failed job. The idempotency index entry is retained, so a late replay learns the record is
+        gone. A running job answers `job_running`.
+      responses:
+        '200':
+          description: The record was deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  job:
+                    type: string
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+  /v1/jobs/{id}/cancel:
+    post:
+      summary: Cancel a job
+      description: Records `cancelling` durably, then stops undispatched work — dispatched items finish
+        and record their real outcomes. A terminal job returns its status unchanged.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The job was already terminal — its status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '202':
+          description: Cancellation recorded — the `cancelling` status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+  /v1/jobs/{id}/results:
+    get:
+      summary: Export a job's finished items
+      description: The item ledger in completion order — each entry carries its request-order index, caller
+        input id, attempt id, dispatch flag, and the per-input result the classification pipeline produced.
+        Cursors are opaque and expire under `job_cursor_ttl_ms`.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 1000
+      responses:
+        '200':
+          description: A page of item records and the next cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResults'
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '410':
+          description: The cursor expired — read again from the start.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TypedError'
+  /v1/jobs/{id}/notify/rotate:
+    post:
+      summary: Rotate a job's webhook signing secret
+      description: Replaces the HMAC secret a notified job signs events with. The new secret answers once;
+        later events sign under it and the old one stops working.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The new secret, returned once.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:
+                    type: string
+                  secret:
+                    type: string
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '422':
+          description: The job declared no notification destination.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TypedError'
+  /v1/docs:
+    get:
+      summary: List the bundled documentation corpus
+      security: []
+      parameters:
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          maxLength: 160
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+      responses:
+        '200':
+          description: The openagents.docs.v1 list envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  v: &id001
+                    type: string
+                    enum:
+                    - openagents.docs.v1
+                  corpus_sha256: &id002
+                    type: string
+                  next_cursor: &id003
+                    type:
+                    - string
+                    - 'null'
+                  total: &id004
+                    type: integer
+                  documents:
+                    type: array
+                    items: &id005
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        source:
+                          type: string
+                        source_path:
+                          type: string
+                        sha256:
+                          type: string
+                        bytes:
+                          type: integer
+                        example:
+                          type: boolean
+                        line:
+                          type: integer
+                        snippet:
+                          type: string
+                        snippet_truncated:
+                          type: boolean
+        '400':
+          description: invalid_arguments or stale_cursor — a typed error document.
+  /v1/docs/search:
+    get:
+      summary: Search the corpus — one bounded snippet per document
+      security: []
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 256
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          maxLength: 160
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+      responses:
+        '200':
+          description: The list envelope; rows carry line, snippet, snippet_truncated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  v: *id001
+                  corpus_sha256: *id002
+                  next_cursor: *id003
+                  total: *id004
+                  documents:
+                    type: array
+                    items: *id005
+        '400':
+          description: invalid_arguments or stale_cursor — a typed error document.
+  /v1/docs/examples:
+    get:
+      summary: List the bundled examples
+      security: []
+      parameters:
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          maxLength: 160
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+      responses:
+        '200':
+          description: The list envelope restricted to example documents.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  v: *id001
+                  corpus_sha256: *id002
+                  next_cursor: *id003
+                  total: *id004
+                  documents:
+                    type: array
+                    items: *id005
+        '400':
+          description: invalid_arguments or stale_cursor — a typed error document.
+  /v1/docs/{id}:
+    get:
+      summary: Read a bounded page of one document
+      security: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          maxLength: 160
+      - name: max_bytes
+        in: query
+        schema:
+          type: integer
+          minimum: 4
+          maximum: 16384
+      responses:
+        '200':
+          description: The read envelope — document metadata, offset, content slice, truncation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  v:
+                    type: string
+                    enum:
+                    - openagents.docs.v1
+                  corpus_sha256:
+                    type: string
+                  document: *id005
+                  offset_bytes:
+                    type: integer
+                  content:
+                    type: string
+                  truncated:
+                    type: boolean
+                  next_cursor:
+                    type:
+                    - string
+                    - 'null'
+        '400':
+          description: invalid_arguments or stale_cursor.
+        '404':
+          description: document_not_found — no document has this id.
 components:
   securitySchemes:
     bearer:
       type: http
       scheme: bearer
-      description: >-
-        An issued key: `oak_<id>.<secret>`. Omitted entirely for
-        anonymous access to shared doors, which a
-        `require_workspace_membership` deployment refuses outright.
+      description: 'An issued key: `oak_<id>.<secret>`. Omitted entirely for anonymous access to shared
+        doors, which a `require_workspace_membership` deployment refuses outright.'
   headers:
     RequestId:
       schema:
@@ -359,7 +718,12 @@ components:
     Outcome:
       schema:
         type: string
-        enum: [answered, mixed, refused, unavailable, unattempted]
+        enum:
+        - answered
+        - mixed
+        - refused
+        - unavailable
+        - unattempted
       description: How the settled attempt ended; `mixed` only on `POST /v1/classify`.
     Receipt:
       schema:
@@ -368,12 +732,18 @@ components:
     Settlement:
       schema:
         type: string
-        enum: [settled, outstanding, released]
+        enum:
+        - settled
+        - outstanding
+        - released
       description: The monetary hold's resolution — present only under monetary admission.
   schemas:
     Call:
       type: object
-      required: [model, state, questions]
+      required:
+      - model
+      - state
+      - questions
       properties:
         model:
           type: string
@@ -383,25 +753,29 @@ components:
         questions:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/Question"
+            $ref: '#/components/schemas/Question'
           description: Question id to question. Ids are caller-side and are not sent to the model.
     Question:
       type: object
-      required: [type]
+      required:
+      - type
       properties:
         type:
           type: string
-          enum: [noul, choice, score]
+          enum:
+          - noul
+          - choice
+          - score
         instructions:
           description: The judgment to make — a string or a structured object.
         criteria:
-          description: >-
-            `noul`: optional `{"true": …, "false": …}`. `choice`: object
-            of option to description. `score`: array of 2–10 ordered
-            level descriptions.
+          description: '`noul`: optional `{"true": …, "false": …}`. `choice`: object of option to description.
+            `score`: array of 2–10 ordered level descriptions.'
     Result:
       type: object
-      required: [model, answers]
+      required:
+      - model
+      - answers
       properties:
         model:
           type: string
@@ -410,17 +784,18 @@ components:
           type: object
           additionalProperties:
             oneOf:
-              - $ref: "#/components/schemas/NoulAnswer"
-              - $ref: "#/components/schemas/ChoiceAnswer"
-              - $ref: "#/components/schemas/ScoreAnswer"
+            - $ref: '#/components/schemas/NoulAnswer'
+            - $ref: '#/components/schemas/ChoiceAnswer'
+            - $ref: '#/components/schemas/ScoreAnswer'
         usage:
-          $ref: "#/components/schemas/Usage"
-      description: >-
-        The backend's document arrives verbatim; a door may add fields
-        beyond this minimum shape.
+          $ref: '#/components/schemas/Usage'
+      description: The backend's document arrives verbatim; a door may add fields beyond this minimum
+        shape.
     NoulAnswer:
       type: object
-      required: [type, noul]
+      required:
+      - type
+      - noul
       properties:
         type:
           const: noul
@@ -432,7 +807,11 @@ components:
           description: The estimator's own pick, when the door reports one.
     ChoiceAnswer:
       type: object
-      required: [type, choice, confidence, probabilities]
+      required:
+      - type
+      - choice
+      - confidence
+      - probabilities
       properties:
         type:
           const: choice
@@ -447,7 +826,11 @@ components:
             type: number
     ScoreAnswer:
       type: object
-      required: [type, score, confidence, legend]
+      required:
+      - type
+      - score
+      - confidence
+      - legend
       properties:
         type:
           const: score
@@ -474,7 +857,13 @@ components:
       description: Either field is absent when the backend does not count it.
     ModelCard:
       type: object
-      required: [id, model, artifact_signature, lane, admission, classification]
+      required:
+      - id
+      - model
+      - artifact_signature
+      - lane
+      - admission
+      - classification
       properties:
         id:
           type: string
@@ -487,7 +876,11 @@ components:
           description: The content digest the binding pins; empty when the binding pins a name only.
         lane:
           type: string
-          enum: [shared, dedicated, trained, on-device]
+          enum:
+          - shared
+          - dedicated
+          - trained
+          - on-device
         admission:
           type: object
           properties:
@@ -505,15 +898,15 @@ components:
               type: integer
         classification:
           type: object
-          description: >-
-            The `openagents.classify-discovery.v1` card: `status` is
-            `configured`, `unsupported`, `unavailable`, or
-            `invalid-limits`; a configured card carries the door's
-            declared limits, supported modes, admission ceilings, and
-            execution shape.
+          description: 'The `openagents.classify-discovery.v1` card: `status` is `configured`, `unsupported`,
+            `unavailable`, or `invalid-limits`; a configured card carries the door''s declared limits,
+            supported modes, admission ceilings, and execution shape.'
     Balance:
       type: object
-      required: [workspace, balance, prices]
+      required:
+      - workspace
+      - balance
+      - prices
       properties:
         workspace:
           type: string
@@ -547,78 +940,227 @@ components:
                 type: string
     TypedError:
       type: object
-      required: [error]
+      required:
+      - error
       properties:
         error:
           type: object
-          required: [code, message]
+          required:
+          - code
+          - message
           properties:
             code:
               type: string
               enum:
-                - malformed
-                - invalid_request
-                - workspace_required
-                - unauthenticated
-                - insufficient_funds
-                - door_not_bound
-                - workspace_forbidden
-                - account_missing
-                - unmetered
-                - idempotency_conflict
-                - too_many_questions
-                - too_many_options
-                - unsupported_schema
-                - unsupported_mode
-                - unsupported_limits
-                - unsupported_capacity
-                - invalid_id
-                - duplicate_id
-                - too_many_inputs
-                - too_many_labels
-                - too_many_levels
-                - too_many_dimensions
-                - too_many_judgments
-                - content_too_large
-                - overflow
-                - context_limit
-                - rate_limited
-                - busy
-                - overloaded
-                - quota_exhausted
-                - registry_unavailable
-                - ledger_unavailable
-                - membership_unavailable
-                - door_unavailable
-                - identity_mismatch
-                - unavailable
-                - unpriced
-                - price_invalid
-              description: >-
-                The gateway-owned codes, complete. A backend may pass
-                through its own typed refusal with a code outside this
-                set — treat an unknown code as refused, not transient.
+              - malformed
+              - invalid_request
+              - workspace_required
+              - unauthenticated
+              - insufficient_funds
+              - door_not_bound
+              - workspace_forbidden
+              - account_missing
+              - unmetered
+              - idempotency_conflict
+              - too_many_questions
+              - too_many_options
+              - unsupported_schema
+              - unsupported_mode
+              - unsupported_limits
+              - unsupported_capacity
+              - invalid_id
+              - duplicate_id
+              - too_many_inputs
+              - too_many_labels
+              - too_many_levels
+              - too_many_dimensions
+              - too_many_judgments
+              - content_too_large
+              - overflow
+              - context_limit
+              - rate_limited
+              - busy
+              - overloaded
+              - quota_exhausted
+              - registry_unavailable
+              - ledger_unavailable
+              - membership_unavailable
+              - door_unavailable
+              - identity_mismatch
+              - unavailable
+              - unpriced
+              - price_invalid
+              description: The gateway-owned codes, complete. A backend may pass through its own typed
+                refusal with a code outside this set — treat an unknown code as refused, not transient.
             message:
               type: string
             request:
               type: string
-              description: The request identity — present on refusals raised inside the owned admission path.
+              description: The request identity — present on refusals raised inside the owned admission
+                path.
             attempt:
               type: integer
-              description: The attempt number — present on refusals raised inside the owned admission path.
+              description: The attempt number — present on refusals raised inside the owned admission
+                path.
         settlement:
           type: string
-          enum: [settled, outstanding, released]
+          enum:
+          - settled
+          - outstanding
+          - released
           description: The monetary hold's resolution, on gateway refusals under monetary admission.
+    JobResults:
+      type: object
+      required:
+      - v
+      - job
+      - items
+      - next_cursor
+      properties:
+        v:
+          type: string
+          enum:
+          - openagents.job-results.v1
+        job:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              attempt_id:
+                type: string
+              dispatched:
+                type: boolean
+              queue_ms:
+                type: integer
+                nullable: true
+              usage:
+                type: object
+                nullable: true
+              item:
+                type: object
+                description: The per-input result the classify pipeline produced.
+        next_cursor:
+          type: string
+          nullable: true
+        terminal:
+          type: string
+          enum:
+          - queued
+          - running
+          - cancelling
+          - completed
+          - cancelled
+          - failed
+        counts:
+          type: object
+    JobEnvelope:
+      type: object
+      required:
+      - v
+      - kind
+      - request
+      properties:
+        v:
+          type: string
+          enum:
+          - openagents.job.v1
+        kind:
+          type: string
+          enum:
+          - classify
+        request:
+          type: object
+          description: The `POST /v1/classify` envelope, verbatim.
+        notify:
+          type: object
+          required:
+          - url
+          properties:
+            url:
+              type: string
+              description: '`https`, or `http` to a loopback host only — never a URL carrying credentials.'
+            secret:
+              type: string
+              description: The HMAC secret events sign under. Absent, one is minted and returned once
+                in the submission response.
+    JobStatus:
+      type: object
+      required:
+      - v
+      - job
+      - kind
+      - status
+      - counts
+      properties:
+        v:
+          type: string
+          enum:
+          - openagents.job.v1
+        job:
+          type: string
+        kind:
+          type: string
+          enum:
+          - classify
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - cancelling
+          - completed
+          - cancelled
+          - failed
+        model:
+          type: string
+        capacity:
+          type: string
+        counts:
+          type: object
+          properties:
+            expected:
+              type: integer
+            attempted:
+              type: integer
+            answered:
+              type: integer
+            refused:
+              type: integer
+            unavailable:
+              type: integer
+            unattempted:
+              type: integer
+            unknown:
+              type: integer
+        submitted_at:
+          type: string
+        started_at:
+          type: string
+          nullable: true
+        finished_at:
+          type: string
+          nullable: true
+        receipt:
+          type: string
+          nullable: true
+        cause:
+          type: string
+          nullable: true
+        secret:
+          type: string
+          description: Present once in the submission response when a notify secret was generated — never
+            on later reads.
   responses:
     TypedError:
-      description: >-
-        A typed refusal — see the `refusal_codes` map in
-        `docs/agents/api-catalog.json` and the code table in
-        `docs/decision-models/service/gateway.md`.
+      description: A typed refusal — see the `refusal_codes` map in `docs/agents/api-catalog.json` and
+        the code table in `docs/decision-models/service/gateway.md`.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/TypedError"
+            $ref: '#/components/schemas/TypedError'
 security:
-  - bearer: []
+- bearer: []

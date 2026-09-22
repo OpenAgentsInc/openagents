@@ -106,6 +106,18 @@ Work that outlives a request runs as a durable job instead:
 path, a manifest and item ledger beside the registry, honest
 `unknown` outcomes for ambiguous work, and opt-in signed webhooks.
 
+The gateway also serves a public discovery surface — unauthenticated
+`GET` routes that describe the deployment: the document set
+(`llms.txt`, `agents.md`, `auth.md`, `skills.md`, `api-catalog.json`,
+`openapi.yaml`), the well-known agent card and agent-skills index, a
+mirrored MCP server card, the versioned `/v1/docs` corpus API
+(list/read/search/examples), plugin packages under `/plugins/`, and
+`sitemap.xml`/`robots.txt`. Canonical URLs come from the optional
+`public_origin` config or the request's `Host`; forwarded headers are
+never trusted. Nothing on the surface decides and nothing on it
+authenticates — the inference routes still require the bearer
+credential.
+
 ## Responses
 
 Every attempt carries `x-request-id`, `x-attempt`, `x-outcome`, and

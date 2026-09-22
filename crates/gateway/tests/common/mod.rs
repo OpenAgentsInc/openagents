@@ -516,6 +516,7 @@ pub async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
         doors,
         job_retention_ms: 604_800_000,
         job_cursor_ttl_ms: 3_600_000,
+        public_origin: None,
     })
     .unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "oak": {
+      "command": "oak-mcp",
+      "args": [],
+      "env": {
+        "OPENAGENTS_API_KEY": "${OPENAGENTS_API_KEY}",
+        "OPENAGENTS_BASE_URL": "${OPENAGENTS_BASE_URL}"
+      }
+    }
+  }
+}

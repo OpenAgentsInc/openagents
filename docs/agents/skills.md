@@ -23,25 +23,31 @@ and its `unimplemented` list names what does not exist.
 | Surface | What it is | Status |
 | --- | --- | --- |
 | `oak` CLI | `oak ask` — one state, or a bounded `--input lines\|ndjson` batch with ordered NDJSON output; `oak models`; `oak classify`; `oak version`. Build with `cargo build -p oak --release`. | Supported |
-| Raw HTTP | The routes in [openapi.yaml](openapi.yaml): JSON in, typed answers or typed refusals out. | Supported |
-| `oak-mcp` | An MCP stdio server: `list_models` and `classify`, plus the bundled documentation tools `list_docs`, `read_doc`, `search_docs`, and `get_examples`. | Supported |
+| Raw HTTP | The routes in [openapi.yaml](openapi.yaml): JSON in, typed answers or typed refusals out. `POST /v1/jobs` persists a classification batch as a durable job; `GET /v1/docs` reads the bundled documentation without a credential. | Supported |
+| `oak-mcp` | An MCP stdio server: `list_models`, `classify`, the classification facades (`classify_texts`, `classify_dimensions`, `classify_multi_label`, `count_labels`, `review_uncertain`), `decide`, and the bundled documentation tools `list_docs`, `read_doc`, `search_docs`, `get_examples`. | Supported |
+| `oak-mcp-http` | The same twelve tools over Streamable HTTP — `POST /mcp` with `Mcp-Session-Id` sessions, `GET /mcp/card` for the server card. A caller `Authorization: Bearer` on a request forwards to the decision API for that call only; a request without one falls back to the operator credential. Build with `cargo build -p oak --release --features mcp-http`. | Supported |
 | `crates/jev` | The Rust SDK `oak` builds on, for the native `POST /v1/systemone` contract — including TypeSafe's hosted door with a `ts-` key. | Supported |
 
 `oak-mcp` reads newline-delimited JSON-RPC on standard input and
 output; credentials, the endpoint, and the workspace come from operator
-configuration, never tool arguments. See
+configuration, never tool arguments. `oak-mcp-http` additionally takes
+the caller's own bearer per request. See
+[the MCP server guide](../decision-models/guides/mcp-server.md)
+for the transport contract and client configurations, and
 [classification callers](../decision-models/guides/classification-callers.md)
-for its lifecycle and bounds.
+for the tool semantics and bounds.
 
 ## Supported versions
 
 | Contract | Version |
 | --- | --- |
-| `oak` and `oak-mcp` binaries | The workspace crate version — `oak version` reports it (`0.1.0` at this writing) |
+| `oak`, `oak-mcp`, and `oak-mcp-http` binaries | The workspace crate version — `oak version` reports it (`0.1.0` at this writing) |
 | Classification envelope | `openagents.classify.v1` |
 | Classification policy | `openagents.classify-policy.v1` |
 | Review policy (inside classify) | `openagents.classify-review.v1` |
 | Classification discovery card | `openagents.classify-discovery.v1` |
+| Durable jobs | `openagents.job.v1` submission, `openagents.job-results.v1` export, `openagents.job-event.v1` webhook — see [durable-jobs](../decision-models/service/durable-jobs.md) |
+| Docs API envelope | `openagents.docs.v1` |
 | MCP protocol | `2025-11-25` and `2025-06-18` |
 | Gateway deployment document | `openagents.gateway.v1` — operator-side |
 
@@ -97,11 +103,12 @@ for its lifecycle and bounds.
 - [auth.md](auth.md) — credentials, workspace membership, and the refusal shape.
 - [api-catalog.json](api-catalog.json) — routes, refusal codes, and unimplemented surfaces.
 - [openapi.yaml](openapi.yaml) — the machine-readable contract.
+- [MCP server guide](../decision-models/guides/mcp-server.md) — the Streamable HTTP transport and client configurations.
 - [Caller guide](../decision-models/guides/caller.md) — the end-to-end caller contract.
 - [Gateway service document](../decision-models/service/gateway.md) — the implemented admission path.
 - [Caller examples](../decision-models/examples/README.md) — runnable `curl` and `oak` invocations.
 
 ---
-Version 1.0.0 · generated-by: hand-maintained · 2026-09-21
+Version 1.1.0 · generated-by: hand-maintained · 2026-09-22
 
 VALIDATED: internal links resolve to repo paths; commands and claims match `crates/oak` and `crates/gateway` as of 2026-09-21. Exact check commands are in the commit message.
