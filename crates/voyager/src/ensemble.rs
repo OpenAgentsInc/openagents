@@ -1466,11 +1466,10 @@ impl Shared<'_> {
                         let _ = self.say(
                             agent,
                             &format!(
-                                "{username}: {} picked {} of {} ({:.2})",
+                                "{username}: {} says {} {caller}'s rally {}",
                                 self.decision_model,
                                 sampled,
-                                picked.choice,
-                                picked.confidence
+                                pick_note(&sampled, &picked)
                             ),
                         );
                         sampled == "answer"
@@ -1603,11 +1602,10 @@ impl Shared<'_> {
                 let _ = self.say(
                     agent,
                     &format!(
-                        "{username}: {} picked {} of {} ({:.2})",
+                        "{username}: {} says {} {}",
                         self.decision_model,
-                        sampled,
-                        picked.choice,
-                        picked.confidence
+                        sampled.replace('_', " "),
+                        pick_note(&sampled, &picked)
                     ),
                 );
                 Some(sampled)
@@ -1708,11 +1706,10 @@ impl Shared<'_> {
                             let _ = self.say(
                                 agent,
                                 &format!(
-                                    "{username}: {} picked {} of {} ({:.2})",
+                                    "{username}: {} targets {} {}",
                                     self.decision_model,
                                     sampled,
-                                    picked.choice,
-                                    picked.confidence
+                                    pick_note(&sampled, &picked)
                                 ),
                             );
                             if enemies.iter().any(|(name, _, _)| *name == sampled) {
@@ -1794,11 +1791,10 @@ impl Shared<'_> {
                 let _ = self.say(
                     agent,
                     &format!(
-                        "{username}: {} picked {} of {} ({:.2})",
+                        "{username}: {} picks {} {}",
                         self.decision_model,
                         sampled,
-                        picked.choice,
-                        picked.confidence
+                        pick_note(&sampled, &picked)
                     ),
                 );
                 sampled
@@ -2182,6 +2178,17 @@ fn sample(picked: &Picked) -> String {
         }
     }
     last
+}
+
+/// Phrase a sampled answer for chat: the confidence when the draw
+/// matches the model's top pick, or what the model leaned toward when
+/// the draw went another way.
+fn pick_note(sampled: &str, picked: &Picked) -> String {
+    if sampled == picked.choice {
+        format!("({:.2})", picked.confidence)
+    } else {
+        format!("(leaned {} {:.2})", picked.choice, picked.confidence)
+    }
 }
 
 /// The observer key — an identity with no membership anywhere, used to
