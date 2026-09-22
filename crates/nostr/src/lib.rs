@@ -16,6 +16,7 @@ pub mod decision;
 pub mod domain;
 pub mod execution;
 pub mod ext;
+pub mod lane;
 pub mod negentropy;
 pub mod nip19;
 pub mod nip44;

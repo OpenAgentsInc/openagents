@@ -593,6 +593,35 @@ mod tests {
     }
 
     #[test]
+    fn the_information_document_lists_exercised_sync_and_count() {
+        let config = GatewayConfig::new(
+            "host=/tmp dbname=test".to_owned(),
+            "127.0.0.1:0".parse::<SocketAddr>().unwrap(),
+        );
+        let policy = RelayPolicy {
+            closed_membership: false,
+            max_content_bytes: 1_024,
+            max_tags: 8,
+            max_future_seconds: 60,
+            max_past_seconds: 60,
+        };
+        let document: Value = serde_json::from_str(&nip11_json(&config, &policy)).unwrap();
+        assert!(nostr::lane::information_document_lists_nips(&document));
+        assert!(
+            document["supported_nips"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(77))
+        );
+        let count = json!(["COUNT", "q", {"kinds": [1]}]);
+        assert!(nostr::lane::count_message(&count).is_ok());
+        assert!(matches!(
+            parse_client_message(&count.to_string()).unwrap(),
+            ClientMessage::Count { .. }
+        ));
+    }
+
+    #[test]
     fn nip77_frames_parse_and_reject_odd_hex() {
         let open = parse_client_message(r#"["NEG-OPEN","1",{"kinds":[1]},"61"]"#).unwrap();
         assert!(matches!(open, ClientMessage::NegOpen { message, .. } if message == vec![0x61]));
