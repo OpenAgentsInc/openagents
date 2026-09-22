@@ -138,6 +138,9 @@ impl Select {
                 .collect(),
             question_set: SET.id.clone(),
             set_digest: SET.digest(),
+            model: response.model.clone(),
+            evidence_digest: evidence_digest(candidates),
+            policy_digest: policy_digest_of(&SET),
         })
     }
 
@@ -227,6 +230,19 @@ pub struct Ranking {
     /// The digest of that set's wording, so two runs that asked from the
     /// same file say so whatever the run supplied.
     pub set_digest: String,
+    /// The model the door reported answering with — the artifact the
+    /// scores came from. A score under another model is another
+    /// judgment, not this one.
+    pub model: String,
+    /// The digest of the evidence the judgment scored: every candidate's
+    /// full observable record and every omission, in the order the
+    /// request listed them. A changed byte under the same path is
+    /// different evidence; a same-content path added or dropped is a
+    /// different set.
+    pub evidence_digest: String,
+    /// The digest of the policy the set bound, when it bound one — a
+    /// ranking under a revised policy is a different function's answer.
+    pub policy_digest: Option<String>,
 }
 
 impl Ranking {
@@ -245,6 +261,42 @@ impl Ranking {
     pub fn abstained(&self) -> bool {
         matches!(self.verdict, Verdict::Abstained)
     }
+
+    /// Whether this ranking may answer for `candidates` again under
+    /// `model` and `set` — the reuse check a score cache is held to.
+    /// The judgment is this function's answer only while all four
+    /// identities still match: the evidence it scored (content digests
+    /// and paths, not just a list that looks the same), the wording it
+    /// answered, the policy that bound it, and the artifact that read
+    /// it. Any change is a different answer's, not this one's to give
+    /// again.
+    #[must_use]
+    pub fn reusable_for(&self, candidates: &Candidates, model: &str, set: &Set) -> bool {
+        self.model == model
+            && self.evidence_digest == evidence_digest(candidates)
+            && self.set_digest == set.digest()
+            && self.policy_digest == policy_digest_of(set)
+    }
+}
+
+/// The identity of the evidence a ranking scored: every candidate's
+/// full observable record and every omission the state listed, in the
+/// order the request listed them. Digested rather than compared field
+/// by field so a reuse check answers "the same evidence" without
+/// knowing which fields a future candidate grows.
+fn evidence_digest(candidates: &Candidates) -> String {
+    atif::digest(&json!({
+        "candidates": candidates.candidates,
+        "omitted": candidates.omitted,
+    }))
+}
+
+/// The digest of the policy a set binds, when it binds one — the
+/// identity a ranking's reuse check compares, so a policy revision
+/// makes the earlier judgment a different function's answer.
+fn policy_digest_of(set: &Set) -> Option<String> {
+    (!set.policy.is_empty())
+        .then(|| atif::digest(&serde_json::to_value(&set.policy).unwrap_or_default()))
 }
 
 /// Why a response cannot be read as a [`Ranking`].
@@ -876,6 +928,41 @@ mod tests {
         );
         assert_eq!(ranking.set_digest, SET.digest());
         assert_eq!(ranking.question_set, "openagents.evidence-relevance.v1");
+    }
+
+    /// A score answers again only while every identity still matches:
+    /// the same evidence, the same wording and policy, and the same
+    /// artifact. A changed byte, a different model, or a revised policy
+    /// makes the earlier judgment another answer's, not this one's to
+    /// give again.
+    #[test]
+    fn a_ranking_reuses_only_while_every_identity_matches() {
+        let set = candidates();
+        let response = response("src/a.rs", &[("none", 0.1), ("src/a.rs", 0.9)]);
+        let ranking = Select::ranking(&response, &set).expect("a ranking");
+        assert!(ranking.reusable_for(&set, "test-door", &SET));
+
+        // A changed byte under the same path is different evidence.
+        let mut changed = set.clone();
+        changed.candidates[0].digest = Some("cd".repeat(32));
+        assert!(!ranking.reusable_for(&changed, "test-door", &SET));
+
+        // A different artifact is another judgment.
+        assert!(!ranking.reusable_for(&set, "other-model", &SET));
+
+        // A revised policy is a different function's answer.
+        let mut revised: Set = serde_json::from_str(SET_JSON).expect("the vendored set parses");
+        revised.policy.v += 1;
+        assert!(!ranking.reusable_for(&set, "test-door", &revised));
+
+        // A wording revision is a different function's answer, even
+        // under the same policy.
+        revised.policy = SET.policy.clone();
+        revised.questions.insert(
+            "reworded".to_string(),
+            json!({"type": "noul", "instructions": "Worded differently."}),
+        );
+        assert!(!ranking.reusable_for(&set, "test-door", &revised));
     }
 
     #[test]
