@@ -654,6 +654,11 @@ bounded at 64 KiB and runs at 100 items / 20 labels. `/playground/chat`
 is the bounded chat demo: 10 turns, one classify call per turn, replies
 composed only of the tool's actual answers, and a transcript that lives
 in the page's form state — nothing persists and nothing fetches.
+`POST /playground/native` runs the same lane pair for
+`POST /v1/systemone` — a state and a pasted questions map, typed
+answers rendered with their distributions — and the run form's envelope
+override runs a pasted `openagents.classify.v1` document verbatim, so
+dimensions, capacity, and review policies are all reachable.
 [The playground contract](../service/playground.md) is the full shape.
 
 ## Skill directory and recipes

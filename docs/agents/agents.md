@@ -58,8 +58,11 @@ subscription, with separate product and support consent.
   `/v1/accounts`, `/v1/sessions`, `/v1/workspaces`, `/v1/invitations`,
   and `/v1/recovery` management family exists only where the deployment
   configures the `accounts` document. The same `accounts` document
-  mounts the `/v1/workspaces/{id}/usage*` reads and the `/dashboard`
-  pages — both member-scoped, both absent without it. The `/v1/plans`
+  mounts the `/v1/workspaces/{id}/usage*` reads, the `/dashboard`
+  pages, and the `/playground` pages — all member-scoped, all absent
+  without it. The playground's forms drive the real inference routes
+  under the session bearer; its simulated lane derives deterministic
+  synthetic answers and never reaches a door. The `/v1/plans`
   catalog and the `/v1/workspaces/{id}/billing/*` family exist only
   where the deployment configures `billing` — which itself requires
   `accounts` and `money` — and a decision call under billing names a

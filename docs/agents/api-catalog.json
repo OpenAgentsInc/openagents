@@ -2705,6 +2705,139 @@
    }
   },
   {
+   "method": "GET",
+   "path": "/playground",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The decision playground — the classification run form, the envelope override, the dataset upload, the native-judgments form, and links to the bounded chat demo. Without a session it serves the sign-in form. Server-rendered HTML.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/playground/session",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Sets the `oa_session` HttpOnly cookie from a pasted session token — the same sign-in `/dashboard/session` performs.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/playground/run",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Builds a real `openagents.classify.v1` envelope from the form — or takes a pasted envelope verbatim — and either runs it live through the `POST /v1/classify` admission path in-process or answers the deterministic simulated lane that bills nothing. Renders per-input outcomes, selected labels, raw distributions, review status, refusal causes, served identity, usage, timing, the `x-receipt` digest, and the equivalent request.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/playground/native",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Runs one real `POST /v1/systemone` under the session bearer — a state and a pasted questions map — or answers the deterministic simulated lane. Renders each question's type, selected value, confidence, probability distribution, model, usage, timing, the `x-receipt` digest, and the equivalent request.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/playground/upload",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Accepts a bounded dataset file (64 KiB, one item per line) and renders it for the run form — no call is made.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/playground/chat",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The bounded chat demo — a fixed tool policy over the classify facade, not a generative model. The transcript lives in the page's own form state; the server retains none of it.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/playground/chat",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "One bounded turn: the message becomes one intent classification over a fixed label set through the real `POST /v1/classify` path — or the simulated lane — and the reply is composed verbatim from the tool's actual answer. Caps: 10 turns, 1 tool call per turn.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
    "method": "POST",
    "path": "/v1/skills",
    "status": "implemented",

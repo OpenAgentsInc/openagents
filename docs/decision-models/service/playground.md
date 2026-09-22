@@ -28,10 +28,26 @@ label, score, raw distribution, uncertainty and review status, refusal
 causes, the served model identity, elapsed time, usage, the `x-receipt`
 digest, and the equivalent request JSON for `POST /v1/classify`.
 
+The form's **envelope override** accepts a pasted
+`openagents.classify.v1` document — named dimensions, a dedicated or
+shared capacity, and a review policy the form fields do not name —
+bounded at 64 KiB and required to declare the schema. When set, the
+document runs verbatim in either lane; the workspace select and the
+simulate flag still apply, and the simulated lane derives a unit per
+declared dimension in its own mode.
+
+`POST /playground/native` is the same lane pair for
+`POST /v1/systemone`: a state and the pasted questions map — `noul`,
+`choice`, and `score` questions — run live under the session bearer or
+simulated from the request digest. The answers page renders each
+question's type, selected value, confidence, and full probability
+distribution, plus the model, usage, timing, receipt digest, and the
+equivalent request.
+
 ## Bounds and retention
 
 - 100 items per run, 4,096 bytes each; 20 labels; rubrics of 2–10
-  levels; uploads of 64 KiB, one item per line.
+  levels; uploads and pasted envelope or questions documents of 64 KiB.
 - Refusals, partial batches, reviewer failures, and unavailable results
   render as their own rows — never hidden behind an aggregate.
 - Nothing persists: no inputs, answers, or transcripts are stored. The

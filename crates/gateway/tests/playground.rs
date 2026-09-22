@@ -277,3 +277,111 @@ async fn out_of_bounds_runs_refuse_before_any_backend_call() {
     let body = response.text().await.unwrap();
     assert!(body.contains("too large"), "{body}");
 }
+
+#[tokio::test]
+async fn a_native_run_answers_typed_questions_and_reports_its_receipt() {
+    let deployment = deploy().await;
+    let client = playground_client();
+    let (session, workspace) = join(&deployment).await;
+    let questions = json!({
+        "q0": {"type": "choice", "instructions": "spam or ham?",
+               "criteria": {"spam": "junk", "ham": "not junk"}},
+    });
+    let response = client
+        .post(format!("{}/playground/native", deployment.address))
+        .header("cookie", format!("oa_session={session}"))
+        .form(&[
+            ("workspace", workspace.as_str()),
+            ("model", "acme-kev"),
+            ("state", "free money now"),
+            ("questions", questions.to_string().as_str()),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.unwrap();
+    assert!(body.contains("q0"), "{body}");
+    assert!(body.contains("spam"), "{body}");
+    assert!(body.contains("/v1/systemone"), "{body}");
+    assert!(body.contains("receipt"), "{body}");
+    assert!(
+        !body.contains(&session),
+        "the session token must never render"
+    );
+
+    // The simulated lane marks itself and never reaches a door.
+    let response = client
+        .post(format!("{}/playground/native", deployment.address))
+        .header("cookie", format!("oa_session={session}"))
+        .form(&[
+            ("workspace", workspace.as_str()),
+            ("model", "acme-kev"),
+            ("state", "free money now"),
+            ("questions", questions.to_string().as_str()),
+            ("simulate", "on"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.unwrap();
+    assert!(body.contains("SIMULATED"), "{body}");
+}
+
+#[tokio::test]
+async fn an_envelope_override_runs_dimensions_verbatim() {
+    let deployment = deploy().await;
+    let client = playground_client();
+    let (session, workspace) = join(&deployment).await;
+    // One request, two dimensions — a shape the form fields cannot
+    // name — sent verbatim through the real classify path.
+    let envelope = json!({
+        "v": "openagents.classify.v1",
+        "model": "acme-kev",
+        "capacity": "dedicated",
+        "dimensions": [{
+            "id": "intent", "mode": "single-label",
+            "labels": [{"id": "spam"}, {"id": "ham"}],
+        }],
+        "policy": {"v": "openagents.classify-policy.v1", "name": "playground",
+            "select": {"single_label": {"ties": "first-declared", "no_match": {"kind": "null"}}}},
+        "inputs": [{"id": "m1", "text": "free money now"}],
+    });
+    let response = client
+        .post(format!("{}/playground/run", deployment.address))
+        .header("cookie", format!("oa_session={session}"))
+        .form(&[
+            ("workspace", workspace.as_str()),
+            ("model", "acme-kev"),
+            ("mode", "single-label"),
+            ("envelope", envelope.to_string().as_str()),
+        ])
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("m1"), "{body}");
+    assert!(body.contains("/v1/classify"), "{body}");
+    assert!(
+        !body.contains(&session),
+        "the session token must never render"
+    );
+
+    // A document that is not a classify envelope refuses before a door.
+    let response = client
+        .post(format!("{}/playground/run", deployment.address))
+        .header("cookie", format!("oa_session={session}"))
+        .form(&[
+            ("workspace", workspace.as_str()),
+            ("model", "acme-kev"),
+            ("mode", "single-label"),
+            ("envelope", "{\"v\":\"other\"}"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}

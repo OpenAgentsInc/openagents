@@ -54,6 +54,7 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/playground", get(form_page)),
         ("/playground/session", post(crate::dashboard::session)),
         ("/playground/run", post(run)),
+        ("/playground/native", post(native)),
         ("/playground/upload", post(upload)),
         ("/playground/chat", get(chat_page).post(chat_turn)),
     ]
@@ -103,8 +104,10 @@ pub struct RunForm {
     /// The door to call.
     model: String,
     /// The classification mode.
+    #[serde(default)]
     mode: String,
     /// One item per line.
+    #[serde(default)]
     items: String,
     /// Comma-separated label ids.
     #[serde(default)]
@@ -125,6 +128,12 @@ pub struct RunForm {
     /// `on` runs the deterministic simulated lane.
     #[serde(default)]
     simulate: Option<String>,
+    /// A pasted `openagents.classify.v1` document — dimensions,
+    /// capacity, and review policies the form does not name. When set
+    /// it replaces every field above except the workspace and the
+    /// simulated flag.
+    #[serde(default)]
+    envelope: Option<String>,
 }
 
 /// Parse the textarea's non-empty lines into bounded item ids.
@@ -275,6 +284,258 @@ fn envelope(form: &RunForm, items: &[(String, String)]) -> Result<Value, Respons
     Ok(request)
 }
 
+/// The request a run sends: the pasted `openagents.classify.v1`
+/// document verbatim — dimensions, capacity, and review policies
+/// included — or the envelope the form fields build.
+fn run_request(form: &RunForm, items: &[(String, String)]) -> Result<Value, Response> {
+    let Some(pasted) = form.envelope.as_deref().filter(|e| !e.trim().is_empty()) else {
+        return envelope(form, items);
+    };
+    if pasted.len() > MAX_UPLOAD_BYTES {
+        return Err(page_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "envelope too large",
+            &format!("a pasted envelope is bounded at {MAX_UPLOAD_BYTES} bytes"),
+        ));
+    }
+    let request: Value = serde_json::from_str(pasted).map_err(|_| {
+        page_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "envelope does not parse",
+            "the override must be a JSON object",
+        )
+    })?;
+    if request["v"].as_str() != Some(classify::SCHEMA) {
+        return Err(page_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "not a classify envelope",
+            &format!("the override must declare `v: {}`", classify::SCHEMA),
+        ));
+    }
+    Ok(request)
+}
+
+/// The items a request names — the simulated lane iterates them.
+fn request_items(request: &Value) -> Vec<(String, String)> {
+    request["inputs"]
+        .as_array()
+        .map(|inputs| {
+            inputs
+                .iter()
+                .map(|input| {
+                    (
+                        input["id"].as_str().unwrap_or("?").to_string(),
+                        input["text"].as_str().unwrap_or_default().to_string(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// One input's simulated units, derived from the request's own
+/// dimensions — or its single declared mode when it names none. Every
+/// unit shape mirrors what the lane claims: a selection, a rubric
+/// position, and the raw distribution the digest produced.
+fn simulated_units(seed: &str, id: &str, request: &Value) -> Vec<Value> {
+    let dimensions = request["dimensions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_else(|| {
+            vec![json!({
+                "mode": request["mode"], "labels": request["labels"],
+                "levels": request["levels"],
+            })]
+        });
+    let mut units = Vec::new();
+    for dimension in &dimensions {
+        let mode = dimension["mode"].as_str().unwrap_or("single-label");
+        let labels: Vec<String> = dimension["labels"]
+            .as_array()
+            .map(|set| {
+                set.iter()
+                    .filter_map(|l| l["id"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        match mode {
+            "multi-label" | "binary" => {
+                let mut probabilities = serde_json::Map::new();
+                let mut picked = Vec::new();
+                for label in &labels {
+                    let p = simulated(&format!("{seed}:{id}:{label}"));
+                    probabilities.insert(label.clone(), json!(p));
+                    if p >= 0.5 {
+                        picked.push(label.clone());
+                    }
+                }
+                units.push(json!({"mode": mode, "selected": picked,
+                    "raw": {"probabilities": probabilities}, "uncertain": false}));
+            }
+            "score" => {
+                let levels: Vec<String> = dimension["levels"]
+                    .as_array()
+                    .map(|set| {
+                        set.iter()
+                            .filter_map(|l| l.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut probabilities = serde_json::Map::new();
+                let mut best = (0.0_f64, String::new());
+                for level in &levels {
+                    let p = simulated(&format!("{seed}:{id}:{level}"));
+                    probabilities.insert(level.clone(), json!(p));
+                    if p > best.0 {
+                        best = (p, level.clone());
+                    }
+                }
+                units.push(json!({"mode": mode, "selected": best.1,
+                    "raw": {"score": best.0, "probabilities": probabilities},
+                    "uncertain": false}));
+            }
+            _ => {
+                let mut probabilities = serde_json::Map::new();
+                let mut best = (0.0_f64, Value::Null);
+                for label in &labels {
+                    let p = simulated(&format!("{seed}:{id}:{label}"));
+                    probabilities.insert(label.clone(), json!(p));
+                    if p > best.0 {
+                        best = (p, json!(label));
+                    }
+                }
+                units.push(json!({"mode": mode, "selected": best.1,
+                    "raw": {"probabilities": probabilities}, "uncertain": false}));
+            }
+        }
+    }
+    units
+}
+
+/// The simulated lane's response for one request — synthesized from
+/// the request's own digest, never a door's.
+fn simulated_results(request: &Value) -> Vec<Value> {
+    let seed = serde_json::to_string(request).unwrap_or_default();
+    request_items(request)
+        .iter()
+        .map(|(id, _)| {
+            json!({"input": id, "outcome": "answered",
+                "units": simulated_units(&seed, id, request)})
+        })
+        .collect()
+}
+
+/// The native-judgment form's fields.
+#[derive(Debug, Deserialize)]
+pub struct NativeForm {
+    /// The workspace the live call names (`x-workspace-id`).
+    workspace: String,
+    /// The door to call.
+    model: String,
+    /// The state the questions judge.
+    state: String,
+    /// The questions map — the same JSON object `POST /v1/systemone`
+    /// takes.
+    questions: String,
+    /// `on` runs the deterministic simulated lane.
+    #[serde(default)]
+    simulate: Option<String>,
+}
+
+/// Simulated answers for one questions map — each question answered in
+/// its own type from the request digest.
+fn simulated_answers(request: &Value) -> Value {
+    let seed = serde_json::to_string(request).unwrap_or_default();
+    let mut answers = serde_json::Map::new();
+    if let Some(questions) = request["questions"].as_object() {
+        for (name, question) in questions {
+            let answer = match question["type"].as_str() {
+                Some("choice") | Some("score") => {
+                    let options: Vec<String> = if question["type"] == "choice" {
+                        question["criteria"]
+                            .as_object()
+                            .map(|c| c.keys().cloned().collect())
+                            .unwrap_or_default()
+                    } else {
+                        question["criteria"]
+                            .as_array()
+                            .map(|c| {
+                                c.iter()
+                                    .filter_map(|l| l.as_str().map(str::to_string))
+                                    .collect()
+                            })
+                            .unwrap_or_default()
+                    };
+                    let kind = question["type"].as_str().unwrap_or("choice");
+                    let mut probabilities = serde_json::Map::new();
+                    let mut total = 0.0_f64;
+                    let mut best = (0.0_f64, String::new());
+                    for option in &options {
+                        let p = simulated(&format!("{seed}:{name}:{option}")) + 0.001;
+                        probabilities.insert(option.clone(), json!(p));
+                        total += p;
+                        if p > best.0 {
+                            best = (p, option.clone());
+                        }
+                    }
+                    let mut weighted = 0.0_f64;
+                    for (index, option) in options.iter().enumerate() {
+                        weighted += index as f64 * probabilities[option].as_f64().unwrap_or(0.0);
+                    }
+                    if kind == "score" {
+                        json!({"type": "score", "score": weighted,
+                            "confidence": best.0 / total.max(f64::EPSILON),
+                            "probabilities": probabilities})
+                    } else {
+                        json!({"type": "choice", "choice": best.1,
+                            "confidence": best.0 / total.max(f64::EPSILON),
+                            "probabilities": probabilities})
+                    }
+                }
+                _ => json!({"type": "noul", "noul": simulated(&format!("{seed}:{name}"))}),
+            };
+            answers.insert(name.clone(), answer);
+        }
+    }
+    json!({"model": "simulated", "answers": answers,
+        "usage": {"input_tokens": 0, "output_tokens": 0}})
+}
+
+/// Render one `POST /v1/systemone` response's answers.
+fn native_rows(body: &Value) -> String {
+    let mut rows = String::new();
+    if let Some(map) = body["answers"].as_object() {
+        for (name, answer) in map {
+            let kind = answer["type"].as_str().unwrap_or("?");
+            let value = answer[kind].clone();
+            let detail = match kind {
+                "choice" | "score" => format!(
+                    "{} <span class=\"dim\">confidence {}</span>",
+                    value, answer["confidence"]
+                ),
+                _ => value.to_string(),
+            };
+            let probs = answer["probabilities"]
+                .as_object()
+                .map(|map| {
+                    map.iter()
+                        .map(|(k, p)| format!("{} {:.2}", esc(k), p.as_f64().unwrap_or(0.0)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+            rows.push_str(&format!(
+                "<tr><td><code>{}</code></td><td>{kind}</td><td>{detail} <span class=\"dim\">({probs})</span></td></tr>",
+                esc(name),
+            ));
+        }
+    }
+    if rows.is_empty() {
+        rows.push_str("<tr><td colspan=\"3\" class=\"dim\">no answers</td></tr>");
+    }
+    rows
+}
+
 /// Render one classify response body as result rows.
 fn result_rows(body: &Value) -> String {
     let mut rows = String::new();
@@ -332,6 +593,7 @@ fn run_footer(
     request: &Value,
     simulated: bool,
     receipt: Option<&str>,
+    verb: &str,
 ) -> String {
     let usage = body.get("usage").cloned().unwrap_or(json!({}));
     let receipt = receipt
@@ -353,11 +615,12 @@ fn run_footer(
         <p class="dim">model <code>{}</code> {served} · {} ms · usage <code>{}</code></p>
         {receipt}
         <h2>export</h2>
-        <p class="dim">Equivalent request — <code>POST /v1/classify</code>:</p>
+        <p class="dim">Equivalent request — <code>POST {verb}</code>:</p>
         <pre><code>{request_json}</code></pre>"#,
         esc(body["model"].as_str().unwrap_or("simulated")),
         elapsed_ms,
         esc(&usage.to_string()),
+        verb = verb,
     )
 }
 
@@ -421,13 +684,27 @@ async fn form_page(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> 
             <label>review below <input name="uncertain_below" size="6" placeholder="0.7"></label>
             <label>instructions <input name="instructions" size="30"></label></p>
             <p><label>items, one per line<br>
-            <textarea name="items" rows="8" cols="72" required></textarea></label></p>
+            <textarea name="items" rows="8" cols="72"></textarea></label></p>
+            <details><summary>envelope override — dimensions, capacity, and review the form does not name</summary>
+            <p><label><code>openagents.classify.v1</code> document<br>
+            <textarea name="envelope" rows="6" cols="72" placeholder='{{"v":"openagents.classify.v1", …}}'></textarea></label>
+            <span class="dim">when set, the document runs verbatim — only workspace and the
+            simulate flag still apply.</span></p></details>
             <p><label>or upload a file
             <input type="file" form="upload" disabled title="use POST /playground/upload"></label>
             <label><input type="checkbox" name="simulate"> simulate — deterministic, unbilled</label></p>
             <p><button type="submit">run</button>
             <a href="/playground/chat">chat demo</a></p>
             </form>
+            <h2>native judgments — <code>POST /v1/systemone</code></h2>
+            <form method="post" action="/playground/native">
+            <p><label>workspace <input name="workspace" size="28" required></label>
+            <label>model <input name="model" list="doors" size="20" required></label>
+            <label><input type="checkbox" name="simulate"> simulate</label></p>
+            <p><label>state<br><textarea name="state" rows="3" cols="72" required></textarea></label></p>
+            <p><label>questions — the JSON map <code>POST /v1/systemone</code> takes<br>
+            <textarea name="questions" rows="6" cols="72" placeholder='{{"q":{{"type":"noul","instructions":"…","criteria":"…"}}}}' required></textarea></label></p>
+            <p><button type="submit">ask</button></p></form>
             <form method="post" action="/playground/upload" enctype="multipart/form-data" id="upload">
             <p class="dim">dataset file (one item per line, ≤64 KiB):
             <input type="file" name="file" required>
@@ -451,11 +728,19 @@ async fn run(
         Ok(token) => token,
         Err(response) => return response,
     };
-    let items = match items_of(&form) {
-        Ok(items) => items,
-        Err(response) => return response,
+    let pasted = form
+        .envelope
+        .as_deref()
+        .is_some_and(|e| !e.trim().is_empty());
+    let items = if pasted {
+        Vec::new()
+    } else {
+        match items_of(&form) {
+            Ok(items) => items,
+            Err(response) => return response,
+        }
     };
-    let request = match envelope(&form, &items) {
+    let request = match run_request(&form, &items) {
         Ok(request) => request,
         Err(response) => return response,
     };
@@ -463,44 +748,9 @@ async fn run(
     if form.simulate.is_some() {
         // The deterministic lane: synthesize the response the envelope
         // would produce, from the request's own digest.
-        let seed = serde_json::to_string(&request).unwrap_or_default();
-        let mut results = Vec::new();
-        for (id, _) in &items {
-            let mut units = Vec::new();
-            match form.mode.as_str() {
-                "multi-label" | "binary" => {
-                    let labels = labels_of(&form).unwrap_or_default();
-                    let cut = form.threshold.unwrap_or(0.5);
-                    let picked: Vec<String> = labels
-                        .iter()
-                        .filter(|label| simulated(&format!("{seed}:{id}:{}", label.id)) >= cut)
-                        .map(|label| label.id.clone())
-                        .collect();
-                    units.push(json!({"selected": picked, "uncertain": false}));
-                }
-                "score" => {
-                    units.push(json!({"score": simulated(&format!("{seed}:{id}:score"))}));
-                }
-                _ => {
-                    let labels = labels_of(&form).unwrap_or_default();
-                    let best = labels
-                        .iter()
-                        .map(|label| {
-                            (
-                                simulated(&format!("{seed}:{id}:{}", label.id)),
-                                label.id.clone(),
-                            )
-                        })
-                        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
-                        .map(|(_, id)| id);
-                    units.push(json!({"selected": best, "uncertain": false}));
-                }
-            }
-            results.push(json!({"input": id, "outcome": "answered", "units": units}));
-        }
         let body = json!({
             "v": "openagents.classify-result.v1", "outcome": "answered",
-            "model": "simulated", "results": results,
+            "model": "simulated", "results": simulated_results(&request),
             "usage": {"input_tokens": 0, "output_tokens": 0},
         });
         let rows = result_rows(&body);
@@ -511,7 +761,14 @@ async fn run(
                 r#"<h1>results</h1>
                 <table><tr><th>input</th><th>outcome</th><th>units</th></tr>{rows}</table>
                 {}"#,
-                run_footer(&body, started.elapsed().as_millis(), &request, true, None)
+                run_footer(
+                    &body,
+                    started.elapsed().as_millis(),
+                    &request,
+                    true,
+                    None,
+                    "/v1/classify",
+                )
             ),
         )
         .into_response();
@@ -570,6 +827,127 @@ async fn run(
                 &request,
                 false,
                 receipt.as_deref(),
+                "/v1/classify",
+            )
+        ),
+    )
+    .into_response()
+}
+
+/// `POST /playground/native` — one bounded `POST /v1/systemone`: a
+/// state and a pasted questions map through the real admission path,
+/// rendered with its answers, usage, and receipt.
+async fn native(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Form(form): Form<NativeForm>,
+) -> Response {
+    let token = match signed_in(&state, &headers) {
+        Ok(token) => token,
+        Err(response) => return response,
+    };
+    if form.state.is_empty() || form.state.len() > MAX_ITEM_BYTES {
+        return page_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "state out of bounds",
+            &format!("a state runs 1–{MAX_ITEM_BYTES} bytes"),
+        );
+    }
+    if form.questions.len() > MAX_UPLOAD_BYTES {
+        return page_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "questions too large",
+            &format!("a questions document is bounded at {MAX_UPLOAD_BYTES} bytes"),
+        );
+    }
+    let questions: Value = match serde_json::from_str::<Value>(&form.questions) {
+        Ok(questions) if questions.is_object() => questions,
+        _ => {
+            return page_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "questions do not parse",
+                "the questions field takes the JSON map a `POST /v1/systemone` request takes",
+            );
+        }
+    };
+    let request = json!({"model": form.model, "state": form.state, "questions": questions});
+    let started = Instant::now();
+    if form.simulate.is_some() {
+        let body = simulated_answers(&request);
+        let rows = native_rows(&body);
+        return page(
+            "simulated answers",
+            None,
+            &format!(
+                r#"<h1>answers</h1>
+                <table><tr><th>question</th><th>type</th><th>answer</th></tr>{rows}</table>
+                {}"#,
+                run_footer(
+                    &body,
+                    started.elapsed().as_millis(),
+                    &request,
+                    true,
+                    None,
+                    "/v1/systemone",
+                )
+            ),
+        )
+        .into_response();
+    }
+    let idempotency = format!(
+        "playground-native-{:x}",
+        Sha256::digest(
+            serde_json::to_string(&request)
+                .unwrap_or_default()
+                .as_bytes()
+        )
+        .iter()
+        .take(8)
+        .fold(0u64, |acc, b| (acc << 8) | u64::from(*b))
+    );
+    let response = serve::systemone(
+        State(state.clone()),
+        live_headers(&token, &form.workspace, &idempotency),
+        Bytes::from(serde_json::to_vec(&request).unwrap_or_default()),
+    )
+    .await;
+    let status = response.status();
+    let receipt = response
+        .headers()
+        .get("x-receipt")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap_or_default();
+    let body: Value =
+        serde_json::from_slice(&bytes).unwrap_or(json!({"raw": String::from_utf8_lossy(&bytes)}));
+    if !status.is_success() {
+        let detail = body["error"]["message"]
+            .as_str()
+            .or_else(|| body["error"]["code"].as_str())
+            .unwrap_or("the call was refused");
+        return page_error(
+            status,
+            "call refused",
+            &format!("{} — see the equivalent request below", detail),
+        );
+    }
+    let rows = native_rows(&body);
+    page(
+        "native answers",
+        None,
+        &format!(
+            r#"<h1>answers</h1>
+            <table><tr><th>question</th><th>type</th><th>answer</th></tr>{rows}</table>
+            {}"#,
+            run_footer(
+                &body,
+                started.elapsed().as_millis(),
+                &request,
+                false,
+                receipt.as_deref(),
+                "/v1/systemone",
             )
         ),
     )

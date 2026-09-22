@@ -171,11 +171,19 @@ configuration:
   an `HttpOnly` cookie, and the `w/{id}` pages render the same usage
   reads plus members, keys, and billing as HTML. Reads only;
   management stays on the JSON routes.
+- `/playground` — the decision playground: the same cookie drives real
+  `POST /v1/systemone` and `POST /v1/classify` runs from HTML forms and
+  renders their results, with a separate simulated lane that derives
+  deterministic synthetic answers and a bounded chat demo that invokes
+  the classify facade under turn and tool-call caps. Nothing
+  server-side retains the inputs or the transcript.
 
 [workspace-membership](workspace-membership.md) has the full route
 table, the role matrix, and the revocation semantics;
 [usage-dashboard](usage-dashboard.md) has the usage filters, the
-disclosure contract, and the dashboard's pages.
+disclosure contract, and the dashboard's pages;
+[playground](playground.md) has the forms, bounds, simulated lane, and
+chat-demo contract.
 
 Under the `billing` document — which requires `accounts` and `money`,
 because a subscription binds a workspace and its grants ride the money

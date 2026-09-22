@@ -2130,6 +2130,125 @@ paths:
         '403':
           $ref: '#/components/responses/TypedError'
 
+
+  /playground:
+    get:
+      summary: The decision playground
+      description: The classification run form, the envelope override, the dataset upload, the
+        native-judgments form, and the bounded chat demo — or the session sign-in form without a
+        cookie. Server-rendered HTML.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      responses:
+        '200':
+          description: The playground's forms or the sign-in form.
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /playground/session:
+    post:
+      summary: Sign the playground in
+      description: Sets the `oa_session` HttpOnly cookie from a pasted session token — the same
+        sign-in `/dashboard/session` performs.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      responses:
+        '303':
+          description: Redirects to the playground with the cookie set.
+
+  /playground/run:
+    post:
+      summary: One classification, live or simulated
+      description: Builds a real `openagents.classify.v1` envelope from the form — or takes a
+        pasted envelope verbatim — and either runs it through the `POST /v1/classify` admission
+        path in-process (quota, backend, sealed `x-receipt`) or answers the deterministic
+        simulated lane that bills nothing. The page renders per-input outcomes, selected labels,
+        raw distributions, review status, refusal causes, served identity, usage, timing, and the
+        equivalent request.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      responses:
+        '200':
+          description: The results page.
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '422':
+          $ref: '#/components/responses/TypedError'
+
+  /playground/native:
+    post:
+      summary: One native-judgment call, live or simulated
+      description: Runs one `POST /v1/systemone` under the session bearer — a state and a pasted
+        questions map — or answers the deterministic simulated lane. The page renders each
+        question's type, selected value, confidence, probability distribution, model, usage,
+        timing, the `x-receipt` digest, and the equivalent request.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      responses:
+        '200':
+          description: The answers page.
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '422':
+          $ref: '#/components/responses/TypedError'
+
+  /playground/upload:
+    post:
+      summary: Upload a bounded dataset file
+      description: One item per line, 64 KiB — rendered back for the run form; no call is made.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      responses:
+        '200':
+          description: The parsed items.
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '422':
+          $ref: '#/components/responses/TypedError'
+
+  /playground/chat:
+    get:
+      summary: The bounded chat demo
+      description: A fixed tool policy over the classify facade — not a generative model. The
+        transcript lives in the page's own form state; the server retains none of it.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      responses:
+        '200':
+          description: The chat page.
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/TypedError'
+    post:
+      summary: One bounded chat turn
+      description: The message becomes one intent classification over a fixed label set through
+        the real `POST /v1/classify` path — or the simulated lane — and the reply is composed
+        verbatim from the tool's actual answer. Caps — 10 turns, 1 tool call per turn — hold at
+        every level.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      responses:
+        '200':
+          description: The updated transcript page.
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '422':
+          $ref: '#/components/responses/TypedError'
+
   /v1/skills:
     get:
       summary: Browse the published skill directory

@@ -118,7 +118,9 @@ uses, and marks which are implemented and which are only specified.
   directory, each door's backend endpoint, the optional `accounts`
   document that mounts the self-serve account, session, workspace, and
   key-management surface plus the member-scoped `/v1/workspaces/{id}/usage*`
-  reads and the `/dashboard` pages, and the optional `billing` document that
+  reads, the `/dashboard` pages, and the `/playground` decision demo
+  (real inference under the session bearer, a labeled simulated lane,
+  and a capped tool-backed chat), and the optional `billing` document that
   mounts plans, checkout, signed provider webhooks, and owner-only
   subscription management over `tenancy::billing` — under which a
   decision call names a subscribed workspace whose plan covers the
