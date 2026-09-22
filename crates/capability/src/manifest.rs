@@ -232,6 +232,9 @@ fn manifest_from(
             nostr::cap::Profile::Executor => "executor",
             nostr::cap::Profile::Plugin => "plugin",
             nostr::cap::Profile::Adapter => "adapter",
+            nostr::cap::Profile::Service => {
+                return Err("a service manifest is not an executor binding".to_string());
+            }
         }
         .to_string(),
         name: binding

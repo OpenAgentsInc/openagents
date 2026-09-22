@@ -202,6 +202,10 @@ struct Settled {
     /// The model that answered, when one did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     served_model: Option<String>,
+    /// The artifact identity the upstream verified and served under —
+    /// `x-served-artifact` on the forward.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    served_artifact: Option<String>,
     /// The upstream receipt reference — `x-receipt` on the forward.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     usage: Option<String>,
@@ -950,6 +954,7 @@ impl Worker {
             retry_after_ms: None,
             response: None,
             served_model: None,
+            served_artifact: None,
             usage: None,
             latency_ms: None,
             resolved_at: Some(now_utc()),
@@ -1164,6 +1169,7 @@ impl Worker {
                 retry_after_ms: None,
                 response: None,
                 served_model: None,
+                served_artifact: None,
                 usage: None,
                 latency_ms: Some(started.elapsed().as_millis() as u64),
                 resolved_at: Some(now_utc()),
@@ -1177,6 +1183,7 @@ impl Worker {
                 retry_after_ms: None,
                 response: None,
                 served_model: None,
+                served_artifact: None,
                 usage: None,
                 latency_ms: Some(started.elapsed().as_millis() as u64),
                 resolved_at: Some(now_utc()),
@@ -1190,11 +1197,16 @@ impl Worker {
     /// failures are `unavailable`, with the exact code kept as cause.
     async fn settle_response(&self, response: reqwest::Response, started: Instant) -> Settled {
         let status = response.status();
-        let receipt_ref = response
-            .headers()
-            .get("x-receipt")
-            .and_then(|value| value.to_str().ok())
-            .map(|value| value.to_string());
+        let header = |name: &str| {
+            response
+                .headers()
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .map(|value| value.to_string())
+        };
+        let receipt_ref = header("x-receipt");
+        let served_model_header = header("x-served-model");
+        let served_artifact = header("x-served-artifact");
         let retry_after_ms = response
             .headers()
             .get("retry-after")
@@ -1207,10 +1219,14 @@ impl Worker {
         let parsed: Option<Value> = serde_json::from_slice(&raw).ok();
         if status.is_success() {
             let response = parsed.unwrap_or(Value::Null);
-            let served_model = response
-                .get("model")
-                .and_then(Value::as_str)
-                .map(|model| model.to_string());
+            // The gateway's verified card header is the served identity;
+            // the body's own `model` field is the fallback.
+            let served_model = served_model_header.or_else(|| {
+                response
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(|model| model.to_string())
+            });
             return Settled {
                 outcome: "answered".to_string(),
                 cause: None,
@@ -1219,6 +1235,7 @@ impl Worker {
                 retry_after_ms: None,
                 response: Some(response),
                 served_model,
+                served_artifact,
                 usage: receipt_ref,
                 latency_ms,
                 resolved_at,
@@ -1271,6 +1288,7 @@ impl Worker {
             retry_after_ms,
             response: None,
             served_model: None,
+            served_artifact: None,
             usage: receipt_ref,
             latency_ms,
             resolved_at,
@@ -1303,6 +1321,7 @@ fn receipt(
     };
     receipt.served = Served {
         model: settled.served_model.clone().unwrap_or_default(),
+        artifact_signature: settled.served_artifact.clone().unwrap_or_default(),
         ..Served::default()
     };
     receipt.outcome = match settled.outcome.as_str() {

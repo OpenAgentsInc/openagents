@@ -726,6 +726,7 @@ async fn conclude(
         label,
         receipt_digest.as_deref(),
         settlement,
+        &ctx.served,
     )
 }
 
@@ -4022,6 +4023,7 @@ fn respond(
     label: &str,
     receipt_digest: Option<&str>,
     settlement: Option<&str>,
+    served: &Served,
 ) -> Response {
     let mut response = Response::builder()
         .status(status)
@@ -4031,6 +4033,12 @@ fn respond(
         .header("x-outcome", label);
     if let Some(digest) = receipt_digest {
         response = response.header("x-receipt", digest);
+    }
+    if !served.model.is_empty() {
+        response = response.header("x-served-model", served.model.clone());
+    }
+    if !served.artifact_signature.is_empty() {
+        response = response.header("x-served-artifact", served.artifact_signature.clone());
     }
     if let Some(settlement) = settlement {
         response = response.header("x-settlement", settlement);

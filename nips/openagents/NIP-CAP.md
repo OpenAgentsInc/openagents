@@ -62,6 +62,7 @@ digest. `input` and `output` are SchemaRefs. `effects` uses common effects;
 | `executor` | `interface`, `transport` (`subprocess`, `acp`, `http`, or `nostr-cj`), task/context SchemaRefs, and accepted `isolation` modes. |
 | `plugin` | Exact plugin DefinitionRef and supported ABI/profile IDs from NIP-PRG. |
 | `adapter` | `interface`, `transport` (`mcp`, `http`, `subprocess`, or `nostr-cj`), and explicit supported operation IDs. |
+| `service` | `interface` naming the request schema version and `service`, a service contract: `lanes`, `doors`, `limits`, and `versions`. |
 
 Executor/adapter contracts may include `remote`, an object with optional
 `worker` (exact pubkey), `relays` (bounded WebSocket URL list), `endpoint`
@@ -179,6 +180,96 @@ authorize training, export, or deployment. A compiled implementation cannot
 change its model recipient, invoke an undeclared tool, or extend its effects
 because its optimizer selected it. A changed functional binding requires a
 new pin and scoped evaluation; cache/probe state cannot certify its quality.
+
+## Decision services
+
+A decision service is a remote inference facility, not an executable
+adapter. It advertises with profile `service`, whose `binding_contract`
+is exactly `interface` — the request schema version, such as
+`openagents.systemone.v1` — and `service`:
+
+```json
+{
+  "interface": "openagents.systemone.v1",
+  "service": {
+    "lanes": [
+      {
+        "transport": "http",
+        "endpoint": "https://gateway.example",
+        "call": "/v1/systemone",
+        "models": "/v1/models"
+      },
+      {
+        "transport": "nostr-cj",
+        "worker": "<worker x-only pubkey hex>",
+        "relays": ["wss://relay.example"],
+        "request_kind": 25910,
+        "result_kind": 26910,
+        "feedback_kind": 27010
+      }
+    ],
+    "doors": [
+      {
+        "name": "shared-kev",
+        "model": "kev-0.6b",
+        "artifact_signature": "sha256:…"
+      }
+    ],
+    "limits": {
+      "max_questions": 256,
+      "max_options": 4096,
+      "max_state_bytes": 131072,
+      "request_window_seconds": 600
+    },
+    "versions": {
+      "request": "openagents.systemone.v1",
+      "receipt": "openagents.receipt.execution.v1"
+    }
+  }
+}
+```
+
+- `lanes` has at least one entry. An `http` lane carries `endpoint`, a
+  public base URL, plus the `call` and `models` paths. A `nostr-cj`
+  lane carries `worker`, `relays` (one to eight `ws://`/`wss://` URLs),
+  and the job family kinds — the NIP-CJ decision family's `25910`,
+  `26910`, and `27010` for the `openagents.systemone.v1` interface.
+- `doors` lists only doors an unauthenticated caller may name — the
+  shared lane. Tenant bindings, quotas, workspaces, and credentials
+  never appear in a public manifest; `models` is the discovery
+  reference a credential resolves its own doors through.
+- `limits` states the lane-level ceilings the service enforces;
+  unsigned integers. A caller that exceeds them earns the service's
+  own refusal.
+- `versions` names the request envelope and receipt schemas the lanes
+  speak. `interface` and `versions.request` agree; a disagreement
+  refuses.
+
+### Discovery trust
+
+The manifest signer is the service's publishing identity. A signed
+`30180` is not authorization to trust its publisher: a client resolves
+discovery under an operator-provisioned pin naming the expected
+publisher and `d` slug. Replacement keeps the newest `created_at` per
+`(pubkey, kind, d)`; a client MUST refuse a manifest outside its
+freshness window — older than its maximum age, ahead of its clock
+skew, or past a NIP-40 `expiration` — rather than treating an old
+advertisement as current fact.
+
+Discovered identity is a claim checked at use, not evidence:
+
+- The `nostr-cj` lane's `worker` is the pubkey the client `p`-tags and
+  the signer every answer must carry — the job family's existing
+  binding checks already enforce it.
+- A result's sealed receipt names `served.model` and
+  `served.artifact_signature`. Both MUST equal the discovered door's
+  `model` and `artifact_signature`; a mismatch is an identity fault in
+  the serving path, not an answer to relabel.
+
+A public `service` head carries `t` tags `oa:cap:v1`,
+`oa:profile:service`, and one `oa:transport:<transport>` per lane —
+`oa:transport:http`, `oa:transport:nostr-cj` — no others. Duplicate or
+disagreeing semantic tags refuse.
 
 ## Relationships and conformance
 

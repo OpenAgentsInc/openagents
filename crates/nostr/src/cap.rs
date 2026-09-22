@@ -39,6 +39,8 @@ pub enum Profile {
     Plugin,
     /// A remote or local operation adapter.
     Adapter,
+    /// A remote inference or decision service.
+    Service,
 }
 
 impl Profile {
@@ -50,6 +52,7 @@ impl Profile {
             Self::Executor => "oa:profile:executor",
             Self::Plugin => "oa:profile:plugin",
             Self::Adapter => "oa:profile:adapter",
+            Self::Service => "oa:profile:service",
         }
     }
 
@@ -59,6 +62,7 @@ impl Profile {
             "executor" => Self::Executor,
             "plugin" => Self::Plugin,
             "adapter" => Self::Adapter,
+            "service" => Self::Service,
             _ => {
                 return Err(ContractError::new(
                     RefusalCode::UnsupportedFeature,
@@ -257,15 +261,49 @@ pub fn cover(definition: &Definition, plan: &[BoundAssignment]) -> Result<(), Co
 }
 
 /// `t` tags a public discovery event must carry. They agree with the definition.
+///
+/// A `service` definition gets its lane transports from
+/// [`service_tags`]; this returns the marker and profile tags only.
 #[must_use]
 pub fn discovery_tags(definition: &Definition) -> Vec<Tag> {
-    vec![
+    let mut tags = vec![
         Tag::new(vec!["t".into(), CAP_MARKER.into()]),
         Tag::new(vec!["t".into(), definition.profile.tag().into()]),
-        Tag::new(vec![
+    ];
+    if definition.profile != Profile::Service {
+        tags.push(Tag::new(vec![
             "t".into(),
             format!("oa:transport:{}", definition.transport),
-        ]),
+        ]));
+    }
+    tags
+}
+
+/// `t` tags a public service manifest carries: the marker, the `service`
+/// profile, and one `oa:transport:` tag per distinct lane transport.
+#[must_use]
+pub fn service_tags(contract: &ServiceContract) -> Vec<Tag> {
+    let mut transports: Vec<&str> = contract
+        .lanes
+        .iter()
+        .map(|lane| lane.transport.as_str())
+        .collect();
+    transports.sort_unstable();
+    transports.dedup();
+    let mut tags = discovery_tags_for(Profile::Service);
+    for transport in transports {
+        tags.push(Tag::new(vec![
+            "t".into(),
+            format!("oa:transport:{transport}"),
+        ]));
+    }
+    tags
+}
+
+fn discovery_tags_for(profile: Profile) -> Vec<Tag> {
+    vec![
+        Tag::new(vec!["t".into(), CAP_MARKER.into()]),
+        Tag::new(vec!["t".into(), profile.tag().into()]),
     ]
 }
 
@@ -279,6 +317,7 @@ pub fn check_discovery_tags(tags: &[Tag], definition: &Definition) -> Result<(),
     let mut marker = 0;
     let mut profile = 0;
     let mut transport = 0;
+    let mut service_transports: Vec<&str> = Vec::new();
     for tag in tags {
         if tag.name() != Some("t") {
             continue;
@@ -288,19 +327,465 @@ pub fn check_discovery_tags(tags: &[Tag], definition: &Definition) -> Result<(),
             marker += 1;
         } else if value == definition.profile.tag() {
             profile += 1;
-        } else if value == format!("oa:transport:{}", definition.transport) {
+        } else if value == format!("oa:transport:{}", definition.transport)
+            && definition.profile != Profile::Service
+        {
             transport += 1;
-        } else if value.starts_with("oa:profile:") || value.starts_with("oa:transport:") {
+        } else if let Some(lane) = value.strip_prefix("oa:transport:") {
+            if definition.profile != Profile::Service || service_transports.contains(&lane) {
+                return Err(ContractError::new(
+                    RefusalCode::IdentityMismatch,
+                    "discovery tag",
+                ));
+            }
+            service_transports.push(lane);
+        } else if value.starts_with("oa:profile:") {
             return Err(ContractError::new(
                 RefusalCode::IdentityMismatch,
                 "discovery tag",
             ));
         }
     }
-    if marker != 1 || profile != 1 || transport != 1 {
+    if marker != 1 || profile != 1 {
+        return Err(malformed("discovery tags"));
+    }
+    if definition.profile != Profile::Service && transport != 1 {
         return Err(malformed("discovery tags"));
     }
     Ok(())
+}
+
+/// Refuse service manifest tags that duplicate or disagree with `contract`.
+///
+/// Every lane transport carries one `oa:transport:` tag and no others.
+///
+/// # Errors
+///
+/// Returns [`RefusalCode::IdentityMismatch`] when a tag names another
+/// profile or an undeclared transport.
+pub fn check_service_tags(tags: &[Tag], contract: &ServiceContract) -> Result<(), ContractError> {
+    let mut declared: Vec<&str> = contract
+        .lanes
+        .iter()
+        .map(|lane| lane.transport.as_str())
+        .collect();
+    declared.sort_unstable();
+    declared.dedup();
+    let mut marker = 0;
+    let mut profile = 0;
+    let mut seen: Vec<&str> = Vec::new();
+    for tag in tags {
+        if tag.name() != Some("t") {
+            continue;
+        }
+        let value = tag.value().unwrap_or("");
+        if value == CAP_MARKER {
+            marker += 1;
+        } else if value == Profile::Service.tag() {
+            profile += 1;
+        } else if let Some(lane) = value.strip_prefix("oa:transport:") {
+            if !declared.contains(&lane) || seen.contains(&lane) {
+                return Err(ContractError::new(
+                    RefusalCode::IdentityMismatch,
+                    "discovery tag",
+                ));
+            }
+            seen.push(lane);
+        } else if value.starts_with("oa:profile:") {
+            return Err(ContractError::new(
+                RefusalCode::IdentityMismatch,
+                "discovery tag",
+            ));
+        }
+    }
+    if marker != 1 || profile != 1 {
+        return Err(malformed("discovery tags"));
+    }
+    seen.sort_unstable();
+    if seen != declared {
+        return Err(ContractError::new(
+            RefusalCode::IdentityMismatch,
+            "lane transport tag",
+        ));
+    }
+    Ok(())
+}
+
+/// One transport lane a service answers on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceLane {
+    /// `http` or `nostr-cj`.
+    pub transport: String,
+    /// HTTP lane: public base URL.
+    pub endpoint: Option<String>,
+    /// HTTP lane: decision call path.
+    pub call: Option<String>,
+    /// HTTP lane: caller's model discovery path.
+    pub models: Option<String>,
+    /// NIP-CJ lane: worker pubkey that answers.
+    pub worker: Option<String>,
+    /// NIP-CJ lane: relays that carry the job family.
+    pub relays: Vec<String>,
+    /// NIP-CJ lane: job request kind.
+    pub request_kind: Option<u16>,
+    /// NIP-CJ lane: job result kind.
+    pub result_kind: Option<u16>,
+    /// NIP-CJ lane: job feedback kind.
+    pub feedback_kind: Option<u16>,
+}
+
+/// A door an unauthenticated caller may name. Tenant bindings never appear.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceDoor {
+    /// The door name a request carries.
+    pub name: String,
+    /// The model the door serves.
+    pub model: String,
+    /// The bound artifact identity, `sha256:<digest>`.
+    pub artifact_signature: String,
+}
+
+/// The `service` object of a `service`-profile binding contract: what the
+/// serving path claims to speak and serve. A claim checked at use, not
+/// evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceContract {
+    /// The request schema version, matching `interface`.
+    pub interface: String,
+    /// Transports the service answers on.
+    pub lanes: Vec<ServiceLane>,
+    /// Anonymous-reachable doors only.
+    pub doors: Vec<ServiceDoor>,
+    /// Lane-level ceilings the service enforces.
+    pub limits: BTreeMap<String, u64>,
+    /// Named schema versions: `request` and `receipt`.
+    pub versions: BTreeMap<String, String>,
+}
+
+impl ServiceContract {
+    fn transport_name(&self) -> String {
+        "service".into()
+    }
+
+    /// The door named `name`, if the manifest advertises it.
+    #[must_use]
+    pub fn door(&self, name: &str) -> Option<&ServiceDoor> {
+        self.doors.iter().find(|door| door.name == name)
+    }
+
+    /// The first `nostr-cj` lane, if the service answers on the relay.
+    #[must_use]
+    pub fn relay_lane(&self) -> Option<&ServiceLane> {
+        self.lanes.iter().find(|lane| lane.transport == "nostr-cj")
+    }
+}
+
+/// An operator-provisioned discovery pin: the publisher and slug a client
+/// trusts. A signed `30180` alone is not this trust.
+#[derive(Debug, Clone)]
+pub struct ServiceTrust<'a> {
+    /// Expected publisher pubkey, 64 lowercase hex.
+    pub publisher: &'a str,
+    /// The `d` slug the manifest answers to.
+    pub slug: &'a str,
+    /// How old a manifest may be before it is stale.
+    pub max_age_seconds: u64,
+}
+
+/// A resolved service manifest bound to the event that carried it.
+#[derive(Debug, Clone)]
+pub struct ServiceManifest {
+    /// The manifest event's own id.
+    pub event_id: String,
+    /// The signing publisher.
+    pub publisher: String,
+    /// The manifest's `created_at`.
+    pub created_at: u64,
+    /// The portable definition.
+    pub definition: Definition,
+    /// The parsed service contract.
+    pub contract: ServiceContract,
+}
+
+const SERVICE_FUTURE_SKEW_SECONDS: u64 = 300;
+
+/// Parse the `binding_contract` of a `service`-profile definition.
+///
+/// # Errors
+///
+/// Returns a typed refusal for an unknown field, lane, door, or version
+/// disagreement.
+pub fn parse_service_contract(
+    contract: &Map<String, Value>,
+) -> Result<ServiceContract, ContractError> {
+    reject(contract, &["interface", "service"], "binding_contract")?;
+    let interface = text(
+        require(contract, "interface", "binding_contract")?,
+        "interface",
+    )?
+    .to_string();
+    if interface.is_empty() {
+        return Err(malformed("interface"));
+    }
+    let service = as_map(require(contract, "service", "binding_contract")?, "service")?;
+    reject(
+        service,
+        &["lanes", "doors", "limits", "versions"],
+        "service",
+    )?;
+    let versions = as_map(require(service, "versions", "service")?, "versions")?;
+    reject(versions, &["request", "receipt"], "versions")?;
+    let request_version = text(
+        require(versions, "request", "versions")?,
+        "versions.request",
+    )?;
+    if request_version != interface {
+        return Err(ContractError::new(
+            RefusalCode::Incompatible,
+            "versions.request",
+        ));
+    }
+    let receipt_version = text(
+        require(versions, "receipt", "versions")?,
+        "versions.receipt",
+    )?;
+    let lanes = require(service, "lanes", "service")?
+        .as_array()
+        .ok_or_else(|| malformed("lanes"))?;
+    if lanes.is_empty() || lanes.len() > 8 {
+        return Err(malformed("lanes"));
+    }
+    let lanes = lanes
+        .iter()
+        .map(|lane| service_lane(lane, &interface))
+        .collect::<Result<Vec<_>, _>>()?;
+    let doors = require(service, "doors", "service")?
+        .as_array()
+        .ok_or_else(|| malformed("doors"))?;
+    if doors.len() > 256 {
+        return Err(malformed("doors"));
+    }
+    let doors = doors
+        .iter()
+        .map(service_door)
+        .collect::<Result<Vec<_>, _>>()?;
+    let limits_object = as_map(require(service, "limits", "service")?, "limits")?;
+    if limits_object.len() > 64 {
+        return Err(malformed("limits"));
+    }
+    let mut limits = BTreeMap::new();
+    for (name, ceiling) in limits_object {
+        let ceiling = ceiling.as_u64().ok_or_else(|| malformed("limits"))?;
+        limits.insert(name.clone(), ceiling);
+    }
+    let mut versions_map = BTreeMap::new();
+    versions_map.insert("request".to_string(), request_version.to_string());
+    versions_map.insert("receipt".to_string(), receipt_version.to_string());
+    Ok(ServiceContract {
+        interface,
+        lanes,
+        doors,
+        limits,
+        versions: versions_map,
+    })
+}
+
+/// Resolve a service manifest from discovery events under an operator pin.
+///
+/// The newest cryptographically valid event matching `(publisher, kind,
+/// slug)` is the advertisement. A stale, malformed, or disagreeing newest
+/// event refuses rather than falling back to an older one: an older answer
+/// could mask a poisoning.
+///
+/// # Errors
+///
+/// Returns [`RefusalCode::Unavailable`] when no event matches the pin,
+/// [`RefusalCode::Stale`] when the newest match is outside the freshness
+/// window or expired, and the body's own refusal otherwise.
+pub fn resolve_service<'a>(
+    events: impl IntoIterator<Item = &'a Event>,
+    trust: &ServiceTrust,
+    now: u64,
+) -> Result<ServiceManifest, ContractError> {
+    if !is_hex(trust.publisher) {
+        return Err(malformed("trust publisher"));
+    }
+    if !is_slug(trust.slug) {
+        return Err(malformed("trust slug"));
+    }
+    let candidate = events
+        .into_iter()
+        .filter(|event| {
+            event.kind == DISCOVERY_KIND
+                && event.pubkey == trust.publisher
+                && event.tag_values("d").any(|value| value == trust.slug)
+        })
+        .max_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+    let Some(event) = candidate else {
+        return Err(ContractError::new(
+            RefusalCode::Unavailable,
+            "no service manifest for the pin",
+        ));
+    };
+    event
+        .validate_structure()
+        .and_then(|()| event.validate_crypto())
+        .map_err(|_| ContractError::new(RefusalCode::Malformed, "manifest event"))?;
+    if event.tag_values("d").count() != 1 {
+        return Err(malformed("manifest d tag"));
+    }
+    if event.is_expired(now)
+        || event.created_at > now.saturating_add(SERVICE_FUTURE_SKEW_SECONDS)
+        || now.saturating_sub(event.created_at) > trust.max_age_seconds
+    {
+        return Err(ContractError::new(RefusalCode::Stale, "service manifest"));
+    }
+    let body = parse_strict(event.content.as_bytes())?;
+    let root = as_map(&body, "manifest")?;
+    reject(root, &["definition"], "manifest")?;
+    let definition = parse_definition(require(root, "definition", "manifest")?)?;
+    if definition.profile != Profile::Service {
+        return Err(ContractError::new(
+            RefusalCode::UnsupportedFeature,
+            "profile",
+        ));
+    }
+    if definition.id.split(':').next() != Some(event.pubkey.as_str()) {
+        return Err(ContractError::new(
+            RefusalCode::IdentityMismatch,
+            "definition id publisher",
+        ));
+    }
+    let contract = as_map(
+        require(
+            require(root, "definition", "manifest")?
+                .as_object()
+                .ok_or_else(|| malformed("definition"))?,
+            "binding_contract",
+            "definition",
+        )?,
+        "binding_contract",
+    )?;
+    let contract = parse_service_contract(contract)?;
+    check_service_tags(&event.tags, &contract)?;
+    Ok(ServiceManifest {
+        event_id: event.id.clone(),
+        publisher: event.pubkey.clone(),
+        created_at: event.created_at,
+        definition,
+        contract,
+    })
+}
+
+fn service_lane(lane: &Value, interface: &str) -> Result<ServiceLane, ContractError> {
+    let lane = as_map(lane, "lane")?;
+    let transport = enum_text(
+        require(lane, "transport", "lane")?,
+        &["http", "nostr-cj"],
+        "lane.transport",
+    )?;
+    match transport.as_str() {
+        "http" => {
+            reject(lane, &["transport", "endpoint", "call", "models"], "lane")?;
+            let endpoint = text(require(lane, "endpoint", "lane")?, "endpoint")?;
+            if !endpoint.starts_with("https://") && !endpoint.starts_with("http://") {
+                return Err(malformed("endpoint"));
+            }
+            let call = text(require(lane, "call", "lane")?, "call")?;
+            let models = text(require(lane, "models", "lane")?, "models")?;
+            if !call.starts_with('/') || !models.starts_with('/') {
+                return Err(malformed("lane paths"));
+            }
+            Ok(ServiceLane {
+                transport,
+                endpoint: Some(endpoint.to_string()),
+                call: Some(call.to_string()),
+                models: Some(models.to_string()),
+                worker: None,
+                relays: Vec::new(),
+                request_kind: None,
+                result_kind: None,
+                feedback_kind: None,
+            })
+        }
+        _ => {
+            reject(
+                lane,
+                &[
+                    "transport",
+                    "worker",
+                    "relays",
+                    "request_kind",
+                    "result_kind",
+                    "feedback_kind",
+                ],
+                "lane",
+            )?;
+            let worker = hex_key(text(require(lane, "worker", "lane")?, "worker")?)?;
+            let relays = string_list(require(lane, "relays", "lane")?, "relays")?;
+            if relays.is_empty() || relays.len() > 8 {
+                return Err(malformed("relays"));
+            }
+            for relay in &relays {
+                if !relay.starts_with("ws://") && !relay.starts_with("wss://") {
+                    return Err(malformed("relays"));
+                }
+            }
+            let request_kind = lane_kind(lane, "request_kind")?;
+            let result_kind = lane_kind(lane, "result_kind")?;
+            let feedback_kind = lane_kind(lane, "feedback_kind")?;
+            if interface == crate::decision::SCHEMA
+                && (request_kind != crate::decision::REQUEST_KIND
+                    || result_kind != crate::decision::RESULT_KIND
+                    || feedback_kind != crate::decision::FEEDBACK_KIND)
+            {
+                return Err(ContractError::new(RefusalCode::Incompatible, "lane kinds"));
+            }
+            Ok(ServiceLane {
+                transport,
+                endpoint: None,
+                call: None,
+                models: None,
+                worker: Some(worker),
+                relays,
+                request_kind: Some(request_kind),
+                result_kind: Some(result_kind),
+                feedback_kind: Some(feedback_kind),
+            })
+        }
+    }
+}
+
+fn lane_kind(lane: &Map<String, Value>, key: &str) -> Result<u16, ContractError> {
+    let value = require(lane, key, "lane")?
+        .as_u64()
+        .ok_or_else(|| malformed(format!("lane.{key}")))?;
+    u16::try_from(value).map_err(|_| malformed(format!("lane.{key}")))
+}
+
+fn service_door(door: &Value) -> Result<ServiceDoor, ContractError> {
+    let door = as_map(door, "door")?;
+    reject(door, &["name", "model", "artifact_signature"], "door")?;
+    let name = slug(require(door, "name", "door")?)?;
+    let model = text(require(door, "model", "door")?, "model")?;
+    if model.is_empty() || model.len() > 128 {
+        return Err(malformed("model"));
+    }
+    let signature = text(
+        require(door, "artifact_signature", "door")?,
+        "artifact_signature",
+    )?;
+    let Some(digest) = signature.strip_prefix("sha256:") else {
+        return Err(malformed("artifact_signature"));
+    };
+    if !is_hex(digest) {
+        return Err(malformed("artifact_signature"));
+    }
+    Ok(ServiceDoor {
+        name,
+        model: model.to_string(),
+        artifact_signature: signature.to_string(),
+    })
 }
 
 /// Parse an operator preference. `prefer` does not admit a denied id.
@@ -509,6 +994,10 @@ fn binding_contract(
             )?;
             check_remote(contract, &transport)?;
             Ok((transport, Vec::new()))
+        }
+        Profile::Service => {
+            let contract = parse_service_contract(contract)?;
+            Ok((contract.transport_name(), Vec::new()))
         }
     }
 }
@@ -924,5 +1413,164 @@ mod tests {
         let mut named = event.clone();
         named.tags[2] = Tag::new(vec!["d".into(), "laptop.local".into()]);
         assert!(check_private_policy(&named).is_err());
+    }
+
+    const WORKER: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const ARTIFACT: &str =
+        "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+    fn service_contract() -> Value {
+        json!({
+            "interface": "openagents.systemone.v1",
+            "service": {
+                "lanes": [
+                    {
+                        "transport": "http",
+                        "endpoint": "https://gateway.example",
+                        "call": "/v1/systemone",
+                        "models": "/v1/models"
+                    },
+                    {
+                        "transport": "nostr-cj",
+                        "worker": WORKER,
+                        "relays": ["wss://relay.example"],
+                        "request_kind": 25910,
+                        "result_kind": 26910,
+                        "feedback_kind": 27010
+                    }
+                ],
+                "doors": [
+                    {"name": "shared-kev", "model": "kev-0.6b", "artifact_signature": ARTIFACT}
+                ],
+                "limits": {"max_questions": 64, "request_window_seconds": 600},
+                "versions": {
+                    "request": "openagents.systemone.v1",
+                    "receipt": "openagents.receipt.execution.v1"
+                }
+            }
+        })
+    }
+
+    fn service_event(signer: &crate::domain::RelaySigner, at: u64) -> Event {
+        let mut body = definition("service", service_contract());
+        body["id"] = json!(format!("{}:openagents/decision-edge", signer.pubkey()));
+        let contract =
+            parse_service_contract(body["binding_contract"].as_object().unwrap()).unwrap();
+        let mut tags = vec![Tag::new(vec!["d".into(), "decision-edge".into()])];
+        tags.extend(service_tags(&contract));
+        signer.sign(
+            at,
+            DISCOVERY_KIND,
+            tags,
+            json!({"definition": body}).to_string(),
+        )
+    }
+
+    #[test]
+    fn service_definition_parses_and_tags_agree() {
+        let parsed = parse_definition(&definition("service", service_contract())).unwrap();
+        assert_eq!(parsed.profile, Profile::Service);
+        let contract = parse_service_contract(
+            &definition("service", service_contract())["binding_contract"]
+                .as_object()
+                .unwrap()
+                .clone(),
+        )
+        .unwrap();
+        assert_eq!(contract.lanes.len(), 2);
+        assert_eq!(
+            contract.relay_lane().unwrap().worker.as_deref(),
+            Some(WORKER)
+        );
+        assert_eq!(contract.door("shared-kev").unwrap().model, "kev-0.6b");
+        assert!(contract.door("acme-kev").is_none());
+        check_service_tags(&service_tags(&contract), &contract).unwrap();
+        check_discovery_tags(&service_tags(&contract), &parsed).unwrap();
+
+        let mut wrong = service_contract();
+        wrong["service"]["lanes"][1]["request_kind"] = json!(25900);
+        assert_eq!(
+            parse_service_contract(wrong.as_object().unwrap())
+                .unwrap_err()
+                .code,
+            RefusalCode::Incompatible
+        );
+        let mut disagreed = service_contract();
+        disagreed["service"]["versions"]["request"] = json!("openagents.systemone.v2");
+        assert_eq!(
+            parse_service_contract(disagreed.as_object().unwrap())
+                .unwrap_err()
+                .code,
+            RefusalCode::Incompatible
+        );
+    }
+
+    #[test]
+    fn resolve_service_trusts_the_pin_and_refuses_stale_or_absent() {
+        let signer = crate::domain::RelaySigner::from_secret_hex(&"22".repeat(32)).unwrap();
+        let trust = ServiceTrust {
+            publisher: signer.pubkey(),
+            slug: "decision-edge",
+            max_age_seconds: 600,
+        };
+        let now = 1_000_000;
+        let manifest =
+            resolve_service([service_event(&signer, now - 30)].iter(), &trust, now).unwrap();
+        assert_eq!(
+            manifest.contract.door("shared-kev").unwrap().model,
+            "kev-0.6b"
+        );
+
+        assert_eq!(
+            resolve_service(Vec::<&Event>::new(), &trust, now)
+                .unwrap_err()
+                .code,
+            RefusalCode::Unavailable
+        );
+        assert_eq!(
+            resolve_service([service_event(&signer, now - 601)].iter(), &trust, now)
+                .unwrap_err()
+                .code,
+            RefusalCode::Stale
+        );
+        let wrong_signer = crate::domain::RelaySigner::from_secret_hex(&"33".repeat(32)).unwrap();
+        assert_eq!(
+            resolve_service([service_event(&wrong_signer, now)].iter(), &trust, now)
+                .unwrap_err()
+                .code,
+            RefusalCode::Unavailable
+        );
+    }
+
+    #[test]
+    fn resolve_service_picks_newest_and_refuses_a_bad_newest() {
+        let signer = crate::domain::RelaySigner::from_secret_hex(&"22".repeat(32)).unwrap();
+        let trust = ServiceTrust {
+            publisher: signer.pubkey(),
+            slug: "decision-edge",
+            max_age_seconds: 600,
+        };
+        let now = 1_000_000;
+        let old = service_event(&signer, now - 100);
+        let new = service_event(&signer, now - 10);
+        let manifest = resolve_service([&old, &new], &trust, now).unwrap();
+        assert_eq!(manifest.event_id, new.id);
+
+        let mut unsupported = definition("service", service_contract());
+        unsupported["id"] = json!(format!("{}:openagents/decision-edge", signer.pubkey()));
+        unsupported["v"] = json!(99);
+        let contract = parse_service_contract(service_contract().as_object().unwrap()).unwrap();
+        let mut tags = vec![Tag::new(vec!["d".into(), "decision-edge".into()])];
+        tags.extend(service_tags(&contract));
+        let bad = signer.sign(
+            now,
+            DISCOVERY_KIND,
+            tags,
+            json!({"definition": unsupported}).to_string(),
+        );
+        assert_eq!(
+            resolve_service([&old, &bad], &trust, now).unwrap_err().code,
+            RefusalCode::UnsupportedVersion
+        );
     }
 }

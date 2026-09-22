@@ -29,6 +29,7 @@
 //! absent the field, no workspace is charged and no balance route
 //! exists.
 
+pub mod advertise;
 pub mod classify;
 pub mod config;
 pub mod money;
