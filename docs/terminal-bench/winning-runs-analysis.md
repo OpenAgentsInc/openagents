@@ -69,8 +69,10 @@ only look around (`ls`, `cat`, `find`, `git log`, `grep`, and so on):
   work: the merge, the clone, the targeted search.
 - Lean Opus at low effort: 0 to 2 per trial, all targeted (a single `grep`
   across the alias catalogue, or reading the one conflicted file).
-- For comparison, Opus direct spent its first 2 to 4 steps on listing,
-  reading, and git history on the same tasks.
+- For comparison, Opus direct spent its first 0 to 3 steps looking around
+  on the same tasks: git status, reflog, and history on `fix-git`, a listing
+  and `setup.py` on `build-cython-ext`, and a listing and `cat` on
+  `headless-terminal`. On `fix-code-vulnerability` it started with the diff.
 
 The `fix-git` case shows the effect most clearly. From a plain briefing
 without probes, Luna merged the wrong version and failed. From the probe
