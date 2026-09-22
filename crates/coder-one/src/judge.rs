@@ -69,7 +69,16 @@ pub struct JevJudge {
     /// Deep mode: a parallel survey before the first step, a readiness
     /// question each step, and hints about repeated commands.
     deep: bool,
+    /// Probe mode: before the survey, run a fixed battery of read-only
+    /// commands and let Jev pick the outputs worth handing on.
+    probes: bool,
 }
+
+/// The most characters of one probe's output Jev reads and a briefing keeps.
+const PROBE_OUTPUT_CHARS: usize = 6_000;
+/// The most probe outputs, and characters, a briefing carries.
+const PROBE_KEEP: usize = 6;
+const PROBE_TOTAL_CHARS: usize = 14_000;
 
 /// The most files the survey judges, in batches of [`SURVEY_BATCH`].
 const SURVEY_FILES: usize = 100;
@@ -118,7 +127,191 @@ impl JevJudge {
             failed: 0,
             evidence,
             deep: false,
+            probes: false,
         }
+    }
+
+    /// Turns on probe mode.
+    #[must_use]
+    pub fn probing(mut self, probes: bool) -> Self {
+        self.probes = probes;
+        self
+    }
+
+    /// The probe battery: cheap, read-only commands a delegate would
+    /// otherwise spend its first turns on, run in parallel. Jev judges
+    /// which outputs carry information the task needs, and the chosen
+    /// outputs join `state.survey`, so the briefing carries them.
+    async fn probe(&mut self, client: &jev::Client, state: &mut State) {
+        let started = Instant::now();
+        let mut battery: Vec<String> = vec![
+            "pwd && ls -la".to_string(),
+            "find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150".to_string(),
+            "for f in README* readme*; do [ -f \"$f\" ] && head -120 \"$f\"; done".to_string(),
+            "find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' -o -name tests -o -name '*.test.*' \\) -not -path '*/.git/*' | head -40".to_string(),
+            "python3 --version 2>&1; pip list 2>/dev/null | head -60".to_string(),
+        ];
+        if self.is_git {
+            for command in [
+                "git status",
+                "git branch -a -vv",
+                "git log --oneline --graph --all -n 40",
+                "git reflog -n 40",
+                "git stash list",
+            ] {
+                battery.push(command.to_string());
+            }
+        }
+        // Absolute paths the instruction names: list a directory, read the
+        // head of a file.
+        let text = format!("{}\n{}", state.issue.title, state.issue.body);
+        let mut named = BTreeSet::new();
+        for token in text.split(|c: char| c.is_whitespace() || "`'\"(),".contains(c)) {
+            let token = token.trim_end_matches(['.', ':', ';']);
+            if token.starts_with('/') && token.len() > 1 && named.len() < 6 {
+                let path = std::path::Path::new(token);
+                if path.is_dir() {
+                    named.insert(format!("ls -la {token}"));
+                } else if path.is_file() {
+                    named.insert(format!("head -200 {token}"));
+                }
+            }
+        }
+        battery.extend(named);
+
+        let runs = battery.iter().map(|command| {
+            let mut prepared = std::process::Command::new("bash");
+            prepared
+                .arg("-c")
+                .arg(command)
+                .current_dir(&self.workdir)
+                .env("GIT_PAGER", "cat")
+                .env("PAGER", "cat");
+            for (name, _) in std::env::vars_os() {
+                if name.to_str().is_some_and(crate::shell::is_credential) {
+                    prepared.env_remove(&name);
+                }
+            }
+            supervise::Job::from_command(prepared)
+                .bounded(
+                    supervise::Limits::within(std::time::Duration::from_secs(10))
+                        .keeping(16 * 1024),
+                )
+                .run()
+        });
+        let ended = futures_util::future::join_all(runs).await;
+        let outputs: Vec<(String, String)> = battery
+            .iter()
+            .zip(ended)
+            .filter_map(|(command, ended)| {
+                let mut output = ended.stdout.marked();
+                if !ended.stderr.is_empty() {
+                    output.push('\n');
+                    output.push_str(&ended.stderr.marked());
+                }
+                let output = output.trim().to_string();
+                (!output.is_empty()).then(|| (command.clone(), clip(&output, PROBE_OUTPUT_CHARS)))
+            })
+            .collect();
+        if outputs.is_empty() {
+            return;
+        }
+
+        let mut questions = Questions::new();
+        for i in 0..outputs.len() {
+            questions = questions.with(
+                format!("probe_{i}"),
+                Noul::new(format!(
+                    "Does the output in `probes[{i}].output` contain information someone needs to complete the task in `issue`, such as where the relevant code or data is, what state it is in, or what went wrong?"
+                )),
+            );
+        }
+        let jev_state = json!({
+            "issue": {
+                "title": state.issue.title,
+                "body": clip(&state.issue.body, 8_000),
+            },
+            "probes": outputs.iter().map(|(command, output)| json!({
+                "command": command,
+                "output": clip(output, 3_000),
+            })).collect::<Vec<_>>(),
+        });
+        let request = SystemOneRequest::new(Entry::from(jev_state), questions);
+        let body = request
+            .body(JEV_MODEL)
+            .map(serde_json::Value::Object)
+            .unwrap_or_else(|_| json!({}));
+        let asked = Instant::now();
+        let result = client.system_one(request).await;
+        let milliseconds = u64::try_from(asked.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let mut decision = Decision {
+            id: format!("jev-probe-{}", self.calls + self.failed + 1),
+            name: "jev_probe".to_string(),
+            door: JEV_BASE_URL.to_string(),
+            model: JEV_MODEL.to_string(),
+            request: body,
+            answers: serde_json::Value::Null,
+            route: None,
+            error: None,
+            attempts: Vec::new(),
+            review: None,
+            milliseconds,
+        };
+        let response = match result {
+            Ok(response) => response,
+            Err(error) => {
+                self.failed += 1;
+                decision.error = Some(error.to_string());
+                self.recorder
+                    .push(Step::called(decision.call()).taking(milliseconds));
+                println!("  probe ▸ Jev unavailable: {error}");
+                return;
+            }
+        };
+        self.calls += 1;
+        self.input_tokens += response.usage.input_tokens.unwrap_or(0);
+        decision.model = response.model.clone();
+        decision.answers = serde_json::from_str::<serde_json::Value>(&response.raw().text())
+            .ok()
+            .and_then(|body| body.get("answers").cloned())
+            .unwrap_or(serde_json::Value::Null);
+        self.recorder
+            .push(Step::called(decision.call()).taking(milliseconds).noting(
+                "jev_usage",
+                json!({
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                }),
+            ));
+        let mut picked: Vec<(f64, &(String, String))> = outputs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, probe)| {
+                let p = response.noul(&format!("probe_{i}")).ok()?.noul;
+                (p >= YES).then_some((p, probe))
+            })
+            .collect();
+        picked.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let mut total = 0;
+        for (p, (command, output)) in picked.into_iter().take(PROBE_KEEP) {
+            if total + output.chars().count() > PROBE_TOTAL_CHARS {
+                continue;
+            }
+            total += output.chars().count();
+            println!("  probe ▸ kept `{command}` p={p:.2}");
+            state.survey.push(Surveyed {
+                path: format!("$ {command}"),
+                relevance: p,
+                edit: 0.0,
+                content: output.clone(),
+            });
+        }
+        println!(
+            "  probe ▸ {} probes run and judged in {} ms; {} chars kept",
+            outputs.len(),
+            started.elapsed().as_millis(),
+            total
+        );
     }
 
     /// Turns on deep mode.
@@ -137,6 +330,9 @@ impl JevJudge {
         let Some(client) = self.client.clone().filter(|_| self.deep) else {
             return;
         };
+        if self.probes {
+            self.probe(&client, state).await;
+        }
         let started = Instant::now();
         let pool = self.survey_pool(&state.issue);
         if pool.is_empty() {

@@ -29,6 +29,7 @@
 //! | `CLAUDE_CODE_OAUTH_TOKEN` | The Claude Code delegate's subscription token; or `ANTHROPIC_API_KEY`. |
 //! | `CODEX_HOME` | Where the Codex delegate finds `auth.json`; `~/.codex` when unset. |
 //! | `CODER_ONE_DEEP` | `on` runs deep Jev mode: a parallel survey before the first step, a readiness question each step, and repeated-command hints. |
+//! | `CODER_ONE_PROBES` | `on`, with deep mode, runs a battery of read-only probes (listing, git state, README, tests, versions) and lets Jev pick the outputs that go into the survey and the briefing. |
 //!
 //! The bundle is rewritten at the start of every step, so a deadline that
 //! kills the process still leaves the evidence up to the last step.
@@ -291,6 +292,15 @@ fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
     Some((parts.next()??, parts.next()??, parts.next()??))
 }
 
+/// Whether `CODER_ONE_PROBES` asks for the probe battery. It runs with the
+/// deep survey, so it needs `CODER_ONE_DEEP` too.
+fn probes_on() -> bool {
+    matches!(
+        std::env::var("CODER_ONE_PROBES").as_deref().map(str::trim),
+        Ok("on" | "1" | "true")
+    )
+}
+
 /// The arguments `episode run` takes.
 pub struct RunArgs {
     pub instruction_file: PathBuf,
@@ -364,7 +374,8 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     );
 
     let mut judge = JevJudge::new(jev_client, workdir.clone(), &state.issue, recorder.clone())
-        .deep(settings.deep);
+        .deep(settings.deep)
+        .probing(settings.deep && probes_on());
     judge.survey(&mut state).await;
     let mut judge = Snapshots {
         inner: judge,
@@ -493,8 +504,10 @@ const EPISODE_DIRECTIONS: &str = "Complete the task in the current working \
 directory. Nobody answers questions, so decide from the task and the \
 environment. An automated checker grades the final state of the environment \
 against the task, so verify every requirement, including exact paths, names, \
-and formats, before you stop. End with a short summary of what you changed \
-and how you checked it.";
+and formats, before you stop. The files and command outputs in this briefing \
+were gathered just before you started and are current: use them instead of \
+re-running those commands, and go straight to the work. End with a short \
+summary of what you changed and how you checked it.";
 
 /// A judge that rewrites the bundle before every step, so a killed
 /// episode leaves its evidence behind.

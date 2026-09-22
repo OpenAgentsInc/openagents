@@ -111,7 +111,7 @@ impl Shell for Checkout {
 /// Whether an environment variable holds a credential the agent's commands
 /// must not inherit: the doors' and delegates' keys by name, and any name
 /// that ends like one.
-fn is_credential(name: &str) -> bool {
+pub(crate) fn is_credential(name: &str) -> bool {
     const NAMED: &[&str] = &[
         "OPENAGENTS_API_KEY",
         "TYPESAFE_API_KEY",

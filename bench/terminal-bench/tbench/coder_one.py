@@ -47,6 +47,7 @@ class CoderOne(CoderV05):
         "CODER_ONE_MAX_STEPS",
         "CODER_ONE_COMMAND_TIMEOUT",
         "CODER_ONE_DEEP",
+        "CODER_ONE_PROBES",
     )
 
     @staticmethod
