@@ -5,9 +5,9 @@ CPU, fp32 throughout (the reference keeps modules fp32 and only autocasts
 on CUDA) · **Build:** `cargo build --release -p laya`
 
 The first run record for the Rust port: conformance against the Python
-reference, then the cost of serving it. Classification quality on our own
-question suites is not measured here — nothing in this record transfers
-an upstream benchmark claim to a local door.
+reference, the cost of serving it, and scored gym runs against three
+committed suites. Nothing in this record transfers an upstream
+benchmark claim to a local door.
 
 ## Declared workload
 
@@ -77,12 +77,71 @@ via the hand-written `Question` deserializer). Each answers with the
 shared refusal envelope — `{"detail", "error": {"code", "message",
 "question"}}` — at the status its class carries.
 
+## Gym runs
+
+Scored with `gym eval --door <variant>=http://127.0.0.1:8735 --fit`
+against `laya-serve` holding all three checkpoints (concurrency 4,
+CPU fp32). Row records live in `crates/gym/results/` beside the other
+run ledgers; the locked partitions were not asked in any suite.
+
+### `support-v2-three-way` — 157 items asked, 0 refused
+
+Support-desk judgments authored in this repository, so no upstream
+training set contains them. The labels are the author's best reading
+of deliberately arguable items; 0.60 here is not 0.60 on a cleaner
+set.
+
+| Checkpoint | Calibration acc / ECE | Development acc / ECE | Confident errors |
+| --- | --- | --- | --- |
+| `english` | 0.58 / 0.134 | 0.73 / 0.112 | 1 |
+| `multilingual` | 0.58 / 0.252 | 0.59 / 0.263 | 21 |
+| `typed-decisions` | 0.65 / 0.140 | 0.71 / 0.130 | 0 |
+
+### `support-v2-unseen` — 79 items asked, 0 refused
+
+The 98 items no Lev adapter trained on, under the same partitions.
+This is the suite the ledger points adapter confirmations at.
+
+| Checkpoint | Calibration acc / ECE | Development acc / ECE | Confident errors |
+| --- | --- | --- | --- |
+| `english` | 0.50 / 0.215 | 0.69 / 0.197 | 1 |
+| `multilingual` | 0.57 / 0.298 | 0.62 / 0.276 | 10 |
+| `typed-decisions` | 0.62 / 0.100 | 0.64 / 0.128 | 0 |
+
+### `external-v1` — 160 items asked, 0 refused
+
+BoolQ and MultiNLI validation items nobody here labelled; the one
+score our own authorship cannot have fitted.
+
+| Checkpoint | Calibration acc / ECE | Development acc / ECE | Confident errors |
+| --- | --- | --- | --- |
+| `english` | 0.80 / 0.125 | 0.80 / 0.112 | 17 |
+| `multilingual` | 0.78 / 0.131 | 0.72 / 0.230 | 21 |
+| `typed-decisions` | 0.80 / 0.048 | 0.80 / 0.056 | 1 |
+
+## What the runs show
+
+- `typed-decisions` is the strongest checkpoint on every suite and is
+  genuinely calibrated on `external-v1` (ECE 0.048–0.056, one confident
+  error in 160 items).
+- `multilingual` arrives uncalibrated — raw ECE 0.23–0.30 everywhere,
+  the highest confident-error counts — consistent with upstream
+  shipping it with unfitted temperatures. Its fitted maps recover
+  well where enough calibration items exist (routing ECE 0.270 to
+  0.029, boolq 0.254 to 0.044, mnli 0.206 to 0.043), so the door
+  should be served behind a fitted map or not trusted for
+  probabilities.
+- `english` is middling in-domain and decent out-of-domain; its
+  routing map *worsened* log loss (0.506 to 0.578), so its raw
+  probabilities stand as shipped.
+- Every run scored every asked item: no refusals, no harness losses.
+  The `urgency` and `severity` families are too small on the unseen
+  suite for a map verdict (8–24 fitted items against a floor of 30).
+
 ## What this does not claim
 
-- No accuracy, calibration, or coverage numbers on real workloads. The
-  multilingual checkpoint ships unfitted temperatures; the other two
-  ship temperatures fitted on upstream's own dev data. Treat every
-  probability as unmeasured locally until a gym suite scores it.
+- No locked-partition reads. Both suites kept their locked items
+  unasked; a locked read is a one-time spend, not a baseline.
 - No GPU numbers. CPU fp32 is the parity path; `--device metal` exists
   but is unmeasured and unrecorded.
 - The conformance corpus pins code paths, not model behavior at scale.
