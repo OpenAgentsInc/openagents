@@ -7,6 +7,8 @@ counts, plus an analysis of each Coder One run. Update it after every run.
 - Harness: `bench/terminal-bench/` (Harbor 0.22.0). How to run it:
   [the runbook](../coder/terminal-bench.md). The artifact contract:
   [`openagents.coder.episode.v1`](../coder/terminal-bench-contract.md).
+- Operating notes for this host, credentials, rate limits, and pricing:
+  [the Terminal-Bench runbook](runbook.md).
 - Coder One's delegate arms: [the delegate runbook](coder-one-delegate-runbook.md).
 - Tasks: the upstream Terminal-Bench repository at `3b5caaa4863d`.
 - Evidence: each row links its retained trajectory under
@@ -427,7 +429,9 @@ Code's unused tools from the prompt; and reruns without the rate limit.
 
 ## After every Coder One run
 
-1. Check the result: `uv run tbench inspect <job>`.
+1. Check the result: `uv run tbench inspect <job>`, and print every
+   number a row needs with `python3 tools/trial_metrics.py <job>` from
+   `bench/terminal-bench`.
 2. Copy the evidence into
    `bench/terminal-bench/traces/<job>/`: Harbor's `agent/trajectory.json`
    as `<trial>.json`, plus `manifest.json`, `evaluation/usage.json`, and a

@@ -16,6 +16,9 @@ You run four arms on the same tasks and pins:
 | `coder-one-delegate-opus` | Coder One with `CODER_ONE_DELEGATE=always`: up to 8 read-only explore steps, then a code-built briefing to Claude Code on `claude-opus-5-5`. |
 | `coder-one-delegate-auto` | Coder One with `CODER_ONE_DELEGATE=auto`: it works alone and delegates only when it stalls. |
 
+Read [the operating notes](runbook.md) first: they cover this host, the
+credentials, the free lane's rate limit, and job naming.
+
 The tasks are `fix-git` and `build-cython-ext`, the `smoke` profile. Record
 results in [`README.md`](README.md), the one results page. The harness
 itself is described in [the harness runbook](../coder/terminal-bench.md).
