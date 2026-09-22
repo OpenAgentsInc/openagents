@@ -212,7 +212,7 @@ impl Event {
     }
 
     pub fn gift_wrap_recipient(&self) -> Option<&str> {
-        (self.kind == 1_059)
+        matches!(self.kind, 1_059 | 21_059)
             .then(|| self.tag_values("p").next())
             .flatten()
     }

@@ -513,8 +513,15 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 30_008 && event.distinct_parameter() != Some("profile_badges") {
         super::badge::open_badge_set(event)?;
     }
+    if event.kind == 13 {
+        super::gift_wrap::validate_seal(event)?;
+    }
     if event.kind == 1_059 {
         crate::nip17::validate_gift_wrap(event)?;
+        super::gift_wrap::validate_wrap(event)?;
+    }
+    if event.kind == 21_059 {
+        super::gift_wrap::validate_wrap(event)?;
     }
     if event.kind == 10_050 {
         crate::nip17::validate_inbox(event)?;

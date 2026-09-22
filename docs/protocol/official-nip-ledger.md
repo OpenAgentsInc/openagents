@@ -184,6 +184,22 @@ check that the award event repeats the definition address. Recommended
 1024x1024 dimensions are not required. Acceptance is
 `domain::badge::tests::a_badge_definition_is_awarded_and_the_profile_lists_it`.
 
+NIP-59 is `configured-and-proven`. A rumor is an unsigned event of
+any kind. `seal_rumor` encrypts it to the recipient as kind `13` with
+NIP-44. The seal has no tags, or one `expiration` tag, and no `p` tag.
+`wrap_seal` encrypts that seal under a one-time key as kind `1059` or
+kind `21059`, with one `p` tag. Timestamps on the seal and the wrap may
+move at most two days earlier than the rumor. Kind `1059` is a regular
+stored event and is served only to the authenticated reader named by the
+`p` tag. Kind `21059` is ephemeral, so the relay does not store it.
+Admission checks that framing and does not decrypt. A kind `5` from the
+reader removes a wrap addressed to that reader in `DeletionRequest::deletes`.
+The Postgres tombstone table still records only same-author `e` and `a`
+tags, so a live deletion does not yet remove stored wraps by `p` tag.
+NIP-11 lists `59` when `NOSTR_RELAY_URL` is set. Proof of work is not
+required. Acceptance is
+`domain::gift_wrap::tests::a_rumor_is_sealed_and_the_ephemeral_wrap_is_not_stored`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

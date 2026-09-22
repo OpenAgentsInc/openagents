@@ -74,7 +74,11 @@ impl DeletionRequest {
     }
 
     pub fn deletes(&self, event: &Event) -> bool {
-        self.tombstones().any(|tombstone| tombstone.deletes(event))
+        // NIP-59: a request from the reader removes wraps addressed to that
+        // reader. The wrap is signed by a one-time key, so the same-author
+        // tombstone does not name it.
+        super::gift_wrap::recipient_removed_wrap(event, &self.author)
+            || self.tombstones().any(|tombstone| tombstone.deletes(event))
     }
 }
 

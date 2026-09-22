@@ -586,7 +586,7 @@ impl Hub {
 
 pub(crate) fn event_visible_to_reader(event: &Event, readers: &HashSet<String>) -> bool {
     match event.kind {
-        1_059 => {
+        1_059 | 21_059 => {
             let recipients = event.tag_values("p").collect::<Vec<_>>();
             recipients.len() == 1 && readers.contains(recipients[0])
         }
@@ -731,6 +731,12 @@ mod tests {
             .tags
             .push(crate::domain::Tag::new(vec!["p".into(), "b".repeat(64)]));
         assert!(!event_visible_to_reader(&valid_wrap, &readers));
+
+        let mut ephemeral = event('c', 11, 21_059);
+        ephemeral.tags = vec![crate::domain::Tag::new(vec!["p".into(), recipient])];
+        assert!(event_visible_to_reader(&ephemeral, &readers));
+        ephemeral.tags.clear();
+        assert!(!event_visible_to_reader(&ephemeral, &readers));
     }
 
     #[tokio::test]

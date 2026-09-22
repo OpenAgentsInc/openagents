@@ -16,6 +16,7 @@ mod event;
 mod expanded;
 mod filter;
 mod follow;
+mod gift_wrap;
 mod hex;
 mod label;
 mod market;
@@ -64,6 +65,10 @@ pub use filter::{
     Filter, SEARCH_EXCLUDED_KINDS, matches_any, search_excludes_kind, search_matches, search_terms,
 };
 pub use follow::{Follow, append_follow, displayed_petname, parse_follow_list};
+pub use gift_wrap::{
+    RANDOMIZE_WINDOW_SECONDS, Rumor, open_wrap, randomized_timestamp, recipient_removed_wrap,
+    seal_rumor, validate_seal, validate_wrap, wrap_seal,
+};
 pub use label::{Label, LabelTarget, Labeling, open_labeling};
 pub use market::{
     Auction, Bid, BidConfirmation, BidStatus, Checkout, MarketplacePage, Order, OrderStatus,
