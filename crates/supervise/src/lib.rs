@@ -80,7 +80,7 @@ mod job;
 
 pub mod blocking;
 
-pub use group::running;
+pub use group::{process_running, running};
 #[cfg(feature = "job")]
 pub use job::Job;
 
@@ -317,5 +317,15 @@ mod tests {
         let mut sink = Sink::new(8);
         sink.push(&[b'a', 0xff, b'b']);
         assert_eq!(sink.captured().text, "a\u{fffd}b");
+    }
+
+    #[test]
+    fn a_live_process_and_a_dead_one_probe_differently() {
+        assert!(process_running(std::process::id()));
+        assert!(!process_running(0));
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        assert!(!process_running(pid));
     }
 }

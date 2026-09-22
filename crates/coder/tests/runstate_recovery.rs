@@ -27,6 +27,7 @@ fn claim<'a>(run: &'a str, questions: &'a [String], sources: &'a [String]) -> Cl
         program: "program-digest",
         questions,
         sources,
+        owner: 0,
     }
 }
 

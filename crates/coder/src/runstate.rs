@@ -42,7 +42,10 @@
 //! [`Store::recover`] returns every run whose record is incomplete —
 //! claimed and never dispatched, dispatched and never answered, answered
 //! and never settled, and the claim whose first line never landed —
-//! marked `unknown` for the caller to reconcile. Nothing here replays:
+//! marked `unknown` for the caller to reconcile. A claim that names a
+//! live process as its owner is not a crash to recover: two
+//! coordinators can hold one store, and marking a live run `unknown`
+//! would re-label another's in-flight work. Nothing here replays:
 //! what the run did is ATIF's evidence, and what this store answers is
 //! only whether it finished.
 
@@ -57,6 +60,53 @@ pub const SCHEMA: &str = "openagents.runstate.v1";
 
 /// The extension one run's record file carries.
 const RECORD_EXT: &str = "jsonl";
+
+/// The environment variable that switches runstate recording off:
+/// `0`, `off`, `no`, and `false` all mean off.
+pub const SWITCH_ENV: &str = "CODER_RUNSTATE";
+
+/// The environment variable naming the directory runstate records go
+/// to when recording is on.
+pub const DIR_ENV: &str = "CODER_RUNSTATE_DIR";
+
+/// Where this machine records run state, or `None` when recording is
+/// off: `CODER_RUNSTATE` switches it off, `CODER_RUNSTATE_DIR` names
+/// somewhere else, and the default is `~/.openagents/runstate`.
+#[must_use]
+pub fn directory() -> Option<PathBuf> {
+    resolve(
+        std::env::var(SWITCH_ENV).ok().as_deref(),
+        std::env::var_os(DIR_ENV),
+    )
+}
+
+/// The directory those two settings name. Split out from [`directory`]
+/// so it can be tested without a test writing to the process
+/// environment.
+fn resolve(switch: Option<&str>, dir: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    if switch.is_some_and(|switch| {
+        matches!(
+            switch.trim().to_ascii_lowercase().as_str(),
+            "0" | "off" | "no" | "false"
+        )
+    }) {
+        return None;
+    }
+    match dir.filter(|dir| !dir.is_empty()) {
+        Some(dir) => Some(PathBuf::from(dir)),
+        None => default_dir(),
+    }
+}
+
+/// The directory a run records to when nothing says otherwise:
+/// `~/.openagents/runstate`. `None` when the home directory is unknown.
+fn default_dir() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    if home.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(home).join(".openagents").join("runstate"))
+}
 
 /// Where one record stands.
 ///
@@ -124,6 +174,11 @@ pub struct Claim<'a> {
     pub questions: &'a [String],
     /// The digests of the sources the run's `query` steps read.
     pub sources: &'a [String],
+    /// The process that claimed the run, `0` when the claimer does not
+    /// say. Recovery asks the operating system whether the owner is
+    /// still alive before it marks the run's records `unknown`, so a
+    /// second coordinator cannot re-label a live run's work.
+    pub owner: u32,
 }
 
 /// Which record a mark moves: the run's own, one step's, or one task
@@ -227,6 +282,9 @@ pub struct Run {
     pub result: Option<String>,
     /// The worktree the run's record retains, when it keeps one.
     pub worktree: Option<PathBuf>,
+    /// The process that claimed the run, when the claim recorded one.
+    /// A resumer probes it: alive, the run is not a crash to recover.
+    pub owner: Option<u32>,
     /// Unix seconds of the run's last record.
     pub unix: u64,
     /// The run's step records, by step name.
@@ -386,6 +444,8 @@ struct Record {
     result: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     worktree: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    owner: Option<u32>,
     unix: u64,
 }
 
@@ -455,6 +515,7 @@ impl Store {
             outcome: None,
             result: None,
             worktree: None,
+            owner: (claim.owner != 0).then_some(claim.owner),
             unix: unix_now(),
         };
         let line =
@@ -553,6 +614,7 @@ impl Store {
             outcome: None,
             result: mark.result,
             worktree: mark.worktree,
+            owner: None,
             unix: unix_now(),
         };
         append(&path, &record, folded.torn)?;
@@ -602,6 +664,7 @@ impl Store {
             outcome: Some(outcome),
             result: Some(result.to_string()),
             worktree: None,
+            owner: None,
             unix: unix_now(),
         };
         append(&path, &record, folded.torn)?;
@@ -663,6 +726,13 @@ impl Store {
                 .last()
                 .is_some_and(|record| record.state == State::Settled)
             {
+                continue;
+            }
+            // A claim that names a live owner is not a crash to
+            // recover — marking its records `unknown` would re-label
+            // another coordinator's in-flight work.
+            let owner = folded.runs.first().and_then(|record| record.owner);
+            if owner.is_some_and(supervise::process_running) {
                 continue;
             }
             let mut torn = folded.torn;
@@ -812,6 +882,7 @@ fn unknown_run(run: &str) -> Record {
         outcome: None,
         result: None,
         worktree: None,
+        owner: None,
         unix: unix_now(),
     }
 }
@@ -835,6 +906,7 @@ fn unknown_mark(record: &Record) -> Record {
         outcome: None,
         result: record.result.clone(),
         worktree: record.worktree.clone(),
+        owner: None,
         unix: unix_now(),
     }
 }
@@ -874,6 +946,7 @@ fn view(run: &str, folded: Folded) -> Run {
         outcome: last.and_then(|record| record.outcome),
         result: last.and_then(|record| record.result.clone()),
         worktree: last.and_then(|record| record.worktree.clone()),
+        owner: pins.and_then(|record| record.owner),
         unix: last.map(|record| record.unix).unwrap_or_default(),
         steps: folded.steps.values().map(Step::of).collect(),
         tasks: folded.tasks.values().map(Task::of).collect(),
@@ -928,6 +1001,7 @@ mod tests {
             program: "sha256:program",
             questions,
             sources,
+            owner: 0,
         }
     }
 
@@ -1157,5 +1231,58 @@ mod tests {
         assert_eq!(settled.state, State::Settled);
         assert_eq!(settled.outcome, Some(Outcome::Cancelled));
         assert!(store.recover().unwrap().is_empty());
+    }
+
+    /// A process id that was alive and is not: spawned, reaped, gone.
+    fn dead_pid() -> u32 {
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    }
+
+    #[test]
+    fn recovery_leaves_a_live_owners_run_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let questions = digests(&[]);
+        let sources = digests(&[]);
+        {
+            let mut store = Store::open(dir.path()).unwrap();
+            let mut live = claim("run-live", &questions, &sources);
+            live.owner = std::process::id();
+            store.claim(&live).unwrap();
+            store
+                .advance("run-live", Mark::step("work", State::Dispatched))
+                .unwrap();
+            let mut dead = claim("run-dead", &questions, &sources);
+            dead.owner = dead_pid();
+            store.claim(&dead).unwrap();
+        }
+        let mut store = Store::open(dir.path()).unwrap();
+        let runs = store.recover().unwrap();
+        // The live owner's run is not a crash to recover — a second
+        // coordinator does not re-label another's in-flight work. The
+        // dead owner's is.
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run, "run-dead");
+        assert_eq!(runs[0].state, State::Unknown);
+        let live = store.get("run-live").unwrap().unwrap();
+        assert_eq!(live.state, State::Pending);
+        assert_eq!(live.owner, Some(std::process::id()));
+        // And the record file shows no unknown mark on the live run.
+        let text = std::fs::read_to_string(dir.path().join("run-live.jsonl")).unwrap();
+        assert!(!text.contains(r#""state":"unknown""#));
+    }
+
+    #[test]
+    fn the_directory_answers_the_two_environment_names() {
+        for off in ["0", "off", "no", "false", " OFF "] {
+            assert_eq!(resolve(Some(off), None), None, "{off}");
+        }
+        assert_eq!(
+            resolve(None, Some(std::ffi::OsString::from("/tmp/elsewhere"))),
+            Some(PathBuf::from("/tmp/elsewhere"))
+        );
+        assert_eq!(resolve(None, None), default_dir());
     }
 }

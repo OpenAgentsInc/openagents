@@ -232,6 +232,7 @@ mod tests {
             outcome: None,
             result: None,
             worktree: None,
+            owner: None,
             unix: 0,
             steps: Vec::new(),
             tasks: Vec::new(),

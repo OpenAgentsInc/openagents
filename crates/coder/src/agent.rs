@@ -388,6 +388,9 @@ impl Agent {
         let repository = self.repo.as_ref().map(|repo| repo.root().to_path_buf());
         let survey = self.survey().clone();
         let mut runtime = Runtime::using(survey, repository.as_deref()).asking(Some(door));
+        if let Some(dir) = crate::runstate::directory() {
+            runtime = runtime.with_runstate(dir);
+        }
         let slug = match runtime.select(&self.task, self.trace.as_mut()).await {
             Ok(Selected::Program(slug)) => slug,
             Ok(Selected::None) => return None,

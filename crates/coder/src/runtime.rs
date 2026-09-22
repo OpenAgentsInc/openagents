@@ -2489,7 +2489,7 @@ impl Runtime {
     fn claim_runstate(
         &self,
         program: &Program,
-        trace: Option<&mut Recorder>,
+        mut trace: Option<&mut Recorder>,
     ) -> Option<(Store, String)> {
         let dir = self.runstate.as_ref()?;
         let mut store = match Store::open(dir) {
@@ -2502,6 +2502,28 @@ impl Runtime {
                 return None;
             }
         };
+        // A coordinator that opens the store recovers what a previous
+        // one left: unfinished records become `unknown` — never replayed,
+        // never claimed finished — unless a live process still owns the
+        // run. What the resumer rules for them is `rulings`'s question.
+        match store.recover() {
+            Ok(recovered) if !recovered.is_empty() => {
+                let ids: Vec<&str> = recovered.iter().map(|run| run.run.as_str()).collect();
+                self.note(
+                    trace.as_deref_mut(),
+                    &format!(
+                        "runstate recovery marked {} unfinished run(s) unknown: {}",
+                        recovered.len(),
+                        ids.join(", ")
+                    ),
+                );
+            }
+            Ok(_) => {}
+            Err(trouble) => self.note(
+                trace.as_deref_mut(),
+                &format!("runstate recovery did not run: {trouble}"),
+            ),
+        }
         let id = run_id(&program.slug);
         let base = self.base_commit();
         let pin = crate::child::digest(program);
@@ -2512,6 +2534,7 @@ impl Runtime {
             program: &pin,
             questions: &questions,
             sources: &sources,
+            owner: std::process::id(),
         }) {
             Ok(_) => Some((store, id)),
             Err(refusal) => {
@@ -5623,6 +5646,47 @@ mod tests {
         );
     }
 
+    /// A coordinator's next run recovers what a crash left: the
+    /// unfinished record is marked `unknown` when the new run opens the
+    /// store — never replayed, never claimed finished.
+    #[tokio::test]
+    async fn a_run_recovers_what_a_previous_coordinator_left() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut store = Store::open(dir.path()).unwrap();
+            store
+                .claim(&Claim {
+                    run: "run-crashed",
+                    base: "",
+                    program: "burn-down",
+                    questions: &[],
+                    sources: &[],
+                    owner: 0,
+                })
+                .unwrap();
+            store
+                .advance("run-crashed", Mark::run(State::Dispatched))
+                .unwrap();
+            store
+                .advance("run-crashed", Mark::step("work", State::Dispatched))
+                .unwrap();
+        }
+        let runtime = empty_runtime().with_runstate(dir.path());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+
+        let store = Store::open(dir.path()).unwrap();
+        let crashed = store.get("run-crashed").unwrap().unwrap();
+        assert_eq!(crashed.state, State::Unknown);
+        assert_eq!(crashed.steps[0].state, State::Unknown);
+    }
+
     /// A run refused at admission or by the grant claims nothing: a
     /// refused run holds no run id, and the directory is never created.
     #[tokio::test]
@@ -5855,6 +5919,7 @@ mod tests {
                 program: "burn-down",
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         store
@@ -6350,6 +6415,7 @@ mod tests {
                 program: "parent-program",
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         let mut record = Some((store, "run-parent".to_string()));
@@ -6431,6 +6497,7 @@ mod tests {
                 program: &crate::child::digest(&program),
                 questions: &[],
                 sources: &["request".to_string()],
+                owner: 0,
             })
             .unwrap();
         store
@@ -6501,6 +6568,7 @@ mod tests {
                 program: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         store
@@ -6532,6 +6600,7 @@ mod tests {
                 program: &crate::child::digest(&program),
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         store
@@ -7456,6 +7525,7 @@ mod tests {
                 program: "burn-down",
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         let mut record = Some((store, "run-cleanup".to_string()));
