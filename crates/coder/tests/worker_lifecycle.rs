@@ -230,7 +230,10 @@ async fn subscribe(listener: &TcpListener) -> (Server, Value) {
 }
 
 fn assert_jobs_filter(filter: &Value) {
-    assert_eq!(filter["kinds"], json!([REQUEST_KIND]));
+    assert_eq!(
+        filter["kinds"],
+        json!([REQUEST_KIND, nostr::execution::REQUEST_KIND])
+    );
     assert_eq!(filter["#p"], json!([identity(WORKER).pubkey()]));
 }
 
