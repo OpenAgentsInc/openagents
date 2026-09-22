@@ -5,7 +5,7 @@
     "version": "1.21.11",
     "level_type": "minecraft:flat",
     "generator_settings": "{\"layers\":[{\"block\":\"minecraft:bedrock\",\"height\":1},{\"block\":\"minecraft:stone\",\"height\":59},{\"block\":\"minecraft:dirt\",\"height\":3},{\"block\":\"minecraft:grass_block\",\"height\":1}],\"biome\":\"minecraft:plains\",\"features\":false,\"lakes\":false,\"structures\":{\"structures\":{}}}",
-    "difficulty": "peaceful",
+    "difficulty": "normal",
     "gamemode": "survival",
     "view_distance": 8,
     "gamerules": {
@@ -13,11 +13,15 @@
       "advance_weather": "false",
       "spawn_mobs": "false",
       "keep_inventory": "true",
-      "mob_griefing": "false"
+      "natural_health_regeneration": "false",
+      "mob_griefing": "false",
+      "reduced_debug_info": "true"
     },
     "setup_commands": [
       "setworldspawn 0 1 8",
+      "op Smorlox",
       "forceload add -40 -16 40 16",
+      "sleep 3",
       "time set day",
       "weather clear",
       "fill -22 0 -2 -18 0 2 minecraft:white_wool",
@@ -35,30 +39,105 @@
       "setblock 0 3 3 minecraft:torch"
     ]
   },
+  "admins": [
+    "Smorlox"
+  ],
   "agents": [
     {
       "username": "ferro_1",
       "guild": "ferro",
       "pubkey": "591e5f3940760a06eaf6c5a0194d6ba53e13c7bc0c95fd7e609454a78a1f40ae",
-      "camp": [-20.5, 0.0, 0.5]
+      "camp": [
+        -20.5,
+        0.0,
+        0.5
+      ],
+      "temperament": "berserker",
+      "aggression": 0.95
     },
     {
       "username": "ferro_2",
       "guild": "ferro",
       "pubkey": "dc62bf2cbd668b1f24329dc9505409cb09744b9cf6f65fbca7ea71d17aac7c29",
-      "camp": [-19.5, 0.0, 2.5]
+      "camp": [
+        -19.5,
+        0.0,
+        2.5
+      ],
+      "temperament": "hunter",
+      "aggression": 0.75
     },
     {
       "username": "lumen_1",
       "guild": "lumen",
       "pubkey": "f3c8307e6d3c5c6ee7871cb4ee901ddfc8cc045848494d78e38b8dce1a44a6f4",
-      "camp": [20.5, 0.0, 0.5]
+      "camp": [
+        20.5,
+        0.0,
+        0.5
+      ],
+      "temperament": "hunter",
+      "aggression": 0.7
     },
     {
       "username": "lumen_2",
       "guild": "lumen",
       "pubkey": "a93325196e92bbdb93690bb3c04e8ccbd1cb68e5e0d84f82f82cb20a4d29115c",
-      "camp": [19.5, 0.0, 2.5]
+      "camp": [
+        19.5,
+        0.0,
+        2.5
+      ],
+      "temperament": "berserker",
+      "aggression": 0.95
+    },
+    {
+      "username": "ferro_3",
+      "guild": "ferro",
+      "pubkey": "12524a5f1552dfa6d0cec31d03193264963f2a4226c78ce08544e142fd06b467",
+      "camp": [
+        -21.5,
+        0.0,
+        -1.5
+      ],
+      "temperament": "worker",
+      "aggression": 0.3
+    },
+    {
+      "username": "ferro_4",
+      "guild": "ferro",
+      "pubkey": "bb9ab747501ace190acdf13c08847d4af970517c61c3f6df5cb737fbf6454489",
+      "camp": [
+        -18.5,
+        0.0,
+        -2.5
+      ],
+      "temperament": "berserker",
+      "aggression": 0.9
+    },
+    {
+      "username": "lumen_3",
+      "guild": "lumen",
+      "pubkey": "662537c325c8dc919aa6677d016bf6c5b853a470cf4f5d0cac9cd4792faa3d19",
+      "camp": [
+        21.5,
+        0.0,
+        -1.5
+      ],
+      "temperament": "worker",
+      "aggression": 0.45
+    },
+    {
+      "username": "lumen_4",
+      "guild": "lumen",
+      "pubkey": "189f3013efee72e44994468fd0722b4eae1d9a08ab8bd3101a69b946837c6e80",
+      "camp": [
+        18.5,
+        0.0,
+        -2.5
+      ],
+      "temperament": "skittish",
+      "aggression": 0.15
     }
   ],
   "deposits": [
@@ -68,8 +147,36 @@
       "kind": "minecraft:iron_ore",
       "award": 2,
       "blocks": [
-        [-24, 0, -1], [-24, 0, 0], [-24, 0, 1],
-        [-24, 1, -1], [-24, 1, 0], [-24, 1, 1]
+        [
+          -24,
+          0,
+          -1
+        ],
+        [
+          -24,
+          0,
+          0
+        ],
+        [
+          -24,
+          0,
+          1
+        ],
+        [
+          -24,
+          1,
+          -1
+        ],
+        [
+          -24,
+          1,
+          0
+        ],
+        [
+          -24,
+          1,
+          1
+        ]
       ]
     },
     {
@@ -78,8 +185,36 @@
       "kind": "minecraft:iron_ore",
       "award": 2,
       "blocks": [
-        [24, 0, -1], [24, 0, 0], [24, 0, 1],
-        [24, 1, -1], [24, 1, 0], [24, 1, 1]
+        [
+          24,
+          0,
+          -1
+        ],
+        [
+          24,
+          0,
+          0
+        ],
+        [
+          24,
+          0,
+          1
+        ],
+        [
+          24,
+          1,
+          -1
+        ],
+        [
+          24,
+          1,
+          0
+        ],
+        [
+          24,
+          1,
+          1
+        ]
       ]
     },
     {
@@ -87,8 +222,46 @@
       "kind": "minecraft:diamond_ore",
       "award": 5,
       "blocks": [
-        [0, 0, -6], [1, 0, -6], [0, 0, -5], [1, 0, -5],
-        [0, 1, -6], [1, 1, -6], [0, 1, -5], [1, 1, -5]
+        [
+          0,
+          0,
+          -6
+        ],
+        [
+          1,
+          0,
+          -6
+        ],
+        [
+          0,
+          0,
+          -5
+        ],
+        [
+          1,
+          0,
+          -5
+        ],
+        [
+          0,
+          1,
+          -6
+        ],
+        [
+          1,
+          1,
+          -6
+        ],
+        [
+          0,
+          1,
+          -5
+        ],
+        [
+          1,
+          1,
+          -5
+        ]
       ]
     },
     {
@@ -96,8 +269,46 @@
       "kind": "minecraft:emerald_ore",
       "award": 8,
       "blocks": [
-        [0, 0, -16], [1, 0, -16], [0, 0, -15], [1, 0, -15],
-        [0, 1, -16], [1, 1, -16], [0, 1, -15], [1, 1, -15]
+        [
+          0,
+          0,
+          -16
+        ],
+        [
+          1,
+          0,
+          -16
+        ],
+        [
+          0,
+          0,
+          -15
+        ],
+        [
+          1,
+          0,
+          -15
+        ],
+        [
+          0,
+          1,
+          -16
+        ],
+        [
+          1,
+          1,
+          -16
+        ],
+        [
+          0,
+          1,
+          -15
+        ],
+        [
+          1,
+          1,
+          -15
+        ]
       ]
     }
   ],
@@ -110,8 +321,8 @@
   },
   "relay": {
     "port": 7447,
-    "decision_url": "http://127.0.0.1:8009",
-    "decision_model": "kev-latest"
+    "decision_url": "https://api.typesafe.ai",
+    "decision_model": "jev-latest"
   },
   "quest": {
     "id": "bridge-planner",
@@ -120,18 +331,52 @@
     "attempts": 3,
     "effect": "open_bridge",
     "verify_blocks": [
-      [-1, 0, -11],
-      [0, 0, -11],
-      [1, 0, -11],
-      [-1, 0, -10],
-      [0, 0, -10],
-      [1, 0, -10]
+      [
+        -1,
+        0,
+        -11
+      ],
+      [
+        0,
+        0,
+        -11
+      ],
+      [
+        1,
+        0,
+        -11
+      ],
+      [
+        -1,
+        0,
+        -10
+      ],
+      [
+        0,
+        0,
+        -10
+      ],
+      [
+        1,
+        0,
+        -10
+      ]
     ],
     "verify_kind": "oak_planks",
     "xp": 25
   },
+  "combat": {
+    "aggro_radius": 12.0,
+    "rounds": 10,
+    "ground": [
+      0,
+      1,
+      -6
+    ],
+    "kill_xp": 10
+  },
   "episode": {
-    "max_actions": 80,
+    "max_actions": 900,
     "max_seconds": 900
   }
 }

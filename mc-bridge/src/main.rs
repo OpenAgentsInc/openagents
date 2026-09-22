@@ -21,6 +21,9 @@
 //! {"id": 8, "op": "wait", "args": {"seconds": 2}}
 //! {"id": 9, "op": "disconnect"}
 //! {"id": 10, "op": "shutdown"}
+//! {"id": 11, "op": "players"}
+//! {"id": 12, "op": "attack", "args": {"username": "lumen_1", "max_swings": 8}}
+//! {"id": 13, "op": "shoot", "args": {"username": "lumen_1", "max_shots": 3}}
 //! ```
 //!
 //! Answers, one object per line:
@@ -47,9 +50,14 @@ use azalea::prelude::*;
 use azalea::{BlockPos, Vec3};
 use azalea_block::BlockStates;
 use azalea_client::mining::StopMiningBlockEvent;
+use azalea_client::player::GameProfileComponent;
+use azalea_client::respawn::PerformRespawnEvent;
 use azalea_entity::inventory::Inventory;
-use azalea_entity::{EntityKindComponent, LocalEntity, Position};
+use azalea_entity::{Dead, EntityKindComponent, LocalEntity, Position};
 use azalea_inventory::{ItemStack, Menu};
+use azalea::protocol::packets::game::s_player_action::{
+    Action as PlayerAction, ServerboundPlayerAction,
+};
 use azalea_registry::builtin::BlockKind;
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot};
@@ -191,9 +199,17 @@ async fn dispatch(
     let Some(client) = bot.as_ref() else {
         return Some(err(id, "not_joined", "no bot is in a world; join first"));
     };
+    // A dead bot keeps its connection but holds no body — respawn it
+    // before any op that needs one. Chat and waiting work dead.
+    if !matches!(request.op.as_str(), "say" | "wait" | "disconnect") {
+        ensure_alive(client).await;
+    }
     let response = match request.op.as_str() {
         "state" => state(client, id, &request.args).await,
         "block_at" => block_at(client, id, &request.args),
+        "players" => players(client, id, &request.args),
+        "attack" => attack(client, events, id, &request.args).await,
+        "shoot" => shoot(client, events, id, &request.args).await,
         "say" => say(client, id, &request.args),
         "goto" => goto(client, events, id, &request.args).await,
         "explore" => explore(client, events, id, &request.args).await,
@@ -667,16 +683,19 @@ async fn mine(
         // An explicit position earns only if the block still holds a
         // listed kind — a deposit's ore cannot be pre-broken or swapped.
         if !explicit.is_empty() && !kinds.is_empty() {
-            let matches = {
+            let (matches, observed) = {
                 let world = client.world();
                 let instance = world.read();
-                instance
-                    .get_block_state(target)
-                    .is_some_and(|state| states.contains(&state))
+                let state = instance.get_block_state(target);
+                (
+                    state.is_some_and(|s| states.contains(&s)),
+                    state.map(|s| BlockKind::from(s).to_string()),
+                )
             };
             if !matches {
                 let _ = events.send(feedback(format!(
-                    "{target:?} is not a listed kind; skipping"
+                    "{target:?} holds {}, not a listed kind; skipping",
+                    observed.as_deref().unwrap_or("an unloaded block")
                 )));
                 continue;
             }
@@ -770,6 +789,234 @@ async fn pickup_drops(
         )
         .await;
         tokio::time::sleep(Duration::from_millis(400)).await;
+    }
+}
+
+/// Bring a dead client back. The connection survives death; the body
+/// does not — the server has to accept a respawn before position,
+/// movement, or combat mean anything again.
+async fn ensure_alive(client: &Client) {
+    if client.get_component::<Dead>().is_none() {
+        return;
+    }
+    client
+        .ecs
+        .lock()
+        .write_message(PerformRespawnEvent {
+            entity: client.entity,
+        });
+    // The respawn packet and the world reload take a moment.
+    for _ in 0..10 {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        if client.get_component::<Dead>().is_none() {
+            return;
+        }
+    }
+}
+
+/// The players this client can see, nearest first: username, live
+/// position, and distance. The bot never lists itself.
+fn players(client: &Client, id: u64, _args: &Value) -> Value {
+    let own = client.position();
+    let list: Vec<Value> = client
+        .nearest_entities_by::<
+            (),
+            (
+                With<azalea_entity::metadata::Player>,
+                Without<LocalEntity>,
+            ),
+        >(|_: ()| true)
+        .into_iter()
+        .filter_map(|entity| {
+            let name = client
+                .get_entity_component::<GameProfileComponent>(entity)?
+                .name
+                .clone();
+            let position = client.get_entity_component::<Position>(entity)?;
+            Some(json!({
+                "username": name,
+                "position": vec3(*position),
+                "distance": (position.distance_to(own) * 100.0).round() / 100.0,
+            }))
+        })
+        .collect();
+    ok(id, json!({"players": list}))
+}
+
+/// Swing at a named player: close to sword reach, then strike until the
+/// target falls, leaves the world, or the swing cap runs out. The
+/// caller decides who an enemy is; the bridge just fights.
+async fn attack(
+    client: &Client,
+    events: &mpsc::UnboundedSender<Value>,
+    id: u64,
+    args: &Value,
+) -> Value {
+    let Some(username) = args.get("username").and_then(Value::as_str) else {
+        return err(id, "bad_request", "attack needs a \"username\"");
+    };
+    let username = username.to_string();
+    let max_swings = args
+        .get("max_swings")
+        .and_then(Value::as_u64)
+        .unwrap_or(8)
+        .clamp(1, 40);
+    hold_sword(client);
+    let mut swung = 0u64;
+    let mut missed = 0u32;
+    let mut killed = false;
+    for _ in 0..max_swings {
+        let Some(entity) = nearest_player(client, &username) else {
+            // The target is gone — dead after our swings, or out of the
+            // world for another reason.
+            killed = swung > 0;
+            break;
+        };
+        let Some(pos) = client.get_entity_component::<Position>(entity) else {
+            killed = swung > 0;
+            break;
+        };
+        if pos.distance_to(client.position()) > 3.4 {
+            let _ = events.send(feedback(format!("closing on {username}")));
+            if timed(
+                Duration::from_secs(4),
+                client.goto(RadiusGoal {
+                    pos: *pos,
+                    radius: 2.4,
+                }),
+            )
+            .await
+            .is_err()
+            {
+                client.force_stop_pathfinding();
+                missed += 1;
+                // Two failed approaches — the target is unreachable;
+                // give up so the caller can pick another fight.
+                if missed >= 2 {
+                    break;
+                }
+                continue;
+            }
+            missed = 0;
+            continue;
+        }
+        client.attack(entity);
+        swung += 1;
+        let _ = events.send(feedback(format!("swung at {username}")));
+        // Full-strength swings wait out the attack cooldown.
+        tokio::time::sleep(Duration::from_millis(650)).await;
+    }
+    ok(
+        id,
+        json!({"target": username, "swung": swung, "killed": killed}),
+    )
+}
+
+/// Loose arrows at a named player: hold the bow, aim chest-high with a
+/// little loft for the drop over distance, draw for just over a second,
+/// and release through the player-action packet. The caller decides who
+/// an enemy is; the bridge just shoots.
+async fn shoot(
+    client: &Client,
+    events: &mpsc::UnboundedSender<Value>,
+    id: u64,
+    args: &Value,
+) -> Value {
+    let Some(username) = args.get("username").and_then(Value::as_str) else {
+        return err(id, "bad_request", "shoot needs a \"username\"");
+    };
+    let username = username.to_string();
+    let max_shots = args
+        .get("max_shots")
+        .and_then(Value::as_u64)
+        .unwrap_or(3)
+        .clamp(1, 10);
+    hold_bow(client);
+    let mut shots = 0u64;
+    let mut killed = false;
+    for _ in 0..max_shots {
+        let Some(entity) = nearest_player(client, &username) else {
+            killed = shots > 0;
+            break;
+        };
+        let Some(pos) = client.get_entity_component::<Position>(entity) else {
+            killed = shots > 0;
+            break;
+        };
+        let eye = client.eye_position();
+        let (dx, dy, dz) = (pos.x - eye.x, pos.y + 1.35 - eye.y, pos.z - eye.z);
+        let flat = (dx * dx + dz * dz).sqrt() as f32;
+        let yaw = (-dx as f32).atan2(dz as f32).to_degrees();
+        // A few degrees of loft for the arrow's drop over distance.
+        let pitch = (-dy as f32).atan2(flat).to_degrees() - 4.0;
+        client.set_direction(yaw, pitch);
+        client.start_use_item();
+        tokio::time::sleep(Duration::from_millis(1150)).await;
+        client.write_packet(ServerboundPlayerAction {
+            action: PlayerAction::ReleaseUseItem,
+            pos: BlockPos::default(),
+            direction: azalea::core::direction::Direction::Down,
+            seq: 0,
+        });
+        shots += 1;
+        let _ = events.send(feedback(format!("loosed an arrow at {username}")));
+        tokio::time::sleep(Duration::from_millis(450)).await;
+    }
+    ok(
+        id,
+        json!({"target": username, "shots": shots, "killed": killed}),
+    )
+}
+
+/// Put a bow in the hand if the hotbar carries one.
+fn hold_bow(client: &Client) {
+    let inventory = client.component::<Inventory>();
+    let Menu::Player(player) = inventory.menu() else {
+        return;
+    };
+    for (index, stack) in player.inventory.iter().enumerate().skip(27) {
+        if let ItemStack::Present(item) = stack {
+            if item.kind.to_string().ends_with(":bow") {
+                client.set_selected_hotbar_slot((index - 27) as u8);
+                return;
+            }
+        }
+    }
+}
+
+/// The nearest player entity carrying `username`, if any is in range.
+fn nearest_player(client: &Client, username: &str) -> Option<Entity> {
+    client
+        .nearest_entities_by::<
+            (),
+            (
+                With<azalea_entity::metadata::Player>,
+                Without<LocalEntity>,
+            ),
+        >(|_: ()| true)
+        .into_iter()
+        .find(|&entity| {
+            client
+                .get_entity_component::<GameProfileComponent>(entity)
+                .is_some_and(|profile| profile.name == username)
+        })
+}
+
+/// Put a sword in the hand if the hotbar carries one — whatever mining
+/// left selected stays selected otherwise.
+fn hold_sword(client: &Client) {
+    let inventory = client.component::<Inventory>();
+    let Menu::Player(player) = inventory.menu() else {
+        return;
+    };
+    // The player menu's last nine slots are the hotbar.
+    for (index, stack) in player.inventory.iter().enumerate().skip(27) {
+        if let ItemStack::Present(item) = stack {
+            if item.kind.to_string().ends_with("diamond_sword") {
+                client.set_selected_hotbar_slot((index - 27) as u8);
+                return;
+            }
+        }
     }
 }
 

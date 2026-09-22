@@ -120,6 +120,17 @@ impl Server {
         };
         server.wait_ready()?;
         for command in world.boot_commands() {
+            // `sleep N` is a harness directive, not a console command:
+            // forceload queues chunk generation asynchronously, and a
+            // fill issued in the same tick lands on a position that is
+            // not loaded yet.
+            if let Some(seconds) = command
+                .strip_prefix("sleep ")
+                .and_then(|rest| rest.trim().parse::<f64>().ok())
+            {
+                std::thread::sleep(Duration::from_secs_f64(seconds.clamp(0.0, 30.0)));
+                continue;
+            }
             server.command(&command)?;
         }
         Ok(server)

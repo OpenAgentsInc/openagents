@@ -35,6 +35,11 @@ pub struct World {
     /// Every embodied agent the episode runs, with its guild and pubkey.
     /// Empty means the single `agent` plays alone.
     pub agents: Vec<Member>,
+    /// Player usernames the episode treats as operators: `op` them
+    /// through `setup_commands`, and the runner puts them in creative
+    /// on every join so `force-gamemode` cannot pin them to the
+    /// world's default.
+    pub admins: Vec<String>,
     /// Registered minable deposits. A block only earns when a bound agent
     /// digs a listed position — placed ore, gifts, and replays cannot.
     pub deposits: Vec<Deposit>,
@@ -47,6 +52,9 @@ pub struct World {
     pub relay: Option<RelaySection>,
     /// The coding quest the arena posts. `None` means no quest runs.
     pub quest: Option<QuestSection>,
+    /// Guild combat rules. `None` means members pass each other
+    /// peaceably on the contested ground.
+    pub combat: Option<CombatSection>,
     /// How long one episode may run.
     pub episode: Bounds,
 }
@@ -112,6 +120,115 @@ pub struct Member {
     /// Where the agent stands when idle: `[x, y, z]` of its camp.
     #[serde(default)]
     pub camp: Option<[f64; 3]>,
+    /// A declared temperament — `berserker`, `hunter`, `worker`, or
+    /// `skittish`. Absent means derive one from the username, so a
+    /// member's style sticks across episodes without configuration.
+    #[serde(default)]
+    pub temperament: Option<String>,
+    /// How hard the member leans toward a fight, 0–1. Absent means
+    /// derive from the username — the same bot, same aggression,
+    /// every episode.
+    #[serde(default)]
+    pub aggression: Option<f64>,
+}
+
+impl Member {
+    /// The member's temperament: the manifest's when declared, else a
+    /// stable draw from the username — the same bot keeps the same
+    /// personality in every episode.
+    pub fn temperament(&self) -> Temperament {
+        if let Some(temperament) = &self.temperament {
+            if let Some(temperament) = Temperament::named(temperament) {
+                return temperament;
+            }
+        }
+        match self.seed() % 4 {
+            0 => Temperament::Berserker,
+            1 => Temperament::Hunter,
+            2 => Temperament::Worker,
+            _ => Temperament::Skittish,
+        }
+    }
+
+    /// The member's aggression, 0–1: the manifest's when declared,
+    /// else a stable draw from the username.
+    pub fn aggression(&self) -> f64 {
+        if let Some(aggression) = self.aggression {
+            return aggression.clamp(0.0, 1.0);
+        }
+        ((self.seed() / 4) % 101) as f64 / 100.0
+    }
+
+    /// The stable per-member seed every derived trait shares.
+    fn seed(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.username.hash(&mut hasher);
+        hasher.finish()
+    }
+}
+
+/// How a member behaves when the decision door is silent — the
+/// personality the door's answers are weighed against.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Temperament {
+    /// Always fights — closes on enemies, swings first.
+    Berserker,
+    /// Fights at range — prefers the bow, pursues without hesitating.
+    Hunter,
+    /// Works first — keeps digging unless the door says otherwise.
+    Worker,
+    /// Avoids the fight — falls back toward camp when enemies appear.
+    Skittish,
+}
+
+impl Temperament {
+    /// Parse a manifest temperament name.
+    pub fn named(name: &str) -> Option<Self> {
+        match name {
+            "berserker" => Some(Self::Berserker),
+            "hunter" => Some(Self::Hunter),
+            "worker" => Some(Self::Worker),
+            "skittish" => Some(Self::Skittish),
+            _ => None,
+        }
+    }
+
+    /// The name as it appears in state and records.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Berserker => "berserker",
+            Self::Hunter => "hunter",
+            Self::Worker => "worker",
+            Self::Skittish => "skittish",
+        }
+    }
+
+    /// What the member does with an enemy sighting when the door does
+    /// not answer — the fallback personality, not a random default.
+    pub fn fallback(self) -> &'static str {
+        match self {
+            Self::Berserker | Self::Hunter => "attack",
+            Self::Worker => "keep_working",
+            Self::Skittish => "retreat",
+        }
+    }
+
+    /// The member's default weapon when the door does not answer.
+    /// `distance` is how far the target stood when sighted.
+    pub fn weapon(self, distance: f64) -> &'static str {
+        match self {
+            Self::Berserker => "sword",
+            Self::Hunter => "bow",
+            _ => {
+                if distance > 8.0 {
+                    "bow"
+                } else {
+                    "sword"
+                }
+            }
+        }
+    }
 }
 
 /// A registered deposit: a named set of block positions worth credits
@@ -190,6 +307,25 @@ pub struct QuestSection {
     pub xp: u64,
 }
 
+/// The `combat` section: whether guilds fight when they meet. Present
+/// means the first member of each guild converges on `ground` and
+/// swings at any enrolled enemy inside `aggro_radius`; kills record
+/// XP, never credits.
+#[derive(Clone, Debug, Deserialize)]
+pub struct CombatSection {
+    /// How close an opposing guild member must be to get swung at, in
+    /// blocks.
+    pub aggro_radius: f64,
+    /// Alternating fight rounds the episode runs before moving on.
+    #[serde(default = "default_combat_rounds")]
+    pub rounds: u32,
+    /// Where the fighters converge: `[x, y, z]` — the contested claim.
+    pub ground: [i32; 3],
+    /// XP one kill records — like quest XP, separate from balances.
+    #[serde(default = "default_kill_xp")]
+    pub kill_xp: u64,
+}
+
 /// The `episode` section: the bounds an episode may not cross.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Bounds {
@@ -231,6 +367,12 @@ fn default_relay_port() -> u16 {
 fn default_attempts() -> u32 {
     3
 }
+fn default_combat_rounds() -> u32 {
+    8
+}
+fn default_kill_xp() -> u64 {
+    10
+}
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -242,6 +384,8 @@ struct Manifest {
     #[serde(default)]
     agents: Vec<Member>,
     #[serde(default)]
+    admins: Vec<String>,
+    #[serde(default)]
     deposits: Vec<Deposit>,
     #[serde(default)]
     economy: Economy,
@@ -251,6 +395,8 @@ struct Manifest {
     relay: Option<RelaySection>,
     #[serde(default)]
     quest: Option<QuestSection>,
+    #[serde(default)]
+    combat: Option<CombatSection>,
     #[serde(default)]
     episode: Bounds,
 }
@@ -302,11 +448,13 @@ impl World {
             minecraft: manifest.minecraft,
             agent: manifest.agent,
             agents: manifest.agents,
+            admins: manifest.admins,
             deposits: manifest.deposits,
             economy: manifest.economy,
             effects: manifest.effects,
             relay: manifest.relay,
             quest: manifest.quest,
+            combat: manifest.combat,
             episode: manifest.episode,
         };
         world.check()?;
@@ -358,6 +506,14 @@ impl World {
                     "{}: quest {:?} needs nonzero cost and attempts",
                     self.path.display(),
                     quest.id
+                )));
+            }
+        }
+        if let Some(combat) = &self.combat {
+            if combat.aggro_radius <= 0.0 || combat.rounds == 0 {
+                return Err(Error::world(format!(
+                    "{}: combat needs a positive aggro_radius and rounds",
+                    self.path.display()
                 )));
             }
         }

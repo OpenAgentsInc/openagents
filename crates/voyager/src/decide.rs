@@ -69,6 +69,35 @@ impl Door {
         })
     }
 
+    /// Points at a remote `POST /v1/systemone` endpoint — the live
+    /// TypeSafe API — where the caller's `TYPESAFE_API_KEY` does the
+    /// talking.
+    ///
+    /// # Errors
+    ///
+    /// The client must build: a credential must resolve and the
+    /// decisions directory must create.
+    pub fn live(url: &str, model: &str, dir: impl AsRef<Path>) -> Result<Self> {
+        std::fs::create_dir_all(dir.as_ref())?;
+        let client = jev::BlockingClient::new(
+            jev::Config::new()
+                .base_url(url)
+                .default_model(model),
+        )
+        .map_err(|error| Error::decision(format!("client: {error}")))?;
+        Ok(Door {
+            client,
+            model: model.to_string(),
+            dir: dir.as_ref().to_path_buf(),
+            calls: 0,
+        })
+    }
+
+    /// The model this door asks — `jev-latest`, `kev-latest`, and so on.
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
     /// Asks one `choice` question over `state` and returns the picked
     /// option plus the path of the recorded exchange.
     ///

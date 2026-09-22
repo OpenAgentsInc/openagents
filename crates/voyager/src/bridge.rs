@@ -204,6 +204,11 @@ pub struct Bridge {
     stderr: Arc<Mutex<Tail>>,
     stderr_done: Receiver<()>,
     pending: VecDeque<Event>,
+    /// Fires synchronously, mid-call, for every event frame — a join
+    /// line cannot wait ninety seconds for a `mine` to end. It runs on
+    /// the caller's thread inside [`Bridge::call`]; `Send` because a
+    /// bridge can move to its agent's thread.
+    on_event: Option<Box<dyn FnMut(&Event) + Send>>,
     retired: bool,
 }
 
@@ -254,8 +259,16 @@ impl Bridge {
             stderr,
             stderr_done,
             pending: VecDeque::new(),
+            on_event: None,
             retired: false,
         })
+    }
+
+    /// Sets the synchronous event hook. The hook runs inside
+    /// [`Bridge::call`] as each event frame lands — it must stay cheap
+    /// and must never call back into the bridge.
+    pub fn set_event_hook(&mut self, hook: impl FnMut(&Event) + Send + 'static) {
+        self.on_event = Some(Box::new(hook));
     }
 
     /// Whether a fault retired this helper.
@@ -341,7 +354,12 @@ impl Bridge {
                         wire.id
                     )));
                 }
-                Ok(Frame::Event(event)) => self.pending.push_back(event),
+                Ok(Frame::Event(event)) => {
+                    if let Some(hook) = &mut self.on_event {
+                        hook(&event);
+                    }
+                    self.pending.push_back(event);
+                }
                 Ok(Frame::Oversized) => {
                     return Err(self.retire(format!(
                         "the helper answered with a line over {MAX_RESPONSE_BYTES} bytes"
