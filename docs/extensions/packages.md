@@ -1,7 +1,10 @@
 # Packages and distribution
 
-Status: target specification. Local capability and program registries exist;
-this portable package, catalog, and lifecycle contract is proposed.
+Status: target specification for catalogs and signed archives. Coder
+resolves a local package in `crates/coder/src/package.rs`: a versioned
+package and lock, digest checks, publisher trust, revocation, a lock held
+for one run, and an offline byte cache. A name this machine does not hold
+stays unresolved. Authenticated remote catalog import remains proposed.
 
 ## Package contents
 

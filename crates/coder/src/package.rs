@@ -26,8 +26,11 @@
 //! everything it names is refused, not partially trusted: a stated digest
 //! the bytes do not produce is [`Refusal::Digest`], a name nothing on
 //! this machine answers is [`Refusal::Unresolved`], a dependency chain
-//! that comes back to itself is [`Refusal::Cyclic`], and a compatibility
-//! requirement the host does not satisfy is [`Refusal::Incompatible`].
+//! that comes back to itself is [`Refusal::Cyclic`], a compatibility
+//! requirement the host does not satisfy is [`Refusal::Incompatible`],
+//! and a publisher whose approval was withdrawn is [`Refusal::Revoked`].
+//! [`HeldLock`] keeps one lock for the life of a run; a different lock
+//! proposed while that run is alive is [`Refusal::Pinned`].
 //!
 //! # Inspection is not installation
 //!
@@ -54,7 +57,7 @@
 //! acceptance item, and it arrives as a fetcher that produces records for
 //! this module to verify — the record shapes here do not change.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -87,6 +90,7 @@ pub fn digest(bytes: &str) -> String {
 /// slug for a program, source, policy, capability, or package, and the
 /// question-set identifier (`openagents.independence.v2`) for wording.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Reference {
     pub name: String,
     /// What [`digest`] returns for the file's bytes. Stated, then
@@ -97,6 +101,7 @@ pub struct Reference {
 
 /// One package another package depends on.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Dependency {
     /// The slug the dependency's record resolves under in `packages/`.
     pub package: String,
@@ -120,6 +125,7 @@ pub struct Dependency {
 
 /// One portable package: a program and everything it names, pinned.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Package {
     pub v: u32,
     /// The slug the package resolves under in `packages/`.
@@ -231,6 +237,35 @@ impl Package {
             }
         }
         let mut seen = Vec::new();
+        for (field, value) in [
+            ("name", self.name.as_str()),
+            ("summary", self.summary.as_str()),
+            ("version", self.version.as_str()),
+            ("publisher", self.publisher.as_str()),
+            ("provenance", self.provenance.as_str()),
+        ] {
+            if leaks_host(value) {
+                return Err(format!(
+                    "{field} carries a host path or a secret, which a portable package cannot"
+                ));
+            }
+        }
+        for publisher in &self.trusted_publishers {
+            if leaks_host(publisher) {
+                return Err(
+                    "trusted_publishers carries a host path or a secret, which a portable package cannot"
+                        .to_string(),
+                );
+            }
+        }
+        for (name, requirement) in &self.compatibility {
+            if leaks_host(name) || leaks_host(requirement) {
+                return Err(
+                    "compatibility carries a host path or a secret, which a portable package cannot"
+                        .to_string(),
+                );
+            }
+        }
         for dep in &self.requires {
             if !is_slug(&dep.package) {
                 return Err(format!("{:?} is not a package slug", dep.package));
@@ -239,6 +274,12 @@ impl Package {
                 return Err(format!("requires {:?} twice", dep.package));
             }
             seen.push(dep.package.clone());
+            if dep.publisher.as_deref().is_some_and(leaks_host) {
+                return Err(format!(
+                    "dependency {:?} carries a host path or a secret, which a portable package cannot",
+                    dep.package
+                ));
+            }
             if dep.version.as_deref().is_some_and(str::is_empty) {
                 return Err(format!(
                     "dependency {:?} states an empty version requirement",
@@ -274,7 +315,25 @@ impl Package {
     /// the stated digest, a dependency cycle, or a compatibility
     /// requirement the host does not satisfy.
     pub fn resolve(root: &Path, package: &Package) -> Result<Lock, Refusal> {
-        resolve(root, package, &mut Vec::new())
+        resolve_tree(root, package, &mut Vec::new(), &BTreeSet::new())
+    }
+
+    /// Resolves `package` and refuses any publisher in `revoked`.
+    ///
+    /// Revocation wins over `trusted_publishers`. A revoked publisher is
+    /// not marked untrusted and then accepted; the lock is not produced.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Refusal::Revoked`] when the package or a dependency
+    /// claims a revoked publisher, and every refusal [`Self::resolve`]
+    /// returns otherwise.
+    pub fn resolve_against(
+        root: &Path,
+        package: &Package,
+        revoked: &BTreeSet<String>,
+    ) -> Result<Lock, Refusal> {
+        resolve_tree(root, package, &mut Vec::new(), revoked)
     }
 }
 
@@ -459,6 +518,10 @@ pub enum Refusal {
         component: String,
         requirement: String,
     },
+    /// A publisher whose approval was withdrawn. The bytes are not pinned.
+    Revoked { publisher: String },
+    /// A run already holds a lock. A different lock waits until the run ends.
+    Pinned { held: String },
 }
 
 impl fmt::Display for Refusal {
@@ -484,8 +547,91 @@ impl fmt::Display for Refusal {
                 f,
                 "{component}: requires {requirement}, which this host does not satisfy"
             ),
+            Refusal::Revoked { publisher } => {
+                write!(f, "publisher {publisher} is revoked")
+            }
+            Refusal::Pinned { held } => {
+                write!(f, "a run holds lock {held}")
+            }
         }
     }
+}
+
+/// The lock one run holds from admission until it finishes.
+///
+/// An update proposed while the run is alive does not replace it.
+/// Rollback names an earlier lock, and only after the run has finished.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HeldLock {
+    digest: String,
+    finished: bool,
+}
+
+impl HeldLock {
+    /// Hold `lock` for a run that has just been admitted.
+    #[must_use]
+    pub fn open(lock: &Lock) -> Self {
+        Self {
+            digest: lock.digest(),
+            finished: false,
+        }
+    }
+
+    /// Whether `proposed` may replace the held lock.
+    ///
+    /// The same digest is the lock the run already has. A different
+    /// digest is refused until [`Self::finish`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Refusal::Pinned`] while the run is alive and `proposed`
+    /// is a different lock.
+    pub fn consider(&self, proposed: &Lock) -> Result<(), Refusal> {
+        if self.finished || proposed.digest() == self.digest {
+            return Ok(());
+        }
+        Err(Refusal::Pinned {
+            held: self.digest.clone(),
+        })
+    }
+
+    /// The run has ended. A later rollback may name another lock.
+    pub fn finish(&mut self) {
+        self.finished = true;
+    }
+
+    /// Return `previous` as the lock to restore.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Refusal::Pinned`] while the run is alive, and
+    /// [`Refusal::Incompatible`] when `previous` is the lock already held.
+    pub fn rollback<'a>(&self, previous: &'a Lock) -> Result<&'a Lock, Refusal> {
+        if !self.finished {
+            return Err(Refusal::Pinned {
+                held: self.digest.clone(),
+            });
+        }
+        if previous.digest() == self.digest {
+            return Err(Refusal::Incompatible {
+                component: "lock".to_string(),
+                requirement: "rollback must name an earlier lock".to_string(),
+            });
+        }
+        Ok(previous)
+    }
+}
+
+fn leaks_host(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("nsec1")
+        || lower.contains("oak_")
+        || lower.contains("api_key")
+        || lower.contains("begin openssh")
+        || lower.contains("begin private key")
+        || value
+            .split_whitespace()
+            .any(|word| word.starts_with('/') || word.starts_with("~/"))
 }
 
 impl std::error::Error for Refusal {}
@@ -657,6 +803,7 @@ fn depend(
     package: &Package,
     dep: &Dependency,
     visiting: &mut Vec<String>,
+    revoked: &BTreeSet<String>,
 ) -> Result<Locked, Refusal> {
     let component = format!("packages/{}", dep.package);
     let Some(path) = find(&root.join("packages"), "slug", &dep.package) else {
@@ -698,7 +845,12 @@ fn depend(
             requirement: requirement.clone(),
         });
     }
-    let lock = resolve(root, &needed, visiting)?;
+    if !needed.publisher.is_empty() && revoked.contains(&needed.publisher) {
+        return Err(Refusal::Revoked {
+            publisher: needed.publisher.clone(),
+        });
+    }
+    let lock = resolve_tree(root, &needed, visiting, revoked)?;
     let trust = if package
         .trusted_publishers
         .iter()
@@ -725,11 +877,21 @@ fn depend(
 /// The resolution [`Package::resolve`] runs, with `visiting` holding the
 /// dependency chain already being resolved — the only state the
 /// recursion needs, and the only place a cycle can hide.
-fn resolve(root: &Path, package: &Package, visiting: &mut Vec<String>) -> Result<Lock, Refusal> {
+fn resolve_tree(
+    root: &Path,
+    package: &Package,
+    visiting: &mut Vec<String>,
+    revoked: &BTreeSet<String>,
+) -> Result<Lock, Refusal> {
     package.validate().map_err(|reason| Refusal::Record {
         source: package.slug.clone(),
         reason,
     })?;
+    if !package.publisher.is_empty() && revoked.contains(&package.publisher) {
+        return Err(Refusal::Revoked {
+            publisher: package.publisher.clone(),
+        });
+    }
     compatible(package)?;
     if visiting.contains(&package.slug) {
         let path = visiting
@@ -749,7 +911,7 @@ fn resolve(root: &Path, package: &Package, visiting: &mut Vec<String>) -> Result
         let capabilities = pins(root, "capabilities", "slug", &package.capabilities)?;
         let mut dependencies = BTreeMap::new();
         for dep in &package.requires {
-            let locked = depend(root, package, dep, visiting)?;
+            let locked = depend(root, package, dep, visiting, revoked)?;
             dependencies.insert(dep.package.clone(), locked);
         }
         Ok(Lock {
@@ -1186,5 +1348,130 @@ mod tests {
         );
         assert!(extension_transition(tombstone, InstallStep::Reactivate).is_err());
         assert_eq!(extension_active_pin("lock-a", "lock-b"), "lock-a");
+    }
+
+    #[test]
+    fn a_revoked_publisher_is_refused_even_when_the_package_trusted_it() {
+        let (dir, program) = staged();
+        let mut friend = package("friend-pkg", &program);
+        friend.publisher = "friend".to_string();
+        stage_package(dir.path(), &friend);
+
+        let mut package = package("root-pkg", &program);
+        package.trusted_publishers = vec!["friend".to_string()];
+        package.requires = vec![Dependency {
+            package: "friend-pkg".to_string(),
+            publisher: Some("friend".to_string()),
+            version: None,
+            digest: None,
+        }];
+        let mut revoked = BTreeSet::new();
+        revoked.insert("friend".to_string());
+
+        let refusal = Package::resolve_against(dir.path(), &package, &revoked).unwrap_err();
+        assert_eq!(
+            refusal,
+            Refusal::Revoked {
+                publisher: "friend".to_string()
+            }
+        );
+        assert!(Package::resolve(dir.path(), &package).is_ok());
+
+        let mut root_revoked = BTreeSet::new();
+        root_revoked.insert(package.publisher.clone());
+        let root = Package::resolve_against(dir.path(), &package, &root_revoked).unwrap_err();
+        assert_eq!(
+            root,
+            Refusal::Revoked {
+                publisher: package.publisher.clone()
+            }
+        );
+    }
+
+    #[test]
+    fn a_replaced_file_is_refused_as_a_stale_advertisement() {
+        let (dir, program) = staged();
+        let resolved = Package::resolve(dir.path(), &package("root-pkg", &program)).unwrap();
+        stage(
+            dir.path(),
+            "programs/main.json",
+            r#"{"v":1,"slug":"main","steps":[{"name":"one","kind":"query","bounds":{"limit":1}}]}"#,
+        );
+        let mut stale = package("root-pkg", &program);
+        stale.program.digest = resolved.program.digest.clone();
+        let refusal = Package::resolve(dir.path(), &stale).unwrap_err();
+        assert!(matches!(refusal, Refusal::Digest { .. }), "{refusal}");
+    }
+
+    #[test]
+    fn an_absent_remote_name_stays_unresolved_without_a_fetch() {
+        let (dir, program) = staged();
+        let mut package = package("root-pkg", &program);
+        package.provenance = "wss://relay.example/packages/ghost".to_string();
+        package.requires = vec![Dependency {
+            package: "ghost".to_string(),
+            publisher: None,
+            version: None,
+            digest: None,
+        }];
+        let refusal = Package::resolve(dir.path(), &package).unwrap_err();
+        assert_eq!(
+            refusal,
+            Refusal::Unresolved {
+                component: "packages/ghost".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_run_holds_its_lock_until_it_finishes_and_then_can_roll_back() {
+        let (dir, program) = staged();
+        let held_lock = Package::resolve(dir.path(), &package("root-pkg", &program)).unwrap();
+        let mut other = package("other-pkg", &program);
+        other.slug = "other-pkg".to_string();
+        let proposed = Package::resolve(dir.path(), &other).unwrap();
+        let mut held = HeldLock::open(&held_lock);
+        assert!(held.consider(&held_lock).is_ok());
+        assert_eq!(
+            held.consider(&proposed).unwrap_err(),
+            Refusal::Pinned {
+                held: held_lock.digest()
+            }
+        );
+        assert!(held.rollback(&proposed).is_err());
+        held.finish();
+        assert_eq!(
+            held.rollback(&proposed).unwrap().digest(),
+            proposed.digest()
+        );
+        assert!(held.rollback(&held_lock).is_err());
+    }
+
+    #[test]
+    fn a_package_cannot_carry_a_secret_or_an_approval() {
+        let (dir, program) = staged();
+        let mut record = serde_json::to_value(package("root-pkg", &program)).unwrap();
+        record["secret"] = json!("oak_live_key");
+        record["probe"] = json!("approved");
+        let path = dir.path().join("packages/smuggled.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, record.to_string()).unwrap();
+        let error = Package::load(&path).unwrap_err();
+        assert!(error.contains("unknown field"), "{error}");
+
+        let mut host = package("root-pkg", &program);
+        host.summary = "key at /Users/me/.ssh/id_rsa".to_string();
+        let error = host.validate().unwrap_err();
+        assert!(error.contains("host path or a secret"), "{error}");
+
+        host.summary.clear();
+        host.publisher = "nsec1notakey".to_string();
+        let error = host.validate().unwrap_err();
+        assert!(error.contains("publisher"), "{error}");
+
+        host.publisher = "openagents".to_string();
+        host.trusted_publishers = vec!["~/secrets/token".to_string()];
+        let error = host.validate().unwrap_err();
+        assert!(error.contains("trusted_publishers"), "{error}");
     }
 }
