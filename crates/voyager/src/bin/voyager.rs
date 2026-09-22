@@ -119,6 +119,7 @@ fn run(args: &[String]) -> Result<()> {
         relay_bin: relay_bin(),
         relay_database: std::env::var("VOYAGER_RELAY_DATABASE_URL")
             .unwrap_or_else(|_| "postgres://127.0.0.1:5432/voyager_relay".to_string()),
+        repo: std::env::current_dir()?,
     };
     // A world that enrolls agents runs the guild loop; a world with a
     // single `agent` runs the solo curriculum.

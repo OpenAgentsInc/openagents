@@ -13,6 +13,7 @@ nostr = { path = "../nostr" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
+supervise = { path = "../supervise", default-features = false }
 thiserror = "2"
 libc = "0.2"
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }

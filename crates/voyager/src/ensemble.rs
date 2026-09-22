@@ -25,7 +25,7 @@
 use std::time::{Duration, Instant};
 
 use atif::document::{Outcome, Session, Source, Step};
-use nostr::domain::RelaySigner;
+use nostr::domain::{RelaySigner, Tag};
 use serde_json::{Map, Value, json};
 
 use crate::bridge::{Bridge, Event};
@@ -34,7 +34,7 @@ use crate::episode::{Plan, Report, TaskResult};
 use crate::error::{Error, Result};
 use crate::guild::{self, Channel};
 use crate::keys;
-use crate::ledger::{Awarded, Ledger};
+use crate::ledger::{Awarded, Ledger, Reserved};
 use crate::relay::Relay;
 use crate::server::Server;
 use crate::world::{Deposit, Member, World};
@@ -288,6 +288,10 @@ impl Ensemble<'_> {
             self.task_mine(index, true, &mut tasks)?;
         }
 
+        // The coding quest, when the world offers one: the first member
+        // spends its guild's credits on a bounded, verified patch.
+        self.task_quest(0, &mut tasks)?;
+
         // Report: every guild hears its own close, and an outside reader
         // confirms the channels stayed public for reading.
         let balances = crate::ledger::describe(&self.ledger);
@@ -467,6 +471,236 @@ impl Ensemble<'_> {
             });
         }
         Ok(())
+    }
+
+    /// The coding quest: the guild's credits hold while the solver
+    /// works, the patch it leaves is verified on a base it never saw,
+    /// and only an accepted artifact buys the manifest-named world
+    /// effect — which the referee reads back block by block before the
+    /// achievement label and the XP record land. Execution,
+    /// verification, and integration each keep their own file under
+    /// `quest/`.
+    fn task_quest(&mut self, index: usize, tasks: &mut Vec<TaskResult>) -> Result<()> {
+        let Some(quest) = self.world.quest.clone() else {
+            return Ok(());
+        };
+        let guild = self.agents[index].member.guild.clone();
+        let username = self.agents[index].member.username.clone();
+        let hold = format!("quest:{}", quest.id);
+        match self.ledger.reserve(&hold, &guild, &quest.id, quest.cost)? {
+            Reserved::Held => {}
+            other => {
+                tasks.push(TaskResult {
+                    task: format!("{username}: quest {}", quest.id),
+                    ok: false,
+                    detail: format!("{guild} could not hold {} credits: {other:?}", quest.cost),
+                });
+                return Ok(());
+            }
+        }
+        (self.progress)(&format!(
+            "quest {}: {} credits held for {guild}",
+            quest.id, quest.cost
+        ));
+        self.note(
+            Source::System,
+            "quest reserved",
+            json!({"quest": quest.id, "guild": guild, "cost": quest.cost}),
+        );
+
+        let dir = self.run_dir.join("quest");
+        let work = dir.join("work");
+        let fixture = self.plan.repo.join(&quest.fixture);
+        let (base, fixture_digest) = crate::quest::stage(&fixture, &work)?;
+
+        // The solve loop: the bounded solver writes, the public checks
+        // answer, and a repair stays inside the shared budget and the
+        // attempt cap.
+        let mut attempts = Vec::new();
+        for n in 1..=quest.attempts {
+            let attempt = crate::quest::attempt(
+                &work,
+                n,
+                &|tree: &std::path::Path| {
+                    std::fs::write(tree.join("src/lib.rs"), crate::quest::builtin_source())
+                        .map_err(|error| Error::episode(format!("solver write: {error}")))
+                },
+                &dir,
+            )?;
+            (self.progress)(&format!(
+                "quest {}: attempt {} — {}",
+                quest.id, n, attempt.ending
+            ));
+            let passed = attempt.passed;
+            attempts.push(attempt);
+            if passed {
+                break;
+            }
+        }
+        let per_attempt = (quest.cost / u64::from(quest.attempts)).max(1);
+        let spent = per_attempt * u64::from(attempts.len() as u32);
+        let execution = crate::quest::seal(&work, &dir, &base, &fixture_digest, attempts)?;
+        self.ledger.settle(&hold, spent)?;
+        self.note(
+            Source::System,
+            &format!(
+                "quest executed: {} spent, patch {}",
+                spent, execution.patch_digest
+            ),
+            json!({"spent": spent, "base_commit": execution.base_commit}),
+        );
+        if !execution.attempts.last().is_some_and(|a| a.passed) {
+            tasks.push(TaskResult {
+                task: format!("{username}: quest {}", quest.id),
+                ok: false,
+                detail: format!("{} attempts inside the budget, none passed", quest.attempts),
+            });
+            return Ok(());
+        }
+
+        // Verification is the referee's: the artifact applied to a
+        // fresh base, with the cases the solver never saw.
+        let verification =
+            crate::quest::verify(&fixture, &dir.join("verify"), &execution.patch, &dir)?;
+        self.note(
+            Source::System,
+            &format!("quest verified: {}", verification.ending),
+            json!({"accepted": verification.accepted}),
+        );
+        if !verification.accepted {
+            tasks.push(TaskResult {
+                task: format!("{username}: quest {}", quest.id),
+                ok: false,
+                detail: "the protected cases refused the patch".to_string(),
+            });
+            return Ok(());
+        }
+
+        // Integration: the effect is a manifest name, never a command
+        // the quest supplied; another guild's member reads the blocks
+        // back.
+        let command = self
+            .world
+            .effects
+            .get(&quest.effect)
+            .cloned()
+            .unwrap_or_default();
+        self.server.command(&command)?;
+        let referee = self.agents.len() - 1;
+        let mut blocks = Vec::new();
+        for pos in &quest.verify_blocks {
+            // The console write returns before the server ticks; the
+            // referee polls until the block update reaches its client
+            // or the bound runs out — the last read is the record.
+            let mut answer = Value::Null;
+            for _ in 0..20 {
+                answer = self.call(
+                    referee,
+                    "block_at",
+                    json!({"position": pos}),
+                    Duration::from_secs(15),
+                    "reconcile the world effect",
+                )?;
+                let kind = answer["kind"].as_str().unwrap_or_default();
+                if kind.strip_prefix("minecraft:").unwrap_or(kind) == quest.verify_kind {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            let kind = answer["kind"].as_str().unwrap_or_default();
+            let kind = kind.strip_prefix("minecraft:").unwrap_or(kind);
+            blocks.push(json!({
+                "position": pos,
+                "kind": answer["kind"],
+                "expected": quest.verify_kind,
+                "ok": kind == quest.verify_kind,
+            }));
+        }
+        let reconciled = blocks
+            .iter()
+            .all(|check| check["ok"].as_bool().unwrap_or(false));
+        let mut label = json!({"published": false, "why": "reconciliation failed"});
+        if reconciled {
+            self.ledger.xp(&guild, &username, &quest.id, quest.xp)?;
+            label = self.publish_label(&quest, index, &execution.patch_digest)?;
+        }
+        let integration = json!({
+            "effect": quest.effect,
+            "command": command,
+            "reconciled": reconciled,
+            "blocks": blocks,
+            "label": label,
+            "xp": reconciled.then_some(quest.xp),
+        });
+        std::fs::write(
+            dir.join("integration.json"),
+            serde_json::to_vec_pretty(&integration)?,
+        )?;
+        self.note(
+            Source::System,
+            &format!("quest integrated: reconciled={reconciled}"),
+            integration,
+        );
+        tasks.push(TaskResult {
+            task: format!("{username}: quest {}", quest.id),
+            ok: reconciled,
+            detail: if reconciled {
+                format!("patch accepted; {} opened; {} xp", quest.effect, quest.xp)
+            } else {
+                "the world effect did not reconcile".to_string()
+            },
+        });
+        Ok(())
+    }
+
+    /// The NIP-32 achievement label: `kind:1985`, `openagents.voyager`
+    /// namespace, targeting the member's pubkey, signed by the host's
+    /// relay-management key — the trusted identity the guilds already
+    /// accept — and published to the episode relay. `label.json` keeps
+    /// the event and the verdict.
+    fn publish_label(
+        &mut self,
+        quest: &crate::world::QuestSection,
+        index: usize,
+        patch_digest: &str,
+    ) -> Result<Value> {
+        let Some(relay) = &self.relay else {
+            return Ok(json!({"published": false, "why": "the world runs no relay"}));
+        };
+        let signer = RelaySigner::from_secret_hex(&crate::relay::management_secret())
+            .map_err(|error| Error::relay(format!("label signer: {error}")))?;
+        let url = relay.url.clone();
+        let mut channel = Channel::connect(&url, &signer)?;
+        let event = signer.sign(
+            guild::unix_now(),
+            1985,
+            vec![
+                Tag::new(vec!["L".into(), "openagents.voyager".into()]),
+                Tag::new(vec![
+                    "l".into(),
+                    "quest-complete".into(),
+                    "openagents.voyager".into(),
+                ]),
+                Tag::new(vec!["p".into(), self.agents[index].member.pubkey.clone()]),
+                Tag::new(vec!["t".into(), quest.id.clone()]),
+            ],
+            json!({"quest": quest.id, "patch": patch_digest}).to_string(),
+        );
+        let verdict = channel.publish(&event)?;
+        let record = json!({
+            "published": verdict.accepted,
+            "message": verdict.message,
+            "signer": signer.pubkey(),
+            "event": serde_json::to_value(&event).unwrap_or_default(),
+        });
+        let path = self.run_dir.join("quest").join("label.json");
+        std::fs::write(&path, serde_json::to_vec_pretty(&record)?)?;
+        self.note(
+            Source::System,
+            &format!("quest label: {}", describe_verdict(&verdict)),
+            record.clone(),
+        );
+        Ok(record)
     }
 
     /// Opens the member's guild channel: connect, answer AUTH as the

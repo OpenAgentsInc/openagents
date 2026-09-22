@@ -68,6 +68,9 @@ pub struct Plan {
     pub relay_bin: PathBuf,
     /// The Postgres URL the relay stores into.
     pub relay_database: String,
+    /// The repository root — a world manifest's relative paths, like a
+    /// quest's `fixture`, resolve against it.
+    pub repo: PathBuf,
 }
 
 /// How one task ended.

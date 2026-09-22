@@ -193,6 +193,7 @@ async fn dispatch(
     };
     let response = match request.op.as_str() {
         "state" => state(client, id, &request.args).await,
+        "block_at" => block_at(client, id, &request.args),
         "say" => say(client, id, &request.args),
         "goto" => goto(client, events, id, &request.args).await,
         "explore" => explore(client, events, id, &request.args).await,
@@ -401,6 +402,31 @@ async fn state(client: &Client, id: u64, args: &Value) -> Value {
             "nearby_blocks": nearby_blocks,
             "nearby_entities": nearby_entities,
         }),
+    )
+}
+
+/// One block's kind at an explicit position — the read a referee needs
+/// to reconcile a world effect without mining anything.
+fn block_at(client: &Client, id: u64, args: &Value) -> Value {
+    let Some(pos) = args.get("position").and_then(Value::as_array) else {
+        return err(id, "bad_request", "block_at needs \"position\": [x,y,z]");
+    };
+    let (Some(x), Some(y), Some(z)) = (
+        pos.first().and_then(Value::as_i64),
+        pos.get(1).and_then(Value::as_i64),
+        pos.get(2).and_then(Value::as_i64),
+    ) else {
+        return err(id, "bad_request", "block_at position must be [x,y,z] ints");
+    };
+    let target = BlockPos::new(x as i32, y as i32, z as i32);
+    let world = client.world();
+    let instance = world.read();
+    let kind = instance
+        .get_block_state(target)
+        .map(|state| BlockKind::from(state).to_string());
+    ok(
+        id,
+        json!({"position": [x, y, z], "kind": kind, "loaded": kind.is_some()}),
     )
 }
 

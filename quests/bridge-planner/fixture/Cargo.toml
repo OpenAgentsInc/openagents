@@ -1,0 +1,10 @@
+[package]
+name = "bridge-planner"
+version = "0.1.0"
+edition = "2021"
+description = "Plans a bridge deck across a gap in the arena floor."
+publish = false
+
+# The fixture is its own root: it must build identically inside the
+# repository and inside an isolated run tree.
+[workspace]

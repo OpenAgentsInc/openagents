@@ -45,6 +45,8 @@ pub struct World {
     pub effects: BTreeMap<String, String>,
     /// Guild channels and the decision door. `None` means no relay runs.
     pub relay: Option<RelaySection>,
+    /// The coding quest the arena posts. `None` means no quest runs.
+    pub quest: Option<QuestSection>,
     /// How long one episode may run.
     pub episode: Bounds,
 }
@@ -162,6 +164,32 @@ pub struct RelaySection {
     pub decision_model: Option<String>,
 }
 
+/// The `quest` section: the coding quest a guild may take. The fixture
+/// it names is the solver's world — a bounded Rust project the quest
+/// copies into the run directory before a patch may touch it.
+#[derive(Clone, Debug, Deserialize)]
+pub struct QuestSection {
+    /// The quest id the ledger, the label, and the trace name.
+    pub id: String,
+    /// The fixture directory, relative to the repository root — it
+    /// holds `fixture/` plus a `protected/` the solver never sees.
+    pub fixture: String,
+    /// Credits the reservation holds while the quest runs.
+    pub cost: u64,
+    /// The most patch attempts the hold pays for.
+    #[serde(default = "default_attempts")]
+    pub attempts: u32,
+    /// The manifest effect a verified patch buys — a name in
+    /// `effects`, never a command.
+    pub effect: String,
+    /// Block positions the effect must leave standing.
+    pub verify_blocks: Vec<[i32; 3]>,
+    /// The block kind those positions must hold, such as `oak_planks`.
+    pub verify_kind: String,
+    /// XP a completed quest records — separate from credit balances.
+    pub xp: u64,
+}
+
 /// The `episode` section: the bounds an episode may not cross.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Bounds {
@@ -200,6 +228,9 @@ fn default_award() -> u64 {
 fn default_relay_port() -> u16 {
     7447
 }
+fn default_attempts() -> u32 {
+    3
+}
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -218,6 +249,8 @@ struct Manifest {
     effects: BTreeMap<String, String>,
     #[serde(default)]
     relay: Option<RelaySection>,
+    #[serde(default)]
+    quest: Option<QuestSection>,
     #[serde(default)]
     episode: Bounds,
 }
@@ -273,6 +306,7 @@ impl World {
             economy: manifest.economy,
             effects: manifest.effects,
             relay: manifest.relay,
+            quest: manifest.quest,
             episode: manifest.episode,
         };
         world.check()?;
@@ -308,6 +342,23 @@ impl World {
                         deposit.id
                     )));
                 }
+            }
+        }
+        if let Some(quest) = &self.quest {
+            if !self.effects.contains_key(&quest.effect) {
+                return Err(Error::world(format!(
+                    "{}: quest {:?} names effect {:?}, which is not in effects",
+                    self.path.display(),
+                    quest.id,
+                    quest.effect
+                )));
+            }
+            if quest.attempts == 0 || quest.cost == 0 {
+                return Err(Error::world(format!(
+                    "{}: quest {:?} needs nonzero cost and attempts",
+                    self.path.display(),
+                    quest.id
+                )));
             }
         }
         Ok(())
