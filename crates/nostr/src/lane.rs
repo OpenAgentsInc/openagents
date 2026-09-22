@@ -881,6 +881,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "A4.md",
+        domain: "kind 24 is a signed plaintext message to p-tagged receivers; e tags are forbidden because there are no threads; reactions and zaps aimed at it carry k=24",
+        client: "open_public_message, targets_public_message, and link_kind",
+        server: "admission requires at least one valid receiver and refuses an e tag",
+        paths: "crates/nostr/src/domain/public_message.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; NIP-A4 is a draft and kind 24 is not added to the NIP-11 list",
+        fixture: "a message to two receivers with a relay hint, an expiration, a q tag, a k=24 reaction, and a nevent1 link declaring kind 24",
+        acceptance: "domain::public_message::tests::a_public_message_names_its_receivers_and_has_no_thread",
+        limitations: "there is no privacy — the event is a public reply without a root; NIP-40 expiration is a recommendation, not a requirement; the relay stores kind 24 like any regular note",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

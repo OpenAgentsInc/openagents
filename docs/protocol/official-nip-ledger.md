@@ -736,6 +736,21 @@ Acceptance is
 `domain::mls::tests::a_key_package_a_welcome_and_a_group_message_follow_the_pinned_envelopes`
 and `domain::mls::tests::the_earliest_commit_wins_then_the_lowest_id`.
 
+NIP-A4 is `configured-and-proven`. `open_public_message` in
+`crates/nostr/src/domain/public_message.rs` reads a kind `24` event: at
+least one `p` tag naming a 32-byte hex receiver with an optional
+`ws://` or `wss://` relay hint, no `e` tag — the pinned text has no
+threads — and a well-formed `q` tag when one cites an event. An
+`expiration` tag is recommended and read through `Event::expiration`.
+`targets_public_message` checks the `k` tag `24` that reactions and
+zaps aimed at the kind must carry, and `link_kind` reads the kind a
+`nevent1` or `naddr1` link declares so a client can honor the rule that
+a natively rendered public-message link names kind `24`. Admission
+refuses a threaded or receiverless message. The kind carries no
+privacy and stores like any regular note. NIP-A4 is a draft, so kind
+`24` stays off the NIP-11 list. Acceptance is
+`domain::public_message::tests::a_public_message_names_its_receivers_and_has_no_thread`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

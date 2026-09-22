@@ -44,6 +44,7 @@ mod peer_order;
 mod podcast;
 mod poll;
 mod profile_link;
+mod public_message;
 mod relay_list;
 mod remote_sign;
 mod replacement;
@@ -179,6 +180,9 @@ pub use podcast::{
 pub use poll::{Poll, PollOption, PollResponse, PollType, open_poll, open_poll_response, tally};
 pub use profile_link::{
     IdentityClaim, ProfileLinks, author_npub, expected_statement, open_profile_links, proof_url,
+};
+pub use public_message::{
+    MessageReceiver, PublicMessage, link_kind, open_public_message, targets_public_message,
 };
 pub use relay_list::{
     ListedRelay, RelayList, RelayMarker, open_relay_list, publish_relays, read_relays, write_relays,
