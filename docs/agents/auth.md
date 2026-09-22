@@ -120,6 +120,18 @@ refusal-code table lives in the
 [gateway service document](../decision-models/service/gateway.md) and the
 [catalog](api-catalog.json).
 
+Under a `billing` document, a decision call additionally names a
+subscribed workspace whose plan covers the door — checked before
+registry authorization and any quota or money reservation. An
+unsubscribed or expired workspace answers `402 no_subscription` /
+`subscription_expired`; a plan that does not list the door answers
+`403 plan_excludes_model`. The billing management routes themselves —
+`/v1/workspaces/{id}/billing/*` — are owner-only: the credential must
+resolve to an account owning the workspace. `GET /v1/plans` and the
+checkout-session read need no credential; `POST /v1/billing/webhook`
+authenticates by HMAC signature, not by bearer key. See
+[plans, checkout, and entitlements](../decision-models/service/billing.md).
+
 ## What needs no credential
 
 The discovery documents and the documentation corpus are public by
@@ -129,7 +141,10 @@ design: `GET /v1/docs` and its `search`, `examples`, and `{id}` routes,
 answer without `Authorization`. A credential on a discovery call is
 accepted and ignored. Public access to documents never grants access to
 inference — `POST /v1/systemone`, `/v1/classify`, and `/v1/jobs` always
-authenticate.
+authenticate. Under `billing`, the plan catalog (`GET /v1/plans`) and
+the checkout-session read (`GET /v1/billing/sessions/{id}`) are public
+too — the catalog is the published price list, and the session read is
+the browser's display-only return target.
 
 ## Rotation and revocation
 
@@ -163,6 +178,7 @@ view — exist only on the gateway.
 - [api-catalog.json](api-catalog.json) — the routes a key can reach.
 - [Caller guide](../decision-models/guides/caller.md) — the end-to-end caller contract.
 - [Monetary accounting](../decision-models/service/monetary-accounting.md) — workspace membership and the conditional balance route.
+- [Plans, checkout, and entitlements](../decision-models/service/billing.md) — the conditional billing surface.
 
 ---
 Version 1.2.0 · generated-by: hand-maintained · 2026-09-22

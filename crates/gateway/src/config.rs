@@ -164,6 +164,60 @@ pub struct Config {
     /// token is not a credential the service knows.
     #[serde(default)]
     pub accounts: Option<Accounts>,
+    /// Plans, checkout, subscriptions, and provider events — the
+    /// billing surface. Absent means the gateway mounts no billing
+    /// routes and no plan gates a door: workspaces call exactly as
+    /// `money` alone admits. Present requires `accounts` and `money` —
+    /// a subscription binds a workspace, and a grant needs the ledger
+    /// behind it.
+    #[serde(default)]
+    pub billing: Option<Billing>,
+}
+
+/// The billing surface's deployment options: the published plan
+/// catalog, the provider that attests payment, and the webhook
+/// envelope that carries its events.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Billing {
+    /// The versioned plan catalog — the price configuration checkout
+    /// sells and `GET /v1/plans` publishes.
+    pub plans: Vec<tenancy::billing::Plan>,
+    /// The provider id whose events the webhook accepts. `sandbox`
+    /// is the built-in provider — a journal of operator-emitted events
+    /// beside the registry, for integration and staging. Any other
+    /// value names a provider this build does not know and is refused.
+    #[serde(default = "default_provider")]
+    pub provider: String,
+    /// The environment variable holding the webhook HMAC secret — a
+    /// name, never the secret itself. Default `OPENAGENTS_BILLING_SECRET`.
+    #[serde(default = "default_webhook_secret_env")]
+    pub webhook_secret_env: String,
+    /// How long a pending checkout stands before it expires, in
+    /// seconds. Default one day — a payment link is not durable.
+    #[serde(default = "default_checkout_ttl")]
+    pub checkout_ttl_secs: u64,
+    /// The accepted clock skew on a webhook signature timestamp, in
+    /// seconds. Default five minutes — a signed event is fresh or it
+    /// is refused.
+    #[serde(default = "default_webhook_skew")]
+    pub webhook_skew_secs: u64,
+}
+
+fn default_provider() -> String {
+    "sandbox".to_string()
+}
+
+fn default_webhook_secret_env() -> String {
+    "OPENAGENTS_BILLING_SECRET".to_string()
+}
+
+fn default_checkout_ttl() -> u64 {
+    86_400
+}
+
+fn default_webhook_skew() -> u64 {
+    300
 }
 
 /// The account surface's deployment options: sessions, self-serve
@@ -423,6 +477,91 @@ impl Config {
                      be spent or can never run out is not a bound",
                     name.display()
                 ));
+            }
+        }
+        if let Some(billing) = &self.billing {
+            if self.accounts.is_none() || self.money.is_none() {
+                return Err(format!(
+                    "{}: `billing` requires `accounts` and `money` — a subscription \
+                     binds a workspace and its grants need the ledger behind them",
+                    name.display()
+                ));
+            }
+            if billing.provider != "sandbox" {
+                return Err(format!(
+                    "{}: billing provider `{}` is not one this build knows (`sandbox`)",
+                    name.display(),
+                    billing.provider
+                ));
+            }
+            if billing.plans.is_empty() {
+                return Err(format!(
+                    "{}: `billing` needs at least one plan — checkout cannot sell a \
+                     catalog it does not have",
+                    name.display()
+                ));
+            }
+            if billing.checkout_ttl_secs == 0 || billing.webhook_skew_secs == 0 {
+                return Err(format!(
+                    "{}: checkout_ttl_secs and webhook_skew_secs must be positive — \
+                     a bound of zero is not a bound",
+                    name.display()
+                ));
+            }
+            let mut ids = std::collections::BTreeSet::new();
+            for plan in &billing.plans {
+                if !ids.insert(plan.id.clone()) {
+                    return Err(format!(
+                        "{}: two plans share id `{}` — a subscription cannot tell \
+                         which offer it took",
+                        name.display(),
+                        plan.id
+                    ));
+                }
+                if plan.id.is_empty() || plan.version.is_empty() {
+                    return Err(format!(
+                        "{}: a plan needs an id and a version — the version is what \
+                         a subscription pins its terms to",
+                        name.display()
+                    ));
+                }
+                if plan.price.period_secs == 0 {
+                    return Err(format!(
+                        "{}: plan `{}` has a zero-second period — a period must be \
+                         a length of time, not an instant",
+                        name.display(),
+                        plan.id
+                    ));
+                }
+                if plan.price.currency.len() != 3
+                    || !plan
+                        .price
+                        .currency
+                        .bytes()
+                        .all(|byte| byte.is_ascii_uppercase())
+                {
+                    return Err(format!(
+                        "{}: plan `{}` currency `{}` must be a three-letter \
+                         uppercase code, such as `USD` — the ledger's own \
+                         currency contract",
+                        name.display(),
+                        plan.id,
+                        plan.price.currency
+                    ));
+                }
+                if let tenancy::billing::ModelAccess::Listed(doors) = &plan.models {
+                    for door in doors {
+                        if !self.doors.contains_key(door) {
+                            return Err(format!(
+                                "{}: plan `{}` names door `{door}`, which has no \
+                                 configured backend — the plan's model list names \
+                                 nothing the gateway can serve",
+                                name.display(),
+                                plan.id
+                            ));
+                        }
+                    }
+                }
             }
         }
         for (door, backend) in &self.doors {

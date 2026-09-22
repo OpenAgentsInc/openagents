@@ -1736,6 +1736,374 @@
      "keys_unavailable"
     ]
    }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/plans",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "The published plan catalog \u2014 versioned offers with price, period, allowance, seats, top-up policy, and door access. Unauthenticated: a buyer reads it before holding a credential.",
+   "request": {},
+   "responses": {
+    "200": {
+     "shape": {
+      "plans": "[{id, version, price: {amount, currency}, period_secs, allowance, signup_credit, credit_expiry_secs, seats, topups_allowed, models}]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "503": [
+     "billing_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/billing/sessions/{checkout}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "The browser's return target after a hosted checkout \u2014 answers the session's standing and moves nothing. Only a signed webhook event completes a checkout.",
+   "request": {},
+   "responses": {
+    "200": {
+     "shape": {
+      "checkout": "{id, workspace, intent, state, created, resolved}",
+      "notice": "this page grants nothing"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "404": [
+     "unknown_checkout"
+    ],
+    "503": [
+     "billing_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/billing/webhook",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "A signed provider event \u2014 checkout-completed, invoice-paid, invoice-failed, subscription-cancelled, charge-refunded, charge-disputed. Deduplicated on id; out-of-order events resolve against committed state.",
+   "request": {
+    "headers": [
+     "x-openagents-billing-signature: t=<unix>,v1=<hmac-hex> \u2014 HMAC-SHA256 over \"<t>.<raw body>\" under the deployment's secret"
+    ],
+    "body": "{provider, id, kind, ...references}"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "event": "provider:id",
+      "outcome": "applied | duplicate | pending | ...",
+      "effects": "[notes]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "malformed",
+     "unknown_provider"
+    ],
+    "401": [
+     "bad_signature"
+    ],
+    "503": [
+     "billing_unavailable",
+     "webhook_unconfigured"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/billing",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "The workspace's billing standing \u2014 subscription and state, pending plan, checkouts, invoices, balance. Owner-only.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must own the workspace"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "workspace": "id",
+      "subscription": "{id, plan, plan_version, state, period, pending_plan, ...}?",
+      "invoices": "[{id, period, amount, currency, state}]",
+      "checkouts": "[{id, intent, state, plan, expires}]",
+      "grants": "[{source, kind, amount, audit, at}]",
+      "balance": "{credited, reserved, settled, refunded, available, ...}?",
+      "portal": "absolute URL of this view"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "not_member"
+    ],
+    "503": [
+     "billing_unavailable",
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/billing/subscribe",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "Activate a zero-price plan immediately \u2014 grants the period allowance and the once-per-workspace sign-up credit, applies plan seats.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must own the workspace"
+    ],
+    "body": "{plan}"
+   },
+   "responses": {
+    "201": {
+     "shape": {
+      "subscription": "{id, plan, plan_version, state, period, ...}",
+      "effects": "[notes]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "not_member"
+    ],
+    "404": [
+     "unknown_plan"
+    ],
+    "409": [
+     "checkout_required",
+     "already_subscribed",
+     "seats_below_members"
+    ],
+    "503": [
+     "billing_unavailable",
+     "ledger_unavailable",
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/billing/checkout",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "Open a checkout \u2014 {plan} for a paid plan or {top_up:{amount}} on an active subscription. Answers the session id and provider reference; completion waits on the signed provider event.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must own the workspace"
+    ],
+    "body": "{plan} or {top_up: {amount, currency?}}"
+   },
+   "responses": {
+    "201": {
+     "shape": {
+      "checkout": "{id, intent, state, plan, provider_ref, expires}",
+      "url": "the browser return URL \u2014 display-only",
+      "notice": "the session completes only through a verified provider event"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "malformed",
+     "currency_mismatch"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "402": [
+     "no_subscription",
+     "subscription_expired"
+    ],
+    "403": [
+     "forbidden",
+     "not_member",
+     "topups_closed"
+    ],
+    "404": [
+     "unknown_plan"
+    ],
+    "409": [
+     "free_plan",
+     "checkout_pending",
+     "already_subscribed",
+     "seats_below_members"
+    ],
+    "503": [
+     "billing_unavailable",
+     "unknown_plan"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/billing/portal",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "The billing portal URL \u2014 the owner-facing view of the workspace's billing surface.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must own the workspace"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "url": "absolute URL of the workspace billing view"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "not_member"
+    ],
+    "503": [
+     "billing_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/billing/plan",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "Schedule a plan change at the next paid renewal \u2014 the downgrade path. Refuses when the plan's seats fall below active membership.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must own the workspace"
+    ],
+    "body": "{plan}"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "subscription": "{..., pending_plan}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "402": [
+     "no_subscription",
+     "subscription_expired"
+    ],
+    "403": [
+     "forbidden",
+     "not_member"
+    ],
+    "404": [
+     "unknown_plan"
+    ],
+    "409": [
+     "seats_below_members",
+     "subscription_closed"
+    ],
+    "503": [
+     "billing_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/billing/cancel",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "Cancel at period end \u2014 the paid entitlement and allowance run to the period's end, then the subscription expires.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must own the workspace"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "subscription": "{..., state: cancelled}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "402": [
+     "no_subscription",
+     "subscription_expired"
+    ],
+    "403": [
+     "forbidden",
+     "not_member"
+    ],
+    "409": [
+     "subscription_closed"
+    ],
+    "503": [
+     "billing_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/billing/reconcile",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the billing block in gateway.json, which itself requires accounts and money. Under a configuration without billing the route does not exist at all.",
+   "summary": "The owner-driven recovery sweep \u2014 delivers journaled provider events never received, replays unapplied events, re-issues grants and clawbacks idempotently, expires stale grant credit.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must own the workspace"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "delivered": "[event ids]",
+      "replayed": "[event ids]",
+      "expired": "[grant sources]",
+      "effects": "[notes]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "not_member"
+    ],
+    "503": [
+     "billing_unavailable",
+     "ledger_unavailable",
+     "accounts_unavailable"
+    ]
+   }
   }
  ],
  "refusal_codes": {
@@ -2167,6 +2535,101 @@
   "signup_unavailable": {
    "status": 503,
    "meaning": "sign-up could not complete \u2014 the account, workspace, key, or session could not be provisioned",
+   "retryable": true
+  },
+  "already_subscribed": {
+   "status": 409,
+   "meaning": "the workspace already holds a subscription",
+   "retryable": false
+  },
+  "bad_signature": {
+   "status": 401,
+   "meaning": "a webhook's signature is missing, malformed, tampered, or stale",
+   "retryable": false
+  },
+  "billing_unavailable": {
+   "status": 503,
+   "meaning": "the billing store cannot open or cannot write",
+   "retryable": true
+  },
+  "checkout_pending": {
+   "status": 409,
+   "meaning": "a checkout for the workspace is already open",
+   "retryable": false
+  },
+  "checkout_required": {
+   "status": 409,
+   "meaning": "a paid plan moves through checkout, not direct subscribe",
+   "retryable": false
+  },
+  "currency_mismatch": {
+   "status": 400,
+   "meaning": "a checkout's currency disagrees with the plan's",
+   "retryable": false
+  },
+  "duplicate_event": {
+   "status": 409,
+   "meaning": "an event id arrived with a different body",
+   "retryable": false
+  },
+  "free_plan": {
+   "status": 409,
+   "meaning": "a free plan subscribes directly, not through checkout",
+   "retryable": false
+  },
+  "no_subscription": {
+   "status": 402,
+   "meaning": "the route or the named door needs an active subscription",
+   "retryable": false
+  },
+  "plan_excludes_model": {
+   "status": 403,
+   "meaning": "the workspace's plan does not cover the named door",
+   "retryable": false
+  },
+  "subscription_closed": {
+   "status": 409,
+   "meaning": "the subscription can no longer take the action",
+   "retryable": false
+  },
+  "subscription_expired": {
+   "status": 402,
+   "meaning": "the subscription's paid period has ended",
+   "retryable": false
+  },
+  "topups_closed": {
+   "status": 403,
+   "meaning": "the plan does not sell top-ups",
+   "retryable": false
+  },
+  "unknown_checkout": {
+   "status": 404,
+   "meaning": "no checkout by that id",
+   "retryable": false
+  },
+  "unknown_event": {
+   "status": 409,
+   "meaning": "an event names a billing record the store does not hold",
+   "retryable": false
+  },
+  "unknown_grant": {
+   "status": 409,
+   "meaning": "a clawback names a grant the store does not hold",
+   "retryable": false
+  },
+  "unknown_plan": {
+   "status": 404,
+   "meaning": "no configured plan by that id",
+   "retryable": false
+  },
+  "unknown_provider": {
+   "status": 400,
+   "meaning": "a webhook event names a provider the deployment does not run",
+   "retryable": false
+  },
+  "webhook_unconfigured": {
+   "status": 503,
+   "meaning": "the webhook secret's environment variable is unset",
    "retryable": true
   }
  },

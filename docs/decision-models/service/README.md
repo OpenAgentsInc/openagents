@@ -7,6 +7,8 @@ Admission, execution, review, membership, and accounting contracts.
 | Document | Topic |
 | --- | --- |
 | [batch-execution](batch-execution.md) | Bounded batch execution for classify |
+| [billing](billing.md) | Plans, checkout, subscriptions, and entitlements |
+| [billing-terms](billing-terms.md) | Purchase terms for billed plans |
 | [candidate-admission](candidate-admission.md) | Candidate admission |
 | [decision-advertise](decision-advertise.md) | Service discovery manifests |
 | [decision-worker](decision-worker.md) | The NIP-CJ relay decision worker |

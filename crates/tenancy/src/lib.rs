@@ -61,6 +61,7 @@
 pub mod accounts;
 pub mod admission;
 pub mod backend;
+pub mod billing;
 pub mod keys;
 mod manifest;
 pub mod money;

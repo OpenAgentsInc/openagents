@@ -99,7 +99,7 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
 }
 
 /// Who a management call runs as.
-enum Principal {
+pub(crate) enum Principal {
     /// An account reached by session token or by `oak_` key — the
     /// credential kind is the audit detail, not a different authority.
     Account {
@@ -114,7 +114,7 @@ enum Principal {
 
 impl Principal {
     /// The account id, when the principal holds one.
-    fn account(&self) -> Option<&str> {
+    pub(crate) fn account(&self) -> Option<&str> {
         match self {
             Self::Account { account, .. } => Some(account),
             Self::Anonymous { .. } => None,
@@ -122,7 +122,7 @@ impl Principal {
     }
 
     /// The actor name the access log records.
-    fn actor(&self) -> &str {
+    pub(crate) fn actor(&self) -> &str {
         match self {
             Self::Account { account, .. } => account,
             Self::Anonymous { .. } => "anonymous",
@@ -130,7 +130,7 @@ impl Principal {
     }
 
     /// The session id the call ran under, for the access log.
-    fn session(&self) -> Option<&str> {
+    pub(crate) fn session(&self) -> Option<&str> {
         match self {
             Self::Account { session, .. } => session.as_deref(),
             Self::Anonymous { session } => Some(session),
@@ -140,7 +140,11 @@ impl Principal {
 
 /// The response the account surface's refusals take: the shared error
 /// envelope with a stable code.
-fn refused(status: StatusCode, code: &'static str, message: impl Into<String>) -> Response {
+pub(crate) fn refused(
+    status: StatusCode,
+    code: &'static str,
+    message: impl Into<String>,
+) -> Response {
     (
         status,
         Json(json!({"error": {"code": code, "message": message.into()}})),
@@ -189,7 +193,7 @@ fn bearer(headers: &HeaderMap) -> Result<String, Response> {
 
 /// Open the accounts store — the membership read every management call
 /// makes.
-fn accounts_store(state: &ServeState) -> Result<Accounts, Response> {
+pub(crate) fn accounts_store(state: &ServeState) -> Result<Accounts, Response> {
     Accounts::open(&state.dir).map_err(|trouble| {
         unavailable(
             "accounts_unavailable",
@@ -228,7 +232,7 @@ fn registry(state: &ServeState) -> Result<Registry, Response> {
 /// the `key:<id>` principal to its account — a key bound to no account
 /// is a valid credential with no account surface, which is a distinct
 /// answer from a bad one.
-fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Principal, Response> {
+pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Principal, Response> {
     let token = bearer(headers)?;
     if token.starts_with("sess_") {
         let sessions = sessions_store(state)?;
@@ -301,7 +305,7 @@ fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Principal, Respo
 }
 
 /// The account the call runs as — an anonymous principal has none.
-fn member_account(principal: &Principal) -> Result<&str, Response> {
+pub(crate) fn member_account(principal: &Principal) -> Result<&str, Response> {
     principal.account().ok_or_else(|| {
         refused(
             StatusCode::FORBIDDEN,
@@ -314,7 +318,11 @@ fn member_account(principal: &Principal) -> Result<&str, Response> {
 
 /// Authorize the account's membership in `workspace`, mapping the
 /// store's refusals onto the shared envelope.
-fn member(state: &ServeState, account: &str, workspace: &str) -> Result<MemberRef, Response> {
+pub(crate) fn member(
+    state: &ServeState,
+    account: &str,
+    workspace: &str,
+) -> Result<MemberRef, Response> {
     accounts_store(state)?
         .authorize(workspace, account)
         .map_err(accounts_refusal)
@@ -396,7 +404,7 @@ fn keys_refusal(trouble: keys::KeyTrouble) -> Response {
 /// land must not strand the operation it describes, and the refusal it
 /// would return says the store is down, which the operation's own
 /// answer will have said already.
-fn record(
+pub(crate) fn record(
     state: &ServeState,
     principal: &Principal,
     action: &str,
@@ -417,7 +425,7 @@ fn record(
 }
 
 /// The current time as Unix seconds.
-fn unix_now() -> u64 {
+pub(crate) fn unix_now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|span| span.as_secs())
@@ -425,7 +433,7 @@ fn unix_now() -> u64 {
 }
 
 /// A required string field of a JSON body.
-fn field<'a>(body: &'a Value, name: &str) -> Result<&'a str, Response> {
+pub(crate) fn field<'a>(body: &'a Value, name: &str) -> Result<&'a str, Response> {
     body.get(name)
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())

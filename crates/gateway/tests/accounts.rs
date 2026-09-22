@@ -98,6 +98,7 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
         job_retention_ms: 604_800_000,
         job_cursor_ttl_ms: 3_600_000,
         public_origin: None,
+        billing: None,
     })
     .unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1382,6 +1383,7 @@ async fn stores_install_under_accounts_config_and_validate() {
         job_retention_ms: 604_800_000,
         job_cursor_ttl_ms: 3_600_000,
         public_origin: None,
+        billing: None,
     };
     assert!(config.check(&path).is_err());
     config

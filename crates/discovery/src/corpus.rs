@@ -85,6 +85,18 @@ static DOCUMENTS: &[Document] = &[
         false
     ),
     document!(
+        "billing",
+        "Plans, checkout, and entitlements",
+        "decision-models/service/billing.md",
+        false
+    ),
+    document!(
+        "billing-terms",
+        "Purchase terms for billed plans",
+        "decision-models/service/billing-terms.md",
+        false
+    ),
+    document!(
         "mcp-documentation",
         "MCP documentation tools",
         "decision-models/guides/mcp-documentation.md",

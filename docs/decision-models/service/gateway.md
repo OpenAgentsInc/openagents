@@ -149,6 +149,26 @@ configuration:
 [workspace-membership](workspace-membership.md) has the full route
 table, the role matrix, and the revocation semantics.
 
+Under the `billing` document — which requires `accounts` and `money`,
+because a subscription binds a workspace and its grants ride the money
+ledger — the gateway mounts the billing family:
+
+- `GET /v1/plans` — the published plan catalog, unauthenticated.
+- `GET /v1/billing/sessions/{checkout}` — the browser's display-only
+  return target; moves nothing.
+- `POST /v1/billing/webhook` — the signed provider-event intake;
+  HMAC-verified, deduplicated, safe under out-of-order delivery.
+- `GET` and `POST /v1/workspaces/{id}/billing*` — the owner-only
+  management family: standing, subscribe, checkout, portal, plan
+  change, cancel, reconcile.
+
+Under billing, `POST /v1/systemone` also requires a subscribed
+workspace whose plan covers the named door — `402` without a live
+subscription, `403` for a door outside the plan — before registry
+authorization and any quota or money reservation.
+[billing](billing.md) is the contract; [billing-terms](billing-terms.md)
+publishes the purchase terms.
+
 The gateway also serves a public discovery surface — unauthenticated
 `GET` routes that describe the deployment: the document set
 (`llms.txt`, `agents.md`, `auth.md`, `skills.md`, `api-catalog.json`,

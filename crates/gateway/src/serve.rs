@@ -196,6 +196,11 @@ impl ServeState {
                 .map_err(Trouble::Accounts)?;
             }
         }
+        // Billing keeps its own store beside the registry — an empty
+        // genesis on first open, never a guessed subscription.
+        if config.billing.is_some() && tenancy::billing::Billing::open(&config.registry).is_err() {
+            tenancy::billing::Billing::install(&config.registry).map_err(Trouble::Accounts)?;
+        }
         // Durable jobs reconcile before the first request: interrupted
         // runs end honestly, orphaned submissions are removed, and
         // queued work waits for `router` to re-spawn it inside the
@@ -236,6 +241,17 @@ impl ServeState {
     /// Mint an attempt id within this process.
     pub(crate) fn mint(&self) -> u64 {
         self.attempt_ids.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// The workspace spending ledger's guard — billing effects and the
+    /// balance read take it. Present only under monetary admission.
+    pub(crate) async fn money_lock(
+        &self,
+    ) -> Option<tokio::sync::MutexGuard<'_, tenancy::money::Ledger>> {
+        match &self.money {
+            Some(ledger) => Some(ledger.lock().await),
+            None => None,
+        }
     }
 }
 
@@ -279,6 +295,9 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     }
     if state.config.accounts.is_some() {
         routes.extend(crate::accounts::routes());
+    }
+    if state.config.billing.is_some() {
+        routes.extend(crate::billing::routes());
     }
     routes
 }
@@ -1057,6 +1076,21 @@ fn authorized(
             message: format!(
                 "the credential's declared scope does not name door `{door}` for inference"
             ),
+            outcome: Outcome::Refused,
+            ctx: ctx.clone(),
+        });
+    }
+    // Billing admission runs before the binding resolves: under a
+    // billing config a call names a subscribed workspace whose plan
+    // covers the door — an unsubscribed or out-of-plan call refuses
+    // before it can spend quota.
+    if let Err((status, code, message)) =
+        crate::billing::entitled(state, caller.workspace.as_deref(), door)
+    {
+        return Err(Verdict::Refused {
+            status,
+            code,
+            message,
             outcome: Outcome::Refused,
             ctx: ctx.clone(),
         });

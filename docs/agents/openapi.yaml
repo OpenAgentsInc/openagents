@@ -1352,6 +1352,309 @@ paths:
         '503':
           $ref: '#/components/responses/TypedError'
 
+  /v1/plans:
+    get:
+      summary: List the published plan catalog
+      description: Every configured plan — id, version, price in millionths of a named currency, period,
+        per-period allowance, once-per-workspace sign-up credit, credit-expiry bound, covered seats,
+        top-up policy, and entitled doors. Unauthenticated — a buyer reads it before holding a
+        credential.
+      x-conditional: This route exists only when the deployment configures the `billing` document in
+        `gateway.json`, which itself requires `accounts` and `money`. Without it the route is not
+        registered at all.
+      responses:
+        '200':
+          description: The configured plans.
+          content:
+            application/json:
+              schema:
+                type: object
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/billing/sessions/{checkout}:
+    get:
+      summary: Read a checkout session's standing
+      description: The browser's return target after a hosted payment page — answers the session's state
+        and moves nothing. Only a signed webhook event completes a checkout or moves money.
+      x-conditional: Requires the `billing` document; absent it the route is not registered.
+      parameters:
+      - name: checkout
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The checkout's standing.
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/billing/webhook:
+    post:
+      summary: Deliver a signed provider event
+      description: One provider event — `checkout-completed`, `invoice-paid`, `invoice-failed`,
+        `subscription-cancelled`, `charge-refunded`, or `charge-disputed` — verified by
+        `x-openagents-billing-signature` (`t=<unix>,v1=<hmac-hex>`, HMAC-SHA256 over `"<t>.<raw body>"`
+        under the deployment's secret). Events deduplicate on id and resolve against committed state
+        rather than arrival order.
+      x-conditional: Requires the `billing` document; absent it the route is not registered.
+      parameters:
+      - name: x-openagents-billing-signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: The event's outcome — applied, duplicate, or held pending.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/billing:
+    get:
+      summary: Read the workspace's billing standing
+      description: Subscription and state, pending plan change, checkouts, invoices, and the ledger
+        balance. Owner-only — `Permission::ManageBilling` sits on the owner role.
+      x-conditional: Requires the `billing` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The billing standing.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/billing/subscribe:
+    post:
+      summary: Activate a zero-price plan
+      description: Grants the period allowance and the once-per-workspace sign-up credit, applies plan
+        seats. A paid plan refuses `checkout_required` — it moves through checkout.
+      x-conditional: Requires the `billing` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: The activated subscription.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/billing/checkout:
+    post:
+      summary: Open a checkout session
+      description: "`{plan}` for a paid plan, or `{top_up: {amount}}` on an active subscription. Answers
+        the session id and provider reference — completion waits on the signed provider event, never
+        on the browser return. A free plan refuses `free_plan`."
+      x-conditional: Requires the `billing` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: The opened checkout.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '402':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/billing/portal:
+    post:
+      summary: Read the billing portal URL
+      description: The owner-facing billing view's URL.
+      x-conditional: Requires the `billing` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The portal URL.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/billing/plan:
+    post:
+      summary: Schedule a plan change at renewal
+      description: The downgrade path — the change lands when the next paid period begins. An immediate
+        upgrade travels through checkout. Refuses `seats_below_members` when the plan's seats fall
+        below active membership.
+      x-conditional: Requires the `billing` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: The subscription with its pending plan.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '402':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/billing/cancel:
+    post:
+      summary: Cancel the subscription at period end
+      description: The paid period's entitlement and allowance run to their end; the subscription
+        expires when the period does.
+      x-conditional: Requires the `billing` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The cancelled subscription.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '402':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/billing/reconcile:
+    post:
+      summary: Run the billing recovery sweep
+      description: Delivers journaled provider events that never arrived, replays received-but-unapplied
+        events, re-issues recorded grants and journaled clawbacks — each idempotent on its source —
+        and expires stale grant credit. Safe to run repeatedly.
+      x-conditional: Requires the `billing` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: What the sweep moved — delivered, replayed, expired, effects.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
 components:
   securitySchemes:
     bearer:

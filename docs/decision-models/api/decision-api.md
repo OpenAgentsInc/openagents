@@ -536,6 +536,44 @@ to stable workspace/billing identity. Purchase terms, support/refund
 procedures, and actual price configuration must exist before checkout is
 enabled. Owner: [#9492](https://github.com/OpenAgentsInc/openagents/issues/9492).
 
+The billing surface is landed in `tenancy::billing` mounted through
+`gateway`'s `billing` config block — which requires `accounts` and
+`money`, because a subscription binds a workspace and its grants ride
+the money ledger. `GET /v1/plans` publishes the configured catalog:
+versioned free and paid plans carrying a price in millionths of a
+named currency, a period, a per-period allowance, a once-per-workspace
+sign-up credit, an optional credit-expiry bound, covered seats,
+top-up policy, and a door list (`"all"` or an explicit set). An owner
+— `ManageBilling` is owner-only — drives a workspace through
+`/v1/workspaces/{id}/billing/*`: direct subscribe for a free plan,
+checkout for a paid one, a scheduled plan change at the next renewal
+(seats may not shrink below active membership), cancel-at-period-end,
+top-ups, the portal link, and reconciliation. `GET
+/v1/billing/sessions/{id}` is the browser's display-only return target
+— it moves nothing; only a signed `POST /v1/billing/webhook` event
+completes a checkout, pays or fails an invoice, or claws credit back.
+Signatures are HMAC-SHA256 over `"<t>.<body>"` with the timestamp
+inside the MAC and a configured skew bound, so a replayed signature is
+stale by construction. Events deduplicate on id and resolve
+out-of-order delivery against committed state rather than arrival
+order — an event that lands before the state it amends is journaled
+unapplied and replayed by reconciliation once the earlier state
+commits. Every
+grant and clawback posts to the money ledger under a stable
+`billing:*` source with its audit string journaled first, so a crash
+between the ledger append and the billing seal replays the identical
+mutation — a clawback debits the lesser of its amount and the
+available balance, never credit already committed to work. Under a
+billing config, `POST /v1/systemone` requires a subscribed workspace
+whose plan covers the named door, checked before registry
+authorization and any quota or money reservation. The provider today
+is `sandbox` — an operator-driven event journal emitted by the
+`billing-sandbox` binary, exercising checkout, renewal, seat changes,
+duplicate and out-of-order events, payment failure and recovery,
+cancellation, refund, and dispute end to end. See
+[plans, checkout, and entitlements](../service/billing.md) and the
+published [purchase terms](../service/billing-terms.md).
+
 ## Usage APIs and dashboard
 
 Provide authenticated APIs for exact balances and outstanding reservations,

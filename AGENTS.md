@@ -87,7 +87,14 @@ uses, and marks which are implemented and which are only specified.
   workspaces, the owner/admin/member matrix, single-use invitations and
   recovery tokens — and `tenancy::sessions` the persisted session
   store: `sess_<hex>` tokens, the funded anonymous lane's budgets, and
-  a bounded access history, all digests and references.
+  a bounded access history, all digests and references. `tenancy::billing`
+  is the billing book: operator-declared versioned plans, subscriptions
+  that pin the plan version they bought, checkout sessions, invoices,
+  and a deduplicated provider-event journal whose effects post to the
+  money ledger under stable `billing:*` sources — a crash between the
+  ledger append and the billing seal replays the identical mutation,
+  and a refund or dispute clawback debits the lesser of its amount and
+  the available balance.
 - `crates/receipts` — versioned receipts a decision call leaves behind.
   `receipts::execution` is the shared HTTP/relay shape: request and attempt
   identity, tenant and registry references, requested and served artifact
@@ -103,9 +110,13 @@ uses, and marks which are implemented and which are only specified.
   receipt in `receipts.jsonl`. `GET /v1/models` is the caller's view of
   its own doors; `GET /healthz` is process liveness only. The
   `gateway` binary reads one `gateway.json` — listen address, registry
-  directory, each door's backend endpoint, and the optional `accounts`
+  directory, each door's backend endpoint, the optional `accounts`
   document that mounts the self-serve account, session, workspace, and
-  key-management surface. Read
+  key-management surface, and the optional `billing` document that
+  mounts plans, checkout, signed provider webhooks, and owner-only
+  subscription management over `tenancy::billing` — under which a
+  decision call names a subscribed workspace whose plan covers the
+  door. Read
   `docs/decision-models/service/gateway.md` before changing a refusal code, a
   bound, or the reservation lifecycle.
 - `crates/discovery` — the public discovery surface every origin shares:
