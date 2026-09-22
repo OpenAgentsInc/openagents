@@ -1579,7 +1579,7 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
             Tag::new(vec!["p".into(), pubkey(32)]),
             Tag::new(vec!["expiration".into(), now().to_string()]),
         ],
-        "expired encrypted gift wrap",
+        &fake_nip44_v2(),
     );
     send_json(&mut publisher, json!(["EVENT", expired_wrap]));
     let refusal = read_json(&mut publisher);
@@ -1640,7 +1640,7 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
         now(),
         1_059,
         vec![Tag::new(vec!["p".into(), pubkey(30)])],
-        "encrypted gift wrap",
+        &fake_nip44_v2(),
     );
     let mut forged_wrap = wrap.clone();
     forged_wrap.content.push('!');
@@ -1658,7 +1658,7 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
         now(),
         1_059,
         vec![Tag::new(vec!["p".into(), pubkey(21)])],
-        "encrypted gift wrap",
+        &fake_nip44_v2(),
     );
     assert_ne!(recovery_wrap.id, wrap.id);
     assert_eq!(recovery_wrap.content, wrap.content);
@@ -1721,7 +1721,7 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
         now(),
         1_059,
         vec![Tag::new(vec!["p".into(), pubkey(30)])],
-        "second encrypted gift wrap",
+        &fake_nip44_v2(),
     );
     send_json(&mut publisher, json!(["EVENT", second_wrap]));
     let refusal = read_json(&mut publisher);
@@ -1854,12 +1854,15 @@ fn search_and_count_contract(address_one: SocketAddr, address_two: SocketAddr) {
     // Each corpus wraps to its own recipient, within the per-recipient
     // gift-wrap rate; the live wrap is addressed to the reader itself.
     let corpus_event = |secret_byte: u8, recipient: u8, kind: u16, content: &str| {
-        let tags = if kind == 1_059 {
-            vec![Tag::new(vec!["p".into(), pubkey(recipient)])]
+        let (tags, content) = if kind == 1_059 {
+            (
+                vec![Tag::new(vec!["p".into(), pubkey(recipient)])],
+                fake_nip44_v2(),
+            )
         } else {
-            Vec::new()
+            (Vec::new(), content.to_owned())
         };
-        signed_event(secret_byte, now(), kind, tags, content)
+        signed_event(secret_byte, now(), kind, tags, &content)
     };
     let mut before = Vec::new();
     for (kind, content) in corpus {

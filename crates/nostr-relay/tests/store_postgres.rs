@@ -55,7 +55,11 @@ async fn m2_store_contract_against_postgres() {
         100,
         1,
         vec![
-            Tag::new(vec!["e".into(), "indexed-value".into(), "ignored".into()]),
+            Tag::new(vec![
+                "e".into(),
+                "ab".repeat(32),
+                "wss://relay.example".into(),
+            ]),
             Tag::new(vec!["alt".into(), "not-indexed".into()]),
         ],
         "hello searchable world",
@@ -86,7 +90,7 @@ async fn m2_store_contract_against_postgres() {
     );
 
     let tag_filter = Filter {
-        tags: BTreeMap::from([("e".to_owned(), vec!["indexed-value".to_owned()])]),
+        tags: BTreeMap::from([("e".to_owned(), vec!["ab".repeat(32)])]),
         ..Filter::default()
     };
     assert_eq!(
@@ -572,7 +576,7 @@ async fn policy_and_fts(database_url: &str, store: &mut Store) {
         10,
         906,
         1,
-        vec![Tag::new(vec!["e".into(), "tag-limit".into()])],
+        vec![Tag::new(vec!["e".into(), "ab".repeat(32)])],
         "tag bound",
     );
     let statement = admin

@@ -51,8 +51,12 @@ OpenAgents-lane fixtures are not part of this repository.
   private-data ACLs, validators, relay commands and snapshots, channel-window
   degradation on WebSocket `REQ`, race-free standard relay semantics, the
   client-side NIP-GS git signature, and NIP-PL's refusal when no executor is
-  configured. Configured `POST /query` and push delivery are covered by the
-  Rust checks in `docs/protocol/block-nip-ledger.md`.
+  configured. Configured `POST /query` and push delivery are covered live by
+  `crates/nostr-relay/tests/block_lane_postgres.rs`; the in-process checks
+  are described in `docs/protocol/block-nip-ledger.md`.
+- `nip17/routing.json` carries a `nip44_payload` envelope so gift-wrap cases
+  assert their stated tag condition rather than an incidental content
+  failure; `nip44: false` marks the without-ciphertext refusal case.
 - `migration/relay-shadow-v1.json` and `migration/signed-event-import-v1.json`
   pin the shadow-relay comparison workload and the signed JSONL import lane.
 

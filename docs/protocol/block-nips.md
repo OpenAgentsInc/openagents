@@ -96,3 +96,35 @@ and `nip-er`; relay signing additionally enables `nip-dv` and `nip-ia`, while a
 configured management pubkey enables `nip-wp`. Every protocol surface has a
 committed fixture; the live Postgres gateway contract covers admission,
 privacy, derived state, and cross-process visibility.
+
+## Evidence
+
+Every pinned specification has a committed fixture under `tests/fixtures/`
+consumed by the `agent_fixtures`, `block_fixtures`, `domain_fixtures`, and
+`expanded_fixtures` suites in `crates/nostr-relay/tests/`. The live Postgres
+contracts are `gateway_postgres` and `block_lane_postgres`, both run by
+`scripts/test-postgres.sh`.
+
+| Specification | Fixtures | Live proof |
+| --- | --- | --- |
+| NIP-OA | `tests/fixtures/nipoa/` | `gateway_postgres` owner-attestation admission |
+| NIP-AA | `tests/fixtures/nipaa/` | `gateway_postgres` virtual membership |
+| NIP-AO | `tests/fixtures/nipao/` | `gateway_postgres` ephemeral routing |
+| NIP-AM | `tests/fixtures/nipam/` | `gateway_postgres` owner-scoped reads |
+| NIP-AE | `tests/fixtures/nipae/` | `gateway_postgres` owner/agent reads |
+| NIP-AP | `tests/fixtures/nipap/` | `gateway_postgres` shared-head ACL |
+| NIP-ER | `tests/fixtures/niper/` | `gateway_postgres` lazy due delivery |
+| NIP-MP | `tests/fixtures/nipmp/` | `gateway_postgres` addressable storage |
+| NIP-IA | `tests/fixtures/nipia/` | `gateway_postgres` archive transaction |
+| NIP-DV | `tests/fixtures/nipdv/` | `gateway_postgres` hidden-set snapshot |
+| NIP-WP | `tests/fixtures/nipwp/` | `gateway_postgres` workspace icon |
+| NIP-CW | `tests/fixtures/nipcw/` | `block_lane_postgres` `POST /query` window |
+| NIP-RS | `tests/fixtures/niprs/` | `gateway_postgres` EOSE barrier |
+| NIP-GS | `tests/fixtures/nipgs/` | `nostr::git_sign` unit tests |
+| NIP-PL | `tests/fixtures/nippl/` | `block_lane_postgres` configured executor |
+
+`block_lane_postgres` is the end-to-end proof the earlier in-process ledger
+lacked: a real `POST /query` answers NIP-CW windows with relay-signed bounds,
+summaries, the aux closure, and composite-cursor paging, and a configured
+push executor accepts a NIP-44-encrypted lease and posts only the fixed
+reconnect constant to a stub gateway.

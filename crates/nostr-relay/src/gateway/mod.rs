@@ -14,6 +14,6 @@ mod socket;
 mod subscription;
 mod wire;
 
-pub use config::{GatewayConfig, GatewayLimits, MediaConfig, RelayIdentity};
+pub use config::{GatewayConfig, GatewayLimits, MediaConfig, PushExecutor, RelayIdentity};
 pub use error::GatewayError;
 pub use server::{GIFT_WRAP_RECIPIENT_RATE_EXCEEDED, Gateway, ShutdownHandle};
