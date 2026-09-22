@@ -79,12 +79,9 @@ impl Door {
     /// decisions directory must create.
     pub fn live(url: &str, model: &str, dir: impl AsRef<Path>) -> Result<Self> {
         std::fs::create_dir_all(dir.as_ref())?;
-        let client = jev::BlockingClient::new(
-            jev::Config::new()
-                .base_url(url)
-                .default_model(model),
-        )
-        .map_err(|error| Error::decision(format!("client: {error}")))?;
+        let client =
+            jev::BlockingClient::new(jev::Config::new().base_url(url).default_model(model))
+                .map_err(|error| Error::decision(format!("client: {error}")))?;
         Ok(Door {
             client,
             model: model.to_string(),

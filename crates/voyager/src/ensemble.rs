@@ -23,8 +23,9 @@
 //! not a dig — and replays collide with the dedupe key.
 
 use std::sync::{
-    Arc, Mutex, mpsc,
+    Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
+    mpsc,
 };
 use std::time::{Duration, Instant};
 
@@ -148,11 +149,7 @@ struct Leg<'s, 'w> {
 ///
 /// Returns the first fault the episode hits; the run directory, ledger,
 /// and trace are complete up to that point.
-pub fn run_ensemble(
-    world: &World,
-    plan: &Plan,
-    progress: impl Fn(&str) + Sync,
-) -> Result<Report> {
+pub fn run_ensemble(world: &World, plan: &Plan, progress: impl Fn(&str) + Sync) -> Result<Report> {
     if world.agents.is_empty() {
         return Err(Error::episode(format!(
             "world {} enrolls no agents; run it as a solo episode",
@@ -369,26 +366,23 @@ impl Ensemble<'_> {
                 let server = Arc::clone(&self.shared.server);
                 let kitted = Arc::clone(&self.shared.kitted);
                 let admins = self.shared.world.admins.clone();
-                self.agents[index]
-                    .bridge
-                    .set_event_hook(move |event| {
-                        if event.event != "chat" {
-                            return;
-                        }
-                        let text = event.text("text").unwrap_or_default();
-                        let Some(name) = text.strip_suffix(" joined the game") else {
-                            return;
-                        };
-                        // `force-gamemode` pins joiners to the world's
-                        // default — a listed admin lands in creative
-                        // instead, and `op` covers every command.
-                        if admins.iter().any(|admin| admin == name) {
-                            let mut server =
-                                server.lock().expect("the server lock is not poisoned");
-                            let _ = server.command(&format!("gamemode creative {name}"));
-                        }
-                        let _ = Shared::kit(&server, &kitted, name);
-                    });
+                self.agents[index].bridge.set_event_hook(move |event| {
+                    if event.event != "chat" {
+                        return;
+                    }
+                    let text = event.text("text").unwrap_or_default();
+                    let Some(name) = text.strip_suffix(" joined the game") else {
+                        return;
+                    };
+                    // `force-gamemode` pins joiners to the world's
+                    // default — a listed admin lands in creative
+                    // instead, and `op` covers every command.
+                    if admins.iter().any(|admin| admin == name) {
+                        let mut server = server.lock().expect("the server lock is not poisoned");
+                        let _ = server.command(&format!("gamemode creative {name}"));
+                    }
+                    let _ = Shared::kit(&server, &kitted, name);
+                });
             }
             self.call(
                 index,
@@ -430,8 +424,11 @@ impl Ensemble<'_> {
                 .take();
             if door.is_some() {
                 let (tx, rx) = mpsc::channel::<Ask>();
-                *self.shared.asks.lock().expect("the ask queue lock is not poisoned") =
-                    Some(tx);
+                *self
+                    .shared
+                    .asks
+                    .lock()
+                    .expect("the ask queue lock is not poisoned") = Some(tx);
                 let answers = Arc::clone(&self.shared.answers);
                 let pending = Arc::clone(&self.shared.pending);
                 std::thread::spawn(move || {
@@ -461,25 +458,24 @@ impl Ensemble<'_> {
         // work stretches and enemy scans.
         let shared = &self.shared;
         let agents = std::mem::take(&mut self.agents);
-        let results: Vec<(usize, AgentHandle<'_>, Result<()>)> =
-            std::thread::scope(|scope| {
-                let mut handles = Vec::new();
-                for (index, agent) in agents.into_iter().enumerate() {
-                    handles.push(scope.spawn(move || {
-                        let mut leg = Leg { shared, agent };
-                        let result = leg.run();
-                        (index, leg.agent, result)
-                    }));
-                }
-                handles
-                    .into_iter()
-                    .map(|handle| {
-                        handle
-                            .join()
-                            .unwrap_or_else(|payload| std::panic::resume_unwind(payload))
-                    })
-                    .collect()
-            });
+        let results: Vec<(usize, AgentHandle<'_>, Result<()>)> = std::thread::scope(|scope| {
+            let mut handles = Vec::new();
+            for (index, agent) in agents.into_iter().enumerate() {
+                handles.push(scope.spawn(move || {
+                    let mut leg = Leg { shared, agent };
+                    let result = leg.run();
+                    (index, leg.agent, result)
+                }));
+            }
+            handles
+                .into_iter()
+                .map(|handle| {
+                    handle
+                        .join()
+                        .unwrap_or_else(|payload| std::panic::resume_unwind(payload))
+                })
+                .collect()
+        });
         let mut back: Vec<Option<AgentHandle>> = Vec::new();
         back.resize_with(results.len(), || None);
         let mut fault = None;
@@ -523,9 +519,7 @@ impl Ensemble<'_> {
                     .expect("the kill count lock is not poisoned");
                 guilds
                     .iter()
-                    .map(|guild| {
-                        format!("{guild} {}", kills.get(*guild).copied().unwrap_or(0))
-                    })
+                    .map(|guild| format!("{guild} {}", kills.get(*guild).copied().unwrap_or(0)))
                     .collect::<Vec<_>>()
                     .join(", ")
             };
@@ -543,8 +537,13 @@ impl Ensemble<'_> {
 
         // Report: every guild hears its own close, and an outside reader
         // confirms the channels stayed public for reading.
-        let balances =
-            crate::ledger::describe(&self.shared.ledger.lock().expect("the ledger lock is not poisoned"));
+        let balances = crate::ledger::describe(
+            &self
+                .shared
+                .ledger
+                .lock()
+                .expect("the ledger lock is not poisoned"),
+        );
         self.note(Source::System, "ledger", balances.clone());
         for index in 0..self.agents.len() {
             let guild = self.agents[index].member.guild.clone();
@@ -571,7 +570,6 @@ impl Ensemble<'_> {
 
         Ok(self.report(tasks))
     }
-
 
     /// The coding quest: the guild's credits hold while the solver
     /// works, the patch it leaves is verified on a base it never saw,
@@ -1119,14 +1117,28 @@ impl Shared<'_> {
             .iter()
             .filter(|deposit| deposit.guild.as_deref() == Some(guild.as_str()))
         {
-            self.work_deposit(agent, deposit, &combat, &mut engaged, &mut asked, &mut answered)?;
+            self.work_deposit(
+                agent,
+                deposit,
+                &combat,
+                &mut engaged,
+                &mut asked,
+                &mut answered,
+            )?;
         }
         if first && !contested.is_empty() {
             if let Some(key) = order_key {
                 contested = self.await_order(agent, contested, &key)?;
             }
             for deposit in contested {
-                self.work_deposit(agent, deposit, &combat, &mut engaged, &mut asked, &mut answered)?;
+                self.work_deposit(
+                    agent,
+                    deposit,
+                    &combat,
+                    &mut engaged,
+                    &mut asked,
+                    &mut answered,
+                )?;
             }
         }
         // Work's done — patrol for the round budget: scan, and let
@@ -1167,9 +1179,7 @@ impl Shared<'_> {
                         self.world
                             .deposits
                             .iter()
-                            .filter(|deposit| {
-                                deposit.guild.as_deref() == Some(guild.as_str())
-                            })
+                            .filter(|deposit| deposit.guild.as_deref() == Some(guild.as_str()))
                             .filter_map(|deposit| deposit.blocks.first().copied()),
                     );
                     if let Some([x, y, z]) = agent.member.camp {
@@ -1275,8 +1285,7 @@ impl Shared<'_> {
             awarded += earned;
             duplicates += dupes;
         }
-        let detail =
-            format!("dug {mined}, earned {awarded} blocks, {duplicates} already claimed");
+        let detail = format!("dug {mined}, earned {awarded} blocks, {duplicates} already claimed");
         self.note(
             Source::System,
             &format!("{username} at {}: {detail}", deposit.id),
@@ -1397,17 +1406,28 @@ impl Shared<'_> {
                 let distance = player.get("distance")?.as_f64()?;
                 let position = player.get("position")?;
                 let spot = [
-                    position.get("x").and_then(Value::as_f64).unwrap_or(0.0).round() as i32,
-                    position.get("y").and_then(Value::as_f64).unwrap_or(0.0).round() as i32,
-                    position.get("z").and_then(Value::as_f64).unwrap_or(0.0).round() as i32,
+                    position
+                        .get("x")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.0)
+                        .round() as i32,
+                    position
+                        .get("y")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.0)
+                        .round() as i32,
+                    position
+                        .get("z")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.0)
+                        .round() as i32,
                 ];
                 let member = self
                     .world
                     .agents
                     .iter()
                     .find(|member| member.username == name)?;
-                (member.guild != guild && distance <= aggro)
-                    .then_some((name, distance, spot))
+                (member.guild != guild && distance <= aggro).then_some((name, distance, spot))
             })
             .collect();
         enemies.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -1443,7 +1463,10 @@ impl Shared<'_> {
                         "enemies_seen": count,
                     }),
                     vec![
-                        ("answer".to_string(), "run to the rally and fight".to_string()),
+                        (
+                            "answer".to_string(),
+                            "run to the rally and fight".to_string(),
+                        ),
                         ("ignore".to_string(), "stay on your own work".to_string()),
                     ],
                 );
@@ -1475,10 +1498,8 @@ impl Shared<'_> {
                         sampled == "answer"
                     }
                     _ => {
-                        matches!(
-                            temperament,
-                            Temperament::Berserker | Temperament::Hunter
-                        ) || aggression >= 0.75
+                        matches!(temperament, Temperament::Berserker | Temperament::Hunter)
+                            || aggression >= 0.75
                     }
                 };
                 if answers_call {
@@ -1514,8 +1535,7 @@ impl Shared<'_> {
                 .into_iter()
                 .flatten()
                 .filter(|player| {
-                    let Some(name) = player.get("username").and_then(Value::as_str)
-                    else {
+                    let Some(name) = player.get("username").and_then(Value::as_str) else {
                         return false;
                     };
                     self.world
@@ -1525,9 +1545,13 @@ impl Shared<'_> {
                 })
                 .min_by(|a, b| {
                     let distance = |p: &&Value| {
-                        p.get("distance").and_then(Value::as_f64).unwrap_or(f64::MAX)
+                        p.get("distance")
+                            .and_then(Value::as_f64)
+                            .unwrap_or(f64::MAX)
                     };
-                    distance(a).partial_cmp(&distance(b)).unwrap_or(std::cmp::Ordering::Equal)
+                    distance(a)
+                        .partial_cmp(&distance(b))
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 });
             if let Some(position) = nearest.and_then(|player| player.get("position")) {
                 let (x, z) = (
@@ -1612,11 +1636,12 @@ impl Shared<'_> {
             }
             _ => None,
         };
-        let action = if let Some(action) = answered {
-            action
-        } else {
-            if asked.elapsed() >= cooldown {
-                self.ask(
+        let action =
+            if let Some(action) = answered {
+                action
+            } else {
+                if asked.elapsed() >= cooldown {
+                    self.ask(
                     &engage_key,
                     &format!("{username} spots {}", enemies[0].0),
                     "An enrolled enemy is inside your aggro range while you work. What do you do?",
@@ -1636,20 +1661,20 @@ impl Shared<'_> {
                         ("retreat".to_string(), "fall back toward your camp".to_string()),
                     ],
                 );
-                *asked = Instant::now();
-            }
-            // Until the door answers the member is itself —
-            // temperament sets the style, and enough aggression
-            // overrides it: furious workers still swing, timid
-            // berserkers still back off.
-            if aggression >= 0.8 {
-                "attack".to_string()
-            } else if aggression <= 0.2 {
-                "retreat".to_string()
-            } else {
-                temperament.fallback().to_string()
-            }
-        };
+                    *asked = Instant::now();
+                }
+                // Until the door answers the member is itself —
+                // temperament sets the style, and enough aggression
+                // overrides it: furious workers still swing, timid
+                // berserkers still back off.
+                if aggression >= 0.8 {
+                    "attack".to_string()
+                } else if aggression <= 0.2 {
+                    "retreat".to_string()
+                } else {
+                    temperament.fallback().to_string()
+                }
+            };
         match action.as_str() {
             "retreat" => {
                 if let Some([x, _, z]) = agent.member.camp {
@@ -1768,7 +1793,10 @@ impl Shared<'_> {
                 "aggression": agent.member.aggression(),
             }),
             vec![
-                ("sword".to_string(), "close the distance and cut".to_string()),
+                (
+                    "sword".to_string(),
+                    "close the distance and cut".to_string(),
+                ),
                 ("bow".to_string(), "loose arrows from range".to_string()),
             ],
         );
@@ -1802,11 +1830,7 @@ impl Shared<'_> {
             _ => temperament.weapon(distance).to_string(),
         };
         let (op, args, seconds) = if weapon == "bow" {
-            (
-                "shoot",
-                json!({"username": target, "max_shots": 4}),
-                60u64,
-            )
+            ("shoot", json!({"username": target, "max_shots": 4}), 60u64)
         } else {
             (
                 "attack",
@@ -2023,7 +2047,10 @@ impl Shared<'_> {
                 "record": picked.record,
             }),
         );
-        let _ = self.say(agent, &format!("{} says {} first.", self.decision_model, picked.choice));
+        let _ = self.say(
+            agent,
+            &format!("{} says {} first.", self.decision_model, picked.choice),
+        );
         deposits.sort_by_key(|deposit| usize::from(deposit.id != picked.choice));
         Ok(deposits)
     }
