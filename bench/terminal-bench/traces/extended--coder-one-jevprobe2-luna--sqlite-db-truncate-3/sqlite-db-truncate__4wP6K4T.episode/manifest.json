@@ -1,0 +1,121 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "c5ec1b53db5ac44f75f3b560b52e7985a95ce6e3ec72b4911841d5eaa8ce0e40",
+        "chars": 5718,
+        "bytes": 5741,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ head -200 /app/trunc.db",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 5,
+      "api_calls": null,
+      "total_cost_usd": 0.00281984,
+      "milliseconds": 32703,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 18458,
+        "kept_bytes": 18458,
+        "truncated": false,
+        "sha256": "9f7a255a15f9521959e1db565c803a89f3f0269803c4143daf0307669043f3f5"
+      },
+      "close": {
+        "done": 0.71,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:25:56.360Z",
+  "updated_at": "2026-09-22T22:26:31.119Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 61465,
+      "sha256": "5ab48d6614514976645f7e8bfc7afda967a7edc3c59ec4cc418c3148fbee40f4"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1886,
+      "sha256": "3a15537e86c728e1919409af33f1cc6aa835b63db647fd80a88a9df7e29f7863"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 25124,
+      "sha256": "8900dd4d21428b59f6d7eeef34210f492f684893ffb16231ab36f9fc0db66478"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 5741,
+      "sha256": "c5ec1b53db5ac44f75f3b560b52e7985a95ce6e3ec72b4911841d5eaa8ce0e40"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 18458,
+      "sha256": "9f7a255a15f9521959e1db565c803a89f3f0269803c4143daf0307669043f3f5"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as m…",
+    "summary": "Recovered all 10 rows into [recover.json](/app/recover.json). Validated that the file parses as JSON and every row has `word` and `value` fields.",
+    "delegate_status": "answered"
+  }
+}

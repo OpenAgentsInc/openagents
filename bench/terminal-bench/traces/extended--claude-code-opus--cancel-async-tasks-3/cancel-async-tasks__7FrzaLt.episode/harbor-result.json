@@ -1,0 +1,36 @@
+{
+  "trial_name": "cancel-async-tasks__7FrzaLt",
+  "task_name": "terminal-bench/cancel-async-tasks",
+  "started_at": "2026-09-22T22:22:01.853523Z",
+  "finished_at": "2026-09-22T22:27:46.766538Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T22:22:01.896134Z",
+    "finished_at": "2026-09-22T22:22:03.497814Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T22:22:03.497853Z",
+    "finished_at": "2026-09-22T22:26:28.328643Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T22:26:28.328821Z",
+    "finished_at": "2026-09-22T22:27:13.657277Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T22:27:13.930653Z",
+    "finished_at": "2026-09-22T22:27:34.937739Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 89848,
+    "n_cache_tokens": 84902,
+    "n_output_tokens": 4658,
+    "cost_usd": 0.14966839999999998,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

@@ -1,0 +1,120 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-haiku-4-5-20251001",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "666681354e945f04af4a5904e2a3e233d33e43ad37e13be04aa94d87e6d57d87",
+        "chars": 2783,
+        "bytes": 2783,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 77,
+      "api_calls": 77,
+      "total_cost_usd": 0.4884722,
+      "milliseconds": 222679,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 1001087,
+        "kept_bytes": 1001087,
+        "truncated": false,
+        "sha256": "358834722b02a533cf6a64accb6131e7c8d2ca00854634698b5671b62a97015a"
+      },
+      "close": {
+        "done": 0.5,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:25:41.449Z",
+  "updated_at": "2026-09-22T21:29:25.076Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 28256,
+      "sha256": "cacbcde45f980649c6703bad647341145d6e335081d1a22f154fdf22172e173e"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 3026,
+      "sha256": "f504e1273518b5ef4f5896393b4e41901cdaa94ddc6b9cc7a3773c6c8f6df09f"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2379,
+      "sha256": "20a4971153890da99eabf3986fb769a45f3b159cfdc61f62c75049bb9a34f6d7"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2783,
+      "sha256": "666681354e945f04af4a5904e2a3e233d33e43ad37e13be04aa94d87e6d57d87"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 1001087,
+      "sha256": "358834722b02a533cf6a64accb6131e7c8d2ca00854634698b5671b62a97015a"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "pyknotid is a Python package for computational topology and knot theory.",
+    "summary": "## Summary\n\nI've successfully compiled pyknotid from source and fixed all NumPy 2.0+ compatibility issues to work with NumPy 2.3.0. Here's what was completed:\n\n### Changes Made\n\n**Fixed 10 files** with NumPy 2.0+ compatibility issues:\n\n1. **pyknotid/make/torus.py** - Migrated `gcd` from deprecated `fractions` module to `math`\n2. **pyknotid/spacecurves/spacecurve.py** - Replaced `n.float` → `np.float64`, `np.bool` → `bool`\n3. **pyknotid/spacecurves/knot.py** - Replaced `n.int` → `np.intp`\n4. **pyknotid/spacecurves/periodiccell.py** - Replaced `np.int` → `np.intp` (3 occurrences)\n5. **pyknotid/spacecurves/ccomplexity.pyx** - Replaced `np.int` → `np.intp` in Cython extension\n6. **pyknotid/spacecurves/openknot.py** - Replaced `n.int` → `n.intp` and `n.bool` → `bool`\n7. **pyknotid/invariants.py** - Replaced `n.complex` → `complex`, `n.float` → `float`\n8. **pyknotid/make/periodic_knot.py** - Replaced `n.float` → `np.float64`\n9. **pyknotid/simplify/octree.py** - Replaced `n.bool` → `bool`\n10. **pyknotid/representations/representation.py** - Replaced `n.int` → `int`\n\n### Verification Results\n\n✓ **Cython extensions compiled successfully** - All three (chelpers, ccomplexity, cinvariants) build without errors  \n✓ **README test passes** - The code snippet runs without errors and produces correct results  \n✓ **All unit tests pass** - 18/18 tests pass (excluding dead code test files as specified)  \n✓ **Extensions working** - Verified all compiled extensions function correctly with NumPy 2.3.0  \n✓ **Package installed** - pyknotid v0.5.3 installed to global Python environment and importable from anywhere\n\nThe package now works seamlessly with Python 3.13.15 and NumPy 2.3.0!",
+    "delegate_status": "answered"
+  }
+}

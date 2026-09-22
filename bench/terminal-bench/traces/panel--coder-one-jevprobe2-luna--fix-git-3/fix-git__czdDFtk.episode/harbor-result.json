@@ -1,0 +1,36 @@
+{
+  "trial_name": "fix-git__czdDFtk",
+  "task_name": "terminal-bench/fix-git",
+  "started_at": "2026-09-22T22:12:29.489779Z",
+  "finished_at": "2026-09-22T22:17:02.427390Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T22:12:29.545011Z",
+    "finished_at": "2026-09-22T22:12:31.012074Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T22:12:31.012110Z",
+    "finished_at": "2026-09-22T22:16:15.058894Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T22:16:15.058973Z",
+    "finished_at": "2026-09-22T22:16:46.254078Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T22:16:46.500167Z",
+    "finished_at": "2026-09-22T22:16:50.809891Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 92264,
+    "n_cache_tokens": 68352,
+    "n_output_tokens": 1128,
+    "cost_usd": 0.003041262,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

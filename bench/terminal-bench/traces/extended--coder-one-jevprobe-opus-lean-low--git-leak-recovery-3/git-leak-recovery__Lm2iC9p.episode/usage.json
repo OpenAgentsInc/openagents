@@ -1,0 +1,62 @@
+{
+  "tokens": {
+    "input": 33082,
+    "cache": 28471,
+    "output": 695,
+    "note": "input sums generation, Jev, and delegate input tokens, the delegate's cache reads and writes included; cache is the delegate's cache reads when a delegation ran, and generation's reported cached input otherwise"
+  },
+  "cost": {
+    "amount_usd": 0.037645446,
+    "provenance": "mixed",
+    "covers": "generation (provider_reported), jev (price_estimate), and delegate (cli_list_price or cli_reported for Claude Code, price_estimate for Codex); each is under components"
+  },
+  "calls": {
+    "generation": 0,
+    "decisions": 3,
+    "delegates": 1,
+    "failed": 0,
+    "retries": 0
+  },
+  "components": {
+    "generation": {
+      "input_tokens": 0,
+      "cached_input_tokens": null,
+      "output_tokens": 0,
+      "cost_usd": 0.0,
+      "cost_provenance": "provider_reported",
+      "unpriced_calls": 0
+    },
+    "jev": {
+      "model": "jev-1.13.0",
+      "requests": 3,
+      "input_tokens": 2363,
+      "output_tokens_billed": false,
+      "cost_usd": 0.000099246,
+      "cost_provenance": "price_estimate",
+      "rate": "$0.042 per million input tokens, retrieved 2026-09-22"
+    },
+    "delegate": {
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "credential": "subscription_oauth",
+      "delegations": 1,
+      "turns": 4,
+      "api_calls": 4,
+      "input_tokens": 8,
+      "cache_read_input_tokens": 28471,
+      "cache_creation_input_tokens": 2240,
+      "total_input_tokens": 30719,
+      "output_tokens": 695,
+      "input_tokens_per_call": [
+        7203,
+        7637,
+        7825,
+        8054
+      ],
+      "max_input_tokens_per_call": 8054,
+      "cost_usd": 0.0375462,
+      "cost_provenance": "cli_list_price",
+      "cost_note": "Claude Code's own total_cost_usd. On a subscription token it is a list-price figure, not a bill."
+    }
+  }
+}

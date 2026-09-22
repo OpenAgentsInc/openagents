@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "c6a797d34842a15bb642e4e20d3b7a9c5ddb90fd70c7c91ab6ae367bbec5e2ac",
+        "chars": 3705,
+        "bytes": 3705,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 7,
+      "api_calls": null,
+      "total_cost_usd": 0.0021217000000000002,
+      "milliseconds": 27661,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 7996,
+        "kept_bytes": 7996,
+        "truncated": false,
+        "sha256": "c86fefd5799b40a1e2ae2d01d374f38f5a6dcff54785e3685cf3ed6d27aeac96"
+      },
+      "close": {
+        "done": 0.88,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (b2d101d72ddc)",
+    "sha256": "27109e6d77f4d0b03a18a3e88517c42f0e0b6e8d13f0cdf918579508c82fa0ef"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:05:10.033Z",
+  "updated_at": "2026-09-22T21:05:39.950Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 119910,
+      "sha256": "c75f0464ae40273e1ca881126f7fd52d8d1b045b5dd771e8283fca4c0ad5be89"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1896,
+      "sha256": "134f01e4a180f2dba64b6ba77e03c7e4edd9b75444006fd5d2ea91767af700fc"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 3604,
+      "sha256": "4d0134a655217e605928a68b9280af4cf899e40465702ab4b49e9eee342e1d97"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4914,
+      "sha256": "eb9f0aeb5b67effd7f595799642413a622bfd9a1d3b2e42d687f8a63a269fbc5"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3705,
+      "sha256": "c6a797d34842a15bb642e4e20d3b7a9c5ddb90fd70c7c91ab6ae367bbec5e2ac"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 7996,
+      "sha256": "c86fefd5799b40a1e2ae2d01d374f38f5a6dcff54785e3685cf3ed6d27aeac96"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "Recovered `c499730` (“Move to Stanford”) and merged it into `master` as `a94b7ae`. I resolved the bio conflict by keeping the Stanford role and the existing prior experience; the layout changes merged automatically.\n\nChecked the commit graph and confirmed the working tree is clean.",
+    "delegate_status": "answered"
+  }
+}

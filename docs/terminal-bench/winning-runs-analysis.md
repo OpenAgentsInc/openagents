@@ -176,3 +176,54 @@ It beats both winners only if every task passes, its four-task cost is below
 the Luna arm's, and its four-task time is below the Opus arm's. A partial
 win, such as cheaper than Luna and faster than Luna, is recorded as exactly
 that.
+
+## What the upgrade did
+
+Jev-probe v2 shipped changes 1 through 4 above, plus the 40-file survey
+cap, behind `CODER_ONE_PROBE_V2=on` (commit `03401dad74`). It ran three
+trials per task on the four panel tasks and on the four `extended` tasks.
+Full tables: [the results page](README.md#jev-probe-arms-2026-09-22).
+
+| Configuration | Panel: passed, cost, time | Extended: passed, cost, time |
+| --- | --- | --- |
+| Opus 5.5 direct | 12/12, $0.6554, 195.9 s | 12/12, $0.4309, 110.5 s |
+| GPT-6 Luna direct | 4/4 (n = 1), $0.0336, 387.4 s | 9/12, $0.0095, 190.4 s |
+| Jev-probe → Luna | 12/12, $0.0219, 318.1 s | 6/12, $0.0100, 120.1 s |
+| **Jev-probe v2 → Luna** | 9/12, $0.0214, 265.3 s | 8/12, $0.0093, 144.9 s |
+| Jev-probe → lean Opus, low effort | 12/12, $0.3075, 125.1 s | 12/12, $0.2482, 65.1 s |
+| **Jev-probe v2 → lean Opus, low effort** | 12/12, $0.3249, **120.7 s** | 12/12, **$0.2273, 57.2 s** |
+
+**It didn't beat both winners.** What each change did:
+
+- **Batch-mode directions** cut Luna's turns where there was slack
+  (`headless-terminal` 7.7 to 4.7, `build-cython-ext` 25.7 to 19.0), and
+  Luna's panel time fell 17% on the three tasks it passed. The Opus arm was
+  already at two to four turns, so it gained little on the panel; on the
+  `extended` tasks its turns fell from 3.7 to 2.7 on average, and time fell
+  12%.
+- **The setup pack** worked as designed: on `build-cython-ext` Jev
+  approved the clone (p = 0.91) and the host ran it before the delegate
+  started. It also changed what the survey saw. With the repository
+  present, the survey kept its source files and the Opus briefing grew
+  from 2,783 to about 9,500 characters, which raised that task's cost 15%.
+- **Luna failed `build-cython-ext` in all three v2 trials**, each time on
+  a NumPy alias its own checks didn't exercise. The earlier probe arm
+  passed all three; its trials searched for doubled replacements
+  (`float6464`) before finishing. "Run one final check" appears to have
+  cut verification along with turns.
+- **Jev's cost fell by a quarter**, $0.00044 to $0.00033 a run, from the
+  smaller survey pool.
+
+**Next iteration.** Two changes follow directly from these results:
+
+1. Replace "run one final check" with "run the checks the task names, and
+   test every code path you changed", so batch mode keeps the Luna turn
+   savings without dropping verification.
+2. Run the Opus arm with `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` ([the captured
+   request](claude-code-delegate-prompt/README.md#can-it-be-changed)).
+   One-hour cache writes are more than half its cost; five-minute writes
+   cost 1.25 times the input rate instead of 2 times.
+
+Neither closes the gap alone. The Luna arm's panel time is bound by
+`build-cython-ext` (158 seconds with v2), and Opus's cost floor is about
+$0.03 a task even with the shorter cache.

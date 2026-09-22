@@ -1,0 +1,120 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "2b97ca15ecf312837d4a32034a8f5ff74dc5ce2c0fd9527213498ccdf4e0f7f4",
+        "chars": 2783,
+        "bytes": 2783,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 20,
+      "api_calls": null,
+      "total_cost_usd": 0.008755,
+      "milliseconds": 178666,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 61586,
+        "kept_bytes": 61586,
+        "truncated": false,
+        "sha256": "f39071b45ab44928e2482f52f973ea0136e308e9aef9d0048d331691ed59e58c"
+      },
+      "close": {
+        "done": 0.76,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (b2d101d72ddc)",
+    "sha256": "27109e6d77f4d0b03a18a3e88517c42f0e0b6e8d13f0cdf918579508c82fa0ef"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:03:58.928Z",
+  "updated_at": "2026-09-22T21:06:58.594Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 23090,
+      "sha256": "54782fd1f086abdf97fe2b609218e247d046a0ace30f203d9f554a182cedb458"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1889,
+      "sha256": "77db2f331543b1c9c7efbe66b7d39df4d06972c3826e49d7a96a850bc7756efd"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2378,
+      "sha256": "e86a96a71592e6c51d3c8bfacdaebe9f6a5fb46ecd8b0441b43f805c667e6e52"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2783,
+      "sha256": "2b97ca15ecf312837d4a32034a8f5ff74dc5ce2c0fd9527213498ccdf4e0f7f4"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 61586,
+      "sha256": "f39071b45ab44928e2482f52f973ea0136e308e9aef9d0048d331691ed59e58c"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "pyknotid is a Python package for computational topology and knot theory.",
+    "summary": "Installed pyknotid 0.5.3 into the system Python with its Cython extensions, built against NumPy 2.3.0. The source is at `/app/pyknotid`.\n\nI updated removed NumPy aliases, added build requirements so isolated pip builds include Cython and NumPy, and replaced the removed `fractions.gcd` import with `math.gcd` for Python 3.13.\n\nThe README snippet ran and returned an Alexander polynomial. The requested extensions imported from the system installation, and the applicable test suite passed: **18 passed** (excluding `test_random_curves.py` and `test_catalogue.py`).",
+    "delegate_status": "answered"
+  }
+}

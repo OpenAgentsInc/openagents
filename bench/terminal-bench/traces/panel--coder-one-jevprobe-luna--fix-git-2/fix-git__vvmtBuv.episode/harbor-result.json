@@ -1,0 +1,36 @@
+{
+  "trial_name": "fix-git__vvmtBuv",
+  "task_name": "terminal-bench/fix-git",
+  "started_at": "2026-09-22T21:08:20.552512Z",
+  "finished_at": "2026-09-22T21:14:05.195840Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T21:08:20.604862Z",
+    "finished_at": "2026-09-22T21:08:21.661083Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T21:08:21.661130Z",
+    "finished_at": "2026-09-22T21:13:11.758475Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T21:13:11.758605Z",
+    "finished_at": "2026-09-22T21:13:45.526870Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T21:13:45.768774Z",
+    "finished_at": "2026-09-22T21:13:54.126067Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 126554,
+    "n_cache_tokens": 98560,
+    "n_output_tokens": 956,
+    "cost_usd": 0.003347818,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

@@ -1,0 +1,121 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "9fc15b9dee98c1fa0152085a84b07d738a014208f9506732795d33cd40098648",
+        "chars": 1809,
+        "bytes": 1809,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 4,
+      "api_calls": null,
+      "total_cost_usd": 0.00166576,
+      "milliseconds": 26978,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 8503,
+        "kept_bytes": 8503,
+        "truncated": false,
+        "sha256": "e48f776990486c95c152a96efe54da0f5f275f47aae936e041350e8195ffcf5b"
+      },
+      "close": {
+        "done": 0.61,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:26:33.664Z",
+  "updated_at": "2026-09-22T22:27:01.967Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 17630,
+      "sha256": "f572f224b2649424962d1edbe4bb15235666765968b355d5c77d96e0031ca5de"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1885,
+      "sha256": "7c255f4f33538ccc17ac39d0cf7b7218709fbd9d217801c49b1a37bb9c57bb03"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1504,
+      "sha256": "bf1900c2da5706cdbd69ba2ce604aab39a23b1db13f98eabc206db5c415ede2f"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 1809,
+      "sha256": "9fc15b9dee98c1fa0152085a84b07d738a014208f9506732795d33cd40098648"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 8503,
+      "sha256": "e48f776990486c95c152a96efe54da0f5f275f47aae936e041350e8195ffcf5b"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_con…",
+    "summary": "Created [`/app/run.py`](/app/run.py) with `run_tasks`, which limits concurrent jobs and waits for running tasks’ cleanup when cancellation or another error occurs.\n\nChecked the concurrency limit and cancellation cleanup with a Python smoke check, and confirmed the file compiles with `py_compile`.",
+    "delegate_status": "answered"
+  }
+}

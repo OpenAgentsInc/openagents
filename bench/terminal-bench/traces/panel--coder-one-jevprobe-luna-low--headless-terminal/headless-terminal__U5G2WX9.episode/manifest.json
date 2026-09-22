@@ -1,0 +1,122 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "f050bc99bd6f1856eac8b8072fd3f804c91dff580b700b9409d1a6c7761de10f",
+        "chars": 2550,
+        "bytes": 2550,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 7,
+      "api_calls": null,
+      "total_cost_usd": 0.00247908,
+      "milliseconds": 53214,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 4933,
+        "kept_bytes": 4933,
+        "truncated": false,
+        "sha256": "166962964227d182b6c552a2c61a3fd831d7c2f380e228bce2517aff2d150e7d"
+      },
+      "close": {
+        "done": 0.51,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:13:42.314Z",
+  "updated_at": "2026-09-22T21:14:37.113Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 23012,
+      "sha256": "9e84b16c65bd02dd92e6d45b5687af86b0ada8654d2fee5189cf07806f907e39"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1896,
+      "sha256": "a73312e788ba6f02c0865c3010409b564171897dec7bd7126c6952d3aa88b601"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2344,
+      "sha256": "5dca1b0d0cac765ee70ac8009cdea72f5d7d41119dc83b739adf13a88dd957fb"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2550,
+      "sha256": "f050bc99bd6f1856eac8b8072fd3f804c91dff580b700b9409d1a6c7761de10f"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 4933,
+      "sha256": "166962964227d182b6c552a2c61a3fd831d7c2f380e228bce2517aff2d150e7d"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "Implemented `HeadlessTerminal` in [headless_terminal.py](/app/headless_terminal.py). It starts interactive Bash in a PTY, collects terminal output, and sends keystrokes verbatim, including control characters. It also supports resizing and clean shutdown.\n\nVerified that Bash starts interactively, runs a command, responds to Ctrl-C, and accepts another command afterward. No external dependencies were needed.",
+    "delegate_status": "answered"
+  }
+}

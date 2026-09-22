@@ -1,0 +1,121 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "97c35129803ed214e2680a139c6e9afa3f31115fe3241dd6014fba7602197a5f",
+        "chars": 5530,
+        "bytes": 5553,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ head -200 /app/trunc.db",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 4,
+      "api_calls": 4,
+      "total_cost_usd": 0.0574794,
+      "milliseconds": 16624,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 15274,
+        "kept_bytes": 15274,
+        "truncated": false,
+        "sha256": "98b803f0351d0831cd7fa29c5cf384cfa4709e001af64301e7116cd4f180db88"
+      },
+      "close": {
+        "done": 0.68,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:16:19.466Z",
+  "updated_at": "2026-09-22T22:16:37.579Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 64499,
+      "sha256": "38826f4abc7d9cd7b377588894278ed4c021ff8da94152b849082f9662366341"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1882,
+      "sha256": "39b4455acc74f1f94a1808c2fddfec8ba46ab60a40bb2c70de8d6e9cac5a631e"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 25125,
+      "sha256": "b1bf5eb999f9d1b4d87ab8a8f6707fcd7b22e8486ec22c035501dc3c1f39aa7d"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 5553,
+      "sha256": "97c35129803ed214e2680a139c6e9afa3f31115fe3241dd6014fba7602197a5f"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 15274,
+      "sha256": "98b803f0351d0831cd7fa29c5cf384cfa4709e001af64301e7116cd4f180db88"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as m…",
+    "summary": "I recovered 10 rows, `testword00` through `testword09`, and wrote them to `/app/recover.json` in the requested `[{\"word\": ..., \"value\": ...}]` format.\n\n`trunc.db` is only 4096 bytes, so just the first page survived and SQLite can't open it normally. I wrote a short Python script that reads the rows straight out of the raw bytes. I then checked the result by reading the hex dump, which shows the 10 records in sequence.\n\n| word | value |\n|---|---|\n| testword00 | 1 |\n| testword01 | 2 |\n| testword02 | 10 |\n| testword03 | 25 |\n| testword04 | 42 |\n| testword05 | 50 |\n| testword06 | 75 |\n| testword07 | 99 |\n| testword08 | 99.99 |\n| testword09 | 0.5 |\n\n`testword08` and `testword09` were stored as decimals; the rest are whole numbers. Any rows on pages after the first were lost in the truncation and can't be recovered from this file.",
+    "delegate_status": "answered"
+  }
+}

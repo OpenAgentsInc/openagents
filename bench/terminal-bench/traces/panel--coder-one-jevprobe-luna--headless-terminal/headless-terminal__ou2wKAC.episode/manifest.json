@@ -1,0 +1,122 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "3c473752c1ae16c9ba280603c9f3c2047e10f33dfba274ab4ff36d721f7cc870",
+        "chars": 2550,
+        "bytes": 2550,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 11,
+      "api_calls": null,
+      "total_cost_usd": 0.00420506,
+      "milliseconds": 81766,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 11300,
+        "kept_bytes": 11300,
+        "truncated": false,
+        "sha256": "12d7bb06efe81855a527c1989530490173e664ea6da015cda0a0167601e18b2c"
+      },
+      "close": {
+        "done": 0.59,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (b2d101d72ddc)",
+    "sha256": "27109e6d77f4d0b03a18a3e88517c42f0e0b6e8d13f0cdf918579508c82fa0ef"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:05:38.473Z",
+  "updated_at": "2026-09-22T21:07:02.089Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 23149,
+      "sha256": "573a2ed00587eebac46ab9f0c723b9bddb72e92ad05dc4e871b38f7087173346"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1891,
+      "sha256": "412176595f8d8890b25850b896ce2c5448890b59c9d03acd88b80b7d79546cc3"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2343,
+      "sha256": "39d14ed6cf741a0398f961e614e6676b0462321971481084cf7cedf23d88c77a"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2550,
+      "sha256": "3c473752c1ae16c9ba280603c9f3c2047e10f33dfba274ab4ff36d721f7cc870"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 11300,
+      "sha256": "12d7bb06efe81855a527c1989530490173e664ea6da015cda0a0167601e18b2c"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "Implemented `HeadlessTerminal` in [headless_terminal.py](/app/headless_terminal.py). It runs interactive Bash on a PTY, passes keystrokes and control characters through, and collects terminal output. Bash sources its interactive startup files, including `~/.bashrc`.\n\nVerified that a custom `.bashrc` value is available to a command and that Ctrl-C interrupts `sleep`, allowing the shell to run another command. No additional dependencies were needed.",
+    "delegate_status": "answered"
+  }
+}

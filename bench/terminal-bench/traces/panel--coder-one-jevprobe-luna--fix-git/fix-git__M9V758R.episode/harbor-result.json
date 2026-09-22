@@ -1,0 +1,36 @@
+{
+  "trial_name": "fix-git__M9V758R",
+  "task_name": "terminal-bench/fix-git",
+  "started_at": "2026-09-22T21:01:26.829816Z",
+  "finished_at": "2026-09-22T21:05:55.866783Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T21:01:26.886826Z",
+    "finished_at": "2026-09-22T21:01:27.933899Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T21:01:27.933945Z",
+    "finished_at": "2026-09-22T21:05:09.936769Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T21:05:09.936900Z",
+    "finished_at": "2026-09-22T21:05:40.061465Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T21:05:40.269911Z",
+    "finished_at": "2026-09-22T21:05:44.693090Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 109311,
+    "n_cache_tokens": 84480,
+    "n_output_tokens": 741,
+    "cost_usd": 0.002783914,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

@@ -1,0 +1,120 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-sonnet-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "666681354e945f04af4a5904e2a3e233d33e43ad37e13be04aa94d87e6d57d87",
+        "chars": 2783,
+        "bytes": 2783,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 25,
+      "api_calls": 25,
+      "total_cost_usd": 0.2890132,
+      "milliseconds": 125779,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 132570,
+        "kept_bytes": 132570,
+        "truncated": false,
+        "sha256": "30aba825174c61aa7418604fcd588c6da16503dc61f04774767e4245da8dd21f"
+      },
+      "close": {
+        "done": 0.78,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:25:46.156Z",
+  "updated_at": "2026-09-22T21:27:53.006Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 28523,
+      "sha256": "5744dd6b27c8ce32be96a8a7a2527c6b2cfc1fb37f8cf773967cee504a7c6a76"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 2229,
+      "sha256": "600669656e5c17e0097184ce530e0437524d4d2d0bb8c26576b3085dbc4bdf3c"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2379,
+      "sha256": "20a4971153890da99eabf3986fb769a45f3b159cfdc61f62c75049bb9a34f6d7"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2783,
+      "sha256": "666681354e945f04af4a5904e2a3e233d33e43ad37e13be04aa94d87e6d57d87"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 132570,
+      "sha256": "30aba825174c61aa7418604fcd588c6da16503dc61f04774767e4245da8dd21f"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "pyknotid is a Python package for computational topology and knot theory.",
+    "summary": "Confirmed as expected: `test_catalogue.py` fails due to missing database file (needs network download, unrelated to compat), and `test_random_curves.py` references a non-existent module (dead code). Both match the task's exclusions.\n\nSetup complete. Summary of changes:\n\n**Environment**: Installed `setuptools`, `wheel`, `cython` (Python 3.13 dropped `distutils`, and had neither `setuptools` nor `Cython` preinstalled), plus pyknotid's runtime deps (`networkx`, `planarity`, `peewee`, `sympy`, `appdirs`, `requests`, `tqdm`, `vispy`) via `pip install --break-system-packages`.\n\n**Code fixes for NumPy 2.3.0 / Python 3.13 compatibility** (in `/app/pyknotid`):\n- `pyknotid/make/torus.py`: `from fractions import gcd` → `from math import gcd` (removed from `fractions` since Python 3.9).\n- Replaced all deprecated NumPy scalar aliases (`n.float`, `n.int`, `n.bool`, `n.complex`, etc. — removed in NumPy 1.24+) with the Python builtins across `invariants.py`, `spacecurves/spacecurve.py`, `spacecurves/openknot.py`, `spacecurves/knot.py`, `spacecurves/periodiccell.py`, `simplify/octree.py`, `representations/gausscode.py`, `representations/dtnotation.py`, `representations/representation.py`, `make/periodic_knot.py`.\n- `pyknotid/spacecurves/ccomplexity.pyx`: `dtype=np.int` → `dtype=np.int64`, then recompiled.\n\n**Build & install**: Compiled the Cython extensions (`chelpers`, `ccomplexity`, `coctree`, `cinvariants`) with `python3 setup.py build_ext --inplace` against NumPy 2.3.0 headers (clean build, no errors), then installed pyknotid into the system Python via `pip install --break-system-packages --no-build-isolation -e .`.\n\n**Verification**:\n- Ran the README snippet from a directory outside the source tree (`/tmp`) — imports and `alexander_polynomial` succeed, confirming both the global install and the compiled extensions work correctly.\n- Ran `pytest tests/test_knot.py tests/test_spacecurve.py` — 18/18 pass.\n- Confirmed `test_catalogue.py` and `test_random_curves.py` fail for reasons unrelated to the NumPy fix (missing knot database file requiring network download; import of a nonexistent `pyknotid.make.randomwalks` module — dead code), matching the task's noted exclusions.",
+    "delegate_status": "answered"
+  }
+}

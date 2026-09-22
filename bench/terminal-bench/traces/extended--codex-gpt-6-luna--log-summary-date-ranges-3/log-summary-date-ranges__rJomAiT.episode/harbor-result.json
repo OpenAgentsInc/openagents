@@ -1,0 +1,36 @@
+{
+  "trial_name": "log-summary-date-ranges__rJomAiT",
+  "task_name": "terminal-bench/log-summary-date-ranges",
+  "started_at": "2026-09-22T22:27:38.671477Z",
+  "finished_at": "2026-09-22T22:32:11.317359Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T22:27:38.712739Z",
+    "finished_at": "2026-09-22T22:27:41.320271Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T22:27:41.320309Z",
+    "finished_at": "2026-09-22T22:31:27.592037Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T22:31:27.592183Z",
+    "finished_at": "2026-09-22T22:31:51.859922Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T22:31:52.935465Z",
+    "finished_at": "2026-09-22T22:31:58.473298Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 28401,
+    "n_cache_tokens": 26112,
+    "n_output_tokens": 917,
+    "cost_usd": null,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "cb69794b2f9fdb34de056132163be9fddb684db254929588a3ce03dbc9e39cab",
+        "chars": 3705,
+        "bytes": 3705,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 8,
+      "api_calls": null,
+      "total_cost_usd": 0.0026850999999999997,
+      "milliseconds": 31632,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 8820,
+        "kept_bytes": 8820,
+        "truncated": false,
+        "sha256": "05b94546e6c19f6a2fc3b8bfb81ced235126647e894eaf949836e17b68fbdcbc"
+      },
+      "close": {
+        "done": 0.84,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:13:11.861Z",
+  "updated_at": "2026-09-22T21:13:45.401Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 119954,
+      "sha256": "61dca0892c8bb75ff55894159b66b570777897691532ab1c77859cf88e4b9488"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1908,
+      "sha256": "68ab3dd51171f42a7953ca9e01cecd6f41ef17d9442c5e1f32fba601f6181f3f"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 3604,
+      "sha256": "9f4a61241fdd9d24fbcad1e208991c307d27335c80c48df098b9009d57afba72"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4943,
+      "sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3705,
+      "sha256": "cb69794b2f9fdb34de056132163be9fddb684db254929588a3ce03dbc9e39cab"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 8820,
+      "sha256": "05b94546e6c19f6a2fc3b8bfb81ced235126647e894eaf949836e17b68fbdcbc"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "Recovered `c499730` (“Move to Stanford”) from the reflog and merged it into `master` as `ff658a2`. The merge includes the Stanford bio and layout changes; I resolved the bio conflict using the recovered commit’s version.\n\n`master` now contains both lines of history, and the working tree is clean.",
+    "delegate_status": "answered"
+  }
+}

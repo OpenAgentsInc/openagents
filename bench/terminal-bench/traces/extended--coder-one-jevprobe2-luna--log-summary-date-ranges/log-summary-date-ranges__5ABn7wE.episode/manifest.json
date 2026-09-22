@@ -1,0 +1,125 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "dd409e18b25902b943ca8056ec4d638831358f44c44216b687e8fd81019f8401",
+        "chars": 10659,
+        "bytes": 10661,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ ls -la /app/logs",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": [
+          "file logs/2025-08-10_db.log (4051 characters)",
+          "file logs/2025-08-07_api.log (4052 characters)",
+          "file logs/2025-07-07_api.log (4052 characters)"
+        ]
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": null,
+      "total_cost_usd": 0.0013260799999999999,
+      "milliseconds": 21097,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 5561,
+        "kept_bytes": 5561,
+        "truncated": false,
+        "sha256": "ed1b8aabdac1bcb05356ec9f0b1462974d8caf4e17d9e5a356400c24ef0f4302"
+      },
+      "close": {
+        "done": 0.64,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:53:04.452Z",
+  "updated_at": "2026-09-22T21:53:27.123Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 83990,
+      "sha256": "3c48383544b49346c8410434774f2a4946a5af58c88daab5e449e7441daa6b8e"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1915,
+      "sha256": "0ef75681351427dc93638fe319e6f027181acb3e41f03c6027632abde1a70a78"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 37248,
+      "sha256": "4eb550e91a5938ad8b398b709cb3e708fea1257282c88966ae7962cc534bd6b4"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 10661,
+      "sha256": "dd409e18b25902b943ca8056ec4d638831358f44c44216b687e8fd81019f8401"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 5561,
+      "sha256": "ed1b8aabdac1bcb05356ec9f0b1462974d8caf4e17d9e5a356400c24ef0f4302"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM…",
+    "summary": "Created `/app/summary.csv` with the requested counts and row order. Verified the header, all 15 data rows, severity order, and numeric counts.",
+    "delegate_status": "answered"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "894c4fd5cf31d02d5f61bba0ba17812f9dd9888228d46f3199b57e08bf153678",
+        "chars": 2738,
+        "bytes": 2738,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": null,
+      "total_cost_usd": 0.0014553200000000002,
+      "milliseconds": 37090,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 13294,
+        "kept_bytes": 13294,
+        "truncated": false,
+        "sha256": "691f3c1f5bdb7e8c139ba36a722d675561118e115b77fc13572219156dea0846"
+      },
+      "close": {
+        "done": 0.63,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:20:33.312Z",
+  "updated_at": "2026-09-22T22:21:11.746Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 23285,
+      "sha256": "1a0e901b9b33280165cfe56b66ed25e40a34ee3100458f3cbb2e6c465901c0ca"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1905,
+      "sha256": "0c0094f85a574fe60526afe79ba52226205ea9332af2abed0b6dadec60dbf92e"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2344,
+      "sha256": "3e2e4b4ccf788be086ea21883d4f710944dbf7c0beee05d91506b2accc22a9a3"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2738,
+      "sha256": "894c4fd5cf31d02d5f61bba0ba17812f9dd9888228d46f3199b57e08bf153678"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 13294,
+      "sha256": "691f3c1f5bdb7e8c139ba36a722d675561118e115b77fc13572219156dea0846"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "Implemented `HeadlessTerminal` in [headless_terminal.py](/app/headless_terminal.py). It starts interactive Bash on a PTY, supports literal control-key input such as `\\x03`, captures output, and provides cleanup and context-manager support. Bash’s interactive mode loads its startup files.\n\nChecked importing the class, running a command and reading its output, and sending Ctrl-C during `sleep`. No extra dependencies were needed.",
+    "delegate_status": "answered"
+  }
+}

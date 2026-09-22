@@ -1,0 +1,36 @@
+{
+  "trial_name": "sqlite-db-truncate__9fxdDfi",
+  "task_name": "terminal-bench/sqlite-db-truncate",
+  "started_at": "2026-09-22T22:11:39.813748Z",
+  "finished_at": "2026-09-22T22:16:36.023729Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T22:11:39.856491Z",
+    "finished_at": "2026-09-22T22:11:42.357371Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T22:11:42.357430Z",
+    "finished_at": "2026-09-22T22:15:34.839886Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T22:15:34.840013Z",
+    "finished_at": "2026-09-22T22:16:17.700190Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T22:16:17.945816Z",
+    "finished_at": "2026-09-22T22:16:22.351253Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 127765,
+    "n_cache_tokens": 103168,
+    "n_output_tokens": 1367,
+    "cost_usd": 0.00398116,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

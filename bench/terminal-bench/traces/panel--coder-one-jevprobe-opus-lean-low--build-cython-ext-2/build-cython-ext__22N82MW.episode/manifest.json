@@ -1,0 +1,120 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "2c8c8e91607543e8569198b784d78895643177a5a8c5aaf398962c8300cd2615",
+        "chars": 2783,
+        "bytes": 2783,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 8,
+      "api_calls": 8,
+      "total_cost_usd": 0.1328636,
+      "milliseconds": 73096,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 70644,
+        "kept_bytes": 70644,
+        "truncated": false,
+        "sha256": "a6bf5c81cf1f688abf983cb124ac471beb13e24efbda766d5669b452c6b7bd48"
+      },
+      "close": {
+        "done": 0.75,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:25:51.867Z",
+  "updated_at": "2026-09-22T21:27:05.775Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 27457,
+      "sha256": "3f33243f12d3589425a73846c803340aab93886c6a2116f54459f4dd27163338"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1945,
+      "sha256": "efcf1ffea2e59d0ff86856b507040874249ef9c519eafc2ca472e66202e22c67"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2380,
+      "sha256": "3b30958a45c9ad013af1c69cf789e369d3f05972bf5128f7837f0510f4a3734b"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2783,
+      "sha256": "2c8c8e91607543e8569198b784d78895643177a5a8c5aaf398962c8300cd2615"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 70644,
+      "sha256": "a6bf5c81cf1f688abf983cb124ac471beb13e24efbda766d5669b452c6b7bd48"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "pyknotid is a Python package for computational topology and knot theory.",
+    "summary": "pyknotid 0.5.3 is now built from source and installed into the system Python 3.13, and it works with your NumPy 2.3.0. The README snippet runs without errors and the Alexander polynomial at -1 comes out ≈ 7, the expected value for this knot. The compiled `chelpers` module loads from the installed package's `.so` file, not from a slow pure-Python fallback.\n\nI cloned the 0.5.3 tag into `/app/pyknotid` and changed only the code needed for compatibility; the package layout is unchanged:\n- **Removed NumPy type names:** the `.py` and `.pyx` files used `np.int`, `np.float`, `np.complex` and `np.bool`, which newer NumPy versions have removed. They now use `int_`, `float64`, `complex128` and `bool_`.\n- **Cython extension fix:** in `ccomplexity.pyx`, the arrays passed to `long[:]` are now created as `np.int64` so the types match.\n- **Complex-number checks:** `isinstance(..., n.complex)` in `invariants.py` now checks against Python's built-in `complex`, which is what the old alias meant.\n- **Python 3.13 fix:** `from fractions import gcd` became `from math import gcd`, because `fractions.gcd` no longer exists. Without this, `import pyknotid.make` failed.\n\nI installed Cython and setuptools, then ran `pip install --no-build-isolation .` so the build used your NumPy 2.3.0. This compiled `chelpers`, `ccomplexity`, `cinvariants` and `coctree`. I also compiled the extensions in place (`build_ext --inplace`) so they work when running from the source folder too. pip also installed the package's other dependencies (sympy, networkx, vispy, peewee and so on), plus pytest to run the tests. NumPy is still 2.3.0.\n\n**Checks:**\n- I ran the README snippet from outside the source folder, so it used the installed copy.\n- The tests pass (18 passed), leaving out `test_random_curves.py` and `test_catalogue.py` as you said.",
+    "delegate_status": "answered"
+  }
+}

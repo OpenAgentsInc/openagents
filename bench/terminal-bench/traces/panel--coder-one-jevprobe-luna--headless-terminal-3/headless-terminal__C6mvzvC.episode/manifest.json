@@ -1,0 +1,122 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "cf2f2652822bbefec988f4d34ce58365b919a8ae895fc0da0df5bbf55ccbd671",
+        "chars": 2550,
+        "bytes": 2550,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 7,
+      "api_calls": null,
+      "total_cost_usd": 0.0027455599999999998,
+      "milliseconds": 58114,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 5740,
+        "kept_bytes": 5740,
+        "truncated": false,
+        "sha256": "a30a88f2bbd9cb66ea9dae7378a29c2d4ed5259d335f9cdc616bec92382598ed"
+      },
+      "close": {
+        "done": 0.56,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:19:35.565Z",
+  "updated_at": "2026-09-22T21:20:35.210Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 22934,
+      "sha256": "a18f201a41a80ed58c942bcb3be3184343955c9d0720a28565b2171a34ad4354"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1906,
+      "sha256": "a497bf8dfb8c3bb2a10a5f2cc159a722a0253d24b065930785491a2eb10e152d"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2344,
+      "sha256": "aefaf701330dbbc54d47c2700db8f37c1927b2b314130e1fecf535f06c80ac4a"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2550,
+      "sha256": "cf2f2652822bbefec988f4d34ce58365b919a8ae895fc0da0df5bbf55ccbd671"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 5740,
+      "sha256": "a30a88f2bbd9cb66ea9dae7378a29c2d4ed5259d335f9cdc616bec92382598ed"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "Implemented `HeadlessTerminal` in [headless_terminal.py](/app/headless_terminal.py). It runs interactive Bash on a PTY, captures output, accepts control characters such as `\\x03`, and supports resizing and cleanup. Bash loads `~/.bashrc` through its normal interactive startup.\n\nChecked basic command execution, an interactive `read` prompt, and control-C interrupting `sleep`.",
+    "delegate_status": "answered"
+  }
+}

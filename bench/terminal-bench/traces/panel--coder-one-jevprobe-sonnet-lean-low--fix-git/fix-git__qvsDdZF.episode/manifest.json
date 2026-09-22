@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-sonnet-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "d267f81dda104fb99115561e360d0aca1f2387c09488f7bb854c7f9fd5eee7c1",
+        "chars": 3705,
+        "bytes": 3705,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 9,
+      "api_calls": 9,
+      "total_cost_usd": 0.102793,
+      "milliseconds": 20869,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 42228,
+        "kept_bytes": 42228,
+        "truncated": false,
+        "sha256": "981b6992faeba3842632da0db96cca6e979e44010236ab0fd5af1559060ce69a"
+      },
+      "close": {
+        "done": 0.92,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:26:45.666Z",
+  "updated_at": "2026-09-22T21:27:08.177Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 121856,
+      "sha256": "4756786787d64ce9da1036ed54f9c9477ad64aff623a0fb43bfb7c344323f878"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1968,
+      "sha256": "5ed8123a09e12828112d5e5ff9999b517cfc7020f81db7bee17f8883590cb0e8"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 3603,
+      "sha256": "1e561cf104fb465982e0da90883f3d0efd972161d618629ecb7e0cd213845fca"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4915,
+      "sha256": "e9abef8652d2595c760c40df17973faf7631d1473404509aa87f733b99c4b7c8"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3705,
+      "sha256": "d267f81dda104fb99115561e360d0aca1f2387c09488f7bb854c7f9fd5eee7c1"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 42228,
+      "sha256": "981b6992faeba3842632da0db96cca6e979e44010236ab0fd5af1559060ce69a"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "The lost \"Move to Stanford\" changes are now merged into master and the working tree is clean.\n\nSummary: the changes were sitting in an orphaned commit (`c499730`, \"Move to Stanford\") found via `git reflog` — created off `c4e38a1` before `master` was checked out, leaving it unreferenced by any branch. I merged it into `master` (commit `a875060`), resolving a conflict in `_includes/about.md` by keeping the Stanford postdoc bio (the intended update, consistent with the later \"off the job market\" commit). `_layouts/default.html` merged cleanly, updating the jumbotron heading to \"Postdoc @ Stanford\". Verified with `git status` (clean) and `git diff` against the pre-merge state.",
+    "delegate_status": "answered"
+  }
+}

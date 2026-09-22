@@ -112,6 +112,132 @@ run-to-run spread we have seen (Coder One alone took 237 to 338 seconds on
 confirmed the direction of the headline result, with smaller margins
 (15% cheaper and 12% faster for Jev-brief; 25% and 16% for the lean arm).
 
+### Jev-probe arms, 2026-09-22
+
+The Jev-probe arms run no Gemini at all. Before delegating, the host runs a
+battery of read-only probes in parallel (listing, git state, README, tests,
+versions, paths the task names), Jev keeps the outputs the task needs, and
+those join Jev's file survey in the briefing. The host's part, Jev
+included, takes 1 to 5 seconds. [The winning-runs analysis](winning-runs-analysis.md)
+takes the two best arms apart.
+
+**Jev-probe v2** ([#9535](https://github.com/OpenAgentsInc/openagents/issues/9535),
+`CODER_ONE_PROBE_V2=on`, artifact `coder-one 0.1.0 (03401dad7483)`) adds a
+Jev-gated setup pack that runs the clone and install steps a task names,
+git probes in named repositories, whole files for likely edit targets, a
+40-file survey pool, and directions to work in few, large steps. The
+earlier probe arms ran artifact `14c95a…` (`774c2a9340a2`).
+
+Three trials per task per arm, on the four panel tasks:
+
+| Arm | Task | Passed | Cost, mean (min–max) | Agent time, mean (min–max) | Delegate turns, mean |
+| --- | --- | --- | --- | --- | --- |
+| Jev-probe → Luna‡ | `fix-git` | 3/3 | $0.0032 ($0.0028–$0.0036) | 36.0 s (30.1–44.1) | 8.0 |
+| Jev-probe → Luna‡ | `build-cython-ext` | 3/3 | $0.0119 ($0.0088–$0.0158) | 185.8 s (180.0–194.0) | 25.7 |
+| Jev-probe → Luna‡ | `headless-terminal` | 3/3 | $0.0032 ($0.0024–$0.0043) | 65.2 s (51.9–83.9) | 7.7 |
+| Jev-probe → Luna‡ | `fix-code-vulnerability` | 3/3 | $0.0035 ($0.0034–$0.0036) | 31.1 s (28.4–35.0) | 6.7 |
+| **Jev-probe v2 → Luna**‡ | `fix-git` | 3/3 | $0.0028 ($0.0026–$0.0030) | 30.9 s (30.0–31.4) | 7.7 |
+| **Jev-probe v2 → Luna**‡ | `build-cython-ext` | 0/3 | $0.0135 ($0.0098–$0.0156) | 158.3 s (136.1–169.9) | 19.0 |
+| **Jev-probe v2 → Luna**‡ | `headless-terminal` | 3/3 | $0.0021 ($0.0014–$0.0033) | 51.0 s (37.9–76.6) | 4.7 |
+| **Jev-probe v2 → Luna**‡ | `fix-code-vulnerability` | 3/3 | $0.0030 ($0.0028–$0.0032) | 25.1 s (23.5–27.0) | 5.3 |
+| Jev-probe → lean Opus 5.5, low effort | `fix-git` | 3/3 | $0.0563 ($0.0548–$0.0572) | 14.9 s (13.6–16.0) | 4.0 |
+| Jev-probe → lean Opus 5.5, low effort | `build-cython-ext` | 3/3 | $0.1270 ($0.0873–$0.1608) | 78.0 s (60.9–99.0) | 7.7 |
+| Jev-probe → lean Opus 5.5, low effort | `headless-terminal` | 3/3 | $0.0599 ($0.0589–$0.0605) | 20.7 s (19.7–21.8) | 2.0 |
+| Jev-probe → lean Opus 5.5, low effort | `fix-code-vulnerability` | 3/3 | $0.0642 ($0.0631–$0.0658) | 11.5 s (10.9–12.7) | 3.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | `fix-git` | 3/3 | $0.0549 ($0.0543–$0.0554) | 13.6 s (12.9–14.0) | 4.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | `build-cython-ext` | 3/3 | $0.1456 ($0.1219–$0.1759) | 74.4 s (66.9–82.9) | 6.3 |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | `headless-terminal` | 3/3 | $0.0613 ($0.0554–$0.0658) | 21.3 s (20.2–22.1) | 2.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | `fix-code-vulnerability` | 3/3 | $0.0631 ($0.0624–$0.0636) | 11.3 s (10.1–12.7) | 3.0 |
+| Jev-probe → lean Opus 5.5 | `fix-git` | 3/3 | $0.0742 ($0.0724–$0.0761) | 18.2 s (18.0–18.4) | 5.0 |
+| Jev-probe → lean Opus 5.5 | `build-cython-ext` | 3/3 | $0.2194 ($0.1931–$0.2371) | 90.3 s (85.1–98.9) | 11.3 |
+| Jev-probe → lean Opus 5.5 | `headless-terminal` | 3/3 | $0.1078 ($0.0833–$0.1212) | 36.4 s (30.5–40.6) | 4.3 |
+| Jev-probe → lean Opus 5.5 | `fix-code-vulnerability` | 3/3 | $0.0704 ($0.0639–$0.0771) | 12.9 s (10.7–14.5) | 3.3 |
+
+| Arm | Passed | Sum of per-task mean cost | Sum of per-task mean agent time |
+| --- | --- | --- | --- |
+| **Jev-probe v2 → Luna**‡ | 9/12 | $0.0214 | 265.3 s |
+| Jev-probe → Luna‡ | 12/12 | $0.0219 | 318.1 s |
+| Jev-probe → lean Opus 5.5, low effort | 12/12 | $0.3075 | 125.1 s |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | 12/12 | $0.3249 | 120.7 s |
+| Jev-probe → lean Opus 5.5 | 12/12 | $0.4717 | 157.7 s |
+
+On four tasks the panel doesn't cover (the `extended` profile), against
+both direct baselines, three trials each:
+
+| Arm | Task | Passed | Cost, mean (min–max) | Agent time, mean (min–max) | Delegate turns, mean |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code 2.1.280 / Opus 5.5 | `cancel-async-tasks` | 3/3 | $0.1833 ($0.1497–$0.2385) | 51.5 s (45.3–63.5) | — |
+| Claude Code 2.1.280 / Opus 5.5 | `git-leak-recovery` | 3/3 | $0.0749 ($0.0601–$0.0867) | 19.5 s (15.0–26.4) | — |
+| Claude Code 2.1.280 / Opus 5.5 | `log-summary-date-ranges` | 3/3 | $0.0945 ($0.0826–$0.1055) | 19.4 s (18.6–21.1) | — |
+| Claude Code 2.1.280 / Opus 5.5 | `sqlite-db-truncate` | 3/3 | $0.0781 ($0.0652–$0.1007) | 20.1 s (19.6–20.6) | — |
+| Codex 0.155.1 / GPT-6 Luna‡ | `cancel-async-tasks` | 1/3 | $0.0016 ($0.0014–$0.0021) | 37.9 s (35.3–42.4) | — |
+| Codex 0.155.1 / GPT-6 Luna‡ | `git-leak-recovery` | 2/3 | $0.0028 ($0.0026–$0.0029) | 58.4 s (56.0–61.3) | — |
+| Codex 0.155.1 / GPT-6 Luna‡ | `log-summary-date-ranges` | 3/3 | $0.0016 ($0.0009–$0.0022) | 26.3 s (24.3–28.1) | — |
+| Codex 0.155.1 / GPT-6 Luna‡ | `sqlite-db-truncate` | 3/3 | $0.0035 ($0.0030–$0.0040) | 67.9 s (58.3–78.7) | — |
+| Jev-probe → Luna‡ | `cancel-async-tasks` | 0/3 | $0.0012 ($0.0009–$0.0017) | 24.1 s (19.8–28.5) | 3.3 |
+| Jev-probe → Luna‡ | `git-leak-recovery` | 3/3 | $0.0019 ($0.0017–$0.0020) | 27.8 s (24.8–31.3) | 6.7 |
+| Jev-probe → Luna‡ | `log-summary-date-ranges` | 0/3 | $0.0027 ($0.0024–$0.0032) | 24.6 s (23.6–25.4) | 3.0 |
+| Jev-probe → Luna‡ | `sqlite-db-truncate` | 3/3 | $0.0042 ($0.0040–$0.0045) | 43.5 s (40.3–47.4) | 6.0 |
+| **Jev-probe v2 → Luna**‡ | `cancel-async-tasks` | 1/3 | $0.0016 ($0.0009–$0.0024) | 37.1 s (22.1–61.3) | 4.3 |
+| **Jev-probe v2 → Luna**‡ | `git-leak-recovery` | 3/3 | $0.0016 ($0.0013–$0.0022) | 22.9 s (19.8–27.5) | 5.0 |
+| **Jev-probe v2 → Luna**‡ | `log-summary-date-ranges` | 1/3 | $0.0022 ($0.0019–$0.0026) | 27.8 s (21.8–38.7) | 3.3 |
+| **Jev-probe v2 → Luna**‡ | `sqlite-db-truncate` | 3/3 | $0.0039 ($0.0030–$0.0050) | 57.0 s (35.1–72.9) | 6.3 |
+| Jev-probe → lean Opus 5.5, low effort | `cancel-async-tasks` | 3/3 | $0.0613 ($0.0496–$0.0760) | 20.9 s (15.6–24.8) | 3.7 |
+| Jev-probe → lean Opus 5.5, low effort | `git-leak-recovery` | 3/3 | $0.0370 ($0.0332–$0.0402) | 11.6 s (10.9–12.5) | 3.7 |
+| Jev-probe → lean Opus 5.5, low effort | `log-summary-date-ranges` | 3/3 | $0.0916 ($0.0858–$0.1010) | 14.8 s (12.1–16.4) | 3.3 |
+| Jev-probe → lean Opus 5.5, low effort | `sqlite-db-truncate` | 3/3 | $0.0583 ($0.0561–$0.0610) | 17.8 s (17.1–18.3) | 4.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | `cancel-async-tasks` | 3/3 | $0.0487 ($0.0480–$0.0491) | 15.2 s (14.5–16.0) | 2.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | `git-leak-recovery` | 3/3 | $0.0348 ($0.0332–$0.0364) | 10.0 s (9.5–10.4) | 3.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | `log-summary-date-ranges` | 3/3 | $0.0882 ($0.0878–$0.0884) | 13.6 s (13.1–14.2) | 3.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | `sqlite-db-truncate` | 3/3 | $0.0556 ($0.0533–$0.0585) | 18.4 s (17.0–20.1) | 2.7 |
+
+| Arm | Passed | Sum of per-task mean cost | Sum of per-task mean agent time |
+| --- | --- | --- | --- |
+| **Jev-probe v2 → Luna**‡ | 8/12 | $0.0093 | 144.9 s |
+| Codex 0.155.1 / GPT-6 Luna‡ | 9/12 | $0.0095 | 190.4 s |
+| Jev-probe → Luna‡ | 6/12 | $0.0100 | 120.1 s |
+| **Jev-probe v2 → lean Opus 5.5, low effort** | 12/12 | $0.2273 | 57.2 s |
+| Jev-probe → lean Opus 5.5, low effort | 12/12 | $0.2482 | 65.1 s |
+| Claude Code 2.1.280 / Opus 5.5 | 12/12 | $0.4309 | 110.5 s |
+
+One trial per task of the other delegates, on the panel tasks. Each cell is
+**reward · total cost · agent time**:
+
+| Arm | `fix-git` | `build-cython-ext` | `headless-terminal` | `fix-code-vulnerability` | Passed | Total cost | Total agent time |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Jev-probe → Luna, low effort‡ | 1.0 · $0.0035 · 39.4 s | 1.0 · $0.0173 · 194.4 s | 1.0 · $0.0026 · 55.1 s | 1.0 · $0.0044 · 30.0 s | 4/4 | $0.0278 | 318.9 s |
+| Jev-probe → lean Sonnet 5, low effort | 1.0 · $0.1035 · 22.7 s | 1.0 · $0.2891 · 127.0 s | 1.0 · $0.0471 · 23.1 s | 1.0 · $0.0629 · 12.4 s | 4/4 | $0.5026 | 185.2 s |
+| Jev-probe → lean Haiku 4.5 | 1.0 · $0.0391 · 26.2 s | 1.0 · $0.4886 · 223.8 s | 1.0 · $0.0392 · 39.8 s | 1.0 · $0.0684 · 40.3 s | 4/4 | $0.6352 | 330.0 s |
+
+**What the Jev-probe runs show:**
+
+- **Jev-probe v2 → lean Opus at low effort passed all 24 trials** and is
+  the fastest configuration on both sets: 120.7 seconds on the panel (the
+  earlier probe arm took 125.1) and 57.2 seconds on the new tasks, against
+  110.5 seconds for Opus 5.5 alone at 47% lower cost ($0.2273 against
+  $0.4309).
+- **v2 is cheaper for Opus on the new tasks and dearer on
+  `build-cython-ext`.** There the setup pack clones the repository before
+  the survey, so the survey finds the source and the briefing grows from
+  2,783 to about 9,500 characters, which Claude Code writes to its one-hour
+  cache.
+- **v2 made Luna faster where it passed, and cut Jev's cost by a quarter**
+  ($0.00044 to $0.00033 a run). Luna's delegate turns fell on
+  `build-cython-ext` (25.7 to 19.0) and `headless-terminal` (7.7 to 4.7).
+- **v2 → Luna failed `build-cython-ext` in all three trials.** Each run
+  left one NumPy alias wrong (`np.int` unreplaced, or replaced twice as
+  `np.int6464`), and its own checks didn't reach the code path the
+  verifier exercises. The earlier probe arm passed all three. The likely
+  cause is v2's "run one final check" direction.
+- **Luna is unreliable on the new tasks with or without Jev.** Luna direct
+  passed 9 of 12, the probe arm 6 of 12, and v2 8 of 12. On
+  `log-summary-date-ranges` the probe arms counted 414 `ERROR` lines where
+  the verifier expects 370, reading the word anywhere in a line rather
+  than the severity field.
+- **Neither v2 arm beats both winners.** The Luna arm is the cheaper and
+  the Opus arm the faster; no configuration is both below $0.0219 and
+  below 125.1 seconds on the panel.
+
 ## Cheapest first
 
 Every retained trial, one table per task, ordered from the cheapest run to
@@ -243,6 +369,54 @@ timing. A failed run's cost is still listed where it ranks, with its reward.
 | 1 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $0.1781 | 54.2 s† |
 | 2 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.5988 | 92.8 s† |
 | — | Devin 3000.11.1 | swe-2-high | No result | — | — |
+
+### The `extended` tasks, cheapest first
+
+Arm means over three trials each, from the Jev-probe runs above.
+
+#### `cancel-async-tasks`, arm means, cheapest first
+
+| Rank | Arm | Passed | Mean cost | Mean agent time |
+| --- | --- | --- | --- | --- |
+| 1 | Jev-probe → Luna‡ | 0/3 | $0.0012 | 24.1 s |
+| 2 | **Jev-probe v2 → Luna**‡ | 1/3 | $0.0016 | 37.1 s |
+| 3 | Codex 0.155.1 / GPT-6 Luna‡ | 1/3 | $0.0016 | 37.9 s |
+| 4 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0487 | 15.2 s |
+| 5 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0613 | 20.9 s |
+| 6 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.1833 | 51.5 s |
+
+#### `git-leak-recovery`, arm means, cheapest first
+
+| Rank | Arm | Passed | Mean cost | Mean agent time |
+| --- | --- | --- | --- | --- |
+| 1 | **Jev-probe v2 → Luna**‡ | 3/3 | $0.0016 | 22.9 s |
+| 2 | Jev-probe → Luna‡ | 3/3 | $0.0019 | 27.8 s |
+| 3 | Codex 0.155.1 / GPT-6 Luna‡ | 2/3 | $0.0028 | 58.4 s |
+| 4 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0348 | 10.0 s |
+| 5 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0370 | 11.6 s |
+| 6 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.0749 | 19.5 s |
+
+#### `log-summary-date-ranges`, arm means, cheapest first
+
+| Rank | Arm | Passed | Mean cost | Mean agent time |
+| --- | --- | --- | --- | --- |
+| 1 | Codex 0.155.1 / GPT-6 Luna‡ | 3/3 | $0.0016 | 26.3 s |
+| 2 | **Jev-probe v2 → Luna**‡ | 1/3 | $0.0022 | 27.8 s |
+| 3 | Jev-probe → Luna‡ | 0/3 | $0.0027 | 24.6 s |
+| 4 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0882 | 13.6 s |
+| 5 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0916 | 14.8 s |
+| 6 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.0945 | 19.4 s |
+
+#### `sqlite-db-truncate`, arm means, cheapest first
+
+| Rank | Arm | Passed | Mean cost | Mean agent time |
+| --- | --- | --- | --- | --- |
+| 1 | Codex 0.155.1 / GPT-6 Luna‡ | 3/3 | $0.0035 | 67.9 s |
+| 2 | **Jev-probe v2 → Luna**‡ | 3/3 | $0.0039 | 57.0 s |
+| 3 | Jev-probe → Luna‡ | 3/3 | $0.0042 | 43.5 s |
+| 4 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0556 | 18.4 s |
+| 5 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0583 | 17.8 s |
+| 6 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.0781 | 20.1 s |
 
 ## How to read the columns
 
@@ -638,6 +812,13 @@ Cutting time means fewer model turns, which the delegate arms deliver.
 5. Commit and push.
 
 ## Data problems
+
+- Three `extended` trials on 2026-09-22 (`claude-code-opus` on
+  `cancel-async-tasks` and `sqlite-db-truncate`, and
+  `coder-one-jevprobe-opus-lean-low` on `cancel-async-tasks`) ended in
+  `AgentSetupTimeoutError`: sixteen trials installed their agents at once
+  and passed Harbor's 360-second setup limit. They are not results; they
+  were moved to `failed/` and rerun with eight trials at a time.
 
 - Costs marked § include one generation call the door left unpriced (in
   each case the call that read cached tokens); it is estimated at that

@@ -1,0 +1,125 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "cbced3b555e7b19e8b2a4a1993512124cf18e63520f41ba1171a968b09602083",
+        "chars": 10471,
+        "bytes": 10473,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ ls -la /app/logs",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": [
+          "file logs/2025-07-07_api.log (4052 characters)",
+          "file logs/2025-08-10_db.log (4051 characters)",
+          "file logs/2025-07-22_api.log (4052 characters)"
+        ]
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": null,
+      "total_cost_usd": 0.00203496,
+      "milliseconds": 20901,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 5489,
+        "kept_bytes": 5489,
+        "truncated": false,
+        "sha256": "39a9691ea744567acbf17fdd6df78a49431c4b0571c2ba8ceff7e4279bee5bae"
+      },
+      "close": {
+        "done": 0.65,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:41:30.374Z",
+  "updated_at": "2026-09-22T21:41:54.933Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 156425,
+      "sha256": "c5f2c2bd3230bd25ff8d10aeef83b165748fa45b410703daa183e0605a484a20"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1885,
+      "sha256": "b5975e8c8161a0b5e5899adf1779f007559c76bc0777c1daa90e5a987275f1c5"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 37250,
+      "sha256": "b4c6b10b2a18b1bbd40180426225a36c1a8c743f4bd91e42bd8c229e72b5326c"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 10473,
+      "sha256": "cbced3b555e7b19e8b2a4a1993512124cf18e63520f41ba1171a968b09602083"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 5489,
+      "sha256": "39a9691ea744567acbf17fdd6df78a49431c4b0571c2ba8ceff7e4279bee5bae"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM…",
+    "summary": "Created [summary.csv](/app/summary.csv) with the requested header and 15 severity rows, using 2025-08-12 as the reference date. Checked the CSV row order and format after aggregating 164 log files.",
+    "delegate_status": "answered"
+  }
+}

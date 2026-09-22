@@ -1,0 +1,122 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-sonnet-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "94d90d27679c367bec3a45877bedbffad12488ba2cbbf7d0c369f4cc7e3160b6",
+        "chars": 2550,
+        "bytes": 2550,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 5,
+      "api_calls": 5,
+      "total_cost_usd": 0.0469772,
+      "milliseconds": 21475,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 21835,
+        "kept_bytes": 21835,
+        "truncated": false,
+        "sha256": "f68f7c74edccf6733c47f5899d89c13a7bcf25e7980bf55698daf2c0dad4d80b"
+      },
+      "close": {
+        "done": 0.61,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:27:21.004Z",
+  "updated_at": "2026-09-22T21:27:43.959Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 24316,
+      "sha256": "c62b052427be24e7f3497a499b13bfc317e195247d0091a491d7d399712a595d"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1903,
+      "sha256": "02c3675e5d2103de9f25107d855f112c6a7588b35979a27750b8da11fb8d8ab6"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2344,
+      "sha256": "d539e27339f1db1bcb15b9c090422c26c4663740220d3572da1b5a1393e55769"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2550,
+      "sha256": "94d90d27679c367bec3a45877bedbffad12488ba2cbbf7d0c369f4cc7e3160b6"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 21835,
+      "sha256": "f68f7c74edccf6733c47f5899d89c13a7bcf25e7980bf55698daf2c0dad4d80b"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "vim isn't installed, but that's fine — interactive program support was verified functionally with the `sleep`/Ctrl-C test above (raw pty + Enter-driven input model works generally).\n\nCreated `/app/headless_terminal.py` implementing `HeadlessTerminal(BaseTerminal)` using `pexpect` to spawn a real pty-backed `bash -i` (interactive, so it sources `~/.bashrc`). `send_keystrokes` sends raw keys/control chars (e.g. `\\x03` for Ctrl-C) and optionally waits. Installed `pexpect` into system Python via pip. Verified: prompts appear, commands execute on Enter, Ctrl-C interrupts a running `sleep` and shell stays alive afterward.",
+    "delegate_status": "answered"
+  }
+}

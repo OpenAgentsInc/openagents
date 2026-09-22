@@ -1,0 +1,125 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "15ecf1f932c2f03a24874fa312218d9895803f1925ae6e40cf4f23d892b7def5",
+        "chars": 10471,
+        "bytes": 10473,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ ls -la /app/logs",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": [
+          "file logs/2025-08-12_auth.log (4053 characters)",
+          "file logs/2025-08-10_api.log (4052 characters)",
+          "file logs/2025-08-10_db.log (4051 characters)"
+        ]
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": 3,
+      "total_cost_usd": 0.08466,
+      "milliseconds": 10084,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 12852,
+        "kept_bytes": 12852,
+        "truncated": false,
+        "sha256": "4289fa8a78a087d7f82e847c480158380ffbae2a14b9255196bf6854143b8e8a"
+      },
+      "close": {
+        "done": 0.74,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:32:20.347Z",
+  "updated_at": "2026-09-22T22:32:32.305Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 159466,
+      "sha256": "832518f559aec84f625ae6475ba430611ba659c6734ee22b09ec1265111e55ab"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1867,
+      "sha256": "fba9c3ddf348d06455899ff91bc643a7a49f0c95cc823e1341dfafb99469864b"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 37249,
+      "sha256": "5f0131baa1aa330f0fa19b9f5764fd1d2e6e830fa2f5cb0cb7902a79893c3d5b"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 10473,
+      "sha256": "15ecf1f932c2f03a24874fa312218d9895803f1925ae6e40cf4f23d892b7def5"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 12852,
+      "sha256": "4289fa8a78a087d7f82e847c480158380ffbae2a14b9255196bf6854143b8e8a"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM…",
+    "summary": "I wrote `/app/summary.csv` with the header and all 15 rows in the order the task asked for. The totals are 14,160 ERROR, 18,772 WARNING and 56,621 INFO.\n\n**How lines were counted:** each line has a bracketed level like `2025-08-12 05:46:38 [INFO] ...`, and I counted only that tag. The word \"ERROR\" also appears inside some messages, so a plain word match would give 16,774 errors instead of 14,160. DEBUG lines are ignored.\n\n**Date ranges:** dates come from the file names, with 2025-08-12 as today:\n- **today:** 2025-08-12 only\n- **last 7 days:** 2025-08-06 to 2025-08-12\n- **last 30 days:** 2025-07-14 to 2025-08-12\n- **month to date:** 2025-08-01 to 2025-08-12\n- **total:** every file\n\n**Check:** the three totals match a separate count of the bracketed tags across all the logs. I didn't count any of the other ranges by a second method.",
+    "delegate_status": "answered"
+  }
+}

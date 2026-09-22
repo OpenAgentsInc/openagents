@@ -1,0 +1,121 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "6f56659d4605cdcea0652efcda5fe5d01d4f04ea8e44f2d940f8799b248ed680",
+        "chars": 1924,
+        "bytes": 1924,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ ls -la /app/repo",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 6,
+      "api_calls": null,
+      "total_cost_usd": 0.001606,
+      "milliseconds": 26413,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 6727,
+        "kept_bytes": 6727,
+        "truncated": false,
+        "sha256": "780238518cd68fcbf51ec0c3126f5d46eabf679b230575fffa255026683e23b9"
+      },
+      "close": {
+        "done": 0.64,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:31:28.408Z",
+  "updated_at": "2026-09-22T22:31:55.552Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 22149,
+      "sha256": "f541435e10c0c24cc0a7182decd527711ae6edeb74451a03f4b9e7de6d0ee0d4"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1890,
+      "sha256": "bfaf0a471401fdfdc4ba01ebe65930ea2c832a4c1ce1589e6cbf0b8e7ea0ede1"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1608,
+      "sha256": "ce42454032a537a8bd21013f29cf23299c8606ff3ea62bc24b0c556825a44b8d"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 1924,
+      "sha256": "6f56659d4605cdcea0652efcda5fe5d01d4f04ea8e44f2d940f8799b248ed680"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 6727,
+      "sha256": "780238518cd68fcbf51ec0c3126f5d46eabf679b230575fffa255026683e23b9"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "A secret was accidentally committed to this repository in /app and then removed by rewriting history…",
+    "summary": "Recovered the secret to [/app/secret.txt](/app/secret.txt). Removed the unreachable secret commit and blob from `/app/repo` by expiring reflogs and pruning Git objects.\n\nChecked that the repository has no `secret[` matches, no unreachable objects, a clean worktree, and the existing commit messages are unchanged.",
+    "delegate_status": "answered"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "0f420af94401105215f0190c8b52561c290728cbbd0b75e059da55349eb36b70",
+        "chars": 2550,
+        "bytes": 2550,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 5,
+      "api_calls": null,
+      "total_cost_usd": 0.0022997800000000004,
+      "milliseconds": 50331,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 14599,
+        "kept_bytes": 14599,
+        "truncated": false,
+        "sha256": "317f15714bd8ffcb200b0e27252a694f9ed4fddaa5403de3e5968819457bad35"
+      },
+      "close": {
+        "done": 0.54,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:13:34.493Z",
+  "updated_at": "2026-09-22T21:14:26.143Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 23023,
+      "sha256": "6e02064f7f85f572d01780bedd319a509b2d75678e797f430f505b6a01cb1455"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1917,
+      "sha256": "2a5e29d03fb758264146981ca21fd31316ab92cd9bfc40ccd400219068c5eefe"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2344,
+      "sha256": "c0bf3a7ad0b8fc8b8180d02fa4341ef1990fec7b992e6a45f1cd07e0bac4f84a"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2550,
+      "sha256": "0f420af94401105215f0190c8b52561c290728cbbd0b75e059da55349eb36b70"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 14599,
+      "sha256": "317f15714bd8ffcb200b0e27252a694f9ed4fddaa5403de3e5968819457bad35"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "Implemented [headless_terminal.py](/app/headless_terminal.py) with a persistent PTY-backed `HeadlessTerminal(BaseTerminal)`. It runs interactive Bash, captures output in `output` or `read_output()`, and passes control characters such as Ctrl-C through to the terminal.\n\nVerified that it loads a custom `.bashrc`, accepts commands and interactive input, and handles Ctrl-C. No extra dependencies were needed.",
+    "delegate_status": "answered"
+  }
+}

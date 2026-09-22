@@ -1,0 +1,124 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "1d3df5bb38983897c200c2e769f9e8a9bd73eb6c6f9a187693f583cc86007504",
+        "chars": 2613,
+        "bytes": 2613,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git -C /app/repo reflog -n 40",
+          "file $ git -C /app/repo log --oneline --graph --all -n 40",
+          "file $ git -C /app/repo branch -a -vv",
+          "file $ git -C /app/repo status",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": 3,
+      "total_cost_usd": 0.0347558,
+      "milliseconds": 9268,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 10242,
+        "kept_bytes": 10242,
+        "truncated": false,
+        "sha256": "0d9eca861137e274fd9ed484aaeb1b8f0a3e0f63bed6425ee2fa753ca530117d"
+      },
+      "close": {
+        "done": 0.62,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:03:25.394Z",
+  "updated_at": "2026-09-22T22:03:35.407Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 28719,
+      "sha256": "a6aa5f72730a654d0a3ffb4c10523b3fb3435ea8068f6b12e23aedfe07fd9a32"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1866,
+      "sha256": "cabacf9e93d3de24c10afb3173bfd175e4aead7d34cc3067a58f6efc8d42e996"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2309,
+      "sha256": "5769e88686ce41215324ab58719696b10e791dcd0fd9eb44c69131081bf99111"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2613,
+      "sha256": "1d3df5bb38983897c200c2e769f9e8a9bd73eb6c6f9a187693f583cc86007504"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 10242,
+      "sha256": "0d9eca861137e274fd9ed484aaeb1b8f0a3e0f63bed6425ee2fa753ca530117d"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "A secret was accidentally committed to this repository in /app and then removed by rewriting history…",
+    "summary": "I recovered the secret and wrote it to `/app/secret.txt`: `secret[lost_and_found_in_git]`.\n\n**Where it was:** The commit `6b4c75c` (\"feat: add scratch notes\") had added a `secret.txt` file. That commit was then dropped with a reset, but the git history log (reflog) still pointed to it, so I read the secret from there.\n\n**Cleanup:** I cleared the reflog and ran garbage collection so git permanently deleted everything nothing else pointed to. The dropped commit is now gone (`fatal: Not a valid object name 6b4c75c`). Searching `.git` for the secret text finds nothing, and git's search for orphaned commits and files (`git fsck --lost-found`) turned up nothing either.\n\n**Left untouched:** The two remaining commits (`7a2420e` and `c6d9997`), their messages, and `README.md` are unchanged. I didn't rewrite any current history, only removed the unreachable data.",
+    "delegate_status": "answered"
+  }
+}

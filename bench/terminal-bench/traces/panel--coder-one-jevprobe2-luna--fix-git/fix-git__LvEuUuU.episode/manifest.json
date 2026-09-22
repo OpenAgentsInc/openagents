@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "0bbbc6c46ad4cc204d4e1b58d1693323c6b701548b554f2b6d876a4c2e47184f",
+        "chars": 3893,
+        "bytes": 3893,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 8,
+      "api_calls": null,
+      "total_cost_usd": 0.0022301599999999997,
+      "milliseconds": 29280,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 14829,
+        "kept_bytes": 14829,
+        "truncated": false,
+        "sha256": "9a10a533a457d574e6c157745d8d8b647d39c40a9d5d5106a8dae49c8dff3622"
+      },
+      "close": {
+        "done": 0.85,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:46:56.549Z",
+  "updated_at": "2026-09-22T21:47:27.729Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 74143,
+      "sha256": "6bb08ec65024b2568751845a25f07fabc879e94424299a2383c463051d64ed20"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1918,
+      "sha256": "595fe25c53bc1c26d98a5037677da5e6f5e11e724d8185ccb00adf549edde557"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 3604,
+      "sha256": "303db7e74e855b5277845a08204929f066fb5cc9ad5e918a91fe29f05489bab2"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4914,
+      "sha256": "eb9f0aeb5b67effd7f595799642413a622bfd9a1d3b2e42d687f8a63a269fbc5"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3893,
+      "sha256": "0bbbc6c46ad4cc204d4e1b58d1693323c6b701548b554f2b6d876a4c2e47184f"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 14829,
+      "sha256": "9a10a533a457d574e6c157745d8d8b647d39c40a9d5d5106a8dae49c8dff3622"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "Recovered commit `c499730` (“Move to Stanford”) and merged it into `master` as merge commit `586e3a9`. The merge keeps the Stanford bio update and includes the layout changes.\n\nVerified that `master` contains both commits and the working tree is clean.",
+    "delegate_status": "answered"
+  }
+}

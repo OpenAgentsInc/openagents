@@ -1,0 +1,125 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "2faf263fe909ac6b3b033fdf48daa048de6aedb62cc67733673c140e26519ec2",
+        "chars": 10471,
+        "bytes": 10473,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ ls -la /app/logs",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": [
+          "file logs/2025-08-08_db.log (4051 characters)",
+          "file logs/2025-08-10_api.log (4052 characters)",
+          "file logs/2025-08-01_db.log (4051 characters)"
+        ]
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": null,
+      "total_cost_usd": 0.00129728,
+      "milliseconds": 23113,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 5199,
+        "kept_bytes": 5199,
+        "truncated": false,
+        "sha256": "0e6f178e08f5a042adf085ee96221975289616e712700c5605403cea0aa03ca2"
+      },
+      "close": {
+        "done": 0.64,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:32:08.757Z",
+  "updated_at": "2026-09-22T22:32:33.877Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 156384,
+      "sha256": "db915025a3903aebba72501f9f4247132c829abd9996ba0b3653071ec86d831e"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1884,
+      "sha256": "90410cf8dc1f87dbac2dddccdb5bfa406c6eb805567c3083a22cd58385a02fa2"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 37250,
+      "sha256": "178d9139f063a771da11119801505e3c5ee79882890ea6ad9fed9a8fb750a000"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 10473,
+      "sha256": "2faf263fe909ac6b3b033fdf48daa048de6aedb62cc67733673c140e26519ec2"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 5199,
+      "sha256": "0e6f178e08f5a042adf085ee96221975289616e712700c5605403cea0aa03ca2"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM…",
+    "summary": "Created and verified [`/app/summary.csv`](/app/summary.csv). It has the requested header and 15 rows, with severity counts based on the filename dates and the 2025-08-12 reference date.",
+    "delegate_status": "answered"
+  }
+}

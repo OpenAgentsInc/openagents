@@ -1,0 +1,129 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "deb6454f1711d1e650fde43bc2a55837f1eb5bedc164604cb30a476e8a00dde6",
+        "chars": 6965,
+        "bytes": 6965,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 11,
+      "api_calls": null,
+      "total_cost_usd": 0.00283096,
+      "milliseconds": 35469,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 14205,
+        "kept_bytes": 14205,
+        "truncated": false,
+        "sha256": "f50dfa617ecc6f6939b8a62724b018895048ece6bf6505c7c17b7495333a3ce7"
+      },
+      "close": {
+        "done": 0.85,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:13:23.737Z",
+  "updated_at": "2026-09-22T21:14:02.926Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 123443,
+      "sha256": "810636154a33099d80aa06f592354662e43dd4934602e62efb923abd56f67839"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1900,
+      "sha256": "eeae75cc8ea488c9bdfbe41c78b7fbe1a7d7d39744495cdbb68973b000b4bda5"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 7025,
+      "sha256": "42ab74114f33523f2d1bea7f7a62be24767cfaea0e39e92b9d2db7774a422cd6"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4914,
+      "sha256": "eb9f0aeb5b67effd7f595799642413a622bfd9a1d3b2e42d687f8a63a269fbc5"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 6965,
+      "sha256": "deb6454f1711d1e650fde43bc2a55837f1eb5bedc164604cb30a476e8a00dde6"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 14205,
+      "sha256": "f50dfa617ecc6f6939b8a62724b018895048ece6bf6505c7c17b7495333a3ce7"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "Recovered commit `c499730` (“Move to Stanford”) from the reflog and merged it into `master` as `fb8e7ad`. The merge keeps the Stanford role and existing experience paragraph in `_includes/about.md`, and includes the layout updates.\n\nChecked the merge history and confirmed the working tree is clean.",
+    "delegate_status": "answered"
+  }
+}

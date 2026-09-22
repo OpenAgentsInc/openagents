@@ -1,0 +1,124 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "2e124d23b2cee1c138c299316e1a13f401716432ad059559e9c9489be4881219",
+        "chars": 2613,
+        "bytes": 2613,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git -C /app/repo reflog -n 40",
+          "file $ git -C /app/repo status",
+          "file $ git -C /app/repo log --oneline --graph --all -n 40",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ git -C /app/repo branch -a -vv"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 4,
+      "api_calls": null,
+      "total_cost_usd": 0.00119588,
+      "milliseconds": 18761,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 3566,
+        "kept_bytes": 3566,
+        "truncated": false,
+        "sha256": "08caa79f1e446a771ef883be532ecaad499ff0ec6b3b7a34d7c5c59432809c1b"
+      },
+      "close": {
+        "done": 0.48,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:21:48.110Z",
+  "updated_at": "2026-09-22T22:22:07.643Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 25832,
+      "sha256": "a9787203f516522d12e62019403b093ada13ffe7f22f51c51fffff20adae856b"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1893,
+      "sha256": "42047f2b6d248dfa145bf488cffc9e4772468e2d9df9c63bfc70b3b194ed1daf"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2311,
+      "sha256": "021c84f2e885bd9d542bfc684086fe681a2c5eae7db010fa729a095c37fed350"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2613,
+      "sha256": "2e124d23b2cee1c138c299316e1a13f401716432ad059559e9c9489be4881219"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 3566,
+      "sha256": "08caa79f1e446a771ef883be532ecaad499ff0ec6b3b7a34d7c5c59432809c1b"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "A secret was accidentally committed to this repository in /app and then removed by rewriting history…",
+    "summary": "Recovered `secret[lost_and_found_in_git]` to `/app/secret.txt`. Expired the reflog and pruned unreachable Git objects, leaving the current history intact.\n\nVerified the file’s exact contents, no matching secret in `HEAD`, and no unreachable objects remaining.",
+    "delegate_status": "answered"
+  }
+}

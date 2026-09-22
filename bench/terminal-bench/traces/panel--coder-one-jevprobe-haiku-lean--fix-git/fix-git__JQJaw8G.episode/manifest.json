@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-haiku-4-5-20251001",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "04e6768a542b754f96f8853917564d3bb393fb915c23429e343fdce4f7b5f450",
+        "chars": 3705,
+        "bytes": 3705,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 7,
+      "api_calls": 7,
+      "total_cost_usd": 0.0384536,
+      "milliseconds": 24215,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 42749,
+        "kept_bytes": 42749,
+        "truncated": false,
+        "sha256": "cc5190dbd1ba7e826c4bdd4e8532f93d7af5a32b682600ce63aead823e00bf8f"
+      },
+      "close": {
+        "done": 0.69,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:26:51.635Z",
+  "updated_at": "2026-09-22T21:27:17.661Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 121755,
+      "sha256": "839a4288e9e81e6bd27b2261f4f612d555b3037fa7df05cdf34cddfb33089f2c"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1948,
+      "sha256": "89d72a106d6ad8f5cb360b4add9f0f65687ea5d26bfb281cdf55887a8d4bb82f"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 3602,
+      "sha256": "05d9590f95a3fa4d5f54dd623c5fa7d8ec4a38083dad8b05841fad865f038b26"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4914,
+      "sha256": "eb9f0aeb5b67effd7f595799642413a622bfd9a1d3b2e42d687f8a63a269fbc5"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3705,
+      "sha256": "04e6768a542b754f96f8853917564d3bb393fb915c23429e343fdce4f7b5f450"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 42749,
+      "sha256": "cc5190dbd1ba7e826c4bdd4e8532f93d7af5a32b682600ce63aead823e00bf8f"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "Done! I found your lost changes and merged them into master. Here's what happened:\n\n**What was lost:** You had made a commit \"Move to Stanford\" (c499730) that updated your bio from PhD candidate at UW to Postdoctoral Researcher at Stanford, but it became unreachable when you checked out other branches.\n\n**How I recovered it:** \n1. Located the lost commit in the reflog (c499730)\n2. Merged it into master\n3. Resolved the conflict by keeping your Stanford bio update\n4. Created a merge commit (a41045d)\n\nYour `_includes/about.md` now correctly shows you as a Postdoctoral Researcher at Stanford, and the change is permanently merged into master.",
+    "delegate_status": "answered"
+  }
+}

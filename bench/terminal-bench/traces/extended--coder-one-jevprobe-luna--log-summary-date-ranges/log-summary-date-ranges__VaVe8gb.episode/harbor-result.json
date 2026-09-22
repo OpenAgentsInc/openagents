@@ -1,0 +1,36 @@
+{
+  "trial_name": "log-summary-date-ranges__VaVe8gb",
+  "task_name": "terminal-bench/log-summary-date-ranges",
+  "started_at": "2026-09-22T21:35:56.606783Z",
+  "finished_at": "2026-09-22T21:42:24.142315Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T21:35:56.685727Z",
+    "finished_at": "2026-09-22T21:36:02.619405Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T21:36:02.619493Z",
+    "finished_at": "2026-09-22T21:41:30.269531Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T21:41:30.269658Z",
+    "finished_at": "2026-09-22T21:41:55.235182Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T21:41:55.476144Z",
+    "finished_at": "2026-09-22T21:42:11.079655Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 0.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 64278,
+    "n_cache_tokens": 22016,
+    "n_output_tokens": 713,
+    "cost_usd": 0.003197478,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

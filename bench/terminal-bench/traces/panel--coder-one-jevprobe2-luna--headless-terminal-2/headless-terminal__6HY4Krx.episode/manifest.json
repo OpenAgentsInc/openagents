@@ -1,0 +1,122 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "23af1a5e38858fac2f8520059b3348f44de2ecb00957a76bc21b13304e54457a",
+        "chars": 2738,
+        "bytes": 2738,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": null,
+      "total_cost_usd": 0.00131362,
+      "milliseconds": 36342,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 11364,
+        "kept_bytes": 11364,
+        "truncated": false,
+        "sha256": "c2a2ac0655bec24a6f9a70f7ab135cbb8a334c6319e55faf9261aead11cbccc9"
+      },
+      "close": {
+        "done": 0.64,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T21:59:06.441Z",
+  "updated_at": "2026-09-22T21:59:44.064Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 23196,
+      "sha256": "f892f40388e95836c136b995c1e91b2d7144d2619c3572017d794d824121b336"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1906,
+      "sha256": "92b31f128bc5cd070d1d5b44badec16b7a1765bff601df2705e23ccfd9d78828"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2344,
+      "sha256": "ff05787ca396c6738fce18602c7f01640bd6945db3c3cc0d32c2f4cd43d8522f"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2738,
+      "sha256": "23af1a5e38858fac2f8520059b3348f44de2ecb00957a76bc21b13304e54457a"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 11364,
+      "sha256": "c2a2ac0655bec24a6f9a70f7ab135cbb8a334c6319e55faf9261aead11cbccc9"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "Implemented [headless_terminal.py](/app/headless_terminal.py) with `HeadlessTerminal(BaseTerminal)`, backed by a PTY running interactive login bash. It captures shell output, supports keystrokes such as Ctrl-C, and provides `close()` plus context manager support.\n\nVerified the module imports, bash executes a command and returns output, and Ctrl-C reaches the shell. No additional dependencies were needed.",
+    "delegate_status": "answered"
+  }
+}

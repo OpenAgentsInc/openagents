@@ -1,0 +1,121 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "8f66f5712380d9d88f08fd21d6f6070e2a078263febec52e80b1780ed4392430",
+        "chars": 1809,
+        "bytes": 1809,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": null,
+      "total_cost_usd": 0.00096374,
+      "milliseconds": 16931,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 4659,
+        "kept_bytes": 4659,
+        "truncated": false,
+        "sha256": "7074857ac37f1c61945a322e2221a674908d6b4e6724dffb05c29337ca647686"
+      },
+      "close": {
+        "done": 0.66,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (774c2a9340a2)",
+    "sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:07:03.328Z",
+  "updated_at": "2026-09-22T22:07:22.878Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 17495,
+      "sha256": "a61b13bef08c27fa07f1d16aab70a53bdcaa529fe1d59291ea7e2d75a3f46964"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1893,
+      "sha256": "de8f2ee1abf8f54019c3fb73386fef10e5e11e8c04195cb4d4e2a1c4bea2a617"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1504,
+      "sha256": "25ead2f5826bb9e4245f9c2783ff2188988db5bb3b0ae5d109c29fde7b3e5e61"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 1809,
+      "sha256": "8f66f5712380d9d88f08fd21d6f6070e2a078263febec52e80b1780ed4392430"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 4659,
+      "sha256": "7074857ac37f1c61945a322e2221a674908d6b4e6724dffb05c29337ca647686"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_con…",
+    "summary": "Created [run.py](/app/run.py) with `run_tasks`, which limits simultaneous jobs and cancels and awaits started tasks so their cleanup can run if interrupted or if a task fails.\n\nChecked that it imports and runs eight jobs with a concurrency limit of three.",
+    "delegate_status": "answered"
+  }
+}

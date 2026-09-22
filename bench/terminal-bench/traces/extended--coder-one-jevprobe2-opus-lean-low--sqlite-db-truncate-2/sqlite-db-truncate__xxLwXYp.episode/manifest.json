@@ -1,0 +1,121 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "a266031698b04d3c3cbff4992fd2f451ccf306314f797c0ca23602147dd4a8a3",
+        "chars": 5718,
+        "bytes": 5741,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ head -200 /app/trunc.db",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": 3,
+      "total_cost_usd": 0.058375,
+      "milliseconds": 18114,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 19521,
+        "kept_bytes": 19521,
+        "truncated": false,
+        "sha256": "0d9a47894929b24c62928800fec67a46f67a79abaa3f9d318fd30af038116e2a"
+      },
+      "close": {
+        "done": 0.62,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:05:41.686Z",
+  "updated_at": "2026-09-22T22:06:01.422Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 66272,
+      "sha256": "8baca8335a46cf8715b6899f11a2ff75f464a5473081e65b22775a82e7991f0c"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1878,
+      "sha256": "b20b07088890816214cc1f48694f879336e393b336843037498713c222adc3a4"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 25125,
+      "sha256": "7e7701f50a80cb84acb78733b20a50d2251426132dd71e14c514192841bc6bb2"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 5741,
+      "sha256": "a266031698b04d3c3cbff4992fd2f451ccf306314f797c0ca23602147dd4a8a3"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 19521,
+      "sha256": "0d9a47894929b24c62928800fec67a46f67a79abaa3f9d318fd30af038116e2a"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as m…",
+    "summary": "I recovered all 10 rows (`testword00` to `testword09`) and wrote them to `/app/recover.json` in the format you asked for.\n\n**How:** The file is only 4096 bytes, so SQLite couldn't open it normally. Instead I read the raw bytes and decoded each row's stored record directly. Each record says what type its number is (small integer, decimal, or the constant 1), and I read the value according to that.\n\n**One row to note:** `testword00` is the last row in the file, and the file ends right after its word. Its value is still certain, because SQLite stores the value 1 as a type code with no separate bytes, so nothing was lost.\n\n**Recovered values:**\n\n| Word | Value |\n|---|---|\n| testword00 | 1 |\n| testword01 | 2 |\n| testword02 | 10 |\n| testword03 | 25 |\n| testword04 | 42 |\n| testword05 | 50 |\n| testword06 | 75 |\n| testword07 | 99 |\n| testword08 | 99.99 |\n| testword09 | 0.5 |\n\n**Checks:** The script printed the list it saved, and every word and value came out whole and sensible. I didn't re-open the saved file afterwards to check it separately.\n\n**Assumption:** I only searched for records whose word starts with \"testword\". The damaged part of the file is blank, so there's probably nothing else to recover, but a row with a different kind of word would have been missed. The rows are saved in the order they appear in the file, which runs from 09 down to 00.",
+    "delegate_status": "answered"
+  }
+}
