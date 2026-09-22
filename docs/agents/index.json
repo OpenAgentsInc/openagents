@@ -1,6 +1,6 @@
 {
   "v": "openagents.agents-index.v1",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "generated_by": "hand-maintained",
   "generated_on": "2026-09-22",
   "directory": "docs/agents",
@@ -9,7 +9,7 @@
     {
       "path": "docs/agents/llms.txt",
       "kind": "llms.txt",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "generated_by": "hand-maintained",
       "served_at": "/llms.txt",
       "content": "llms.txt-convention entry point: the project one-liner and links to every discovery document."
@@ -17,7 +17,7 @@
     {
       "path": "docs/agents/agents.md",
       "kind": "agent-guide",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "generated_by": "hand-maintained",
       "served_at": "/agents.md",
       "content": "The agent-facing entry document: what the service is, the order to read the discovery set in, and the honest limits."
@@ -25,15 +25,15 @@
     {
       "path": "docs/agents/auth.md",
       "kind": "guide",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "generated_by": "hand-maintained",
       "served_at": "/auth.md",
-      "content": "Authentication contract: oak_ bearer keys via OPENAGENTS_API_KEY or a mode-0600 config file, oak-mcp-http per-request bearer forwarding, workspace membership, anonymous access, the typed refusal shape, which surfaces need no credential, and operator-side provisioning."
+      "content": "Authentication contract: oak_ bearer keys via OPENAGENTS_API_KEY or a mode-0600 config file, sess_ session tokens on accounts deployments, oak-mcp-http per-request bearer forwarding, workspace membership, anonymous access and the funded anonymous session lane, the typed refusal shape, which surfaces need no credential, and operator-side provisioning."
     },
     {
       "path": "docs/agents/api-catalog.json",
       "kind": "catalog",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "generated_by": "hand-maintained",
       "served_at": "/api-catalog.json",
       "content": "Versioned route catalog: every implemented route — including the public discovery documents and the /v1/docs corpus API — with method, path, request and response shape references, the complete refusal-code map, and an explicit unimplemented list."
@@ -41,7 +41,7 @@
     {
       "path": "docs/agents/openapi.yaml",
       "kind": "openapi-3.1-fragment",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "generated_by": "hand-maintained",
       "served_at": "/openapi.yaml",
       "content": "OpenAPI 3.1 fragment covering exactly the implemented API routes — systemone, classify, the jobs family, models, the docs corpus API, balance, and healthz — with real request/response schemas and the documented refusal codes."
@@ -49,7 +49,7 @@
     {
       "path": "docs/agents/skills.md",
       "kind": "skill",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "generated_by": "hand-maintained",
       "served_at": "/skills.md",
       "content": "What an agent needs to call the API — the oak CLI, the oak-mcp and oak-mcp-http MCP servers, or raw HTTP — supported versions, and honest limits."
@@ -65,7 +65,7 @@
     {
       "path": "docs/agents/index.json",
       "kind": "index",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "generated_by": "hand-maintained",
       "served_at": "/index.json",
       "content": "This file — the versioned index of the discovery document set."

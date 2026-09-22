@@ -17,8 +17,13 @@ Authorization: Bearer oak_acme.9f…c4
 
 An operator issues keys with the `tenant-keys` binary against the
 deployment's registry; the service stores only a digest of each key.
-There is no signup, self-serve issuance, or key-creation endpoint — if
-you need a key, ask the operator of the deployment you are calling.
+A deployment that configures the `accounts` document in `gateway.json`
+also offers self-serve issuance — `POST /v1/accounts` creates an
+account, its personal workspace, its first key, and its first session
+in one call, and the `/v1/workspaces/{workspace}/keys` family manages
+named and scoped keys after that. A deployment without `accounts`
+registers none of those routes — there is no signup flow, and the
+operator issues keys.
 
 ## Where the key may live
 
@@ -57,6 +62,19 @@ is refused `403 workspace_forbidden`. Monetary admission requires this
 mode: a charge binds an authenticated workspace, never an anonymous or
 bearer-only call.
 
+## Session tokens
+
+A session token has the shape `sess_<hex>` and goes in the same
+`Authorization: Bearer` slot as a key. A deployment mints one only
+through `POST /v1/sessions` (sign-in under an `oak_` key, or — when it
+funds the anonymous lane — with no credential) and `POST /v1/accounts`
+(self-serve sign-up). Neither token nor key ever appears in a URL.
+
+A user session names its workspace with `X-Workspace-Id` on every
+decision call and authorizes the account's fresh membership — a removed
+member's session refuses on the next call. `DELETE /v1/session` logs
+out; `GET /v1/session` describes standing and deadline.
+
 ## Anonymous calls
 
 A request with no `Authorization` header is anonymous. Anonymous callers
@@ -64,6 +82,13 @@ reach only the deployment's `shared` doors — a tenant's dedicated doors
 are invisible to them, not merely unreachable. When the deployment
 requires workspace membership, an anonymous call is refused
 `401 unauthenticated` outright.
+
+When a deployment funds the anonymous lane (`accounts.anonymous` in
+`gateway.json`), `POST /v1/sessions` with no credential mints a bounded
+anonymous session: one unit of the operator-funded `onb_public` budget
+per decision call, a per-session cap, a TTL, and shared doors only.
+`require_workspace_membership` still refuses it — the lane exists only
+where membership is optional.
 
 ## What a rejected call gets
 
@@ -84,6 +109,8 @@ The authentication-adjacent codes:
 | `401` | `unauthenticated` | No `Bearer` shape, an unknown, revoked, or wrong key, or a membership-mode call with no credential. |
 | `403` | `door_not_bound` | The credential holds no binding for the door the request named, and the door is not shared. |
 | `403` | `workspace_forbidden` | The key has no active membership in the named workspace and tenant. |
+| `401` | `session_closed` | The session expired, was logged out, or was revoked. |
+| `403` | `out_of_scope` | The key's declared scopes do not name the door or the action attempted. |
 
 Calls that pass through the owned admission path — `POST /v1/systemone`
 and `POST /v1/classify` — also carry `x-request-id` and `x-attempt`
@@ -106,11 +133,20 @@ authenticate.
 
 ## Rotation and revocation
 
-Key lifecycle — issue, rotate, revoke — is an operator act on the
-registry directory with `tenant-keys`. A rotated key authenticates the
-same tenant under a new secret; a revoked key fails `unauthenticated`.
-Under monetary admission, balance belongs to the workspace, so rotating
-a key changes nothing the account holds.
+By default key lifecycle — issue, rotate, revoke — is an operator act on
+the registry directory with `tenant-keys`. A rotated key authenticates
+the same tenant under a new secret; a revoked key fails
+`unauthenticated`. Under monetary admission, balance belongs to the
+workspace, so rotating a key changes nothing the account holds.
+
+Under the `accounts` document the workspace's members manage their own
+keys over HTTP: `POST /v1/workspaces/{workspace}/keys` issues a named,
+optionally scoped key; `copy`, `pause`, `resume`, `rotate`, and `DELETE`
+complete the lifecycle; and a member recovery token
+(`POST /v1/workspaces/{workspace}/recovery` then `/v1/recovery/redeem`)
+rotates a lost credential and ends the sessions it minted. Every
+returned secret exists once — in the response that minted it; the store
+holds digests and lineage only.
 
 ## Compatible doors
 
@@ -129,6 +165,6 @@ view — exist only on the gateway.
 - [Monetary accounting](../decision-models/service/monetary-accounting.md) — workspace membership and the conditional balance route.
 
 ---
-Version 1.1.0 · generated-by: hand-maintained · 2026-09-22
+Version 1.2.0 · generated-by: hand-maintained · 2026-09-22
 
 VALIDATED: JSON examples parse; internal links resolve to repo paths. Exact commands are in the commit message.

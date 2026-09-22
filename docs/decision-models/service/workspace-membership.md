@@ -66,26 +66,33 @@ invitation holds its seat until it is accepted, revoked, or expires.
 `set_seats` refuses a bound below the active membership rather than
 orphaning members the next read would refuse to load.
 
-## The call flow a future HTTP adapter runs
+## The call flow the HTTP adapter runs
 
-No membership-management HTTP adapter exists today. When one lands in front of this store, a
-request runs the same sequence the gateway already runs for decision
-calls:
+`crates/gateway`'s `accounts` module is the adapter in front of the
+store. It mounts when the `accounts` block is configured — the same
+conditional-mount rule `/v1/balance` follows under `money` — and a
+management request runs the same sequence a decision call runs:
 
 1. **Authenticate.** `Authorization: Bearer oak_<id>.<secret>` resolves
-   through `tenancy::keys::authenticate` to a key id. The adapter forms
+   through `tenancy::keys::authenticate` to a key id; the adapter forms
    the principal `key:<id>` and resolves it through
-   `Accounts::account_of_principal` to an account. A request with no
-   resolvable principal is unauthenticated — there is no anonymous
-   membership.
+   `Accounts::account_of_principal` to an account. `Authorization:
+   Bearer sess_<hex>` resolves through the session store instead —
+   `sessions.json`, the same discipline `accounts.json` keeps. An
+   anonymous session holds no account: it answers its own session
+   routes and every membership route refuses it `membership_required`.
+   A key whose scope omits the `accounts` action refuses
+   `out_of_scope`; a request with no resolvable principal is
+   unauthenticated.
 2. **Authorize the actor.** For a read, `Accounts::authorize` or
    `Accounts::authorize_principal` answers the [`MemberRef`] — role,
    membership epoch, workspace epoch — or a typed refusal:
-   `not-member`, `revoked`, `unknown-workspace`. For a mutation, the
-   member-management calls (`invite`, `set_role`, `remove_member`,
-   `transfer_ownership`, `set_seats`, `rename`) check the actor inside the
-   write. `accept` validates the invitation token and accepting account
-   instead; it does not require an existing membership.
+   `not_member`, `membership_revoked`, `unknown_workspace`. For a
+   mutation, the member-management calls (`invite`, `set_role`,
+   `remove_member`, `transfer_ownership`, `set_seats`, `rename`) check
+   the actor inside the write. `accept` validates the invitation token
+   and accepting account instead; it does not require an existing
+   membership.
 3. **Serialize the write.** `Accounts::mutate` takes `accounts.lock`,
    re-reads the store inside it, applies the change, bumps `sequence`,
    chains `supersedes`, reseals the digest, revalidates, archives the
@@ -93,11 +100,12 @@ calls:
    store into place. The second of two competing writers decides against
    the winner's committed state, never a stale read. A writer that
    cannot take the lock inside the retry bound gets
-   `Trouble::Locked` — the adapter maps it to a retryable response.
-4. **Answer.** A mutation returns the changed record; the adapter maps
-   `Refusal` variants to status codes the way the gateway maps its own —
-   `forbidden`, `seat-limit`, `last-owner`, `invitation-expired`, and
-   the rest are already distinct answers.
+   `accounts_unavailable` — a retryable 503.
+4. **Answer.** A mutation returns the changed record under the
+   `openagents.accounts.v1` schema tag; a refusal returns the shared
+   `{"error": {"code", "message"}}` envelope — `forbidden`,
+   `seat_limit`, `last_owner`, `invitation_expired`, and the rest are
+   distinct answers.
 
 A session or cached authorization carries the `MemberRef` epochs it was
 issued under. Comparing `members_epoch` on the next `authorize` tells
@@ -122,10 +130,12 @@ authorization on any handle — nothing needs to expire.
 
 ## Limitations
 
-- **There is no onboarding.** No sign-in, sign-up, password, or recovery
-  flow exists, and none is claimed. `create_account` and
-  `create_workspace` are operator calls; invitation delivery is the
-  inviter's problem, out of band.
+- **Onboarding is the adapter's, not the store's.** Self-serve sign-up
+  (`POST /v1/accounts`), sign-in, logout, recovery, and the funded
+  anonymous lane live in the gateway's `accounts` module and its
+  session store; `create_account` and `create_workspace` stay record
+  operations. Invitation delivery remains the inviter's problem, out
+  of band.
 - **The tenant binding is a reference.** `Workspace::tenant` records
   which manifest tenant quota and billing bind to; whether that tenant
   exists or what it may reach is the registry's check, not this store's.
@@ -172,12 +182,53 @@ and fresh membership before forwarding or quota reservation. Removed members
 are refused on the next request without restarting the gateway. Invalid keys
 receive 401, missing or duplicate workspace headers receive 400, denied
 membership receives 403, and unavailable membership storage receives 503.
-Anonymous inference is refused in this mode; no anonymous budget is invented.
 
 The default is `false` for existing tenant-key deployments. Enable the setting
 to require the new check; creating an account store alone does not change the
 serving policy. Membership authorizes workspace access, while the existing
-registry still controls reachable models and quota. This does not add browser
-sessions, management HTTP endpoints, account recovery, or cancellation of work
+registry still controls reachable models and quota. This does not cancel work
 admitted before revocation. Receipts retain existing key attribution; a
 workspace-membership revision field remains future integration work.
+
+## The account surface
+
+Configure `accounts` in `gateway.json` and the management routes mount
+beside the decision routes. The block names the deployment's self-serve
+posture: `signup_tenant` enables `POST /v1/accounts` — the call that
+creates an account, its personal workspace bound to that tenant, its
+first `oak_` key, and its first session in one answer — and
+`session_ttl_secs`/`recovery_ttl_secs` bound the session book. Present
+but empty mounts the routes with sign-up off.
+
+Sessions are the browser surface. `POST /v1/sessions` exchanges an
+`oak_` key for a `sess_<hex>` token; `GET` and `DELETE /v1/session`
+describe and end it. A session token carries no ambient authority —
+there are no cookies, so there is no cross-site forgery surface — and
+on `POST /v1/systemone` it behaves like a key with one extra rule: a
+user session names its workspace with `X-Workspace-Id`, and the call
+authorizes the account's fresh membership there. A rotated key changes
+the credential digest the session book records, so a sign-in under a
+rotated key ends the sessions the old secret minted. Removing a member
+ends their sessions in the same write that revokes the membership.
+
+The `anonymous` block is the operator-funded public lane: a stated
+`bound` in requests, a `session_cap` per session, and a `ttl_secs` the
+funding stands. `POST /v1/sessions` with no credential mints an
+anonymous session that draws the budget once per call and reaches only
+the `shared` bindings — under `require_workspace_membership` it
+answers `workspace_required` like any other memberless credential.
+Absent the block, the lane is off: the same request answers
+`anonymous_disabled`. The funding record itself is a typed
+[`Onboarding`] in the session book — an abuse counter with a bound,
+not an implicit free tier.
+
+The remaining routes are the matrix over HTTP: `POST /v1/workspaces`
+mints an organization workspace on the sign-up tenant; the
+`{workspace}` routes cover view, rename and seats, invitations, member
+roles and removal, ownership transfer, per-member recovery tokens, and
+the workspace's keys — issue, copy, pause, resume, rotate, revoke.
+`GET /v1/account/access` and `GET /v1/workspaces/{ws}/access` answer
+the bounded access log the session store keeps: actor, action,
+workspace, session digest, and safe detail — never a secret.
+
+[`Onboarding`]: ../../../crates/tenancy/src/sessions.rs

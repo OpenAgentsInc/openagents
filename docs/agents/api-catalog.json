@@ -1,6 +1,6 @@
 {
  "v": "openagents.api-catalog.v1",
- "version": "1.1.0",
+ "version": "1.2.0",
  "generated_by": "hand-maintained",
  "generated_on": "2026-09-22",
  "service": {
@@ -12,15 +12,17 @@
  },
  "authentication": {
   "scheme": "http-bearer",
-  "credential_shape": "oak_<id>.<secret>",
-  "header": "Authorization: Bearer oak_<id>.<secret>",
+  "credential_shape": "oak_<id>.<secret> or sess_<hex>",
+  "header": "Authorization: Bearer <credential>",
   "sources": [
    "OPENAGENTS_API_KEY",
-   "api_key field of a mode-0600 config file"
+   "api_key field of a mode-0600 config file",
+   "a session token minted by POST /v1/sessions \u2014 accounts deployments only"
   ],
-  "provisioning": "Operator-issued through the tenant-keys binary against the registry; there is no signup, self-serve issuance, or key-creation endpoint.",
-  "anonymous": "A call with no Authorization header reaches only the manifest's shared doors; when the deployment sets require_workspace_membership it is refused 401 unauthenticated.",
-  "workspace_header": "X-Workspace-Id: required exactly once per call when the deployment sets require_workspace_membership; mandatory under monetary admission.",
+  "provisioning": "Operator-issued through the tenant-keys binary against the registry, or self-serve through POST /v1/accounts when the deployment configures accounts.signup_tenant. Session tokens come only from POST /v1/sessions and POST /v1/accounts \u2014 each secret exists once, in the response that minted it.",
+  "session_tokens": "sess_<hex> is the account surface's credential: a user session on POST /v1/systemone names its workspace with X-Workspace-Id and authorizes the account's fresh membership; an anonymous session draws the operator-funded onb_public budget once per call and reaches shared doors only.",
+  "anonymous": "A call with no Authorization header reaches only the manifest's shared doors; when the deployment sets require_workspace_membership it is refused 401 unauthenticated. POST /v1/sessions with no credential mints a bounded funded anonymous session when accounts.anonymous is configured.",
+  "workspace_header": "X-Workspace-Id: required exactly once per call when the deployment sets require_workspace_membership, and on every decision call made with a user session token; mandatory under monetary admission.",
   "guide": "docs/agents/auth.md"
  },
  "request_conventions": {
@@ -91,14 +93,18 @@
      "workspace_required"
     ],
     "401": [
-     "unauthenticated"
+     "unauthenticated",
+     "session_closed"
     ],
     "402": [
      "insufficient_funds \u2014 monetary admission only"
     ],
     "403": [
      "door_not_bound",
-     "workspace_forbidden"
+     "workspace_forbidden",
+     "out_of_scope",
+     "anonymous_session_capped",
+     "anonymous_budget_exhausted"
     ],
     "409": [
      "idempotency_conflict"
@@ -127,7 +133,9 @@
      "unavailable",
      "membership_unavailable",
      "unpriced",
-     "price_invalid \u2014 last two monetary admission only"
+     "price_invalid \u2014 last two monetary admission only",
+     "sessions_unavailable",
+     "budget_unavailable"
     ]
    },
    "notes": [
@@ -179,14 +187,18 @@
      "workspace_required"
     ],
     "401": [
-     "unauthenticated"
+     "unauthenticated",
+     "session_closed"
     ],
     "402": [
      "insufficient_funds \u2014 monetary admission only"
     ],
     "403": [
      "door_not_bound",
-     "workspace_forbidden"
+     "workspace_forbidden",
+     "out_of_scope",
+     "anonymous_session_capped",
+     "anonymous_budget_exhausted"
     ],
     "409": [
      "idempotency_conflict"
@@ -227,7 +239,9 @@
      "unavailable",
      "membership_unavailable",
      "unpriced",
-     "price_invalid \u2014 last two monetary admission only"
+     "price_invalid \u2014 last two monetary admission only",
+     "sessions_unavailable",
+     "budget_unavailable"
     ]
    },
    "notes": [
@@ -278,7 +292,8 @@
      "unauthenticated"
     ],
     "403": [
-     "workspace_forbidden"
+     "workspace_forbidden",
+     "out_of_scope"
     ],
     "500": [
      "registry_unavailable"
@@ -335,7 +350,8 @@
      "unauthenticated"
     ],
     "403": [
-     "workspace_forbidden"
+     "workspace_forbidden",
+     "out_of_scope"
     ],
     "404": [
      "account_missing \u2014 the workspace holds no monetary account",
@@ -382,14 +398,18 @@
      "workspace_required"
     ],
     "401": [
-     "unauthenticated"
+     "unauthenticated",
+     "session_closed"
     ],
     "402": [
      "insufficient_funds \u2014 monetary admission only"
     ],
     "403": [
      "door_not_bound",
-     "workspace_forbidden"
+     "workspace_forbidden",
+     "out_of_scope",
+     "anonymous_session_capped",
+     "anonymous_budget_exhausted"
     ],
     "422": [
      "the classify envelope's validation refusals, plus invalid_notify and notify_not_configured"
@@ -399,6 +419,10 @@
      "busy",
      "overloaded",
      "quota_exhausted"
+    ],
+    "503": [
+     "sessions_unavailable",
+     "budget_unavailable"
     ]
    },
    "notes": [
@@ -681,6 +705,1037 @@
      "document_not_found"
     ]
    }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/sessions",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Sign in \u2014 exchange an oak_ key for a session token, or mint a bounded anonymous session with no credential.",
+   "request": {
+    "headers": [
+     "Authorization (optional \u2014 an oak_ key; a sess_ token is refused already_signed_in; absent mints the funded anonymous session when configured)"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "session": "{id, kind user|anonymous, account?, created_at, expires_at}",
+      "token": "the sess_<hex> bearer \u2014 shown once, stored as a digest only"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "already_signed_in",
+     "malformed"
+    ],
+    "401": [
+     "unauthenticated"
+    ],
+    "403": [
+     "no_account",
+     "anonymous_disabled"
+    ],
+    "503": [
+     "sessions_unavailable",
+     "registry_unavailable",
+     "accounts_unavailable",
+     "keys_unavailable"
+    ]
+   },
+   "notes": [
+    "A rotated key's new digest ends the sessions the old secret minted \u2014 sign-in under it is also the reset.",
+    "The anonymous lane draws onb_public once per decision call; see docs/decision-models/service/workspace-membership.md."
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/v1/session",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Describe the session the bearer token names \u2014 kind, account, deadline, standing, and the anonymous budget's counters when funded.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "session": "{id, kind, account?, created_at, expires_at, state}",
+      "budget": "{id, remaining, session_drawn, session_cap, expires_at} \u2014 anonymous sessions only"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "not_a_session \u2014 an oak_ key has no session"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "out_of_scope"
+    ],
+    "503": [
+     "sessions_unavailable",
+     "accounts_unavailable",
+     "keys_unavailable",
+     "registry_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/v1/session",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Log out \u2014 end the session the bearer token names.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "session": "{id, state: revoked}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "not_a_session"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "out_of_scope"
+    ],
+    "503": [
+     "sessions_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/accounts",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all. Additionally requires accounts.signup_tenant \u2014 absent it answers signup_disabled.",
+   "summary": "Self-serve sign-up: the account, its personal workspace on the sign-up tenant, its first oak_ key, and its first session \u2014 one call.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "label": "required, at most 256 characters",
+     "workspace": "optional name for the personal workspace \u2014 defaults to label"
+    }
+   },
+   "responses": {
+    "201": {
+     "shape": {
+      "account": "{id, label}",
+      "workspace": "{id, name, kind personal, tenant, role owner}",
+      "key": "{id, name, tenant}",
+      "key_token": "the oak_ secret \u2014 once",
+      "session": "{id, kind, expires_at}",
+      "session_token": "the sess_ secret \u2014 once"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field",
+     "invalid_request"
+    ],
+    "403": [
+     "signup_disabled"
+    ],
+    "503": [
+     "signup_unavailable",
+     "accounts_unavailable",
+     "sessions_unavailable",
+     "keys_unavailable",
+     "registry_unavailable"
+    ]
+   },
+   "notes": [
+    "This is the onboarding entry point \u2014 the returned session token can make its first decision call immediately with X-Workspace-Id set to the returned workspace id."
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/v1/account",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The caller's account and every workspace it belongs to \u2014 the workspace-switching menu.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "account": "{id, label, principals, created}",
+      "workspaces": "[{id, name, kind, tenant, role, seats, members}]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "membership_required",
+     "no_account",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_account"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "sessions_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/account/access",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The caller's own access history \u2014 actor, action, workspace, session digest, detail; secrets redacted by construction.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "access": "[{at, actor, action, workspace?, session?, detail?}] \u2014 bounded log"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "membership_required",
+     "out_of_scope"
+    ],
+    "503": [
+     "sessions_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/invitations/accept",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Accept an invitation token \u2014 joins the caller's account to the workspace the token names.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "token": "the inv_<id>.<secret> the inviter delivered out of band"
+    }
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "membership": "{workspace, account, role, granted}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field",
+     "malformed_invitation"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "invalid_invitation",
+     "invitation_expired",
+     "membership_required",
+     "out_of_scope"
+    ],
+    "409": [
+     "invitation_closed",
+     "already_member",
+     "seat_limit"
+    ],
+    "503": [
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/recovery/redeem",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Redeem a recovery token \u2014 rotates the member's bound key, ends the sessions the old credential minted, and returns the new key secret once. Unauthenticated by design: the rcv_ token is the credential.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "token": "the rcv_<hex> an admin issued and delivered out of band"
+    }
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "account": "the recovered account id",
+      "key": "{id, tenant}",
+      "key_token": "the new oak_ secret \u2014 once"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field"
+    ],
+    "403": [
+     "invalid_recovery",
+     "recovery_expired"
+    ],
+    "404": [
+     "unknown_account"
+    ],
+    "409": [
+     "recovery_closed",
+     "no_credential"
+    ],
+    "503": [
+     "sessions_unavailable",
+     "accounts_unavailable",
+     "keys_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all. Additionally requires accounts.signup_tenant \u2014 absent it answers signup_disabled.",
+   "summary": "Open an organization workspace on the sign-up tenant, owned by the caller. Personal workspaces come only from sign-up.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "name": "required",
+     "seats": "optional bound on members plus live invitations"
+    }
+   },
+   "responses": {
+    "201": {
+     "shape": {
+      "workspace": "{id, name, kind organization, tenant, seats, role owner}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field",
+     "invalid_request"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "membership_required",
+     "signup_disabled",
+     "out_of_scope"
+    ],
+    "503": [
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace as the member may see it \u2014 members and seats for everyone, live invitations for admins and the owner.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "workspace": "{id, name, kind, tenant, seats, members_epoch}",
+      "members": "[{account, role, status, granted}]",
+      "role": "the caller's role",
+      "invitations": "admins only: [{id, role, status, invited_by, created, expires_unix, accepted_by}]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "membership_required",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "503": [
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/v1/workspaces/{workspace}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Rename the workspace or set its seats \u2014 owner only. The id never changes.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "name": "optional non-empty string",
+     "seats": "optional non-negative integer or null \u2014 at least the active membership"
+    }
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "workspace": "{id, name, kind, tenant, seats}",
+      "changed": "the fields that moved"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field",
+     "invalid_request",
+     "personal_workspace"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "409": [
+     "seats_below_members"
+    ],
+    "503": [
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/invitations",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Issue an invitation \u2014 admin or owner; grants admin or member, never owner. The token returns once; delivery is out of band.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "role": "admin | member",
+     "ttl_secs": "optional, 1 to 2592000 \u2014 default 604800 (seven days)"
+    }
+   },
+   "responses": {
+    "201": {
+     "shape": {
+      "invitation": "{id, workspace, role, expires_unix}",
+      "token": "the inv_ secret \u2014 once"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field",
+     "invalid_request",
+     "owner_by_invitation",
+     "personal_workspace"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "409": [
+     "seat_limit"
+    ],
+    "503": [
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/v1/workspaces/{workspace}/invitations/{invitation}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Withdraw a pending invitation \u2014 the record stays; the state is the answer.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "invitation": "{id, status}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "503": [
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/v1/workspaces/{workspace}/members/{account}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Move a member between admin and member \u2014 the owner only; ownership never passes through this route.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "role": "admin | member"
+    }
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "membership": "{account, role, status}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "invalid_request",
+     "personal_workspace"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "409": [
+     "last_owner"
+    ],
+    "503": [
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/v1/workspaces/{workspace}/members/{account}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Remove a member \u2014 the membership revokes and their sessions end in the same committed write; their keys refuse the workspace on the next authentication.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "membership": "{account, role, status: revoked}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "409": [
+     "last_owner"
+    ],
+    "503": [
+     "accounts_unavailable"
+    ]
+   },
+   "notes": [
+    "The removal matrix: the owner removes anyone, an admin removes members, a member removes only themself \u2014 and the owner is never removable."
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/transfer",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Hand ownership to another active member \u2014 the caller becomes an admin in the same committed revision.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "account": "the target member's account id"
+    }
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "workspace": "the workspace id",
+      "owner": "the new owner's account id"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field",
+     "personal_workspace"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "503": [
+     "accounts_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/recovery",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Issue a recovery token for a member \u2014 admin or owner. Delivered out of band; redeemed at /v1/recovery/redeem.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "account": "the member's account id"
+    }
+   },
+   "responses": {
+    "201": {
+     "shape": {
+      "recovery": "{user, issued_at, expires_at}",
+      "token": "the rcv_ secret \u2014 once"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace",
+     "unknown_account"
+    ],
+    "409": [
+     "no_credential"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "sessions_unavailable",
+     "keys_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/access",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's access history \u2014 members read their own events; admins and the owner read the workspace's.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "access": "[{at, actor, action, workspace?, session?, detail?}]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "membership_required",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "sessions_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/keys",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace tenant's keys \u2014 a member reads their own; an admin or the owner reads all with account attribution. No secret field exists to leak.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "keys": "[{id, name, status, scopes, tenant, created, rotated_from, copied_from, account}]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "keys_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/keys",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Issue a key on the workspace's tenant, bound to the caller's account \u2014 named and optionally scoped to doors and actions. The secret leaves once.",
+   "request": {
+    "content_type": "application/json",
+    "shape": {
+     "name": "optional label",
+     "scopes": "optional {models: [door names], actions: [inference|models|balance|accounts|\u2026]} \u2014 a narrowing, never a grant"
+    }
+   },
+   "responses": {
+    "201": {
+     "shape": {
+      "key": "{id, name, tenant, scopes, status}",
+      "key_token": "the oak_ secret \u2014 once"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field",
+     "invalid_request"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "keys_unavailable",
+     "registry_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/keys/{key}/copy",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Copy a key \u2014 a fresh credential under the same name, scopes, and reach, bound to the caller's account. The secret leaves once.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "201": {
+     "shape": {
+      "key": "{id, name, tenant, scopes, status, copied_from}",
+      "key_token": "the oak_ secret \u2014 once"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "tenant_mismatch",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace",
+     "unknown_key"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "keys_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/keys/{key}/pause",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Hold a key without ending it \u2014 it refuses until resumed; the record and its attribution stand.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "key": "{id, name, tenant, scopes, status: paused}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "tenant_mismatch",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace",
+     "unknown_key"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "keys_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/keys/{key}/resume",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Release a paused key.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "key": "{id, name, tenant, scopes, status: active}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "tenant_mismatch",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace",
+     "unknown_key"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "keys_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/keys/{key}/rotate",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Rotate a key \u2014 a fresh id and secret for the same reach, rebound to the key owner's account before the answer returns. Quota, history, and membership never move.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "key": "{id, name, tenant, scopes, status, rotated_from}",
+      "key_token": "the oak_ secret \u2014 once"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "tenant_mismatch",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace",
+     "unknown_key"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "keys_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/v1/workspaces/{workspace}/keys/{key}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Revoke a key \u2014 the record stays; the state is the answer.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "key": "{id, name, tenant, scopes, status: revoked}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "not_member",
+     "membership_revoked",
+     "forbidden",
+     "tenant_mismatch",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_workspace",
+     "unknown_key"
+    ],
+    "503": [
+     "accounts_unavailable",
+     "keys_unavailable"
+    ]
+   }
   }
  ],
  "refusal_codes": {
@@ -846,7 +1901,7 @@
   },
   "membership_unavailable": {
    "status": 503,
-   "meaning": "the workspace membership store is unavailable",
+   "meaning": "the membership store cannot be read or written",
    "retryable": true
   },
   "door_unavailable": {
@@ -878,6 +1933,241 @@
    "status": "the backend's",
    "meaning": "a door may pass through its own typed refusal with a code outside the gateway-owned set (for example guardrail or uncalibrated)",
    "retryable": "depends on the code \u2014 treat as refused, not transient"
+  },
+  "out_of_scope": {
+   "status": 403,
+   "meaning": "the key's declared scopes do not name the door for inference, or the action (models, balance, accounts) it attempted",
+   "retryable": false
+  },
+  "session_closed": {
+   "status": 401,
+   "meaning": "the session token resolves to a session that expired, was logged out, or was revoked \u2014 sign in again",
+   "retryable": false
+  },
+  "membership_required": {
+   "status": 403,
+   "meaning": "an anonymous session holds no account \u2014 the route needs a signed-in member's credential",
+   "retryable": false
+  },
+  "no_account": {
+   "status": 403,
+   "meaning": "the key authenticates but is bound to no account",
+   "retryable": false
+  },
+  "not_member": {
+   "status": 403,
+   "meaning": "the account holds no membership in the workspace",
+   "retryable": false
+  },
+  "membership_revoked": {
+   "status": 403,
+   "meaning": "the account's membership in the workspace was removed \u2014 a distinct answer from never having been a member",
+   "retryable": false
+  },
+  "already_member": {
+   "status": 409,
+   "meaning": "the account already holds an active membership in the workspace",
+   "retryable": false
+  },
+  "forbidden": {
+   "status": 403,
+   "meaning": "the acting member's role does not permit the operation",
+   "retryable": false
+  },
+  "seat_limit": {
+   "status": 409,
+   "meaning": "active members plus live invitations fill the workspace's declared seats",
+   "retryable": false
+  },
+  "seats_below_members": {
+   "status": 409,
+   "meaning": "the requested seat count is below the active membership it would orphan",
+   "retryable": false
+  },
+  "last_owner": {
+   "status": 409,
+   "meaning": "the operation would leave the workspace without its one active owner",
+   "retryable": false
+  },
+  "owner_by_invitation": {
+   "status": 400,
+   "meaning": "an invitation grants admin or member \u2014 ownership moves only through transfer",
+   "retryable": false
+  },
+  "ownership_by_transfer": {
+   "status": 400,
+   "meaning": "the owner role changes only through the transfer route",
+   "retryable": false
+  },
+  "malformed_invitation": {
+   "status": 400,
+   "meaning": "the token is not an inv_<id>.<secret> invitation",
+   "retryable": false
+  },
+  "invalid_invitation": {
+   "status": 403,
+   "meaning": "the token names no invitation or its secret does not verify",
+   "retryable": false
+  },
+  "invitation_closed": {
+   "status": 409,
+   "meaning": "the invitation was already accepted or revoked \u2014 a single-use credential cannot replay",
+   "retryable": false
+  },
+  "invitation_expired": {
+   "status": 403,
+   "meaning": "the invitation's expires_unix has passed",
+   "retryable": false
+  },
+  "tenant_mismatch": {
+   "status": 403,
+   "meaning": "the credential or key does not belong to the workspace's tenant",
+   "retryable": false
+  },
+  "unknown_account": {
+   "status": 404,
+   "meaning": "the account id names no account the store holds",
+   "retryable": false
+  },
+  "unknown_workspace": {
+   "status": 404,
+   "meaning": "the workspace id names no workspace the store holds",
+   "retryable": false
+  },
+  "unknown_principal": {
+   "status": 403,
+   "meaning": "the principal reference resolves to no account",
+   "retryable": false
+  },
+  "principal_taken": {
+   "status": 409,
+   "meaning": "the principal is already bound to another account",
+   "retryable": false
+  },
+  "personal_workspace": {
+   "status": 400,
+   "meaning": "the operation does not exist on a personal workspace \u2014 they hold their owner alone",
+   "retryable": false
+  },
+  "empty_field": {
+   "status": 400,
+   "meaning": "a required field is absent or empty \u2014 the message names it",
+   "retryable": false
+  },
+  "already_signed_in": {
+   "status": 400,
+   "meaning": "POST /v1/sessions already carries a session token \u2014 sign-in exchanges an oak_ key or no credential",
+   "retryable": false
+  },
+  "not_a_session": {
+   "status": 400,
+   "meaning": "the credential is an oak_ key, not a session \u2014 it has no session to describe or end",
+   "retryable": false
+  },
+  "signup_disabled": {
+   "status": 403,
+   "meaning": "the deployment does not offer self-serve sign-up or workspaces \u2014 the operator provisions accounts",
+   "retryable": false
+  },
+  "anonymous_disabled": {
+   "status": 403,
+   "meaning": "the deployment funds no anonymous lane",
+   "retryable": false
+  },
+  "anonymous_session_capped": {
+   "status": 403,
+   "meaning": "the anonymous session drew its per-session cap of the funded budget",
+   "retryable": false
+  },
+  "anonymous_budget_exhausted": {
+   "status": 403,
+   "meaning": "the operator-funded anonymous budget is spent or expired",
+   "retryable": false
+  },
+  "budget_unavailable": {
+   "status": 503,
+   "meaning": "the anonymous budget the session draws against is gone \u2014 the store lost the funding record",
+   "retryable": true
+  },
+  "invalid_recovery": {
+   "status": 403,
+   "meaning": "the token names no recovery the service holds",
+   "retryable": false
+  },
+  "recovery_closed": {
+   "status": 409,
+   "meaning": "the recovery token was already consumed or superseded \u2014 single-use",
+   "retryable": false
+  },
+  "recovery_expired": {
+   "status": 403,
+   "meaning": "the recovery token's deadline has passed",
+   "retryable": false
+  },
+  "no_credential": {
+   "status": 409,
+   "meaning": "the account holds no bound key \u2014 recovery rotates a key and there is none to rotate",
+   "retryable": false
+  },
+  "unknown_key": {
+   "status": 404,
+   "meaning": "the key id names no key the service holds",
+   "retryable": false
+  },
+  "unknown_tenant": {
+   "status": 404,
+   "meaning": "the key's tenant is not bound in the registry",
+   "retryable": false
+  },
+  "sign_in_denied": {
+   "status": 401,
+   "meaning": "the sign-in proof did not verify \u2014 deliberately one answer for missing credential and bad proof",
+   "retryable": false
+  },
+  "accounts_unavailable": {
+   "status": 503,
+   "meaning": "the account store cannot be read or written \u2014 lock held or damaged document",
+   "retryable": true
+  },
+  "sessions_unavailable": {
+   "status": 503,
+   "meaning": "the session store cannot be read or written \u2014 lock held or damaged document",
+   "retryable": true
+  },
+  "keys_unavailable": {
+   "status": 503,
+   "meaning": "the key store cannot be read or written",
+   "retryable": true
+  },
+  "session_capped": {
+   "status": 409,
+   "meaning": "the session store's bound is reached \u2014 an internal cap, not a seat limit",
+   "retryable": false
+  },
+  "duplicate_budget": {
+   "status": 409,
+   "meaning": "the funded budget id is already provisioned",
+   "retryable": false
+  },
+  "unknown_budget": {
+   "status": 404,
+   "meaning": "the budget id names no funded budget",
+   "retryable": false
+  },
+  "unknown_user": {
+   "status": 404,
+   "meaning": "the user names no account the store holds",
+   "retryable": false
+  },
+  "malformed_digest": {
+   "status": 400,
+   "meaning": "a stored credential digest did not parse",
+   "retryable": false
+  },
+  "signup_unavailable": {
+   "status": 503,
+   "meaning": "sign-up could not complete \u2014 the account, workspace, key, or session could not be provisioned",
+   "retryable": true
   }
  },
  "unimplemented": [
@@ -902,9 +2192,9 @@
    "note": "Proposed and tracked under packaging work; oak and crates/jev are the callers today."
   },
   {
-   "surface": "hosted public endpoint and self-serve signup",
+   "surface": "hosted public endpoint",
    "advertised_in": "none \u2014 do not assume one",
-   "note": "No public base URL is published; keys are operator-issued."
+   "note": "No public base URL is published. Self-serve sign-up exists as a per-deployment configuration (accounts.signup_tenant), not as a hosted service \u2014 operator-issued keys remain the provisioning path for deployments that do not enable it."
   },
   {
    "surface": "account mutations \u2014 top-up, payment, or credit over HTTP",

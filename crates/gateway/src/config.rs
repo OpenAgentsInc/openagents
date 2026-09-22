@@ -158,6 +158,65 @@ pub struct Config {
     /// under a public name.
     #[serde(default)]
     pub public_origin: Option<String>,
+    /// The account, session, and key-management surface. Absent means
+    /// the gateway mounts no account routes: callers are exactly the
+    /// tenants the operator provisioned out of band, and a `sess_`
+    /// token is not a credential the service knows.
+    #[serde(default)]
+    pub accounts: Option<Accounts>,
+}
+
+/// The account surface's deployment options: sessions, self-serve
+/// sign-up, and the funded anonymous lane.
+///
+/// Present-but-empty mounts the management routes over
+/// `accounts.json` — members sign in with an `oak_` key and manage
+/// their workspaces and keys — with sign-up and the anonymous lane
+/// staying off.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Accounts {
+    /// The tenant self-serve sign-up provisions accounts onto: a
+    /// `POST /v1/accounts` call creates the account, its personal
+    /// workspace bound to this tenant, and its first `oak_` key.
+    /// Absent disables sign-up; the rest of the surface still serves
+    /// operator-provisioned accounts.
+    #[serde(default)]
+    pub signup_tenant: Option<String>,
+    /// How long a session stands from issue, in seconds. Default eight
+    /// hours — a workday, not a standing credential.
+    #[serde(default = "default_session_ttl")]
+    pub session_ttl_secs: u64,
+    /// How long a recovery token stands from issue, in seconds.
+    /// Default one hour — a delivered token is used or dead, never
+    /// durable.
+    #[serde(default = "default_recovery_ttl")]
+    pub recovery_ttl_secs: u64,
+    /// The operator-funded anonymous budget — the bounded public lane.
+    /// Absent means `POST /v1/sessions` mints no anonymous sessions and
+    /// the `shared` bindings' anonymous access stays exactly what it
+    /// was.
+    #[serde(default)]
+    pub anonymous: Option<Anonymous>,
+}
+
+/// The operator-funded anonymous budget: a stated bound the public
+/// lane draws down, plus the per-session cap that keeps one session
+/// from draining it.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Anonymous {
+    /// The workspace reference the funding records against — a label
+    /// for attribution, never a credential.
+    #[serde(default = "default_anonymous_workspace")]
+    pub workspace: String,
+    /// How many requests the funding answers in total.
+    pub bound: u64,
+    /// The most one session may draw.
+    #[serde(default = "default_anonymous_cap")]
+    pub session_cap: u64,
+    /// How long the funding stands, in seconds. Default one day —
+    /// funding is a decision an operator renews, not a standing offer.
+    #[serde(default = "default_anonymous_ttl")]
+    pub ttl_secs: u64,
 }
 
 fn default_body_max() -> usize {
@@ -202,6 +261,26 @@ fn default_job_retention_ms() -> u64 {
 
 fn default_job_cursor_ttl_ms() -> u64 {
     3_600_000
+}
+
+fn default_session_ttl() -> u64 {
+    28_800
+}
+
+fn default_recovery_ttl() -> u64 {
+    3_600
+}
+
+fn default_anonymous_workspace() -> String {
+    "public".to_string()
+}
+
+fn default_anonymous_cap() -> u64 {
+    50
+}
+
+fn default_anonymous_ttl() -> u64 {
+    86_400
 }
 
 impl Config {
@@ -320,6 +399,28 @@ impl Config {
                     "{}: public_origin `{origin}` must be an `http://` or `https://` \
                      origin with no path, query, or fragment — it names where the \
                      deployment answers, not a route",
+                    name.display()
+                ));
+            }
+        }
+        if let Some(accounts) = &self.accounts {
+            if accounts.session_ttl_secs == 0 || accounts.recovery_ttl_secs == 0 {
+                return Err(format!(
+                    "{}: session and recovery lifetimes must be positive — a \
+                     credential that never stands or never ends is not a bound",
+                    name.display()
+                ));
+            }
+            if let Some(anonymous) = &accounts.anonymous
+                && (anonymous.bound == 0
+                    || anonymous.session_cap == 0
+                    || anonymous.ttl_secs == 0
+                    || anonymous.session_cap > anonymous.bound)
+            {
+                return Err(format!(
+                    "{}: the anonymous budget must be positive, live, and capped \
+                     no looser per session than in total — a bound that cannot \
+                     be spent or can never run out is not a bound",
                     name.display()
                 ));
             }

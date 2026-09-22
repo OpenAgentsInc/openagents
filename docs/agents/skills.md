@@ -12,8 +12,12 @@ and its `unimplemented` list names what does not exist.
    an operator runs `crates/gateway` and hands you the address
    (`--url`, `OPENAGENTS_BASE_URL`, or `base_url` in the config file).
 2. **A credential.** An `oak_<id>.<secret>` bearer key, issued by the
-   operator. [auth.md](auth.md) covers where it may live and what a
-   rejected call returns. There is no signup flow.
+   operator — or self-serve through `POST /v1/accounts` on a deployment
+   that configures `accounts.signup_tenant`, which also mints a `sess_`
+   session token that authenticates the same way.
+   [auth.md](auth.md) covers where a credential may live and what a
+   rejected call returns. A deployment without the `accounts` document
+   has no signup flow.
 3. **A door name.** `GET /v1/models` lists the doors your credential
    may name in a request's `model` field; anonymous callers see
    `shared` doors only.
@@ -109,6 +113,6 @@ for the tool semantics and bounds.
 - [Caller examples](../decision-models/examples/README.md) — runnable `curl` and `oak` invocations.
 
 ---
-Version 1.1.0 · generated-by: hand-maintained · 2026-09-22
+Version 1.2.0 · generated-by: hand-maintained · 2026-09-22
 
 VALIDATED: internal links resolve to repo paths; commands and claims match `crates/oak` and `crates/gateway` as of 2026-09-21. Exact check commands are in the commit message.

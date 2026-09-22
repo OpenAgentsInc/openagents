@@ -15,7 +15,7 @@
 - [index.json](index.json): Versioned index of every file in this discovery set, with a content note per file.
 - [api-catalog.json](api-catalog.json): The route catalog — every HTTP route the gateway implements including the public discovery and docs API surface, request and answer shapes, refusal codes, and an explicit list of advertised surfaces that do not exist yet.
 - [openapi.yaml](openapi.yaml): An OpenAPI 3.1 fragment covering exactly the implemented API routes and their real request/response schemas.
-- [auth.md](auth.md): How a caller authenticates — `oak_` bearer keys, where they may live, and the typed refusal a rejected call gets.
+- [auth.md](auth.md): How a caller authenticates — `oak_` bearer keys and `sess_` session tokens, where they may live, the self-serve sign-up surface on accounts deployments, and the typed refusal a rejected call gets.
 - [skills.md](skills.md): What an agent needs to call the API — the `oak` CLI, the `oak-mcp`/`oak-mcp-http` MCP servers, or raw HTTP — plus supported versions and honest limits.
 - [mcp-tools.json](mcp-tools.json): The MCP tool list snapshot the mirrored server card serves; the live card answers at `GET /mcp/card` on the `oak-mcp-http` listener.
 
@@ -40,6 +40,6 @@ declarative Claude- and Codex-compatible plugin packages.
 - [Decision API specification](../decision-models/api/decision-api.md): The target product contract, including surfaces that are not implemented.
 
 ---
-Version 1.1.0 · generated-by: hand-maintained · 2026-09-22
+Version 1.2.0 · generated-by: hand-maintained · 2026-09-22
 
 VALIDATED: JSON files parse with `python3 -m json.tool`; `openapi.yaml` parses with `yaml.safe_load`; Markdown links resolve to repo paths. Exact commands are in the commit message.

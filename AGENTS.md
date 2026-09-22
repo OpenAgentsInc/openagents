@@ -82,7 +82,12 @@ uses, and marks which are implemented and which are only specified.
   durable budget: an append-only reservation ledger beside the registry,
   retry-safe by `(request, attempt)`, with crash recovery that orphans
   unsettled holds as `unknown` rather than freeing them; `tenant-usage`
-  is the operator's view of it.
+  is the operator's view of it. `tenancy::accounts` is the account and
+  workspace half — accounts, principals, personal and organization
+  workspaces, the owner/admin/member matrix, single-use invitations and
+  recovery tokens — and `tenancy::sessions` the persisted session
+  store: `sess_<hex>` tokens, the funded anonymous lane's budgets, and
+  a bounded access history, all digests and references.
 - `crates/receipts` — versioned receipts a decision call leaves behind.
   `receipts::execution` is the shared HTTP/relay shape: request and attempt
   identity, tenant and registry references, requested and served artifact
@@ -98,7 +103,9 @@ uses, and marks which are implemented and which are only specified.
   receipt in `receipts.jsonl`. `GET /v1/models` is the caller's view of
   its own doors; `GET /healthz` is process liveness only. The
   `gateway` binary reads one `gateway.json` — listen address, registry
-  directory, and each door's backend endpoint. Read
+  directory, each door's backend endpoint, and the optional `accounts`
+  document that mounts the self-serve account, session, workspace, and
+  key-management surface. Read
   `docs/decision-models/service/gateway.md` before changing a refusal code, a
   bound, or the reservation lifecycle.
 - `crates/discovery` — the public discovery surface every origin shares:

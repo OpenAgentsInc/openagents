@@ -77,6 +77,16 @@ pub enum Role {
     Owner,
 }
 
+impl std::fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Member => "member",
+            Self::Admin => "admin",
+            Self::Owner => "owner",
+        })
+    }
+}
+
 /// The kind of workspace — what membership rules apply.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]

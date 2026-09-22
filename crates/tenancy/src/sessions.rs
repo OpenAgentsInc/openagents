@@ -30,16 +30,28 @@
 //!   stated bound and the abuse counters that keep one session from
 //!   draining it — never an implicit free-for-all.
 //!
+//! # Persistence
+//!
+//! The book itself is pure records: every timestamp arrives as an
+//! argument in Unix seconds, and the only entropy the module touches is
+//! minting bearer tokens. [`Sessions`] is the store that persists it —
+//! `sessions.json` beside `accounts.json`, under the same discipline:
+//! schema tag, sequence, `supersedes` chain, self-recomputing digest,
+//! an archive of every sealed revision, and a writer lock. The store
+//! also carries the [`Access`] history: who signed in, who acted, and
+//! where — references only, never a secret.
+//!
 //! # What this is not
 //!
-//! There is no transport, no clock, and no storage here: every
-//! timestamp arrives as an argument in Unix seconds, and persistence is
-//! the caller's. The only entropy the module touches is minting bearer
-//! tokens. Membership itself is `tenancy::workspaces`'s record — this
-//! module only reads it, in [`Session::active_for`], so a removed
-//! member's session cannot keep answering.
+//! There is no transport here, and membership itself is
+//! `tenancy::workspaces`'s record — this module only reads it, in
+//! [`Session::active_for`], so a removed member's session cannot keep
+//! answering.
 
 use std::collections::BTreeMap;
+use std::io::{Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -115,6 +127,24 @@ impl std::fmt::Display for SessionState {
     }
 }
 
+/// What a session may act as.
+///
+/// A `user` session claims an account signed in and answers only what
+/// its memberships permit. An `anonymous` session is the funded public
+/// lane — it holds no account, no membership, and may only draw down an
+/// operator-funded [`Onboarding`] budget.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionKind {
+    /// An account signed in — the default every session was before
+    /// the anonymous lane existed.
+    #[default]
+    User,
+    /// The funded public caller — bounded by an [`Onboarding`] record,
+    /// never by a membership.
+    Anonymous,
+}
+
 /// A session: the claim that `user` signed in, bounded in time.
 ///
 /// The id is the bearer token's digest — the token itself is never
@@ -126,6 +156,9 @@ pub struct Session {
     pub id: SessionId,
     /// The user the session claims signed in.
     pub user: UserId,
+    /// `user` or `anonymous` — what the session may act as.
+    #[serde(default)]
+    pub kind: SessionKind,
     /// When the session was issued, as Unix seconds.
     pub created_at: u64,
     /// Unix seconds at which the session stops answering — the
@@ -164,6 +197,9 @@ impl Session {
         workspace: &'w Workspace,
         now: u64,
     ) -> Result<&'w Membership, Refusal> {
+        if self.kind == SessionKind::Anonymous {
+            return Err(Refusal::AnonymousSession);
+        }
         match self.standing(now) {
             SessionState::Active => {}
             state => return Err(Refusal::SessionClosed { state }),
@@ -359,6 +395,13 @@ pub enum Refusal {
     /// The session already ended — `expired` and `revoked` are
     /// distinct answers, not both "invalid".
     SessionClosed { state: SessionState },
+    /// An anonymous session holds no membership — `active_for` is the
+    /// wrong question for it.
+    AnonymousSession,
+    /// The store itself failed — not a session answer. The message is
+    /// the store's own; the variant says the failure was storage, not
+    /// the session.
+    Store(String),
     /// The digest names no recovery the book holds — an unknown id and
     /// a wrong token are the same answer.
     UnknownRecovery,
@@ -403,6 +446,10 @@ impl std::fmt::Display for Refusal {
             Self::SessionClosed { state } => {
                 write!(f, "the session is {state} — it answers nothing")
             }
+            Self::AnonymousSession => {
+                write!(f, "an anonymous session holds no membership")
+            }
+            Self::Store(trouble) => write!(f, "{trouble}"),
             Self::UnknownRecovery => {
                 write!(f, "the digest names no recovery this book holds")
             }
@@ -533,10 +580,37 @@ impl SessionBook {
         if credential.digest != digest_secret(secret_proof) {
             return Err(Refusal::SignInDenied);
         }
+        self.issue_kind(user.clone(), SessionKind::User, now)
+    }
+
+    /// Issue a session for a user the caller already authenticated.
+    ///
+    /// `sign_in` is the book's own proof check; an adapter that
+    /// authenticated the user another way — an `oak_` key resolved to
+    /// its account, a consumed recovery token — mints through this
+    /// call so the proof stays the adapter's business and the claim
+    /// stays the book's.
+    pub fn issue(&mut self, user: UserId, now: u64) -> Result<Issued, Refusal> {
+        self.issue_kind(user, SessionKind::User, now)
+    }
+
+    /// Issue an anonymous session — the funded public lane's claim.
+    ///
+    /// The session names no account and answers no membership; its only
+    /// authority is drawing against an [`Onboarding`] budget under its
+    /// own session cap.
+    pub fn issue_anonymous(&mut self, now: u64) -> Result<Issued, Refusal> {
+        self.issue_kind(UserId::from("anonymous"), SessionKind::Anonymous, now)
+    }
+
+    /// The mint every issue call shares: a fresh bearer token whose
+    /// digest is the record's id, bounded by `session_ttl`.
+    fn issue_kind(&mut self, user: UserId, kind: SessionKind, now: u64) -> Result<Issued, Refusal> {
         let token = format!("{SESSION_PREFIX}_{}", fresh()?);
         let session = Session {
             id: SessionId(digest_secret(&token)),
-            user: user.clone(),
+            user,
+            kind,
             created_at: now,
             expires_at: now + self.session_ttl,
             state: SessionState::Active,
@@ -560,6 +634,13 @@ impl SessionBook {
     #[must_use]
     pub fn session_of_token(&self, token: &str) -> Option<&Session> {
         self.sessions.get(&SessionId(digest_secret(token)))
+    }
+
+    /// Resolve a presented recovery token to its record — the digest
+    /// is the lookup, the same rule the session records keep.
+    #[must_use]
+    pub fn recovery_of_token(&self, token: &str) -> Option<&Recovery> {
+        self.recoveries.get(&digest_secret(token))
     }
 
     /// The whole `active_for` check for a presented token: resolve the
@@ -694,6 +775,31 @@ impl SessionBook {
         self.set_credential(user, new_digest, now)
     }
 
+    /// Consume a recovery token and answer the user it was issued for —
+    /// the redemption half an adapter runs when the replacement
+    /// credential is its own operation: consume the token, replace the
+    /// credential in its own store, then call `set_credential` so the
+    /// sessions the old proof minted end with it.
+    ///
+    /// The same refusals `use_recovery` answers apply: a consumed or
+    /// superseded token is a replay, an expired one names its deadline.
+    pub fn redeem_recovery(&mut self, token: &str, now: u64) -> Result<UserId, Refusal> {
+        let recovery = self
+            .recoveries
+            .get_mut(&digest_secret(token))
+            .ok_or(Refusal::UnknownRecovery)?;
+        match recovery.state {
+            RecoveryState::Pending => {}
+            state => return Err(Refusal::RecoveryClosed { state }),
+        }
+        if recovery.expires_at <= now {
+            return Err(Refusal::RecoveryExpired);
+        }
+        recovery.state = RecoveryState::Consumed;
+        recovery.answered_at = Some(now);
+        Ok(recovery.user.clone())
+    }
+
     /// Record an operator-funded anonymous budget. The budget is its
     /// own typed record — a stated bound and abuse counters, never an
     /// implicit free-for-all.
@@ -721,6 +827,456 @@ impl SessionBook {
                 budget: budget.to_string(),
             })?;
         budget.spend(session, now)
+    }
+}
+
+/// An access event: who acted, what they did, and where — the history a
+/// workspace keeps of the calls its members made.
+///
+/// The record carries references only: the actor's account id, the
+/// session's digest id, the workspace id. No bearer token, key secret,
+/// or invitation secret ever appears here — the detail field is the
+/// adapter's and holds only what the adapter chose to name.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Access {
+    /// When the call ran, as Unix seconds.
+    pub at: u64,
+    /// The acting account id, or `anonymous` for the funded public
+    /// lane.
+    pub actor: String,
+    /// What the call did — `sign-in`, `invite`, `key-rotate`, and the
+    /// rest of the adapter's vocabulary.
+    pub action: String,
+    /// The workspace the call acted on, when it acted on one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    /// The session the call ran under, as its digest id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// What the call touched, in the caller's own words — an invitation
+    /// id, a key id, a role. Never a secret.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// The most access events the live store keeps. Older events stay
+/// readable in the archived revisions — the bound keeps the working
+/// document small, not the history short.
+const ACCESS_MAX: usize = 8192;
+
+/// The file the session store lives in, beside `accounts.json`.
+const SESSIONS: &str = "sessions.json";
+
+/// The directory past revisions are archived in, one file per digest.
+const HISTORY_DIR: &str = "sessions-history";
+
+/// The lock serializing writers, held only for a mutation's duration.
+const SESSIONS_LOCK: &str = "sessions.lock";
+
+/// The schema tag the store carries.
+pub const SESSIONS_SCHEMA: &str = "openagents.tenancy.sessions.v1";
+
+/// How many times a writer retries the lock before reporting it held.
+const SESSIONS_LOCK_RETRIES: u32 = 200;
+
+/// The largest store document the loader accepts.
+const SESSIONS_STORE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// The persisted session store: the book plus the access history, under
+/// the same discipline `accounts.json` keeps.
+///
+/// `sessions.json` sits beside `accounts.json` and follows the same
+/// rules: a schema tag, a sequence, a `supersedes` chain, and a SHA-256
+/// digest over every field but itself. Every sealed revision is
+/// archived under `sessions-history/<digest>.json`, and writers
+/// serialize on `sessions.lock`, re-reading inside it so the second of
+/// two competing writers decides against committed state.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Store {
+    /// The schema tag.
+    pub v: String,
+    /// The revision number. Genesis is 0; each committed mutation adds
+    /// one.
+    pub sequence: u64,
+    /// The digest of the revision this one replaced, when there was one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<String>,
+    /// The lifecycle book — credentials, sessions, recoveries, and the
+    /// funded anonymous budgets.
+    pub book: SessionBook,
+    /// The access history, oldest first, bounded at [`ACCESS_MAX`].
+    #[serde(default)]
+    pub access: Vec<Access>,
+    /// The digest over every field above.
+    pub digest: String,
+}
+
+impl Store {
+    /// Fill in `digest` over the store's other fields.
+    fn seal(&mut self) {
+        self.digest = self.compute_digest();
+    }
+
+    /// The digest over every field but `digest`.
+    #[must_use]
+    pub fn compute_digest(&self) -> String {
+        let mut value = serde_json::to_value(self).expect("a store serializes");
+        value
+            .as_object_mut()
+            .expect("a store is an object")
+            .remove("digest");
+        let mut hasher = Sha256::new();
+        hasher.update(canonicalize(&value).as_bytes());
+        format!("sha256:{:x}", hasher.finalize())
+    }
+
+    /// Read and validate a store's text.
+    fn parse(text: &str, name: &str) -> Result<Self, String> {
+        let store: Self = serde_json::from_str(text).map_err(|error| format!("{name}: {error}"))?;
+        store.validate(name)?;
+        Ok(store)
+    }
+
+    /// The checks a store must pass before anything reads it: a known
+    /// schema, a digest that recomputes, session and recovery ids
+    /// shaped like the digests they claim to be, and a bounded access
+    /// log.
+    pub fn validate(&self, name: &str) -> Result<(), String> {
+        if self.v != SESSIONS_SCHEMA {
+            return Err(format!(
+                "{name}: schema `{}` is not `{SESSIONS_SCHEMA}`",
+                self.v
+            ));
+        }
+        if self.digest != self.compute_digest() {
+            return Err(format!(
+                "{name}: the store's digest does not recompute over its contents"
+            ));
+        }
+        for (id, session) in &self.book.sessions {
+            if *id != session.id {
+                return Err(format!(
+                    "{name}: session `{id}` is filed under the wrong id"
+                ));
+            }
+            if !is_digest(session.id.as_str()) {
+                return Err(format!(
+                    "{name}: session `{id}` carries an id that is not 64 hex characters"
+                ));
+            }
+        }
+        for digest in self.book.recoveries.keys() {
+            if !is_digest(digest) {
+                return Err(format!(
+                    "{name}: a recovery is filed under a digest that is not 64 hex characters"
+                ));
+            }
+        }
+        if self.access.len() > ACCESS_MAX {
+            return Err(format!(
+                "{name}: the access log exceeds {ACCESS_MAX} events"
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// The session store handle: a directory the calls read and write.
+///
+/// Like [`Accounts`], the handle holds no cache — every query re-reads
+/// and re-validates `sessions.json`, so a revocation committed by any
+/// writer is visible to the very next read on any handle. Every
+/// mutation takes the lock, re-reads inside it, applies, re-seals, and
+/// writes.
+#[derive(Clone, Debug)]
+pub struct Sessions {
+    dir: PathBuf,
+}
+
+impl Sessions {
+    /// Create the store's genesis revision in a directory.
+    ///
+    /// `book` sets the lifetimes the store opens with — the config's
+    /// session and recovery TTLs — and the anonymous funding is a
+    /// mutation like any other, recorded after genesis. The directory
+    /// must not already hold a session store.
+    pub fn install(dir: &Path, book: SessionBook) -> Result<Self, crate::accounts::Trouble> {
+        std::fs::create_dir_all(dir)?;
+        let _lock = SessionLock::acquire(dir)?;
+        if dir.join(SESSIONS).exists()
+            || (dir.join(HISTORY_DIR).exists()
+                && std::fs::read_dir(dir.join(HISTORY_DIR))?.next().is_some())
+        {
+            return Err(crate::accounts::Trouble::Invalid(format!(
+                "{} already holds a session store; open it rather than reinstalling",
+                dir.display()
+            )));
+        }
+        let mut store = Store {
+            v: SESSIONS_SCHEMA.to_string(),
+            sequence: 0,
+            supersedes: None,
+            book,
+            access: Vec::new(),
+            digest: String::new(),
+        };
+        store.seal();
+        store
+            .validate(&dir.join(SESSIONS).display().to_string())
+            .map_err(crate::accounts::Trouble::Invalid)?;
+        save_sessions(dir, &store)?;
+        Ok(Self {
+            dir: dir.to_path_buf(),
+        })
+    }
+
+    /// Open the store in a directory, validating it end to end. A
+    /// missing or corrupt store is refused, not guessed at.
+    pub fn open(dir: &Path) -> Result<Self, crate::accounts::Trouble> {
+        load_sessions(dir)?;
+        Ok(Self {
+            dir: dir.to_path_buf(),
+        })
+    }
+
+    /// Read the current store. This is the fresh read every query makes.
+    pub fn store(&self) -> Result<Store, crate::accounts::Trouble> {
+        load_sessions(&self.dir)
+    }
+
+    /// Read an archived revision by digest — the lookup that explains
+    /// which sessions stood when an earlier call ran.
+    pub fn revision(dir: &Path, digest: &str) -> Result<Store, crate::accounts::Trouble> {
+        if !digest
+            .strip_prefix("sha256:")
+            .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+        {
+            return Err(crate::accounts::Trouble::Invalid(
+                "revision must be a SHA-256 identity".into(),
+            ));
+        }
+        let path = dir.join(HISTORY_DIR).join(format!("{digest}.json"));
+        if !path.exists() {
+            return Err(crate::accounts::Trouble::UnknownRevision(
+                digest.to_string(),
+            ));
+        }
+        let text = read_sessions(&path)?;
+        let store = Store::parse(&text, &path.display().to_string())
+            .map_err(crate::accounts::Trouble::Invalid)?;
+        if store.digest != digest {
+            return Err(crate::accounts::Trouble::Invalid(
+                "archived revision identity mismatch".into(),
+            ));
+        }
+        Ok(store)
+    }
+
+    /// One mutation: take the lock, re-read inside it, run `f` against
+    /// the book, seal the new revision, and write it in one rename.
+    ///
+    /// The sweep comes first — an expired session is marked `expired`
+    /// in the same revision the mutation commits, so the written state
+    /// matches what `standing` already derives.
+    pub fn mutate<T>(
+        &self,
+        f: impl FnOnce(&mut SessionBook, &mut Vec<Access>, u64) -> Result<T, Refusal>,
+    ) -> Result<T, Refusal> {
+        let _lock = SessionLock::acquire(&self.dir).map_err(|t| Refusal::Store(t.to_string()))?;
+        let mut store = load_sessions(&self.dir).map_err(|t| Refusal::Store(t.to_string()))?;
+        let now = unix_now();
+        store.book.expire(now);
+        let supersedes = store.digest.clone();
+        let out = f(&mut store.book, &mut store.access, now)?;
+        store.sequence += 1;
+        store.supersedes = Some(supersedes);
+        store.seal();
+        store
+            .validate(&self.dir.join(SESSIONS).display().to_string())
+            .map_err(Refusal::Store)?;
+        save_sessions(&self.dir, &store).map_err(|t| Refusal::Store(t.to_string()))?;
+        Ok(out)
+    }
+
+    /// Append an access event inside a mutation that does nothing else —
+    /// the audit trail's own write.
+    pub fn record(
+        &self,
+        actor: &str,
+        action: &str,
+        workspace: Option<&str>,
+        session: Option<&str>,
+        detail: Option<String>,
+    ) -> Result<(), Refusal> {
+        self.mutate(|_, access, now| {
+            push_access(
+                access,
+                Access {
+                    at: now,
+                    actor: actor.to_string(),
+                    action: action.to_string(),
+                    workspace: workspace.map(str::to_string),
+                    session: session.map(str::to_string),
+                    detail,
+                },
+            );
+            Ok(())
+        })
+    }
+}
+
+/// Append an event, pruning the oldest when the log is at its bound —
+/// the one way events join the log, so a writer inside `mutate` cannot
+/// grow it past [`ACCESS_MAX`].
+pub fn push_access(access: &mut Vec<Access>, event: Access) {
+    access.push(event);
+    if access.len() > ACCESS_MAX {
+        let overflow = access.len() - ACCESS_MAX;
+        access.drain(..overflow);
+    }
+}
+
+/// The exclusive lock one session mutation holds — the same shape as
+/// `accounts.lock`: `create_new` makes it atomic, absence is the
+/// release, a dropped guard removes it.
+struct SessionLock {
+    path: PathBuf,
+}
+
+impl SessionLock {
+    fn acquire(dir: &Path) -> Result<Self, crate::accounts::Trouble> {
+        let path = dir.join(SESSIONS_LOCK);
+        for _ in 0..SESSIONS_LOCK_RETRIES {
+            match std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&path)
+            {
+                Ok(mut file) => {
+                    writeln!(file, "pid {}", std::process::id()).ok();
+                    return Ok(Self { path });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(error) => return Err(crate::accounts::Trouble::Io(error)),
+            }
+        }
+        Err(crate::accounts::Trouble::Locked(path.display().to_string()))
+    }
+}
+
+impl Drop for SessionLock {
+    fn drop(&mut self) {
+        std::fs::remove_file(&self.path).ok();
+    }
+}
+
+/// The current time as Unix seconds — the clock sessions expire and
+/// access events record against.
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|span| span.as_secs())
+        .unwrap_or_default()
+}
+
+fn read_sessions(path: &Path) -> Result<String, crate::accounts::Trouble> {
+    let mut text = String::new();
+    std::fs::File::open(path)?
+        .take(SESSIONS_STORE_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > SESSIONS_STORE_BYTES {
+        return Err(crate::accounts::Trouble::Invalid(
+            "session store exceeds 16 MiB".into(),
+        ));
+    }
+    Ok(text)
+}
+
+fn write_sessions_synced(path: &Path, text: &str) -> Result<(), crate::accounts::Trouble> {
+    let mut file = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(text.as_bytes())?;
+    file.sync_all()?;
+    Ok(())
+}
+
+/// Load the store from a directory, validating it end to end.
+fn load_sessions(dir: &Path) -> Result<Store, crate::accounts::Trouble> {
+    let path = dir.join(SESSIONS);
+    let text = read_sessions(&path)?;
+    Store::parse(&text, &path.display().to_string()).map_err(crate::accounts::Trouble::Invalid)
+}
+
+/// Write a sealed store: archive it by digest, then replace
+/// `sessions.json` in one rename.
+fn save_sessions(dir: &Path, store: &Store) -> Result<(), crate::accounts::Trouble> {
+    let history = dir.join(HISTORY_DIR);
+    std::fs::create_dir_all(&history)?;
+    let text = serde_json::to_string_pretty(store)
+        .map_err(|error| crate::accounts::Trouble::Invalid(error.to_string()))?;
+    let archived = history.join(format!("{}.json", store.digest));
+    if text.len() as u64 + 1 > SESSIONS_STORE_BYTES {
+        return Err(crate::accounts::Trouble::Invalid(
+            "session store exceeds 16 MiB".into(),
+        ));
+    }
+    if !archived.exists() {
+        write_sessions_synced(&archived, &format!("{text}\n"))?;
+    } else if read_sessions(&archived)? != format!("{text}\n") {
+        return Err(crate::accounts::Trouble::Invalid(
+            "archived revision content mismatch".into(),
+        ));
+    }
+    std::fs::File::open(&history)?.sync_all()?;
+    let staged = dir.join(format!(".{SESSIONS}.{}.tmp", fresh_id()?));
+    write_sessions_synced(&staged, &format!("{text}\n"))?;
+    std::fs::rename(&staged, dir.join(SESSIONS))?;
+    std::fs::File::open(dir)?.sync_all()?;
+    Ok(())
+}
+
+/// Fresh random material for staging file names — the store's own
+/// `fresh` shaped for the I/O path's error type.
+fn fresh_id() -> Result<String, crate::accounts::Trouble> {
+    fresh().map_err(|error| crate::accounts::Trouble::Invalid(error.to_string()))
+}
+
+/// Canonical JSON: keys sorted, whitespace gone — the same
+/// canonicalization `accounts.json` digests under.
+fn canonicalize(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let mut out = String::from("{");
+            for (index, key) in keys.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                out.push_str(&serde_json::to_string(key).expect("a key serializes"));
+                out.push(':');
+                out.push_str(&canonicalize(&map[*key]));
+            }
+            out.push('}');
+            out
+        }
+        serde_json::Value::Array(items) => {
+            let mut out = String::from("[");
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                out.push_str(&canonicalize(item));
+            }
+            out.push(']');
+            out
+        }
+        other => serde_json::to_string(other).expect("a value serializes"),
     }
 }
 

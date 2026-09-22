@@ -5,7 +5,9 @@ info:
   x-generated-by: hand-maintained
   description: 'An OpenAPI 3.1 fragment scoped to the routes `crates/gateway` serves today: `POST /v1/systemone`,
     `POST /v1/classify`, the durable `/v1/jobs` family, `GET /v1/models`, `GET /healthz`, the public `/v1/docs`
-    corpus API, and — only under monetary admission — `GET /v1/balance`. It claims nothing else: no OAuth
+    corpus API, and the conditional surfaces — `GET /v1/balance` under monetary admission and the `/v1/sessions`,
+    `/v1/accounts`, `/v1/workspaces`, `/v1/invitations`, `/v1/recovery`, and `/v1/session` account-management
+    family under the `accounts` document. It claims nothing else: no OAuth
     flow, no streaming, no image or multimodal input, no hosted public origin, and no pricing tiers. `docs/agents/api-catalog.json`
     enumerates the advertised surfaces that remain unimplemented, the discovery document routes, and `docs/decision-models/api/openapi.yaml`
     is the API group''s own contract document.'
@@ -699,6 +701,657 @@ paths:
           description: invalid_arguments or stale_cursor.
         '404':
           description: document_not_found — no document has this id.
+  /v1/sessions:
+    post:
+      summary: Sign in or open an anonymous session
+      description: Exchange an `oak_` key for a `sess_` session token, or — with no credential — mint a
+        bounded anonymous session when the deployment funds the anonymous lane. The token
+        is shown once; the store holds only its digest.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/session:
+    get:
+      summary: Describe the caller's session
+      description: The session the bearer token names — kind, account, deadline, standing, and the anonymous budget's counters when funded.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+    delete:
+      summary: Log out
+      description: End the session the bearer token names.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/accounts:
+    post:
+      summary: Self-serve sign-up
+      description: Create the account, its personal workspace on the sign-up tenant, its first `oak_`
+        key, and its first session in one call. Both secrets are shown once. Requires
+        `accounts.signup_tenant`; absent it answers `signup_disabled`.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '201':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/account:
+    get:
+      summary: The caller's account and workspaces
+      description: The signed-in account with every workspace it belongs to — the workspace-switching menu.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/account/access:
+    get:
+      summary: The caller's access history
+      description: Actor, action, workspace, session digest, and detail for the caller's own events. Secrets are redacted by construction — they are never in the store to begin with.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/invitations/accept:
+    post:
+      summary: Accept an invitation
+      description: Join the caller's account to the workspace an `inv_` token names.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/recovery/redeem:
+    post:
+      summary: Redeem a recovery token
+      description: Rotate the member's bound key and end the sessions the old credential minted. The
+        `rcv_` token is itself the credential — this route takes no `Authorization`.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces:
+    post:
+      summary: Open an organization workspace
+      description: Create an organization workspace on the sign-up tenant, owned by the caller. Personal
+        workspaces come only from sign-up. Requires `accounts.signup_tenant`.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '201':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}:
+    get:
+      summary: Read a workspace
+      description: Members see the roster and seats; admins and the owner also see live invitations.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+    patch:
+      summary: Rename a workspace or set its seats
+      description: Owner only. The id never changes; seats may not shrink below the active membership.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/invitations:
+    post:
+      summary: Issue an invitation
+      description: Admin or owner. Grants `admin` or `member` — ownership moves only through transfer.
+        The `inv_` token is shown once; delivery is out of band.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '201':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/invitations/{invitation}:
+    delete:
+      summary: Withdraw an invitation
+      description: Revoke a pending invitation — the record stays; the state is the answer.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/members/{account}:
+    patch:
+      summary: Change a member's role
+      description: The owner moves a member between `admin` and `member`; ownership never passes through this route.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+    delete:
+      summary: Remove a member
+      description: Revoke the membership; the member's sessions end in the same committed write and their keys refuse the workspace on next authentication.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/transfer:
+    post:
+      summary: Transfer ownership
+      description: Hand ownership to another active member; the caller becomes an admin in the same
+        committed revision.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/recovery:
+    post:
+      summary: Issue a recovery token
+      description: Admin or owner. Mints a single-use `rcv_` token for the named member, shown once and
+        delivered out of band.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '201':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/access:
+    get:
+      summary: The workspace's access history
+      description: Members read their own events; admins and the owner read the workspace's.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/keys:
+    get:
+      summary: List the workspace tenant's keys
+      description: A member reads their own keys; an admin or the owner reads all with account attribution. No secret field exists.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+    post:
+      summary: Issue a key
+      description: A key on the workspace's tenant, bound to the caller's account — named and optionally scoped to doors and actions. The secret is shown once.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '201':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/keys/{key}/copy:
+    post:
+      summary: Copy a key
+      description: Copy a key under the same name, scopes, and reach, bound to the caller's account. The secret is shown once.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '201':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/keys/{key}/pause:
+    post:
+      summary: Pause a key
+      description: Hold a key without ending it — it refuses until resumed; attribution stands.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/keys/{key}/resume:
+    post:
+      summary: Resume a key
+      description: Release a paused key.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/keys/{key}/rotate:
+    post:
+      summary: Rotate a key
+      description: Fresh id and secret for the same reach, rebound to the key owner's account. Quota, history, and membership never move.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/keys/{key}:
+    delete:
+      summary: Revoke a key
+      description: The record stays; the state is the answer.
+      x-conditional: This route exists only when the deployment configures the `accounts` document
+        in `gateway.json`. Without it the route is not registered at all.
+      responses:
+        '200':
+          description: The operation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
 components:
   securitySchemes:
     bearer:

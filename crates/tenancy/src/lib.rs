@@ -77,3 +77,6 @@ pub use admission::{Candidate, Record as AdmissionRecord, Ruling as AdmissionRul
 pub use keys::{AuthRefusal, Authenticated, Issued, Key, KeyStore, KeyTrouble, Status};
 pub use manifest::{Binding, Capacity, Expected, Lane, Manifest, Quota, SCHEMA, Tenant, lane_name};
 pub use registry::{Admission, Fault, Published, Refusal, Registry, Trouble};
+pub use sessions::{
+    Access, SESSIONS_SCHEMA, SessionBook, SessionId, SessionKind, SessionState, Sessions,
+};

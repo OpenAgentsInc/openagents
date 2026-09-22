@@ -68,6 +68,9 @@ pub enum Trouble {
     /// The spending ledger did not open — a lock, a damaged log, or a
     /// path that is not a private regular file.
     Money(String),
+    /// The account or session store did not open — a lock, a damaged
+    /// document, or a genesis that could not seal.
+    Accounts(tenancy::accounts::Trouble),
 }
 
 impl std::fmt::Display for Trouble {
@@ -77,6 +80,7 @@ impl std::fmt::Display for Trouble {
             Self::Ledger(trouble) => write!(f, "{trouble}"),
             Self::Registry(trouble) => write!(f, "{trouble}"),
             Self::Money(message) => write!(f, "{message}"),
+            Self::Accounts(trouble) => write!(f, "{trouble}"),
         }
     }
 }
@@ -172,6 +176,26 @@ impl ServeState {
             .transpose()
             .map_err(Trouble::Money)?
             .map(Mutex::new);
+        // The account surface keeps its two stores beside the registry:
+        // `accounts.json` for membership and `sessions.json` for the
+        // lifecycle book. A deployment that configures `accounts` gets
+        // them installed on first open — an empty genesis, never a
+        // guessed membership.
+        if let Some(accounts) = &config.accounts {
+            if tenancy::Accounts::open(&config.registry).is_err() {
+                tenancy::Accounts::install(&config.registry).map_err(Trouble::Accounts)?;
+            }
+            if tenancy::Sessions::open(&config.registry).is_err() {
+                tenancy::Sessions::install(
+                    &config.registry,
+                    tenancy::SessionBook::new(
+                        accounts.session_ttl_secs,
+                        accounts.recovery_ttl_secs,
+                    ),
+                )
+                .map_err(Trouble::Accounts)?;
+            }
+        }
         // Durable jobs reconcile before the first request: interrupted
         // runs end honestly, orphaned submissions are removed, and
         // queued work waits for `router` to re-spawn it inside the
@@ -253,6 +277,9 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     if state.config.money.is_some() {
         routes.push(("/v1/balance", get(balance)));
     }
+    if state.config.accounts.is_some() {
+        routes.extend(crate::accounts::routes());
+    }
     routes
 }
 
@@ -288,11 +315,25 @@ async fn models(
         Ok(parts) => parts,
         Err((status, code, message)) => return Err(gateway_error(status.as_u16(), code, &message)),
     };
+    if caller
+        .scopes
+        .as_ref()
+        .is_some_and(|scopes| !scopes.permits_action("models"))
+    {
+        return Err(gateway_error(
+            403,
+            "out_of_scope",
+            "the credential's declared scope does not permit the `models` action",
+        ));
+    }
     let manifest = registry.manifest();
-    let names: Vec<String> = match caller.tenant.as_deref() {
+    let mut names: Vec<String> = match caller.tenant.as_deref() {
         Some(tenant) => registry.visible_doors(tenant),
         None => manifest.shared.keys().cloned().collect(),
     };
+    if let Some(scopes) = &caller.scopes {
+        names.retain(|door| scopes.permits_model(door));
+    }
     let cards: Vec<Value> = names
         .iter()
         .filter_map(|door| {
@@ -340,6 +381,17 @@ async fn balance(
         Ok(parts) => parts,
         Err((status, code, message)) => return Err(gateway_error(status.as_u16(), code, &message)),
     };
+    if caller
+        .scopes
+        .as_ref()
+        .is_some_and(|scopes| !scopes.permits_action("balance"))
+    {
+        return Err(gateway_error(
+            403,
+            "out_of_scope",
+            "the credential's declared scope does not permit the `balance` action",
+        ));
+    }
     let Some(workspace) = caller.workspace else {
         return Err(gateway_error(
             400,
@@ -463,6 +515,10 @@ pub(crate) struct Caller {
     /// `require_workspace_membership` ran, and the account monetary
     /// admission charges.
     pub(crate) workspace: Option<String>,
+    /// The key's declared narrowing — the doors and actions it was
+    /// scoped to at issue. `None` is an unscoped key, a session, or an
+    /// anonymous caller: the tenant's binding bounds it alone.
+    pub(crate) scopes: Option<keys::Scopes>,
 }
 
 /// Resolve the `Authorization` header and reopen the registry for this
@@ -493,6 +549,7 @@ pub(crate) fn authenticate(
                 tenant: None,
                 key: "anonymous".to_string(),
                 workspace: None,
+                scopes: None,
             },
         ));
     };
@@ -510,6 +567,9 @@ pub(crate) fn authenticate(
             "the credential is not a `Bearer oak_<id>.<secret>` token".to_string(),
         )
     })?;
+    if token.starts_with("sess_") {
+        return authenticate_session(state, registry, headers, token);
+    }
     let authenticated =
         keys::authenticate(&state.dir, registry.manifest(), token).map_err(|refusal| {
             (
@@ -573,8 +633,168 @@ pub(crate) fn authenticate(
             tenant: Some(authenticated.tenant),
             key: authenticated.key_id,
             workspace,
+            scopes: authenticated.scopes,
         },
     ))
+}
+
+/// Resolve a `sess_` bearer token for a decision call — the account
+/// surface's credential kind.
+///
+/// A user-kind session names its workspace by `X-Workspace-Id` and
+/// authorizes the account's fresh membership there — a removed
+/// member's session dies on the very next call, the same read the
+/// `oak_` path makes. An anonymous-kind session draws the
+/// operator-funded budget once per call and admits only what the
+/// anonymous lane always could: the `shared` bindings. A `sess_` token
+/// when the account surface is not configured is no credential at all.
+fn authenticate_session(
+    state: &ServeState,
+    registry: Registry,
+    headers: &HeaderMap,
+    token: &str,
+) -> Result<(Registry, Caller), (StatusCode, &'static str, String)> {
+    let sessions = tenancy::Sessions::open(&state.dir).map_err(|trouble| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "sessions_unavailable" as &'static str,
+            trouble.to_string(),
+        )
+    })?;
+    let store = sessions.store().map_err(|trouble| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "sessions_unavailable" as &'static str,
+            trouble.to_string(),
+        )
+    })?;
+    let session = store.book.session_of_token(token).ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            "unauthenticated" as &'static str,
+            "the session token names no session this service holds".to_string(),
+        )
+    })?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|span| span.as_secs())
+        .unwrap_or_default();
+    let standing = session.standing(now);
+    if standing != tenancy::SessionState::Active {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "session_closed" as &'static str,
+            format!("the session is {standing} — it answers nothing"),
+        ));
+    }
+    match session.kind {
+        tenancy::SessionKind::Anonymous => {
+            if state.config.require_workspace_membership {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    "workspace_required" as &'static str,
+                    "an anonymous session holds no membership — workspace \
+                     membership requires a member's credential"
+                        .into(),
+                ));
+            }
+            let session_id = session.id.as_str().to_string();
+            sessions
+                .mutate(|book, _access, now| {
+                    book.spend_anonymous(crate::accounts::ANONYMOUS_BUDGET, &session_id, now)
+                })
+                .map_err(|refusal| {
+                    use tenancy::sessions::Refusal as R;
+                    let (status, code): (StatusCode, &'static str) = match &refusal {
+                        R::UnknownBudget { .. } => {
+                            (StatusCode::SERVICE_UNAVAILABLE, "budget_unavailable")
+                        }
+                        R::Store(_) | R::Unavailable => {
+                            (StatusCode::SERVICE_UNAVAILABLE, "sessions_unavailable")
+                        }
+                        R::AnonymousSessionCapped { .. } => {
+                            (StatusCode::FORBIDDEN, "anonymous_session_capped")
+                        }
+                        _ => (StatusCode::FORBIDDEN, "anonymous_budget_exhausted"),
+                    };
+                    (status, code, refusal.to_string())
+                })?;
+            Ok((
+                registry,
+                Caller {
+                    tenant: None,
+                    key: "anonymous".to_string(),
+                    workspace: None,
+                    scopes: None,
+                },
+            ))
+        }
+        tenancy::SessionKind::User => {
+            let mut values = headers.get_all("x-workspace-id").iter();
+            let workspace = values
+                .next()
+                .and_then(|value| value.to_str().ok())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        "workspace_required" as &'static str,
+                        "a session names its workspace with one X-Workspace-Id header".into(),
+                    )
+                })?;
+            if values.next().is_some() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "workspace_required" as &'static str,
+                    "a session names its workspace with one X-Workspace-Id header".into(),
+                ));
+            }
+            let accounts = tenancy::Accounts::open(&state.dir).map_err(|trouble| {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "accounts_unavailable" as &'static str,
+                    trouble.to_string(),
+                )
+            })?;
+            let record = accounts
+                .workspace(workspace)
+                .map_err(|trouble| {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "accounts_unavailable" as &'static str,
+                        trouble.to_string(),
+                    )
+                })?
+                .ok_or_else(|| {
+                    (
+                        StatusCode::NOT_FOUND,
+                        "unknown_workspace" as &'static str,
+                        format!("`{workspace}` is not a workspace this store holds"),
+                    )
+                })?;
+            accounts
+                .authorize(workspace, session.user.as_str())
+                .map_err(|refusal| {
+                    (
+                        StatusCode::FORBIDDEN,
+                        "workspace_forbidden" as &'static str,
+                        format!(
+                            "the session's account has no active membership in this \
+                             workspace: {refusal}"
+                        ),
+                    )
+                })?;
+            Ok((
+                registry,
+                Caller {
+                    tenant: Some(record.tenant),
+                    key: format!("session:{}", &session.id.as_str()[..16]),
+                    workspace: Some(workspace.to_string()),
+                    scopes: None,
+                },
+            ))
+        }
+    }
 }
 
 /// What an attempt needs for its receipt — the identities it ran under.
@@ -825,6 +1045,22 @@ fn authorized(
     door: &str,
     ctx: &mut Context,
 ) -> Result<(Admission, Door), Verdict> {
+    // The key's own narrowing runs first: a scope is never a grant, so
+    // the door the credential was scoped out of refuses before the
+    // binding it would intersect is even named.
+    if let Some(scopes) = &caller.scopes
+        && (!scopes.permits_model(door) || !scopes.permits_action("inference"))
+    {
+        return Err(Verdict::Refused {
+            status: StatusCode::FORBIDDEN,
+            code: "out_of_scope",
+            message: format!(
+                "the credential's declared scope does not name door `{door}` for inference"
+            ),
+            outcome: Outcome::Refused,
+            ctx: ctx.clone(),
+        });
+    }
     let admission = registry
         .authorize(caller.tenant.as_deref(), door)
         .map_err(|refusal| Verdict::Refused {

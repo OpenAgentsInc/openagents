@@ -256,6 +256,7 @@ async fn deploy_tuned(
         listen: "127.0.0.1:0".to_string(),
         registry: dir.path().to_path_buf(),
         require_workspace_membership: false,
+        accounts: None,
         money: None,
         max_body_bytes: 1_048_576,
         max_response_bytes: 4_194_304,
@@ -2473,6 +2474,7 @@ async fn deploy_money(
         listen: "127.0.0.1:0".to_string(),
         registry: dir.path().to_path_buf(),
         require_workspace_membership: true,
+        accounts: None,
         money: Some(Money {
             ledger: ledger.clone(),
             doors: priced,

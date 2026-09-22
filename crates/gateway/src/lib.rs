@@ -27,8 +27,15 @@
 //! serving process's attributable claim — not attestation. And
 //! monetary admission — `money` in the config — is an explicit opt-in:
 //! absent the field, no workspace is charged and no balance route
-//! exists.
+//! exists. The same rule governs `accounts`: absent the block, no
+//! account, session, or workspace-management route mounts and a `sess_`
+//! token is not a credential the service knows.
 
+// The module's helpers answer `Result<_, Response>`: the refusal is the
+// response itself, built once and returned to the caller — boxing it on
+// the heap would rename the same shape without changing what it is.
+#[allow(clippy::result_large_err)]
+pub mod accounts;
 pub mod advertise;
 pub mod classify;
 pub mod config;

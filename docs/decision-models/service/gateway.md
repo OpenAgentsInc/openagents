@@ -10,9 +10,14 @@ second path.
 Every `POST /v1/systemone` runs the same sequence:
 
 1. **Authenticate.** `Authorization: Bearer oak_<id>.<secret>` resolves
-   to a tenant through `tenancy::keys`. A request with no credential is
+   to a tenant through `tenancy::keys`; a `sess_<hex>` token resolves to
+   a session through the account store — a user session names its
+   workspace with `X-Workspace-Id` and authorizes the account's fresh
+   membership, and an anonymous session draws one unit of the
+   operator-funded `onb_public` budget. A request with no credential is
    anonymous; an anonymous call reaches the manifest's `shared` bindings
-   and nothing else.
+   and nothing else. A scoped key's declared doors and actions check
+   here too — `out_of_scope` before the binding is even named.
 2. **Authorize.** The request's `model` field names a door; the
    registry's `authorize` returns the admission snapshot the call is
    served under. The snapshot is a copy — a registry update mid-flight
@@ -61,6 +66,13 @@ retained for settlement.
   "doors": {
     "shared-kev": {"endpoint": "http://127.0.0.1:9080"},
     "acme-kev": {"endpoint": "http://10.0.1.7:9080"}
+  },
+  "accounts": {
+    "signup_tenant": "acme",
+    "session_ttl_secs": 28800,
+    "recovery_ttl_secs": 3600,
+    "anonymous": {"workspace": "ws_public", "bound": 10000,
+                  "session_cap": 25, "ttl_secs": 86400}
   }
 }
 ```
@@ -71,6 +83,18 @@ all live there. A door named in the registry but missing from `doors`
 is `door_unavailable` — the gateway refuses rather than guessing an
 address, because which host serves a door is the operator's business
 and which identity that host publishes is the binding's.
+
+`accounts` is optional and self-contained — without it the gateway
+mounts no account routes and authenticates keys exactly as before.
+With it, `accounts.json` and `sessions.json` join the registry
+directory and the management surface mounts: `signup_tenant` names the
+tenant self-serve sign-up and organization workspaces land on (absent
+it, `POST /v1/accounts` and `POST /v1/workspaces` answer
+`signup_disabled`); the TTLs bound user sessions and recovery tokens;
+and `anonymous` funds a bounded public lane — `bound` units on
+`onb_public`, `session_cap` per session, `ttl_secs` per session —
+which must all be positive or the config refuses.
+[workspace-membership](workspace-membership.md) is the full contract.
 
 `reservation_ttl_secs` must cover `forward_timeout_ms` — a reservation
 that expired while its forward still ran would orphan live work, and
@@ -106,6 +130,25 @@ Work that outlives a request runs as a durable job instead:
 path, a manifest and item ledger beside the registry, honest
 `unknown` outcomes for ambiguous work, and opt-in signed webhooks.
 
+Under the `accounts` document the gateway also mounts the
+account-management family — every route below conditional on that
+configuration:
+
+- `POST /v1/sessions` — sign in with an `oak_` key, or mint a funded
+  anonymous session with no credential; `GET` and `DELETE /v1/session`
+  describe and end it.
+- `POST /v1/accounts` — self-serve sign-up: account, personal
+  workspace, first key, first session. `GET /v1/account` lists the
+  caller's workspaces; `GET /v1/account/access` their access history.
+- `POST /v1/workspaces` — an organization workspace; the `{workspace}`
+  routes cover read, rename and seats, invitations, member roles and
+  removal, ownership transfer, recovery tokens, and the workspace's
+  access history and keys. `/v1/invitations/accept` and
+  `/v1/recovery/redeem` are the out-of-band halves.
+
+[workspace-membership](workspace-membership.md) has the full route
+table, the role matrix, and the revocation semantics.
+
 The gateway also serves a public discovery surface — unauthenticated
 `GET` routes that describe the deployment: the document set
 (`llms.txt`, `agents.md`, `auth.md`, `skills.md`, `api-catalog.json`,
@@ -133,12 +176,13 @@ status. The gateway's own refusals are typed JSON:
 | Status | Codes | Meaning |
 | --- | --- | --- |
 | 400 | `malformed`, `invalid_request` | The header or envelope does not parse. |
-| 401 | `unauthenticated` | The credential is missing its `Bearer` shape, unknown, revoked, or wrong. |
+| 401 | `unauthenticated`, `session_closed` | The credential is missing its `Bearer` shape, unknown, revoked, or wrong — or the session expired, was logged out, or ended when the account lost its membership. |
+| 403 | `out_of_scope`, `anonymous_session_capped`, `anonymous_budget_exhausted` | A scoped key's declared doors or actions do not cover the call, or the funded anonymous lane's cap or budget is spent. |
 | 403 | `door_not_bound` | The tenant holds no binding for the door, and the door is not shared. |
 | 409 | `idempotency_conflict` | The `(request, attempt)` pair is taken — resolved, or held for different content. |
 | 422 | `invalid_request`, `too_many_questions`, `too_many_options` | The envelope names no `model` door, or carries more questions or options than `max_questions`/`max_options` admit — refused before the door is consulted. |
 | 429 | `rate_limited`, `busy`, `overloaded`, `quota_exhausted` | Capacity, or a spent budget — `Retry-After` accompanies the refusal. |
-| 503 | `door_unavailable`, `identity_mismatch`, `unavailable` | No backend is configured, the backend's card disagrees with the binding, or the forward failed. |
+| 503 | `door_unavailable`, `identity_mismatch`, `unavailable`, `sessions_unavailable`, `budget_unavailable` | No backend is configured, the backend's card disagrees with the binding, the forward failed, or — on the session paths — the account stores cannot be read. |
 
 ## Retries and idempotency
 
@@ -196,7 +240,10 @@ One gateway process owns a registry directory — the ledger's exclusive
 lock refuses a second writer, so run one replica per registry or put a
 single writer behind a failover pair. Provisioning is `tenant-keys`
 (issue, rotate, revoke) against the same directory, and `tenant-usage`
-reads the ledger's position. A registry update lands on the next
+reads the ledger's position. Under `accounts` the account and session
+stores take the same one-writer discipline — `accounts.json` and
+`sessions.json` lock, re-read, mutate, validate, seal, and save, so a
+revoked membership or rotated key decides the very next request. A registry update lands on the next
 request — the gateway rereads the manifest per call — while a call in
 flight keeps the admission it was served under.
 

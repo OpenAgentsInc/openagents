@@ -416,7 +416,10 @@ issuance, never to the store or a log. Authentication resolves the key
 to its tenant; authorization is then the registry's `authorize` lookup,
 so a caller-supplied model name cannot escape the bound doors, and a
 rotated key inherits the tenant's doors and quota rather than resetting
-them. Anonymous access is an explicit operator choice and reaches only
+them. A scoped key narrows further — `models` names the doors and
+`actions` the verbs (`inference`, `models`, `balance`, `accounts`) —
+and the gateway refuses `out_of_scope` before the binding is even
+named. Anonymous access is an explicit operator choice and reaches only
 the manifest's `shared` bindings — never a dedicated or trained door.
 On the relay lane, the authenticated NIP-42 principal maps to the same
 tenant record before authorization, so one binding decides both
@@ -424,6 +427,32 @@ transports. The trusted boundary is the gateway: a directly reachable
 door is a misconfiguration, and the deployment policy is that backends
 bind a private interface and accept forwarded calls only from the
 gateway's identity.
+
+The account lifecycle is landed too — `accounts.json` and
+`sessions.json` beside the registry, served by the gateway's `accounts`
+module when the `accounts` config block is present. `POST /v1/accounts`
+is self-serve sign-up onto the configured `signup_tenant`: account,
+personal workspace, first `oak_` key, and first `sess_<hex>` session in
+one answer, each secret existing only in that answer. `POST /v1/sessions`
+signs an `oak_` key in; `GET`/`DELETE /v1/session` describe and end the
+session. On `POST /v1/systemone` a `sess_` token works like a key with
+one extra rule — a user session names its workspace with
+`X-Workspace-Id`, and the account's fresh membership decides. The
+management matrix is HTTP: `POST /v1/workspaces` mints an organization
+workspace, and the `{workspace}` routes cover invitations, roles,
+removal, ownership transfer, recovery tokens, and keys — named and
+scoped at issue, copied, paused, resumed, rotated, and revoked, with the
+new secret leaving once and `rotated_from`/`copied_from` lineage kept
+for attribution. The `anonymous` config block is the funded public
+lane: a stated `bound`, a per-session `session_cap`, and a `ttl_secs` —
+`POST /v1/sessions` with no credential mints a session that draws the
+budget once per call and reaches only `shared` doors. Removing a
+member revokes the membership and ends their sessions in the same
+committed write; their keys refuse the workspace on the very next
+authentication. `GET /v1/account/access` and the workspace's `/access`
+route answer the bounded history — actor, action, references — with
+secrets redacted by construction. See
+[workspace membership](../service/workspace-membership.md).
 
 ## Pricing and monetary accounting
 

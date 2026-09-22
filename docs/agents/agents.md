@@ -17,7 +17,9 @@ lists the doors a credential may name.
 ## Start here
 
 1. Read [auth.md](auth.md) — you need an `oak_<id>.<secret>` bearer key
-   issued by the operator. There is no signup flow.
+   issued by the operator, or a `sess_` session token from a deployment
+   that configures `accounts.signup_tenant` (`POST /v1/accounts` is the
+   self-serve entry point).
 2. List your doors: `GET /v1/models` with the key.
 3. Call `POST /v1/systemone` or use the `oak` CLI / `oak-mcp` server —
    [skills.md](skills.md) compares the surfaces and states supported
@@ -49,7 +51,10 @@ lists the doors a credential may name.
 - Discovery is unauthenticated by design; every inference route
   requires a bearer key.
 - Inference consumes quota and may cost money — `GET /v1/balance`
-  exists only where the operator enabled monetary admission.
+  exists only where the operator enabled monetary admission, and the
+  `/v1/accounts`, `/v1/sessions`, `/v1/workspaces`, `/v1/invitations`,
+  and `/v1/recovery` management family exists only where the deployment
+  configures the `accounts` document.
 - No OAuth discovery, no streaming responses, no image input, no
   hosted endpoint — the catalog says so explicitly where a reader
   might assume otherwise.

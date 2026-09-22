@@ -208,6 +208,7 @@ pub(crate) async fn submit(
         "tenant": caller.tenant,
         "key": caller.key,
         "workspace": caller.workspace,
+        "scopes": caller.scopes,
         "idem": idem,
         "digest": digest,
         "submitted_at": submitted,
@@ -478,6 +479,7 @@ async fn run(state: Arc<ServeState>, id: String) {
         tenant: manifest["tenant"].as_str().map(str::to_string),
         key: manifest["key"].as_str().unwrap_or_default().to_string(),
         workspace: manifest["workspace"].as_str().map(str::to_string),
+        scopes: serde_json::from_value(manifest["scopes"].clone()).unwrap_or_default(),
     };
     let ctx: Context = Box::new(ReceiptContext {
         tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),

@@ -79,6 +79,12 @@ static DOCUMENTS: &[Document] = &[
         false
     ),
     document!(
+        "workspace-membership",
+        "Workspace membership and accounts",
+        "decision-models/service/workspace-membership.md",
+        false
+    ),
+    document!(
         "mcp-documentation",
         "MCP documentation tools",
         "decision-models/guides/mcp-documentation.md",
