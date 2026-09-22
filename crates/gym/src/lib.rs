@@ -65,8 +65,11 @@ pub mod row;
 pub mod spread;
 pub mod store;
 pub mod suite;
+pub mod terminal_bench;
 pub mod views;
 
+#[cfg(feature = "tui")]
+pub mod terminal_bench_tui;
 #[cfg(feature = "tui")]
 pub mod tui;
 

@@ -1,0 +1,10 @@
+{
+  "schema": "openagents.tbench.manual-prices.v1",
+  "source": "docs/terminal-bench/runbook.md, operator-supplied standard short-context prices, 2026-09-22",
+  "unit": "USD per million tokens",
+  "models": {
+    "gpt-6-astra": { "input": 10.0, "cached_input": 1.0, "output": 50.0 },
+    "gpt-6-sol": { "input": 2.0, "cached_input": 0.2, "output": 10.0 },
+    "gpt-6-luna": { "input": 0.1, "cached_input": 0.01, "output": 0.5 }
+  }
+}

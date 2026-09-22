@@ -20,6 +20,8 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use crossterm::{cursor, execute};
+use gym::terminal_bench;
+use gym::terminal_bench_tui;
 use gym::tui::{Action, App, KeyLike, Records, View, ladder_from_environment};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -30,6 +32,12 @@ const PRINT_HEIGHT: u16 = 36;
 
 fn main() -> io::Result<()> {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if arguments
+        .iter()
+        .any(|argument| argument == "--terminal-bench")
+    {
+        return terminal_bench_mode(&arguments);
+    }
     match arguments.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         [] => run(),
         ["--print"] => print(),
@@ -49,20 +57,121 @@ gym-terminal: the Gym's records, read in the terminal.
 
 Usage:
   gym-terminal            Read the records in the terminal.
-  gym-terminal --print    Write all five views to stdout and exit.
+  gym-terminal --print    Write all five decision views to stdout and exit.
+  gym-terminal --terminal-bench [--print] [--jobs-dir PATH] [--traces-dir PATH] [--samples-dir PATH]
+                            [--no-jobs] [--no-traces] [--no-samples]
   gym-terminal --help     Print this message.
 
-This build opens the built-in fixture. It runs no doors and opens no
-network connection. Reading a receipt chain from disk arrives with the
-store.
+The default decision-model views open a built-in fixture. Terminal-Bench
+views read local Harbor jobs and retained evidence. Neither mode runs a
+door or opens a network connection.
 
 Keys:
-  1-5            Open the scoreboard, families, ladder, row, or chain.
+  1-5            Open the decision scoreboard, families, ladder, row, or chain.
+  1-6            Open the Terminal-Bench overview, comparison, attempt,
+                 evidence, history, or runbooks.
   tab, h, l      Walk the views.
   j, k, arrows   Move the cursor.
   g, G           Jump to the first or last item.
   enter          Open the inspector on the selection.
   q, esc         Leave.";
+
+fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let repo =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench");
+    let mut jobs = home.map(|path| path.join(".openagents/terminal-bench/jobs"));
+    let mut traces = Some(repo.join("traces"));
+    let mut samples = Some(repo.join("samples"));
+    let mut print_only = false;
+    let mut index = 0;
+    while index < arguments.len() {
+        match arguments[index].as_str() {
+            "--terminal-bench" => {}
+            "--print" => print_only = true,
+            "--no-jobs" => jobs = None,
+            "--no-traces" => traces = None,
+            "--no-samples" => samples = None,
+            "--jobs-dir" | "--traces-dir" | "--samples-dir" => {
+                let Some(path) = arguments.get(index + 1) else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "directory flag needs a path",
+                    ));
+                };
+                match arguments[index].as_str() {
+                    "--jobs-dir" => jobs = Some(path.into()),
+                    "--traces-dir" => traces = Some(path.into()),
+                    _ => samples = Some(path.into()),
+                }
+                index += 1;
+            }
+            _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, USAGE)),
+        }
+        index += 1;
+    }
+    let records =
+        terminal_bench::Records::load(jobs.as_deref(), traces.as_deref(), samples.as_deref());
+    if print_only {
+        let mut app = terminal_bench_tui::App::new(records);
+        let mut out = stdout().lock();
+        for view in terminal_bench_tui::View::ALL {
+            app.open(view);
+            writeln!(out, "{}\n", app.to_text(150, app.print_height()))?;
+        }
+        return Ok(());
+    }
+    run_tbench(records)
+}
+
+fn run_tbench(records: terminal_bench::Records) -> io::Result<()> {
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        restore();
+        hook(info);
+    }));
+    enable_raw_mode()?;
+    let mut out = stdout();
+    execute!(out, EnterAlternateScreen, cursor::Hide)?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
+    let result = draw_tbench(&mut terminal, records);
+    restore();
+    let _ = std::panic::take_hook();
+    result
+}
+
+fn draw_tbench(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    records: terminal_bench::Records,
+) -> io::Result<()> {
+    let mut app = terminal_bench_tui::App::new(records);
+    loop {
+        terminal.draw(|frame| app.render(frame.area(), frame.buffer_mut()))?;
+        if let Event::Key(key) = event::read()? {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+            let control = key.modifiers.contains(KeyModifiers::CONTROL);
+            match key.code {
+                KeyCode::Char('c' | 'd') if control => return Ok(()),
+                KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
+                KeyCode::Char('j') | KeyCode::Down => app.down(),
+                KeyCode::Char('k') | KeyCode::Up => app.up(),
+                KeyCode::Char('l') | KeyCode::Right | KeyCode::Tab => app.next(),
+                KeyCode::Char('h') | KeyCode::Left | KeyCode::BackTab => app.previous(),
+                KeyCode::Char('g') | KeyCode::Home => app.home(),
+                KeyCode::Char('G') | KeyCode::End => app.end(),
+                KeyCode::Enter => app.inspect(),
+                KeyCode::Char(digit) => {
+                    if let Some(view) = terminal_bench_tui::View::from_digit(digit) {
+                        app.open(view);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
 
 /// Writes every view to stdout, so the terminal can be read where no
 /// terminal exists.

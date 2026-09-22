@@ -1,5 +1,8 @@
 # Testing coder against terminal-bench, through the Gym
 
+This is a measurement audit of the earlier Coder loop. The current Harbor
+harness and its results have a [read-only Gym terminal view](terminal-bench-tui.md).
+
 An audit: what `coder` would need to be measured on real coding tasks, what
 the Gym contributes that the existing bench does not, and what a decision
 model can and cannot do to make a task come out right.

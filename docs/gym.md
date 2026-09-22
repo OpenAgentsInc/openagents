@@ -6,6 +6,12 @@ measured, and how to pull it into this repository. Surveyed 2026-09-19
 across `~/work/openagents` (this repository and its history) and
 `~/work/coder` (`OpenAgentsInc/coder`).
 
+This is the September 19 migration survey. The current `crates/gym` measures
+decision models and its [terminal view](gym/terminal-bench-tui.md) now reads
+the separate Terminal-Bench episode evidence. The historical plan below
+does not describe the current Harbor runner in full; use the
+[Terminal-Bench runbook](coder/terminal-bench.md) for that runner.
+
 ## What the Gym is
 
 The Gym is the measurement and control plane for coding-agent runs. It
@@ -32,13 +38,14 @@ flow.
 
 ## The three shapes
 
-The Gym has existed three times. Only the second is alive.
+The Gym has existed in three shapes. The second remains reference material;
+this repository's measurement core and Terminal-Bench reader are active.
 
 | Shape | Where | State |
 | --- | --- | --- |
 | `openagents gym` CLI plus the Phoenix record store | This repository's previous shape, and the `openagents.com` app | Deleted here by `dabc08102f` on 2026-09-18; readable in history |
 | The Terminal Gym | `~/work/coder`: `crates/coder-bench`, `bins/coder-terminal`, `bins/coder-serve`, `ops/` | Active; the rest of this document describes it |
-| This repository | `crates/gym`, `crates/atif` | Underway. The pull-in plan is below |
+| This repository | `crates/gym`, `crates/atif`, `bench/terminal-bench` | Active measurement core and local Terminal-Bench reader; the migration plan below records the earlier direction. |
 
 ## The first Gym, in this repository's history
 

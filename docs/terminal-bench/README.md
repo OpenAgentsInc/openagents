@@ -4,6 +4,10 @@ This page is the one place for OpenAgents' Terminal-Bench results: every
 retained trial of every arm, with reward, cost, Jev cost, duration, and call
 counts, plus an analysis of each Coder One run. Update it after every run.
 
+To inspect the underlying attempts, comparisons, and retained files in the
+terminal, use the [Gym TUI](../gym/terminal-bench-tui.md). The TUI reads
+local Harbor jobs and the evidence linked below without running inference.
+
 - Harness: `bench/terminal-bench/` (Harbor 0.22.0). How to run it:
   [the runbook](../coder/terminal-bench.md). The artifact contract:
   [`openagents.coder.episode.v1`](../coder/terminal-bench-contract.md).

@@ -11,6 +11,7 @@ the arms you run.
 - Coder One's delegate arms: [the delegate runbook](coder-one-delegate-runbook.md).
 - Every result: [the results page](README.md).
 - Cancellation, timeouts, refusals, resume, image state, and repeated-run statistics: [the resilience page](resilience.md).
+- Inspect attempts and evidence: [the Gym TUI](../gym/terminal-bench-tui.md).
 
 ## The host
 
