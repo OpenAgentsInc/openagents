@@ -64,6 +64,72 @@ Every arm solved both tasks. What separates them is cost and time:
   but was the slowest arm on `build-cython-ext`. GPT-6 Astra matched Opus
   5.5's step counts but cost about three times as much there.
 
+## Cheapest first
+
+Every retained trial, one table per task, ordered from the cheapest run to
+the most expensive. Rows with no cost (`—`) come last. The costs come from
+different sources, labeled in [How to read the columns](#how-to-read-the-columns);
+‡ marks GPT-6 costs computed by hand from OpenAI's standard pricing, and †
+marks an agent time read from the trajectory rather than Harbor's phase
+timing. A failed run's cost is still listed where it ranks, with its reward.
+
+### `fix-git`, cheapest first
+
+| Rank | Arm | Model | Reward | Cost | Agent time |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Codex 0.155.1 | GPT-6 Luna | 1.0 | $0.0052‡ | 65.3 s |
+| 2 | **Coder One** | Gemini 3.8 Flash + Jev | 1.0 | $0.0604 | 73.8 s |
+| 3 | **Coder One → Opus 5.5** (`always`) | Gemini 3.8 Flash + Jev, then Opus 5.5 | 1.0 | $0.1055 | 47.4 s |
+| 4 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.1056‡ | 64.8 s |
+| 5 | **Coder One → Opus 5.5** (`auto`) | Gemini 3.8 Flash + Jev, then Opus 5.5 | 1.0 | $0.1408 | 70.3 s |
+| 6 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.1420 | 23.8 s |
+| 7 | Claude Code 2.1.278 | Sonnet 4.5 | 1.0 | $0.1463 | 42.6 s† |
+| 8 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $0.2370‡ | 47.8 s |
+| 9 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $0.2607 | 53.3 s |
+| 10 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.3630 | 30.5 s† |
+| — | Devin 3000.11.1 | swe-2-high | 1.0 | — | — |
+| — | Devin 3000.11.1 | claude-sonnet-5-high | 0.0 (provider refusal) | — | — |
+
+### `build-cython-ext`, cheapest first
+
+| Rank | Arm | Model | Reward | Cost | Agent time |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Codex 0.155.1 | GPT-6 Luna | 1.0 | $0.0174‡ | 204.7 s |
+| 2 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.3195‡ | 357.7 s |
+| 3 | **Coder One** | Gemini 3.8 Flash + Jev | 1.0 | $0.3748 | 338.4 s |
+| 4 | **Coder One → Opus 5.5** (`always`) | Gemini 3.8 Flash + Jev, then Opus 5.5 | 1.0 | $0.3905 | 128.9 s |
+| 5 | **Coder One → Opus 5.5** (`auto`) | Gemini 3.8 Flash + Jev, then Opus 5.5 | 1.0 | $0.4145 | 153.5 s |
+| 6 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.4173 | 114.9 s |
+| 7 | Claude Code 2.1.278 | Sonnet 4.5 | 0.0 | $0.9172 | 263.7 s† |
+| 8 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $1.2447‡ | 223.6 s |
+| 9 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $1.4277 | 222.2 s† |
+| 10 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.4420 | 201.8 s† |
+| — | Devin 3000.11.1 | swe-2-high | 1.0 | — | — |
+
+### `fix-code-vulnerability`, cheapest first
+
+| Rank | Arm | Model | Reward | Cost | Agent time |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.2333 | 24.7 s† |
+| 2 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $0.5094 | 44.2 s† |
+| — | Devin 3000.11.1 | swe-2-high | 1.0 | — | — |
+
+### `cancel-async-tasks`, cheapest first
+
+| Rank | Arm | Model | Reward | Cost | Agent time |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $0.1781 | 54.2 s† |
+| 2 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.5988 | 92.8 s† |
+| — | Devin 3000.11.1 | swe-2-high | No result | — | — |
+
+### `headless-terminal`, cheapest first
+
+| Rank | Arm | Model | Reward | Cost | Agent time |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Codex 0.153.3 | GPT-6 Astra | 0.0 | $0.4597 | 172.7 s† |
+| 2 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.2035 | 166.4 s† |
+| — | Devin 3000.11.1 | swe-2-high | No result | — | — |
+
 ## How to read the columns
 
 - **Reward** is the task's own verifier result. *No result* means the
