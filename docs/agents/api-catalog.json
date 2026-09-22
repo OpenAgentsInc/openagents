@@ -2607,6 +2607,301 @@
      }
     }
    }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/skills",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the skills block in gateway.json, which itself requires accounts. Under a configuration without skills the route does not exist at all.",
+   "summary": "Submit a bounded SKILL.md \u2014 digests and stores the Markdown, runs the recorded static/decision/reasoning review, and answers the submission's record with its version's state.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account; the public reads take none"
+    ],
+    "body": "{name, version, license, category, tags[], consent, markdown, evidence?{suite, report, digest}}"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "submission": "{id, author, name, version, license, category, tags, digest, bytes, consent, at, appeals[], status{state, resolution, review[]}}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "invalid_submission",
+     "consent_required",
+     "empty_field"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "membership_required",
+     "no_account",
+     "out_of_scope"
+    ],
+    "409": [
+     "version_conflict",
+     "invalid_state"
+    ],
+    "413": [
+     "submission_too_large"
+    ],
+    "429": [
+     "rate_limited",
+     "too_many_pending"
+    ],
+    "503": [
+     "skills_unavailable",
+     "accounts_unavailable",
+     "sessions_unavailable",
+     "registry_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/skills",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the skills block in gateway.json, which itself requires accounts. Under a configuration without skills the route does not exist at all.",
+   "summary": "The published directory \u2014 published entries only, with search, filters, ordering, and keyset pagination. No credential.",
+   "request": {
+    "query": "{q?, category?, tag?, author?, sort=name|recent, limit\u2264100, cursor?}"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "entries": "[{name, author, category, tags, latest, versions[], install}]",
+      "next_cursor": "string|null"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "invalid_query"
+    ],
+    "503": [
+     "skills_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/skills/{name}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the skills block in gateway.json, which itself requires accounts. Under a configuration without skills the route does not exist at all.",
+   "summary": "One entry \u2014 its latest published version, its published version list, and the install block. No credential.",
+   "request": {},
+   "responses": {
+    "200": {
+     "shape": {
+      "name": "string",
+      "author": "string",
+      "category": "string",
+      "tags": "[string]",
+      "latest": "{version}",
+      "versions": "[{version}]",
+      "install": "{instructions, markdown_url, version_url}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "404": [
+     "unknown_skill"
+    ],
+    "503": [
+     "skills_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/skills/{name}/versions/{version}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the skills block in gateway.json, which itself requires accounts. Under a configuration without skills the route does not exist at all.",
+   "summary": "One pinned published version's record \u2014 metadata, review summary, evidence label, and stable links. No credential.",
+   "request": {},
+   "responses": {
+    "200": {
+     "shape": {
+      "version": "{version, digest, license, category, tags, submitted_at, superseded_by, review{score, policy}, evidence{measured|suite,report,digest}, links{markdown, review}}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "404": [
+     "unknown_skill"
+    ],
+    "503": [
+     "skills_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/skills/{name}/versions/{version}/SKILL.md",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the skills block in gateway.json, which itself requires accounts. Under a configuration without skills the route does not exist at all.",
+   "summary": "The version's raw Markdown as text/markdown \u2014 the stored object, digest-verified on every read. No credential; the route returns bytes, it never evaluates them.",
+   "request": {},
+   "responses": {
+    "200": {
+     "shape": "text/markdown; charset=utf-8 \u2014 the SKILL.md document"
+    }
+   },
+   "refusal_statuses": {
+    "404": [
+     "unknown_skill"
+    ],
+    "503": [
+     "skills_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/skills/{name}/versions/{version}/review",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the skills block in gateway.json, which itself requires accounts. Under a configuration without skills the route does not exist at all.",
+   "summary": "The version's recorded review \u2014 every stage's reviewer, policy version, outcome, score, rationale, cost, and failure detail. No credential.",
+   "request": {},
+   "responses": {
+    "200": {
+     "shape": {
+      "review": "[{stage, reviewer, policy, outcome, detail, score, rationale, cost, at}]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "404": [
+     "unknown_skill"
+    ],
+    "503": [
+     "skills_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/skills/{name}/versions/{version}/withdraw",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the skills block in gateway.json, which itself requires accounts. Under a configuration without skills the route does not exist at all.",
+   "summary": "The author pulls a version out of review or publication \u2014 a withdrawn version stops resolving in the catalog.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account; the public reads take none"
+    ],
+    "body": "{reason?}"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "name": "string",
+      "version": "string",
+      "state": "withdrawn"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "membership_required",
+     "no_account"
+    ],
+    "404": [
+     "unknown_skill"
+    ],
+    "409": [
+     "invalid_state"
+    ],
+    "503": [
+     "skills_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/submissions",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the skills block in gateway.json, which itself requires accounts. Under a configuration without skills the route does not exist at all.",
+   "summary": "The caller's own submissions in every state \u2014 including the rejected versions the public catalog never shows, each with its resolution and review record.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account; the public reads take none"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "submissions": "[{id, name, version, digest, status{state, resolution, review[]}, appeals[], ...}]"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "membership_required",
+     "no_account"
+    ],
+    "503": [
+     "skills_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/submissions/{submission}/appeal",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the skills block in gateway.json, which itself requires accounts. Under a configuration without skills the route does not exist at all.",
+   "summary": "The author contests a rejection \u2014 recorded on the submission; an operator answers through skills-moderate.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account; the public reads take none"
+    ],
+    "body": "{reason}"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "submission": "string",
+      "state": "appealed"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "empty_field",
+     "invalid_submission"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "membership_required",
+     "no_account"
+    ],
+    "404": [
+     "unknown_skill"
+    ],
+    "409": [
+     "invalid_state"
+    ],
+    "503": [
+     "skills_unavailable"
+    ]
+   }
   }
  ],
  "refusal_codes": {
@@ -3153,6 +3448,51 @@
   "webhook_unconfigured": {
    "status": 503,
    "meaning": "the webhook secret's environment variable is unset",
+   "retryable": true
+  },
+  "consent_required": {
+   "status": 400,
+   "meaning": "a skill submission lacks publication consent",
+   "retryable": false
+  },
+  "invalid_submission": {
+   "status": 400,
+   "meaning": "a skill submission field failed its bound \u2014 name, version, license, category, tags, digest, or evidence shape",
+   "retryable": false
+  },
+  "invalid_query": {
+   "status": 400,
+   "meaning": "a browse query parameter failed its bound",
+   "retryable": false
+  },
+  "unknown_skill": {
+   "status": 404,
+   "meaning": "no published version resolves the skill name or version",
+   "retryable": false
+  },
+  "version_conflict": {
+   "status": 409,
+   "meaning": "the (name, version) exists at a different digest \u2014 supersede by bumping the version",
+   "retryable": false
+  },
+  "invalid_state": {
+   "status": 409,
+   "meaning": "the version's state forbids the act",
+   "retryable": false
+  },
+  "submission_too_large": {
+   "status": 413,
+   "meaning": "the submission's Markdown exceeds the configured bound",
+   "retryable": false
+  },
+  "too_many_pending": {
+   "status": 429,
+   "meaning": "too many of the author's submissions sit under review",
+   "retryable": false
+  },
+  "skills_unavailable": {
+   "status": 503,
+   "meaning": "the skill directory store or a content object could not be read",
    "retryable": true
   }
  },

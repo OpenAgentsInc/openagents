@@ -172,6 +172,74 @@ pub struct Config {
     /// behind it.
     #[serde(default)]
     pub billing: Option<Billing>,
+    /// The versioned skill directory — bounded `SKILL.md` submissions,
+    /// staged review, and a public catalog. Absent mounts no skill
+    /// routes. Present requires `accounts`: a submission binds the
+    /// account that sent it.
+    #[serde(default)]
+    pub skills: Option<Skills>,
+}
+
+/// The skill directory's deployment options: the submission bounds the
+/// book enforces and the backend the decision-review stage calls.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Skills {
+    /// The largest Markdown body a submission may carry, in bytes.
+    /// Default 64 KiB — a skill document is instructions, not a corpus.
+    #[serde(default = "default_skill_body")]
+    pub max_body_bytes: usize,
+    /// The submissions one author may open per day. Default 20.
+    #[serde(default = "default_skill_daily")]
+    pub submissions_per_day: u32,
+    /// The under-review submissions one author may hold at once.
+    /// Default 10 — the review queue stays shallow.
+    #[serde(default = "default_skill_pending")]
+    pub pending_per_author: usize,
+    /// The quality score a decision review must reach to admit a
+    /// version. Default 0.6 — recorded with the stage so a reopened
+    /// store admits under the same declared bound.
+    #[serde(default = "default_admit_score")]
+    pub admit_score: f64,
+    /// The backend the decision-review stage calls — a TypeSafe-shaped
+    /// endpoint answering `POST {endpoint}/v1/systemone`.
+    pub review: Review,
+}
+
+/// The decision-review backend: which endpoint answers the review's
+/// pinned questions and which model it names.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Review {
+    /// The endpoint root — the stage posts to `{endpoint}/v1/systemone`.
+    pub endpoint: String,
+    /// The model the review names in its request's `model` field.
+    pub model: String,
+    /// The review call's deadline in milliseconds. Default 30 seconds —
+    /// a review that cannot answer in its window records an error and
+    /// the submission stays under review for retry.
+    #[serde(default = "default_review_timeout")]
+    pub timeout_ms: u64,
+}
+
+fn default_skill_body() -> usize {
+    65_536
+}
+
+fn default_skill_daily() -> u32 {
+    20
+}
+
+fn default_skill_pending() -> usize {
+    10
+}
+
+fn default_admit_score() -> f64 {
+    0.6
+}
+
+fn default_review_timeout() -> u64 {
+    30_000
 }
 
 /// The billing surface's deployment options: the published plan
@@ -562,6 +630,57 @@ impl Config {
                         }
                     }
                 }
+            }
+        }
+        if let Some(skills) = &self.skills {
+            if self.accounts.is_none() {
+                return Err(format!(
+                    "{}: `skills` requires `accounts` — a submission binds the \
+                     account that sent it",
+                    name.display()
+                ));
+            }
+            if skills.max_body_bytes == 0 || skills.max_body_bytes > 1_048_576 {
+                return Err(format!(
+                    "{}: skills.max_body_bytes must be positive and at most 1 MiB",
+                    name.display()
+                ));
+            }
+            if skills.submissions_per_day == 0 || skills.pending_per_author == 0 {
+                return Err(format!(
+                    "{}: skills submission bounds must be positive — a bound of \
+                     zero admits nothing",
+                    name.display()
+                ));
+            }
+            if !(0.0..=1.0).contains(&skills.admit_score) {
+                return Err(format!(
+                    "{}: skills.admit_score must sit in 0–1",
+                    name.display()
+                ));
+            }
+            if !(skills.review.endpoint.starts_with("http://")
+                || skills.review.endpoint.starts_with("https://"))
+            {
+                return Err(format!(
+                    "{}: skills.review.endpoint `{}` is not an HTTP URL — the \
+                     review stage posts to it, so it must name one",
+                    name.display(),
+                    skills.review.endpoint
+                ));
+            }
+            if skills.review.model.is_empty() {
+                return Err(format!(
+                    "{}: skills.review.model is empty — the review names a model \
+                     it cannot omit",
+                    name.display()
+                ));
+            }
+            if skills.review.timeout_ms == 0 {
+                return Err(format!(
+                    "{}: skills.review.timeout_ms must be positive",
+                    name.display()
+                ));
             }
         }
         for (door, backend) in &self.doors {

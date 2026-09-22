@@ -651,6 +651,19 @@ Separate assessed quality from measured task performance. Attach pinned
 recipe suites and reports when available, and label missing empirical
 evidence. Owner: [#9495](https://github.com/OpenAgentsInc/openagents/issues/9495).
 
+Landed in `crates/tenancy::skills` and `crates/gateway::skills` under the
+`skills` document in `gateway.json` (which requires `accounts`):
+`POST /v1/skills` accepts bounded submissions; `GET /v1/skills` and its
+siblings publish only admitted versions; `GET /v1/submissions` is the
+author's private view; `POST /v1/submissions/{id}/appeal` records an
+appeal; `skills-moderate` is the operator's takedown, reinstate,
+appeal-granted admit, and evidence path. The review pipeline records
+`static`, `decision`, and `reasoning` stages — each with reviewer,
+policy version, outcome, score, rationale, cost, and failure detail —
+and a version publishes only through recorded passes.
+[The skill directory](../service/skill-directory.md) is the full
+contract.
+
 The initial recipe library covers these workflows:
 
 | Area | Recipes |

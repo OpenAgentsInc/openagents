@@ -81,6 +81,12 @@ The same token authorizes the member-scoped usage reads —
 under `/dashboard`, which carries it in an `HttpOnly` cookie named
 `oa_session` rather than an `Authorization` header.
 
+Under `skills`, the same token or an `oak_` key bound to an account
+authorizes the skill-directory writes — `POST /v1/skills`, version
+withdrawal, `GET /v1/submissions`, and `POST /v1/submissions/{id}/appeal`
+— while the published catalog reads take no credential. An anonymous
+session answers `membership_required` on the writes.
+
 ## Anonymous calls
 
 A request with no `Authorization` header is anonymous. Anonymous callers
@@ -150,7 +156,10 @@ inference — `POST /v1/systemone`, `/v1/classify`, and `/v1/jobs` always
 authenticate. Under `billing`, the plan catalog (`GET /v1/plans`) and
 the checkout-session read (`GET /v1/billing/sessions/{id}`) are public
 too — the catalog is the published price list, and the session read is
-the browser's display-only return target.
+the browser's display-only return target. Under `skills`, the
+published directory reads — `GET /v1/skills` and its entry, version,
+raw-Markdown, and review children — are public as well; only the
+submission and author routes authenticate.
 
 ## Rotation and revocation
 

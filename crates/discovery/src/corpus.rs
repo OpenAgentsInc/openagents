@@ -97,6 +97,12 @@ static DOCUMENTS: &[Document] = &[
         false
     ),
     document!(
+        "skill-directory",
+        "The skill directory",
+        "decision-models/service/skill-directory.md",
+        false
+    ),
+    document!(
         "usage-dashboard",
         "Usage, activity, and the dashboard",
         "decision-models/service/usage-dashboard.md",

@@ -425,6 +425,7 @@ async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
         require_workspace_membership: false,
         accounts: None,
         billing: None,
+        skills: None,
         money: None,
         max_body_bytes: 1_048_576,
         max_response_bytes: 4_194_304,

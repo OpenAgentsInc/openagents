@@ -61,7 +61,10 @@ files a structured report and returns a trackable receipt.
   catalog and the `/v1/workspaces/{id}/billing/*` family exist only
   where the deployment configures `billing` — which itself requires
   `accounts` and `money` — and a decision call under billing names a
-  subscribed workspace whose plan covers the door.
+  subscribed workspace whose plan covers the door. The `/v1/skills`
+  and `/v1/submissions` directory family exists only where the
+  deployment configures `skills` — which itself requires `accounts` —
+  and its public reads serve published versions only.
 - No OAuth discovery, no streaming responses, no image input, no
   hosted endpoint — the catalog says so explicitly where a reader
   might assume otherwise.

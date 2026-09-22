@@ -2054,6 +2054,341 @@ paths:
         '403':
           $ref: '#/components/responses/TypedError'
 
+  /v1/skills:
+    get:
+      summary: Browse the published skill directory
+      description: Published entries only — search, category, tag, and author filters, name or
+        recency ordering, keyset pagination. No credential.
+      x-conditional: This route exists only when the deployment configures the `skills` document in
+        `gateway.json`, which itself requires `accounts`. Under a configuration without `skills` the
+        route is not registered at all.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+          maxLength: 256
+      - name: category
+        in: query
+        schema:
+          type: string
+      - name: tag
+        in: query
+        schema:
+          type: string
+      - name: author
+        in: query
+        schema:
+          type: string
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum: [name, recent]
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: cursor
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The filtered entries and the next cursor.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+    post:
+      summary: Submit a bounded SKILL.md for review
+      description: Digests and stores the Markdown, runs the recorded static, decision, and reasoning
+        review stages, and answers the submission's record with its version's state. The submitted
+        document is inert — nothing on this path executes it.
+      x-conditional: This route exists only when the deployment configures the `skills` document in
+        `gateway.json`, which itself requires `accounts`. Under a configuration without `skills` the
+        route is not registered at all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, version, license, category, consent, markdown]
+              properties:
+                name:
+                  type: string
+                  pattern: '^[a-z0-9][a-z0-9-]*$'
+                  maxLength: 63
+                version:
+                  type: string
+                license:
+                  type: string
+                category:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 8
+                consent:
+                  type: boolean
+                markdown:
+                  type: string
+                evidence:
+                  type: object
+                  properties:
+                    suite:
+                      type: string
+                    report:
+                      type: string
+                    digest:
+                      type: string
+      responses:
+        '200':
+          description: The submission's record with its version's state — published, rejected, or
+            under_review with a retryable error.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          $ref: '#/components/responses/TypedError'
+        '429':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+  /v1/skills/{name}:
+    get:
+      summary: Read one directory entry
+      description: The entry's latest published version, its published version list, and the install
+        block. No credential.
+      x-conditional: This route exists only when the deployment configures the `skills` document in
+        `gateway.json`, which itself requires `accounts`.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The entry document.
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+  /v1/skills/{name}/versions/{version}:
+    get:
+      summary: Read one pinned published version
+      description: The version's metadata, review summary, evidence label, and stable links. A
+        superseded version keeps resolving. No credential.
+      x-conditional: This route exists only when the deployment configures the `skills` document in
+        `gateway.json`, which itself requires `accounts`.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The version record.
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+  /v1/skills/{name}/versions/{version}/SKILL.md:
+    get:
+      summary: Fetch a version's raw Markdown
+      description: The stored object as `text/markdown`, digest-verified on every read. The route
+        returns bytes; it never evaluates them. No credential.
+      x-conditional: This route exists only when the deployment configures the `skills` document in
+        `gateway.json`, which itself requires `accounts`.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The SKILL.md document.
+          content:
+            text/markdown:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+  /v1/skills/{name}/versions/{version}/review:
+    get:
+      summary: Read a version's recorded review
+      description: Every review stage's reviewer, policy version, outcome, score, rationale, cost,
+        and failure detail. No credential.
+      x-conditional: This route exists only when the deployment configures the `skills` document in
+        `gateway.json`, which itself requires `accounts`.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The review stage list.
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+  /v1/skills/{name}/versions/{version}/withdraw:
+    post:
+      summary: Withdraw a version
+      description: The author pulls a version out of review or publication; a withdrawn version
+        stops resolving in the catalog.
+      x-conditional: This route exists only when the deployment configures the `skills` document in
+        `gateway.json`, which itself requires `accounts`.
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: The withdrawn record.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+  /v1/submissions:
+    get:
+      summary: List the caller's own submissions
+      description: Every state — including rejected versions the public catalog never shows, each
+        with its resolution and review record.
+      x-conditional: This route exists only when the deployment configures the `skills` document in
+        `gateway.json`, which itself requires `accounts`.
+      responses:
+        '200':
+          description: The caller's submission records.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+  /v1/submissions/{submission}/appeal:
+    post:
+      summary: Appeal a rejection
+      description: The author contests a rejected submission; the appeal records and an operator
+        answers through `skills-moderate`.
+      x-conditional: This route exists only when the deployment configures the `skills` document in
+        `gateway.json`, which itself requires `accounts`.
+      parameters:
+      - name: submission
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: The recorded appeal.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
 components:
   securitySchemes:
     bearer:

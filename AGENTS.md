@@ -94,7 +94,12 @@ uses, and marks which are implemented and which are only specified.
   money ledger under stable `billing:*` sources — a crash between the
   ledger append and the billing seal replays the identical mutation,
   and a refund or dispute clawback debits the lesser of its amount and
-  the available balance.
+  the available balance. `tenancy::skills` is the skill-directory book:
+  versioned `SKILL.md` submissions with recorded static, decision, and
+  reasoning review stages, deduplication and supersession, withdrawal
+  and moderation, and a persisted audit trail — the `skills-moderate`
+  binary is the operator's takedown, reinstate, admit, and evidence
+  path over it.
 - `crates/receipts` — versioned receipts a decision call leaves behind.
   `receipts::execution` is the shared HTTP/relay shape: request and attempt
   identity, tenant and registry references, requested and served artifact
@@ -117,7 +122,9 @@ uses, and marks which are implemented and which are only specified.
   mounts plans, checkout, signed provider webhooks, and owner-only
   subscription management over `tenancy::billing` — under which a
   decision call names a subscribed workspace whose plan covers the
-  door. Read
+  door — plus the optional `skills` document that mounts the versioned
+  skill directory's submission, review, and publication surface over
+  `tenancy::skills`. Read
   `docs/decision-models/service/gateway.md` before changing a refusal code, a
   bound, or the reservation lifecycle.
 - `crates/discovery` — the public discovery surface every origin shares:

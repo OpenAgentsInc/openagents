@@ -50,4 +50,6 @@ pub mod money;
 pub mod relay_worker;
 pub mod serve;
 #[allow(clippy::result_large_err)]
+pub mod skills;
+#[allow(clippy::result_large_err)]
 pub mod usage;

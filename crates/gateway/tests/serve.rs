@@ -258,6 +258,7 @@ async fn deploy_tuned(
         require_workspace_membership: false,
         accounts: None,
         billing: None,
+        skills: None,
         money: None,
         max_body_bytes: 1_048_576,
         max_response_bytes: 4_194_304,
@@ -2477,6 +2478,7 @@ async fn deploy_money(
         require_workspace_membership: true,
         accounts: None,
         billing: None,
+        skills: None,
         money: Some(Money {
             ledger: ledger.clone(),
             doors: priced,

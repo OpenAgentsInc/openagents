@@ -44,7 +44,7 @@
       "version": "1.2.0",
       "generated_by": "hand-maintained",
       "served_at": "/openapi.yaml",
-      "content": "OpenAPI 3.1 fragment covering exactly the implemented API routes — systemone, classify, the jobs family, models, the docs corpus API, balance, the account/workspace/billing families, the member-scoped usage reads, the dashboard, and healthz — with real request/response schemas and the documented refusal codes."
+      "content": "OpenAPI 3.1 fragment covering exactly the implemented API routes — systemone, classify, the jobs family, models, the docs corpus API, balance, the account/workspace/billing families, the member-scoped usage reads, the dashboard, the skill-directory family, and healthz — with real request/response schemas and the documented refusal codes."
     },
     {
       "path": "docs/agents/skills.md",

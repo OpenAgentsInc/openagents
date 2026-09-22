@@ -150,6 +150,7 @@ async fn deploy() -> Deployment {
         require_workspace_membership: true,
         accounts: Some(account_config()),
         billing: Some(billing_config()),
+        skills: None,
         money: Some(money_config(&ledger)),
         max_body_bytes: 1_048_576,
         max_response_bytes: 4_194_304,

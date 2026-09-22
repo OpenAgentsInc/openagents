@@ -201,6 +201,23 @@ impl ServeState {
         if config.billing.is_some() && tenancy::billing::Billing::open(&config.registry).is_err() {
             tenancy::billing::Billing::install(&config.registry).map_err(Trouble::Accounts)?;
         }
+        // The skill directory installs beside them — its admission
+        // policy is recorded at genesis so a reopened store admits
+        // under the same declared bounds.
+        if let Some(skills) = &config.skills
+            && tenancy::skills::Directory::open(&config.registry).is_err()
+        {
+            tenancy::skills::Directory::install(
+                &config.registry,
+                tenancy::skills::Policy {
+                    max_body_bytes: skills.max_body_bytes,
+                    submissions_per_day: skills.submissions_per_day,
+                    pending_per_author: skills.pending_per_author,
+                    admit_score: skills.admit_score,
+                },
+            )
+            .map_err(Trouble::Accounts)?;
+        }
         // Durable jobs reconcile before the first request: interrupted
         // runs end honestly, orphaned submissions are removed, and
         // queued work waits for `router` to re-spawn it inside the
@@ -308,6 +325,9 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     }
     if state.config.billing.is_some() {
         routes.extend(crate::billing::routes());
+    }
+    if state.config.skills.is_some() {
+        routes.extend(crate::skills::routes());
     }
     routes
 }

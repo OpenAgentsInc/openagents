@@ -180,6 +180,29 @@ authorization and any quota or money reservation.
 [billing](billing.md) is the contract; [billing-terms](billing-terms.md)
 publishes the purchase terms.
 
+Under the `skills` document — which requires `accounts`, because a
+submission binds the account that sent it — the gateway mounts the
+skill directory:
+
+- `POST /v1/skills` — the bounded submission intake; runs the recorded
+  static, decision, and reasoning review stages before a version
+  publishes.
+- `GET /v1/skills` and its `{name}`, `versions/{version}`,
+  `versions/{version}/SKILL.md`, and `versions/{version}/review`
+  children — the published catalog, unauthenticated, serving admitted
+  versions only.
+- `POST /v1/skills/{name}/versions/{version}/withdraw` — the author's
+  own pull.
+- `GET /v1/submissions` and `POST /v1/submissions/{id}/appeal` — the
+  author's private view and appeal path.
+
+`skills.json`, `skills-history/`, and `skills/objects/` join the
+registry directory under the same one-writer discipline; `Config::check`
+binds the block to `accounts` and refuses a malformed review endpoint
+or admission bound. Moderation — takedown, reinstate, appeal-granted
+admit, evidence attachment — is the `skills-moderate` binary's job,
+never a route. [skill-directory](skill-directory.md) is the contract.
+
 The gateway also serves a public discovery surface — unauthenticated
 `GET` routes that describe the deployment: the document set
 (`llms.txt`, `agents.md`, `auth.md`, `skills.md`, `api-catalog.json`,
