@@ -270,7 +270,13 @@ a stopped job leaves whatever evidence its trials already wrote, and
 `resume` continues from it.
 
 Bulk logs, provider payloads, and task workspaces stay under
-`~/.openagents/terminal-bench/` — never in the repository.
+`~/.openagents/terminal-bench/` — never in the repository. The exception is
+`bench/terminal-bench/traces/`, which retains the ATIF `trajectory.json`
+from each completed trial (plus partial native logs for trials that ended
+before emitting one), scanned for credential material before check-in.
+[Terminal-Bench trace analysis](measurements/2026-09-22-terminal-bench-trace-analysis.md)
+reads those trajectories step by step and maps what each agent does to the
+operations the v0.5 design should adopt or make impossible.
 
 ## Test
 

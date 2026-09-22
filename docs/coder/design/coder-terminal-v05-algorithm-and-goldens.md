@@ -502,6 +502,16 @@ see the requested outcome, the evidence used, the exact work performed, the
 checks that apply, and what remains unresolved. The implementation can evolve
 without changing those meanings or granting itself more authority.
 
+## Baseline evidence
+
+[Terminal-Bench trace analysis](../measurements/2026-09-22-terminal-bench-trace-analysis.md)
+reads the retained ATIF trajectories of Claude Code, Codex, and Devin on this
+panel's tasks, step by step. Its findings translate directly into requirements
+on the operations above: coverage-checked evidence capture (the `.pyx` miss),
+enumerate-then-rewrite repair, bounded context excerpts, out-of-tree
+verification, byte-exact post-write reads, and budget discipline that reserves
+capacity for the acceptance path rather than spending it all on exploration.
+
 [tb-root]: https://github.com/harbor-framework/terminal-bench/tree/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4
 [tb-cython]: https://github.com/harbor-framework/terminal-bench/tree/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/build-cython-ext
 [tb-vllm]: https://github.com/harbor-framework/terminal-bench/tree/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/tasks/vllm-deepseek-streaming
