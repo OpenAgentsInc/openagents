@@ -1,0 +1,41 @@
+[package]
+name = "laya"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.94"
+description = "Rust port of the laya decision model: a ModernBERT encoder plus a marker-scoring decision head, TypeSafe-compatible /v1/systemone."
+publish.workspace = true
+
+[features]
+# The `laya-serve` binary and its dependencies.
+serve = ["dep:axum", "dep:tower-http", "dep:tokio"]
+# Apple Metal execution for the encoder.
+metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
+
+[dependencies]
+candle-core = "0.11"
+candle-nn = "0.11"
+candle-transformers = "0.11"
+indexmap = { version = "2", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+thiserror = "2"
+tokenizers = "0.23"
+
+axum = { version = "0.8", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tempfile = "3"
+tokio = { version = "1", features = ["full", "test-util"] }
+
+[[bin]]
+name = "laya-serve"
+path = "src/bin/laya_serve.rs"
+required-features = ["serve"]
+
+[lints]
+workspace = true

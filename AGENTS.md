@@ -115,6 +115,15 @@ uses, and marks which are implemented and which are only specified.
   TypeSafe-compatible `POST /v1/systemone` server. Documentation and
   conformance numbers live in `docs/kev/`; golden fixtures in
   `crates/kev/fixtures/`; weights stay in `~/work/kev-artifacts/` out of git.
+- `crates/laya` — the Rust port of the Laya decision model: a ModernBERT
+  encoder (English ModernBERT-large, multilingual mmBERT-base, and the
+  typed-decisions checkpoint) with a marker-scoring decision head and
+  act head, served through `laya-serve` as a TypeSafe-compatible
+  `POST /v1/systemone` door with per-variant admission and explicit
+  `model`-field checkpoint selection. Documentation and conformance
+  numbers live in `docs/laya/`; golden fixtures in
+  `crates/laya/fixtures/`; weights stay in `~/work/laya-artifacts/` out
+  of git.
 - `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,
   the framed composer, and the shell they draw. It also holds the terminal
   design system every other terminal here depends on — `Intensity`,

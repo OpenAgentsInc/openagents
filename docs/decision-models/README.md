@@ -52,17 +52,17 @@ The [Lev domain-gap](2026-09-20-lev-domain-gap/) and
 [choice state-budget](2026-09-20-state-budget-choice/) directories retain
 experiment artifacts. Their contents preserve the paths recorded at run time.
 
-## The three implementations
+## The implementations
 
-| | Jev | Kev | Lev |
-| --- | --- | --- | --- |
-| Where it runs | TypeSafe's service | this machine, our code | this machine, Apple's runtime |
-| Weights | closed, hosted | open adapter and head on an open base | closed, on-device, shipped by the OS |
-| Readout | direct, trained against outcomes | pointer head, cross-entropy | none; estimated from behaviour |
-| Usage cost | metered service usage | local hardware and execution time | local hardware and execution time; no per-call provider bill |
-| Docs | [`jev/`](jev/) | [`../kev/`](../kev/) | [`../lev/`](../lev/) |
+| | Jev | Kev | Lev | Laya |
+| --- | --- | --- | --- | --- |
+| Where it runs | TypeSafe's service | this machine, our code | this machine, Apple's runtime | this machine, our code |
+| Weights | closed, hosted | open adapter and head on an open base | closed, on-device, shipped by the OS | open checkpoints (Apache-2.0) on open encoders |
+| Readout | direct, trained against outcomes | pointer head, cross-entropy | none; estimated from behaviour | marker-position logits plus an act head |
+| Usage cost | metered service usage | local hardware and execution time | local hardware and execution time; no per-call provider bill | local hardware and execution time |
+| Docs | [`jev/`](jev/) | [`../kev/`](../kev/) | [`../lev/`](../lev/) | [`../laya/`](../laya/) |
 
-`crates/jev` is the client for all three. A caller picks by `base_url`.
+`crates/jev` is the client for all of them. A caller picks by `base_url`.
 Select a model explicitly when comparing variants and record its artifact
 identity. The [2026-09-20 Kev review](../kev/2026-09-20-upstream-review.md)
 finds that the current upstream 0.6B, 4B, and 8B weights differ from the

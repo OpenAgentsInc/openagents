@@ -1,0 +1,265 @@
+[
+ {
+  "name": "support_mixed",
+  "request": {
+   "state": "I was charged twice on the March invoice.",
+   "model": "",
+   "questions": {
+    "refund": {
+     "type": "noul",
+     "instructions": "Does the customer ask for money back?"
+    },
+    "topic": {
+     "type": "choice",
+     "instructions": "What is this about?",
+     "criteria": {
+      "billing": null,
+      "shipping": null,
+      "other": null
+     }
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "How severe is this complaint?",
+     "criteria": [
+      "trivial",
+      "minor",
+      "serious",
+      "critical"
+     ]
+    }
+   }
+  },
+  "response": {
+   "model": "rl-agent",
+   "answers": {
+    "refund": {
+     "type": "noul",
+     "noul": 0.4935,
+     "rl_agent": {
+      "act_probability": 1.0
+     }
+    },
+    "topic": {
+     "type": "choice",
+     "choice": "billing",
+     "probabilities": {
+      "billing": 0.8598,
+      "shipping": 0.0614,
+      "other": 0.0787
+     },
+     "confidence": 0.5436,
+     "rl_agent": {
+      "act_probability": 1.0
+     }
+    },
+    "severity": {
+     "type": "score",
+     "score": 1.7582,
+     "legend": {
+      "0": "trivial",
+      "1": "minor",
+      "2": "serious",
+      "3": "critical"
+     },
+     "probabilities": {
+      "0": 0.0754,
+      "1": 0.2576,
+      "2": 0.5004,
+      "3": 0.1666
+     },
+     "confidence": 0.1421,
+     "rl_agent": {
+      "act_probability": 1.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 112,
+    "output_tokens": 0
+   }
+  }
+ },
+ {
+  "name": "structured_state",
+  "request": {
+   "state": {
+    "ticket": {
+     "subject": "refund",
+     "priority": 2
+    },
+    "history": [
+     "opened 2024-03-01",
+     "charged twice"
+    ],
+    "resolved": false
+   },
+   "model": "",
+   "questions": {
+    "close": {
+     "type": "noul",
+     "instructions": "Can this ticket be closed?"
+    },
+    "next": {
+     "type": "choice",
+     "instructions": "What should happen next?",
+     "criteria": [
+      "investigate",
+      "refund",
+      "close"
+     ]
+    }
+   }
+  },
+  "response": {
+   "model": "rl-agent",
+   "answers": {
+    "close": {
+     "type": "noul",
+     "noul": 0.2121,
+     "rl_agent": {
+      "act_probability": 1.0
+     }
+    },
+    "next": {
+     "type": "choice",
+     "choice": "refund",
+     "probabilities": {
+      "investigate": 0.2723,
+      "refund": 0.6512,
+      "close": 0.0765
+     },
+     "confidence": 0.2443,
+     "rl_agent": {
+      "act_probability": 1.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 122,
+    "output_tokens": 0
+   }
+  }
+ },
+ {
+  "name": "choice_cardinalities",
+  "request": {
+   "state": "The export job failed at step 3 of 7.",
+   "model": "",
+   "questions": {
+    "bucket2": {
+     "type": "choice",
+     "instructions": "Retry or abort?",
+     "criteria": {
+      "retry": null,
+      "abort": null
+     }
+    },
+    "bucket35": {
+     "type": "choice",
+     "instructions": "Which subsystem?",
+     "criteria": {
+      "api": null,
+      "worker": null,
+      "db": null,
+      "ui": null
+     }
+    },
+    "bucket610": {
+     "type": "choice",
+     "instructions": "Which region?",
+     "criteria": {
+      "us1": null,
+      "us2": null,
+      "eu1": null,
+      "eu2": null,
+      "ap1": null,
+      "ap2": null,
+      "sa1": null
+     }
+    }
+   }
+  },
+  "response": {
+   "model": "rl-agent",
+   "answers": {
+    "bucket2": {
+     "type": "choice",
+     "choice": "abort",
+     "probabilities": {
+      "retry": 0.4082,
+      "abort": 0.5918
+     },
+     "confidence": 0.0244,
+     "rl_agent": {
+      "act_probability": 1.0
+     }
+    },
+    "bucket35": {
+     "type": "choice",
+     "choice": "worker",
+     "probabilities": {
+      "api": 0.2511,
+      "worker": 0.4499,
+      "db": 0.1127,
+      "ui": 0.1863
+     },
+     "confidence": 0.0872,
+     "rl_agent": {
+      "act_probability": 1.0
+     }
+    },
+    "bucket610": {
+     "type": "choice",
+     "choice": "ap2",
+     "probabilities": {
+      "us1": 0.1443,
+      "us2": 0.1525,
+      "eu1": 0.1131,
+      "eu2": 0.1117,
+      "ap1": 0.1424,
+      "ap2": 0.1817,
+      "sa1": 0.1543
+     },
+     "confidence": 0.0065,
+     "rl_agent": {
+      "act_probability": 1.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 95,
+    "output_tokens": 0
+   }
+  }
+ },
+ {
+  "name": "noul_defaults",
+  "request": {
+   "state": "Please cancel my subscription effective immediately.",
+   "model": "",
+   "questions": {
+    "cancel": {
+     "type": "noul",
+     "instructions": "Is the user cancelling?"
+    }
+   }
+  },
+  "response": {
+   "model": "rl-agent",
+   "answers": {
+    "cancel": {
+     "type": "noul",
+     "noul": 0.7794,
+     "rl_agent": {
+      "act_probability": 1.0
+     }
+    }
+   },
+   "usage": {
+    "input_tokens": 40,
+    "output_tokens": 0
+   }
+  }
+ }
+]

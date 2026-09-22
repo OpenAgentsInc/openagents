@@ -1,0 +1,25 @@
+{
+ "checkpoint": "typed-decisions",
+ "files": {
+  "rl_agent_config.json": {
+   "sha256": "ebf0cd524d92342a6be5e48e9fca3d7c2babfb5a56ccd79d2171ef5d8c7f7be8",
+   "bytes": 847
+  },
+  "encoder/config.json": {
+   "sha256": "5268d24ad3b77c8151de5dcb0762ba4391619aad9ab0bda33e36fb083cfeae6d",
+   "bytes": 2084
+  },
+  "tokenizer/tokenizer.json": {
+   "sha256": "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30",
+   "bytes": 3583228
+  },
+  "tokenizer/tokenizer_config.json": {
+   "sha256": "08d4cf3ac4dca381759441b85b91a6d40e688471dcd33d15d6649eb0a9a854d1",
+   "bytes": 337
+  },
+  "model.safetensors": {
+   "sha256": "4fa56de72383a9d3efa9cfa78955733c81b9fc8067a587ca4beb82c78107a24e",
+   "bytes": 842609220
+  }
+ }
+}
