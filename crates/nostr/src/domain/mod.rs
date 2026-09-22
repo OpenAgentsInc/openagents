@@ -37,6 +37,7 @@ mod repost;
 mod snippet;
 mod timestamp;
 mod torrent;
+mod zap;
 
 pub use agent::{
     AGENT_OBSERVER_KIND, AGENT_TURN_METRIC_KIND, AgentObserverDirection, AgentObserverRoute,
@@ -127,4 +128,8 @@ pub use snippet::{Snippet, SnippetLicense, SnippetRepo, open_snippet};
 pub use timestamp::TimestampPolicy;
 pub use torrent::{
     CatalogId, Torrent, TorrentComment, TorrentFile, magnet_uri, open_torrent, open_torrent_comment,
+};
+pub use zap::{
+    ZapReceipt, ZapRequest, ZapShare, bolt11_amount_msat, decode_lnurl, open_zap_receipt,
+    open_zap_request, zap_callback_query, zap_split,
 };

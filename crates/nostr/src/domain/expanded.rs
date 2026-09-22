@@ -453,6 +453,15 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 31_925 {
         super::calendar::open_rsvp(event)?;
     }
+    if event.kind == 9_734 {
+        super::zap::open_zap_request(event)?;
+    }
+    if event.kind == 9_735 {
+        super::zap::open_zap_receipt(event)?;
+    }
+    if event.tags.iter().any(|tag| tag.name() == Some("zap")) {
+        super::zap::zap_split(event, 0)?;
+    }
     if event.kind == 1_040 {
         super::ots::open_attestation(event)?;
     }

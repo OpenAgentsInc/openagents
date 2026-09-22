@@ -371,6 +371,24 @@ not fetched. Recurring events are not expanded. The relay does not
 decide who may attend. Acceptance is
 `domain::calendar::tests::a_calendar_event_keeps_its_span_and_an_rsvp_names_it`.
 
+NIP-57 is `configured-and-proven`. Kind `9734` is a zap request.
+It names one recipient, the relays that should receive the receipt,
+and an optional millisatoshi `amount`, `lnurl`, event id, address,
+and target kind. Kind `9735` is a zap receipt. Its `description` is
+that signed request. Its `bolt11` invoice amount matches the request
+amount when both name one, and `SHA256(description)` matches the
+invoice description hash when the invoice carries one. A `preimage`
+must hash to the invoice payment hash. `zap_callback_query` builds
+the LNURL callback query and does not send it. `zap_split` divides
+an amount across `zap` tags: missing weights split it equally, and a
+missing weight beside a present weight is zero. A newer zap does not
+replace an older one. Kinds `9734` and `9735` are not added to the
+NIP-11 list. The relay does not call LNURL or pay invoices. The
+bolt11 signature and expiry are not checked. The receipt pubkey is
+not compared with a provider `nostrPubkey`, because that profile is
+not fetched. A published kind `9734` is stored. Acceptance is
+`domain::zap::tests::a_zap_receipt_matches_the_request_amount_and_description`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
