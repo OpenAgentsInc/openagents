@@ -16,6 +16,7 @@ mod draft;
 mod error;
 mod event;
 mod expanded;
+mod file;
 mod filter;
 mod follow;
 mod geocache;
@@ -77,6 +78,7 @@ pub use expanded::{
     parse_http_authorization, parse_http_authorization_claim, parse_http_authorization_hash,
     reorder_children,
 };
+pub use file::{FileImage, FileMetadata, open_file_metadata};
 pub use filter::{
     Filter, SEARCH_EXCLUDED_KINDS, matches_any, search_excludes_kind, search_matches, search_terms,
 };

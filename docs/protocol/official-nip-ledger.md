@@ -389,6 +389,20 @@ not compared with a provider `nostrPubkey`, because that profile is
 not fetched. A published kind `9734` is stored. Acceptance is
 `domain::zap::tests::a_zap_receipt_matches_the_request_amount_and_description`.
 
+NIP-94 is `configured-and-proven`. Kind `1063` describes a shared
+file. `url` is an `http://` or `https://` download address. `m` is
+one lowercase MIME type. `x` is the SHA-256 of the file. `ox` is the
+hash before a server transformation and may be omitted. `size` is a
+byte count. `dim` is `<width>x<height>`. `magnet` starts with
+`magnet:?`. `i` is a 40- or 64-character lowercase infohash.
+`blurhash`, `thumb`, `image`, `summary`, `alt`, `fallback`, and
+`service` are optional. Kind `1063` is a regular event, so a newer
+description does not replace an older one. It is not added to the
+NIP-11 list. The relay does not download the file or recompute the
+hash. A blurhash is not decoded into pixels. A magnet URI is not
+matched against the infohash. Acceptance is
+`domain::file::tests::a_file_keeps_its_hash_and_does_not_replace`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

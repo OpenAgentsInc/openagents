@@ -639,44 +639,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
         }
     }
     if event.kind == 1_063 {
-        let url = exactly_one(event, "url")?.value().unwrap_or_default();
-        if !valid_http_url(url) {
-            return Err(DomainError::InvalidEvent(
-                "kind 1063 requires one valid HTTP url tag".into(),
-            ));
-        }
-        let media_type = exactly_one(event, "m")?.value().unwrap_or_default();
-        if !valid_media_type(media_type) {
-            return Err(DomainError::InvalidEvent(
-                "kind 1063 requires one lowercase MIME type tag".into(),
-            ));
-        }
-        let sha256 = exactly_one(event, "x")?.value().unwrap_or_default();
-        decode_lower_hex::<32>(sha256, "file metadata hash")?;
-        let sizes = event.tag_values("size").collect::<Vec<_>>();
-        if sizes.len() > 1
-            || sizes
-                .first()
-                .is_some_and(|size| size.parse::<u64>().is_err())
-        {
-            return Err(DomainError::InvalidEvent(
-                "kind 1063 size tag must be one unsigned integer".into(),
-            ));
-        }
+        super::file::open_file_metadata(event)?;
     }
     Ok(())
-}
-
-fn valid_media_type(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 127
-        && value == value.to_ascii_lowercase()
-        && value.split_once('/').is_some_and(|(top, subtype)| {
-            !top.is_empty()
-                && !subtype.is_empty()
-                && top.bytes().all(media_type_byte)
-                && subtype.bytes().all(media_type_byte)
-        })
 }
 
 fn valid_http_url(value: &str) -> bool {
@@ -688,10 +653,6 @@ fn valid_http_url(value: &str) -> bool {
     };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     !authority.is_empty() && value.len() <= 2_048 && !value.chars().any(char::is_whitespace)
-}
-
-fn media_type_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || b"!#$&^_.+-".contains(&byte)
 }
 
 fn exactly_one<'a>(event: &'a Event, name: &str) -> Result<&'a Tag, DomainError> {
