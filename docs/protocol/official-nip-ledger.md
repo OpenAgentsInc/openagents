@@ -529,6 +529,20 @@ draft, so these kinds are not added to the NIP-11 list. The relay
 does not pay the invoice. Acceptance is
 `domain::wallet_connect::tests::a_pay_invoice_round_trips_and_an_info_event_replaces`.
 
+NIP-53 is `configured-and-proven`. Kind `30311` is an addressable live
+stream. A `p` tag may carry a signature of the activity address
+`30311:<pubkey>:<d>`, and that signature is checked. A participant
+without a signature stays unmarked. Kind `1311` is a chat message and
+must name the stream with an `a` tag. Kind `30312` is a meeting room
+and needs one `Host`. Kind `30313` is a meeting in that room. Kind
+`10312` is presence in one room at a time, because it is replaceable.
+`live_status_is_stale` reports a `live` stream that has had no update
+for more than one hour. A newer stream with the same `d` tag replaces
+the older one. NIP-53 is a draft, so these kinds are not added to the
+NIP-11 list. The relay does not open the stream or the meeting
+service, and it does not rewrite a stale `live` status. Acceptance is
+`domain::live::tests::a_live_stream_replaces_and_a_chat_names_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

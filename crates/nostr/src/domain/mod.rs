@@ -29,6 +29,7 @@ mod hex;
 mod highlight;
 mod label;
 mod listing;
+mod live;
 mod market;
 mod note;
 mod ots;
@@ -119,6 +120,11 @@ pub use highlight::{
 };
 pub use label::{Label, LabelTarget, Labeling, open_labeling};
 pub use listing::{Listing, ListingImage, ListingStatus, Price, open_listing};
+pub use live::{
+    LiveChat, LiveParticipant, LiveStatus, LiveStream, Meeting, MeetingRoom, Presence, RoomStatus,
+    live_status_is_stale, open_live_chat, open_live_stream, open_meeting, open_meeting_room,
+    open_presence, participation_proof, presence_is_fresh,
+};
 pub use market::{
     Auction, Bid, BidConfirmation, BidStatus, Checkout, MarketplacePage, Order, OrderStatus,
     PaymentRequest, Product, ShippingZone, Stall, auction_end, bid_confirmation_matches,

@@ -474,6 +474,21 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 23_195 {
         super::wallet_connect::open_wallet_response(event)?;
     }
+    if event.kind == 30_311 {
+        super::live::open_live_stream(event)?;
+    }
+    if event.kind == 1_311 {
+        super::live::open_live_chat(event)?;
+    }
+    if event.kind == 30_312 {
+        super::live::open_meeting_room(event)?;
+    }
+    if event.kind == 30_313 {
+        super::live::open_meeting(event)?;
+    }
+    if event.kind == 10_312 {
+        super::live::open_presence(event)?;
+    }
     if event.kind == 7_375 {
         super::wallet::open_token_event(event)?;
     }
