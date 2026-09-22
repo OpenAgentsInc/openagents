@@ -210,9 +210,59 @@ pub fn vanish_request(event: &Event) -> Result<(), &'static str> {
     }
 }
 
+/// One pinned file whose applicable roles are configured and proven.
+///
+/// `partial` shape checks stay in [`SHAPES`]. A row here is a different
+/// status: domain, client, and server each name the shipped function, and
+/// `acceptance` names the test that calls it.
+pub struct Evidence {
+    pub file: &'static str,
+    pub domain: &'static str,
+    pub client: &'static str,
+    pub server: &'static str,
+    pub paths: &'static str,
+    pub configuration: &'static str,
+    pub fixture: &'static str,
+    pub acceptance: &'static str,
+    pub limitations: &'static str,
+    pub owner: &'static str,
+    pub status: &'static str,
+}
+
+/// Official files whose checks go beyond a kind and one tag.
+pub static PROVEN: &[Evidence] = &[
+    Evidence {
+        file: "02.md",
+        domain: "kind 3 is replaceable; a p tag is a 32-byte hex key, an optional ws:// or wss:// relay, and an optional petname",
+        client: "parse_follow_list, append_follow, and displayed_petname",
+        server: "EventClass::from_kind(3) is Replaceable, so the relay replacement head deletes the previous list",
+        paths: "crates/nostr/src/domain/follow.rs; crates/nostr/src/domain/replacement.rs; crates/nostr-relay/src/store/mod.rs",
+        configuration: "no setting; kind 3 uses the ordinary replacement head",
+        fixture: "the pinned p-tag triple: pubkey, relay URL, petname",
+        acceptance: "lane::tests::nip02_follow_lists_replace_and_petnames_chain",
+        limitations: "content is ignored, as the pinned text says it is not used",
+        owner: "nostr and nostr-relay",
+        status: "configured-and-proven",
+    },
+    Evidence {
+        file: "29.md",
+        domain: "GroupMetadata and GroupAction, including private, hidden, restricted, and one parent",
+        client: "GroupMetadata::from_tags and parent_would_cycle",
+        server: "admission, the query filter, and metadata regeneration",
+        paths: "crates/nostr/src/domain/expanded.rs; crates/nostr-relay/src/store/mod.rs",
+        configuration: "NOSTR_RELAY_RELAY_SECRET_KEY; NIP-11 nip29.subgroups is true when that key is set",
+        fixture: "private, hidden, restricted, one parent, and the child list",
+        acceptance: "domain::expanded::tests::private_hidden_and_subgroup_fields_follow_the_pinned_metadata_event",
+        limitations: "kinds 9003, 9004, 9006, and 9011-9020 have no row in the pinned moderation table; kind 39004 stays empty because this process does not run LiveKit",
+        owner: "nostr and nostr-relay",
+        status: "configured-and-proven",
+    },
+];
+
 /// Every official file this module accounts for.
 pub fn covered_files() -> Vec<&'static str> {
     let mut files: Vec<&str> = SHAPES.iter().map(|shape| shape.file).collect();
+    files.extend(PROVEN.iter().map(|row| row.file));
     files.extend(MOVED_TO_NIP01.iter().map(|(file, _)| *file));
     files.extend([
         "01.md", "05.md", "06.md", "07.md", "11.md", "19.md", "21.md", "26.md", "30.md", "40.md",
@@ -233,7 +283,10 @@ mod tests {
 
     use serde_json::json;
 
-    use crate::domain::{DeletionRequest, EventClass, RelaySigner, Tag, search_matches};
+    use crate::domain::{
+        DeletionRequest, EventClass, GroupMetadata, RelaySigner, ReplacementDecision, Tag,
+        compare_replacement, displayed_petname, parse_follow_list, search_matches,
+    };
     use crate::negentropy::{self, Item};
     use crate::nip19;
     use crate::nip44;
@@ -248,6 +301,74 @@ mod tests {
 
     fn sign(kind: u16, tags: Vec<Tag>, content: &str) -> Event {
         signer().sign(1_700_000_000, kind, tags, content.into())
+    }
+
+    #[test]
+    fn nip02_follow_lists_replace_and_petnames_chain() {
+        let text = fs::read_to_string(official_dir().join("02.md")).unwrap();
+        assert!(text.contains("follow list"));
+        assert!(text.contains("petname"));
+        let row = PROVEN.iter().find(|row| row.file == "02.md").unwrap();
+        assert_eq!(row.status, "configured-and-proven");
+        assert!(SHAPES.iter().all(|shape| shape.file != "02.md"));
+
+        let alice = "ab".repeat(32);
+        let bob = "cd".repeat(32);
+        let carol = "ef".repeat(32);
+        let tags = vec![
+            Tag::new(vec![
+                "p".into(),
+                alice.clone(),
+                "wss://alicerelay.com/".into(),
+                "alice".into(),
+            ]),
+            Tag::new(vec!["p".into(), bob.clone()]),
+        ];
+        let follows = parse_follow_list(&tags).unwrap();
+        assert_eq!(follows[0].petname, "alice");
+        assert_eq!(follows[1].relay, "");
+        let event = sign(3, tags, "unused");
+        event.validate_structure().unwrap();
+        assert_eq!(event.class(), EventClass::Replaceable);
+
+        let newer = signer().sign(
+            1_700_000_100,
+            3,
+            vec![Tag::new(vec!["p".into(), alice.clone()])],
+            String::new(),
+        );
+        assert_eq!(
+            compare_replacement(&event, &newer).unwrap(),
+            ReplacementDecision::ReplaceCurrent
+        );
+
+        let alice_list = [crate::domain::Follow {
+            pubkey: bob.clone(),
+            relay: String::new(),
+            petname: "bob".into(),
+        }];
+        let bob_list = [crate::domain::Follow {
+            pubkey: carol.clone(),
+            relay: String::new(),
+            petname: "carol".into(),
+        }];
+        let mut published = std::collections::BTreeMap::new();
+        published.insert(alice.as_str(), alice_list.as_slice());
+        published.insert(bob.as_str(), bob_list.as_slice());
+        let viewer = [crate::domain::Follow {
+            pubkey: alice.clone(),
+            relay: String::new(),
+            petname: "alice".into(),
+        }];
+        assert_eq!(
+            displayed_petname(&viewer, &published, &carol).as_deref(),
+            Some("carol.bob.alice")
+        );
+
+        let bad = sign(3, vec![Tag::new(vec!["p".into(), "zz".into()])], "");
+        assert!(bad.validate_structure().is_err());
+        let _ = GroupMetadata::from_tags(&[Tag::new(vec!["private".into()])]).unwrap();
+        assert!(PROVEN.iter().any(|row| row.file == "29.md"));
     }
 
     #[test]

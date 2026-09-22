@@ -394,6 +394,9 @@ pub fn reorder_children(
 }
 
 pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> {
+    if event.kind == 3 {
+        super::follow::parse_follow_list(&event.tags)?;
+    }
     let group_tags = event
         .tags
         .iter()

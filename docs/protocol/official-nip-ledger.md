@@ -6,6 +6,18 @@ fails when a file under `nips/official/` other than `README.md` has no check.
 
 ## What a row proves
 
+NIP-02 is `configured-and-proven`. The domain role is a kind `3` replaceable
+list whose `p` tags carry a 32-byte hex key, an optional `ws://` or `wss://`
+relay, and an optional petname. The client helpers are `parse_follow_list`,
+`append_follow`, and `displayed_petname` in `crates/nostr/src/domain/follow.rs`.
+The server role is the ordinary replacement head: `EventClass::from_kind(3)`
+is `Replaceable`, so a newer list from the same author deletes the previous
+one in `crates/nostr-relay/src/store/mod.rs`. There is no separate setting.
+The fixture is the pinned `p` tag triple. Live acceptance is
+`lane::tests::nip02_follow_lists_replace_and_petnames_chain`. Content is
+ignored, which is what the pinned text says. The `nostr` and `nostr-relay`
+crates own the row.
+
 NIP-29 is `configured-and-proven`. The domain role is `GroupMetadata` and
 `GroupAction` in `crates/nostr/src/domain/expanded.rs`. The server role is
 admission, query filtering, and metadata regeneration in

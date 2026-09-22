@@ -22,8 +22,6 @@
     Shape { file: "B0.md", kind: 39701, tag: "d" },
     Shape { file: "C0.md", kind: 1337, tag: "l" },
     Shape { file: "CC.md", kind: 37516, tag: "d" },
-    Shape { file: "29.md", kind: 39000, tag: "d" },
-    Shape { file: "02.md", kind: 3, tag: "p" },
     Shape { file: "10.md", kind: 1, tag: "e" },
     Shape { file: "18.md", kind: 6, tag: "e" },
     Shape { file: "52.md", kind: 31922, tag: "d" },
