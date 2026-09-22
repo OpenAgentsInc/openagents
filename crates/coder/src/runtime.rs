@@ -2048,11 +2048,15 @@ impl Runtime {
                 );
                 return StepsEnd::Ended(refused);
             }
-            self.advance_runstate(
-                ctx.record,
-                Mark::step(&name, State::Dispatched),
-                ctx.trace.as_deref_mut(),
-            );
+            // A dispatched mark names where its evidence lands — the
+            // trace session — so a resumer can probe it: an answer
+            // already written there is `Ended`, and nothing written is
+            // a deliberate new attempt rather than a claimed one.
+            let mut dispatched = Mark::step(&name, State::Dispatched);
+            if let Some(path) = ctx.trace.as_deref().map(Recorder::path) {
+                dispatched = dispatched.result(format!("atif:{}", path.display()));
+            }
+            self.advance_runstate(ctx.record, dispatched, ctx.trace.as_deref_mut());
             let remaining = Self::remaining(ctx.until);
             let outcome = match step.kind {
                 Kind::Query => self
@@ -5561,6 +5565,62 @@ mod tests {
         assert_eq!(record.steps.len(), 1);
         assert_eq!(record.steps[0].step, "select");
         assert_eq!(record.steps[0].state, State::Answered);
+    }
+
+    /// A dispatched step's mark names the trace session its evidence
+    /// lands in, so a resumer can probe it: a step the session recorded
+    /// ended and the record settles on that evidence, and one it never
+    /// reached leaves nothing live — a deliberate new attempt.
+    #[tokio::test]
+    async fn a_dispatched_mark_names_the_trace_its_evidence_lands_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime().with_runstate(dir.path());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let logs = tempfile::tempdir().unwrap();
+        let mut recorder =
+            Recorder::open(logs.path(), "fixture", "fixture", "fixture-repo").unwrap();
+        let trace = recorder.path().to_string_lossy().into_owned();
+
+        let run = runtime
+            .run(&program, &inputs, &Grant::all(), Some(&mut recorder))
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+
+        // The record file keeps the mark the step dispatched under,
+        // and it names the trace session.
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1);
+        let text = std::fs::read_to_string(dir.path().join(format!("{}.jsonl", ids[0]))).unwrap();
+        let dispatched: Value = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .find(|record| {
+                record["record"] == "step"
+                    && record["step"] == "select"
+                    && record["state"] == "dispatched"
+            })
+            .expect("a dispatched mark for the step");
+        let reference = format!("atif:{trace}");
+        assert_eq!(dispatched["result"].as_str(), Some(reference.as_str()));
+
+        // The reference rules a crashed run's record: the trace
+        // reached the step, so it settles on the evidence already
+        // written; a step it never reached names nothing live.
+        assert_eq!(
+            crate::reattach::observe_atif("step:select", &reference),
+            crate::reattach::Observation::Ended {
+                reference: &reference
+            }
+        );
+        assert_eq!(
+            crate::reattach::observe_atif("step:narrow", &reference),
+            crate::reattach::Observation::Gone
+        );
     }
 
     /// A run refused at admission or by the grant claims nothing: a
