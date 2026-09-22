@@ -650,6 +650,15 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 1_018 {
         super::poll::open_poll_response(event)?;
     }
+    if (5_000..6_000).contains(&event.kind) {
+        super::vending::open_job_request(event)?;
+    }
+    if (6_000..7_000).contains(&event.kind) {
+        super::vending::open_job_result(event)?;
+    }
+    if event.kind == 7_000 {
+        super::vending::open_job_feedback(event)?;
+    }
     Ok(())
 }
 

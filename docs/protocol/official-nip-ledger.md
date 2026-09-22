@@ -431,6 +431,20 @@ Kind `5` deletions of votes are still honored. Follow sets, proof of
 work, and web of trust are not applied. Acceptance is
 `domain::poll::tests::a_poll_counts_one_vote_per_pubkey_inside_its_window`.
 
+NIP-90 is `configured-and-proven`. Kinds `5000` through `5999`
+are job requests. The result kind is that number plus `1000`. Kind
+`7000` is feedback. An `i` tag is `url`, `event`, `job`, or `text`.
+`output` is a lowercase MIME type. `bid` and `amount` are
+millisatoshis. A result embeds the signed request in `request`, and
+its `e` tag and kind must name that request. Feedback `status` is
+`payment-required`, `processing`, `error`, `success`, or `partial`.
+A newer job event does not replace an older one. NIP-90 is
+unrecommended, so these kinds are not added to the NIP-11 list. The
+relay does not run the job, fetch inputs, or pay invoices. An
+`encrypted` payload is checked as NIP-04 framing and is not decrypted.
+Kind `5` deletion still follows NIP-09. Acceptance is
+`domain::vending::tests::a_job_result_uses_the_request_kind_plus_one_thousand`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

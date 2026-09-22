@@ -40,6 +40,7 @@ mod repost;
 mod snippet;
 mod timestamp;
 mod torrent;
+mod vending;
 mod zap;
 
 pub use agent::{
@@ -134,6 +135,10 @@ pub use snippet::{Snippet, SnippetLicense, SnippetRepo, open_snippet};
 pub use timestamp::TimestampPolicy;
 pub use torrent::{
     CatalogId, Torrent, TorrentComment, TorrentFile, magnet_uri, open_torrent, open_torrent_comment,
+};
+pub use vending::{
+    JobFeedback, JobInput, JobInputKind, JobParam, JobRequest, JobResult, JobStatus,
+    job_result_kind, open_job_feedback, open_job_request, open_job_result,
 };
 pub use zap::{
     ZapReceipt, ZapRequest, ZapShare, bolt11_amount_msat, decode_lnurl, open_zap_receipt,
