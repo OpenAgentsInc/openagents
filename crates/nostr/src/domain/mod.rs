@@ -5,6 +5,7 @@
 //! deterministic and fixture-testable.
 
 mod agent;
+mod app_data;
 mod article;
 mod badge;
 mod block;
@@ -45,6 +46,7 @@ pub use agent::{
     OwnerAttestation, agent_observer_route, agent_turn_metric_owner, validate_nip44_v2_content,
     verify_agent_auth_attestation, verify_owner_attestation, verify_owner_binding,
 };
+pub use app_data::{AppData, AppTag, open_app_data};
 pub use article::{Article, is_article_reply, open_article};
 pub use badge::{
     AwardRecipient, BadgeAward, BadgeDefinition, BadgeImage, BadgeSet, ProfileBadge, ProfileBadges,

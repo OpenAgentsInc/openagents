@@ -403,6 +403,18 @@ hash. A blurhash is not decoded into pixels. A magnet URI is not
 matched against the infohash. Acceptance is
 `domain::file::tests::a_file_keeps_its_hash_and_does_not_replace`.
 
+NIP-78 is `configured-and-proven`. Kind `30078` is an addressable
+application record. Its `d` tag names the app and the context, or any
+other string of 1 to 1024 characters. Kind `78` is a regular event for
+many rows of the same type. A `d` tag on kind `78` groups those rows
+and does not replace them. Content and the other tags stay opaque.
+A newer kind `30078` record with the same `d` tag replaces the older
+one. Kind `30078` stays out of search. Kinds `78` and `30078` are not
+added to the NIP-11 list. The relay does not decrypt the content or
+decide which app owns an identifier. Kind `78` content remains
+searchable. Acceptance is
+`domain::app_data::tests::an_application_record_replaces_on_its_identifier_and_a_plain_event_does_not`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
