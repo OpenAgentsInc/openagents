@@ -18,6 +18,15 @@ The fixture is the pinned `p` tag triple. Live acceptance is
 ignored, which is what the pinned text says. The `nostr` and `nostr-relay`
 crates own the row.
 
+NIP-03 is `configured-and-proven`. `open_attestation` in
+`crates/nostr/src/domain/ots.rs` reads a kind `1040` event: one `e` tag, one
+`k` tag, and a base64 `.ots` body. The proof digest must be that event id,
+and the proof must reach exactly one Bitcoin block-height attestation.
+Admission uses the same check. NIP-03 stays off the NIP-11 list because the
+pinned text marks it unrecommended. The height is not compared to a Bitcoin
+block header. Acceptance is
+`domain::ots::tests::a_bitcoin_proof_binds_the_event_id_and_one_height`.
+
 NIP-29 is `configured-and-proven`. The domain role is `GroupMetadata` and
 `GroupAction` in `crates/nostr/src/domain/expanded.rs`. The server role is
 admission, query filtering, and metadata regeneration in

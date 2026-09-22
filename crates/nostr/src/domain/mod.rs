@@ -13,6 +13,7 @@ mod expanded;
 mod filter;
 mod follow;
 mod hex;
+mod ots;
 mod replacement;
 mod timestamp;
 
@@ -42,6 +43,7 @@ pub use filter::{
     Filter, SEARCH_EXCLUDED_KINDS, matches_any, search_excludes_kind, search_matches, search_terms,
 };
 pub use follow::{Follow, append_follow, displayed_petname, parse_follow_list};
+pub use ots::{BitcoinAttestation, open_attestation};
 pub use replacement::{
     EventClass, ReplacementAddress, ReplacementDecision, compare_replacement,
     compare_replacement_order,
