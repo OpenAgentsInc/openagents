@@ -751,6 +751,17 @@ privacy and stores like any regular note. NIP-A4 is a draft, so kind
 `24` stays off the NIP-11 list. Acceptance is
 `domain::public_message::tests::a_public_message_names_its_receivers_and_has_no_thread`.
 
+NIP-C7 is `configured-and-proven`. `open_chat` in
+`crates/nostr/src/domain/chat.rs` reads a kind `9` event and validates
+each `q` tag: an event id or address target, an optional relay URL,
+and an optional 32-byte hex author key. `is_chat_reply` tells a reply
+from a bare message, and `chat_filter` returns the `kinds=[9]` filter a
+chat view must fetch so implementations keep each other's context.
+Admission refuses a malformed quote. The relay stores kind `9` like
+any regular event, and NIP-C7 is a draft, so it stays off the NIP-11
+list. Acceptance is
+`domain::chat::tests::a_chat_reply_quotes_its_parent_and_the_stream_fetches_kind_9`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

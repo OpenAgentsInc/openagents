@@ -894,6 +894,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "C7.md",
+        domain: "kind 9 is a plaintext chat message; a reply quotes its parent in a NIP-18 q tag",
+        client: "open_chat, is_chat_reply, and chat_filter",
+        server: "admission validates each q tag — an event id or address, an optional relay URL, an optional 32-byte author key",
+        paths: "crates/nostr/src/domain/chat.rs; crates/nostr/src/domain/expanded.rs; crates/nostr/src/domain/filter.rs",
+        configuration: "no setting; NIP-C7 is a draft and kind 9 is not added to the NIP-11 list",
+        fixture: "a parent chat, a reply quoting it by id with relay and author, and the kinds=[9] chat filter",
+        acceptance: "domain::chat::tests::a_chat_reply_quotes_its_parent_and_the_stream_fetches_kind_9",
+        limitations: "other content types may be quoted inside the content without joining the stream; the relay stores kind 9 like any regular event",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

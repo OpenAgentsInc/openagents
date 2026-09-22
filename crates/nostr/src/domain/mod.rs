@@ -13,6 +13,7 @@ mod block;
 mod blossom;
 mod bookmark;
 mod calendar;
+mod chat;
 mod comment;
 mod community;
 mod deletion;
@@ -93,6 +94,7 @@ pub use calendar::{
     Attendance, Availability, Calendar, CalendarEvent, CalendarRef, CalendarSpan, Participant,
     Rsvp, day_stamp, open_calendar, open_calendar_event, open_rsvp,
 };
+pub use chat::{Chat, ChatQuote, chat_filter, is_chat_reply, open_chat};
 pub use comment::{Comment, CommentScope, is_top_level, open_comment};
 pub use community::{
     Community, CommunityApproval, CommunityImage, CommunityModerator, CommunityPost,
