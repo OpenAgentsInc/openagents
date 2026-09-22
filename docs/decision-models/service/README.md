@@ -10,6 +10,7 @@ Admission, execution, review, membership, and accounting contracts.
 | [candidate-admission](candidate-admission.md) | Candidate admission |
 | [decision-advertise](decision-advertise.md) | Service discovery manifests |
 | [decision-worker](decision-worker.md) | The NIP-CJ relay decision worker |
+| [durable-jobs](durable-jobs.md) | Durable classification jobs |
 | [gateway](gateway.md) | The gateway |
 | [monetary-accounting](monetary-accounting.md) | Monetary accounting |
 | [monetary-ledger](monetary-ledger.md) | Monetary ledger |

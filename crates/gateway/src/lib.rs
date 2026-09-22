@@ -32,6 +32,7 @@
 pub mod advertise;
 pub mod classify;
 pub mod config;
+pub mod jobs;
 pub mod money;
 pub mod relay_worker;
 pub mod serve;

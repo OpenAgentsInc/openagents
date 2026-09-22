@@ -514,6 +514,8 @@ pub async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
         max_questions: 256,
         max_options: 4096,
         doors,
+        job_retention_ms: 604_800_000,
+        job_cursor_ttl_ms: 3_600_000,
     })
     .unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

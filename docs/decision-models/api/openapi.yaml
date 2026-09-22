@@ -127,6 +127,228 @@ paths:
                 oneOf:
                   - $ref: "#/components/schemas/TypedError"
                   - $ref: "#/components/schemas/ClassificationReport"
+  /v1/jobs:
+    post:
+      summary: Submit a durable classification job
+      description: >-
+        Accepts a `POST /v1/classify` envelope inside a job envelope,
+        persists the manifest and status before acknowledging, and runs
+        the work outside the submitting connection. The Idempotency-Key
+        binds the tenant's credential and the request content: an
+        identical replay returns the same job, a changed payload is a
+        conflict. `service/durable-jobs.md` is the contract.
+      parameters:
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Required when the deployment enforces workspace membership.
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: >-
+            Caller-owned submission identity; binds tenant and content.
+            Absent, a key is minted and the submission cannot replay.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobEnvelope"
+      responses:
+        "202":
+          description: The job's accepted status document, state `queued`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatus"
+        "200":
+          description: An identical replay — the job's current status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatus"
+        "400":
+          $ref: "#/components/responses/TypedError"
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "403":
+          $ref: "#/components/responses/TypedError"
+        "409":
+          description: The key already named different content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypedError"
+        "410":
+          description: A replay whose job record was deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypedError"
+        "422":
+          $ref: "#/components/responses/TypedError"
+  /v1/jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Read a job's status
+      description: >-
+        State, outcome counts, receipt digest, and cause. Another
+        tenant's job answers `job_not_found`.
+      responses:
+        "200":
+          description: The job's status document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatus"
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "404":
+          $ref: "#/components/responses/TypedError"
+    delete:
+      summary: Delete a terminal job's record
+      description: >-
+        Removes the manifest, status, items, events, and deliveries of a
+        completed, cancelled, or failed job. The idempotency index entry
+        is retained, so a late replay learns the record is gone. A
+        running job answers `job_running`.
+      responses:
+        "200":
+          description: The record was deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  job:
+                    type: string
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "404":
+          $ref: "#/components/responses/TypedError"
+        "409":
+          $ref: "#/components/responses/TypedError"
+  /v1/jobs/{id}/cancel:
+    post:
+      summary: Cancel a job
+      description: >-
+        Records `cancelling` durably, then stops undispatched work —
+        dispatched items finish and record their real outcomes. A
+        terminal job returns its status unchanged.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The job was already terminal — its status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatus"
+        "202":
+          description: Cancellation recorded — the `cancelling` status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatus"
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "404":
+          $ref: "#/components/responses/TypedError"
+  /v1/jobs/{id}/results:
+    get:
+      summary: Export a job's finished items
+      description: >-
+        The item ledger in completion order — each entry carries its
+        request-order index, caller input id, attempt id, dispatch flag,
+        and the per-input result the classification pipeline produced.
+        Cursors are opaque and expire under `job_cursor_ttl_ms`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: A page of item records and the next cursor.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResults"
+        "400":
+          $ref: "#/components/responses/TypedError"
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "404":
+          $ref: "#/components/responses/TypedError"
+        "410":
+          description: The cursor expired — read again from the start.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypedError"
+  /v1/jobs/{id}/notify/rotate:
+    post:
+      summary: Rotate a job's webhook signing secret
+      description: >-
+        Replaces the HMAC secret a notified job signs events with. The
+        new secret answers once; later events sign under it and the old
+        one stops working.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The new secret, returned once.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:
+                    type: string
+                  secret:
+                    type: string
+        "401":
+          $ref: "#/components/responses/TypedError"
+        "404":
+          $ref: "#/components/responses/TypedError"
+        "422":
+          description: The job declared no notification destination.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypedError"
   /v1/systemone:
     post:
       summary: Answer typed questions about one state
@@ -372,6 +594,15 @@ components:
                 - unavailable
                 - registry_unavailable
                 - ledger_unavailable
+                - job_not_found
+                - job_running
+                - job_deleted
+                - job_unavailable
+                - unsupported_kind
+                - invalid_notify
+                - notify_not_configured
+                - bad_cursor
+                - cursor_expired
               description: >-
                 Gateway-owned codes are listed here; a backend may pass
                 through its own typed refusal with a code outside this set.
@@ -381,6 +612,127 @@ components:
               type: string
             attempt:
               type: integer
+            job:
+              type: string
+    JobEnvelope:
+      type: object
+      required: [v, kind, request]
+      properties:
+        v:
+          type: string
+          enum: [openagents.job.v1]
+        kind:
+          type: string
+          enum: [classify]
+        request:
+          type: object
+          description: The `POST /v1/classify` envelope, verbatim.
+        notify:
+          type: object
+          required: [url]
+          properties:
+            url:
+              type: string
+              description: >-
+                `https`, or `http` to a loopback host only — never a URL
+                carrying credentials.
+            secret:
+              type: string
+              description: >-
+                The HMAC secret events sign under. Absent, one is minted
+                and returned once in the submission response.
+    JobStatus:
+      type: object
+      required: [v, job, kind, status, counts]
+      properties:
+        v:
+          type: string
+          enum: [openagents.job.v1]
+        job:
+          type: string
+        kind:
+          type: string
+          enum: [classify]
+        status:
+          type: string
+          enum: [queued, running, cancelling, completed, cancelled, failed]
+        model:
+          type: string
+        capacity:
+          type: string
+        counts:
+          type: object
+          properties:
+            expected:
+              type: integer
+            attempted:
+              type: integer
+            answered:
+              type: integer
+            refused:
+              type: integer
+            unavailable:
+              type: integer
+            unattempted:
+              type: integer
+            unknown:
+              type: integer
+        submitted_at:
+          type: string
+        started_at:
+          type: string
+          nullable: true
+        finished_at:
+          type: string
+          nullable: true
+        receipt:
+          type: string
+          nullable: true
+        cause:
+          type: string
+          nullable: true
+        secret:
+          type: string
+          description: >-
+            Present once in the submission response when a notify secret
+            was generated — never on later reads.
+    JobResults:
+      type: object
+      required: [v, job, items, next_cursor]
+      properties:
+        v:
+          type: string
+          enum: [openagents.job-results.v1]
+        job:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              attempt_id:
+                type: string
+              dispatched:
+                type: boolean
+              queue_ms:
+                type: integer
+                nullable: true
+              usage:
+                type: object
+                nullable: true
+              item:
+                type: object
+                description: The per-input result the classify pipeline produced.
+        next_cursor:
+          type: string
+          nullable: true
+        terminal:
+          type: string
+          enum: [queued, running, cancelling, completed, cancelled, failed]
+        counts:
+          type: object
   responses:
     TypedError:
       description: A typed refusal — see the `error.code` table in `gateway.md`.

@@ -138,6 +138,18 @@ pub struct Config {
     /// rather than guessing an address.
     #[serde(default)]
     pub doors: BTreeMap<String, Door>,
+    /// How long a terminal job's manifest, status, results, and delivery
+    /// records stay before the retention sweep removes them. Default
+    /// seven days — a durable job's results are a short-lived record,
+    /// not an archive.
+    #[serde(default = "default_job_retention_ms")]
+    pub job_retention_ms: u64,
+    /// How long a results-export cursor stays valid. Default one hour —
+    /// a paginated read is a short-lived operation, not a bookmark.
+    /// An expired cursor answers `cursor_expired`, never a quiet
+    /// restart at the wrong offset.
+    #[serde(default = "default_job_cursor_ttl_ms")]
+    pub job_cursor_ttl_ms: u64,
 }
 
 fn default_body_max() -> usize {
@@ -174,6 +186,14 @@ fn default_questions() -> u64 {
 
 fn default_options() -> u64 {
     4096
+}
+
+fn default_job_retention_ms() -> u64 {
+    604_800_000
+}
+
+fn default_job_cursor_ttl_ms() -> u64 {
+    3_600_000
 }
 
 impl Config {

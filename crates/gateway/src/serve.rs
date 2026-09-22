@@ -47,6 +47,7 @@ use tenancy::{Admission, Capacity, Published, Registry, keys, lane_name, quota};
 
 use crate::classify::{self, Mode, RankOrder, Request as ClassifyRequest};
 use crate::config::{Config, Door};
+use crate::jobs;
 use crate::money;
 
 /// The file every attempt's sealed receipt appends to.
@@ -117,9 +118,9 @@ struct DoorBounds {
 /// the in-memory bounds.
 pub struct ServeState {
     /// The registry directory — manifests, keys, ledger, receipts.
-    dir: PathBuf,
-    config: Config,
-    client: reqwest::Client,
+    pub(crate) dir: PathBuf,
+    pub(crate) config: Config,
+    pub(crate) client: reqwest::Client,
     ledger: Mutex<quota::Ledger>,
     /// The workspace spending ledger — present only when the operator
     /// opted in to monetary admission, and locked for the process's
@@ -137,6 +138,9 @@ pub struct ServeState {
     doors: Mutex<HashMap<String, DoorBounds>>,
     /// Attempt ids minted within this process.
     attempt_ids: AtomicU64,
+    /// Live job cancellation signals — one sender per running durable
+    /// job, registered before its runner starts.
+    pub(crate) job_cancels: Mutex<HashMap<String, watch::Sender<bool>>>,
 }
 
 impl ServeState {
@@ -168,7 +172,12 @@ impl ServeState {
             .transpose()
             .map_err(Trouble::Money)?
             .map(Mutex::new);
-        Ok(Arc::new(Self {
+        // Durable jobs reconcile before the first request: interrupted
+        // runs end honestly, orphaned submissions are removed, and
+        // queued work waits for `router` to re-spawn it inside the
+        // runtime.
+        jobs::recover(&config.registry, config.job_retention_ms);
+        let state = Arc::new(Self {
             dir: config.registry.clone(),
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
             classify_inputs: Arc::new(Semaphore::new(config.max_classify_inputs as usize)),
@@ -181,7 +190,9 @@ impl ServeState {
             receipts: Mutex::new(receipts),
             doors: Mutex::new(HashMap::new()),
             attempt_ids: AtomicU64::new(0),
-        }))
+            job_cancels: Mutex::new(HashMap::new()),
+        });
+        Ok(state)
     }
 
     /// Release a reservation whose work was never dispatched — the
@@ -199,7 +210,7 @@ impl ServeState {
     }
 
     /// Mint an attempt id within this process.
-    fn mint(&self) -> u64 {
+    pub(crate) fn mint(&self) -> u64 {
         self.attempt_ids.fetch_add(1, Ordering::Relaxed)
     }
 }
@@ -210,6 +221,11 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     let router = axum::Router::new()
         .route("/v1/systemone", post(systemone))
         .route("/v1/classify", post(classify))
+        .route("/v1/jobs", post(jobs::submit))
+        .route("/v1/jobs/{id}", get(jobs::status).delete(jobs::remove))
+        .route("/v1/jobs/{id}/cancel", post(jobs::cancel))
+        .route("/v1/jobs/{id}/results", get(jobs::results))
+        .route("/v1/jobs/{id}/notify/rotate", post(jobs::rotate_notify))
         .route("/v1/models", get(models))
         .route("/healthz", get(healthz));
     // The balance read exists only under monetary admission — absent the
@@ -219,6 +235,9 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     } else {
         router
     };
+    // Queued jobs and pending webhook deliveries resume inside the
+    // runtime — `ServeState::open` is synchronous and cannot spawn them.
+    jobs::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
         .with_state(state)
@@ -410,22 +429,22 @@ fn classification_card(state: &ServeState, door: &str, binding: &tenancy::Bindin
 }
 
 /// Who the call is, once authentication has run.
-struct Caller {
+pub(crate) struct Caller {
     /// The tenant the key resolved to, or `None` for anonymous.
-    tenant: Option<String>,
+    pub(crate) tenant: Option<String>,
     /// The credential id the call authenticated under — a reference,
     /// never the secret.
-    key: String,
+    pub(crate) key: String,
     /// The workspace the membership check admitted — present only when
     /// `require_workspace_membership` ran, and the account monetary
     /// admission charges.
-    workspace: Option<String>,
+    pub(crate) workspace: Option<String>,
 }
 
 /// Resolve the `Authorization` header and reopen the registry for this
 /// request — one fresh read per call, so an update lands on the next
 /// request rather than on the next restart.
-fn authenticate(
+pub(crate) fn authenticate(
     state: &ServeState,
     headers: &HeaderMap,
 ) -> Result<(Registry, Caller), (StatusCode, &'static str, String)> {
@@ -535,32 +554,32 @@ fn authenticate(
 }
 
 /// What an attempt needs for its receipt — the identities it ran under.
-type Context = Box<ReceiptContext>;
+pub(crate) type Context = Box<ReceiptContext>;
 
 #[derive(Clone, Default)]
-struct ReceiptContext {
+pub(crate) struct ReceiptContext {
     /// The credential reference — the key id, or absent for anonymous.
-    tenant_ref: Option<String>,
+    pub(crate) tenant_ref: Option<String>,
     /// The registry revision the call was admitted under.
-    registry: Option<ReceiptRegistry>,
+    pub(crate) registry: Option<ReceiptRegistry>,
     /// The identity the caller asked for — the bound expectation.
-    requested: Served,
+    pub(crate) requested: Served,
     /// The identity the backend published, when it was reached.
-    served: Served,
+    pub(crate) served: Served,
     /// Digest of the response body, when one came back.
-    result_digest: Option<String>,
+    pub(crate) result_digest: Option<String>,
     /// The longest an input waited for its dispatch — a classification
     /// call's queue time, measured per item rather than guessed.
-    queued_ms: Option<u64>,
+    pub(crate) queued_ms: Option<u64>,
     /// The reservation the attempt settled against, when it held one.
-    usage: Option<String>,
+    pub(crate) usage: Option<String>,
     /// How the attempt's monetary hold resolved — `settled`,
     /// `outstanding`, or `released` — when monetary admission ran.
-    settlement: Option<&'static str>,
+    pub(crate) settlement: Option<&'static str>,
 }
 
 /// What the admission path produced.
-enum Verdict {
+pub(crate) enum Verdict {
     /// The call resolved — the backend's own bytes, or a response the
     /// facade assembled from per-item forwards.
     Forwarded {
@@ -586,15 +605,15 @@ enum Verdict {
 
 /// What one attempt is called — the identity the response headers and
 /// the receipt both carry.
-struct Naming<'a> {
+pub(crate) struct Naming<'a> {
     /// The caller's idempotency key, or a minted request id.
-    request: &'a str,
+    pub(crate) request: &'a str,
     /// The claimed attempt number, one-based.
-    attempt: u32,
+    pub(crate) attempt: u32,
     /// This dispatch's own id.
-    attempt_id: String,
+    pub(crate) attempt_id: String,
     /// The canonical envelope's digest.
-    request_digest: &'a str,
+    pub(crate) request_digest: &'a str,
 }
 
 /// A dropped HTTP handler signals cancellation without dropping durable cleanup.
@@ -607,10 +626,10 @@ impl Drop for OnDisconnect {
 }
 
 #[derive(Clone)]
-struct Cancellation(watch::Receiver<bool>);
+pub(crate) struct Cancellation(pub(crate) watch::Receiver<bool>);
 
 impl Cancellation {
-    fn stopped(&self) -> bool {
+    pub(crate) fn stopped(&self) -> bool {
         *self.0.borrow()
     }
 
@@ -1342,8 +1361,10 @@ async fn admitted(
     }
 }
 
-/// The classify call's passage: the same admission sequence, then a
-/// `systemone` forward per input and an assembled per-item result.
+/// The classify call's passage on the HTTP route: authenticate the
+/// caller, parse the typed envelope, run the shared admission
+/// sequence. A durable job re-enters at `classify_run` with the caller
+/// and request its manifest recorded.
 async fn classify_admitted(
     state: &Arc<ServeState>,
     headers: &HeaderMap,
@@ -1358,33 +1379,75 @@ async fn classify_admitted(
         Ok(parts) => parts,
         Err(verdict) => return verdict,
     };
-    let request = match ClassifyRequest::parse(body) {
+    let request = match parse_classify(body, ctx.clone()) {
         Ok(request) => request,
-        Err(refusal) => {
-            let status = match refusal {
-                classify::Refusal::Malformed(_) => StatusCode::BAD_REQUEST,
-                _ => StatusCode::UNPROCESSABLE_ENTITY,
-            };
-            return Verdict::Refused {
-                status,
-                code: refusal.code(),
-                message: refusal.to_string(),
-                outcome: Outcome::Refused,
-                ctx,
-            };
-        }
+        Err(verdict) => return verdict,
     };
+    let validated = match validate_classify(state, &registry, &caller, &request, &mut ctx) {
+        Ok(validated) => validated,
+        Err(verdict) => return verdict,
+    };
+    classify_run(
+        state,
+        &registry,
+        &caller,
+        &request,
+        validated,
+        body,
+        naming,
+        cancellation,
+        ctx,
+        started,
+        &PhaseAuth::Headers(headers),
+        None,
+    )
+    .await
+}
 
+/// The parse half of the admission sequence — a malformed envelope is
+/// refused before a door is consulted.
+pub(crate) fn parse_classify(body: &Bytes, ctx: Context) -> Result<ClassifyRequest, Verdict> {
+    ClassifyRequest::parse(body).map_err(|refusal| {
+        let status = match refusal {
+            classify::Refusal::Malformed(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        Verdict::Refused {
+            status,
+            code: refusal.code(),
+            message: refusal.to_string(),
+            outcome: Outcome::Refused,
+            ctx,
+        }
+    })
+}
+
+/// What `validate_classify` established: the admission snapshot, the
+/// door's configured backend, and the expanded plan the request built.
+pub(crate) struct Validated {
+    pub(crate) admission: Admission,
+    pub(crate) backend: Door,
+    pub(crate) plan: classify::Plan,
+}
+
+/// The validation half of the admission sequence — authorize the named
+/// door, match the request's capacity to the binding's lane, hold the
+/// request to the bounds the door declared, and check the complete
+/// expanded context before queueing or reserving usage. The HTTP route
+/// and a durable job's submission and dispatch all run the same checks.
+pub(crate) fn validate_classify(
+    state: &ServeState,
+    registry: &Registry,
+    caller: &Caller,
+    request: &ClassifyRequest,
+    ctx: &mut Context,
+) -> Result<Validated, Verdict> {
     // 2. Authorize the named door. The capacity the caller names is
     // the binding's lane — anything else is an unsupported
     // combination, not an option with no effect.
-    let (admission, backend) = match authorized(state, &registry, &caller, &request.model, &mut ctx)
-    {
-        Ok(parts) => parts,
-        Err(verdict) => return verdict,
-    };
+    let (admission, backend) = authorized(state, registry, caller, &request.model, ctx)?;
     if request.capacity != lane_name(admission.binding.lane) {
-        return Verdict::Refused {
+        return Err(Verdict::Refused {
             status: StatusCode::UNPROCESSABLE_ENTITY,
             code: "unsupported_capacity",
             message: format!(
@@ -1394,8 +1457,8 @@ async fn classify_admitted(
                 request.capacity
             ),
             outcome: Outcome::Refused,
-            ctx,
-        };
+            ctx: ctx.clone(),
+        });
     }
 
     // The facade serves only bounds the door declares — an undeclared
@@ -1403,7 +1466,7 @@ async fn classify_admitted(
     let limits = match backend.classify {
         Some(limits) => limits,
         None => {
-            return Verdict::Refused {
+            return Err(Verdict::Refused {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: "unsupported_limits",
                 message: format!(
@@ -1412,28 +1475,28 @@ async fn classify_admitted(
                     request.model
                 ),
                 outcome: Outcome::Refused,
-                ctx,
-            };
+                ctx: ctx.clone(),
+            });
         }
     };
     let plan = match request.plan(&limits) {
         Ok(plan) => plan,
         Err(refusal) => {
-            return Verdict::Refused {
+            return Err(Verdict::Refused {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: refusal.code(),
                 message: refusal.to_string(),
                 outcome: Outcome::Refused,
-                ctx,
-            };
+                ctx: ctx.clone(),
+            });
         }
     };
     // Check the complete expanded context before queueing or reserving usage.
     // Per-field bounds alone cannot bound repeated question text or JSON framing.
     for input in &request.inputs {
-        let (body, _) = forward_body(&request, &plan, input, &admission.binding.artifact.model);
+        let (body, _) = forward_body(request, &plan, input, &admission.binding.artifact.model);
         if body.len() as u64 > limits.max_forward_bytes {
-            return Verdict::Refused {
+            return Err(Verdict::Refused {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: "context_limit",
                 message: format!(
@@ -1441,12 +1504,45 @@ async fn classify_admitted(
                     input.id, limits.max_forward_bytes
                 ),
                 outcome: Outcome::Refused,
-                ctx,
-            };
+                ctx: ctx.clone(),
+            });
         }
     }
+    Ok(Validated {
+        admission,
+        backend,
+        plan,
+    })
+}
+
+/// The execution half of the admission sequence — queue, bound,
+/// reserve, verify, fan out, review, tally, and settle. The HTTP route
+/// enters it after `authenticated` + `validate_classify`; a durable job
+/// re-enters it with the caller its manifest recorded. `sink`, when
+/// given, receives each item's result as it lands — a job's durable
+/// ledger, where the HTTP route assembles in place.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn classify_run(
+    state: &Arc<ServeState>,
+    registry: &Registry,
+    caller: &Caller,
+    request: &ClassifyRequest,
+    validated: Validated,
+    body: &Bytes,
+    naming: &Naming<'_>,
+    cancellation: &Cancellation,
+    mut ctx: Context,
+    started: Instant,
+    phase_auth: &PhaseAuth<'_>,
+    sink: Option<tokio::sync::mpsc::UnboundedSender<ItemResult>>,
+) -> Verdict {
+    let Validated {
+        admission,
+        backend,
+        plan,
+    } = validated;
     let endpoint = backend.endpoint.clone();
-    let _queued = match classify_queue(state, &caller, plan.inputs as u32, &ctx).await {
+    let _queued = match classify_queue(state, caller, plan.inputs as u32, &ctx).await {
         Ok(permits) => permits,
         Err(verdict) => return verdict,
     };
@@ -1475,10 +1571,10 @@ async fn classify_admitted(
         input_bytes: body.len() as u64,
         options,
     };
-    if let Err(verdict) = reserved(state, &registry, &caller, naming, &units, &mut ctx).await {
+    if let Err(verdict) = reserved(state, registry, caller, naming, &units, &mut ctx).await {
         return verdict;
     }
-    let hold = match money_hold(state, &caller, &request.model, &admission, naming, &ctx).await {
+    let hold = match money_hold(state, caller, &request.model, &admission, naming, &ctx).await {
         Ok(hold) => hold,
         Err(verdict) => return verdict,
     };
@@ -1515,7 +1611,7 @@ async fn classify_admitted(
     let deadline = started + Duration::from_millis(state.config.classify_deadline_ms());
     let mut scheduled = tokio::task::JoinSet::new();
     for (index, input) in request.inputs.iter().enumerate() {
-        let (body, asked) = forward_body(&request, &plan, input, &artifact);
+        let (body, asked) = forward_body(request, &plan, input, &artifact);
         scheduled.spawn(classify_item(ItemWork {
             index,
             input: input.id.clone(),
@@ -1538,6 +1634,9 @@ async fn classify_admitted(
     let mut done: Vec<Option<ItemResult>> = (0..request.inputs.len()).map(|_| None).collect();
     while let Some(joined) = scheduled.join_next().await {
         if let Ok(result) = joined {
+            if let Some(sink) = &sink {
+                let _ = sink.send(result.clone());
+            }
             let slot = &mut done[result.index];
             *slot = Some(result);
         }
@@ -1618,10 +1717,10 @@ async fn classify_admitted(
         book = review_phase(
             &PhaseContext {
                 state,
-                registry: &registry,
-                caller: &caller,
-                headers,
-                request: &request,
+                registry,
+                caller,
+                auth: phase_auth,
+                request,
                 plan: &plan,
                 artifact: &artifact,
                 naming,
@@ -1885,20 +1984,21 @@ struct ItemWork {
 }
 
 /// What one scheduled input produced.
-struct ItemResult {
+#[derive(Clone)]
+pub(crate) struct ItemResult {
     /// The input's position.
-    index: usize,
+    pub(crate) index: usize,
     /// Whether the forward was dispatched — dispatched work is charged.
-    dispatched: bool,
+    pub(crate) dispatched: bool,
     /// The assembled per-input result.
-    item: Value,
+    pub(crate) item: Value,
     /// The door's own usage report, when it sent one.
-    usage: Option<Value>,
+    pub(crate) usage: Option<Value>,
     /// Milliseconds the item waited for its dispatch — queue time
     /// measured from when its work entered the call.
-    queue_ms: Option<u64>,
+    pub(crate) queue_ms: Option<u64>,
     /// The forward's recorded identity within the call's attempt.
-    attempt_id: String,
+    pub(crate) attempt_id: String,
 }
 
 /// One input's scheduled forward: take the call's fan-out slot, then
@@ -2206,7 +2306,12 @@ struct DispatchOutcome {
 /// monetary spend under its own request identity, verify the backend's
 /// published card against the binding, forward, settle, and leave a
 /// sealed receipt — every secondary call audited like the primary's.
-async fn dispatch(state: &ServeState, headers: &HeaderMap, sub: &SubCall) -> DispatchOutcome {
+async fn dispatch(
+    state: &ServeState,
+    auth: &PhaseAuth<'_>,
+    caller: &Caller,
+    sub: &SubCall,
+) -> DispatchOutcome {
     let started = Instant::now();
     let mut ctx: Context = Box::default();
     let naming = Naming {
@@ -2215,12 +2320,34 @@ async fn dispatch(state: &ServeState, headers: &HeaderMap, sub: &SubCall) -> Dis
         attempt_id: sub.attempt_id.clone(),
         request_digest: &sub.request_digest,
     };
-    let result = match authenticated(state, headers) {
-        Ok((registry, caller, fresh)) => {
-            ctx = fresh;
-            dispatch_admitted(state, &registry, &caller, sub, &naming, &mut ctx).await
-        }
-        Err(verdict) => Err(fail(verdict)),
+    let result = match auth {
+        // An HTTP call's sub-dispatch re-authenticates the bearer
+        // credential — a mid-call revocation stops the work, the same
+        // fresh read every request takes.
+        PhaseAuth::Headers(headers) => match authenticated(state, headers) {
+            Ok((registry, fresh_caller, fresh)) => {
+                ctx = fresh;
+                dispatch_admitted(state, &registry, &fresh_caller, sub, &naming, &mut ctx).await
+            }
+            Err(verdict) => Err(fail(verdict)),
+        },
+        // A durable job has no credential to re-read — the manifest's
+        // stored caller is the identity, and the registry still re-opens
+        // so a manifest update lands on the next dispatch.
+        PhaseAuth::Stored => match Registry::open(&state.dir) {
+            Ok(registry) => {
+                *ctx = ReceiptContext {
+                    tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),
+                    ..ReceiptContext::default()
+                };
+                dispatch_admitted(state, &registry, caller, sub, &naming, &mut ctx).await
+            }
+            Err(trouble) => Err(Fail {
+                outcome: Outcome::Unavailable,
+                code: "registry_unavailable".to_string(),
+                message: trouble.to_string(),
+            }),
+        },
     };
     let (outcome, cause, code) = match &result {
         Ok(Forwarded::Served { .. }) => (Outcome::Answered, None, None),
@@ -2617,6 +2744,17 @@ fn item_outcome(units: &[Value]) -> &'static str {
     "unavailable"
 }
 
+/// How a review phase's sub-dispatches authenticate — the HTTP call's
+/// headers re-checked per dispatch, or the stored caller a durable
+/// job's manifest recorded.
+pub(crate) enum PhaseAuth<'a> {
+    /// Re-authenticate the bearer credential per dispatch — a mid-call
+    /// revocation stops the work.
+    Headers(&'a HeaderMap),
+    /// Run under the caller the job's manifest recorded.
+    Stored,
+}
+
 /// The call context a review phase's dispatches run inside — the
 /// caller's own credentials, the call's plan and primary artifact, and
 /// the call's own deadline as the outer bound.
@@ -2624,7 +2762,7 @@ struct PhaseContext<'a> {
     state: &'a ServeState,
     registry: &'a Registry,
     caller: &'a Caller,
-    headers: &'a HeaderMap,
+    auth: &'a PhaseAuth<'a>,
     request: &'a ClassifyRequest,
     plan: &'a Arc<classify::Plan>,
     artifact: &'a str,
@@ -2650,7 +2788,7 @@ async fn review_phase(
         state,
         registry,
         caller,
-        headers,
+        auth,
         request,
         plan,
         artifact,
@@ -2731,7 +2869,7 @@ async fn review_phase(
             body,
             deadline,
         };
-        let result = dispatch(state, headers, &sub).await;
+        let result = dispatch(state, auth, caller, &sub).await;
         book.attempts += 1;
         if result.settlement.is_some() {
             book.spend += quote.unwrap_or(0);
@@ -2927,7 +3065,7 @@ async fn review_phase(
                 body,
                 deadline,
             };
-            let result = dispatch(state, headers, &sub).await;
+            let result = dispatch(state, auth, caller, &sub).await;
             book.attempts += 1;
             book.reviewed += 1;
             if result.settlement.is_some() {
@@ -4093,7 +4231,7 @@ async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded 
 
 /// Write the attempt's receipt — one sealed document per line, beside
 /// the registry it was admitted under.
-async fn write_receipt(
+pub(crate) async fn write_receipt(
     state: &ServeState,
     naming: &Naming<'_>,
     outcome: Outcome,

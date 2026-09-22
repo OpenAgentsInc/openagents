@@ -187,7 +187,8 @@ For work that outlives a request, add a durable job API:
   destinations.
 
 A relay event or an in-memory queue is not durable job storage.
-Job owner: [#9484](https://github.com/OpenAgentsInc/openagents/issues/9484).
+Job owner: [#9484](https://github.com/OpenAgentsInc/openagents/issues/9484);
+the implemented contract is [durable-jobs](../service/durable-jobs.md).
 
 ## Review, abstention, and fallback
 

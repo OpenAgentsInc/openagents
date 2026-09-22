@@ -88,6 +88,24 @@ the config check refuses the pairing.
 - `GET /healthz` — the process is up. Says nothing about backends;
   identity verification runs per request.
 
+Work that outlives a request runs as a durable job instead:
+
+- `POST /v1/jobs` — accept a classify request, persist it, and run it
+  outside the submitting connection.
+- `GET /v1/jobs/{id}` — the job's status document: state, counts,
+  receipt, and cause.
+- `POST /v1/jobs/{id}/cancel` — cancel queued and undispatched work;
+  idempotent.
+- `GET /v1/jobs/{id}/results` — the finished items, paginated by an
+  expiring cursor.
+- `DELETE /v1/jobs/{id}` — remove a terminal job's record.
+- `POST /v1/jobs/{id}/notify/rotate` — rotate the webhook signing
+  secret a notified job signs with.
+
+[durable-jobs](durable-jobs.md) is the contract: the same admission
+path, a manifest and item ledger beside the registry, honest
+`unknown` outcomes for ambiguous work, and opt-in signed webhooks.
+
 ## Responses
 
 Every attempt carries `x-request-id`, `x-attempt`, `x-outcome`, and

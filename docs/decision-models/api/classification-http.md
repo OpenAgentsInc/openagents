@@ -72,8 +72,9 @@ inputs, including the wait for a slot. Inputs still queued when the
 deadline passes, or after a transport failure halts the call, report
 `unattempted` with the bound that stopped them. Results reassemble in
 input order however forwards complete. This does not provide packed
-inference or durable jobs; `batch-execution.md` covers the scheduling
-contract and its measured fixture.
+inference; `batch-execution.md` covers the scheduling contract and its
+measured fixture. Work that outlives the request runs as a durable job
+through `POST /v1/jobs`; `durable-jobs.md` is that contract.
 
 Results preserve input order and IDs. Each unit reports its outcome, raw
 answer, and policy-selected output: the label or label list for the
@@ -143,9 +144,9 @@ concurrency shared across tenants, a deadline's partial coverage with
 its settled units, and a halted call's unattempted queue — plus a
 reproducible serial-versus-concurrent fixture measurement in
 `batch-execution.md`. They do not establish model quality, production
-throughput, caller-declared label exclusions, per-item receipt
-identities, semantic review of flagged inputs, or the durable-job
-surface #9484 owns.
+throughput, or caller-declared label exclusions. Per-item receipt
+identities, semantic review of flagged inputs, and the durable-job
+surface are covered in `review-policies.md` and `durable-jobs.md`.
 
 ## Discover configured classification bounds
 

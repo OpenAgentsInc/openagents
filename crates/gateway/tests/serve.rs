@@ -12,9 +12,10 @@ use std::time::Duration;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use hmac::Mac as _;
 use serde_json::{Value, json};
 use tenancy::quota::Ledger;
 use tenancy::{Binding, Capacity, Expected, Lane, Manifest, Quota, Registry, Tenant, keys};
@@ -268,6 +269,8 @@ async fn deploy_tuned(
         max_questions: 256,
         max_options: 4096,
         doors,
+        job_retention_ms: 604_800_000,
+        job_cursor_ttl_ms: 3_600_000,
     };
     tune(&mut config);
     let state = ServeState::open(config).unwrap();
@@ -2485,6 +2488,8 @@ async fn deploy_money(
         max_questions: 256,
         max_options: 4096,
         doors,
+        job_retention_ms: 604_800_000,
+        job_cursor_ttl_ms: 3_600_000,
     };
     let state = ServeState::open(config).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -4871,4 +4876,740 @@ async fn classify_checks_later_context_before_forwarding_any_input() {
     let (status, body) = send_classification(&deployment, &classify_call()).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(forwards.load(Ordering::SeqCst), 2);
+}
+
+// ---------- durable classification jobs ----------
+
+/// Wrap a classify request in the job envelope.
+fn job_envelope(request: Value) -> Value {
+    json!({
+        "v": "openagents.job.v1",
+        "kind": "classify",
+        "request": request,
+    })
+}
+
+/// POST a job under a credential and idempotency key.
+async fn submit_job(
+    deployment: &Deployment,
+    envelope: &Value,
+    key: &str,
+    token: Option<&str>,
+) -> (StatusCode, Value) {
+    let mut request = reqwest::Client::new()
+        .post(format!("{}/v1/jobs", deployment.address))
+        .header("idempotency-key", key)
+        .json(envelope);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.unwrap();
+    (response.status(), response.json().await.unwrap())
+}
+
+/// GET a job's status under a credential.
+async fn get_job(deployment: &Deployment, id: &str, token: Option<&str>) -> (StatusCode, Value) {
+    let mut request = reqwest::Client::new().get(format!("{}/v1/jobs/{id}", deployment.address));
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.unwrap();
+    (response.status(), response.json().await.unwrap())
+}
+
+/// POST a cancel under a credential.
+async fn cancel_job(deployment: &Deployment, id: &str, token: Option<&str>) -> (StatusCode, Value) {
+    let mut request =
+        reqwest::Client::new().post(format!("{}/v1/jobs/{id}/cancel", deployment.address));
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.unwrap();
+    (response.status(), response.json().await.unwrap())
+}
+
+/// Poll a job's status until it reports a terminal state.
+async fn poll_terminal(deployment: &Deployment, id: &str, token: Option<&str>) -> Value {
+    for _ in 0..200 {
+        let (_status, body) = get_job(deployment, id, token).await;
+        if matches!(
+            body["status"].as_str(),
+            Some("completed" | "cancelled" | "failed")
+        ) {
+            return body;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("job {id} never reached a terminal state");
+}
+
+/// GET a job's results page.
+async fn get_results(
+    deployment: &Deployment,
+    id: &str,
+    query: &str,
+    token: Option<&str>,
+) -> (StatusCode, Value) {
+    let mut request = reqwest::Client::new().get(format!(
+        "{}/v1/jobs/{id}/results{query}",
+        deployment.address
+    ));
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.unwrap();
+    (response.status(), response.json().await.unwrap())
+}
+
+#[tokio::test]
+async fn a_job_runs_to_completion_and_exports_its_items() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    let (status, body) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(3)),
+        "job-run",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    assert_eq!(body["status"], "queued");
+    assert_eq!(body["counts"]["expected"], 3);
+    let job = body["job"].as_str().unwrap().to_string();
+    assert!(job.starts_with("job_"), "{job}");
+
+    let terminal = poll_terminal(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+    assert_eq!(terminal["status"], "completed", "{terminal}");
+    assert_eq!(terminal["counts"]["attempted"], 3);
+    assert_eq!(terminal["counts"]["answered"], 3);
+    assert_eq!(terminal["counts"]["unknown"], 0);
+    assert!(
+        terminal["receipt"]
+            .as_str()
+            .is_some_and(|digest| digest.starts_with("sha256:")),
+        "{terminal}"
+    );
+    assert_eq!(forwards.load(Ordering::SeqCst), 3);
+
+    // The export names every item's input, index, attempt, and outcome.
+    let (status, page) = get_results(&deployment, &job, "", Some(&deployment.tokens["acme"])).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(page["v"], "openagents.job-results.v1");
+    assert_eq!(page["terminal"], "completed");
+    let items = page["items"].as_array().unwrap();
+    assert_eq!(items.len(), 3);
+    let mut indexes: Vec<u64> = items
+        .iter()
+        .map(|item| item["index"].as_u64().unwrap())
+        .collect();
+    indexes.sort_unstable();
+    assert_eq!(indexes, vec![0, 1, 2]);
+    for item in items {
+        assert!(item["dispatched"].as_bool().unwrap());
+        assert_eq!(item["item"]["outcome"], "answered");
+        assert_eq!(item["item"]["units"][0]["selected"], "a");
+        assert!(
+            item["attempt_id"]
+                .as_str()
+                .unwrap()
+                .starts_with(&format!("{job}-1-")),
+            "{item}"
+        );
+    }
+    assert!(page["next_cursor"].is_null(), "{page}");
+
+    // The run's receipt is sealed in the same log every attempt uses.
+    let receipts = receipt_log(&deployment.dir);
+    let receipt = receipts
+        .iter()
+        .find(|receipt| receipt.request == job)
+        .expect("a receipt under the job's identity");
+    assert_eq!(receipt.attempt, 1);
+    assert!(receipt.verify().is_ok());
+}
+
+#[tokio::test]
+async fn an_identical_resubmission_returns_the_same_job() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    let envelope = job_envelope(classify_batch(2));
+    let (status, first) = submit_job(
+        &deployment,
+        &envelope,
+        "same-key",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+    let job = first["job"].as_str().unwrap().to_string();
+    poll_terminal(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+
+    let (status, second) = submit_job(
+        &deployment,
+        &envelope,
+        "same-key",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    assert_eq!(second["job"], job);
+    assert_eq!(second["status"], "completed");
+    // One execution, not two.
+    assert_eq!(forwards.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_changed_payload_under_the_same_key_conflicts() {
+    let (endpoint, _forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    let (status, first) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(2)),
+        "contended",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+    let (status, conflict) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(3)),
+        "contended",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{conflict}");
+    assert_eq!(conflict["error"]["code"], "idempotency_conflict");
+}
+
+#[tokio::test]
+async fn a_rejected_submission_persists_nothing() {
+    let (endpoint, forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    // Globex binds no dedicated door — the same refusal /v1/classify gives.
+    let (status, body) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(2)),
+        "refused",
+        Some(&deployment.tokens["globex"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(!deployment.dir.path().join("jobs").exists());
+    assert_eq!(forwards.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn cancel_records_then_stops_undispatched_work() {
+    let stub = Backend {
+        delay_ms: 400,
+        ..honest(artifact('b'), choice_answer())
+    };
+    let (endpoint, forwards) = backend(stub).await;
+    let deployment = classification_deployment_tuned(endpoint, 1, |_| {}).await;
+    let (status, body) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(4)),
+        "to-cancel",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let job = body["job"].as_str().unwrap().to_string();
+
+    let (status, cancelling) =
+        cancel_job(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+    assert!(
+        status == StatusCode::ACCEPTED || status == StatusCode::OK,
+        "{cancelling}"
+    );
+    let terminal = poll_terminal(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+    assert_eq!(terminal["status"], "cancelled", "{terminal}");
+    // Undispatched inputs are unattempted, never answered or vanished.
+    assert!(
+        terminal["counts"]["unattempted"].as_u64().unwrap() > 0,
+        "{terminal}"
+    );
+    assert_eq!(terminal["counts"]["expected"], 4);
+    let dispatched = forwards.load(Ordering::SeqCst);
+    assert!(dispatched < 4, "{dispatched}");
+
+    // A second cancel on a terminal job is the same status, not an error.
+    let (status, again) = cancel_job(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again["status"], "cancelled");
+}
+
+#[tokio::test]
+async fn a_job_is_invisible_to_other_tenants() {
+    let (endpoint, _forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    let (status, body) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(1)),
+        "acme-job",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let job = body["job"].as_str().unwrap().to_string();
+    poll_terminal(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+
+    for (status, body) in [
+        get_job(&deployment, &job, Some(&deployment.tokens["globex"])).await,
+        cancel_job(&deployment, &job, Some(&deployment.tokens["globex"])).await,
+        get_results(&deployment, &job, "", Some(&deployment.tokens["globex"])).await,
+    ] {
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(body["error"]["code"], "job_not_found");
+    }
+}
+
+#[tokio::test]
+async fn anonymous_jobs_are_bounded_to_anonymous_callers() {
+    let (endpoint, _forwards) = backend(honest(artifact('a'), choice_answer())).await;
+    let deployment = deploy_doors(
+        manifest(None),
+        [("shared-kev".to_string(), classify_door(endpoint, 1))]
+            .into_iter()
+            .collect(),
+    )
+    .await;
+    let mut shared = classify_batch(1);
+    shared["model"] = json!("shared-kev");
+    shared["capacity"] = json!("shared");
+    let (status, body) = submit_job(&deployment, &job_envelope(shared), "anon", None).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let job = body["job"].as_str().unwrap().to_string();
+    let terminal = poll_terminal(&deployment, &job, None).await;
+    assert_eq!(terminal["status"], "completed", "{terminal}");
+    // Another tenant's key does not see the anonymous job.
+    let (status, body) = get_job(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+}
+
+#[tokio::test]
+async fn results_paginate_by_cursor() {
+    let (endpoint, _forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    let (status, body) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(5)),
+        "paged",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let job = body["job"].as_str().unwrap().to_string();
+    poll_terminal(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+
+    let mut seen = Vec::new();
+    let mut cursor = String::new();
+    for _ in 0..4 {
+        let (status, page) = get_results(
+            &deployment,
+            &job,
+            &format!("?limit=2{cursor}"),
+            Some(&deployment.tokens["acme"]),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{page}");
+        seen.extend(
+            page["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|item| item["index"].as_u64().unwrap())
+                .collect::<Vec<u64>>(),
+        );
+        match page["next_cursor"].as_str() {
+            Some(next) => cursor = format!("&cursor={next}"),
+            None => break,
+        }
+    }
+    seen.sort_unstable();
+    assert_eq!(seen, vec![0, 1, 2, 3, 4]);
+}
+
+#[tokio::test]
+async fn an_expired_cursor_is_gone_not_rewound() {
+    let (endpoint, _forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment_tuned(endpoint, 1, |config| {
+        config.job_cursor_ttl_ms = 100;
+    })
+    .await;
+    let (status, body) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(3)),
+        "expiring",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let job = body["job"].as_str().unwrap().to_string();
+    poll_terminal(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+
+    let (status, page) = get_results(
+        &deployment,
+        &job,
+        "?limit=1",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    let cursor = page["next_cursor"].as_str().unwrap().to_string();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let (status, expired) = get_results(
+        &deployment,
+        &job,
+        &format!("?cursor={cursor}"),
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::GONE, "{expired}");
+    assert_eq!(expired["error"]["code"], "cursor_expired");
+}
+
+#[tokio::test]
+async fn a_terminal_job_deletes_and_a_running_one_refuses() {
+    let stub = Backend {
+        delay_ms: 300,
+        ..honest(artifact('b'), choice_answer())
+    };
+    let (endpoint, _forwards) = backend(stub).await;
+    let deployment = classification_deployment_tuned(endpoint, 1, |_| {}).await;
+    // A running job refuses deletion.
+    let (status, running) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(4)),
+        "running-delete",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{running}");
+    let running_job = running["job"].as_str().unwrap().to_string();
+    let response = reqwest::Client::new()
+        .delete(format!("{}/v1/jobs/{running_job}", deployment.address))
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["error"]["code"],
+        "job_running"
+    );
+    let terminal = poll_terminal(&deployment, &running_job, Some(&deployment.tokens["acme"])).await;
+    assert_eq!(terminal["status"], "completed");
+
+    // The terminal job deletes; reads and replays then say so honestly.
+    let response = reqwest::Client::new()
+        .delete(format!("{}/v1/jobs/{running_job}", deployment.address))
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let (status, gone) = get_job(&deployment, &running_job, Some(&deployment.tokens["acme"])).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{gone}");
+    let (status, replay) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(4)),
+        "running-delete",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::GONE, "{replay}");
+    assert_eq!(replay["error"]["code"], "job_deleted");
+}
+
+#[tokio::test]
+async fn retention_sweeps_expired_terminal_jobs() {
+    let (endpoint, _forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment_tuned(endpoint, 1, |config| {
+        config.job_retention_ms = 1;
+    })
+    .await;
+    let (status, first) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(1)),
+        "swept",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+    let swept = first["job"].as_str().unwrap().to_string();
+    poll_terminal(&deployment, &swept, Some(&deployment.tokens["acme"])).await;
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    // The next submission's sweep removes the expired record.
+    let (status, _second) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(1)),
+        "sweeper",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let (status, gone) = get_job(&deployment, &swept, Some(&deployment.tokens["acme"])).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{gone}");
+}
+
+#[tokio::test]
+async fn the_webhook_delivers_a_signed_terminal_event() {
+    // The receiver records every delivery — headers included — so the
+    // test verifies the signature itself.
+    let received = Arc::new(Mutex::new(Vec::<(String, String, Value)>::new()));
+    let captured = received.clone();
+    let app = axum::Router::new().route(
+        "/hook",
+        post(move |headers: HeaderMap, body: Bytes| {
+            let captured = captured.clone();
+            async move {
+                captured.lock().unwrap().push((
+                    headers
+                        .get("x-openagents-event")
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string(),
+                    headers
+                        .get("x-openagents-signature")
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string(),
+                    serde_json::from_slice::<Value>(&body).unwrap_or_default(),
+                ));
+                StatusCode::OK
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let hook = format!("http://{}/hook", listener.local_addr().unwrap());
+    tokio::spawn(axum::serve(listener, app).into_future());
+
+    let (endpoint, _forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    let mut envelope = job_envelope(classify_batch(2));
+    envelope["notify"] = json!({"url": hook, "secret": "testsecret"});
+    let (status, body) = submit_job(
+        &deployment,
+        &envelope,
+        "hooked",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    // A caller-supplied secret is never echoed.
+    assert!(body["secret"].is_null(), "{body}");
+    let job = body["job"].as_str().unwrap().to_string();
+    poll_terminal(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+
+    for _ in 0..100 {
+        if !received.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let deliveries = received.lock().unwrap();
+    assert_eq!(deliveries.len(), 1, "{deliveries:?}");
+    let (event_id, signature, event) = &deliveries[0];
+    assert_eq!(event["v"], "openagents.job-event.v1");
+    assert_eq!(event["type"], "job.completed");
+    assert_eq!(event["job"], job);
+    assert_eq!(event["counts"]["answered"], 2);
+    // The signature is the hmac the receiver can recompute.
+    let body_bytes = serde_json::to_vec(event).unwrap();
+    let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::Mac>::new_from_slice(b"testsecret").unwrap();
+    mac.update(event_id.as_bytes());
+    mac.update(b".");
+    mac.update(&body_bytes);
+    let expected = format!(
+        "sha256={}",
+        mac.finalize()
+            .into_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    assert_eq!(*signature, expected);
+    drop(deliveries);
+
+    // Every attempt is recorded — one here, delivered.
+    let log = std::fs::read_to_string(
+        deployment
+            .dir
+            .path()
+            .join("jobs")
+            .join(&job)
+            .join("deliveries.jsonl"),
+    )
+    .unwrap();
+    let lines: Vec<Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0]["outcome"], "delivered");
+    assert_eq!(lines[0]["attempt"], 1);
+}
+
+#[tokio::test]
+async fn a_failed_delivery_retries_then_completes() {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let counter = attempts.clone();
+    let app = axum::Router::new().route(
+        "/hook",
+        post(move || {
+            let counter = counter.clone();
+            async move {
+                // The first delivery fails; the retry carries the same
+                // event id and completes.
+                if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                } else {
+                    StatusCode::OK
+                }
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let hook = format!("http://{}/hook", listener.local_addr().unwrap());
+    tokio::spawn(axum::serve(listener, app).into_future());
+
+    let (endpoint, _forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    let mut envelope = job_envelope(classify_batch(1));
+    envelope["notify"] = json!({"url": hook, "secret": "s"});
+    let (status, body) = submit_job(
+        &deployment,
+        &envelope,
+        "retrying",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let job = body["job"].as_str().unwrap().to_string();
+    poll_terminal(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+
+    for _ in 0..100 {
+        if attempts.load(Ordering::SeqCst) >= 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    let log = std::fs::read_to_string(
+        deployment
+            .dir
+            .path()
+            .join("jobs")
+            .join(&job)
+            .join("deliveries.jsonl"),
+    )
+    .unwrap();
+    let outcomes: Vec<String> = log
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .map(|line| line["outcome"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(outcomes, vec!["failed", "delivered"]);
+}
+
+#[tokio::test]
+async fn notify_secret_rotation_replaces_the_signing_key() {
+    let (endpoint, _forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    let mut envelope = job_envelope(classify_batch(1));
+    envelope["notify"] = json!({"url": "https://caller.example/hook"});
+    let (status, body) = submit_job(
+        &deployment,
+        &envelope,
+        "rotating",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    // A generated secret is returned once, here.
+    assert_eq!(body["secret"].as_str().unwrap().len(), 64, "{body}");
+    let job = body["job"].as_str().unwrap().to_string();
+
+    let response = reqwest::Client::new()
+        .post(format!(
+            "{}/v1/jobs/{job}/notify/rotate",
+            deployment.address
+        ))
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let rotated = response.json::<Value>().await.unwrap();
+    let new_secret = rotated["secret"].as_str().unwrap().to_string();
+    assert_eq!(new_secret.len(), 64);
+    assert_ne!(new_secret, body["secret"].as_str().unwrap());
+    // The stored manifest carries the rotation, not the response.
+    let manifest: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            deployment
+                .dir
+                .path()
+                .join("jobs")
+                .join(&job)
+                .join("manifest.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest["notify"]["secret"], new_secret);
+    assert_eq!(manifest["notify"]["rotated"], 1);
+}
+
+#[tokio::test]
+async fn an_invalid_notify_url_is_refused() {
+    let (endpoint, _forwards) = backend(honest(artifact('b'), choice_answer())).await;
+    let deployment = classification_deployment(endpoint).await;
+    for url in [
+        "http://webhook.example.com/hook",
+        "ftp://127.0.0.1/hook",
+        "https://user:pass@caller.example/hook",
+    ] {
+        let mut envelope = job_envelope(classify_batch(1));
+        envelope["notify"] = json!({"url": url});
+        let (status, body) = submit_job(
+            &deployment,
+            &envelope,
+            &format!("bad-{url}"),
+            Some(&deployment.tokens["acme"]),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{url}: {body}");
+        assert_eq!(body["error"]["code"], "invalid_notify", "{url}");
+    }
+}
+
+#[tokio::test]
+async fn a_backend_outage_fails_the_job_with_honest_counts() {
+    let (endpoint, _forwards) = backend(Backend {
+        answer_status: StatusCode::SERVICE_UNAVAILABLE,
+        ..honest(artifact('b'), choice_answer())
+    })
+    .await;
+    let deployment = classification_deployment(endpoint).await;
+    let (status, body) = submit_job(
+        &deployment,
+        &job_envelope(classify_batch(3)),
+        "outage",
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let job = body["job"].as_str().unwrap().to_string();
+    let terminal = poll_terminal(&deployment, &job, Some(&deployment.tokens["acme"])).await;
+    assert_eq!(terminal["status"], "completed", "{terminal}");
+    // The first dispatch is attempted and unavailable; a door that
+    // stops answering halts the rest as unattempted — completed is not
+    // complete coverage, and nothing reads as answered.
+    assert_eq!(terminal["counts"]["attempted"], 1);
+    assert_eq!(terminal["counts"]["unavailable"], 1);
+    assert_eq!(terminal["counts"]["unattempted"], 2);
+    assert_eq!(terminal["counts"]["answered"], 0);
 }

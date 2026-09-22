@@ -10,6 +10,7 @@ publish.workspace = true
 jev = { path = "../jev" }
 axum = "0.8"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+hmac = "0.12.1"
 nostr = { path = "../nostr" }
 receipts = { path = "../receipts" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
