@@ -1,0 +1,39 @@
+#!/bin/sh
+# A slow probe for openagents.coder.episode.v1: installs and doctors like
+# the contract probe, writes a partial bundle at the start of episode run,
+# then sleeps until it is killed. It spends no inference. It exists to
+# show that a cancelled or timed-out trial keeps what the episode already
+# wrote, and that the harness leaves no container or process behind.
+set -eu
+case "${1:-}" in
+  --version) echo "coder-v05-slow-probe 0.0.0-contract-probe" ;;
+  episode)
+    case "${2:-}" in
+      doctor) echo "doctor ok: slow probe" ;;
+      run)
+        shift 2
+        while [ $# -gt 0 ]; do
+          case "$1" in --output-dir) shift; outdir="$1";; esac
+          shift
+        done
+        mkdir -p "$outdir/evaluation"
+        cat > "$outdir/manifest.json" <<'EOF'
+{ "artifact": "coder-v05-slow-probe 0.0.0-contract-probe", "outcome": "running" }
+EOF
+        cat > "$outdir/trajectory.atif.json" <<'EOF'
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "slow-probe-session",
+  "agent": { "name": "coder-v05-slow-probe", "version": "0.0.0-contract-probe" },
+  "steps": [
+    { "step_id": 1, "source": "user", "message": "slow probe episode, partial bundle" }
+  ]
+}
+EOF
+        echo "slow probe: partial bundle written, sleeping" >&2
+        sleep 600
+        ;;
+      *) exit 2 ;;
+    esac ;;
+  *) exit 2 ;;
+esac

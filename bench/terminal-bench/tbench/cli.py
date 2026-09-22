@@ -214,6 +214,33 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_collect(args: argparse.Namespace) -> int:
+    """Rewrite one job's attempt records and manifests from its trials."""
+    job_dir = Path(args.job)
+    if not job_dir.is_dir():
+        job_dir = paths.jobs_dir() / args.job
+    context_path = TrialPaths(job_dir).context_path
+    try:
+        context = json.loads(context_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        print(
+            f"collect: no readable {context_path}; run or resume the job "
+            "through tbench first",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        request = _load(context["profile_id"], context["agent_id"])
+    except RunError as exc:
+        print(f"collect: {exc}", file=sys.stderr)
+        return 1
+    assert request is not None
+    request.auth_mode = context.get("auth_mode")
+    written = collect(job_dir, request)
+    print(f"collect: wrote {len(written) // 2} attempt records under {job_dir}")
+    return 0
+
+
 def cmd_materialize(args: argparse.Namespace) -> int:
     """Write the resolved job config without starting Harbor."""
     try:
@@ -294,6 +321,13 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = sub.add_parser("inspect", help="show one job's trial results")
     inspect.add_argument("job", help="job name or job dir path")
     inspect.set_defaults(func=cmd_inspect)
+
+    collect_parser = sub.add_parser(
+        "collect",
+        help="rewrite one job's attempt records from its trial results",
+    )
+    collect_parser.add_argument("job", help="job name or job dir path")
+    collect_parser.set_defaults(func=cmd_collect)
 
     cmp_parser = sub.add_parser(
         "compare", help="fold attempts into a comparison report"

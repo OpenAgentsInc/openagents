@@ -1,0 +1,24 @@
+#!/bin/sh
+# A collection-failure probe for openagents.coder.episode.v1: removes its
+# own output directory during episode run and exits 0, so the adapter's
+# bundle download has nothing to copy. It spends no inference. It exists
+# to show that a failed collection is recorded as a failed collection.
+set -eu
+case "${1:-}" in
+  --version) echo "coder-v05-collect-fail-probe 0.0.0-contract-probe" ;;
+  episode)
+    case "${2:-}" in
+      doctor) echo "doctor ok: collect-fail probe" ;;
+      run)
+        shift 2
+        while [ $# -gt 0 ]; do
+          case "$1" in --output-dir) shift; outdir="$1";; esac
+          shift
+        done
+        rm -rf "$outdir"
+        echo "collect-fail probe: removed the output directory" >&2
+        ;;
+      *) exit 2 ;;
+    esac ;;
+  *) exit 2 ;;
+esac

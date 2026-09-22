@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tomllib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,7 +79,15 @@ def _terminal_status(result: dict[str, Any]) -> str:
     exception = result.get("exception_info")
     if exception:
         etype = (exception.get("exception_type") or "").lower()
-        if "install" in etype or "setup" in etype:
+        # The contract adapter's refusals (a wrong digest, a missing
+        # binary, a failed episode doctor) happen before inference, so
+        # they are install failures rather than agent errors.
+        if (
+            "install" in etype
+            or "setup" in etype
+            or "contract" in etype
+            or "identity" in etype
+        ):
             return "install_failure"
         if "timeout" in etype:
             return "timeout"
@@ -156,6 +165,112 @@ def _cost_total(result: dict[str, Any]) -> float | None:
         if value is not None:
             total = (total or 0.0) + value
     return total
+
+
+IMAGE_SKIP_PREFIX = "Skipping image OS validation for "
+
+
+def _task_docker_image(task_path: str | None) -> str | None:
+    """The prebuilt image a task's ``task.toml`` declares, when readable."""
+    if not task_path:
+        return None
+    try:
+        data = tomllib.loads((Path(task_path) / "task.toml").read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    return (data.get("environment") or {}).get("docker_image") or None
+
+
+def image_state(
+    trial_result: dict[str, Any], trial_dir: Path
+) -> dict[str, Any]:
+    """Whether this trial pulled, built, or reused its environment image.
+
+    Harbor's Docker environment runs ``docker inspect`` on a prebuilt
+    image immediately before ``docker compose up``, and when the image
+    isn't in the local cache it writes a debug line to the trial's
+    ``trial.log``; ``up`` then pulls the image. That line is the evidence:
+    present means the image was absent when this trial set up its
+    environment (cold), and absent after a finished environment setup
+    means the image was already local (warm). A task built from its
+    Dockerfile is rebuilt in every trial, and the log doesn't say whether
+    the build cache served its layers, so its state stays ``unknown``.
+    Anything the log can't answer stays ``unknown``.
+    """
+    config = trial_result.get("config") or {}
+    env_cfg = config.get("environment") or {}
+    task_path = (config.get("task") or {}).get("path") or (
+        trial_result.get("task_id") or {}
+    ).get("path")
+    image = _task_docker_image(task_path)
+    state: dict[str, Any] = {
+        "image": image,
+        "image_source": "unknown",
+        "image_state": "unknown",
+        "image_action": "unknown",
+        "image_state_method": None,
+    }
+    if env_cfg.get("type") not in (None, "docker"):
+        state["image_state_method"] = (
+            f"environment type {env_cfg.get('type')!r} isn't inspected"
+        )
+        return state
+    if image is not None:
+        state["image_source"] = (
+            "dockerfile" if env_cfg.get("force_build") else "prebuilt"
+        )
+    elif task_path and (Path(task_path) / "task.toml").is_file():
+        state["image_source"] = "dockerfile"
+    if state["image_source"] == "dockerfile":
+        state["image_action"] = "built"
+        state["image_state_method"] = (
+            "Harbor builds a Dockerfile task in every trial; the trial log "
+            "doesn't record whether the build cache served its layers"
+        )
+        return state
+    if state["image_source"] != "prebuilt":
+        state["image_state_method"] = "the task's declared image is unreadable"
+        return state
+
+    try:
+        lines = (trial_dir / "trial.log").read_text(errors="replace").splitlines()
+    except OSError:
+        state["image_state_method"] = "no trial.log to read"
+        return state
+    skip = next(
+        (
+            line
+            for line in lines
+            if line.startswith(f"{IMAGE_SKIP_PREFIX}{image}:")
+        ),
+        None,
+    )
+    if skip is not None:
+        if "docker inspect returned" in skip:
+            state["image_state"] = "cold"
+            state["image_action"] = "pulled"
+            state["image_state_method"] = (
+                "trial.log: Harbor's docker inspect before compose up found "
+                "no local image, so compose up pulled it"
+            )
+        else:
+            state["image_state_method"] = (
+                "trial.log: Harbor couldn't run docker inspect"
+            )
+        return state
+    if (trial_result.get("environment_setup") or {}).get("finished_at"):
+        state["image_state"] = "warm"
+        state["image_action"] = "reused"
+        state["image_state_method"] = (
+            "trial.log: Harbor's docker inspect before compose up found the "
+            "image in the local cache"
+        )
+    else:
+        state["image_state_method"] = (
+            "environment setup didn't finish, so the trial log can't show "
+            "the image check"
+        )
+    return state
 
 
 def attempt_record(
@@ -256,6 +371,11 @@ def attempt_record(
             "observed_provider": (agent_info.get("model_info") or {}).get(
                 "provider"
             ),
+            # The pinned artifact a contract arm ran, when it names one;
+            # the comparison never pools two different artifacts.
+            "artifact_sha256": (agent_cfg.get("kwargs") or {}).get(
+                "artifact_sha256"
+            ),
         },
         "outcome": {
             "reward": reward,
@@ -267,6 +387,7 @@ def attempt_record(
             ),
         },
         "timing": timing,
+        "environment": image_state(trial_result, trial_dir),
         "usage": usage,
         "cost": {
             "amount_usd": cost_usd,
@@ -357,8 +478,13 @@ def episode_manifest(
     agent_dir = trial_dir / "agent"
     verifier_dir = trial_dir / "verifier"
     artifacts_dir = trial_dir / "artifacts"
+    # Prefer Harbor's own trajectory file; any other top-level JSON the
+    # agent left is a fallback, never a substitute for it.
     trajectory = next(
-        iter(sorted(agent_dir.glob("*.json")) + sorted(agent_dir.glob("trajectory*.json"))),
+        iter(
+            sorted(agent_dir.glob("trajectory*.json"))
+            + sorted(agent_dir.glob("*.json"))
+        ),
         None,
     )
     artifacts = [
@@ -388,6 +514,10 @@ def episode_manifest(
             "trial_result": entry(trial_dir / "result.json", "trial-result"),
             "trajectory": entry(trajectory, "trajectory"),
             "native_traces": native,
+            "collection_failure": entry(
+                agent_dir / "episode-collection-failed.txt",
+                "collection-failure",
+            ),
             "verifier_reward": entry(
                 next(
                     (

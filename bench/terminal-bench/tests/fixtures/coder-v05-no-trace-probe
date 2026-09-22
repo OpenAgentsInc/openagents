@@ -1,0 +1,30 @@
+#!/bin/sh
+# A missing-trace probe for openagents.coder.episode.v1: writes the
+# manifest and usage record but no trajectory.atif.json, then exits 0. It
+# spends no inference. It exists to show that the harness records an
+# absent trace as absent instead of inferring one.
+set -eu
+case "${1:-}" in
+  --version) echo "coder-v05-no-trace-probe 0.0.0-contract-probe" ;;
+  episode)
+    case "${2:-}" in
+      doctor) echo "doctor ok: no-trace probe" ;;
+      run)
+        shift 2
+        while [ $# -gt 0 ]; do
+          case "$1" in --output-dir) shift; outdir="$1";; esac
+          shift
+        done
+        mkdir -p "$outdir/evaluation"
+        cat > "$outdir/manifest.json" <<'EOF'
+{ "artifact": "coder-v05-no-trace-probe 0.0.0-contract-probe", "outcome": "finished-without-trace" }
+EOF
+        cat > "$outdir/evaluation/usage.json" <<'EOF'
+{ "tokens": {}, "cost": { "amount_usd": null, "provenance": "unknown" }, "calls": {} }
+EOF
+        echo "no-trace probe: exiting 0 without a trajectory" >&2
+        ;;
+      *) exit 2 ;;
+    esac ;;
+  *) exit 2 ;;
+esac

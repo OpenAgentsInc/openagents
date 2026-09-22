@@ -142,3 +142,104 @@ def test_unknown_counts_never_zero():
     counts = unknown_counts("no trajectory.json retained")
     assert counts["atif_steps"] == "unknown"
     assert counts["tool_calls"] == "unknown"
+
+
+def test_contract_refusals_are_install_failures(tmp_path):
+    for etype in ("EpisodeContractError", "ArtifactIdentityError"):
+        result = _trial_result(
+            exception_info={"exception_type": etype}, verifier_result=None
+        )
+        record = _record(result, trial_dir=tmp_path)
+        assert record["outcome"]["terminal_status"] == "install_failure"
+    timed_out = _trial_result(
+        exception_info={"exception_type": "EpisodeTimeoutError"}
+    )
+    assert _record(timed_out, trial_dir=tmp_path)["outcome"]["terminal_status"] == "timeout"
+    cancelled = _trial_result(exception_info={"exception_type": "CancelledError"})
+    assert _record(cancelled, trial_dir=tmp_path)["outcome"]["terminal_status"] == "cancelled"
+
+
+def test_artifact_digest_recorded(tmp_path):
+    result = _trial_result(
+        config={"agent": {"import_path": "x:Y", "kwargs": {"artifact_sha256": "ab" * 32}}}
+    )
+    assert _record(result, trial_dir=tmp_path)["agent"]["artifact_sha256"] == "ab" * 32
+
+
+def _image_trial(tmp_path, *, docker_image="alexgshaw/fix-git:20260403",
+                 force_build=False, log="", setup_finished=True):
+    task = tmp_path / "task"
+    task.mkdir(exist_ok=True)
+    env = f'docker_image = "{docker_image}"\n' if docker_image else ""
+    (task / "task.toml").write_text(f"[environment]\n{env}")
+    trial = tmp_path / "trial"
+    trial.mkdir(exist_ok=True)
+    log_path = trial / "trial.log"
+    if log is None:
+        log_path.unlink(missing_ok=True)
+    else:
+        log_path.write_text(log)
+    result = _trial_result(
+        config={
+            "task": {"path": str(task)},
+            "environment": {"type": "docker", "force_build": force_build},
+            "agent": {},
+        },
+        environment_setup=(
+            {"started_at": "2026-09-22T10:00:00Z", "finished_at": "2026-09-22T10:00:01Z"}
+            if setup_finished
+            else {"started_at": "2026-09-22T10:00:00Z"}
+        ),
+    )
+    return _record(result, trial_dir=trial)["environment"]
+
+
+def test_image_cold_when_harbor_found_no_local_image(tmp_path):
+    state = _image_trial(
+        tmp_path,
+        log=(
+            "Skipping image OS validation for alexgshaw/fix-git:20260403: "
+            "docker inspect returned 1\nRunning command: true\n"
+        ),
+    )
+    assert state["image_state"] == "cold"
+    assert state["image_action"] == "pulled"
+    assert state["image_source"] == "prebuilt"
+    assert "trial.log" in state["image_state_method"]
+
+
+def test_image_warm_when_the_check_passed_silently(tmp_path):
+    state = _image_trial(tmp_path, log="Running command: true\n")
+    assert state["image_state"] == "warm"
+    assert state["image_action"] == "reused"
+
+
+def test_image_unknown_without_evidence(tmp_path):
+    assert _image_trial(tmp_path, log=None)["image_state"] == "unknown"
+    assert (
+        _image_trial(tmp_path, log="", setup_finished=False)["image_state"]
+        == "unknown"
+    )
+    other_error = _image_trial(
+        tmp_path,
+        log="Skipping image OS validation for alexgshaw/fix-git:20260403: boom\n",
+    )
+    assert other_error["image_state"] == "unknown"
+
+
+def test_dockerfile_build_is_built_with_unknown_cache_state(tmp_path):
+    state = _image_trial(tmp_path, docker_image=None)
+    assert state["image_source"] == "dockerfile"
+    assert state["image_action"] == "built"
+    assert state["image_state"] == "unknown"
+    forced = _image_trial(tmp_path, force_build=True)
+    assert forced["image_action"] == "built"
+
+
+def test_unreadable_task_leaves_image_unknown(tmp_path):
+    result = _trial_result(
+        config={"task": {"path": str(tmp_path / "gone")}, "agent": {}}
+    )
+    state = _record(result, trial_dir=tmp_path)["environment"]
+    assert state["image_state"] == "unknown"
+    assert state["image_source"] == "unknown"
