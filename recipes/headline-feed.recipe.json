@@ -1,0 +1,97 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.headline-feed.v1",
+  "name": "News and headline feeds",
+  "version": 1,
+  "area": "filtering-and-retrieval",
+  "summary": "Tag a headline for relevance to a stated beat and assign its topic.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The beat's description followed by the headline and its source."
+  },
+  "questions": {
+    "relevant": {
+      "type": "noul",
+      "instructions": "The headline belongs on the beat the state describes.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    },
+    "topic": {
+      "type": "choice",
+      "instructions": "The headline's primary topic.",
+      "options": "supplied",
+      "criteria": {
+        "other": "No supplied topic fits better than the residual."
+      }
+    }
+  },
+  "compose": {
+    "if": {
+      "cond": {
+        "answer": "relevant"
+      },
+      "then": {
+        "answer": "topic"
+      },
+      "else": "filtered"
+    }
+  },
+  "outputs": {
+    "shape": "a topic label per relevant headline, or 'filtered'"
+  },
+  "cost": {
+    "questions_per_item": 2,
+    "max_items_per_batch": 512,
+    "bound": "two questions per headline; the beat is stated once per batch"
+  },
+  "uncertainty": {
+    "abstain": "a low-confidence topic keeps the 'other' residual rather than forcing a label",
+    "refusal": "a refused item reports refused and stays out of the feed"
+  },
+  "limits": [
+    "Relevance is to the stated beat, not a general notion of importance.",
+    "Headline text only - the recipe does not fetch the article body."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/headline-feed.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "on-beat",
+      "answers": {
+        "relevant": {
+          "answer": true,
+          "probability": 0.88
+        },
+        "topic": {
+          "answer": "policy",
+          "probability": 0.7
+        }
+      },
+      "expected": "policy"
+    },
+    {
+      "name": "off-beat",
+      "answers": {
+        "relevant": {
+          "answer": false,
+          "probability": 0.92
+        },
+        "topic": {
+          "answer": "sports",
+          "probability": 0.9
+        }
+      },
+      "expected": "filtered"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.spec-conformance.v1",
+  "name": "Specification conformance",
+  "version": 1,
+  "area": "business-and-knowledge",
+  "summary": "Check a deliverable against each stated requirement, requirement by requirement.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "One requirement's text followed by the deliverable's relevant section."
+  },
+  "questions": {
+    "conforms": {
+      "type": "noul",
+      "instructions": "The supplied section satisfies this requirement as written.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    }
+  },
+  "compose": {
+    "answer": "conforms"
+  },
+  "outputs": {
+    "shape": "conforms/violates per requirement; the caller aggregates the matrix"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 512,
+    "bound": "one judgment per requirement-section pair"
+  },
+  "uncertainty": {
+    "abstain": "a section that does not reach the requirement answers violates - silence is non-conformance",
+    "refusal": "a refused pair reports refused and stays in the review list"
+  },
+  "limits": [
+    "Checks the supplied sections only - requirements needing whole-document judgment get the document split by the caller.",
+    "One requirement per judgment keeps failures attributable."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/spec-conformance.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "conforming",
+      "answers": {
+        "conforms": {
+          "answer": true,
+          "probability": 0.9
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "missing",
+      "answers": {
+        "conforms": {
+          "answer": false,
+          "probability": 0.87
+        }
+      },
+      "expected": false
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

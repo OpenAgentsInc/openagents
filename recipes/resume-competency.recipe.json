@@ -1,0 +1,82 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.resume-competency.v1",
+  "name": "Resume and job competency assistance",
+  "version": 1,
+  "area": "business-and-knowledge",
+  "summary": "Score a candidate's stated evidence against each job competency.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The competency definition followed by the candidate's relevant resume text."
+  },
+  "questions": {
+    "competency": {
+      "type": "score",
+      "instructions": "How strongly does the supplied evidence show this competency?",
+      "criteria": "Score only what the state shows.",
+      "options": {
+        "min": 0.0,
+        "max": 1.0
+      }
+    }
+  },
+  "compose": {
+    "gte": [
+      {
+        "value": "competency"
+      },
+      0.5
+    ]
+  },
+  "outputs": {
+    "shape": "met/unmet per competency; the caller assembles the competency matrix"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 512,
+    "bound": "one score per competency-evidence pair"
+  },
+  "uncertainty": {
+    "abstain": "absent evidence scores low - the recipe reads what is written and never infers experience",
+    "refusal": "a refused pair reports refused and the competency stays unassessed"
+  },
+  "limits": [
+    "Assists screening, never decides hiring - a human reviews every matrix.",
+    "Scores stated evidence, not the person; resume quality bounds it."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/resume-competency.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "met",
+      "answers": {
+        "competency": {
+          "answer": 0.8,
+          "probability": 0.85
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "unmet",
+      "answers": {
+        "competency": {
+          "answer": 0.15,
+          "probability": 0.8
+        }
+      },
+      "expected": false
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

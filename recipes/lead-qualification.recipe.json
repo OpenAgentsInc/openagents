@@ -1,0 +1,82 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.lead-qualification.v1",
+  "name": "Lead qualification",
+  "version": 1,
+  "area": "business-and-knowledge",
+  "summary": "Score a lead's fit against the stated ideal-customer profile.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The ICP description followed by the lead's firmographic and signal notes."
+  },
+  "questions": {
+    "fit": {
+      "type": "score",
+      "instructions": "How well does this lead match the ICP the state describes?",
+      "criteria": "Score only what the state shows.",
+      "options": {
+        "min": 0.0,
+        "max": 1.0
+      }
+    }
+  },
+  "compose": {
+    "gte": [
+      {
+        "value": "fit"
+      },
+      0.6
+    ]
+  },
+  "outputs": {
+    "shape": "qualified/unqualified with the caller reading the score for ordering"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 512,
+    "bound": "one score per lead"
+  },
+  "uncertainty": {
+    "abstain": "thin notes score low - missing data is a fit question for a human, not a benefit of the doubt",
+    "refusal": "a refused lead reports refused and stays in the review list"
+  },
+  "limits": [
+    "Scores fit to the stated ICP only - it does not predict conversion.",
+    "The 0.6 floor is a development-set choice; tune against the caller's pipeline."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/lead-qualification.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "fits",
+      "answers": {
+        "fit": {
+          "answer": 0.85,
+          "probability": 0.9
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "poor-fit",
+      "answers": {
+        "fit": {
+          "answer": 0.2,
+          "probability": 0.85
+        }
+      },
+      "expected": false
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

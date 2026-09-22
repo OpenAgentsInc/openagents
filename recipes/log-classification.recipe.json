@@ -1,0 +1,78 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.log-classification.v1",
+  "name": "Log classification",
+  "version": 1,
+  "area": "operations",
+  "summary": "Assign each log line a severity class for routing and rollup.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The service name and time window followed by one log line."
+  },
+  "questions": {
+    "severity": {
+      "type": "choice",
+      "instructions": "The severity this line represents for on-call purposes.",
+      "options": {
+        "noise": "Normal operation; aggregate only.",
+        "notice": "Unusual but self-recovering.",
+        "warning": "Degraded behavior a human should see in a rollup.",
+        "page": "User-visible failure; page the on-call."
+      }
+    }
+  },
+  "compose": {
+    "answer": "severity"
+  },
+  "outputs": {
+    "shape": "one severity label per line"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 1024,
+    "bound": "one choice per line; batch through classify inputs"
+  },
+  "uncertainty": {
+    "abstain": "an unreadable line is 'notice' - a parse failure is not an outage",
+    "refusal": "a refused line reports refused and counts toward the rollup as unclassified"
+  },
+  "limits": [
+    "Severity here means paging policy, not log-level - an ERROR line can be 'noise' if it is expected churn.",
+    "Context is the supplied window only; the recipe does not read neighboring lines."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/log-classification.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "routine",
+      "answers": {
+        "severity": {
+          "answer": "noise",
+          "probability": 0.9
+        }
+      },
+      "expected": "noise"
+    },
+    {
+      "name": "outage",
+      "answers": {
+        "severity": {
+          "answer": "page",
+          "probability": 0.95
+        }
+      },
+      "expected": "page"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.listing-abuse.v1",
+  "name": "Listing abuse screening",
+  "version": 1,
+  "area": "support-and-trust",
+  "summary": "Flag a marketplace listing that breaks any stated listing rule.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The listing rules followed by the listing's title, price, and description."
+  },
+  "questions": {
+    "prohibited_item": {
+      "type": "noul",
+      "instructions": "The listing offers an item the rules prohibit.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    },
+    "price_abuse": {
+      "type": "noul",
+      "instructions": "The listing's price is a stated-rule violation - fee evasion, bait pricing, or a scam pattern the rules name.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    },
+    "misrepresentation": {
+      "type": "noul",
+      "instructions": "The listing's claims misrepresent the item under the rules.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    }
+  },
+  "compose": {
+    "any": [
+      {
+        "answer": "prohibited_item"
+      },
+      {
+        "answer": "price_abuse"
+      },
+      {
+        "answer": "misrepresentation"
+      }
+    ]
+  },
+  "outputs": {
+    "shape": "flag/clear per listing; the caller reads the three answers for the reason"
+  },
+  "cost": {
+    "questions_per_item": 3,
+    "max_items_per_batch": 256,
+    "bound": "one noul per stated rule category"
+  },
+  "uncertainty": {
+    "abstain": "a listing that fits no rule clearly answers clear; novel abuse is a rules-update problem, not a model stretch",
+    "refusal": "a refused listing reports refused and goes to manual review"
+  },
+  "limits": [
+    "Each rule is a separate judgment so the flag carries a reason - one merged 'abusive?' would not.",
+    "Detection is a screening prior, not an enforcement action; the caller's reviewer decides."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/listing-abuse.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "prohibited",
+      "answers": {
+        "prohibited_item": {
+          "answer": true,
+          "probability": 0.9
+        },
+        "price_abuse": {
+          "answer": false,
+          "probability": 0.8
+        },
+        "misrepresentation": {
+          "answer": false,
+          "probability": 0.7
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "clear",
+      "answers": {
+        "prohibited_item": {
+          "answer": false,
+          "probability": 0.9
+        },
+        "price_abuse": {
+          "answer": false,
+          "probability": 0.9
+        },
+        "misrepresentation": {
+          "answer": false,
+          "probability": 0.85
+        }
+      },
+      "expected": false
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

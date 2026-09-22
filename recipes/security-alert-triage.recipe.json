@@ -1,0 +1,97 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.security-alert-triage.v1",
+  "name": "Security alert triage",
+  "version": 1,
+  "area": "operations",
+  "summary": "Decide whether an alert is actionable and which playbook queue it enters.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The alert's rule name, severity, and supporting events."
+  },
+  "questions": {
+    "actionable": {
+      "type": "noul",
+      "instructions": "The alert's supporting events warrant a human acting on it - not a known-benign pattern.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    },
+    "queue": {
+      "type": "choice",
+      "instructions": "The playbook queue this alert enters.",
+      "options": "supplied",
+      "criteria": {
+        "ir": "No playbook fits; the incident-response queue takes it."
+      }
+    }
+  },
+  "compose": {
+    "if": {
+      "cond": {
+        "answer": "actionable"
+      },
+      "then": {
+        "answer": "queue"
+      },
+      "else": "suppress"
+    }
+  },
+  "outputs": {
+    "shape": "a playbook queue, or 'suppress'"
+  },
+  "cost": {
+    "questions_per_item": 2,
+    "max_items_per_batch": 256,
+    "bound": "two judgments per alert"
+  },
+  "uncertainty": {
+    "abstain": "an alert whose events the state cannot show answers actionable - a triage model must not suppress what it cannot see",
+    "refusal": "a refused alert reports refused and enters the incident queue"
+  },
+  "limits": [
+    "Suppression is a queue decision, not a verdict - suppressed alerts remain logged for review.",
+    "The recipe sees the alert record only; enrichment is the caller's job."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/security-alert-triage.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "actionable",
+      "answers": {
+        "actionable": {
+          "answer": true,
+          "probability": 0.9
+        },
+        "queue": {
+          "answer": "credential-abuse",
+          "probability": 0.8
+        }
+      },
+      "expected": "credential-abuse"
+    },
+    {
+      "name": "benign-pattern",
+      "answers": {
+        "actionable": {
+          "answer": false,
+          "probability": 0.85
+        },
+        "queue": {
+          "answer": "ir",
+          "probability": 0.5
+        }
+      },
+      "expected": "suppress"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

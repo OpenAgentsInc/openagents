@@ -1,0 +1,82 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.retrieval-rerank.v1",
+  "name": "Retrieval reranking",
+  "version": 1,
+  "area": "filtering-and-retrieval",
+  "summary": "Score each retrieved candidate's relevance to the query and keep those above a floor.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The query followed by one candidate's title and snippet."
+  },
+  "questions": {
+    "relevance": {
+      "type": "score",
+      "instructions": "How relevant is this candidate to the query the state opens with?",
+      "criteria": "Score only what the state shows.",
+      "options": {
+        "min": 0.0,
+        "max": 1.0
+      }
+    }
+  },
+  "compose": {
+    "gte": [
+      {
+        "value": "relevance"
+      },
+      0.5
+    ]
+  },
+  "outputs": {
+    "shape": "keep/discard per candidate; the caller sorts kept candidates by the reported score"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 256,
+    "bound": "one score per candidate; rerank depth is a caller budget, not a model property"
+  },
+  "uncertainty": {
+    "abstain": "scores below the floor discard - they are filtered, not ranked low",
+    "refusal": "a refused candidate keeps its retrieval rank, unmodified, rather than being dropped"
+  },
+  "limits": [
+    "Reranks only what the retriever returned - it cannot recall what retrieval missed.",
+    "The 0.5 floor is a development-set choice for this recipe; tune it per corpus."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/retrieval-rerank.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "relevant",
+      "answers": {
+        "relevance": {
+          "answer": 0.9,
+          "probability": 0.9
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "off-topic",
+      "answers": {
+        "relevance": {
+          "answer": 0.1,
+          "probability": 0.85
+        }
+      },
+      "expected": false
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

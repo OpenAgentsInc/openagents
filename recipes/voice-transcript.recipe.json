@@ -1,0 +1,97 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.voice-transcript.v1",
+  "name": "Voice-command transcript classification",
+  "version": 1,
+  "area": "personal-workflows",
+  "summary": "Classify a transcribed command's intent for a downstream dispatcher.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The transcript text as the recognizer produced it."
+  },
+  "questions": {
+    "intent": {
+      "type": "choice",
+      "instructions": "The command's intent.",
+      "options": "supplied",
+      "criteria": {
+        "unknown": "No listed intent fits; ignore the command."
+      }
+    },
+    "confident": {
+      "type": "noul",
+      "instructions": "The transcript is clean enough to act on - no garbled or truncated phrasing.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    }
+  },
+  "compose": {
+    "if": {
+      "cond": {
+        "answer": "confident"
+      },
+      "then": {
+        "answer": "intent"
+      },
+      "else": "ignore"
+    }
+  },
+  "outputs": {
+    "shape": "an intent name or 'ignore'"
+  },
+  "cost": {
+    "questions_per_item": 2,
+    "max_items_per_batch": 256,
+    "bound": "two judgments per transcript"
+  },
+  "uncertainty": {
+    "abstain": "a garbled transcript is ignored - acting on misheard words is worse than missing a command",
+    "refusal": "a refused transcript reports refused and is ignored"
+  },
+  "limits": [
+    "Classifies transcripts; it is not speech recognition and cannot judge audio the recognizer dropped.",
+    "Dispatch is the caller's - an intent name is a label, not an executed action."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/voice-transcript.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "clean-command",
+      "answers": {
+        "intent": {
+          "answer": "lights_off",
+          "probability": 0.9
+        },
+        "confident": {
+          "answer": true,
+          "probability": 0.9
+        }
+      },
+      "expected": "lights_off"
+    },
+    {
+      "name": "garbled",
+      "answers": {
+        "intent": {
+          "answer": "unknown",
+          "probability": 0.6
+        },
+        "confident": {
+          "answer": false,
+          "probability": 0.85
+        }
+      },
+      "expected": "ignore"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

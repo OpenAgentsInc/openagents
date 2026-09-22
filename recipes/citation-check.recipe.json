@@ -1,0 +1,73 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.citation-check.v1",
+  "name": "Citation checks",
+  "version": 1,
+  "area": "filtering-and-retrieval",
+  "summary": "Ask whether a cited source actually supports the claim it is attached to.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The claim, then the cited passage it is claimed to support."
+  },
+  "questions": {
+    "supported": {
+      "type": "noul",
+      "instructions": "The passage supports the claim as stated - not merely the same topic.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    }
+  },
+  "compose": {
+    "answer": "supported"
+  },
+  "outputs": {
+    "shape": "supported/unsupported per claim-citation pair"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 256,
+    "bound": "one judgment per claim-source pair; multi-source claims are one pair each"
+  },
+  "uncertainty": {
+    "abstain": "an ambiguous passage answers unsupported - the claim needs a better citation, not a pass",
+    "refusal": "a refused pair reports refused and stays flagged for human review"
+  },
+  "limits": [
+    "Checks support, not truth - a true claim with a wrong citation is unsupported.",
+    "The passage is supplied by the caller; the recipe does not fetch the source."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/citation-check.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "supported",
+      "answers": {
+        "supported": {
+          "answer": true,
+          "probability": 0.91
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "topic-only",
+      "answers": {
+        "supported": {
+          "answer": false,
+          "probability": 0.8
+        }
+      },
+      "expected": false
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

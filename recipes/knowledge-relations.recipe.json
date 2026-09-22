@@ -1,0 +1,97 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.knowledge-relations.v1",
+  "name": "Knowledge relations",
+  "version": 1,
+  "area": "business-and-knowledge",
+  "summary": "Judge whether two stated facts or entities hold a claimed relation.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The two items and the relation claimed between them."
+  },
+  "questions": {
+    "holds": {
+      "type": "noul",
+      "instructions": "The claimed relation between the two items holds as stated.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    },
+    "kind": {
+      "type": "choice",
+      "instructions": "The relation's kind.",
+      "options": "supplied",
+      "criteria": {
+        "unrelated": "The items hold no listed relation."
+      }
+    }
+  },
+  "compose": {
+    "if": {
+      "cond": {
+        "answer": "holds"
+      },
+      "then": {
+        "answer": "kind"
+      },
+      "else": "unrelated"
+    }
+  },
+  "outputs": {
+    "shape": "a relation kind or 'unrelated'"
+  },
+  "cost": {
+    "questions_per_item": 2,
+    "max_items_per_batch": 256,
+    "bound": "two judgments per candidate pair"
+  },
+  "uncertainty": {
+    "abstain": "an unverifiable claim answers not-held - the graph records only supported edges",
+    "refusal": "a refused pair reports refused and the edge is queued for review"
+  },
+  "limits": [
+    "Judges the stated claim, not world truth - the caller's sources carry the evidence.",
+    "Edge suggestion only; graph writes belong to the caller's curation step."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/knowledge-relations.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "related",
+      "answers": {
+        "holds": {
+          "answer": true,
+          "probability": 0.88
+        },
+        "kind": {
+          "answer": "depends_on",
+          "probability": 0.75
+        }
+      },
+      "expected": "depends_on"
+    },
+    {
+      "name": "unrelated",
+      "answers": {
+        "holds": {
+          "answer": false,
+          "probability": 0.85
+        },
+        "kind": {
+          "answer": "unrelated",
+          "probability": 0.9
+        }
+      },
+      "expected": "unrelated"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

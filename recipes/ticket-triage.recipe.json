@@ -1,0 +1,97 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.ticket-triage.v1",
+  "name": "Support ticket triage",
+  "version": 1,
+  "area": "support-and-trust",
+  "summary": "Route a support ticket to a queue and escalate urgent ones.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The ticket's subject and body, with the queue list supplied as options."
+  },
+  "questions": {
+    "queue": {
+      "type": "choice",
+      "instructions": "The queue this ticket belongs in.",
+      "options": "supplied",
+      "criteria": {
+        "triage": "No queue is a clear fit; a human triager decides."
+      }
+    },
+    "urgent": {
+      "type": "noul",
+      "instructions": "The ticket reports data loss, a security event, or a paying customer fully down.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    }
+  },
+  "compose": {
+    "if": {
+      "cond": {
+        "answer": "urgent"
+      },
+      "then": "escalate",
+      "else": {
+        "answer": "queue"
+      }
+    }
+  },
+  "outputs": {
+    "shape": "a queue name, or 'escalate' for urgent tickets"
+  },
+  "cost": {
+    "questions_per_item": 2,
+    "max_items_per_batch": 512,
+    "bound": "two judgments per ticket"
+  },
+  "uncertainty": {
+    "abstain": "an unclear queue lands on the 'triage' residual, never a guessed queue",
+    "refusal": "a refused ticket reports refused and stays in the human queue"
+  },
+  "limits": [
+    "Urgency is defined by the stated criteria, not sentiment - an angry feature request is not urgent.",
+    "Routing is a suggestion to the caller's dispatcher; the recipe holds no queue write access."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/ticket-triage.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "urgent",
+      "answers": {
+        "queue": {
+          "answer": "billing",
+          "probability": 0.7
+        },
+        "urgent": {
+          "answer": true,
+          "probability": 0.95
+        }
+      },
+      "expected": "escalate"
+    },
+    {
+      "name": "routine",
+      "answers": {
+        "queue": {
+          "answer": "billing",
+          "probability": 0.8
+        },
+        "urgent": {
+          "answer": false,
+          "probability": 0.9
+        }
+      },
+      "expected": "billing"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

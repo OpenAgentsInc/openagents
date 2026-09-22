@@ -1,0 +1,97 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.document-intake.v1",
+  "name": "Document intake",
+  "version": 1,
+  "area": "personal-workflows",
+  "summary": "Classify an incoming document by type and flag whether it needs action.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The document's extracted text or the caller's summary of it."
+  },
+  "questions": {
+    "kind": {
+      "type": "choice",
+      "instructions": "The document's type.",
+      "options": "supplied",
+      "criteria": {
+        "other": "No listed type fits."
+      }
+    },
+    "action_required": {
+      "type": "noul",
+      "instructions": "The document asks something of the owner - a payment, signature, deadline, or reply.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    }
+  },
+  "compose": {
+    "if": {
+      "cond": {
+        "answer": "action_required"
+      },
+      "then": "action",
+      "else": {
+        "answer": "kind"
+      }
+    }
+  },
+  "outputs": {
+    "shape": "'action' for actionable documents, else the type label"
+  },
+  "cost": {
+    "questions_per_item": 2,
+    "max_items_per_batch": 256,
+    "bound": "two judgments per document"
+  },
+  "uncertainty": {
+    "abstain": "an unreadable document answers 'other' plus action - an unreadable bill still needs a human",
+    "refusal": "a refused document reports refused and lands in the manual pile"
+  },
+  "limits": [
+    "Classifies supplied text; OCR and extraction are upstream.",
+    "'action' means a human looks, not that the system acts."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/document-intake.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "bill",
+      "answers": {
+        "kind": {
+          "answer": "invoice",
+          "probability": 0.85
+        },
+        "action_required": {
+          "answer": true,
+          "probability": 0.9
+        }
+      },
+      "expected": "action"
+    },
+    {
+      "name": "newsletter",
+      "answers": {
+        "kind": {
+          "answer": "newsletter",
+          "probability": 0.95
+        },
+        "action_required": {
+          "answer": false,
+          "probability": 0.9
+        }
+      },
+      "expected": "newsletter"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.model-routing.v1",
+  "name": "Model and skill routing",
+  "version": 1,
+  "area": "agent-composition",
+  "summary": "Pick which declared lane or skill a task should run on.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The task description followed by the lanes or skills as named options."
+  },
+  "questions": {
+    "route": {
+      "type": "choice",
+      "instructions": "The lane or skill best suited to this task.",
+      "options": "supplied",
+      "criteria": {
+        "none": "No declared option fits; do not route."
+      }
+    }
+  },
+  "compose": {
+    "answer": "route"
+  },
+  "outputs": {
+    "shape": "one route name or 'none'"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 256,
+    "bound": "one choice per task"
+  },
+  "uncertainty": {
+    "abstain": "the 'none' residual is the abstain - a task no lane fits is not forced onto one",
+    "refusal": "a refused task reports refused and takes the caller's default lane"
+  },
+  "limits": [
+    "Selects among supplied candidates only - it cannot invent a lane that was not declared.",
+    "Routing is admission, not execution - the caller's permit still decides what runs."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/model-routing.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "matched",
+      "answers": {
+        "route": {
+          "answer": "kev-fast",
+          "probability": 0.85
+        }
+      },
+      "expected": "kev-fast"
+    },
+    {
+      "name": "unmatched",
+      "answers": {
+        "route": {
+          "answer": "none",
+          "probability": 0.8
+        }
+      },
+      "expected": "none"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

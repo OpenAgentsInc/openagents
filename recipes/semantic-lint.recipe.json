@@ -1,0 +1,73 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.semantic-lint.v1",
+  "name": "Semantic linting",
+  "version": 1,
+  "area": "operations",
+  "summary": "Flag prose that violates a stated style or policy rule, as a lint finding.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The lint rule followed by the text under review."
+  },
+  "questions": {
+    "violates": {
+      "type": "noul",
+      "instructions": "The text violates the lint rule the state opens with.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    }
+  },
+  "compose": {
+    "answer": "violates"
+  },
+  "outputs": {
+    "shape": "finding/clean per rule-text pair"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 512,
+    "bound": "one judgment per rule per text; N rules is N judgments"
+  },
+  "uncertainty": {
+    "abstain": "text the rule does not reach answers clean - lint rules do not generalize beyond their wording",
+    "refusal": "a refused pair reports refused and is listed as an unrun check"
+  },
+  "limits": [
+    "Findings are advisory like any lint - the writer or CI policy decides enforcement.",
+    "One rule per judgment: a 'write well' mega-rule has no measurable meaning."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/semantic-lint.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "finding",
+      "answers": {
+        "violates": {
+          "answer": true,
+          "probability": 0.88
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "clean",
+      "answers": {
+        "violates": {
+          "answer": false,
+          "probability": 0.9
+        }
+      },
+      "expected": false
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

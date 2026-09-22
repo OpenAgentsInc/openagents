@@ -1,0 +1,76 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.file-sorting.v1",
+  "name": "File sorting",
+  "version": 1,
+  "area": "personal-workflows",
+  "summary": "Suggest a destination folder for a file from the caller's folder set - dry-run first.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The file's name, type, and a content summary, with the folder list as options."
+  },
+  "questions": {
+    "destination": {
+      "type": "choice",
+      "instructions": "The folder this file belongs in.",
+      "options": "supplied",
+      "criteria": {
+        "inbox": "No folder fits; it stays in inbox for a human."
+      }
+    }
+  },
+  "compose": {
+    "answer": "destination"
+  },
+  "outputs": {
+    "shape": "a folder name per file; the caller's mover runs dry-run before any move"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 256,
+    "bound": "one choice per file"
+  },
+  "uncertainty": {
+    "abstain": "the 'inbox' residual is the abstain - an unsorted file waits for a human rather than being forced somewhere",
+    "refusal": "a refused file reports refused and stays put"
+  },
+  "limits": [
+    "Suggestions only - the caller's mover must support dry-run and undo before any move is real.",
+    "A file's destination is organizational preference; wrong guesses cost a move, not data."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/file-sorting.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "sorted",
+      "answers": {
+        "destination": {
+          "answer": "receipts",
+          "probability": 0.8
+        }
+      },
+      "expected": "receipts"
+    },
+    {
+      "name": "ambiguous",
+      "answers": {
+        "destination": {
+          "answer": "inbox",
+          "probability": 0.7
+        }
+      },
+      "expected": "inbox"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

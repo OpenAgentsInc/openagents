@@ -1,0 +1,97 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.computer-action.v1",
+  "name": "Bounded computer-action selection",
+  "version": 1,
+  "area": "agent-composition",
+  "summary": "Select the next action for a UI-driving agent from a declared action set.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The goal, the current screen summary, and the action candidates with their arguments."
+  },
+  "questions": {
+    "action": {
+      "type": "choice",
+      "instructions": "The action candidate that best advances the stated goal from this screen.",
+      "options": "supplied",
+      "criteria": {
+        "stop": "No candidate advances the goal; stop and report."
+      }
+    },
+    "safe": {
+      "type": "noul",
+      "instructions": "The selected action is reversible or explicitly authorized - no payment, deletion, or external send without a recorded approval.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    }
+  },
+  "compose": {
+    "if": {
+      "cond": {
+        "answer": "safe"
+      },
+      "then": {
+        "answer": "action"
+      },
+      "else": "hold"
+    }
+  },
+  "outputs": {
+    "shape": "an action name, or 'hold' when the selection fails the safety check"
+  },
+  "cost": {
+    "questions_per_item": 2,
+    "max_items_per_batch": 64,
+    "bound": "two judgments per step; step count is the caller's loop bound"
+  },
+  "uncertainty": {
+    "abstain": "an unsafe selection answers hold - the model's choice never overrides the safety question",
+    "refusal": "a refused step reports refused; the agent halts rather than guessing"
+  },
+  "limits": [
+    "The model picks; it never executes - the host's permit layer decides what may run.",
+    "Consequential actions need the caller's recorded approval; this recipe's safety question is a filter, not authorization."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/computer-action.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "safe-click",
+      "answers": {
+        "action": {
+          "answer": "click_submit",
+          "probability": 0.8
+        },
+        "safe": {
+          "answer": true,
+          "probability": 0.9
+        }
+      },
+      "expected": "click_submit"
+    },
+    {
+      "name": "unsafe",
+      "answers": {
+        "action": {
+          "answer": "delete_all",
+          "probability": 0.85
+        },
+        "safe": {
+          "answer": false,
+          "probability": 0.95
+        }
+      },
+      "expected": "hold"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

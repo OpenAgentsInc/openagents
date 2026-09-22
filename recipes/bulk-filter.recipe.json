@@ -1,0 +1,73 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.bulk-filter.v1",
+  "name": "Bulk filtering",
+  "version": 1,
+  "area": "filtering-and-retrieval",
+  "summary": "Keep or discard each item in a batch under a stated rule.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The caller's filter rule followed by one item's text."
+  },
+  "questions": {
+    "keep": {
+      "type": "noul",
+      "instructions": "The item satisfies the filter rule the state opens with.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    }
+  },
+  "compose": {
+    "answer": "keep"
+  },
+  "outputs": {
+    "shape": "one boolean per item; the caller keeps items answered true"
+  },
+  "cost": {
+    "questions_per_item": 1,
+    "max_items_per_batch": 1024,
+    "bound": "bounded by the door's classify input limit; loop items as classify inputs, not one giant state"
+  },
+  "uncertainty": {
+    "abstain": "an item the rule cannot judge answers discard; the caller treats it as filtered out, not judged irrelevant",
+    "refusal": "a refused item reports refused; the caller re-queues it rather than discarding silently"
+  },
+  "limits": [
+    "The rule is a caller-supplied premise, not a learned classifier - precision follows the rule's wording.",
+    "Per-item noul gives no ranking; use retrieval-rerank when order matters."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/bulk-filter.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "kept",
+      "answers": {
+        "keep": {
+          "answer": true,
+          "probability": 0.9
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "dropped",
+      "answers": {
+        "keep": {
+          "answer": false,
+          "probability": 0.85
+        }
+      },
+      "expected": false
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

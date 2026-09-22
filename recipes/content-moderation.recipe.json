@@ -1,0 +1,97 @@
+{
+  "v": "openagents.recipe.v1",
+  "id": "openagents.recipe.content-moderation.v1",
+  "name": "Content moderation",
+  "version": 1,
+  "area": "support-and-trust",
+  "summary": "Classify a post against a stated policy and ask whether it violates it.",
+  "license": "CC0-1.0",
+  "source": {
+    "author": "OpenAgents",
+    "upstream": null
+  },
+  "input": {
+    "state": "The policy summary followed by the post's text."
+  },
+  "questions": {
+    "violation": {
+      "type": "noul",
+      "instructions": "The post violates the policy the state opens with.",
+      "criteria": "Answer yes only when the state supports it; otherwise no."
+    },
+    "category": {
+      "type": "choice",
+      "instructions": "The violated policy category.",
+      "options": "supplied",
+      "criteria": {
+        "none": "No violation - the category question is moot."
+      }
+    }
+  },
+  "compose": {
+    "if": {
+      "cond": {
+        "answer": "violation"
+      },
+      "then": {
+        "answer": "category"
+      },
+      "else": "clean"
+    }
+  },
+  "outputs": {
+    "shape": "'clean' or the violated category"
+  },
+  "cost": {
+    "questions_per_item": 2,
+    "max_items_per_batch": 512,
+    "bound": "two judgments per post"
+  },
+  "uncertainty": {
+    "abstain": "borderline posts answer violation:false at low probability - the caller flags probability < 0.7 for human review",
+    "refusal": "a refused post reports refused; moderation defaults to human review, never auto-clean"
+  },
+  "limits": [
+    "A policy judgment, not a legal one - the caller's policy text is the whole standard.",
+    "No image or video input - text posts only."
+  ],
+  "examples": {
+    "cli": "oak ask --questions-file recipes/content-moderation.recipe.json --questions-only",
+    "api": "POST /v1/systemone per item, or /v1/classify with items as inputs",
+    "mcp": "oak-mcp ask tool with the same envelope"
+  },
+  "fixtures": [
+    {
+      "name": "violating",
+      "answers": {
+        "violation": {
+          "answer": true,
+          "probability": 0.93
+        },
+        "category": {
+          "answer": "spam",
+          "probability": 0.8
+        }
+      },
+      "expected": "spam"
+    },
+    {
+      "name": "clean",
+      "answers": {
+        "violation": {
+          "answer": false,
+          "probability": 0.9
+        },
+        "category": {
+          "answer": "none",
+          "probability": 0.9
+        }
+      },
+      "expected": "clean"
+    }
+  ],
+  "evidence": {
+    "label": "unmeasured",
+    "note": "Composition is verified over recorded answers by crates/gym/tests/recipes.rs; model-quality measurement runs through a gym suite and is pinned here only when it exists."
+  }
+}

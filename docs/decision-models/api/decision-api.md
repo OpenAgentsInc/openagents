@@ -687,6 +687,19 @@ cases, refusals, and coverage; choose thresholds on development data.
 Do not add GitHub workflows for recipes or semantic linting. Owner:
 [#9496](https://github.com/OpenAgentsInc/openagents/issues/9496).
 
+Landed in `recipes/` as nineteen `openagents.recipe.v1` documents across
+all six areas, indexed by [`recipes/README.md`](../../../recipes/README.md).
+Each declares its typed questions (`noul`, `choice`, `score`), a
+deterministic `compose` expression over recorded answers (`answer`,
+`all`/`any`/`not`, `gte` score floors, `if` branches including
+abstention), bounded `questions_per_item` and batch limits, `abstain` and
+`refusal` behavior, honest `limits`, and fixtures. The verifier at
+`crates/gym/tests/recipes.rs` checks every document's shape, requires
+composition to reference only declared questions, and evaluates each
+fixture's recorded answers to its expected output. All shipped recipes
+carry `evidence: unmeasured`; a `measured` label must pin a report that
+exists. [The recipe contract](../service/recipes.md) is the full shape.
+
 ## Agent feedback
 
 `POST /v1/feedback` accepts a structured `openagents.feedback.v1` report:
