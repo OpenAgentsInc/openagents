@@ -24,6 +24,8 @@ def test_known_arms(agents):
         "coder-one-no-jev",
         "coder-one-delegate-opus",
         "coder-one-delegate-auto",
+        "coder-one-delegate-luna",
+        "coder-one-delegate-luna-auto",
         "coder-one-deep",
         "oracle",
         "nop",
@@ -127,6 +129,38 @@ def test_delegate_oauth_mode_forwards_the_token_by_name_only(agents):
 def test_delegate_modes_need_the_door_keys_too(agents):
     env = {"CLAUDE_CODE_OAUTH_TOKEN": "tok"}
     assert configured_auth_modes(agents["coder-one-delegate-auto"], env=env) == []
+
+
+def test_luna_arms_delegate_to_codex(agents):
+    for arm, mode in (
+        ("coder-one-delegate-luna", "always"),
+        ("coder-one-delegate-luna-auto", "auto"),
+    ):
+        profile = agents[arm]
+        assert profile.harbor_import_path == "tbench.coder_one:CoderOneDelegate"
+        assert profile.kwargs["delegate"] == mode
+        assert profile.kwargs["delegate_agent"] == "codex"
+        assert profile.kwargs["delegate_model"] == "gpt-6-luna"
+        assert profile.kwargs["codex_version"] == "0.155.1"
+        assert list(profile.auth_modes) == ["auth-json"]
+
+
+def test_luna_auth_json_keeps_the_selector_host_side(agents):
+    env = {
+        "OPENAGENTS_API_KEY": "oak_secret",
+        "TYPESAFE_API_KEY": "ts_secret",
+        "CODEX_FORCE_AUTH_JSON": "1",
+    }
+    profile = agents["coder-one-delegate-luna"]
+    assert [m.name for m in configured_auth_modes(profile, env=env)] == ["auth-json"]
+    out = agent_config_env(profile, auth_mode="auth-json", env=env)
+    assert out["CODEX_AUTH_JSON_PATH"].endswith(".codex/auth.json")
+    assert "~" not in out["CODEX_AUTH_JSON_PATH"]
+    assert "CODEX_FORCE_AUTH_JSON" not in out
+    assert out["OPENAGENTS_API_KEY"] == "${OPENAGENTS_API_KEY}"
+    assert "secret" not in str(out)
+    # Without the door keys the mode is not configured.
+    assert configured_auth_modes(profile, env={"CODEX_FORCE_AUTH_JSON": "1"}) == []
 
 
 def test_unset_vars_are_not_forwarded(agents):

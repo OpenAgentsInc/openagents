@@ -7,7 +7,7 @@ Jev-prepared briefing finishes with lower total cost and time than the same
 model traversing the repository from scratch, at the same or better reward.
 A result that shows no win is still a result, and you record it as one.
 
-You run four arms on the same tasks and pins:
+You run these arms on the same tasks and pins:
 
 | Arm | What it runs |
 | --- | --- |
@@ -15,6 +15,9 @@ You run four arms on the same tasks and pins:
 | `coder-one` | Coder One alone: Gemini 3.8 Flash (`free` lane) plus Jev. |
 | `coder-one-delegate-opus` | Coder One with `CODER_ONE_DELEGATE=always`: up to 8 read-only explore steps, then a code-built briefing to Claude Code on `claude-opus-5-5`. |
 | `coder-one-delegate-auto` | Coder One with `CODER_ONE_DELEGATE=auto`: it works alone and delegates only when it stalls. |
+| `codex-gpt-6-luna` | Codex CLI 0.155.1 on `gpt-6-luna`, directly. The Luna baseline. |
+| `coder-one-delegate-luna` | Coder One with `CODER_ONE_DELEGATE=always` and `CODER_ONE_DELEGATE_AGENT=codex`: the same exploration and briefing, handed to Codex CLI 0.155.1 on `gpt-6-luna`. |
+| `coder-one-delegate-luna-auto` | The same Codex executor under `CODER_ONE_DELEGATE=auto`. |
 
 Read [the operating notes](runbook.md) first: they cover this host, the
 credentials, the free lane's rate limit, and job naming.
@@ -40,11 +43,20 @@ itself is described in [the harness runbook](../coder/terminal-bench.md).
    Jev-selected output spans, the commands run with exit codes, and the last
    output. The cap is 12,000 characters (`CODER_ONE_BRIEFING_CAP`). Items
    that don't fit are left out whole and listed in the record.
-4. **Delegate.** Coder One runs `claude -p --output-format stream-json
-   --verbose --model claude-opus-5-5 --permission-mode bypassPermissions`
-   in the task's working directory through `supervise`, with the briefing
-   on standard input and a wall deadline (`CODER_ONE_DELEGATE_TIMEOUT`,
-   600 seconds in an episode).
+4. **Delegate.** Coder One runs the delegate CLI in the task's working
+   directory through `supervise`, with the briefing on standard input and a
+   wall deadline (`CODER_ONE_DELEGATE_TIMEOUT`, 600 seconds in an episode).
+   `CODER_ONE_DELEGATE_AGENT` (`--delegate-agent` on the command line)
+   picks the CLI:
+   - `claude-code`, the default: `claude -p --output-format stream-json
+     --verbose --model claude-opus-5-5 --permission-mode
+     bypassPermissions`.
+   - `codex`: `codex exec --json --skip-git-repo-check -m gpt-6-luna
+     --dangerously-bypass-approvals-and-sandbox -`. The task container is
+     the boundary, so Codex runs without its own sandbox or approvals.
+
+   `CODER_ONE_DELEGATE_MODEL` overrides the model; its default follows the
+   agent.
 5. **Close.** Jev answers one more request: whether the task and each
    requirement now look satisfied. The episode then ends.
 
@@ -61,8 +73,12 @@ Delegation is a host decision. The generator never sees a `delegate` tool.
   nix shell nixpkgs#uv -c uv run tbench tasks checkout
   ```
 
-- A Claude Code login on the host that can serve `claude-opus-5-5`. To
-  refresh a short-lived token before you export it, run `claude -p ok`.
+- For the Opus arms, a Claude Code login on the host that can serve
+  `claude-opus-5-5`. To refresh a short-lived token before you export it,
+  run `claude -p ok`.
+- For the Luna arms, a Codex CLI sign-in on the host with a ChatGPT account,
+  so `~/.codex/auth.json` exists. To confirm the sign-in without starting
+  a task, run `codex login status`; it reports `Logged in using ChatGPT`.
 
 ## Build and pin the artifact
 
@@ -109,6 +125,19 @@ it. The harness forwards every credential by name, as a `${VAR}` template
 that Harbor resolves and redacts. Never paste a value into a command, a
 file, or an issue.
 
+For the Luna arms, set only the selector. The adapter reads
+`~/.codex/auth.json` on the host and copies it into the container, the way
+Harbor's own `codex` agent does; the selector itself stays on the host and
+is never forwarded:
+
+```sh
+export CODEX_FORCE_AUTH_JSON=1
+```
+
+To use another file, set `CODEX_AUTH_JSON_PATH` to its path instead. The
+file's contents never reach a log, the job config, or the episode bundle,
+and the adapter deletes the container's copy after the run.
+
 Check that each variable is set, without showing it:
 
 ```sh
@@ -134,10 +163,21 @@ for arm in coder-one-delegate-opus coder-one-delegate-auto; do
     --agent-kwarg artifact_path="$artifact_path" \
     --agent-kwarg artifact_sha256="$artifact_sha256"
 done
+for arm in coder-one-delegate-luna coder-one-delegate-luna-auto; do
+  nix shell nixpkgs#uv -c uv run tbench run --profile install-check \
+    --agent "$arm" --auth-mode auth-json \
+    --agent-kwarg artifact_path="$artifact_path" \
+    --agent-kwarg artifact_sha256="$artifact_sha256"
+done
 ```
 
-The trial log shows the doctor's output under
-`~/.openagents/terminal-bench/jobs/install-check--<arm>/`.
+For the Luna arms, the adapter installs Codex CLI 0.155.1 the way Harbor's
+`codex` agent does, links `node` and `codex` into `/usr/local/bin`, and
+places `auth.json` under `/tmp/codex-home`. The doctor then checks
+`codex --version` and that the auth file is present.
+
+The doctor's report is kept as `agent/episode-doctor.txt` in the trial
+directory under `~/.openagents/terminal-bench/jobs/install-check--<arm>/`.
 
 ## Run the arms
 
@@ -157,6 +197,20 @@ for task in fix-git build-cython-ext; do
     --auth-mode subscription-oauth --task "$task" "${pin[@]}"
   uvr tbench run --profile smoke --agent coder-one-delegate-auto \
     --auth-mode subscription-oauth --task "$task" "${pin[@]}"
+done
+```
+
+The Luna arms run the same way under `--auth-mode auth-json`, with
+`CODEX_FORCE_AUTH_JSON=1` set on the host:
+
+```sh
+for task in fix-git build-cython-ext; do
+  uvr tbench run --profile smoke --agent codex-gpt-6-luna \
+    --auth-mode auth-json --task "$task"
+  uvr tbench run --profile smoke --agent coder-one-delegate-luna \
+    --auth-mode auth-json --task "$task" "${pin[@]}"
+  uvr tbench run --profile smoke --agent coder-one-delegate-luna-auto \
+    --auth-mode auth-json --task "$task" "${pin[@]}"
 done
 ```
 
@@ -185,7 +239,8 @@ trial is a `<task>__<id>/` directory inside it.
 | Claude Code's own stream (`claude-code-opus`) | `agent/claude-code.txt`, stream-json; its last line is the `result` event |
 | Coder One's episode bundle | `agent/episode/`: `manifest.json`, `trajectory.atif.json`, and `evaluation/usage.json` |
 | The briefing sent | `agent/episode/artifacts/delegate-1.briefing.md` |
-| The delegate's own stream | `agent/episode/artifacts/delegate-1.stream.jsonl`. A stream over 8 MiB keeps its first and last 4 MiB, with an `openagents_truncated` marker line between them. |
+| The delegate's own stream | `agent/episode/artifacts/delegate-1.stream.jsonl`: Claude Code's stream-json, or Codex's `exec --json` events. A stream over 8 MiB keeps its first and last 4 MiB, with an `openagents_truncated` marker line between them. |
+| Codex's own stream (`codex-gpt-6-luna`) | `agent/codex.txt`, `exec --json` events; each `turn.completed` carries usage |
 | The harness's attempt record | `../tbench/attempts/<trial>.json` |
 
 In the trajectory, the delegation is the step whose tool call is named
@@ -232,11 +287,50 @@ tail -n 1 "$T/agent/claude-code.txt" | jq '.total_cost_usd'
 `result.json` `agent_result.cost_usd` should match it.
 
 **Cost source.** `claude-code-opus` on a subscription token is *CLI list
-price*. `coder-one` is *Door-reported + Jev list price*. The delegate arms
-are *Door-reported + Jev list price + CLI list price*: the delegate's part
-is `components.delegate.cost_provenance`, which is `cli_list_price` on a
-subscription token and `cli_reported` on an API key. Devin arms show `—`,
-because Devin doesn't report what a run would cost to buy.
+price*. `coder-one` is *Door-reported + Jev list price*. The Opus delegate
+arms are *Door-reported + Jev list price + CLI list price*: the delegate's
+part is `components.delegate.cost_provenance`, which is `cli_list_price` on
+a subscription token and `cli_reported` on an API key. The Luna delegate
+arms are *Door-reported + Jev list price + manual OpenAI list price*. Devin
+arms show `—`, because Devin doesn't report what a run would cost to buy.
+
+**Luna delegate cost.** Codex reports tokens but no cost, so Coder One
+prices the delegate itself and records `cost_provenance: "price_estimate"`
+with a note that the rates are manual. The rates are OpenAI's standard
+short-context list prices, in dollars per million tokens, as the operator
+supplied them on 2026-09-22:
+
+| Model | Input | Cached input | Output |
+| --- | --- | --- | --- |
+| `gpt-6-astra` | $10.00 | $1.00 | $50.00 |
+| `gpt-6-sol` | $2.00 | $0.20 | $10.00 |
+| `gpt-6-luna` | $0.10 | $0.01 | $0.50 |
+
+Codex's `input_tokens` includes the cached part, and its `output_tokens`
+includes reasoning. The formula is:
+
+```text
+cost = (input_tokens - cached_input_tokens) × input
+     + cached_input_tokens × cached input
+     + output_tokens × output
+```
+
+The usage record already splits the input, so you can check the figure:
+
+```sh
+jq '.components.delegate | (.input_tokens * 0.10 + .cache_read_input_tokens * 0.01 + .output_tokens * 0.50) / 1000000' "$U"
+```
+
+A model outside the table gets a `null` cost, never zero. For the
+`codex-gpt-6-luna` baseline, apply the same formula to the summed
+`turn.completed` usage in `agent/codex.txt`, so both Luna columns use one
+price source:
+
+```sh
+jq -s '[.[] | select(.type == "turn.completed") | .usage]
+  | {i: (map(.input_tokens) | add), c: (map(.cached_input_tokens) | add), o: (map(.output_tokens) | add)}
+  | ((.i - .c) * 0.10 + .c * 0.01 + .o * 0.50) / 1000000' "$T/agent/codex.txt"
+```
 
 **Jev cost.** Jev input tokens times $0.042 per million. Output tokens are
 free:
@@ -288,8 +382,13 @@ The delegate's `total_input_tokens` counts uncached input, cache reads, and
 cache writes. For `claude-code-opus`, use `result.json`
 `agent_result.n_input_tokens`, `n_cache_tokens`, and `n_output_tokens`.
 
+For a Codex delegate, `turns` counts Codex's completed items (commands, file
+changes, tool calls, searches, and messages), because Codex reports no
+per-call count; `api_calls` and `input_tokens_per_call` stay empty.
+
 **Opus turns and Opus input tokens.** These are the numbers the
-hypothesis turns on. For a delegate arm they are
+hypothesis turns on. For the Luna arms, read them as Luna turns and Luna
+input tokens, against `codex-gpt-6-luna` direct. For a delegate arm they are
 `components.delegate.turns`, `components.delegate.api_calls`, and
 `components.delegate.total_input_tokens`. For `claude-code-opus`, they are
 `num_turns` and the input fields of the last `result` event in

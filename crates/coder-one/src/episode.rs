@@ -18,12 +18,15 @@
 //! | `CODER_ONE_MAX_STEPS` | The step limit; 50 when unset. |
 //! | `CODER_ONE_COMMAND_TIMEOUT` | Seconds each command may run; 300 when unset. |
 //! | `CODER_ONE_DELEGATE` | `off`, `always`, or `auto`; `off` when unset. |
-//! | `CODER_ONE_DELEGATE_MODEL` | The delegate's model; `claude-opus-5-5` when unset. |
+//! | `CODER_ONE_DELEGATE_AGENT` | `claude-code` or `codex`; `claude-code` when unset. |
+//! | `CODER_ONE_DELEGATE_MODEL` | The delegate's model; `claude-opus-5-5` for Claude Code and `gpt-6-luna` for Codex when unset. |
 //! | `CODER_ONE_DELEGATE_TIMEOUT` | Seconds the delegate may run; 600 when unset. |
 //! | `CODER_ONE_EXPLORE_STEPS` | The explore phase's step bound; 8 when unset. |
 //! | `CODER_ONE_BRIEFING_CAP` | The briefing's length cap in characters; 12,000 when unset. |
 //! | `CODER_ONE_CLAUDE_BIN` | The `claude` binary; the first on `PATH` when unset. |
-//! | `CLAUDE_CODE_OAUTH_TOKEN` | The delegate's subscription token; or `ANTHROPIC_API_KEY`. |
+//! | `CODER_ONE_CODEX_BIN` | The `codex` binary; the first on `PATH` when unset. |
+//! | `CLAUDE_CODE_OAUTH_TOKEN` | The Claude Code delegate's subscription token; or `ANTHROPIC_API_KEY`. |
+//! | `CODEX_HOME` | Where the Codex delegate finds `auth.json`; `~/.codex` when unset. |
 //! | `CODER_ONE_DEEP` | `on` runs deep Jev mode: a parallel survey before the first step, a readiness question each step, and repeated-command hints. |
 //!
 //! The bundle is rewritten at the start of every step, so a deadline that
@@ -38,7 +41,7 @@ use sha2::{Digest, Sha256};
 
 use crate::agent::{EPISODE_INSTRUCTIONS, Judge, Judgments};
 use crate::credentials::{self, Secret};
-use crate::delegate::{self, ClaudeCode, Credential, Delegated, Explorer, Mode, Plan, Policy};
+use crate::delegate::{self, Agent, Cli, Credential, Delegated, Explorer, Mode, Plan, Policy};
 use crate::generate::Door;
 use crate::judge::JevJudge;
 use crate::record::Recorder;
@@ -74,11 +77,12 @@ struct Settings {
     max_steps: usize,
     command_timeout: Duration,
     delegate: Mode,
+    delegate_agent: Agent,
     delegate_model: String,
     delegate_timeout: Duration,
     policy: Policy,
     briefing_cap: usize,
-    claude: Option<PathBuf>,
+    delegate_bin: Option<PathBuf>,
     credential: Credential,
 }
 
@@ -99,6 +103,12 @@ impl Settings {
                     .map_err(|_| format!("{name} must be a whole number"))
             })
         };
+        let delegate_agent = Agent::parse(
+            env("CODER_ONE_DELEGATE_AGENT")
+                .as_deref()
+                .unwrap_or("claude-code"),
+        )?;
+        let (delegate_bin, credential) = delegate::resolve(delegate_agent, |name| env(name));
         Ok(Settings {
             bearer: credentials::bearer(|name| env(name), &dir)
                 .ok()
@@ -117,8 +127,9 @@ impl Settings {
             max_steps: usize::try_from(number("CODER_ONE_MAX_STEPS", 50)?).unwrap_or(50),
             command_timeout: Duration::from_secs(number("CODER_ONE_COMMAND_TIMEOUT", 300)?),
             delegate: Mode::parse(env("CODER_ONE_DELEGATE").as_deref().unwrap_or("off"))?,
+            delegate_agent,
             delegate_model: env("CODER_ONE_DELEGATE_MODEL")
-                .unwrap_or_else(|| delegate::DEFAULT_MODEL.to_string()),
+                .unwrap_or_else(|| delegate_agent.default_model().to_string()),
             delegate_timeout: Duration::from_secs(number("CODER_ONE_DELEGATE_TIMEOUT", 600)?),
             policy: Policy {
                 explore_steps: usize::try_from(number("CODER_ONE_EXPLORE_STEPS", 8)?).unwrap_or(8),
@@ -129,11 +140,8 @@ impl Settings {
                 delegate::BRIEFING_CAP as u64,
             )?)
             .unwrap_or(delegate::BRIEFING_CAP),
-            claude: delegate::claude_binary(|name| env(name)),
-            credential: Credential::detect(
-                |name| env(name),
-                delegate::stored_login(env("HOME").as_deref().map(Path::new)),
-            ),
+            delegate_bin,
+            credential,
         })
     }
 }
@@ -191,13 +199,14 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
         println!("delegate: off (CODER_ONE_DELEGATE)");
     } else {
         println!(
-            "delegate: {} to claude-code ({}), explore {} steps, deadline {}s",
+            "delegate: {} to {} ({}), explore {} steps, deadline {}s",
             settings.delegate.word(),
+            settings.delegate_agent.word(),
             settings.delegate_model,
             settings.policy.explore_steps,
             settings.delegate_timeout.as_secs()
         );
-        problems.extend(check_claude(&settings).await);
+        problems.extend(check_delegate(&settings).await);
     }
 
     if problems.is_empty() {
@@ -212,13 +221,17 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
 /// to 2.1.278.
 const CLAUDE_MIN: (u64, u64, u64) = (2, 1, 280);
 
-/// Checks that `claude --version` runs, is new enough, and that a
-/// credential is present, without any inference.
-async fn check_claude(settings: &Settings) -> Vec<String> {
+/// Checks that the delegate's `--version` runs, that Claude Code is new
+/// enough, and that a credential is present, without any inference.
+async fn check_delegate(settings: &Settings) -> Vec<String> {
     let mut problems = Vec::new();
-    match &settings.claude {
-        None => problems
-            .push("no claude binary: set CODER_ONE_CLAUDE_BIN or put claude on PATH".to_string()),
+    let agent = settings.delegate_agent;
+    match &settings.delegate_bin {
+        None => problems.push(format!(
+            "no {} binary: set {} or put it on PATH",
+            agent.word(),
+            agent.binary_variable()
+        )),
         Some(binary) => {
             let mut command = std::process::Command::new(binary);
             command.arg("--version").env_remove("CLAUDECODE");
@@ -227,7 +240,20 @@ async fn check_claude(settings: &Settings) -> Vec<String> {
                 .run()
                 .await;
             let text = ended.stdout.text.trim().to_string();
-            match (ended.ending.success(), parse_version(&text)) {
+            // `codex-cli 0.155.1` names the program first; Claude Code
+            // prints the version first.
+            let version_text = match agent {
+                Agent::Codex => text
+                    .split_whitespace()
+                    .skip(1)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                Agent::ClaudeCode => text.clone(),
+            };
+            match (ended.ending.success(), parse_version(&version_text)) {
+                (true, Some(_)) if agent == Agent::Codex => {
+                    println!("codex: {} at {}", text, binary.display());
+                }
                 (true, Some(version)) if version >= CLAUDE_MIN => {
                     println!("claude: {} at {}", text, binary.display());
                 }
@@ -244,11 +270,15 @@ async fn check_claude(settings: &Settings) -> Vec<String> {
             }
         }
     }
-    match settings.credential {
-        Credential::Missing => problems.push(
+    match (settings.credential, agent) {
+        (Credential::Missing, Agent::ClaudeCode) => problems.push(
             "no delegate credential: set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY".to_string(),
         ),
-        found => println!("claude credential: {}", found.word()),
+        (Credential::Missing, Agent::Codex) => problems.push(
+            "no delegate credential: put auth.json under CODEX_HOME or set OPENAI_API_KEY"
+                .to_string(),
+        ),
+        (found, _) => println!("{} credential: {}", agent.word(), found.word()),
     }
     problems
 }
@@ -374,8 +404,9 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         .await;
         (ended, None)
     } else {
-        let mut executor = ClaudeCode {
-            binary: settings.claude.clone(),
+        let mut executor = Cli {
+            agent: settings.delegate_agent,
+            binary: settings.delegate_bin.clone(),
             model: settings.delegate_model.clone(),
             deadline: settings.delegate_timeout,
             workdir: workdir.clone(),
@@ -535,9 +566,9 @@ impl Bundle {
             } else {
                 json!({
                     "mode": settings.delegate.word(),
-                    "agent": "claude-code",
+                    "agent": settings.delegate_agent.word(),
                     "model": settings.delegate_model,
-                    "executor_path": settings.claude.as_ref().map(|path| path.to_string_lossy()),
+                    "executor_path": settings.delegate_bin.as_ref().map(|path| path.to_string_lossy()),
                     "credential": settings.credential.word(),
                     "deadline_sec": settings.delegate_timeout.as_secs(),
                     "briefing_cap": settings.briefing_cap,
@@ -841,7 +872,7 @@ pub fn usage(steps: &[Step], delegating: bool) -> Value {
         "cost": {
             "amount_usd": total,
             "provenance": if total.is_null() { "unknown" } else { "mixed" },
-            "covers": "generation (provider_reported), jev (price_estimate), and delegate (cli_list_price or cli_reported); each is under components",
+            "covers": "generation (provider_reported), jev (price_estimate), and delegate (cli_list_price or cli_reported for Claude Code, price_estimate for Codex); each is under components",
         },
         "calls": {
             "generation": generations.len(),
@@ -889,7 +920,7 @@ impl DelegateUsage<'_> {
             json!("unknown")
         };
         json!({
-            "agent": "claude-code",
+            "agent": extra("capability"),
             "model": extra("model"),
             "credential": extra("credential"),
             "delegations": self.calls.len(),
@@ -904,7 +935,7 @@ impl DelegateUsage<'_> {
             "max_input_tokens_per_call": self.per_call.iter().max(),
             "cost_usd": if self.calls.is_empty() { json!(0.0) } else { json!(self.cost_usd) },
             "cost_provenance": provenance,
-            "cost_note": "Claude Code's own total_cost_usd. On a subscription token it is a list-price figure, not a bill.",
+            "cost_note": extra("cost_note"),
         })
     }
 }

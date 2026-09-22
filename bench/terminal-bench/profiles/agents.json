@@ -578,6 +578,114 @@
         }
       },
       "note": "Coder One in deep Jev mode: a parallel Jev survey of up to 100 files before the first step puts the most relevant files' contents in the prompt's cached prefix, each step also asks Jev whether the task is done and checked, and repeated commands are flagged."
+    },
+    "coder-one-delegate-luna": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneDelegate",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "delegate": "always",
+        "delegate_agent": "codex",
+        "codex_version": "0.155.1",
+        "delegate_model": "gpt-6-luna"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "chatgpt.com",
+        "api.openai.com",
+        "registry.npmjs.org"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "auth-json": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "note": "Generation and Jev as in coder-one; the Codex delegate signs in with the host's ChatGPT-account auth.json, which the adapter places in the container the way Harbor's codex agent does and removes after the run. CODEX_FORCE_AUTH_JSON stays a host-side selector: the mode forwards the resolved file path instead."
+        }
+      },
+      "note": "Coder One in delegate mode `always` with the Codex executor: the Gemini-plus-Jev loop explores for up to 8 steps without editing, then code briefs Codex CLI 0.155.1 on gpt-6-luna with what it found. The adapter installs the pinned Codex CLI inside the task environment the way Harbor's codex agent does. The profile's model is the explorer's openagents.com lane."
+    },
+    "coder-one-delegate-luna-auto": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneDelegate",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "delegate": "auto",
+        "delegate_agent": "codex",
+        "codex_version": "0.155.1",
+        "delegate_model": "gpt-6-luna"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "chatgpt.com",
+        "api.openai.com",
+        "registry.npmjs.org"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "auth-json": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "note": "Generation and Jev as in coder-one; the Codex delegate signs in with the host's ChatGPT-account auth.json, which the adapter places in the container the way Harbor's codex agent does and removes after the run. CODEX_FORCE_AUTH_JSON stays a host-side selector: the mode forwards the resolved file path instead."
+        }
+      },
+      "note": "Coder One in delegate mode `auto` with the Codex executor: the loop works on its own and escalates to Codex CLI on gpt-6-luna only when it stalls, under the same unmeasured thresholds as coder-one-delegate-auto."
     }
   }
 }

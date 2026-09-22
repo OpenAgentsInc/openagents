@@ -211,8 +211,9 @@ uses, and marks which are implemented and which are only specified.
   action through `openagents.com/v1/responses`, and runs it. It does not
   depend on `crates/coder`. Issue #9531 holds the design and the
   evaluation. `--delegate always|auto` (`CODER_ONE_DELEGATE` in an
-  episode) lets the loop explore, then hands the task to Claude Code with
-  a briefing code builds from Jev's evidence; delegation is a host
+  episode) lets the loop explore, then hands the task to Claude Code, or
+  to Codex CLI with `--delegate-agent codex`, with a briefing code builds
+  from Jev's evidence; delegation is a host
   decision, never a tool the model sees. Issue #9532 and
   `docs/terminal-bench/coder-one-delegate-runbook.md` cover it.
 - `crates/capability` — the capability manifest contract `coder` and

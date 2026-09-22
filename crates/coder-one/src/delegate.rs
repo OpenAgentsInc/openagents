@@ -1,12 +1,12 @@
 //! Delegate mode: the cheap loop explores, then code hands the task to a
-//! strong executor, Claude Code, with a briefing built from what the
-//! explorer found.
+//! strong executor, Claude Code or Codex CLI, with a briefing built from
+//! what the explorer found.
 //!
 //! ```text
 //! explore  the loop runs, bounded by --explore-steps
 //! decide   under `auto`, a code policy escalates when the explorer stalls
 //! brief    code assembles a capped briefing from recorded state
-//! delegate claude -p --output-format stream-json, through `supervise`
+//! delegate claude -p or codex exec --json, through `supervise`
 //! close    Jev checks which requirements now look satisfied
 //! ```
 //!
@@ -34,8 +34,96 @@ use crate::judge::{JevJudge, clip, clip_tail, git, walk};
 use crate::record::Recorder;
 use crate::state::{State, Turn};
 
-/// The model the delegate runs on unless the operator names another.
+/// The model the Claude Code delegate runs on unless the operator names
+/// another.
 pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
+
+/// The model the Codex delegate runs on unless the operator names another.
+pub const DEFAULT_CODEX_MODEL: &str = "gpt-6-luna";
+
+/// Which CLI runs the briefing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Agent {
+    /// Claude Code in print mode, `claude -p`.
+    ClaudeCode,
+    /// Codex CLI, `codex exec`.
+    Codex,
+}
+
+impl Agent {
+    /// Parses `claude-code` or `codex`.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        match text.trim() {
+            "claude-code" | "claude" | "" => Ok(Agent::ClaudeCode),
+            "codex" => Ok(Agent::Codex),
+            other => Err(format!(
+                "delegate agent must be claude-code or codex, not {other}"
+            )),
+        }
+    }
+
+    /// The name the record uses.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Agent::ClaudeCode => "claude-code",
+            Agent::Codex => "codex",
+        }
+    }
+
+    /// The model this agent delegates to unless the operator names another.
+    #[must_use]
+    pub fn default_model(self) -> &'static str {
+        match self {
+            Agent::ClaudeCode => DEFAULT_MODEL,
+            Agent::Codex => DEFAULT_CODEX_MODEL,
+        }
+    }
+
+    /// The binary's name on `PATH`.
+    fn program(self) -> &'static str {
+        match self {
+            Agent::ClaudeCode => "claude",
+            Agent::Codex => "codex",
+        }
+    }
+
+    /// The variable that names the binary explicitly.
+    #[must_use]
+    pub fn binary_variable(self) -> &'static str {
+        match self {
+            Agent::ClaudeCode => "CODER_ONE_CLAUDE_BIN",
+            Agent::Codex => "CODER_ONE_CODEX_BIN",
+        }
+    }
+}
+
+/// OpenAI's standard list prices, in dollars per million tokens (input,
+/// cached input, output) at short context, as the operator supplied them
+/// on 2026-09-22. Codex reports no cost, so these are manual rates.
+const CODEX_PRICES: &[(&str, (f64, f64, f64))] = &[
+    ("gpt-6-astra", (10.00, 1.00, 50.00)),
+    ("gpt-6-sol", (2.00, 0.20, 10.00)),
+    ("gpt-6-luna", (0.10, 0.01, 0.50)),
+];
+
+/// What a Codex cost estimate says about itself.
+pub const CODEX_COST_NOTE: &str = "A price estimate: Codex reports no cost. The \
+rates are OpenAI's standard short-context list prices, supplied manually by \
+the operator on 2026-09-22, not reported by Codex.";
+
+/// The list-price cost of `uncached` input, `cached` input, and `output`
+/// tokens on `model`, or `None` for a model with no known price.
+#[must_use]
+pub fn codex_cost(model: &str, uncached: u64, cached: u64, output: u64) -> Option<f64> {
+    let model = model.rsplit('/').next().unwrap_or(model);
+    let (_, (input, cached_rate, output_rate)) =
+        CODEX_PRICES.iter().find(|(name, _)| *name == model)?;
+    Some(
+        (uncached as f64 * input + cached as f64 * cached_rate + output as f64 * output_rate)
+            / 1_000_000.0,
+    )
+}
 
 /// The schema a delegate call's `extra` carries, shared with Coder's.
 pub const CALL_SCHEMA: &str = "openagents.delegate-call.v1";
@@ -705,6 +793,10 @@ pub struct Summary {
     pub api_calls: Option<u64>,
     /// Input tokens per API call, uncached plus cache reads and writes.
     pub input_per_call: Vec<u64>,
+    /// Where `total_cost_usd` came from when the executor did not report
+    /// it itself, as Codex does not.
+    pub cost_provenance: Option<&'static str>,
+    pub cost_note: Option<&'static str>,
 }
 
 impl Summary {
@@ -772,6 +864,127 @@ impl Summary {
     pub fn tokens(&self, key: &str) -> Option<u64> {
         self.usage.as_ref()?.get(key)?.as_u64()
     }
+
+    /// Reads a `codex exec --json` transcript, one JSON event per line, for
+    /// a run on `model`.
+    ///
+    /// Codex reports usage per turn with `input_tokens` counting the cached
+    /// part and `output_tokens` counting reasoning. The summary's `usage`
+    /// is normalized to the keys Claude Code uses, uncached input apart
+    /// from cache reads, so one record reads both; the raw sums stay under
+    /// `model_usage`. Codex reports no per-call count, so `num_turns`
+    /// counts the agent's completed items: commands, file changes, tool
+    /// calls, searches, and messages.
+    #[must_use]
+    pub fn parse_codex(stream: &str, model: &str) -> Self {
+        let mut summary = Summary {
+            model: Some(model.to_string()),
+            ..Summary::default()
+        };
+        let mut raw: BTreeMap<String, u64> = BTreeMap::new();
+        let mut turns = 0u64;
+        let mut items = 0u64;
+        let mut failure: Option<String> = None;
+        let mut failed = false;
+        for line in stream.lines() {
+            let Ok(event) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            match event.get("type").and_then(Value::as_str) {
+                Some("thread.started") => {
+                    summary.session_id = event
+                        .get("thread_id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                }
+                Some("turn.completed") => {
+                    turns += 1;
+                    if let Some(usage) = event.get("usage").and_then(Value::as_object) {
+                        for (key, value) in usage {
+                            if let Some(n) = value.as_u64() {
+                                *raw.entry(key.clone()).or_insert(0) += n;
+                            }
+                        }
+                    }
+                }
+                Some("turn.failed") => {
+                    failed = true;
+                    failure = Some(
+                        event
+                            .pointer("/error/message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("the turn failed")
+                            .to_string(),
+                    );
+                }
+                Some("error") => {
+                    if let Some(message) = event.get("message").and_then(Value::as_str) {
+                        failure.get_or_insert_with(|| message.to_string());
+                    }
+                }
+                Some("item.completed") => {
+                    let item = &event["item"];
+                    match item.get("type").and_then(Value::as_str) {
+                        Some("agent_message") => {
+                            items += 1;
+                            summary.result =
+                                item.get("text").and_then(Value::as_str).map(str::to_string);
+                        }
+                        Some(
+                            "command_execution" | "file_change" | "mcp_tool_call" | "web_search",
+                        ) => items += 1,
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        summary.has_result = turns > 0 && !failed;
+        summary.is_error = if failed {
+            Some(true)
+        } else if turns > 0 {
+            Some(false)
+        } else {
+            None
+        };
+        if (failed || turns == 0)
+            && let Some(message) = failure
+        {
+            summary.result = Some(match summary.result.take() {
+                Some(text) => format!("{message}\n\n{text}"),
+                None => message,
+            });
+        }
+        summary.subtype = Some(
+            if failed {
+                "turn.failed"
+            } else {
+                "turn.completed"
+            }
+            .to_string(),
+        );
+        if turns > 0 {
+            summary.num_turns = Some(items);
+            let get = |key: &str| raw.get(key).copied().unwrap_or(0);
+            let cached = get("cached_input_tokens");
+            let uncached = get("input_tokens").saturating_sub(cached);
+            let cache_write = get("cache_write_input_tokens");
+            let output = get("output_tokens");
+            summary.usage = Some(json!({
+                "input_tokens": uncached,
+                "cache_read_input_tokens": cached,
+                "cache_creation_input_tokens": cache_write,
+                "output_tokens": output,
+                "reasoning_output_tokens": get("reasoning_output_tokens"),
+                "codex_turns": turns,
+            }));
+            summary.model_usage = Some(json!({ model: raw }));
+            summary.total_cost_usd = codex_cost(model, uncached + cache_write, cached, output);
+            summary.cost_provenance = Some("price_estimate");
+            summary.cost_note = Some(CODEX_COST_NOTE);
+        }
+        summary
+    }
 }
 
 /// Codes for refusals the CLI declares in what it prints, matched on its
@@ -793,6 +1006,12 @@ const REFUSALS: &[(&str, &str)] = &[
         "model_unavailable",
         "may not exist or you may not have access",
     ),
+    (
+        "model_unavailable",
+        "is not supported when using Codex with a ChatGPT account",
+    ),
+    ("not_logged_in", "401 Unauthorized"),
+    ("usage_limit", "You've hit your usage limit"),
 ];
 
 /// Classifies how a delegate run ended from the process ending, what its
@@ -831,6 +1050,10 @@ pub enum Credential {
     ApiKey,
     /// The CLI's own stored login.
     CliLogin,
+    /// Codex's `auth.json`, a ChatGPT-account sign-in.
+    CodexAuthFile,
+    /// `OPENAI_API_KEY`: API billing for Codex.
+    OpenAiKey,
     /// None found.
     Missing,
 }
@@ -852,6 +1075,19 @@ impl Credential {
         }
     }
 
+    /// Finds the credential a Codex delegate will use. `auth_file` is
+    /// whether Codex's `auth.json` exists.
+    #[must_use]
+    pub fn detect_codex(env: impl Fn(&str) -> Option<String>, auth_file: bool) -> Self {
+        if auth_file {
+            Credential::CodexAuthFile
+        } else if env("OPENAI_API_KEY").is_some_and(|value| !value.trim().is_empty()) {
+            Credential::OpenAiKey
+        } else {
+            Credential::Missing
+        }
+    }
+
     /// The name the record uses.
     #[must_use]
     pub fn word(self) -> &'static str {
@@ -859,6 +1095,8 @@ impl Credential {
             Credential::OauthToken => "subscription_oauth",
             Credential::ApiKey => "api_key",
             Credential::CliLogin => "cli_login",
+            Credential::CodexAuthFile => "codex_auth_json",
+            Credential::OpenAiKey => "openai_api_key",
             Credential::Missing => "missing",
         }
     }
@@ -880,22 +1118,60 @@ pub fn stored_login(home: Option<&Path>) -> bool {
     home.is_some_and(|home| home.join(".claude").join(".credentials.json").is_file())
 }
 
+/// The agent's binary and the credential it will use, by name only.
+#[must_use]
+pub fn resolve(
+    agent: Agent,
+    env: impl Fn(&str) -> Option<String>,
+) -> (Option<PathBuf>, Credential) {
+    let found = binary(agent, &env);
+    let credential = match agent {
+        Agent::ClaudeCode => {
+            Credential::detect(&env, stored_login(env("HOME").as_deref().map(Path::new)))
+        }
+        Agent::Codex => Credential::detect_codex(
+            &env,
+            codex_auth_file(&env).is_some_and(|path| path.is_file()),
+        ),
+    };
+    (found, credential)
+}
+
+/// Codex's `auth.json`: under `CODEX_HOME` when that is set, else under
+/// `~/.codex`. `None` when neither location can be named.
+#[must_use]
+pub fn codex_auth_file(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    match env("CODEX_HOME").filter(|home| !home.trim().is_empty()) {
+        Some(home) => Some(PathBuf::from(home).join("auth.json")),
+        None => Some(PathBuf::from(env("HOME")?).join(".codex").join("auth.json")),
+    }
+}
+
 /// The `claude` binary: `CODER_ONE_CLAUDE_BIN`, else the first `claude` on
 /// `PATH`, else `~/.local/bin/claude`, where the native installer puts it.
 #[must_use]
 pub fn claude_binary(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    if let Some(path) = env("CODER_ONE_CLAUDE_BIN").filter(|path| !path.trim().is_empty()) {
+    binary(Agent::ClaudeCode, env)
+}
+
+/// The agent's binary: its `CODER_ONE_*_BIN` variable, else the first one
+/// on `PATH`, else under `~/.local/bin`.
+#[must_use]
+pub fn binary(agent: Agent, env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if let Some(path) = env(agent.binary_variable()).filter(|path| !path.trim().is_empty()) {
         return Some(PathBuf::from(path));
     }
     if let Some(path) = env("PATH") {
         for dir in std::env::split_paths(&path) {
-            let candidate = dir.join("claude");
+            let candidate = dir.join(agent.program());
             if candidate.is_file() {
                 return Some(candidate);
             }
         }
     }
-    let local = PathBuf::from(env("HOME")?).join(".local/bin/claude");
+    let local = PathBuf::from(env("HOME")?)
+        .join(".local/bin")
+        .join(agent.program());
     local.is_file().then_some(local)
 }
 
@@ -929,10 +1205,13 @@ impl Report {
     }
 }
 
-/// Who runs a briefing. The real one is [`ClaudeCode`]; tests use a fake.
+/// Who runs a briefing. The real one is [`Cli`]; tests use a fake.
 pub trait Executor {
     /// The agent's name in the record, such as `claude-code`.
     fn agent(&self) -> &str;
+    /// What its reported cost is when the stream does not say: Claude
+    /// Code's own figure on a subscription is `cli_list_price`.
+    fn cost_provenance(&self) -> &'static str;
     /// The model the delegate runs on.
     fn model(&self) -> &str;
     /// The wall deadline.
@@ -943,10 +1222,12 @@ pub trait Executor {
     fn execute(&mut self, briefing: &Briefing) -> impl Future<Output = Report>;
 }
 
-/// Claude Code in print mode, run through `supervise` in the task's
-/// working directory with the briefing on standard input.
-pub struct ClaudeCode {
-    /// The `claude` binary, when one was found.
+/// A delegate CLI, Claude Code in print mode or `codex exec`, run through
+/// `supervise` in the task's working directory with the briefing on
+/// standard input.
+pub struct Cli {
+    pub agent: Agent,
+    /// The binary, when one was found.
     pub binary: Option<PathBuf>,
     pub model: String,
     pub deadline: Duration,
@@ -963,7 +1244,7 @@ pub struct ClaudeCode {
     pub runs: u32,
 }
 
-impl ClaudeCode {
+impl Cli {
     /// The files one run writes, relative to the artifacts directory.
     fn names(&self) -> (String, String) {
         (
@@ -973,9 +1254,16 @@ impl ClaudeCode {
     }
 }
 
-impl Executor for ClaudeCode {
+impl Executor for Cli {
     fn agent(&self) -> &str {
-        "claude-code"
+        self.agent.word()
+    }
+
+    fn cost_provenance(&self) -> &'static str {
+        match self.agent {
+            Agent::ClaudeCode => self.credential.cost_provenance(),
+            Agent::Codex => "price_estimate",
+        }
     }
 
     fn model(&self) -> &str {
@@ -1010,9 +1298,11 @@ impl Executor for ClaudeCode {
             stream: None,
         };
         let Some(binary) = self.binary.clone() else {
-            return harness(
-                "no claude binary: set CODER_ONE_CLAUDE_BIN or put claude on PATH".to_string(),
-            );
+            return harness(format!(
+                "no {} binary: set {} or put it on PATH",
+                self.agent.program(),
+                self.agent.binary_variable()
+            ));
         };
         if let Err(error) = std::fs::write(&briefing_path, &briefing.text) {
             return harness(format!("cannot write {}: {error}", briefing_path.display()));
@@ -1020,13 +1310,22 @@ impl Executor for ClaudeCode {
         // The supervisor gives the child a null standard input, so a shell
         // redirects the briefing in and the stream out to a file: the
         // stream's last event is the result, and a capped pipe would lose it.
+        let script = match self.agent {
+            Agent::ClaudeCode => {
+                "exec \"$0\" -p --output-format stream-json --verbose --model \"$1\" \
+                 --permission-mode bypassPermissions < \"$2\" > \"$3\""
+            }
+            // The task container or the fresh clone is the boundary, so
+            // Codex runs without its own sandbox or approval prompts.
+            Agent::Codex => {
+                "exec \"$0\" exec --json --skip-git-repo-check -m \"$1\" \
+                 --dangerously-bypass-approvals-and-sandbox - < \"$2\" > \"$3\""
+            }
+        };
         let mut command = std::process::Command::new("sh");
         command
             .arg("-c")
-            .arg(
-                "exec \"$0\" -p --output-format stream-json --verbose --model \"$1\" \
-                 --permission-mode bypassPermissions < \"$2\" > \"$3\"",
-            )
+            .arg(script)
             .arg(&binary)
             .arg(&self.model)
             .arg(&briefing_path)
@@ -1063,7 +1362,11 @@ impl Executor for ClaudeCode {
             .await;
         let milliseconds = u64::try_from(ended.elapsed.as_millis()).unwrap_or(u64::MAX);
         let raw = std::fs::read(&stream_path).unwrap_or_default();
-        let summary = Summary::parse(&String::from_utf8_lossy(&raw));
+        let text = String::from_utf8_lossy(&raw);
+        let summary = match self.agent {
+            Agent::ClaudeCode => Summary::parse(&text),
+            Agent::Codex => Summary::parse_codex(&text, &self.model),
+        };
         let stream = retain(
             &stream_path,
             &format!("{}/{stream_name}", self.artifacts_label),
@@ -1209,14 +1512,15 @@ pub fn record<E: Executor>(
         summary.model_usage.clone().unwrap_or(Value::Null),
     );
     extra.insert("total_cost_usd".to_string(), json!(summary.total_cost_usd));
-    let provenance = executor
-        .describe()
-        .get("credential")
-        .and_then(Value::as_str)
-        .map_or("unknown", |word| match word {
-            "api_key" => "cli_reported",
-            _ => "cli_list_price",
-        });
+    let provenance = summary
+        .cost_provenance
+        .unwrap_or_else(|| executor.cost_provenance());
+    extra.insert(
+        "cost_note".to_string(),
+        json!(summary.cost_note.unwrap_or(
+            "Claude Code's own total_cost_usd. On a subscription token it is a list-price figure, not a bill."
+        )),
+    );
     extra.insert(
         "cost_provenance".to_string(),
         json!(if summary.total_cost_usd.is_some() {
@@ -1825,6 +2129,9 @@ pub(crate) mod tests {
         fn agent(&self) -> &str {
             "claude-code"
         }
+        fn cost_provenance(&self) -> &'static str {
+            "cli_list_price"
+        }
         fn model(&self) -> &str {
             DEFAULT_MODEL
         }
@@ -1951,5 +2258,181 @@ pub(crate) mod tests {
                 }
             ));
         }
+    }
+
+    const CODEX: &str = r#"{"type":"thread.started","thread_id":"t-1"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"thinking"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"bash -lc ls","aggregated_output":"a\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"file_change","changes":[],"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"Fixed slugify."}}
+{"type":"turn.completed","usage":{"input_tokens":27424,"cached_input_tokens":24064,"cache_write_input_tokens":0,"output_tokens":400,"reasoning_output_tokens":120}}
+"#;
+
+    #[test]
+    fn the_codex_stream_yields_usage_turns_and_the_final_message() {
+        let summary = Summary::parse_codex(CODEX, "gpt-6-luna");
+        assert!(summary.has_result);
+        assert_eq!(summary.is_error, Some(false));
+        assert_eq!(summary.result.as_deref(), Some("Fixed slugify."));
+        assert_eq!(summary.session_id.as_deref(), Some("t-1"));
+        // A command, a file change, and a message; reasoning is not a turn.
+        assert_eq!(summary.num_turns, Some(3));
+        assert_eq!(summary.api_calls, None);
+        assert_eq!(summary.tokens("input_tokens"), Some(3_360));
+        assert_eq!(summary.tokens("cache_read_input_tokens"), Some(24_064));
+        assert_eq!(summary.tokens("output_tokens"), Some(400));
+        assert_eq!(
+            summary.model_usage.as_ref().unwrap()["gpt-6-luna"]["input_tokens"],
+            27_424
+        );
+        // 3,360 × $0.10 + 24,064 × $0.01 + 400 × $0.50, per million.
+        let cost = summary.total_cost_usd.unwrap();
+        assert!((cost - 0.000_776_64).abs() < 1e-12, "{cost}");
+        assert_eq!(summary.cost_provenance, Some("price_estimate"));
+        assert_eq!(
+            classify(&supervise::Ending::Exited(Some(0)), &summary, ""),
+            Status::Answered
+        );
+    }
+
+    #[test]
+    fn a_failed_codex_turn_is_a_failure_or_a_refusal() {
+        let failed = Summary::parse_codex(
+            r#"{"type":"thread.started","thread_id":"t-2"}
+{"type":"turn.started"}
+{"type":"error","message":"stream disconnected before completion"}
+{"type":"turn.failed","error":{"message":"stream disconnected before completion"}}
+"#,
+            "gpt-6-luna",
+        );
+        assert!(!failed.has_result);
+        assert_eq!(failed.is_error, Some(true));
+        assert_eq!(failed.total_cost_usd, None);
+        assert_eq!(failed.cost_provenance, None);
+        assert!(
+            failed
+                .result
+                .as_deref()
+                .unwrap()
+                .contains("stream disconnected")
+        );
+        assert_eq!(
+            classify(&supervise::Ending::Exited(Some(1)), &failed, ""),
+            Status::Failed(1)
+        );
+        let refused = Summary::parse_codex(
+            r#"{"type":"turn.failed","error":{"message":"The 'gpt-5.2-codex' model is not supported when using Codex with a ChatGPT account."}}"#,
+            "gpt-5.2-codex",
+        );
+        assert_eq!(
+            classify(&supervise::Ending::Exited(Some(1)), &refused, ""),
+            Status::Refused("model_unavailable".to_string())
+        );
+        // No events at all: nothing to read an answer from.
+        assert!(matches!(
+            classify(
+                &supervise::Ending::Exited(Some(0)),
+                &Summary::parse_codex("", "gpt-6-luna"),
+                ""
+            ),
+            Status::Harness(_)
+        ));
+    }
+
+    #[test]
+    fn codex_cost_follows_the_list_prices_and_stays_unknown_off_the_list() {
+        let near = |a: Option<f64>, b: f64| (a.unwrap() - b).abs() < 1e-9;
+        assert!(near(codex_cost("gpt-6-astra", 1_000_000, 0, 0), 10.0));
+        assert!(near(
+            codex_cost("gpt-6-astra", 0, 1_000_000, 1_000_000),
+            51.0
+        ));
+        assert!(near(
+            codex_cost("gpt-6-sol", 1_000_000, 1_000_000, 1_000_000),
+            12.2
+        ));
+        assert!(near(
+            codex_cost("openai/gpt-6-luna", 1_000_000, 1_000_000, 1_000_000),
+            0.61
+        ));
+        assert_eq!(codex_cost("gpt-9-unknown", 10, 10, 10), None);
+        let unknown = Summary::parse_codex(CODEX, "gpt-9-unknown");
+        assert_eq!(unknown.total_cost_usd, None);
+        assert_eq!(unknown.tokens("output_tokens"), Some(400));
+    }
+
+    #[test]
+    fn the_executor_is_chosen_by_name_with_its_own_default_model() {
+        assert_eq!(Agent::parse("codex"), Ok(Agent::Codex));
+        assert_eq!(Agent::parse("claude-code"), Ok(Agent::ClaudeCode));
+        assert!(Agent::parse("devin").is_err());
+        assert_eq!(Agent::Codex.default_model(), "gpt-6-luna");
+        assert_eq!(Agent::ClaudeCode.default_model(), "claude-opus-5-5");
+        let dir = std::env::temp_dir().join(format!("coder-one-codex-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("codex");
+        std::fs::write(&bin, "").unwrap();
+        std::fs::write(dir.join("auth.json"), "{}").unwrap();
+        let path = dir.to_string_lossy().into_owned();
+        let env = |name: &str| match name {
+            "PATH" | "CODEX_HOME" => Some(path.clone()),
+            _ => None,
+        };
+        let (found, credential) = resolve(Agent::Codex, env);
+        assert_eq!(found, Some(bin));
+        assert_eq!(credential, Credential::CodexAuthFile);
+        assert_eq!(resolve(Agent::ClaudeCode, env).0, None);
+        let explicit =
+            |name: &str| (name == "CODER_ONE_CODEX_BIN").then(|| "/opt/codex".to_string());
+        assert_eq!(
+            binary(Agent::Codex, explicit),
+            Some(PathBuf::from("/opt/codex"))
+        );
+        assert_eq!(
+            Credential::detect_codex(
+                |name: &str| (name == "OPENAI_API_KEY").then(|| "k".to_string()),
+                false
+            ),
+            Credential::OpenAiKey
+        );
+        assert_eq!(
+            Credential::detect_codex(|_: &str| None, false),
+            Credential::Missing
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_codex_delegation_records_a_price_estimate() {
+        let executor = FakeExecutor {
+            reports: vec![],
+            sent: vec![],
+        };
+        let summary = Summary::parse_codex(CODEX, "gpt-6-luna");
+        let report = Report {
+            status: Status::Answered,
+            summary,
+            milliseconds: 5_000,
+            stderr: String::new(),
+            stream: None,
+        };
+        let briefing = Briefing::build(&inputs(), BRIEFING_CAP);
+        let step = record(
+            &executor,
+            &briefing,
+            &Delegation {
+                mode: Mode::Always,
+                reason: &Reason::Always,
+                isolation: "none",
+            },
+            &report,
+            1,
+        );
+        let call = step.call.as_ref().unwrap();
+        assert_eq!(call.extra["cost_provenance"], "price_estimate");
+        assert_eq!(call.extra["cost_note"], CODEX_COST_NOTE);
+        assert_eq!(call.extra["num_turns"], 3);
+        assert_eq!(step.tokens, Some((27_424, 400)));
     }
 }

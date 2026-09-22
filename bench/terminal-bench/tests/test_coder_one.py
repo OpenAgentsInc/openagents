@@ -123,3 +123,100 @@ def test_delegate_install_refuses_the_wrong_claude_version(tmp_path, monkeypatch
     with pytest.raises(EpisodeContractError, match="2.1.279 installed"):
         asyncio.run(agent.install(environment))
     assert any("bootstrap.sh" in command for command in environment.commands)
+
+
+def test_codex_delegate_needs_no_claude_pin_and_defaults_to_luna(tmp_path):
+    agent = _delegate(tmp_path, delegate="always", delegate_agent="codex")
+    assert agent._delegate_model == "gpt-6-luna"
+    with pytest.raises(EpisodeContractError, match="claude-code or codex"):
+        _delegate(tmp_path, delegate="always", delegate_agent="devin")
+
+
+def test_codex_install_command_pins_the_version(tmp_path):
+    command = _delegate(
+        tmp_path, delegate="always", delegate_agent="codex"
+    ).codex_install_command()
+    assert "npm install -g @openai/codex@0.155.1" in command
+    assert command.endswith("codex --version")
+
+
+def test_codex_auth_path_follows_harbors_selectors(tmp_path, monkeypatch):
+    agent = _delegate(tmp_path, delegate="always", delegate_agent="codex")
+    monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
+    monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
+    assert agent.codex_auth_path() is None
+    monkeypatch.setenv("CODEX_FORCE_AUTH_JSON", "1")
+    assert str(agent.codex_auth_path()).endswith(".codex/auth.json")
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(tmp_path / "auth.json"))
+    assert agent.codex_auth_path() == tmp_path / "auth.json"
+
+
+class _CodexEnvironment:
+    """Answers `codex --version`, records commands, uploads, and envs."""
+
+    default_user = None
+
+    def __init__(self, version: str = "codex-cli 0.155.1"):
+        self.version = version
+        self.commands: list[str] = []
+        self.envs: list[dict] = []
+        self.uploads: list[tuple[str, str]] = []
+
+    async def exec(self, command: str, env=None, **_: object) -> _Result:
+        self.commands.append(command)
+        self.envs.append(dict(env or {}))
+        if command.endswith("codex --version") and command.startswith("/usr/local"):
+            return _Result(self.version + "\n")
+        return _Result("ok")
+
+    async def upload_file(self, source: str, target: str) -> None:
+        self.uploads.append((source, target))
+
+
+def _codex_agent(tmp_path, monkeypatch):
+    auth = tmp_path / "auth.json"
+    auth.write_text("{}")
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth))
+    agent = _delegate(tmp_path, delegate="auto", delegate_agent="codex")
+
+    async def nothing(*_: object, **__: object) -> None:
+        return None
+
+    monkeypatch.setattr(agent, "ensure_system_dependencies", nothing)
+    return agent, auth
+
+
+def test_codex_install_places_the_auth_file_and_points_the_episode_at_it(
+    tmp_path, monkeypatch
+):
+    agent, auth = _codex_agent(tmp_path, monkeypatch)
+    environment = _CodexEnvironment()
+    asyncio.run(agent.install(environment))
+    assert (str(auth), "/tmp/codex-secrets/auth.json") in environment.uploads
+    assert any(
+        "chmod 600 /tmp/codex-secrets/auth.json" in command
+        and "ln -sf /tmp/codex-secrets/auth.json /tmp/codex-home/auth.json" in command
+        for command in environment.commands
+    )
+    doctor_env = next(
+        env
+        for command, env in zip(environment.commands, environment.envs)
+        if "episode doctor" in command
+    )
+    assert doctor_env["CODER_ONE_DELEGATE"] == "auto"
+    assert doctor_env["CODER_ONE_DELEGATE_AGENT"] == "codex"
+    assert doctor_env["CODER_ONE_DELEGATE_MODEL"] == "gpt-6-luna"
+    assert doctor_env["CODEX_HOME"] == "/tmp/codex-home"
+    assert doctor_env["CODER_ONE_CODEX_BIN"] == "/usr/local/bin/codex"
+    assert "CODEX_AUTH_JSON_PATH" not in doctor_env
+
+
+def test_codex_install_refuses_the_wrong_version_or_a_missing_auth_file(
+    tmp_path, monkeypatch
+):
+    agent, auth = _codex_agent(tmp_path, monkeypatch)
+    with pytest.raises(EpisodeContractError, match="0.154.0 installed"):
+        asyncio.run(agent.install(_CodexEnvironment("codex-cli 0.154.0")))
+    auth.unlink()
+    with pytest.raises(EpisodeContractError, match="existing auth.json"):
+        asyncio.run(agent.install(_CodexEnvironment()))

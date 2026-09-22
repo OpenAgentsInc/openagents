@@ -5,6 +5,7 @@
 //! coder-one <issue-url> [--lane free|flash|pro] [--max-steps N]
 //!                       [--timeout SECONDS] [--no-jev] [--deep] [--open-pr]
 //!                       [--delegate off|always|auto] [--explore-steps N]
+//!                       [--delegate-agent claude-code|codex]
 //!                       [--delegate-model MODEL] [--delegate-timeout SECONDS]
 //! coder-one --version
 //! coder-one episode doctor --contract openagents.coder.episode.v1
@@ -21,7 +22,8 @@
 //! opens a draft pull request.
 //!
 //! `--delegate always` lets the loop explore for `--explore-steps` steps
-//! without editing, then hands the task to Claude Code with a briefing
+//! without editing, then hands the task to Claude Code, or to Codex CLI
+//! with `--delegate-agent codex`, with a briefing
 //! built from what it found; `--delegate auto` delegates only when the
 //! explorer stalls. `coder_one::delegate` documents the phases.
 
@@ -32,7 +34,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use coder_one::agent::INSTRUCTIONS;
 use coder_one::credentials;
-use coder_one::delegate::{self, ClaudeCode, Credential, Mode, Plan, Policy};
+use coder_one::delegate::{self, Agent, Cli, Mode, Plan, Policy};
 use coder_one::episode::{self, RunArgs};
 use coder_one::generate::Door;
 use coder_one::judge::JevJudge;
@@ -45,6 +47,7 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one <github-issue-url> [--lane free|flash|pro] [--max-steps N]
                  [--timeout SECONDS] [--no-jev] [--deep] [--open-pr]
                  [--delegate off|always|auto] [--explore-steps N]
+                 [--delegate-agent claude-code|codex]
                  [--delegate-model MODEL] [--delegate-timeout SECONDS]
        coder-one --version
        coder-one episode doctor --contract openagents.coder.episode.v1
@@ -124,7 +127,9 @@ struct Options {
     open_pr: bool,
     delegate: Mode,
     explore_steps: usize,
-    delegate_model: String,
+    delegate_agent: Agent,
+    /// `None` takes the agent's default model.
+    delegate_model: Option<String>,
     delegate_timeout: Duration,
 }
 
@@ -139,7 +144,8 @@ impl Options {
             open_pr: false,
             delegate: Mode::Off,
             explore_steps: Policy::default().explore_steps,
-            delegate_model: delegate::DEFAULT_MODEL.to_string(),
+            delegate_agent: Agent::ClaudeCode,
+            delegate_model: None,
             delegate_timeout: Duration::from_secs(1_200),
         };
         let mut args = args.iter();
@@ -171,7 +177,10 @@ impl Options {
                         .parse()
                         .map_err(|_| "--explore-steps takes a number".to_string())?;
                 }
-                "--delegate-model" => options.delegate_model = value("--delegate-model")?,
+                "--delegate-agent" => {
+                    options.delegate_agent = Agent::parse(&value("--delegate-agent")?)?;
+                }
+                "--delegate-model" => options.delegate_model = Some(value("--delegate-model")?),
                 "--delegate-timeout" => {
                     let seconds: u64 = value("--delegate-timeout")?
                         .parse()
@@ -211,15 +220,20 @@ fn doctor() -> Result<(), String> {
         "generation door: {}/v1/responses",
         credentials::GENERATION_BASE_URL
     );
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-    let credential = Credential::detect(env, delegate::stored_login(home.as_deref()));
-    match delegate::claude_binary(env) {
-        Some(path) => println!(
-            "delegate: claude at {} (credential: {})",
-            path.display(),
-            credential.word()
-        ),
-        None => println!("delegate: no claude binary; --delegate needs one"),
+    for agent in [Agent::ClaudeCode, Agent::Codex] {
+        match delegate::resolve(agent, env) {
+            (Some(path), credential) => println!(
+                "delegate: {} at {} (credential: {})",
+                agent.word(),
+                path.display(),
+                credential.word()
+            ),
+            (None, _) => println!(
+                "delegate: no {} binary; --delegate-agent {} needs one",
+                agent.word(),
+                agent.word()
+            ),
+        }
     }
     if ok {
         Ok(())
@@ -322,6 +336,10 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
         commands: 0,
     };
 
+    let delegate_model = options
+        .delegate_model
+        .clone()
+        .unwrap_or_else(|| options.delegate_agent.default_model().to_string());
     let base = command(&workdir, "git", &["rev-parse", "HEAD"])
         .map(|out| out.trim().to_string())
         .ok();
@@ -340,16 +358,17 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
         (ended, None)
     } else {
         let env = |name: &str| std::env::var(name).ok();
-        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-        let mut executor = ClaudeCode {
-            binary: delegate::claude_binary(env),
-            model: options.delegate_model.clone(),
+        let (binary, credential) = delegate::resolve(options.delegate_agent, env);
+        let mut executor = Cli {
+            agent: options.delegate_agent,
+            binary,
+            model: delegate_model.clone(),
             deadline: options.delegate_timeout,
             workdir: workdir.clone(),
             artifacts: run_dir.clone(),
             artifacts_label: run_dir.to_string_lossy().into_owned(),
             env: Vec::new(),
-            credential: Credential::detect(env, delegate::stored_login(home.as_deref())),
+            credential,
             runs: 0,
         };
         let instruction = format!("{}\n\n{}", state.issue.title, state.issue.body);
@@ -484,8 +503,9 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
                 command(&workdir, "git", &["push", "-q", "-u", "origin", &branch])?;
                 let delegated_note = match &delegated {
                     Some(delegated) => format!(
-                        ", delegated to Claude Code ({}) for {} turns",
-                        options.delegate_model,
+                        ", delegated to {} ({}) for {} turns",
+                        options.delegate_agent.word(),
+                        delegate_model,
                         delegated
                             .report
                             .summary
