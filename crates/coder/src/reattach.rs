@@ -31,6 +31,7 @@
 //! [`Reattachment::Refused`] keeps one run from adopting another's.
 
 use crate::runstate::Run;
+use serde_json::Value;
 
 /// What the host observed for one record's dispatch reference.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -158,6 +159,37 @@ pub fn reattachable(
     rulings
 }
 
+/// The probe a resumer runs over an `atif:` dispatch reference: the
+/// session log is the evidence a stopped run left behind. A `step:`
+/// subject whose call the session recorded is [`Observation::Ended`] —
+/// the answer landed before the coordinator stopped, and the record
+/// settles on it. A session that cannot be read, or one that never
+/// reached the step, leaves nothing live and nothing to settle on —
+/// [`Observation::Gone`], a deliberate new attempt. Any subject or
+/// reference this probe does not answer for is
+/// [`Observation::Unsupported`].
+#[must_use]
+pub fn observe_atif<'a>(subject: &str, reference: &'a str) -> Observation<'a> {
+    let (Some(name), Some(path)) = (
+        subject.strip_prefix("step:"),
+        reference.strip_prefix("atif:"),
+    ) else {
+        return Observation::Unsupported;
+    };
+    let Ok(recording) = atif::log::read(std::path::Path::new(path)) else {
+        return Observation::Gone;
+    };
+    if recording.steps.iter().any(|step| {
+        step.call.as_ref().is_some_and(|call| {
+            call.name == name || call.extra.get("step").and_then(Value::as_str) == Some(name)
+        })
+    }) {
+        Observation::Ended { reference }
+    } else {
+        Observation::Gone
+    }
+}
+
 /// Every unfinished record's dispatch reference — `result` is where a
 /// dispatched mark keeps the job it named.
 fn references(run: &Run) -> Vec<(String, String)> {
@@ -200,6 +232,7 @@ mod tests {
             outcome: None,
             result: None,
             worktree: None,
+            owner: None,
             unix: 0,
             steps: Vec::new(),
             tasks: Vec::new(),
@@ -327,5 +360,49 @@ mod tests {
             pins_match: true,
         });
         assert!(rulings.is_empty());
+    }
+
+    #[test]
+    fn an_atif_reference_observes_what_the_trace_recorded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.atif.jsonl");
+        let session = atif::Session::opening("s-1", "model", "door", "repo", "0.1.0");
+        let mut log = atif::Log::create_at(&path, &session).unwrap();
+        log.append(&atif::Step::called(atif::Call {
+            id: "c-1".to_string(),
+            name: "watch".to_string(),
+            arguments: serde_json::json!({}),
+            output: "{}".to_string(),
+            outcome: atif::Outcome::Completed,
+            milliseconds: 1,
+            purpose: None,
+            extra: Default::default(),
+        }))
+        .unwrap();
+        // The coordinator stopped without closing the session.
+        drop(log);
+
+        let reference = format!("atif:{}", path.display());
+        // The step the trace reached ended — settle on its evidence.
+        assert_eq!(
+            observe_atif("step:watch", &reference),
+            Observation::Ended {
+                reference: &reference
+            }
+        );
+        // A step it never reached has nothing live and nothing written.
+        assert_eq!(observe_atif("step:later", &reference), Observation::Gone);
+        // A run or task subject is not something this probe answers for.
+        assert_eq!(observe_atif("run", &reference), Observation::Unsupported);
+        // Nor is a reference that is not a trace.
+        assert_eq!(
+            observe_atif("step:watch", "job-7"),
+            Observation::Unsupported
+        );
+        // A session that cannot be read names nothing live.
+        assert_eq!(
+            observe_atif("step:watch", "atif:/no/such/session.atif.jsonl"),
+            Observation::Gone
+        );
     }
 }

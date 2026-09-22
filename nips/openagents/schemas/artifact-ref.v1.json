@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.artifact-ref.v1",
+  "title": "ArtifactRef",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["digest", "size", "media_type"],
+  "properties": {
+    "digest": { "type": "string", "minLength": 71, "maxLength": 71 },
+    "size": { "type": "integer", "minimum": 0 },
+    "media_type": { "type": "string", "minLength": 1 },
+    "schema": { "type": "string", "minLength": 1 },
+    "event": { "type": "object" },
+    "sources": { "type": "array" }
+  }
+}

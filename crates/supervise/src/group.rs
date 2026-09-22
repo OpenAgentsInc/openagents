@@ -49,3 +49,20 @@ pub(crate) fn end(group: i32) -> bool {
 pub fn running(group: i32) -> bool {
     signal(group, 0)
 }
+
+/// Whether `pid` names a live process — not a group, one process.
+///
+/// Signal zero sends nothing; `EPERM` is a live process another user
+/// owns, which this probe still counts as running. A recovered process
+/// identifier can name a different live process than the one that wrote
+/// it — liveness is the question this answers, not identity.
+#[must_use]
+pub fn process_running(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    // SAFETY: `kill` reads two integers and returns one; signal zero
+    // performs the permission and existence checks and sends nothing.
+    let result = unsafe { libc::kill(pid as i32, 0) };
+    result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}

@@ -148,26 +148,27 @@ fn manifest(root: &Path) -> String {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
-    json!({
-        "v": 1,
-        "slug": "stub-local",
-        "name": "A stub executor",
-        "summary": "Answers one question, for a test.",
-        "transport": "subprocess",
-        "detect": {"binary": "sh", "version": ["sh", "-c", "echo stub 1.0.0"]},
-        "enforces": ["minutes"],
-        "cannot_enforce": ["tool_set", "role", "budget_cents", "effort"],
-        "sees_repository": true,
-        "concurrent_max": 6,
-        "cost": "local",
-        "isolation": ["worktree", "directory"],
-        "invoke": ["sh", script.display().to_string()],
-        "refuses": [{
-            "name": "untrusted_workspace",
-            "match": "Refusing to run in an untrusted workspace",
-            "explanation": "The executor declines a directory nobody has trusted."
-        }]
-    })
+    capability::executor_document(
+        "stub-local",
+        "sh",
+        vec!["sh".into(), "-c".into(), "echo stub 1.0.0".into()],
+        json!({
+            "summary": "Answers one question, for a test.",
+            "name": "A stub executor",
+            "enforces": ["minutes"],
+            "cannot_enforce": ["tool_set", "role", "budget_cents", "effort"],
+            "sees_repository": true,
+            "concurrent_max": 6,
+            "cost": "local",
+            "isolation": ["worktree", "directory"],
+            "invoke": ["sh", script.display().to_string()],
+            "refuses": [{
+                "name": "untrusted_workspace",
+                "match": "Refusing to run in an untrusted workspace",
+                "explanation": "The executor declines a directory nobody has trusted."
+            }]
+        }),
+    )
     .to_string()
 }
 
@@ -660,9 +661,7 @@ async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
     let exotic = root.join("exotic.json");
     std::fs::write(
         &exotic,
-        r#"{"v":1,"slug":"exotic","steps":[
-            {"name":"one","kind":"query","bounds":{}},
-            {"name":"two","kind":"teleport","bounds":{}}]}"#,
+        r#"{"definition":{"v":1,"requires":[],"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/exotic","summary":"no","input":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"result":{"from":"input","pointer":""},"steps":[{"name":"two","kind":"teleport","after":[],"input":{"from":"input","pointer":""},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"on_error":"stop"}]},"binding":{"steps":{}}}"#,
     )
     .unwrap();
     let reason = Program::load(&exotic).expect_err("an unknown kind is refused");
@@ -673,15 +672,13 @@ async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
     let composed = root.join("composed.json");
     std::fs::write(
         &composed,
-        r#"{"v":1,"slug":"composed","steps":[
-            {"name":"one","kind":"query","bounds":{"max_results":4}},
-            {"name":"two","kind":"program","program":"naddr1abc","bounds":{}}]}"#,
+        r#"{"definition":{"v":1,"requires":[],"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/composed","summary":"no","input":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"result":{"from":"step:one","pointer":"/value"},"steps":[{"name":"one","kind":"query","after":[],"input":{"from":"input","pointer":""},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"on_error":"stop"},{"name":"two","kind":"module","after":["one"],"input":{"from":"step:one","pointer":"/value"},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"on_error":"stop"}]},"binding":{"steps":{"one":{"bounds":{"max_results":4}},"two":{"module":{"sha256":"00"}}}}}"#,
     )
     .unwrap();
     let program = Program::load(&composed).expect("composition parses");
     let refused = runtime
         .admit(&program)
-        .expect_err("this host runs no program step");
+        .expect_err("this host runs no module step");
     assert_eq!(refused.step, "two");
     assert_eq!(refused.code, "step_kind_unavailable");
 
@@ -699,7 +696,7 @@ async fn an_executor_claim_does_not_establish_enforcement() {
     let machine = machine();
     let root = machine.path();
     let mut manifest = declared(root);
-    manifest["enforces"] = json!(["minutes", "memory_mb"]);
+    manifest["binding"]["claims_enforced"] = json!(["minutes", "memory_mb"]);
     redeclare(root, &manifest);
     let mut program = fan_out(root);
     let delegate = program
@@ -732,8 +729,8 @@ async fn the_host_holds_minutes_even_when_the_executor_does_not() {
         let machine = machine();
         let root = machine.path();
         let mut manifest = declared(root);
-        manifest["enforces"] = json!([]);
-        manifest["cannot_enforce"] = ignored;
+        manifest["binding"]["claims_enforced"] = json!([]);
+        manifest["binding"]["claims_not_enforced"] = ignored;
         redeclare(root, &manifest);
         let run = runtime(root)
             .await

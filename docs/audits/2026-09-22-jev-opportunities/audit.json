@@ -1,0 +1,285 @@
+{
+  "kind": "offline_reanalysis_of_retained_records",
+  "new_model_calls": 0,
+  "quantiles": "Median averages the central pair; p95 uses nearest rank.",
+  "evidence_heldout": {
+    "source": "docs/coder/measurements/2026-09-21-evidence-select.raw.jsonl",
+    "source_sha256": "5ba3892bb2d65f9fb987ada059b363db2704396595e876e5f020de97afe1ab0f",
+    "suite": "crates/gym/suites/evidence-select-v1.json",
+    "suite_sha256": "e68f9f8491572edfa85c98b8b7013b239879053804c79fa5687b5318682cc198",
+    "recorded_grades_match_current_suite": false,
+    "grade_discrepancies": [
+      {
+        "item": "es-05",
+        "recorded_correct": false,
+        "recomputed_correct": true,
+        "current_truth": {
+          "any_relevant": true,
+          "coverage": true,
+          "chosen": "migrations/0042_users.sql",
+          "span": {
+            "start": 1,
+            "end": 120
+          }
+        },
+        "chosen_path": "migrations/0042_users.sql",
+        "chosen_span": {
+          "start": 1,
+          "end": 120
+        }
+      }
+    ],
+    "items": 18,
+    "recorded_correct": 16,
+    "recomputed_correct": 17,
+    "recomputed_errors": [
+      {
+        "item": "es-10",
+        "choice": "docs/hashing.md",
+        "selected_probability": 0.58
+      }
+    ],
+    "recomputed_wrong_with_selected_probability_at_least_0_8": 0,
+    "any_relevant_agreement": 18,
+    "coverage_agreement": 14,
+    "input_tokens": 15883,
+    "output_tokens": 1774,
+    "latency": {
+      "n": 18,
+      "mean_ms": 186.11111111111111,
+      "median_ms": 166.0,
+      "p95_nearest_rank_ms": 401,
+      "max_ms": 401
+    },
+    "historical_billed_usd": null,
+    "threshold_sweep_recomputed_descriptive_only": [
+      {
+        "floor": 0.0,
+        "correct_kept": 17,
+        "correct_lost": 0,
+        "errors_deferred": 0,
+        "errors_kept": 1
+      },
+      {
+        "floor": 0.5,
+        "correct_kept": 16,
+        "correct_lost": 1,
+        "errors_deferred": 0,
+        "errors_kept": 1
+      },
+      {
+        "floor": 0.6,
+        "correct_kept": 14,
+        "correct_lost": 3,
+        "errors_deferred": 1,
+        "errors_kept": 0
+      },
+      {
+        "floor": 0.7,
+        "correct_kept": 12,
+        "correct_lost": 5,
+        "errors_deferred": 1,
+        "errors_kept": 0
+      },
+      {
+        "floor": 0.8,
+        "correct_kept": 11,
+        "correct_lost": 6,
+        "errors_deferred": 1,
+        "errors_kept": 0
+      },
+      {
+        "floor": 0.9,
+        "correct_kept": 11,
+        "correct_lost": 6,
+        "errors_deferred": 1,
+        "errors_kept": 0
+      },
+      {
+        "floor": 0.95,
+        "correct_kept": 9,
+        "correct_lost": 8,
+        "errors_deferred": 1,
+        "errors_kept": 0
+      }
+    ]
+  },
+  "evidence_development": {
+    "source": "docs/coder/measurements/2026-09-22-evidence-select-dev.raw.jsonl",
+    "source_sha256": "3efbb91a8ff6026c28f903dde6c779f18ba2d0ea0eae44ee47eeeead1f0a7f6c",
+    "suite": "crates/gym/suites/evidence-select-dev-v1.json",
+    "suite_sha256": "e2d3e7639cfba9def15a02a0512a91267f54b75f90b7a2f92693f70f64c0ff2c",
+    "recorded_grades_match_current_suite": true,
+    "grade_discrepancies": [],
+    "items": 10,
+    "recorded_correct": 8,
+    "recomputed_correct": 8,
+    "recomputed_errors": [
+      {
+        "item": "dev-04",
+        "choice": "src/keys/format.rs",
+        "selected_probability": 0.68
+      },
+      {
+        "item": "dev-09",
+        "choice": "src/http/headers.rs",
+        "selected_probability": 0.92
+      }
+    ],
+    "recomputed_wrong_with_selected_probability_at_least_0_8": 1,
+    "any_relevant_agreement": 10,
+    "coverage_agreement": 9,
+    "input_tokens": 8830,
+    "output_tokens": 1029,
+    "latency": {
+      "n": 10,
+      "mean_ms": 206.1,
+      "median_ms": 172.0,
+      "p95_nearest_rank_ms": 498,
+      "max_ms": 498
+    },
+    "historical_billed_usd": null,
+    "threshold_sweep_recomputed_descriptive_only": [
+      {
+        "floor": 0.0,
+        "correct_kept": 8,
+        "correct_lost": 0,
+        "errors_deferred": 0,
+        "errors_kept": 2
+      },
+      {
+        "floor": 0.5,
+        "correct_kept": 8,
+        "correct_lost": 0,
+        "errors_deferred": 0,
+        "errors_kept": 2
+      },
+      {
+        "floor": 0.6,
+        "correct_kept": 8,
+        "correct_lost": 0,
+        "errors_deferred": 0,
+        "errors_kept": 2
+      },
+      {
+        "floor": 0.7,
+        "correct_kept": 8,
+        "correct_lost": 0,
+        "errors_deferred": 1,
+        "errors_kept": 1
+      },
+      {
+        "floor": 0.8,
+        "correct_kept": 8,
+        "correct_lost": 0,
+        "errors_deferred": 1,
+        "errors_kept": 1
+      },
+      {
+        "floor": 0.9,
+        "correct_kept": 6,
+        "correct_lost": 2,
+        "errors_deferred": 1,
+        "errors_kept": 1
+      },
+      {
+        "floor": 0.95,
+        "correct_kept": 4,
+        "correct_lost": 4,
+        "errors_deferred": 2,
+        "errors_kept": 0
+      }
+    ]
+  },
+  "review_findings": {
+    "source": "docs/coder/measurements/2026-09-22-review-finding.raw.jsonl",
+    "source_sha256": "5ca35a57e07b2ed5ac6457815016428b871ded14256e3c66466c0c47819c39a1",
+    "suite": "crates/gym/suites/review-finding-v1.json",
+    "suite_sha256": "6e3529a24f01885474bc1907feb136e5f7b807e543bb615267fe2fca63ee29c8",
+    "recorded_grades_checked_against_current_suite": true,
+    "items": 12,
+    "findings": 20,
+    "genuine": 7,
+    "false_positive": 13,
+    "correct_at_0_5": 18,
+    "errors": [
+      {
+        "item": "rf-06",
+        "finding": "f1",
+        "noul": 0.51,
+        "truth": false,
+        "agree": false
+      },
+      {
+        "item": "rf-10",
+        "finding": "f1",
+        "noul": 0.25,
+        "truth": true,
+        "agree": false
+      }
+    ],
+    "threshold_sweep_descriptive_only": [
+      {
+        "dismiss_below": 0.1,
+        "dismissed_genuine": 0,
+        "dismissed_false_positive": 7
+      },
+      {
+        "dismiss_below": 0.2,
+        "dismissed_genuine": 0,
+        "dismissed_false_positive": 8
+      },
+      {
+        "dismiss_below": 0.3,
+        "dismissed_genuine": 1,
+        "dismissed_false_positive": 9
+      },
+      {
+        "dismiss_below": 0.4,
+        "dismissed_genuine": 1,
+        "dismissed_false_positive": 11
+      },
+      {
+        "dismiss_below": 0.5,
+        "dismissed_genuine": 1,
+        "dismissed_false_positive": 12
+      }
+    ],
+    "latency": {
+      "n": 12,
+      "mean_ms": 205.25,
+      "median_ms": 156.0,
+      "p95_nearest_rank_ms": 495,
+      "max_ms": 495
+    },
+    "historical_billed_usd": null
+  },
+  "observed_fanout": {
+    "source": "crates/coderbench/goldens/devin-fan-out-six.atif.jsonl",
+    "source_sha256": "be816833193205cb511af43326f8aa7972d94aaf81ce6c1708566edb8d23c0db",
+    "decision_durations_ms": {
+      "program": 586,
+      "independence": 169,
+      "accept": 269
+    },
+    "decision_duration_sum_ms": 1024,
+    "capability_probe_ms": [
+      5544
+    ],
+    "longest_delegate_ms": 40751,
+    "note": "Concurrent delegate durations must not be summed as elapsed time."
+  },
+  "economics_assumptions": {
+    "jev_usd_per_million_input_tokens": 0.042,
+    "source": "https://docs.typesafe.ai/models",
+    "input_tokens_to_estimated_usd": {
+      "2000": 8.4e-05,
+      "6000": 0.00025200000000000005,
+      "12000": 0.0005040000000000001,
+      "18000": 0.000756,
+      "24000": 0.0010080000000000002,
+      "48000": 0.0020160000000000004
+    },
+    "note": "Current-price estimates, not observed charges."
+  }
+}

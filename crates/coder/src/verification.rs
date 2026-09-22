@@ -352,12 +352,21 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         std::fs::write(workspace.path().join("candidate.txt"), "immutable\n").unwrap();
         let manifest = host.path().join("check.json");
-        std::fs::write(&manifest, serde_json::to_vec(&json!({
-            "v":1,"slug":"verification-fixture","name":"Verification fixture","transport":"subprocess",
-            "detect":{"binary":"/bin/sh","version":["/bin/sh","--version"]},
-            "enforces":[],"cannot_enforce":[],"sees_repository":true,
-            "cost":"local","invoke":["/bin/sh"],"isolation":["directory"]
-        })).unwrap()).unwrap();
+        std::fs::write(
+            &manifest,
+            serde_json::to_vec(&capability::executor_document(
+                "verification-fixture",
+                "/bin/sh",
+                vec!["/bin/sh".into(), "--version".into()],
+                json!({
+                    "name": "Verification fixture",
+                    "invoke": ["/bin/sh"],
+                    "isolation": ["directory"]
+                }),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
         let entry = Entry::load(&manifest, capability::Source::Operator).unwrap();
         let plan = Plan {
             schema: SCHEMA.into(),

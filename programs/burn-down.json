@@ -1,23 +1,197 @@
 {
-  "v": 1,
-  "slug": "burn-down",
-  "name": "Work through the checkout's work list",
-  "summary": "Runs one delegated session per item of the work list this checkout carries (.coder/work-list.json), each in a worktree of its own, and keeps every worktree for review.",
-  "inputs": {"executor": "capability-slug"},
-  "outputs": {"results": "list"},
-  "steps": [
-    {"name": "select", "kind": "query", "source": "work-list",
-     "bounds": {"max_results": 6, "on_overflow": "refuse"}},
-    {"name": "independence", "kind": "decide",
-     "question": "openagents.independence.v2",
-     "bounds": {"refuse_below": 0.7, "requires_scorable_answer": true}},
-    {"name": "admit", "kind": "check",
-     "bounds": {"refuse_on": "cannot_enforce_intersection"}},
-    {"name": "fan_out", "kind": "delegate",
-     "briefing": "You are working in a Git worktree made for this item alone. The repository's common Git directory is sealed: git commands that read or write it, including status, add, commit, and worktree, fail here, and that is by design. Do not try to unseal it, and do not touch anything outside this worktree. If your item changes files, commit it to the scratch Git directory already inside the worktree at `.coder-git`, which holds one commit of the tree as you found it: with `GIT_DIR=.coder-git` and `GIT_WORK_TREE=.` exported, run `git add -A` and `git commit`. Every git command you run needs those two variables, and your commit should hold only the files your item changed. The reviewer fetches from that scratch directory with `git fetch <worktree>/.coder-git HEAD` after you finish; nothing you commit reaches the shared repository on its own. End your reply with one line that starts with `Final answer:` followed by the answer the item asks for, in the form it asks for it. Whatever you print before that line is kept as narration; only what follows the last `Final answer:` is judged.",
-     "bounds": {"concurrent_max": 6, "isolation": "worktree", "minutes": 30}},
-    {"name": "accept", "kind": "decide",
-     "question": "openagents.completion.v1",
-     "bounds": {"per_requirement": true}}
-  ]
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/burn-down",
+    "summary": "Runs one delegated session per item of the work list this checkout carries (.coder/work-list.json), each in a worktree of its own, and keeps every worktree for review.",
+    "input": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "output": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "steps": [
+      {
+        "name": "select",
+        "kind": "query",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/work-list",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "independence",
+        "kind": "decide",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/openagents-independence-v2",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "select"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "admit",
+        "kind": "check",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/admit",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "independence"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "fan_out",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/fan_out",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "admit"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "accept",
+        "kind": "decide",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/openagents-completion-v1",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "fan_out"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      }
+    ],
+    "result": {
+      "from": "step:accept",
+      "pointer": "/value"
+    },
+    "bounds": {}
+  },
+  "binding": {
+    "name": "Work through the checkout's work list",
+    "inputs": {
+      "executor": "capability-slug"
+    },
+    "outputs": {
+      "results": "list"
+    },
+    "steps": {
+      "select": {
+        "source": "work-list",
+        "bounds": {
+          "max_results": 6,
+          "on_overflow": "refuse"
+        }
+      },
+      "independence": {
+        "question": "openagents.independence.v2",
+        "bounds": {
+          "refuse_below": 0.7,
+          "requires_scorable_answer": true
+        }
+      },
+      "admit": {
+        "bounds": {
+          "refuse_on": "cannot_enforce_intersection"
+        }
+      },
+      "fan_out": {
+        "bounds": {
+          "concurrent_max": 6,
+          "isolation": "worktree",
+          "minutes": 30
+        },
+        "briefing": "You are working in a Git worktree made for this item alone. The repository's common Git directory is sealed: git commands that read or write it, including status, add, commit, and worktree, fail here, and that is by design. Do not try to unseal it, and do not touch anything outside this worktree. If your item changes files, commit it to the scratch Git directory already inside the worktree at `.coder-git`, which holds one commit of the tree as you found it: with `GIT_DIR=.coder-git` and `GIT_WORK_TREE=.` exported, run `git add -A` and `git commit`. Every git command you run needs those two variables, and your commit should hold only the files your item changed. The reviewer fetches from that scratch directory with `git fetch <worktree>/.coder-git HEAD` after you finish; nothing you commit reaches the shared repository on its own. End your reply with one line that starts with `Final answer:` followed by the answer the item asks for, in the form it asks for it. Whatever you print before that line is kept as narration; only what follows the last `Final answer:` is judged."
+      },
+      "accept": {
+        "question": "openagents.completion.v1",
+        "bounds": {
+          "per_requirement": true
+        }
+      }
+    }
+  }
 }

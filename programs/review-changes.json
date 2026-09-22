@@ -1,30 +1,98 @@
 {
-  "v": 1,
-  "slug": "review-changes",
-  "name": "Review a diff and report problems",
-  "summary": "Captures the pinned diff, requires the host's mechanical checks, and judges each finding a pinned reviewer reported.",
-  "inputs": {
-    "revision": "string"
-  },
-  "outputs": {
-    "findings": "list"
-  },
-  "steps": [
-    {
-      "name": "mechanical",
-      "kind": "check",
-      "bounds": {
-        "refuse_on": "gate_not_met",
-        "max_tests": 16
-      }
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/review-changes",
+    "summary": "Captures the pinned diff, requires the host's mechanical checks, and judges each finding a pinned reviewer reported.",
+    "input": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
     },
-    {
-      "name": "review",
-      "kind": "decide",
-      "question": "openagents.review-finding.v1",
-      "bounds": {
-        "per_finding": true
+    "output": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "steps": [
+      {
+        "name": "mechanical",
+        "kind": "check",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/mechanical",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "review",
+        "kind": "decide",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/openagents-review-finding-v1",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "mechanical"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      }
+    ],
+    "result": {
+      "from": "step:review",
+      "pointer": "/value"
+    },
+    "bounds": {}
+  },
+  "binding": {
+    "name": "Review a diff and report problems",
+    "inputs": {
+      "revision": "string"
+    },
+    "outputs": {
+      "findings": "list"
+    },
+    "steps": {
+      "mechanical": {
+        "bounds": {
+          "refuse_on": "gate_not_met",
+          "max_tests": 16
+        }
+      },
+      "review": {
+        "question": "openagents.review-finding.v1",
+        "bounds": {
+          "per_finding": true
+        }
       }
     }
-  ]
+  }
 }

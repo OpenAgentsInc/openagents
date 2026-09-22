@@ -1,0 +1,50 @@
+{
+  "model": "jev-1.13.0",
+  "state": {
+    "fixture": "Authored illustration of project intake; these tasks are not authorized for execution.",
+    "tasks": [
+      {
+        "id": "a",
+        "text": "Add the include_queue_ms field to the receipt returned by the batch endpoint.",
+        "output_contract": "The response receipt includes include_queue_ms.",
+        "status": "not started"
+      },
+      {
+        "id": "b",
+        "text": "Display include_queue_ms from the new batch receipt in the terminal. Do not infer it from total duration.",
+        "input_contract": "A receipt with include_queue_ms.",
+        "status": "not started"
+      }
+    ],
+    "observations": {
+      "current_receipt_has_include_queue_ms": false,
+      "declared_paths_overlap": false,
+      "explicit_dependency_edge": false
+    }
+  },
+  "questions": {
+    "b_requires_a_output": {
+      "type": "noul",
+      "instructions": "Does satisfying `tasks[1].input_contract` require the currently absent output described in `tasks[0].output_contract`? Judge the stated contracts, not whether separate files can be edited concurrently."
+    },
+    "same_deliverable": {
+      "type": "noul",
+      "instructions": "Do `tasks[0].text` and `tasks[1].text` request the same deliverable, such that completing either would fulfill the other? Related producer and consumer work is not a duplicate."
+    },
+    "a_quiet_measurement": {
+      "type": "noul",
+      "instructions": "Does `tasks[0].text` request an empirical timing measurement that would be invalidated by competing load? Implementing a duration field alone is not such a measurement."
+    },
+    "b_work_kind": {
+      "type": "choice",
+      "instructions": "Which preparation template fits `tasks[1].text`? Select a work kind only; this grants no resources or execution permission.",
+      "criteria": {
+        "read_only_answer": "Read and explain existing material without changing it.",
+        "source_change": "Change implementation or tests.",
+        "documentation_change": "Change documentation only.",
+        "measurement": "Run an empirical benchmark or experiment.",
+        "unknown": "The requested work kind is not established."
+      }
+    }
+  }
+}

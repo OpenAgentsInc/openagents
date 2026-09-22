@@ -1,12 +1,69 @@
 {
-  "v": 1,
-  "slug": "run-suite",
-  "name": "Run a pinned suite",
-  "summary": "Runs host-prepared checks bound to one suite and input identity, under a stated test budget.",
-  "inputs": {"suite": "string", "doors": "list"},
-  "outputs": {"metrics": "map", "gate": "string"},
-  "steps": [
-    {"name": "score", "kind": "check",
-     "bounds": {"refuse_on": "gate_not_met", "acceptance": "suite", "max_tests": 16}}
-  ]
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/run-suite",
+    "summary": "Runs host-prepared checks bound to one suite and input identity, under a stated test budget.",
+    "input": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "output": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "steps": [
+      {
+        "name": "score",
+        "kind": "check",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/score",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      }
+    ],
+    "result": {
+      "from": "step:score",
+      "pointer": "/value"
+    },
+    "bounds": {}
+  },
+  "binding": {
+    "name": "Run a pinned suite",
+    "inputs": {
+      "suite": "string",
+      "doors": "list"
+    },
+    "outputs": {
+      "metrics": "map",
+      "gate": "string"
+    },
+    "steps": {
+      "score": {
+        "bounds": {
+          "refuse_on": "gate_not_met",
+          "acceptance": "suite",
+          "max_tests": 16
+        }
+      }
+    }
+  }
 }

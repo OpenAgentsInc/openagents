@@ -1,22 +1,197 @@
 {
-  "v": 1,
-  "slug": "delegate-fan-out",
-  "name": "Fan out one session per task",
-  "summary": "Runs one delegated session per task, in parallel.",
-  "inputs": {"tasks": "list", "executor": "capability-slug"},
-  "outputs": {"results": "list"},
-  "steps": [
-    {"name": "select", "kind": "query", "source": "request",
-     "bounds": {"max_results": 12, "on_overflow": "refuse"}},
-    {"name": "independence", "kind": "decide",
-     "question": "openagents.independence.v2",
-     "bounds": {"refuse_below": 0.7, "requires_scorable_answer": true}},
-    {"name": "admit", "kind": "check",
-     "bounds": {"refuse_on": "cannot_enforce_intersection"}},
-    {"name": "fan_out", "kind": "delegate",
-     "bounds": {"concurrent_max": 6, "isolation": "worktree", "minutes": 60}},
-    {"name": "accept", "kind": "decide",
-     "question": "openagents.completion.v1",
-     "bounds": {"per_requirement": true}}
-  ]
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/delegate-fan-out",
+    "summary": "Runs one delegated session per task, in parallel.",
+    "input": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "output": {
+      "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+      "size": 17,
+      "media_type": "application/schema+json"
+    },
+    "steps": [
+      {
+        "name": "select",
+        "kind": "query",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/request",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "independence",
+        "kind": "decide",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/openagents-independence-v2",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "select"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "admit",
+        "kind": "check",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/admit",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "independence"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "fan_out",
+        "kind": "delegate",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/fan_out",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "admit"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      },
+      {
+        "name": "accept",
+        "kind": "decide",
+        "target": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/openagents-completion-v1",
+          "artifact": {
+            "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+            "size": 17,
+            "media_type": "application/octet-stream"
+          }
+        },
+        "after": [
+          "fan_out"
+        ],
+        "input": {
+          "from": "input",
+          "pointer": ""
+        },
+        "output": {
+          "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "size": 17,
+          "media_type": "application/schema+json"
+        },
+        "bounds": {},
+        "on_error": "stop"
+      }
+    ],
+    "result": {
+      "from": "step:accept",
+      "pointer": "/value"
+    },
+    "bounds": {}
+  },
+  "binding": {
+    "name": "Fan out one session per task",
+    "inputs": {
+      "tasks": "list",
+      "executor": "capability-slug"
+    },
+    "outputs": {
+      "results": "list"
+    },
+    "steps": {
+      "select": {
+        "source": "request",
+        "bounds": {
+          "max_results": 12,
+          "on_overflow": "refuse"
+        }
+      },
+      "independence": {
+        "question": "openagents.independence.v2",
+        "bounds": {
+          "refuse_below": 0.7,
+          "requires_scorable_answer": true
+        }
+      },
+      "admit": {
+        "bounds": {
+          "refuse_on": "cannot_enforce_intersection"
+        }
+      },
+      "fan_out": {
+        "bounds": {
+          "concurrent_max": 6,
+          "isolation": "worktree",
+          "minutes": 60
+        }
+      },
+      "accept": {
+        "question": "openagents.completion.v1",
+        "bounds": {
+          "per_requirement": true
+        }
+      }
+    }
+  }
 }

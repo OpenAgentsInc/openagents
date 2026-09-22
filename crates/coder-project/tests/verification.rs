@@ -41,7 +41,7 @@ async fn cli_requires_pinned_artifacts_and_never_accepts_missing_suite_evidence(
     let repo = root.path();
     std::fs::create_dir(repo.join("capabilities")).unwrap();
     let manifest = repo.join("capabilities/test-check.json");
-    std::fs::write(&manifest,serde_json::to_vec(&json!({"v":1,"slug":"test-check","name":"Fixture check","transport":"subprocess","detect":{"binary":"/bin/sh","version":["/bin/sh","--version"]},"enforces":[],"cannot_enforce":[],"sees_repository":true,"cost":"local","invoke":["/bin/sh"],"isolation":["directory"]})).unwrap()).unwrap();
+    std::fs::write(&manifest, serde_json::to_vec(&capability::executor_document("test-check", "/bin/sh", vec!["/bin/sh".into(), "--version".into()], serde_json::json!({"name":"Fixture check","invoke":["/bin/sh"],"isolation":["directory"]}))).unwrap()).unwrap();
     std::fs::write(repo.join("candidate.txt"), "old\n").unwrap();
     git(repo, &["init", "--quiet"]).await.unwrap();
     git(repo, &["add", "."]).await.unwrap();
@@ -213,7 +213,7 @@ async fn cli_requires_pinned_artifacts_and_never_accepts_missing_suite_evidence(
             .env("HOME", host.path())
             .env("CODER_CAPABILITY_TRUST", &store)
             .env("CODER_PROGRAM_EFFECTS", "reads,network,subprocesses,spend")
-            .env("CODER_DECISION_PROFILE", "local")
+            .env("CODER_DECISION_PROFILE", "direct_local")
             .env("CODER_DECISION_URL", "http://127.0.0.1:9")
             .env("CODER_DECISION_MODEL", "fixture")
             .args([
@@ -294,7 +294,7 @@ async fn cli_requires_pinned_artifacts_and_never_accepts_missing_suite_evidence(
         .env("HOME", host.path())
         .env("CODER_CAPABILITY_TRUST", &store)
         .env("CODER_PROGRAM_EFFECTS", "reads,network,subprocesses,spend")
-        .env("CODER_DECISION_PROFILE", "local")
+        .env("CODER_DECISION_PROFILE", "direct_local")
         .env("CODER_DECISION_URL", endpoint)
         .env("CODER_DECISION_MODEL", "fixture")
         .args([

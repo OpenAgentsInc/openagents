@@ -359,3 +359,11 @@ supported by fixtures. Keep these draft names out of numeric `supported_nips`.
 The kind allocations in this specification set are draft assignments, not
 upstream registrations. Implementers must verify allocation availability
 before public interoperation.
+
+## Machine-readable schemas
+
+`schemas/` holds JSON Schema 2020-12 documents for these bodies. The Rust
+validators in `crates/nostr` (`contracts`) are the conformance
+implementation. A schema that requires a vocabulary those validators do not
+implement is refused before execution. The schemas do not grant authority
+and they are not fetched from the network while a document is checked.

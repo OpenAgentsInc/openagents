@@ -340,7 +340,17 @@ fn survey() -> (tempfile::TempDir, Survey) {
     std::fs::create_dir_all(&capabilities).unwrap();
     std::fs::write(
         capabilities.join("devin-relay.json"),
-        r#"{"v":1,"slug":"devin-relay","name":"Devin, through a worker","transport":"relay","concurrent_max":6}"#,
+        serde_json::to_string(&capability::executor_document(
+            "devin-relay",
+            "",
+            Vec::new(),
+            serde_json::json!({
+                "transport": "nostr-cj",
+                "name": "Devin, through a worker",
+                "concurrent_max": 6
+            }),
+        ))
+        .unwrap(),
     )
     .unwrap();
     let survey = Survey::read(Some(repository.path()), repository.path());

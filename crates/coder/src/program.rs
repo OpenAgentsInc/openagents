@@ -126,8 +126,11 @@ pub enum Kind {
     Delegate,
     /// Another program, by address.
     Program,
-    /// A WebAssembly module, by content hash.
+    /// A WebAssembly module, by content hash. This host does not dispatch it.
     Module,
+    /// A native or adapter operation. The step names the operation. It
+    /// does not carry a command or a path.
+    Invoke,
 }
 
 impl Kind {
@@ -141,6 +144,7 @@ impl Kind {
             Kind::Delegate => "delegate",
             Kind::Program => "program",
             Kind::Module => "module",
+            Kind::Invoke => "invoke",
         }
     }
 }
@@ -155,12 +159,50 @@ impl Program {
     /// unrecognized step kind, a repeated step name, a `decide` step with
     /// no question or with a question's wording inlined.
     pub fn load(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let program: Self =
-            serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-        program
-            .validate()
-            .map_err(|reason| format!("{}: {reason}", path.display()))?;
+        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        Self::parse(&bytes).map_err(|reason| format!("{}: {reason}", path.display()))
+    }
+
+    /// Parses a program file.
+    ///
+    /// A NIP-PRG file is a `definition` plus the host `binding` that names
+    /// sources, question sets, and the bounds this host enforces. Any other
+    /// root key beside those two is refused. A file with no `definition`
+    /// is the host program document the runtime executes: `v`, `slug`, and
+    /// `steps`. Shipped programs use the NIP-PRG file. Staged and historical
+    /// host documents keep the fields the registry already runs.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first reason the file is not a program this host runs.
+    pub fn parse(bytes: &[u8]) -> Result<Self, String> {
+        let value = nostr::prg::parse_json(bytes).map_err(|error| error.to_string())?;
+        let root = value
+            .as_object()
+            .ok_or_else(|| "program file is not an object".to_string())?;
+        if root.contains_key("definition") || root.contains_key("binding") {
+            for key in root.keys() {
+                if key != "definition" && key != "binding" {
+                    return Err(format!(
+                        "unsupported field {key}: earlier program fields are not a program definition"
+                    ));
+                }
+            }
+            let definition = nostr::prg::parse_definition(
+                root.get("definition")
+                    .ok_or_else(|| "program file has no definition".to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let binding = root
+                .get("binding")
+                .and_then(Value::as_object)
+                .ok_or_else(|| "program file has no host binding".to_string())?;
+            let program = project(&definition, binding)?;
+            program.validate()?;
+            return Ok(program);
+        }
+        let program: Program = serde_json::from_value(value).map_err(|error| error.to_string())?;
+        program.validate()?;
         Ok(program)
     }
 
@@ -212,6 +254,17 @@ impl Program {
                     ));
                 }
             }
+            if step.kind == Kind::Invoke {
+                match step.rest.get("operation").and_then(Value::as_str) {
+                    Some(operation) if is_slug(operation) => {}
+                    _ => {
+                        return Err(format!(
+                            "invoke step {:?} names no admitted host operation",
+                            step.name
+                        ));
+                    }
+                }
+            }
             match (&step.source, step.kind) {
                 (Some(source), Kind::Query) if !is_slug(source) => {
                     return Err(format!(
@@ -255,6 +308,111 @@ impl Program {
         }
         kinds
     }
+}
+
+fn project(
+    definition: &nostr::prg::Definition,
+    binding: &Map<String, Value>,
+) -> Result<Program, String> {
+    let host_steps = binding.get("steps").and_then(Value::as_object);
+    let mut steps = Vec::with_capacity(definition.steps.len());
+    for step in &definition.steps {
+        let host = host_steps
+            .and_then(|steps| steps.get(&step.name))
+            .and_then(Value::as_object);
+        let kind = match step.kind.as_str() {
+            "query" => Kind::Query,
+            "check" => Kind::Check,
+            "decide" => Kind::Decide,
+            "delegate" => Kind::Delegate,
+            "program" => Kind::Program,
+            "module" => Kind::Module,
+            "invoke" => Kind::Invoke,
+            other => return Err(format!("step kind {other} is not a program step")),
+        };
+        let question = host
+            .and_then(|host| host.get("question"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let source = host
+            .and_then(|host| host.get("source"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let program = host
+            .and_then(|host| host.get("program"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let module = host.and_then(|host| host.get("module")).cloned();
+        let bounds = host
+            .and_then(|host| host.get("bounds"))
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let mut rest = Map::new();
+        if let Some(host) = host {
+            for (key, value) in host {
+                if !matches!(
+                    key.as_str(),
+                    "source" | "question" | "bounds" | "program" | "module"
+                ) {
+                    rest.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        if kind == Kind::Query {
+            for hidden in ["command", "argv", "shell", "path"] {
+                if rest.contains_key(hidden) {
+                    return Err(format!(
+                        "query step {:?} carries {hidden}, which is not a source read",
+                        step.name
+                    ));
+                }
+            }
+        }
+        steps.push(Step {
+            name: step.name.clone(),
+            kind,
+            question,
+            source,
+            program,
+            module,
+            bounds,
+            rest,
+        });
+    }
+    let inputs = string_map(binding.get("inputs"))?;
+    let outputs = string_map(binding.get("outputs"))?;
+    Ok(Program {
+        v: PROGRAM_VERSION,
+        slug: definition.component.clone(),
+        name: binding
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or(definition.summary.as_str())
+            .to_string(),
+        summary: definition.summary.clone(),
+        inputs,
+        outputs,
+        steps,
+    })
+}
+
+fn string_map(value: Option<&Value>) -> Result<BTreeMap<String, String>, String> {
+    let Some(value) = value else {
+        return Ok(BTreeMap::new());
+    };
+    let object = value
+        .as_object()
+        .ok_or_else(|| "inputs are not an object".to_string())?;
+    object
+        .iter()
+        .map(|(key, value)| {
+            value
+                .as_str()
+                .map(|text| (key.clone(), text.to_string()))
+                .ok_or_else(|| format!("{key} is not a string"))
+        })
+        .collect()
 }
 
 /// One program a host would not run, and why.
@@ -555,9 +713,7 @@ mod tests {
         let path = dir.path().join("exotic.json");
         std::fs::write(
             &path,
-            r#"{"v":1,"slug":"exotic","steps":[
-                {"name":"one","kind":"query","bounds":{}},
-                {"name":"two","kind":"teleport","bounds":{}}]}"#,
+            r#"{"definition":{"v":1,"requires":[],"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/exotic","summary":"no","input":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"result":{"from":"input","pointer":""},"steps":[{"name":"two","kind":"teleport","after":[],"input":{"from":"input","pointer":""},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"on_error":"stop"}]},"binding":{"steps":{}}}"#,
         )
         .unwrap();
 

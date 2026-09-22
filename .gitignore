@@ -7,3 +7,4 @@
 /swift/lev-bridge/.build/
 /training/**/__pycache__/
 /training/**/*.py[co]
+mc-bridge/target/

@@ -271,10 +271,13 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
         // The bounds a `program` step may declare for its child, each a
         // narrowing of what the composition has left: `spend` is the
         // child's ceiling in USD micros and `minutes` its own deadline.
-        Kind::Program => &["depth", "steps", "calls", "spend", "minutes"],
+        Kind::Program => &["depth", "steps", "calls", "spend", "minutes", "tokens"],
         // WebAssembly is specified and not built. A host that met one and
         // ran the rest would be running a different program.
         Kind::Module => &[],
+        // An invoke names a host operation. It carries no command, and
+        // this host admits none until one is configured.
+        Kind::Invoke => &[],
     }
 }
 
@@ -382,6 +385,21 @@ pub struct Run {
     /// lane — the spend record a bounded run leaves behind. Empty when
     /// the caller stated no spend bound.
     pub spend: Vec<crate::spend::Book>,
+    /// What the run's decision calls reported in tokens, beside the
+    /// dispatches no usage arrived for.
+    pub tokens: Tokens,
+}
+
+/// The decision-token record a run leaves behind.
+#[derive(Clone, Debug, Default)]
+pub struct Tokens {
+    /// Input and output tokens every dispatched decision call reported,
+    /// summed across primary, fallback, and review attempts.
+    pub counted: u64,
+    /// Dispatches whose response carried no usage at all. A token bound
+    /// cannot price these, so the record counts them apart rather than
+    /// letting a silent zero pass for free.
+    pub unmetered: usize,
 }
 
 /// What a resumer rules over one recovered run.
@@ -570,8 +588,94 @@ struct StepRun<'a> {
     /// child and the run's for the run, so a child spends the parent's
     /// room and never its own copy of it.
     scopes: &'a mut Vec<Scope>,
+    /// The decision-token ledger every dispatch charges: one counter
+    /// for the whole composition, bounded by the caller's ceiling and
+    /// narrowed by each `tokens` a `program` step on the stack
+    /// declared. A child bounds its own consumption, never the
+    /// composition's.
+    tokens: &'a mut TokenLedger,
     /// The session's trace, when one is being kept.
     trace: Option<&'a mut Recorder>,
+}
+
+/// The decision-token ledger a composition charges.
+///
+/// Usage arrives with the answer, so a ceiling holds between
+/// dispatches, never inside one: the call that crosses the bound still
+/// answers, and the next dispatch is the one the bound stops. A
+/// response that reports no usage prices nothing — the ledger counts
+/// those dispatches apart rather than treating a silent zero as free.
+#[derive(Default)]
+struct TokenLedger {
+    /// Input and output tokens the composition's decision calls
+    /// reported, summed.
+    spent: u64,
+    /// Dispatches whose response carried no usage at all.
+    unmetered: usize,
+    /// The caller's `Budget::tokens` — the run's own ceiling. Its
+    /// spending cancels the run, the way the step budget's does.
+    run: Option<u64>,
+    /// Child ceilings, one per `program` step that declared `tokens`,
+    /// narrowed to `spent at entry + declared` and capped by the
+    /// ceiling in force above it — so every entry is already no wider
+    /// than the run's, and the last is the tightest in force.
+    children: Vec<u64>,
+}
+
+impl TokenLedger {
+    /// The ceiling the next dispatch answers to, when any bound is in
+    /// force. Child entries narrow as they push, so the last is always
+    /// the tightest.
+    fn ceiling(&self) -> Option<u64> {
+        self.children.last().copied().or(self.run)
+    }
+
+    /// Whether another dispatch may start under the ceiling in force.
+    fn admits(&self) -> bool {
+        self.ceiling().is_none_or(|ceiling| self.spent < ceiling)
+    }
+
+    /// Whose bound a spent ceiling belongs to, when one is spent,
+    /// naming the step the refusal lands on. The run's answers first:
+    /// the caller's bound spending is the run's end wherever inside
+    /// the composition it lands — a child only borrowed the room.
+    fn spent_by(&self, step: &str) -> Option<Spent> {
+        if self.run.is_some_and(|ceiling| self.spent >= ceiling) {
+            return Some(Spent::Run(Refused::at(
+                step,
+                BUDGET_EXCEEDED,
+                format!(
+                    "the run's decision-token ceiling of {} is spent at {} reported tokens",
+                    self.run.unwrap_or(0),
+                    self.spent
+                ),
+            )));
+        }
+        self.children
+            .last()
+            .filter(|ceiling| self.spent >= **ceiling)
+            .map(|ceiling| {
+                Spent::Child(Refused::at(
+                    step,
+                    BUDGET_EXCEEDED,
+                    format!(
+                        "the child's decision-token ceiling of {ceiling} is spent at {} reported tokens",
+                        self.spent
+                    ),
+                ))
+            })
+    }
+
+    /// Charges one response's reported usage. A response reporting no
+    /// usage at all counts against `unmetered` — priced at nothing, but
+    /// not invisible.
+    fn charge(&mut self, usage: &jev::Usage) {
+        let reported = usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
+        if reported == 0 {
+            self.unmetered += 1;
+        }
+        self.spent += reported;
+    }
 }
 
 /// One level's spend ledger — the run's own book or a child's declared
@@ -656,6 +760,14 @@ pub struct Budget {
     /// flags, and `None` keeps the ledger without promising anything.
     /// [`crate::spend`] carries the rules.
     pub spend: Option<crate::spend::Bound>,
+    /// How many decision tokens the run's calls may report, summed
+    /// across primary, fallback, and review dispatches. Usage arrives
+    /// with the answer, so the bound holds between dispatches — the
+    /// call that crosses it answers, and the next step never starts.
+    /// A response that reports no usage cannot be priced against it;
+    /// the run's record counts those apart rather than letting a silent
+    /// zero pass for free.
+    pub tokens: Option<u64>,
 }
 
 /// One machine, running programs.
@@ -1049,6 +1161,12 @@ impl Runtime {
                     "spend is a ceiling in USD micros above zero, and this step names {value}"
                 )),
             },
+            "tokens" => match value.as_u64() {
+                Some(count) if count > 0 => Ok(()),
+                _ => refuse(format!(
+                    "tokens is a decision-token ceiling above zero, and this step names {value}"
+                )),
+            },
             "max_results" | "concurrent_max" | "max_tests" => match value.as_u64() {
                 Some(count) if count > 0 && usize::try_from(count).is_ok() => Ok(()),
                 _ => refuse(format!(
@@ -1337,12 +1455,18 @@ impl Runtime {
                 format!("this host has no wording for {PROGRAM_QUESTION}"),
             )
         })?;
+        // Selection happens before any run exists, so it charges a
+        // scratch ledger: its usage lands in the trace's attempt record
+        // either way, and the caller's `tokens` bound speaks for the
+        // run's steps — the budget's own unit.
+        let mut tokens = TokenLedger::default();
         let answers = self
             .ask(
                 set,
                 PROGRAM_CALL,
                 &json!({ "request": request }),
                 &Fill::Options(options.clone()),
+                &mut tokens,
                 trace,
                 |read| format!("program {read}"),
             )
@@ -1535,6 +1659,7 @@ impl Runtime {
                 .unwrap_or_else(Effects::none),
             // Refused at admission and never reaches a grant.
             Kind::Module => Effects::none(),
+            Kind::Invoke => Effects::none(),
         };
         if step.kind == Kind::Delegate {
             match self.survey.capability(&inputs.executor) {
@@ -1783,6 +1908,12 @@ impl Runtime {
                 books: BTreeMap::new(),
             });
         }
+        let mut tokens = TokenLedger {
+            spent: 0,
+            unmetered: 0,
+            run: self.budget.and_then(|budget| budget.tokens),
+            children: Vec::new(),
+        };
         let mut steps = StepRun {
             inputs,
             grant,
@@ -1794,6 +1925,7 @@ impl Runtime {
             dispatched: &mut dispatched,
             produced: &mut produced,
             scopes: &mut scopes,
+            tokens: &mut tokens,
             trace: trace.as_deref_mut(),
         };
         match self.run_steps(&mut steps, program, "", 1).await {
@@ -1809,6 +1941,10 @@ impl Runtime {
         {
             run.spend = scope.books.values().cloned().collect();
         }
+        run.tokens = Tokens {
+            counted: tokens.spent,
+            unmetered: tokens.unmetered,
+        };
         self.settle_runstate(&mut record, &run, trace.as_deref_mut());
         self.report(&run, started, trace);
         run
@@ -1888,11 +2024,43 @@ impl Runtime {
                 );
                 return StepsEnd::Ended(refused);
             }
-            self.advance_runstate(
-                ctx.record,
-                Mark::step(&name, State::Dispatched),
-                ctx.trace.as_deref_mut(),
-            );
+            // The token ledger answers the same way the spend books do,
+            // between dispatches since usage arrives with the answer:
+            // the caller's bound spending cancels the run, and a child's
+            // declared ceiling refusing ends this list so the
+            // propagation table decides.
+            if let Some(spent) = ctx.tokens.spent_by(&name) {
+                let (run_scope, refused) = match spent {
+                    Spent::Run(refused) => (true, refused),
+                    Spent::Child(refused) => (false, refused),
+                };
+                if run_scope {
+                    self.cancel_pending(
+                        ctx.record,
+                        &program.steps,
+                        position,
+                        prefix,
+                        depth,
+                        ctx.trace.as_deref_mut(),
+                    );
+                    return StepsEnd::Cancelled(refused);
+                }
+                self.advance_runstate(
+                    ctx.record,
+                    Mark::step(&name, refusal_state(&refused)),
+                    ctx.trace.as_deref_mut(),
+                );
+                return StepsEnd::Ended(refused);
+            }
+            // A dispatched mark names where its evidence lands — the
+            // trace session — so a resumer can probe it: an answer
+            // already written there is `Ended`, and nothing written is
+            // a deliberate new attempt rather than a claimed one.
+            let mut dispatched = Mark::step(&name, State::Dispatched);
+            if let Some(path) = ctx.trace.as_deref().map(Recorder::path) {
+                dispatched = dispatched.result(format!("atif:{}", path.display()));
+            }
+            self.advance_runstate(ctx.record, dispatched, ctx.trace.as_deref_mut());
             let remaining = Self::remaining(ctx.until);
             let outcome = match step.kind {
                 Kind::Query => self
@@ -1913,6 +2081,7 @@ impl Runtime {
                             ctx.inputs,
                             ctx.selection,
                             ctx.run,
+                            ctx.tokens,
                             ctx.trace.as_deref_mut(),
                         ),
                     )
@@ -1938,11 +2107,17 @@ impl Runtime {
                         ctx.run,
                         ctx.grant,
                         ctx.until,
+                        ctx.record,
                         ctx.trace.as_deref_mut(),
                     )
                     .await
                 }
                 Kind::Program => self.nested(ctx, step, prefix, depth).await,
+                Kind::Invoke => Err(Refused::at(
+                    &name,
+                    "not_admitted",
+                    "invoke names a host operation and this host has not admitted one",
+                )),
                 // Admission refused these before the first step ran.
                 Kind::Module => Err(Refused::at(
                     &name,
@@ -2134,6 +2309,24 @@ impl Runtime {
                 pushed = true;
             }
         }
+        // A declared `tokens` bounds the child's decision calls to what
+        // the ledger held at entry plus its declaration, never wider
+        // than the ceiling in force above it. Its spending is the
+        // child's refusal — an `Ended` the table below decides — since
+        // usage arrives with the answer the bound cannot be guaranteed
+        // ahead of the call that crosses it.
+        let mut tokens_pushed = false;
+        if early.is_none()
+            && let Some(bound) = step.bounds.get("tokens").and_then(Value::as_u64)
+        {
+            let ceiling = ctx
+                .tokens
+                .ceiling()
+                .unwrap_or(u64::MAX)
+                .min(ctx.tokens.spent.saturating_add(bound));
+            ctx.tokens.children.push(ceiling);
+            tokens_pushed = true;
+        }
         let end = match early {
             Some(end) => end,
             None => {
@@ -2148,6 +2341,7 @@ impl Runtime {
                     dispatched: &mut *ctx.dispatched,
                     produced: &mut *ctx.produced,
                     scopes: &mut *ctx.scopes,
+                    tokens: &mut *ctx.tokens,
                     trace: ctx.trace.as_deref_mut(),
                 };
                 // `run_steps` and `nested` recurse through each other, so
@@ -2158,6 +2352,9 @@ impl Runtime {
         };
         if pushed {
             ctx.scopes.pop();
+        }
+        if tokens_pushed {
+            ctx.tokens.children.pop();
         }
         let (outcome, detail) = match end {
             StepsEnd::Finished => (Outcome::Completed, String::new()),
@@ -2302,7 +2499,7 @@ impl Runtime {
     fn claim_runstate(
         &self,
         program: &Program,
-        trace: Option<&mut Recorder>,
+        mut trace: Option<&mut Recorder>,
     ) -> Option<(Store, String)> {
         let dir = self.runstate.as_ref()?;
         let mut store = match Store::open(dir) {
@@ -2315,6 +2512,28 @@ impl Runtime {
                 return None;
             }
         };
+        // A coordinator that opens the store recovers what a previous
+        // one left: unfinished records become `unknown` — never replayed,
+        // never claimed finished — unless a live process still owns the
+        // run. What the resumer rules for them is `rulings`'s question.
+        match store.recover() {
+            Ok(recovered) if !recovered.is_empty() => {
+                let ids: Vec<&str> = recovered.iter().map(|run| run.run.as_str()).collect();
+                self.note(
+                    trace.as_deref_mut(),
+                    &format!(
+                        "runstate recovery marked {} unfinished run(s) unknown: {}",
+                        recovered.len(),
+                        ids.join(", ")
+                    ),
+                );
+            }
+            Ok(_) => {}
+            Err(trouble) => self.note(
+                trace.as_deref_mut(),
+                &format!("runstate recovery did not run: {trouble}"),
+            ),
+        }
         let id = run_id(&program.slug);
         let base = self.base_commit();
         let pin = crate::child::digest(program);
@@ -2325,6 +2544,7 @@ impl Runtime {
             program: &pin,
             questions: &questions,
             sources: &sources,
+            owner: std::process::id(),
         }) {
             Ok(_) => Some((store, id)),
             Err(refusal) => {
@@ -2875,6 +3095,7 @@ impl Runtime {
     }
 
     /// A `decide` step: one typed question set put to a decision door.
+    #[allow(clippy::too_many_arguments)]
     async fn decide(
         &self,
         step: &Step,
@@ -2882,13 +3103,14 @@ impl Runtime {
         inputs: &Inputs,
         selection: &Selection,
         run: &mut Run,
+        tokens: &mut TokenLedger,
         trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
         // Admission established both of these.
         let id = step.question.clone().unwrap_or_default();
         let set = self.questions.get(&id).expect("admission resolved the set");
         if step.bounds.get("per_finding").and_then(Value::as_bool) == Some(true) {
-            return self.review_findings(step, set, run, trace).await;
+            return self.review_findings(step, set, run, tokens, trace).await;
         }
         let (state, fill) = match set.templated() {
             true => {
@@ -2907,7 +3129,7 @@ impl Runtime {
             None => answer,
         };
         let response = self
-            .ask(set, &step.name, &state, &fill, trace, route)
+            .ask(set, &step.name, &state, &fill, tokens, trace, route)
             .await?;
         run.answers
             .insert(step.name.clone(), answers_value(&response.answers));
@@ -2981,6 +3203,7 @@ impl Runtime {
         step: &Step,
         set: &Set,
         run: &mut Run,
+        tokens: &mut TokenLedger,
         mut trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
         let context = self
@@ -3073,6 +3296,7 @@ impl Runtime {
                 &step.name,
                 &state,
                 &Fill::Findings(ids),
+                tokens,
                 trace,
                 |read| read,
             )
@@ -3319,7 +3543,8 @@ impl Runtime {
         run: &mut Run,
         grant: &Grant,
         until: Option<Instant>,
-        trace: Option<&mut Recorder>,
+        record: &mut Option<(Store, String)>,
+        mut trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
         // A step that hands over nothing did not run: it reported "0 of 0
         // answered" and the program carried on. That is the shape a
@@ -3422,6 +3647,19 @@ impl Runtime {
                 task
             })
             .collect();
+        // Each task's record marks its dispatch as the fan-out takes
+        // the list — the width queues inside the executor's bound, so
+        // from the record the whole list was handed over at once — and
+        // settles as each delegation comes back. A crash between the
+        // two leaves `dispatched` for recovery to mark `unknown`.
+        for (n, _) in bounded.iter().enumerate() {
+            let name = requirement_name(n);
+            let mut mark = Mark::task(&name, 1, State::Dispatched);
+            if let Some(path) = trace.as_deref().map(Recorder::path) {
+                mark = mark.result(format!("atif:{}", path.display()));
+            }
+            self.advance_runstate(record, mark, trace.as_deref_mut());
+        }
         // A relay capability runs nothing here: each task becomes one
         // NIP-CJ job to the worker, which applies its own approval.
         let delegations = match (relayed, executor) {
@@ -3439,10 +3677,28 @@ impl Runtime {
             }
             (None, None) => unreachable!("one of the two routes was resolved above"),
         };
-        if let Some(trace) = trace {
+        if let Some(trace) = trace.as_deref_mut() {
             for delegation in &delegations {
                 trace.delegation(delegation);
             }
+        }
+        for (n, delegation) in delegations.iter().enumerate() {
+            let state = match &delegation.status {
+                Status::Answered => State::Answered,
+                Status::Refused(_) => State::Refused,
+                Status::Harness(_) => State::Unverifiable,
+                // A bound the host enforced ended it, and a non-zero
+                // exit is the end the work produced — evidence in the
+                // trace either way, never `unknown` which is a crash's.
+                Status::TimedOut => State::Cancelled,
+                Status::Failed(_) => State::Answered,
+            };
+            let name = requirement_name(n);
+            let mut mark = Mark::task(&name, 1, state);
+            if let Some(worktree) = &delegation.retained {
+                mark = mark.retaining(worktree.clone());
+            }
+            self.advance_runstate(record, mark, trace.as_deref_mut());
         }
         let started = delegations.len();
         let answered = delegations
@@ -3456,12 +3712,14 @@ impl Runtime {
     }
 
     /// Puts one question set to the door and records the call.
+    #[allow(clippy::too_many_arguments)]
     async fn ask(
         &self,
         set: &Set,
         name: &str,
         state: &Value,
         fill: &Fill,
+        tokens: &mut TokenLedger,
         trace: Option<&mut Recorder>,
         route: impl FnOnce(String) -> String,
     ) -> Result<jev::SystemOneResponse, Refused> {
@@ -3511,6 +3769,22 @@ impl Runtime {
                 ),
             ));
         }
+        // A token bound holds between dispatches — usage arrives with
+        // the answer — so a ledger already at its ceiling refuses the
+        // next call rather than dispatching past it. The run's own
+        // bound was checked before the step marked; what can still
+        // refuse here is a child's narrower ceiling.
+        if !tokens.admits() {
+            return Err(Refused::at(
+                name,
+                BUDGET_EXCEEDED,
+                format!(
+                    "the decision-token ceiling of {} is spent at {} reported tokens",
+                    tokens.ceiling().unwrap_or(0),
+                    tokens.spent
+                ),
+            ));
+        }
         let questions = set
             .build(fill)
             .map_err(|message| Refused::at(name, "question_invalid", message))?;
@@ -3543,6 +3817,9 @@ impl Runtime {
                 &result,
                 dispatch.elapsed(),
             ));
+            if let Ok(response) = &result {
+                tokens.charge(&response.usage);
+            }
             result
         };
         // Fallback: a cause an entry covers retries the same state
@@ -3551,7 +3828,10 @@ impl Runtime {
         // an artifact the function's admission did not name.
         let mut spent = Vec::new();
         while let Err(error) = &answered {
-            if secondary >= max_secondary {
+            // The attempt bound and the token ledger both answer before
+            // a retry goes out: a ledger at its ceiling keeps the
+            // standing error as the answer rather than spending past it.
+            if secondary >= max_secondary || !tokens.admits() {
                 break;
             }
             let (on, code) = cause_of(error);
@@ -3588,6 +3868,9 @@ impl Runtime {
                 &result,
                 dispatch.elapsed(),
             ));
+            if let Ok(response) = &result {
+                tokens.charge(&response.usage);
+            }
             answered = result;
         }
         let mut response = match answered {
@@ -3631,7 +3914,7 @@ impl Runtime {
                 None => format!("{} answered nothing", set.gate),
             };
             if gate_read.is_none_or(|read| read < review.below) {
-                if secondary < max_secondary {
+                if secondary < max_secondary && tokens.admits() {
                     let dispatch = Instant::now();
                     let result = door
                         .system_one(request.clone().model(review.model.clone()))
@@ -3642,6 +3925,9 @@ impl Runtime {
                         &result,
                         dispatch.elapsed(),
                     ));
+                    if let Ok(reviewed) = &result {
+                        tokens.charge(&reviewed.usage);
+                    }
                     match result {
                         Ok(reviewed) => {
                             let reviewed_read =
@@ -3704,7 +3990,11 @@ impl Runtime {
                         "reviewer": review.model,
                         "original": { "model": response.model, "gate": gate_read },
                         "outcome": "unattempted",
-                        "cause": "the policy's max_attempts is spent",
+                        "cause": if tokens.admits() {
+                            "the policy's max_attempts is spent"
+                        } else {
+                            "the run's decision-token ceiling is spent"
+                        },
                     }));
                 }
             }
@@ -4319,6 +4609,7 @@ mod tests {
             verification: vec![],
             review: None,
             spend: Vec::new(),
+            tokens: Tokens::default(),
         };
 
         assert_eq!(
@@ -5341,6 +5632,207 @@ mod tests {
         assert_eq!(record.steps[0].state, State::Answered);
     }
 
+    /// A dispatched step's mark names the trace session its evidence
+    /// lands in, so a resumer can probe it: a step the session recorded
+    /// ended and the record settles on that evidence, and one it never
+    /// reached leaves nothing live — a deliberate new attempt.
+    #[tokio::test]
+    async fn a_dispatched_mark_names_the_trace_its_evidence_lands_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = empty_runtime().with_runstate(dir.path());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let logs = tempfile::tempdir().unwrap();
+        let mut recorder =
+            Recorder::open(logs.path(), "fixture", "fixture", "fixture-repo").unwrap();
+        let trace = recorder.path().to_string_lossy().into_owned();
+
+        let run = runtime
+            .run(&program, &inputs, &Grant::all(), Some(&mut recorder))
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+
+        // The record file keeps the mark the step dispatched under,
+        // and it names the trace session.
+        let ids = claimed(dir.path());
+        assert_eq!(ids.len(), 1);
+        let text = std::fs::read_to_string(dir.path().join(format!("{}.jsonl", ids[0]))).unwrap();
+        let dispatched: Value = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .find(|record| {
+                record["record"] == "step"
+                    && record["step"] == "select"
+                    && record["state"] == "dispatched"
+            })
+            .expect("a dispatched mark for the step");
+        let reference = format!("atif:{trace}");
+        assert_eq!(dispatched["result"].as_str(), Some(reference.as_str()));
+
+        // The reference rules a crashed run's record: the trace
+        // reached the step, so it settles on the evidence already
+        // written; a step it never reached names nothing live.
+        assert_eq!(
+            crate::reattach::observe_atif("step:select", &reference),
+            crate::reattach::Observation::Ended {
+                reference: &reference
+            }
+        );
+        assert_eq!(
+            crate::reattach::observe_atif("step:narrow", &reference),
+            crate::reattach::Observation::Gone
+        );
+
+        // Rulings compose it the same way: the record folded as a
+        // crash left it rules `SettleOnEvidence` — the answer already
+        // written — not a replay.
+        let crashed = crate::runstate::Run {
+            schema: runstate::SCHEMA.to_string(),
+            run: "run-crashed".to_string(),
+            base: String::new(),
+            program: String::new(),
+            questions: Vec::new(),
+            sources: Vec::new(),
+            state: State::Dispatched,
+            outcome: None,
+            result: Some(reference.clone()),
+            worktree: None,
+            owner: None,
+            unix: 0,
+            steps: vec![crate::runstate::Step {
+                schema: runstate::SCHEMA.to_string(),
+                step: "select".to_string(),
+                state: State::Dispatched,
+                worktree: None,
+                result: Some(reference.clone()),
+                unix: 0,
+            }],
+            tasks: Vec::new(),
+        };
+        let rulings = runtime.rulings(&crashed, &Grant::all(), crate::reattach::observe_atif);
+        let step = rulings
+            .reattach
+            .iter()
+            .find(|(subject, _)| subject == "step:select")
+            .map(|(_, ruling)| ruling)
+            .expect("a ruling for the dispatched step");
+        assert!(matches!(
+            step,
+            crate::reattach::Reattachment::SettleOnEvidence { reference: r } if r == &reference
+        ));
+    }
+
+    /// A coordinator's next run recovers what a crash left: the
+    /// unfinished record is marked `unknown` when the new run opens the
+    /// store — never replayed, never claimed finished.
+    #[tokio::test]
+    async fn a_run_recovers_what_a_previous_coordinator_left() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut store = Store::open(dir.path()).unwrap();
+            store
+                .claim(&Claim {
+                    run: "run-crashed",
+                    base: "",
+                    program: "burn-down",
+                    questions: &[],
+                    sources: &[],
+                    owner: 0,
+                })
+                .unwrap();
+            store
+                .advance("run-crashed", Mark::run(State::Dispatched))
+                .unwrap();
+            store
+                .advance("run-crashed", Mark::step("work", State::Dispatched))
+                .unwrap();
+        }
+        let runtime = empty_runtime().with_runstate(dir.path());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [{"name": "select", "kind": "query", "bounds": {}}]
+        }))
+        .unwrap();
+        let inputs = Inputs::read("do the list\n- one", "stub-local");
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+
+        let store = Store::open(dir.path()).unwrap();
+        let crashed = store.get("run-crashed").unwrap().unwrap();
+        assert_eq!(crashed.state, State::Unknown);
+        assert_eq!(crashed.steps[0].state, State::Unknown);
+    }
+
+    /// A fan-out's task records show what it handed over: each task
+    /// `dispatched` — under the same `atif:` reference the step's mark
+    /// carries — then the end its delegation came back with, so a
+    /// crash mid-fan-out leaves `dispatched` for recovery to mark
+    /// `unknown`, never a settled-looking gap.
+    #[tokio::test]
+    async fn a_fan_outs_task_records_show_what_it_handed_over() {
+        let Some(repo) = scratch_repository() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stub(dir.path(), "answers", "echo done");
+        let runtime = stub_runtime(repo.path(), &binary, dir.path());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "work", "kind": "delegate", "bounds": {"minutes": 5}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs {
+            request: "two tasks".to_string(),
+            tasks: vec![Task::asking("first"), Task::asking("second")],
+            executor: "stub-local".to_string(),
+        };
+        let logs = tempfile::tempdir().unwrap();
+        let mut recorder =
+            Recorder::open(logs.path(), "fixture", "fixture", "fixture-repo").unwrap();
+        let trace = recorder.path().to_string_lossy().into_owned();
+
+        let run = runtime
+            .run(&program, &inputs, &Grant::all(), Some(&mut recorder))
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.delegations.len(), 2);
+
+        let store = Store::open(dir.path()).unwrap();
+        let ids = claimed(dir.path());
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        for name in ["t1", "t2"] {
+            let task = record
+                .tasks
+                .iter()
+                .find(|task| task.task == name)
+                .unwrap_or_else(|| panic!("no task record for {name}"));
+            assert_eq!(task.state, State::Answered, "{name}");
+            assert_eq!(task.attempt, 1);
+        }
+        // And each dispatched mark named the trace its evidence lands
+        // in, the same reference the step's mark carries.
+        let text = std::fs::read_to_string(dir.path().join(format!("{}.jsonl", ids[0]))).unwrap();
+        let tasks: Vec<Value> = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|record| record["record"] == "task" && record["state"] == "dispatched")
+            .collect();
+        assert_eq!(tasks.len(), 2, "{text}");
+        for task in &tasks {
+            assert_eq!(
+                task["result"].as_str(),
+                Some(format!("atif:{trace}").as_str())
+            );
+        }
+    }
+
     /// A run refused at admission or by the grant claims nothing: a
     /// refused run holds no run id, and the directory is never created.
     #[tokio::test]
@@ -5438,6 +5930,7 @@ mod tests {
                 deadline: None,
                 max_steps: Some(1),
                 spend: None,
+                tokens: None,
             });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -5499,6 +5992,7 @@ mod tests {
                 deadline: Some(Duration::ZERO),
                 max_steps: None,
                 spend: None,
+                tokens: None,
             });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -5550,6 +6044,7 @@ mod tests {
                 deadline: None,
                 max_steps: Some(0),
                 spend: None,
+                tokens: None,
             });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -5570,6 +6065,7 @@ mod tests {
                 program: "burn-down",
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         store
@@ -5632,6 +6128,7 @@ mod tests {
                 deadline: Some(Duration::ZERO),
                 max_steps: None,
                 spend: None,
+                tokens: None,
             });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -5706,6 +6203,8 @@ mod tests {
             manifest: capability::Manifest {
                 v: 1,
                 slug: "stub-local".to_string(),
+                qualified_id: "stub-local".to_string(),
+                profile: "executor".to_string(),
                 name: "A stub".to_string(),
                 summary: String::new(),
                 transport: capability::SUBPROCESS.to_string(),
@@ -5824,6 +6323,7 @@ mod tests {
                 deadline: Some(Duration::from_secs(3)),
                 max_steps: None,
                 spend: None,
+                tokens: None,
             });
         runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
         runtime.door = Some(door);
@@ -5891,6 +6391,7 @@ mod tests {
             deadline: Some(Duration::from_secs(3)),
             max_steps: None,
             spend: None,
+            tokens: None,
         });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -5959,6 +6460,7 @@ mod tests {
             deadline: Some(Duration::from_secs(3)),
             max_steps: None,
             spend: None,
+            tokens: None,
         });
         let program: Program = serde_json::from_value(json!({
             "v": 1, "slug": "burn-down",
@@ -6059,6 +6561,7 @@ mod tests {
                 program: "parent-program",
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         let mut record = Some((store, "run-parent".to_string()));
@@ -6140,6 +6643,7 @@ mod tests {
                 program: &crate::child::digest(&program),
                 questions: &[],
                 sources: &["request".to_string()],
+                owner: 0,
             })
             .unwrap();
         store
@@ -6210,6 +6714,7 @@ mod tests {
                 program: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         store
@@ -6241,6 +6746,7 @@ mod tests {
                 program: &crate::child::digest(&program),
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         store
@@ -6574,6 +7080,7 @@ mod tests {
             max_steps: Some(1),
             deadline: None,
             spend: None,
+            tokens: None,
         });
         let parent: Program = serde_json::from_value(json!({
             "v": 1, "slug": "parent-program",
@@ -6615,6 +7122,7 @@ mod tests {
             deadline: None,
             max_steps: None,
             spend: Some(crate::spend::Bound::Hard(1_000_000)),
+            tokens: None,
         });
         runtime.questions = questions::Registry::open(&[dir.path().to_path_buf()]);
         let refused = runtime.admit(&program).unwrap_err();
@@ -6636,6 +7144,7 @@ mod tests {
                 deadline: None,
                 max_steps: None,
                 spend: Some(crate::spend::Bound::Soft(1_000_000)),
+                tokens: None,
             });
         runtime.questions = questions::Registry::open(&[dir.path().to_path_buf()]);
         let run = runtime
@@ -6677,6 +7186,7 @@ mod tests {
                 deadline: None,
                 max_steps: None,
                 spend: Some(crate::spend::Bound::Soft(100)),
+                tokens: None,
             });
         runtime.questions = questions::Registry::open(&[questions_dir.path().to_path_buf()]);
         runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
@@ -6773,6 +7283,147 @@ mod tests {
             )
             .await;
         assert!(run.finished(), "{:?}", run.stopped);
+    }
+
+    /// A `tokens` budget bounds the run's decision calls across
+    /// dispatches: usage arrives with the answer, so the call that
+    /// crosses the ceiling still answers and the step after it never
+    /// starts — the cancellation is the caller's bound, recorded as
+    /// such, and the run's record says what it counted.
+    #[tokio::test]
+    async fn a_runs_token_budget_cancels_the_step_past_it() {
+        let questions_dir = tempfile::tempdir().unwrap();
+        let port = serve_answer(json!({
+            "model": "stub",
+            "answers": {"q": {"type": "noul", "noul": 0.9}},
+            "usage": {"input_tokens": 120, "output_tokens": 30}
+        }))
+        .await;
+        let runtime = policy_runtime(questions_dir.path(), r#"{"v": 1}"#, port)
+            .await
+            .with_budget(Budget {
+                deadline: None,
+                max_steps: None,
+                spend: None,
+                tokens: Some(100),
+            });
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "token-bounded",
+            "steps": [
+                {"name": "first", "kind": "decide", "question": "test.policy.v1", "bounds": {}},
+                {"name": "second", "kind": "decide", "question": "test.policy.v1", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+
+        let run = runtime
+            .run(
+                &program,
+                &Inputs::read("do the list\n- one", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        // The first call reported 150 against the 100-token ceiling;
+        // the second step's dispatch is the one the bound stops.
+        assert_eq!(run.step_names(), ["first"]);
+        assert_eq!(run.tokens.counted, 150);
+        assert_eq!(run.tokens.unmetered, 0);
+        let stopped = run.stopped.expect("the bound cancels");
+        assert_eq!(stopped.code, "budget_exceeded");
+        assert_eq!(stopped.step, "second");
+    }
+
+    /// A `tokens` bound on a `program` step bounds the child's own
+    /// decision calls, relative to what the composition had spent when
+    /// the child began: its spending is the child's refusal — the
+    /// propagation table's answer, not the run's cancellation.
+    #[tokio::test]
+    async fn a_program_steps_token_bound_ends_the_child() {
+        let questions_dir = tempfile::tempdir().unwrap();
+        let port = serve_answer(json!({
+            "model": "stub",
+            "answers": {"q": {"type": "noul", "noul": 0.9}},
+            "usage": {"input_tokens": 120, "output_tokens": 30}
+        }))
+        .await;
+        let programs = tempfile::tempdir().unwrap();
+        stage_program(
+            programs.path(),
+            "tokened-child",
+            r#"[
+                {"name": "one", "kind": "decide", "question": "test.policy.v1", "bounds": {}},
+                {"name": "two", "kind": "decide", "question": "test.policy.v1", "bounds": {}}
+            ]"#,
+        );
+        let mut runtime = policy_runtime(questions_dir.path(), r#"{"v": 1}"#, port).await;
+        runtime.survey.programs = crate::program::Registry::open(&[programs.path().to_path_buf()]);
+        let parent: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "parent-program",
+            "steps": [
+                {"name": "call", "kind": "program", "program": "tokened-child@1.0.0",
+                 "bounds": {"tokens": 100},
+                 "propagation": {"completed": "success", "failed": "failure", "refused": "success"}}
+            ]
+        }))
+        .unwrap();
+
+        let run = runtime
+            .run(
+                &parent,
+                &Inputs::read("do the list\n- one", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        // The child's first call reported 150 past its 100-token
+        // ceiling: its second step refused, the table read that as
+        // success, and the run finished with only what answered.
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.step_names(), ["call/one", "call"]);
+        assert_eq!(run.tokens.counted, 150);
+    }
+
+    /// A response that reports no usage cannot be priced against a
+    /// token bound: the dispatch still answers under a ceiling of one,
+    /// and the run's record counts the calls `unmetered` — visible
+    /// rather than a silent zero passing for free.
+    #[tokio::test]
+    async fn an_unmetered_response_counts_apart_from_the_bound() {
+        let questions_dir = tempfile::tempdir().unwrap();
+        let port = serve_answer(json!({
+            "model": "stub",
+            "answers": {"q": {"type": "noul", "noul": 0.9}}
+        }))
+        .await;
+        let runtime = policy_runtime(questions_dir.path(), r#"{"v": 1}"#, port)
+            .await
+            .with_budget(Budget {
+                deadline: None,
+                max_steps: None,
+                spend: None,
+                tokens: Some(1),
+            });
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "unmetered-run",
+            "steps": [
+                {"name": "one", "kind": "decide", "question": "test.policy.v1", "bounds": {}},
+                {"name": "two", "kind": "decide", "question": "test.policy.v1", "bounds": {}}
+            ]
+        }))
+        .unwrap();
+
+        let run = runtime
+            .run(
+                &program,
+                &Inputs::read("do the list\n- one", "stub-local"),
+                &Grant::all(),
+                None,
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.tokens.counted, 0);
+        assert_eq!(run.tokens.unmetered, 2);
     }
 
     /// A child that writes runs its delegation inside the parent's
@@ -7020,6 +7671,7 @@ mod tests {
                 program: "burn-down",
                 questions: &[],
                 sources: &[],
+                owner: 0,
             })
             .unwrap();
         let mut record = Some((store, "run-cleanup".to_string()));
@@ -7110,12 +7762,16 @@ mod tests {
         let manifest = host.path().join("suite.json");
         std::fs::write(
             &manifest,
-            serde_json::to_vec(&json!({
-                "v":1,"slug":"suite-fixture","name":"Suite fixture","transport":"subprocess",
-                "detect":{"binary":"/bin/sh","version":["/bin/sh","--version"]},
-                "enforces":[],"cannot_enforce":[],"sees_repository":true,
-                "cost":"local","invoke":["/bin/sh"],"isolation":["directory"]
-            }))
+            serde_json::to_vec(&capability::executor_document(
+                "suite-fixture",
+                "/bin/sh",
+                vec!["/bin/sh".into(), "--version".into()],
+                json!({
+                    "name": "Suite fixture",
+                    "invoke": ["/bin/sh"],
+                    "isolation": ["directory"]
+                }),
+            ))
             .unwrap(),
         )
         .unwrap();

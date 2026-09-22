@@ -147,7 +147,29 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
   AND e.kind <> 39620
   AND e.kind <> 39650
   AND (
-      e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+      (
+          e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          AND NOT (
+              e.kind = 30181
+              AND EXISTS (
+                  SELECT 1 FROM nostr_indexed_tag private_policy
+                  WHERE private_policy.event_id = e.id
+                    AND private_policy.tag_name = 't'
+                    AND private_policy.tag_value = 'oa:cap-policy:private:v1'
+              )
+          )
+      )
+      OR (
+          e.kind = 30181
+          AND $10::text[] IS NOT NULL
+          AND e.pubkey = ANY($10)
+          AND EXISTS (
+              SELECT 1 FROM nostr_indexed_tag private_policy
+              WHERE private_policy.event_id = e.id
+                AND private_policy.tag_name = 't'
+                AND private_policy.tag_value = 'oa:cap-policy:private:v1'
+          )
+      )
       OR (
           e.kind IN (1059, 24200, 30622, 44200)
           AND $10::text[] IS NOT NULL
@@ -193,6 +215,15 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
       $11::text[] IS NULL
       OR (
           e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          AND NOT (
+              e.kind = 30181
+              AND EXISTS (
+                  SELECT 1 FROM nostr_indexed_tag private_policy
+                  WHERE private_policy.event_id = e.id
+                    AND private_policy.tag_name = 't'
+                    AND private_policy.tag_value = 'oa:cap-policy:private:v1'
+              )
+          )
           AND NOT EXISTS (
               SELECT 1
               FROM unnest($11::text[]) term
@@ -243,7 +274,29 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
   AND e.kind <> 39620
   AND e.kind <> 39650
   AND (
-      e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+      (
+          e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          AND NOT (
+              e.kind = 30181
+              AND EXISTS (
+                  SELECT 1 FROM nostr_indexed_tag private_policy
+                  WHERE private_policy.event_id = e.id
+                    AND private_policy.tag_name = 't'
+                    AND private_policy.tag_value = 'oa:cap-policy:private:v1'
+              )
+          )
+      )
+      OR (
+          e.kind = 30181
+          AND $8::text[] IS NOT NULL
+          AND e.pubkey = ANY($8)
+          AND EXISTS (
+              SELECT 1 FROM nostr_indexed_tag private_policy
+              WHERE private_policy.event_id = e.id
+                AND private_policy.tag_name = 't'
+                AND private_policy.tag_value = 'oa:cap-policy:private:v1'
+          )
+      )
       OR (
           e.kind IN (1059, 24200, 30622, 44200)
           AND $8::text[] IS NOT NULL
@@ -289,6 +342,15 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
       $9::text[] IS NULL
       OR (
           e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          AND NOT (
+              e.kind = 30181
+              AND EXISTS (
+                  SELECT 1 FROM nostr_indexed_tag private_policy
+                  WHERE private_policy.event_id = e.id
+                    AND private_policy.tag_name = 't'
+                    AND private_policy.tag_value = 'oa:cap-policy:private:v1'
+              )
+          )
           AND NOT EXISTS (
               SELECT 1
               FROM unnest($9::text[]) term

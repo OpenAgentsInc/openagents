@@ -119,11 +119,8 @@ impl Entry {
     /// message.
     pub fn load(path: &Path, source: Source) -> Result<Self, String> {
         let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
-        let manifest: Manifest = serde_json::from_slice(&bytes)
-            .map_err(|error| format!("{}: {error}", path.display()))?;
-        manifest
-            .validate()
-            .map_err(|why| format!("{}: {why}", path.display()))?;
+        let manifest =
+            Manifest::parse(&bytes).map_err(|why| format!("{}: {why}", path.display()))?;
         Ok(Entry {
             manifest,
             path: path.to_path_buf(),

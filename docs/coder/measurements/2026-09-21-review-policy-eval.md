@@ -75,8 +75,10 @@ noul distance to the selected side, choice and score `confidence`:
 
 The gateway flagged sixteen units uncertain at 0.9; the table's
 recompute flags fifteen. The one-case difference is the score unit at
-exactly 0.90, which the server's flag rule counts as uncertain and the
-driver's strict `<` does not — worth settling before the next run.
+exactly 0.90 — settled in
+[`2026-09-22-review-policy-selection`](2026-09-22-review-policy-selection.md):
+the server flags on top distribution mass, the driver's recompute used
+`confidence`; same cut, different field.
 
 ## Findings
 
@@ -105,5 +107,4 @@ same-model* review shape cannot rescue errors on this panel; it does
 not bound what a distinct reviewer could recover. Fallback and refusal
 paths were never exercised: the suite produced no no-match-with-fallback
 or refused cases under these policies. Downstream task quality from
-reviewed answers remains unmeasured, and the driver's uncertain rule
-and the server's differ on the 0.90 boundary by one case.
+reviewed answers remains unmeasured.

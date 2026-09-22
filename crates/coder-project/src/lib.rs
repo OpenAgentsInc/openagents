@@ -136,7 +136,10 @@ pub async fn dispatch(
         .insert("minutes".into(), json!(assignment.minutes));
     program.validate()?;
     let program_digest = atif::digest(&json!(program));
-    let runtime = Runtime::using(survey, Some(repository));
+    let mut runtime = Runtime::using(survey, Some(repository));
+    if let Some(dir) = coder::runstate::directory() {
+        runtime = runtime.with_runstate(dir);
+    }
     let mut trace = Recorder::at(
         trace_path,
         "unknown",

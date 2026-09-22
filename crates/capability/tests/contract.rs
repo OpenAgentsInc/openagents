@@ -12,30 +12,13 @@ use serde_json::{Value, json};
 /// A manifest body for `slug`, with the fields a test overrides merged
 /// in. `binary` and `version` describe `detect`.
 fn manifest(slug: &str, binary: &str, version: Value, extra: Value) -> Value {
-    let mut body = json!({
-        "v": 1,
-        "slug": slug,
-        "name": slug,
-        "summary": "a contract-test capability",
-        "transport": "subprocess",
-        "detect": { "binary": binary, "version": version },
-        "enforces": ["max_turns"],
-        "cannot_enforce": [],
-        "sees_repository": true,
-        "cost": "local",
-        "invoke": [binary, "--"],
-    });
-    merge(&mut body, &extra);
-    body
-}
-
-/// `extra`'s keys land on `body`, shallowly.
-fn merge(body: &mut Value, extra: &Value) {
-    if let (Some(body), Some(extra)) = (body.as_object_mut(), extra.as_object()) {
-        for (key, value) in extra {
-            body.insert(key.clone(), value.clone());
-        }
-    }
+    let version = version
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item.as_str().unwrap().to_string())
+        .collect();
+    capability::executor_document(slug, binary, version, extra)
 }
 
 /// A repository-shaped directory holding `capabilities/<slug>.json`,
@@ -87,10 +70,25 @@ fn the_checked_in_manifest_parses() {
     let manifest = capability::Manifest::load(&path).expect("devin-local parses");
 
     assert_eq!(manifest.slug, "devin-local");
+    assert_eq!(manifest.profile, "executor");
     assert_eq!(manifest.transport, "subprocess");
     assert_eq!(manifest.detect.binary, "devin");
     assert!(!manifest.summary.is_empty());
     assert_eq!(manifest.cost, "operator_account");
+    let legacy = repository(
+        "legacy",
+        &json!({"v": 1, "slug": "legacy", "enforces": ["minutes"], "transport": "subprocess"}),
+    );
+    let refused = Registry::open(&[SourceDir::repository(legacy.path().join("capabilities"))]);
+    assert!(refused.entry("legacy").is_none());
+    assert!(
+        refused
+            .refused()
+            .iter()
+            .any(|(_, why)| why.contains("earlier executor fields")),
+        "{:?}",
+        refused.refused()
+    );
     assert_eq!(manifest.concurrent_max, Some(6));
     assert_eq!(manifest.invoke, ["devin", "-p", "--"]);
     assert_eq!(
@@ -242,10 +240,7 @@ fn a_changed_manifest_loses_its_approval() {
         .unwrap();
 
     let mut changed = body.clone();
-    merge(
-        &mut changed,
-        &json!({"summary": "rewritten under the approval's feet"}),
-    );
+    changed["definition"]["summary"] = json!("rewritten under the approval's feet");
     let path = repository
         .path()
         .join("capabilities")
@@ -647,26 +642,24 @@ fn a_mismatched_argv_is_refused_at_load() {
     std::fs::create_dir_all(&capabilities).unwrap();
     std::fs::write(
         capabilities.join("contract-mismatched.json"),
-        serde_json::to_vec_pretty(&json!({
-            "v": 1,
-            "slug": "contract-mismatched",
-            "transport": "subprocess",
-            "detect": { "binary": "sh", "version": ["curl", "https://example.invalid"] },
-        }))
+        serde_json::to_vec_pretty(&manifest(
+            "contract-mismatched",
+            "sh",
+            json!(["curl", "https://example.invalid"]),
+            json!({}),
+        ))
         .unwrap(),
     )
     .unwrap();
     std::fs::write(capabilities.join("not-json.json"), b"{ not json").unwrap();
     std::fs::write(
         capabilities.join("contract-writing.json"),
-        serde_json::to_vec_pretty(&json!({
-            "v": 1,
-            "slug": "contract-writing",
-            "transport": "subprocess",
-            "detect": { "binary": "sh", "version": ["sh", "--version"] },
-            "invoke": ["sh", "-c"],
-            "invoke_writing": ["bash", "-c"],
-        }))
+        serde_json::to_vec_pretty(&manifest(
+            "contract-writing",
+            "sh",
+            json!(["sh", "--version"]),
+            json!({"invoke": ["sh", "-c"], "invoke_writing": ["bash", "-c"]}),
+        ))
         .unwrap(),
     )
     .unwrap();

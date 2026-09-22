@@ -13,4 +13,5 @@ Recorded transport and concurrency measurements, with retained evidence.
 | [2026-09-22-review-finding-baseline](2026-09-22-review-finding-baseline.md) | Per-finding review wording on a twenty-finding labeled suite |
 | [2026-09-21-wave-vs-refill](2026-09-21-wave-vs-refill.md) | Fixed waves against refill and separate resource lanes, simulated |
 | [2026-09-21-review-policy-eval](2026-09-21-review-policy-eval.md) | Review-under-uncertainty on a twenty-item labeled panel |
+| [2026-09-22-review-policy-selection](2026-09-22-review-policy-selection.md) | Dev-selected review and floor settings fail to justify themselves on held-out data |
 | [relay-transport](relay-transport.md) | The relay transport, under a recorded episode |

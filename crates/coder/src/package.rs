@@ -524,6 +524,22 @@ fn check(reference: &Reference, what: &str, grammar: fn(&str) -> bool) -> Result
 /// question set is `openagents.independence.v2` whichever file holds it,
 /// and a file that does not parse or claims another name is simply not
 /// the answer.
+/// The name a registry file claims.
+///
+/// A NIP-CAP file names itself by the component of `definition.id`. A root
+/// `slug` on that file is the earlier draft and is not the identity.
+fn claimed_name(value: &Value, field: &str) -> Option<String> {
+    if field == "slug"
+        && let Some(id) = value
+            .get("definition")
+            .and_then(|definition| definition.get("id"))
+            .and_then(Value::as_str)
+    {
+        return id.rsplit('/').next().map(str::to_string);
+    }
+    value.get(field).and_then(Value::as_str).map(str::to_string)
+}
+
 fn find(dir: &Path, field: &str, name: &str) -> Option<PathBuf> {
     let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
         .ok()?
@@ -536,7 +552,7 @@ fn find(dir: &Path, field: &str, name: &str) -> Option<PathBuf> {
         std::fs::read_to_string(path)
             .ok()
             .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .and_then(|value| value.get(field).and_then(Value::as_str).map(str::to_string))
+            .and_then(|value| claimed_name(&value, field))
             .is_some_and(|claimed| claimed == name)
     })
 }

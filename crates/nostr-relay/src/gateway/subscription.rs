@@ -595,6 +595,15 @@ fn event_visible_to_reader(event: &Event, readers: &HashSet<String>) -> bool {
             .next()
             .is_some_and(|recipient| readers.contains(recipient)),
         30_300 | 30_350 => readers.contains(&event.pubkey),
+        30_181 => {
+            if event.tags.iter().any(|tag| {
+                tag.name() == Some("t") && tag.value() == Some(nostr::cap::PRIVATE_POLICY_MARKER)
+            }) {
+                nostr::cap::private_policy_visible(event, readers)
+            } else {
+                true
+            }
+        }
         30_174 => {
             readers.contains(&event.pubkey)
                 || event.tag_values("p").any(|owner| readers.contains(owner))
