@@ -41,6 +41,8 @@
 //!   at the moment it starts choosing.
 //! - [`runtime`] runs a program's steps from the program: the bounds it
 //!   can enforce, the ones it refuses, and the trace of what happened.
+//! - [`execution`] answers an execution job through that same runtime.
+//!   The terminal and the headless caller both use it.
 
 pub mod about;
 pub mod agent;
@@ -51,6 +53,7 @@ pub mod decision;
 pub mod delegate;
 pub mod doctor;
 pub mod evidence;
+pub mod execution;
 pub mod executor_door;
 pub mod generate;
 pub mod package;

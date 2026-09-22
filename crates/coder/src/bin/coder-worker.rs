@@ -6,7 +6,7 @@
 //! specification, and no fulfillment side, so a job request went out and
 //! the only thing a run could learn was that nobody came back.
 //!
-//! The worker subscribes to `{ "kinds": [25900], "#p": [<its pubkey>] }`,
+//! The worker subscribes to `{ "kinds": [25900, 25920], "#p": [<its pubkey>] }`,
 //! decrypts each request, answers it through an Open Responses door, and
 //! publishes the reply as `27000` partial feedback and one `26900` result.
 //! The relay carries ciphertext and holds nothing: every kind is
@@ -75,8 +75,9 @@
 //! Read [`docs/coder/measurements/relay-transport.md`] for the proof this binary was
 //! written to make possible.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::env;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -408,7 +409,7 @@ async fn serve(options: &Options) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             send(
                 &mut socket,
-                json!(["REQ", "jobs", { "kinds": [REQUEST_KIND], "#p": [worker.identity.pubkey()] }]),
+                json!(["REQ", "jobs", { "kinds": [REQUEST_KIND, nostr::execution::REQUEST_KIND], "#p": [worker.identity.pubkey()] }]),
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -543,6 +544,18 @@ impl Worker<'_> {
                             continue;
                         }
                     };
+                    if request.kind == nostr::execution::REQUEST_KIND {
+                        // Execution admission is the shared store. A closed
+                        // socket does not cancel the claim, and a later
+                        // relay OK is not acceptance: `Store::answer` is.
+                        if let Err(why) = answer_execution(&self.identity, &request, &self.outgoing) {
+                            eprintln!(
+                                "ignored execution {}: {why}",
+                                &request.id[..request.id.len().min(16)]
+                            );
+                        }
+                        continue;
+                    }
                     if let Err(why) = addressed(&request, self.identity.pubkey()) {
                         eprintln!("ignored {}: {why}", &request.id[..request.id.len().min(16)]);
                         continue;
@@ -580,6 +593,56 @@ impl Worker<'_> {
 /// The relay's filter asked for exactly this, and the relay is transport,
 /// not authority: a relay that is wrong or lying delivers something else,
 /// and the worker checks rather than assumes.
+/// Admit one execution request and publish the store's events.
+///
+/// Program dispatch stays [`coder::execution::Store::dispatch_program`],
+/// which the terminal and the headless caller share. This loop does not
+/// treat the relay's `OK`, or the socket closing afterwards, as acceptance
+/// or cancellation.
+fn answer_execution(
+    identity: &Identity,
+    request: &Event,
+    publish: &mpsc::UnboundedSender<Value>,
+) -> Result<(), String> {
+    let dir = execution_dir()?;
+    let mut store = coder::execution::Store::open(
+        &dir,
+        identity.pubkey(),
+        4,
+        unix_now().saturating_add(7 * 24 * 60 * 60),
+    )?;
+    let bytes = BTreeMap::new();
+    let mailbox = execution_mailbox(&request.id);
+    let intake = coder::execution::Intake {
+        event: request,
+        secret: identity.secret(),
+        signer: identity.signer(),
+        now: unix_now(),
+        window: nostr::execution::Window::DEFAULT,
+        bytes: &bytes,
+        quoted_spend: None,
+        remaining: None,
+        nonce: secp256k1::rand::random(),
+        mailbox: &mailbox,
+    };
+    for event in store.answer(&intake)? {
+        publish
+            .send(json!(["EVENT", event]))
+            .map_err(|_| "the serving loop is gone".to_string())?;
+    }
+    Ok(())
+}
+
+fn execution_dir() -> Result<PathBuf, String> {
+    let home = env::var("HOME").map_err(|_| "HOME is unset".to_string())?;
+    Ok(PathBuf::from(home).join(".openagents").join("execution"))
+}
+
+fn execution_mailbox(event_id: &str) -> String {
+    let digest = nostr::contracts::digest_bytes(format!("mailbox:{event_id}").as_bytes());
+    digest.trim_start_matches("sha256:").to_string()
+}
+
 fn addressed(request: &Event, worker: &str) -> Result<(), String> {
     if request.kind != REQUEST_KIND {
         return Err(format!("kind {} is not a job request", request.kind));

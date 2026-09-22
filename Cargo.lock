@@ -506,6 +506,7 @@ dependencies = [
  "nostr",
  "plugin",
  "ratatui",
+ "receipts",
  "reqwest",
  "secp256k1",
  "serde",
