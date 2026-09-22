@@ -33,8 +33,9 @@ pub use deletion::{DeletionRequest, DeletionTombstone};
 pub use error::DomainError;
 pub use event::{EXTENDED_INDEXED_TAG_NAMES, Event, Tag, is_indexed_tag_name};
 pub use expanded::{
-    GroupAction, GroupMetadata, HttpAuth, HttpAuthClaim, RelaySigner, parse_http_authorization,
-    parse_http_authorization_claim, parse_http_authorization_hash,
+    GroupAction, GroupMetadata, HttpAuth, HttpAuthClaim, RelaySigner, parent_would_cycle,
+    parse_http_authorization, parse_http_authorization_claim, parse_http_authorization_hash,
+    reorder_children,
 };
 pub use filter::{
     Filter, SEARCH_EXCLUDED_KINDS, matches_any, search_excludes_kind, search_matches, search_terms,

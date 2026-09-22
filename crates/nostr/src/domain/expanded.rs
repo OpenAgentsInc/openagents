@@ -155,13 +155,45 @@ fn require_single_tag(event: &Event, name: &str, expected: &str) -> Result<(), D
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupMetadata {
     pub name: String,
     pub about: String,
     pub picture: String,
+    pub banner: String,
     pub closed: bool,
+    /// Only members can read timeline events. Absent on the event, anyone can read.
+    pub private: bool,
+    /// Hide kinds 39000–39005 from non-members. Absent on the event, metadata is public.
+    pub hidden: bool,
+    /// Only members can write. Absent on the event, anyone can write.
+    pub restricted: bool,
+    pub livekit: String,
+    /// The parent group's `d` identifier, when this group is a subgroup.
+    pub parent: Option<String>,
+    /// Ordered child group ids. A metadata edit replaces this list only when
+    /// it names the same children.
+    pub children: Vec<String>,
     pub supported_kinds: Option<Vec<u16>>,
+}
+
+impl Default for GroupMetadata {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            about: String::new(),
+            picture: String::new(),
+            banner: String::new(),
+            closed: false,
+            private: false,
+            hidden: false,
+            restricted: true,
+            livekit: String::new(),
+            parent: None,
+            children: Vec::new(),
+            supported_kinds: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -229,7 +261,7 @@ impl GroupAction {
             9_022 => Self::Leave,
             9_003..=9_004 | 9_006 | 9_011..=9_020 => {
                 return Err(DomainError::InvalidEvent(
-                    "unsupported NIP-29 moderation kind".into(),
+                    "the pinned NIP-29 moderation table does not define this kind".into(),
                 ));
             }
             _ => return Ok(None),
@@ -262,14 +294,103 @@ impl GroupMetadata {
                     .collect::<Result<Vec<_>, _>>()
             })
             .transpose()?;
+        let parents = tags
+            .iter()
+            .filter(|tag| tag.name() == Some("parent"))
+            .collect::<Vec<_>>();
+        if parents.len() > 1 {
+            return Err(DomainError::InvalidEvent(
+                "NIP-29 metadata has at most one parent tag".into(),
+            ));
+        }
+        let parent = match parents.first() {
+            None => None,
+            Some(tag) => {
+                let value = tag.value().unwrap_or_default();
+                if value.is_empty() || value.len() > MAX_GROUP_ID_BYTES {
+                    return Err(DomainError::InvalidEvent(
+                        "NIP-29 parent must contain 1 to 128 bytes".into(),
+                    ));
+                }
+                Some(value.to_owned())
+            }
+        };
+        let mut children = Vec::new();
+        for tag in tags.iter().filter(|tag| tag.name() == Some("child")) {
+            let value = tag.value().unwrap_or_default();
+            if value.is_empty()
+                || value.len() > MAX_GROUP_ID_BYTES
+                || children.iter().any(|seen: &String| seen == value)
+            {
+                return Err(DomainError::InvalidEvent(
+                    "NIP-29 child identifiers must be unique and 1 to 128 bytes".into(),
+                ));
+            }
+            children.push(value.to_owned());
+        }
         Ok(Self {
             name: scalar("name"),
             about: scalar("about"),
             picture: scalar("picture"),
+            banner: scalar("banner"),
             closed: tags.iter().any(|tag| tag.as_slice() == ["closed"]),
+            private: tags.iter().any(|tag| tag.as_slice() == ["private"]),
+            hidden: tags.iter().any(|tag| tag.as_slice() == ["hidden"]),
+            restricted: tags.iter().any(|tag| tag.as_slice() == ["restricted"]),
+            livekit: scalar("livekit"),
+            parent,
+            children,
             supported_kinds: supported,
         })
     }
+}
+
+/// Whether attaching `group_id` under `new_parent` walks back to itself.
+///
+/// `parents` maps each group id to its current parent. The walk includes
+/// `new_parent` itself, so a self-parent and a longer cycle both refuse.
+#[must_use]
+pub fn parent_would_cycle(
+    group_id: &str,
+    new_parent: &str,
+    parents: &std::collections::BTreeMap<String, String>,
+) -> bool {
+    if new_parent == group_id {
+        return true;
+    }
+    let mut cursor = new_parent;
+    let mut seen = std::collections::BTreeSet::new();
+    while let Some(next) = parents.get(cursor) {
+        if next == group_id || !seen.insert(next.clone()) {
+            return true;
+        }
+        cursor = next;
+    }
+    false
+}
+
+/// Replace a group's child order.
+///
+/// The pinned rule is that a metadata edit names every current child. A
+/// different set is refused. The returned order is the proposed order.
+///
+/// # Errors
+///
+/// Returns an invalid-event error when the sets differ.
+pub fn reorder_children(
+    current: &[String],
+    proposed: &[String],
+) -> Result<Vec<String>, DomainError> {
+    let mut left = current.to_vec();
+    let mut right = proposed.to_vec();
+    left.sort();
+    right.sort();
+    if left != right {
+        return Err(DomainError::InvalidEvent(
+            "NIP-29 metadata must name every current child".into(),
+        ));
+    }
+    Ok(proposed.to_vec())
 }
 
 pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> {
@@ -483,4 +604,74 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, DomainError> {
         ));
     }
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tag(values: &[&str]) -> Tag {
+        Tag::new(values.iter().map(|value| (*value).to_owned()).collect())
+    }
+
+    #[test]
+    fn private_hidden_and_subgroup_fields_follow_the_pinned_metadata_event() {
+        let metadata = GroupMetadata::from_tags(&[
+            tag(&["name", "Nostr"]),
+            tag(&["private"]),
+            tag(&["hidden"]),
+            tag(&["parent", "tech"]),
+            tag(&["child", "nip29"]),
+            tag(&["livekit", "wss://live.example"]),
+        ])
+        .unwrap();
+        assert!(metadata.private);
+        assert!(metadata.hidden);
+        assert!(!metadata.restricted);
+        assert!(!metadata.closed);
+        assert_eq!(metadata.parent.as_deref(), Some("tech"));
+        assert_eq!(metadata.children, vec!["nip29".to_owned()]);
+        assert_eq!(metadata.livekit, "wss://live.example");
+
+        let pinned = include_str!("../../../../nips/official/29.md");
+        assert!(pinned.contains("| 9000 |"));
+        assert!(pinned.contains("| 9010 |"));
+        assert!(
+            !pinned.contains("| 9003 |"),
+            "the pinned moderation table does not assign kind 9003"
+        );
+    }
+
+    #[test]
+    fn an_undefined_moderation_kind_is_refused() {
+        let event = Event {
+            id: "ab".repeat(32),
+            pubkey: "cd".repeat(32),
+            created_at: 1,
+            kind: 9_003,
+            tags: vec![tag(&["h", "tech"])],
+            content: String::new(),
+            sig: "ef".repeat(64),
+        };
+        let error = GroupAction::from_event(&event).unwrap_err();
+        assert!(error.to_string().contains("does not define"), "{error}");
+    }
+
+    #[test]
+    fn a_parent_cycle_and_a_partial_child_list_are_refused() {
+        let mut parents = std::collections::BTreeMap::new();
+        parents.insert("tech".to_owned(), "nostr".to_owned());
+        assert!(parent_would_cycle("nostr", "tech", &parents));
+        assert!(parent_would_cycle("tech", "tech", &parents));
+        assert!(!parent_would_cycle("nip29", "tech", &parents));
+        assert!(reorder_children(&["nip29".into(), "spec".into()], &["spec".into()]).is_err());
+        assert_eq!(
+            reorder_children(
+                &["nip29".into(), "spec".into()],
+                &["spec".into(), "nip29".into()]
+            )
+            .unwrap(),
+            vec!["spec".to_owned(), "nip29".to_owned()]
+        );
+    }
 }

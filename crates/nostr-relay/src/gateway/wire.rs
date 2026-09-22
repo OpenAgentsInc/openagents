@@ -497,7 +497,7 @@ pub fn nip11_json_with_icon(
         nip29: config
             .relay_signer
             .is_some()
-            .then_some(Nip29Capabilities { subgroups: false }),
+            .then_some(Nip29Capabilities { subgroups: true }),
         push: config
             .push
             .as_ref()

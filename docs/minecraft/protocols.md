@@ -63,11 +63,11 @@ the expected relay identity. Group messages have the group's `h` tag; replies
 use C7's `q` reference. Maintain and validate NIP-29 `previous` references as
 specified when used. Do not reinterpret a chat message as a signed job result.
 
-The current [relay group subset](../protocol/nip-expansion.md) is public-read
-and restricted-write. Private groups and subgroups are not implemented. Only the
-supported admin role is meaningful. The first demo therefore uses deliberately
-public guild plans and sanitized quest summaries. No repository secrets, private
-patches, credentials, or protected evaluation cases belong in guild chat.
+The relay implements private, hidden, and subgroup groups. See
+[relay group behavior](../protocol/nip-expansion.md). Only the supported admin
+role is meaningful. The first demo uses public guild plans and sanitized quest
+summaries. No repository secrets, private patches, credentials, or protected
+evaluation cases belong in guild chat.
 
 The game role “miner” or “reviewer” is an application assignment. It is not a new
 NIP-29 administrative role. Membership is neither a spend grant nor an execution

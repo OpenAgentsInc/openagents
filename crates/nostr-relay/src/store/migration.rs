@@ -71,6 +71,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "gift_wrap_search_privacy",
         sql: include_str!("../../../../migrations/0008_gift_wrap_search_privacy.sql"),
     },
+    Migration {
+        version: 9,
+        name: "nip29_groups",
+        sql: include_str!("../../../../migrations/0009_nip29_groups.sql"),
+    },
 ];
 
 type AppliedMigrations = BTreeMap<i64, (String, String)>;

@@ -36,22 +36,32 @@ advertisement until each path is implemented and fixture-proved.
 ## Relay-managed groups
 
 NIP-29 support is enabled only when `NOSTR_RELAY_RELAY_SECRET_KEY` is configured.
-The relay manages public-read, restricted-write groups. Every group-scoped
-event has exactly one non-empty `h` tag, group existence and supported kinds
-are checked before storage, and non-management authors must be members.
+The relay manages groups whose read, write, and metadata visibility follow the
+pinned metadata flags. Every group-scoped event has exactly one non-empty `h`
+tag, group existence and supported kinds are checked before storage, and a
+`restricted` group requires membership to write. Omitting `restricted` lets
+anyone write. A `private` group returns timeline events only to members. A
+`hidden` group returns kinds 39000–39005 only to members.
 
-nostr-relay implements moderation kinds 9000, 9001, 9002, 9005, 9007, 9008,
-9009, and 9010, plus join 9021 and leave 9022. Unsupported moderation kinds
-9003, 9004, 9006, and 9011–9020 fail closed. Closed groups require a valid
-invite code to join. Accepted joins and leaves create relay-signed 9000/9001
-history events referencing the request.
+nostr-relay implements the moderation kinds named in the pinned table: 9000,
+9001, 9002, 9005, 9007, 9008, 9009, and 9010, plus join 9021 and leave 9022.
+Kinds 9003, 9004, 9006, and 9011–9020 have no row in that table, so the relay
+refuses them. Closed groups require a valid invite code to join. Accepted
+joins and leaves create relay-signed 9000/9001 history events referencing the
+request.
+
+A `kind:9002` may name one `parent`. The relay refuses a missing parent, a
+self-parent, a cycle, and an author who is not an admin of that parent. The
+parent's `kind:39000` gains a `child` tag. Deleting a parent makes its
+children roots. A metadata edit must name every current child, in the order
+that replaces the child list. NIP-11 advertises `nip29.subgroups: true` when
+the relay signer is configured.
 
 After each state change, the relay atomically regenerates signed replaceable
 metadata kinds 39000–39005. The supported role is `admin`; all listed roles
-have full administrative authority. Group reads are public, hidden/private
-groups and subgroups are not implemented, and NIP-11 advertises
-`subgroups: false`. Kind 39004 is emitted as an empty participant document;
-nostr-relay does not add a call/media service.
+have full administrative authority. Kind 39004 is an empty participant
+document because this process does not run a LiveKit media session. A
+`livekit` URL on the group is stored and republished on kind 39000.
 
 Clients may include `previous` references. Each must be an eight-character
 lowercase hexadecimal prefix found among the last 50 non-self events in that

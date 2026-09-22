@@ -91,6 +91,15 @@ fn legacy_import_migration_contains_a_bounded_idempotency_ledger() {
 }
 
 #[test]
+fn nip29_group_migration_adds_privacy_and_parent_columns() {
+    let sql = include_str!("../../../migrations/0009_nip29_groups.sql");
+    assert!(sql.contains("ADD COLUMN private"));
+    assert!(sql.contains("ADD COLUMN hidden"));
+    assert!(sql.contains("ADD COLUMN parent"));
+    assert!(sql.contains("restricted boolean NOT NULL DEFAULT TRUE"));
+}
+
+#[test]
 fn legacy_expiration_migration_adds_a_terminal_outcome() {
     let sql = include_str!("../../../migrations/0007_legacy_expiration.sql");
     assert!(sql.contains("'expired'"));

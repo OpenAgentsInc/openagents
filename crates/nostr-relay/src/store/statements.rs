@@ -264,6 +264,41 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
             )
       )
   )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM nostr_indexed_tag group_scope
+      JOIN relay_group private_group ON private_group.id = group_scope.tag_value
+      WHERE group_scope.event_id = e.id
+        AND group_scope.tag_name = 'h'
+        AND private_group.private = TRUE
+        AND (
+            $10::text[] IS NULL
+            OR NOT EXISTS (
+                SELECT 1 FROM relay_group_member reader
+                WHERE reader.group_id = private_group.id
+                  AND reader.pubkey = ANY($10)
+            )
+        )
+  )
+  AND NOT (
+      e.kind BETWEEN 39000 AND 39005
+      AND EXISTS (
+          SELECT 1
+          FROM nostr_indexed_tag group_name
+          JOIN relay_group hidden_group ON hidden_group.id = group_name.tag_value
+          WHERE group_name.event_id = e.id
+            AND group_name.tag_name = 'd'
+            AND hidden_group.hidden = TRUE
+            AND (
+                $10::text[] IS NULL
+                OR NOT EXISTS (
+                    SELECT 1 FROM relay_group_member reader
+                    WHERE reader.group_id = hidden_group.id
+                      AND reader.pubkey = ANY($10)
+                )
+            )
+      )
+  )
 ORDER BY e.created_at DESC, e.id ASC
 LIMIT $8
 "#;
@@ -398,6 +433,41 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
           )
       )
   )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM nostr_indexed_tag group_scope
+      JOIN relay_group private_group ON private_group.id = group_scope.tag_value
+      WHERE group_scope.event_id = e.id
+        AND group_scope.tag_name = 'h'
+        AND private_group.private = TRUE
+        AND (
+            $8::text[] IS NULL
+            OR NOT EXISTS (
+                SELECT 1 FROM relay_group_member reader
+                WHERE reader.group_id = private_group.id
+                  AND reader.pubkey = ANY($8)
+            )
+        )
+  )
+  AND NOT (
+      e.kind BETWEEN 39000 AND 39005
+      AND EXISTS (
+          SELECT 1
+          FROM nostr_indexed_tag group_name
+          JOIN relay_group hidden_group ON hidden_group.id = group_name.tag_value
+          WHERE group_name.event_id = e.id
+            AND group_name.tag_name = 'd'
+            AND hidden_group.hidden = TRUE
+            AND (
+                $8::text[] IS NULL
+                OR NOT EXISTS (
+                    SELECT 1 FROM relay_group_member reader
+                    WHERE reader.group_id = hidden_group.id
+                      AND reader.pubkey = ANY($8)
+                )
+            )
+      )
+  )
 ORDER BY e.id
 LIMIT $10
 "#;
@@ -405,8 +475,26 @@ LIMIT $10
 const DELETE_EXPIRED_SQL: &str =
     "DELETE FROM nostr_event WHERE expires_at IS NOT NULL AND expires_at <= $1";
 const GROUP_SQL: &str = r#"
-SELECT name, about, picture, closed, supported_kinds, pins::text
+SELECT name, about, picture, closed, supported_kinds, pins::text,
+       banner, private, hidden, restricted, parent, children, livekit
 FROM relay_group WHERE id = $1 FOR UPDATE
+"#;
+const GROUP_PARENTS_SQL: &str = "SELECT id, parent FROM relay_group WHERE parent IS NOT NULL";
+const REMOVE_CHILD_SQL: &str = r#"
+UPDATE relay_group
+SET children = array_remove(children, $2), updated_at = clock_timestamp()
+WHERE id = $1
+"#;
+const APPEND_CHILD_SQL: &str = r#"
+UPDATE relay_group
+SET children = children || ARRAY[$2]::text[], updated_at = clock_timestamp()
+WHERE id = $1 AND NOT ($2 = ANY(children))
+"#;
+const CLEAR_CHILD_PARENTS_SQL: &str = r#"
+UPDATE relay_group
+SET parent = NULL, updated_at = clock_timestamp()
+WHERE parent = $1
+RETURNING id
 "#;
 const GROUP_MEMBER_SQL: &str =
     "SELECT roles FROM relay_group_member WHERE group_id = $1 AND pubkey = $2";
@@ -432,7 +520,9 @@ const REMOVE_GROUP_MEMBER_SQL: &str =
     "DELETE FROM relay_group_member WHERE group_id = $1 AND pubkey = $2";
 const UPDATE_GROUP_METADATA_SQL: &str = r#"
 UPDATE relay_group SET name = $2, about = $3, picture = $4,
-    closed = $5, supported_kinds = $6, updated_at = clock_timestamp()
+    closed = $5, supported_kinds = $6, banner = $7, private = $8,
+    hidden = $9, restricted = $10, parent = $11, children = $12,
+    livekit = $13, updated_at = clock_timestamp()
 WHERE id = $1
 "#;
 const UPDATE_GROUP_PINS_SQL: &str = r#"
@@ -601,6 +691,10 @@ pub(crate) struct Statements {
     pub query_filter_ids: Statement,
     pub delete_expired: Statement,
     pub group: Statement,
+    pub group_parents: Statement,
+    pub remove_child: Statement,
+    pub append_child: Statement,
+    pub clear_child_parents: Statement,
     pub group_member: Statement,
     pub group_members: Statement,
     pub group_invite: Statement,
@@ -683,6 +777,10 @@ impl Statements {
             query_filter_ids: client.prepare(QUERY_FILTER_IDS_SQL).await?,
             delete_expired: client.prepare(DELETE_EXPIRED_SQL).await?,
             group: client.prepare(GROUP_SQL).await?,
+            group_parents: client.prepare(GROUP_PARENTS_SQL).await?,
+            remove_child: client.prepare(REMOVE_CHILD_SQL).await?,
+            append_child: client.prepare(APPEND_CHILD_SQL).await?,
+            clear_child_parents: client.prepare(CLEAR_CHILD_PARENTS_SQL).await?,
             group_member: client.prepare(GROUP_MEMBER_SQL).await?,
             group_members: client.prepare(GROUP_MEMBERS_SQL).await?,
             group_invite: client.prepare(GROUP_INVITE_SQL).await?,

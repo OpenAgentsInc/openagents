@@ -218,6 +218,7 @@ fn parse_command(method: &str, params: &[Value]) -> Result<ManagementRequest, St
                         .as_bool()
                         .ok_or_else(|| "closed must be boolean".to_owned())?,
                     supported_kinds,
+                    ..GroupMetadata::default()
                 },
                 admin_pubkey: pubkey_param(params, 5)?,
             })

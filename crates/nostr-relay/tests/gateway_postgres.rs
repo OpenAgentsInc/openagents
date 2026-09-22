@@ -272,6 +272,7 @@ async fn assert_nip11_http(address: SocketAddr) {
     let document: Value = serde_json::from_str(body).unwrap();
     assert_eq!(document["name"], "nostr-relay");
     assert_eq!(document["limitation"]["auth_required"], true);
+    assert_eq!(document["nip29"]["subgroups"], true);
     assert!(
         document["supported_nips"]
             .as_array()
@@ -1101,8 +1102,8 @@ fn openagents_profile_contract(address: SocketAddr) {
     );
     send_json(&mut publisher, json!(["EVENT", record.clone()]));
     let accepted = read_json(&mut publisher);
-    assert_eq!(accepted[0], "OK");
-    assert_eq!(accepted[2], true);
+    assert_eq!(accepted[0], "OK", "{accepted}");
+    assert_eq!(accepted[2], true, "{accepted}");
     assert!(!accepted[3].as_str().unwrap_or("").contains("executed"));
 
     let mut stranger = connect_client(address);
@@ -2095,6 +2096,130 @@ fn group_contract(address_one: SocketAddr, address_two: SocketAddr) {
         std::collections::HashSet::from([join.id, leave.id])
     );
 
+    let create_secret = signed_event(
+        90,
+        now(),
+        9_007,
+        vec![Tag::new(vec!["h".into(), "secret-room".into()])],
+        "",
+    );
+    send_json(&mut admin, json!(["EVENT", create_secret]));
+    assert_eq!(
+        read_json(&mut admin)[2],
+        true,
+        "relay creates the private group"
+    );
+    let seal_secret = signed_event(
+        90,
+        now(),
+        9_002,
+        vec![
+            Tag::new(vec!["h".into(), "secret-room".into()]),
+            Tag::new(vec!["name".into(), "Secret".into()]),
+            Tag::new(vec!["private".into()]),
+            Tag::new(vec!["hidden".into()]),
+            Tag::new(vec!["restricted".into()]),
+        ],
+        "",
+    );
+    send_json(&mut admin, json!(["EVENT", seal_secret]));
+    assert_eq!(
+        read_json(&mut admin)[2],
+        true,
+        "private and hidden flags store"
+    );
+    let secret_message = signed_event(
+        90,
+        now(),
+        1,
+        vec![Tag::new(vec!["h".into(), "secret-room".into()])],
+        "members only",
+    );
+    send_json(&mut admin, json!(["EVENT", secret_message.clone()]));
+    assert_eq!(read_json(&mut admin)[2], true);
+
+    let mut stranger = connect_client(address_one);
+    let challenge = expect_auth_challenge(&mut stranger);
+    authenticate(&mut stranger, 41, &challenge);
+    send_json(
+        &mut stranger,
+        json!(["REQ", "secret-chat", {"kinds":[1], "#h":["secret-room"]}]),
+    );
+    assert_eq!(read_json(&mut stranger), json!(["EOSE", "secret-chat"]));
+    send_json(
+        &mut stranger,
+        json!(["REQ", "secret-meta", {"kinds":[39000], "#d":["secret-room"]}]),
+    );
+    assert_eq!(read_json(&mut stranger), json!(["EOSE", "secret-meta"]));
+
+    let mut member_reader = connect_client(address_one);
+    let challenge = expect_auth_challenge(&mut member_reader);
+    authenticate(&mut member_reader, 90, &challenge);
+    send_json(
+        &mut member_reader,
+        json!(["REQ", "secret-member", {"kinds":[1], "#h":["secret-room"]}]),
+    );
+    let visible = read_json(&mut member_reader);
+    assert_eq!(visible[0], "EVENT", "{visible}");
+    let visible_event: Event = serde_json::from_value(visible[2].clone()).unwrap();
+    assert_eq!(visible_event.id, secret_message.id);
+    assert_eq!(
+        read_json(&mut member_reader),
+        json!(["EOSE", "secret-member"])
+    );
+    member_reader.close(None).unwrap();
+
+    let create_parent = signed_event(
+        90,
+        now(),
+        9_007,
+        vec![Tag::new(vec!["h".into(), "parent-room".into()])],
+        "",
+    );
+    send_json(&mut admin, json!(["EVENT", create_parent]));
+    assert_eq!(read_json(&mut admin)[2], true);
+    let create_child = signed_event(
+        90,
+        now(),
+        9_007,
+        vec![Tag::new(vec!["h".into(), "child-room".into()])],
+        "",
+    );
+    send_json(&mut admin, json!(["EVENT", create_child]));
+    assert_eq!(read_json(&mut admin)[2], true);
+    let attach_child = signed_event(
+        90,
+        now(),
+        9_002,
+        vec![
+            Tag::new(vec!["h".into(), "child-room".into()]),
+            Tag::new(vec!["parent".into(), "parent-room".into()]),
+            Tag::new(vec!["restricted".into()]),
+        ],
+        "",
+    );
+    send_json(&mut admin, json!(["EVENT", attach_child]));
+    assert_eq!(
+        read_json(&mut admin)[2],
+        true,
+        "subgroup parent link stores"
+    );
+    let cycle = signed_event(
+        90,
+        now(),
+        9_002,
+        vec![
+            Tag::new(vec!["h".into(), "parent-room".into()]),
+            Tag::new(vec!["parent".into(), "child-room".into()]),
+            Tag::new(vec!["child".into(), "child-room".into()]),
+            Tag::new(vec!["restricted".into()]),
+        ],
+        "",
+    );
+    send_json(&mut admin, json!(["EVENT", cycle]));
+    assert_eq!(read_json(&mut admin)[2], false, "a parent cycle is refused");
+
+    stranger.close(None).unwrap();
     admin.close(None).unwrap();
     member.close(None).unwrap();
     joiner.close(None).unwrap();

@@ -28,7 +28,8 @@ use crate::domain::{
     BLOCK_GLOBAL_ONLY_KINDS, DM_VISIBILITY_KIND, DeletionRequest, DeletionTombstone, DomainError,
     Event, EventClass, Filter, GroupAction, GroupMetadata, IDENTITY_ARCHIVE_LIST_KIND,
     IDENTITY_ARCHIVED_KIND, IDENTITY_UNARCHIVED_KIND, IdentityArchiveRequest, RelaySigner,
-    ReplacementDecision, Tag, compare_replacement_order, search_terms, validate_block_ingest,
+    ReplacementDecision, Tag, compare_replacement_order, parent_would_cycle, reorder_children,
+    search_terms, validate_block_ingest,
 };
 
 pub use error::StoreError;
@@ -108,6 +109,7 @@ pub enum AdmissionRejection {
     GroupUnsupportedKind,
     GroupPreviousUnknown,
     GroupSigningUnavailable,
+    GroupHierarchy(&'static str),
 }
 
 impl AdmissionRejection {
@@ -132,6 +134,7 @@ impl AdmissionRejection {
             Self::GroupUnsupportedKind => "group_unsupported_kind",
             Self::GroupPreviousUnknown => "group_previous_unknown",
             Self::GroupSigningUnavailable => "group_signing_unavailable",
+            Self::GroupHierarchy(_) => "group_hierarchy",
         }
     }
 }
@@ -636,6 +639,31 @@ impl Store {
                         ));
                     }
                 }
+                Some(GroupAction::EditMetadata(metadata)) => {
+                    let relay_author =
+                        relay_signer.is_some_and(|signer| signer.pubkey() == event.pubkey);
+                    let admin = group_member(&transaction, &statements, group_id, &event.pubkey)
+                        .await?
+                        .is_some_and(|roles| !roles.is_empty());
+                    if !relay_author && !admin {
+                        transaction.commit().await?;
+                        return Ok(AdmissionOutcome::Rejected(
+                            AdmissionRejection::GroupUnauthorized,
+                        ));
+                    }
+                    if let Some(rejection) = hierarchy_rejection(
+                        &transaction,
+                        &statements,
+                        group_id,
+                        &event.pubkey,
+                        metadata,
+                    )
+                    .await?
+                    {
+                        transaction.commit().await?;
+                        return Ok(AdmissionOutcome::Rejected(rejection));
+                    }
+                }
                 Some(_) => {
                     let relay_author =
                         relay_signer.is_some_and(|signer| signer.pubkey() == event.pubkey);
@@ -650,10 +678,11 @@ impl Store {
                     }
                 }
                 None => {
-                    if group_member(&transaction, &statements, group_id, &event.pubkey)
+                    let member = group_member(&transaction, &statements, group_id, &event.pubkey)
                         .await?
-                        .is_none()
-                    {
+                        .is_some();
+                    let restricted = group.as_ref().is_some_and(|group| group.restricted);
+                    if restricted && !member {
                         transaction.commit().await?;
                         return Ok(AdmissionOutcome::Rejected(
                             AdmissionRejection::GroupUnauthorized,
@@ -807,7 +836,9 @@ impl Store {
         }
 
         if let (Some(group_id), Some(action)) = (group_id, group_action.as_ref()) {
-            apply_group_action(&transaction, &statements, group_id, &event.pubkey, action).await?;
+            let refresh =
+                apply_group_action(&transaction, &statements, group_id, &event.pubkey, action)
+                    .await?;
             if !matches!(action, GroupAction::DeleteGroup) {
                 if matches!(action, GroupAction::Join { .. } | GroupAction::Leave) {
                     let signer = relay_signer.expect("group actions require a relay signer");
@@ -836,6 +867,13 @@ impl Store {
                     now,
                 )
                 .await?;
+            }
+            let signer = relay_signer.expect("group actions require a relay signer");
+            for related in refresh {
+                if related != group_id {
+                    generate_group_metadata(&transaction, &statements, signer, &related, now)
+                        .await?;
+                }
             }
         }
 
@@ -1918,9 +1956,18 @@ impl Store {
                 json!(true)
             }
             ManagementRequest::DeleteGroup { id } => {
+                let signer = relay_signer.ok_or_else(|| {
+                    StoreError::Management("relay signing key is not configured".into())
+                })?;
                 transaction
-                    .execute(&statements.delete_group, &[&id])
+                    .query_one(&statements.advisory_lock, &[&format!("group:{id}")])
                     .await?;
+                let refresh = detach_deleted_group(&transaction, &statements, &id).await?;
+                transaction.query_one(&statements.ingest_lock, &[]).await?;
+                for related in refresh {
+                    generate_group_metadata(&transaction, &statements, signer, &related, now)
+                        .await?;
+                }
                 json!(true)
             }
             ManagementRequest::ListGroups => json!(
@@ -2186,16 +2233,25 @@ fn admission_lock_keys(
 }
 
 fn group_scope(event: &Event) -> Option<&str> {
-    (!BLOCK_GLOBAL_ONLY_KINDS.contains(&event.kind))
-        .then(|| event.group_id())
-        .flatten()
+    // NIP-RUN uses `h` as a mailbox, not as a NIP-29 group id.
+    if BLOCK_GLOBAL_ONLY_KINDS.contains(&event.kind) || matches!(event.kind, 3_187 | 30_186) {
+        return None;
+    }
+    event.group_id()
 }
 
 struct GroupRow {
     name: String,
     about: String,
     picture: String,
+    banner: String,
     closed: bool,
+    private: bool,
+    hidden: bool,
+    restricted: bool,
+    livekit: String,
+    parent: Option<String>,
+    children: Vec<String>,
     supported_kinds: Option<Vec<u16>>,
     pins: Vec<Tag>,
 }
@@ -2233,6 +2289,13 @@ async fn load_group(
                 closed: row.get(3),
                 supported_kinds,
                 pins,
+                banner: row.get(6),
+                private: row.get(7),
+                hidden: row.get(8),
+                restricted: row.get(9),
+                parent: row.get(10),
+                children: row.get(11),
+                livekit: row.get(12),
             })
         })
         .transpose()
@@ -2296,13 +2359,58 @@ async fn group_previous_references_are_current(
         .all(|reference| prefixes.contains(reference)))
 }
 
+async fn hierarchy_rejection(
+    transaction: &tokio_postgres::Transaction<'_>,
+    statements: &Statements,
+    group_id: &str,
+    author: &str,
+    metadata: &GroupMetadata,
+) -> Result<Option<AdmissionRejection>, StoreError> {
+    let current = load_group(transaction, statements, group_id)
+        .await?
+        .ok_or_else(|| StoreError::CorruptRow("group disappeared during metadata edit".into()))?;
+    if reorder_children(&current.children, &metadata.children).is_err() {
+        return Ok(Some(AdmissionRejection::GroupHierarchy(
+            "metadata must name every current child",
+        )));
+    }
+    let Some(parent) = metadata.parent.as_deref() else {
+        return Ok(None);
+    };
+    if parent == group_id || load_group(transaction, statements, parent).await?.is_none() {
+        return Ok(Some(AdmissionRejection::GroupHierarchy(
+            "parent group does not exist",
+        )));
+    }
+    let parent_admin = group_member(transaction, statements, parent, author)
+        .await?
+        .is_some_and(|roles| !roles.is_empty());
+    if !parent_admin {
+        return Ok(Some(AdmissionRejection::GroupHierarchy(
+            "parent link requires admin of the parent group",
+        )));
+    }
+    let mut parents = BTreeMap::new();
+    for row in transaction.query(&statements.group_parents, &[]).await? {
+        parents.insert(row.get::<_, String>(0), row.get::<_, String>(1));
+    }
+    parents.remove(group_id);
+    if parent_would_cycle(group_id, parent, &parents) {
+        return Ok(Some(AdmissionRejection::GroupHierarchy(
+            "parent link would cycle",
+        )));
+    }
+    Ok(None)
+}
+
 async fn apply_group_action(
     transaction: &tokio_postgres::Transaction<'_>,
     statements: &Statements,
     group_id: &str,
     author: &str,
     action: &GroupAction,
-) -> Result<(), StoreError> {
+) -> Result<Vec<String>, StoreError> {
+    let mut refresh = Vec::new();
     match action {
         GroupAction::PutUser { pubkey, roles } => {
             transaction
@@ -2315,6 +2423,13 @@ async fn apply_group_action(
                 .await?;
         }
         GroupAction::EditMetadata(metadata) => {
+            let current = load_group(transaction, statements, group_id)
+                .await?
+                .ok_or_else(|| {
+                    StoreError::CorruptRow("group disappeared during metadata edit".into())
+                })?;
+            let children = reorder_children(&current.children, &metadata.children)
+                .map_err(StoreError::Domain)?;
             let supported_kinds = metadata.supported_kinds.as_ref().map(|kinds| {
                 kinds
                     .iter()
@@ -2331,9 +2446,30 @@ async fn apply_group_action(
                         &metadata.picture,
                         &metadata.closed,
                         &supported_kinds,
+                        &metadata.banner,
+                        &metadata.private,
+                        &metadata.hidden,
+                        &metadata.restricted,
+                        &metadata.parent,
+                        &children,
+                        &metadata.livekit,
                     ],
                 )
                 .await?;
+            if current.parent != metadata.parent {
+                if let Some(previous) = &current.parent {
+                    transaction
+                        .execute(&statements.remove_child, &[&previous, &group_id])
+                        .await?;
+                    refresh.push(previous.clone());
+                }
+                if let Some(parent) = &metadata.parent {
+                    transaction
+                        .execute(&statements.append_child, &[&parent, &group_id])
+                        .await?;
+                    refresh.push(parent.clone());
+                }
+            }
         }
         GroupAction::DeleteEvent { event_id } => {
             transaction
@@ -2356,9 +2492,7 @@ async fn apply_group_action(
                 .await?;
         }
         GroupAction::DeleteGroup => {
-            transaction
-                .execute(&statements.delete_group, &[&group_id])
-                .await?;
+            refresh = detach_deleted_group(transaction, statements, group_id).await?;
         }
         GroupAction::CreateInvite { code } => {
             transaction
@@ -2384,7 +2518,32 @@ async fn apply_group_action(
                 .await?;
         }
     }
-    Ok(())
+    Ok(refresh)
+}
+
+async fn detach_deleted_group(
+    transaction: &tokio_postgres::Transaction<'_>,
+    statements: &Statements,
+    group_id: &str,
+) -> Result<Vec<String>, StoreError> {
+    let current = load_group(transaction, statements, group_id).await?;
+    let mut refresh = Vec::new();
+    if let Some(parent) = current.as_ref().and_then(|group| group.parent.clone()) {
+        transaction
+            .execute(&statements.remove_child, &[&parent, &group_id])
+            .await?;
+        refresh.push(parent);
+    }
+    for row in transaction
+        .query(&statements.clear_child_parents, &[&group_id])
+        .await?
+    {
+        refresh.push(row.get(0));
+    }
+    transaction
+        .execute(&statements.delete_group, &[&group_id])
+        .await?;
+    Ok(refresh)
 }
 
 async fn generate_group_metadata(
@@ -2409,12 +2568,28 @@ async fn generate_group_metadata(
         ("name", group.name.as_str()),
         ("about", group.about.as_str()),
         ("picture", group.picture.as_str()),
+        ("banner", group.banner.as_str()),
+        ("livekit", group.livekit.as_str()),
     ] {
         if !value.is_empty() {
             metadata.push(Tag::new(vec![name.into(), value.into()]));
         }
     }
-    metadata.push(Tag::new(vec!["restricted".into()]));
+    if let Some(parent) = &group.parent {
+        metadata.push(Tag::new(vec!["parent".into(), parent.clone()]));
+    }
+    for child in &group.children {
+        metadata.push(Tag::new(vec!["child".into(), child.clone()]));
+    }
+    if group.restricted {
+        metadata.push(Tag::new(vec!["restricted".into()]));
+    }
+    if group.private {
+        metadata.push(Tag::new(vec!["private".into()]));
+    }
+    if group.hidden {
+        metadata.push(Tag::new(vec!["hidden".into()]));
+    }
     if group.closed {
         metadata.push(Tag::new(vec!["closed".into()]));
     }

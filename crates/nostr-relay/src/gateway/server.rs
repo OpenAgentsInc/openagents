@@ -2050,6 +2050,7 @@ fn admission_response(outcome: AdmissionOutcome) -> (bool, String) {
                 false,
                 "error: relay group signing key is unavailable".to_owned(),
             ),
+            AdmissionRejection::GroupHierarchy(reason) => (false, format!("invalid: {reason}")),
         },
     }
 }

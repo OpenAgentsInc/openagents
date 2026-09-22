@@ -6,10 +6,25 @@ fails when a file under `nips/official/` other than `README.md` has no check.
 
 ## What a row proves
 
-Event-shaped files are a `Shape`: the kind and one tag that occur in the
-pinned text. The check signs an event with that kind and tag, accepts it,
-and refuses the same event with the tag removed. That is the client builder
-and verifier for that file. It does not re-state every optional field.
+NIP-29 is `configured-and-proven`. The domain role is `GroupMetadata` and
+`GroupAction` in `crates/nostr/src/domain/expanded.rs`. The server role is
+admission, query filtering, and metadata regeneration in
+`crates/nostr-relay/src/store/mod.rs`. Configuration is
+`NOSTR_RELAY_RELAY_SECRET_KEY`; NIP-11 then advertises
+`nip29.subgroups: true`. The fixture is the pinned metadata event: `private`,
+`hidden`, `restricted`, one `parent`, and the child list. Live acceptance is
+`domain::expanded::tests::private_hidden_and_subgroup_fields_follow_the_pinned_metadata_event`
+and the relay query filter that hides private timeline events and hidden
+metadata from non-members. The limitation is that kinds 9003, 9004, 9006, and
+9011–9020 have no row in the pinned moderation table, and kind 39004 stays
+empty because this process does not run LiveKit. The `nostr` and `nostr-relay`
+crates own the row. Its status is distinct from a kind-and-tag check.
+
+Event-shaped files other than NIP-29 are still a `Shape`: the kind and one
+tag that occur in the pinned text. That check is partial. It signs an event
+with that kind and tag, accepts it, and refuses the same event with the tag
+removed. It does not re-state every optional field, and it is not
+configured-and-proven.
 
 Files whose body says the rules moved to NIP-01 are not a second protocol.
 The check requires that sentence and still verifies a signed NIP-01 event.
