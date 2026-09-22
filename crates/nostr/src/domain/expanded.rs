@@ -464,6 +464,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 1_111 {
         super::comment::open_comment(event)?;
     }
+    if matches!(event.kind, 30_023 | 30_024) {
+        super::article::open_article(event)?;
+    }
     if event.kind == 1_059 {
         crate::nip17::validate_gift_wrap(event)?;
     }

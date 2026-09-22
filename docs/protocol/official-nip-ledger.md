@@ -75,6 +75,19 @@ list. Content is kept as text. A URL with a fragment is refused and is not
 rewritten. Acceptance is
 `domain::comment::tests::a_comment_scopes_to_the_root_and_refuses_a_kind_1_reply`.
 
+NIP-23 is `configured-and-proven`. Kind `30023` is an addressable
+article with one `d` tag. Optional metadata is `title`, `image`,
+`summary`, `published_at`, and `t` topics. Content is Markdown: a
+paragraph is a single line, HTML tags are refused, and each `nostr:`
+reference must be a NIP-19 identifier other than `nsec`. `e` and `a`
+tags, when present, are event ids and addresses. Kind `30024` is refused
+because the pinned text moves drafts to NIP-37. A reply is a kind `1111`
+comment whose `K` or `k` tag is `30023`, not a kind `1` note. The newest
+event for the `d` tag replaces the older one. Kind `30023` is not added
+to the NIP-11 list. Markup inside a code fence is not treated as HTML.
+Acceptance is
+`domain::article::tests::an_article_replaces_on_its_identifier_and_keeps_markdown_paragraphs`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

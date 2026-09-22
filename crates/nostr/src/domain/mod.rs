@@ -5,6 +5,7 @@
 //! deterministic and fixture-testable.
 
 mod agent;
+mod article;
 mod block;
 mod comment;
 mod deletion;
@@ -24,6 +25,7 @@ pub use agent::{
     OwnerAttestation, agent_observer_route, agent_turn_metric_owner, validate_nip44_v2_content,
     verify_agent_auth_attestation, verify_owner_attestation, verify_owner_binding,
 };
+pub use article::{Article, is_article_reply, open_article};
 pub use block::{
     AGENT_ENGRAM_KIND, AGENT_PERSONA_KIND, BLOCK_GLOBAL_ONLY_KINDS, DM_HIDE_KIND, DM_OPEN_KIND,
     DM_VISIBILITY_KIND, EVENT_REMINDER_KIND, IDENTITY_ARCHIVE_LIST_KIND,
