@@ -933,6 +933,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "25.md",
+        domain: "kind 7 reacts to a native event — the last e tag is the target, the last p tag its author, a the address, k the reacted kind; kind 17 reacts to external content and must carry NIP-73 i and k tags",
+        client: "open_reaction, open_external_reaction, and reaction_verdict",
+        server: "admission requires the last e tag to name an event id and refuses a malformed emoji, k, or a tag",
+        paths: "crates/nostr/src/domain/reaction.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; NIP-25 is a draft and kinds 7 and 17 are not added to the NIP-11 list",
+        fixture: "a like whose last e tag is the target among mentions, a :shortcode: with its emoji tag, and a kind 17 web reaction",
+        acceptance: "domain::reaction::tests::a_reaction_names_its_target_as_the_last_e_tag",
+        limitations: "content plus/empty is a like and minus a dislike; other content is custom and not interpreted; relay and pubkey hints on e and p tags are carried, not resolved",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

@@ -783,6 +783,20 @@ relay stores kind `1` either way, and NIP-14 is a draft, so the tag
 stays off the NIP-11 list. Acceptance is
 `domain::subject::tests::a_reply_replicates_the_subject_with_a_re_prefix`.
 
+NIP-25 is `configured-and-proven`. `open_reaction` reads a kind `7`
+event: the last `e` tag names the reacted event, the last `p` tag names
+its author, an `a` tag carries the `kind:pubkey:d` address of an
+addressable target, and a `k` tag is the reacted kind as a string.
+`reaction_verdict` reads `+` or empty as a like, `-` as a dislike, and
+anything else as custom; a `:shortcode:` content requires exactly one
+`emoji` tag naming that code with a URL. `open_external_reaction`
+checks kind `17`, which must carry the NIP-73 `i` and `k` tags that
+identify external content. Admission refuses a targetless or malformed
+reaction. NIP-25 is a draft, so the kinds stay off the NIP-11 list.
+Acceptance is
+`domain::reaction::tests::a_reaction_names_its_target_as_the_last_e_tag`
+and `domain::reaction::tests::an_external_reaction_carries_i_and_k_tags`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

@@ -46,6 +46,7 @@ mod podcast;
 mod poll;
 mod profile_link;
 mod public_message;
+mod reaction;
 mod relay_list;
 mod remote_sign;
 mod replacement;
@@ -186,6 +187,9 @@ pub use profile_link::{
 };
 pub use public_message::{
     MessageReceiver, PublicMessage, link_kind, open_public_message, targets_public_message,
+};
+pub use reaction::{
+    Reaction, ReactionVerdict, open_external_reaction, open_reaction, reaction_verdict,
 };
 pub use relay_list::{
     ListedRelay, RelayList, RelayMarker, open_relay_list, publish_relays, read_relays, write_relays,
