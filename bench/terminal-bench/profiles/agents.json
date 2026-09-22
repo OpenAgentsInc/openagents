@@ -1003,6 +1003,134 @@
         }
       },
       "note": "Jev-probe: no Gemini. Before delegating, a battery of read-only probes (listing, git state, README, tests, versions, paths the task names) runs in parallel, Jev keeps the outputs the task needs, and those join the Jev file survey in the briefing. Codex on GPT-6 Luna finishes."
+    },
+    "coder-one-jevprobe-luna-low": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneDelegate",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "delegate": "always",
+        "delegate_agent": "codex",
+        "codex_version": "0.155.1",
+        "delegate_model": "gpt-6-luna",
+        "explore_steps": 0
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "chatgpt.com",
+        "api.openai.com",
+        "registry.npmjs.org"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "auth-json": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json",
+            "CODER_ONE_DEEP": "on",
+            "CODER_ONE_PROBES": "on",
+            "CODER_ONE_DELEGATE_EFFORT": "low"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "note": "Generation and Jev as in coder-one; the Codex delegate signs in with the host's ChatGPT-account auth.json, which the adapter places in the container the way Harbor's codex agent does and removes after the run. CODEX_FORCE_AUTH_JSON stays a host-side selector: the mode forwards the resolved file path instead."
+        }
+      },
+      "note": "Jev-probe: no Gemini. Before delegating, a battery of read-only probes (listing, git state, README, tests, versions, paths the task names) runs in parallel, Jev keeps the outputs the task needs, and those join the Jev file survey in the briefing. Codex on GPT-6 Luna finishes. The delegate runs at reasoning effort low."
+    },
+    "coder-one-jevprobe-opus-lean-low": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneDelegate",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "delegate": "always",
+        "claude_code_version": "2.1.280",
+        "delegate_model": "claude-opus-5-5",
+        "explore_steps": 0
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "api.anthropic.com",
+        "downloads.claude.ai"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL"
+      ],
+      "auth_modes": {
+        "subscription-oauth": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "Generation and Jev as in coder-one; the delegate runs on a Claude subscription token from `claude setup-token`. The API-key variables are excluded so the CLI uses the token. The delegate's total_cost_usd is then a list-price figure, not a bill (cli_list_price).",
+          "env_overrides": {
+            "CODER_ONE_DEEP": "on",
+            "CODER_ONE_DELEGATE_TOOLS": "Bash,Read,Edit,Write,Glob,Grep",
+            "CODER_ONE_PROBES": "on",
+            "CODER_ONE_DELEGATE_EFFORT": "low"
+          }
+        },
+        "api-key": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "requires_any": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "note": "The delegate bills the Anthropic API directly; its total_cost_usd is the CLI's own figure (cli_reported)."
+        }
+      },
+      "note": "Jev-probe: no Gemini. Before delegating, a battery of read-only probes (listing, git state, README, tests, versions, paths the task names) runs in parallel, Jev keeps the outputs the task needs, and those join the Jev file survey in the briefing. Claude Code on Opus 5.5 with six tools finishes. The delegate runs at reasoning effort low."
     }
   }
 }

@@ -32,6 +32,8 @@ def test_known_arms(agents):
         "coder-one-jevbrief-opus-lean",
         "coder-one-jevprobe-opus-lean",
         "coder-one-jevprobe-luna",
+        "coder-one-jevprobe-luna-low",
+        "coder-one-jevprobe-opus-lean-low",
         "oracle",
         "nop",
     }
