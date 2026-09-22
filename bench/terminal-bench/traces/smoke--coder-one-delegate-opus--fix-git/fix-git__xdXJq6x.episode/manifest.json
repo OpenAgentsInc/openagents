@@ -1,0 +1,133 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 8,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "5804ca06274dc601e2cdf6fc5c2a7169814dadffddde9fb803da2cbd2210d23c",
+        "chars": 3180,
+        "bytes": 3186,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file _layouts/default.html",
+          "file .gitignore",
+          "file _posters/frank2017sensing.md",
+          "file css/bootstrap.min.css",
+          "file biblib/bib.py",
+          "file _publications/merrillTransformingWearableData2024a.md",
+          "file _publications/merrillLanguageModelsStill2024.md",
+          "file me.bib",
+          "command 1",
+          "last command output"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 4,
+      "api_calls": 4,
+      "total_cost_usd": 0.1036534,
+      "milliseconds": 12321,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 33087,
+        "kept_bytes": 33087,
+        "truncated": false,
+        "sha256": "b194a5706df69f0239556d8b07deb62fdfe0806635c28fe3f2501e2b4ffa6838"
+      },
+      "close": {
+        "done": 0.88,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (9d7f081dc051)",
+    "sha256": "b1107be4d288a26239212ea7f56b1d899675e0d9e017393ffc8d35a923b15c85"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T19:12:46.221Z",
+  "updated_at": "2026-09-22T19:13:33.326Z",
+  "outcome": "delegated",
+  "steps": 1,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 57860,
+      "sha256": "40b81d8566bd888ebb268c3a31de300ca33e04640a578f773821f44563820f85"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1798,
+      "sha256": "f0444e266d295bdeb7f002426a71b9118738f48bda31f4e0b874e5efd1cf9012"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1186,
+      "sha256": "eb49aa9c1d8934275423425739ad88d20a2ac3778b30d20ac13c38a2bc938e74"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4943,
+      "sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3186,
+      "sha256": "5804ca06274dc601e2cdf6fc5c2a7169814dadffddde9fb803da2cbd2210d23c"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 33087,
+      "sha256": "b194a5706df69f0239556d8b07deb62fdfe0806635c28fe3f2501e2b4ffa6838"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "I found your changes and merged them into master.\n\n**Where they were:** You made the commit `c499730` \"Move to Stanford\" while on a detached HEAD (you had checked out `HEAD~1`, which is `c4e38a1`). No branch pointed at that commit, so when you checked out master it seemed to disappear. It still showed up in `git reflog`. It changed two files: `_includes/about.md` and `_layouts/default.html`.\n\n**The merge:** `_layouts/default.html` merged cleanly. `_includes/about.md` had a conflict, because master's \"off the job market woo\" commit had also edited that bio. I kept the \"Move to Stanford\" version, since it's the newer change and replaces the PhD-candidate line with \"I am a Postdoctoral Researcher at Stanford CS.\" Master's other edit was removing the \"I am looking for a full time job!\" sentence, and the Stanford version drops it too, so nothing from master is lost.\n\n**Result:** master now has the merge commit `2f5ac3a` (parents `d7d3e4b` and `c499730`), and the working tree is clean. Both changed files on master now match your \"Move to Stanford\" commit exactly, and no conflict markers are left in `_includes/` or `_layouts/`.",
+    "delegate_status": "answered"
+  }
+}

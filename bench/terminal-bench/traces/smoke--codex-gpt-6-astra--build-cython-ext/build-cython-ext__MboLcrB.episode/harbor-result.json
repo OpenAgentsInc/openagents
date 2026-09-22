@@ -1,0 +1,34 @@
+{
+  "task_name": "terminal-bench/build-cython-ext",
+  "trial_name": "build-cython-ext__MboLcrB",
+  "started_at": "2026-09-22T18:57:44.537538Z",
+  "finished_at": "2026-09-22T19:02:46.539552Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T18:57:44.577280Z",
+    "finished_at": "2026-09-22T18:57:50.874748Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T18:57:50.874808Z",
+    "finished_at": "2026-09-22T18:58:42.032108Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T18:58:42.032232Z",
+    "finished_at": "2026-09-22T19:02:25.675964Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T19:02:30.992658Z",
+    "finished_at": "2026-09-22T19:02:35.211575Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "exception_info": null,
+  "agent_result": {
+    "n_input_tokens": 652905,
+    "n_cache_tokens": 613376,
+    "n_output_tokens": 4720,
+    "cost_usd": null
+  }
+}

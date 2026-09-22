@@ -1,0 +1,137 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "auto",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 8,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "generation_failed",
+        "reason": "the explorer's generation failed"
+      },
+      "briefing": {
+        "sha256": "d07d9fa33b8be6d5a371b0f7f3e41a0780df5b5d44dc287b2ac33c3cde2ba456",
+        "chars": 4708,
+        "bytes": 4724,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file _includes/about.md",
+          "file _layouts/default.html",
+          "file _posters/frank2017sensing.md",
+          "file .gitignore",
+          "file _publications/merrillTransformingWearableData2024a.md",
+          "file me.bib",
+          "file _publications/ben-zeev_crosscheck_2017.md",
+          "file _publications/merrillLanguageModelsStill2024.md",
+          "command 1",
+          "command 2",
+          "command 3",
+          "command 4",
+          "command 5",
+          "last command output"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 4,
+      "api_calls": 4,
+      "total_cost_usd": 0.125508,
+      "milliseconds": 17883,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 49545,
+        "kept_bytes": 49545,
+        "truncated": false,
+        "sha256": "27fad788c56c15b935b3bbac0fabe8927376273812cacb806d075f78e4ba2608"
+      },
+      "close": {
+        "done": 0.9,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (9d7f081dc051)",
+    "sha256": "b1107be4d288a26239212ea7f56b1d899675e0d9e017393ffc8d35a923b15c85"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T19:12:30.316Z",
+  "updated_at": "2026-09-22T19:13:40.472Z",
+  "outcome": "delegated",
+  "steps": 5,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 157493,
+      "sha256": "731c43b81a08ca5e82700ade888f98a29af0c66530dc01f4c2f6a1bbf5e7a290"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1804,
+      "sha256": "9bb9b16886af9676f724bc37d73e63d02a938d48083ca2af5709c9b1ea20fc89"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 12954,
+      "sha256": "1c0c1153737fd9bbb22890b0dd8ba039f5f74c7fcfbea81a32e2d413ab9a9c4b"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4943,
+      "sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 4724,
+      "sha256": "d07d9fa33b8be6d5a371b0f7f3e41a0780df5b5d44dc287b2ac33c3cde2ba456"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 49545,
+      "sha256": "27fad788c56c15b935b3bbac0fabe8927376273812cacb806d075f78e4ba2608"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "I found your missing changes and merged them into master.\n\n**Where they were:** in commit `c499730` (\"Move to Stanford\"). No branch pointed to that commit, so when you checked out master it seemed to disappear, but git still had it. It branched off `c4e38a1`, so it was a sibling of master's latest commit, `d7d3e4b` (\"off the job market woo\").\n\n**What I did:**\n- The previous agent had started a merge of `c499730` and stopped partway. The only conflict was in `_includes/about.md`: master still had the UW PhD bio, and your commit had \"I am a Postdoctoral Researcher at Stanford CS.\" I kept your Stanford version, since it's your newest change and replaces the old bio.\n- `_layouts/default.html` merged without conflicts. It includes the \"Postdoc @ Stanford\" header and some whitespace and formatting cleanup.\n- I committed the merge on master as `9ed8e23`.\n\n**How I checked:**\n- `git diff c499730 HEAD` shows no differences, so master now has exactly what your Stanford commit had. The other side of the merge, `d7d3e4b`, only changed `about.md`, and that part was replaced by your version.\n- The working tree is clean.\n- `about.md` now has the Stanford text, and `default.html` line 43 reads \"Postdoc @ Stanford\".",
+    "delegate_status": "answered"
+  }
+}
