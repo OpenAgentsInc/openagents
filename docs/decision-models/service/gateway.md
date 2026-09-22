@@ -63,6 +63,7 @@ retained for settlement.
   "max_in_flight": 64,
   "max_questions": 256,
   "max_options": 4096,
+  "cors_origins": ["https://app.example.com"],
   "doors": {
     "shared-kev": {"endpoint": "http://127.0.0.1:9080"},
     "acme-kev": {"endpoint": "http://10.0.1.7:9080"}
@@ -100,6 +101,15 @@ which must all be positive or the config refuses.
 that expired while its forward still ran would orphan live work, and
 the config check refuses the pairing.
 
+`cors_origins` is optional and defaults empty: the browser origins a
+credentialed caller may call from, admitted by exact match only — no
+wildcards. A credentialed route reflects an admitted origin back with
+`Vary: Origin` and answers its `OPTIONS` preflight; anything else gets
+no cross-origin headers and the browser refuses it. Public GET routes —
+the discovery corpus, `/healthz`, the published skills directory —
+answer `Access-Control-Allow-Origin: *` regardless of the list. Every
+response also carries `x-api-version`, the catalog's declared version.
+
 ## Routes
 
 - `POST /v1/systemone` — the decision call. The body is the TypeSafe
@@ -129,6 +139,13 @@ Work that outlives a request runs as a durable job instead:
 [durable-jobs](durable-jobs.md) is the contract: the same admission
 path, a manifest and item ledger beside the registry, honest
 `unknown` outcomes for ambiguous work, and opt-in signed webhooks.
+
+`PUT`, `GET`, and `DELETE /v1/updates` are the opt-in product-updates
+subscription: one record per credential, verified by authentication,
+with `product` and `support` consent recorded separately and a durable
+`unsubscribed` state. Anonymous callers cannot subscribe — a
+`no_subscription`-style absence answers `404 subscription_not_found`,
+and a write that cannot persist answers `500 subscription_unavailable`.
 
 Under the `accounts` document the gateway also mounts the
 account-management family — every route below conditional on that

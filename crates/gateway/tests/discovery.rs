@@ -58,6 +58,7 @@ async fn deploy(tune: impl FnOnce(&mut Config)) -> Deployment {
         max_classify_inputs: 1024,
         max_classify_inputs_per_tenant: 1024,
         max_questions: 256,
+        cors_origins: vec![],
         max_options: 4096,
         doors: ["shared-kev", "acme-kev"]
             .into_iter()
@@ -126,6 +127,7 @@ async fn every_public_route_answers_without_a_credential() {
             || path.starts_with("/v1/classify")
             || path.starts_with("/v1/jobs")
             || path.starts_with("/v1/feedback")
+            || path.starts_with("/v1/updates")
             || path.starts_with("/v1/models")
             || path == "/v1/docs/{id}"
             || path == "/v1/docs/search"
@@ -563,6 +565,7 @@ async fn public_origin_validation_refuses_malformed_config() {
             max_classify_inputs: 1024,
             max_classify_inputs_per_tenant: 1024,
             max_questions: 256,
+            cors_origins: vec![],
             max_options: 4096,
             doors: BTreeMap::new(),
             job_retention_ms: 604_800_000,

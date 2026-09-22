@@ -129,6 +129,14 @@ pub struct Config {
     /// is refused before it is authorized or reserved.
     #[serde(default = "default_questions")]
     pub max_questions: u64,
+    /// Origins a browser caller may use with a credential, answered as
+    /// `Access-Control-Allow-Origin` on credentialed routes and their
+    /// preflights. Default empty — no credentialed cross-origin use.
+    /// Public GET routes always answer `Access-Control-Allow-Origin: *`
+    /// regardless of this list. Wildcards are not honored: an origin is
+    /// admitted only by exact match.
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
     /// The most options one request may total across its `choice` and
     /// `score` questions. Default 4096.
     #[serde(default = "default_options")]

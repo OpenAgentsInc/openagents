@@ -774,25 +774,40 @@ profile. Owner: [#9475](https://github.com/OpenAgentsInc/openagents/issues/9475)
 
 ## Operations, privacy, and portability
 
-Provide versioned packages and configuration for tested shared, dedicated,
-self-hosted, and on-device deployments. Document model/host prerequisites,
-artifact fetching, TLS/trusted-network boundaries, secrets, health/readiness,
-backup/restore, upgrades, and rollback. Verify a fresh install through a
-bounded real call and recovery, not just a successful build.
+`deploy/gateway/` carries the tested deployment lanes — shared,
+dedicated, self-hosted, and on-device — as versioned `gateway.json`
+examples beside the hardened `openagents-gateway.service` unit.
+[service/deployment.md](../service/deployment.md) is the runbook:
+prerequisites, out-of-band artifact fetching, the TLS/private-interface
+boundary, secrets (digests only), health and readiness, backup and
+restore, and upgrade and rollback through the `current` symlink.
+`scripts/verify-gateway-install.sh` verifies a fresh install through a
+real bounded call, restart, restore, rollback, and deletion — not just
+a successful build.
 
-State per-lane retention for raw state, answers, diagnostics, usage,
-receipts, uploads, and trained artifacts. Raw payload logging is off by
-default. Publish provider/subprocessor disclosure, operator access,
-encryption boundaries, deletion/export behavior, and support/security
-contacts. A shared host cannot inherit a dedicated tenant's isolation claim;
-a dedicated host is still able to read inputs unless a separate mechanism
-prevents it.
+[service/privacy.md](../service/privacy.md) states per-lane retention:
+payloads are never persisted (receipts carry digests), and each durable
+record — receipts, quota, credentials, feedback, subscriptions, jobs,
+accounts, billing, skills — has a named lifetime. It publishes provider
+and subprocessor disclosure, operator access, encryption boundaries,
+and deletion/export behavior, and it says plainly that a shared host
+cannot inherit a dedicated tenant's isolation and that a dedicated host
+can still read forwarded inputs.
 
-Local privacy means the whole workflow stays local; a remote reviewer,
-telemetry path, or external fetch changes that boundary. Public incident
-status and commercial policies reflect actual operation. Offer product
-updates only through verified opt-in subscriptions with preferences and
-unsubscribe. Keep support consent separate from marketing consent.
+[service/operations.md](../service/operations.md) holds status,
+contacts, capacity and rate-limit policy, and the commercial-terms
+gate on any paid launch. [service/compatibility.md](../service/compatibility.md)
+is the deprecation contract: a six-month minimum migration window for
+supported public API breaks, documented security exceptions, and no
+silent aliases. CORS is enforced in code — public GETs answer `*`,
+credentialed routes reflect only operator-declared origins — and
+`x-api-version` names the catalog version on every response, both
+checked against the gateway and OpenAPI contracts.
+
+`PUT`, `GET`, and `DELETE /v1/updates` are the product-updates
+subscription: verified opt-in bound to the authenticated credential,
+`product` and `support` consent separate, and durable unsubscribe.
+Support consent never licenses marketing contact.
 
 Release readiness includes schema/client conformance, tenant isolation,
 quota and monetary reconciliation, recovery, accessible customer flows,

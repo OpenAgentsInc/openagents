@@ -108,6 +108,7 @@ async fn deploy(answer_status: StatusCode, review_body: Value) -> Deployment {
         max_classify_inputs: 1024,
         max_classify_inputs_per_tenant: 1024,
         max_questions: 256,
+        cors_origins: vec![],
         max_options: 4096,
         doors,
         job_retention_ms: 604_800_000,

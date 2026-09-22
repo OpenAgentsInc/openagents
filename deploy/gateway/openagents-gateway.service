@@ -1,0 +1,69 @@
+[Unit]
+Description=OpenAgents decision-API gateway
+Documentation=https://github.com/OpenAgentsInc/openagents/tree/main/docs/decision-models/service/deployment.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=openagents-gateway
+Group=openagents-gateway
+EnvironmentFile=/etc/openagents-gateway/gateway.env
+ExecStartPre=/usr/bin/test -x /opt/openagents-gateway/current/gateway
+ExecStart=/opt/openagents-gateway/current/gateway --config /etc/openagents-gateway/gateway.json
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+KillSignal=SIGTERM
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openagents-gateway
+
+# The gateway binds one port behind the TLS terminator and reaches only
+# its localhost backends. A door whose backend lives on another host
+# widens IPAddressAllow and RestrictAddressFamilies deliberately — never
+# with `any`.
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindDeny=any
+SocketBindAllow=tcp:8443
+
+# The registry — manifest, keys, ledgers, receipts, feedback, updates —
+# lives whole in this directory. It is the backup unit.
+StateDirectory=openagents-gateway
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/openagents-gateway
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+RemoveIPC=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

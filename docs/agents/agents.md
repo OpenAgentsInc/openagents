@@ -13,6 +13,8 @@ questions — `noul` (yes/no), `choice`, and `score` — to
 probabilities. `POST /v1/classify` runs batch classification;
 `POST /v1/jobs` persists a batch as a resumable job. `POST /v1/feedback`
 files a structured report and returns a trackable receipt.
+`PUT /v1/updates` records the credential's opt-in product-updates
+subscription, with separate product and support consent.
 `GET /v1/models` lists the doors a credential may name.
 
 ## Start here

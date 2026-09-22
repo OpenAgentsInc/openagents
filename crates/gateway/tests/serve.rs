@@ -270,6 +270,7 @@ async fn deploy_tuned(
         max_classify_inputs: 1024,
         max_classify_inputs_per_tenant: 1024,
         max_questions: 256,
+        cors_origins: vec![],
         max_options: 4096,
         doors,
         job_retention_ms: 604_800_000,
@@ -2493,6 +2494,7 @@ async fn deploy_money(
         max_classify_inputs: 1024,
         max_classify_inputs_per_tenant: 1024,
         max_questions: 256,
+        cors_origins: vec![],
         max_options: 4096,
         doors,
         job_retention_ms: 604_800_000,
@@ -5819,4 +5821,253 @@ async fn a_feedback_report_refuses_over_limit_and_missing_bodies() {
             .status(),
         StatusCode::NOT_FOUND
     );
+}
+
+/// The published cross-origin and version contract: public reads answer
+/// `Access-Control-Allow-Origin: *`, credentialed routes answer
+/// cross-origin only for an operator-admitted origin, preflights answer
+/// only where a real call could follow, and every response names the
+/// catalog version it was served under.
+#[tokio::test]
+async fn cors_and_version_headers_follow_the_published_contract() {
+    let deployment = deploy(manifest(None), BTreeMap::new()).await;
+    let client = reqwest::Client::new();
+
+    // A public read is cross-origin free and names the API version.
+    let response = client
+        .get(format!("{}/api", deployment.address))
+        .header("origin", "https://anywhere.example")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.headers()["access-control-allow-origin"],
+        "*",
+        "a public read should answer cross-origin freely"
+    );
+    assert_eq!(response.headers()["x-api-version"], "1.2.0");
+
+    // A credentialed route answers no cross-origin headers by default —
+    // the browser refuses it before it ever carries a key.
+    let response = client
+        .get(format!("{}/v1/models", deployment.address))
+        .header("origin", "https://anywhere.example")
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .is_none()
+    );
+    assert_eq!(response.headers()["x-api-version"], "1.2.0");
+
+    // A public preflight answers; a credentialed one without an admitted
+    // origin falls through to the router's own refusal.
+    let response = client
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{}/api", deployment.address),
+        )
+        .header("origin", "https://anywhere.example")
+        .header("access-control-request-method", "GET")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        response.headers()["access-control-allow-methods"],
+        "GET, OPTIONS"
+    );
+    let response = client
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{}/v1/models", deployment.address),
+        )
+        .header("origin", "https://anywhere.example")
+        .header("access-control-request-method", "GET")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::METHOD_NOT_ALLOWED,
+        "an unadmitted preflight gets no cross-origin answer"
+    );
+}
+
+/// An operator-declared origin is reflected on credentialed routes; an
+/// undeclared one is not — and the two can never share a cache entry.
+#[tokio::test]
+async fn credentialed_cors_reflects_only_admitted_origins() {
+    let deployment = deploy_tuned(manifest(None), BTreeMap::new(), |config| {
+        config.cors_origins = vec!["https://app.example".to_string()];
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(format!("{}/v1/models", deployment.address))
+        .header("origin", "https://app.example")
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.headers()["access-control-allow-origin"],
+        "https://app.example"
+    );
+    assert!(
+        response
+            .headers()
+            .get_all("vary")
+            .iter()
+            .any(|value| value == "origin")
+    );
+
+    let response = client
+        .get(format!("{}/v1/models", deployment.address))
+        .header("origin", "https://evil.example")
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .is_none()
+    );
+
+    // The admitted origin's preflight names the headers a decision call
+    // actually sends.
+    let response = client
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{}/v1/systemone", deployment.address),
+        )
+        .header("origin", "https://app.example")
+        .header("access-control-request-method", "POST")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        response.headers()["access-control-allow-origin"],
+        "https://app.example"
+    );
+    assert!(
+        response.headers()["access-control-allow-headers"]
+            .to_str()
+            .unwrap()
+            .contains("authorization")
+    );
+}
+
+/// Opt-in updates: anonymous callers cannot subscribe, the credential's
+/// subscription is durable and editable, and unsubscribe leaves the
+/// record standing as `unsubscribed`.
+#[tokio::test]
+async fn updates_subscriptions_are_verified_opt_in_and_durable() {
+    let deployment = deploy(manifest(None), BTreeMap::new()).await;
+    let client = reqwest::Client::new();
+    let updates = format!("{}/v1/updates", deployment.address);
+    let body = || {
+        json!({
+            "v": "openagents.updates-subscription.v1",
+            "topics": {"product": true, "support": false},
+            "contact": {"email": "ops@acme.example"},
+        })
+    };
+
+    // Anonymous cannot subscribe — an unverified opt-in is no opt-in.
+    assert_eq!(
+        client
+            .put(&updates)
+            .json(&body())
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    // An authenticated caller subscribes; the record is verified by the
+    // credential and keeps the two consents apart.
+    let response = client
+        .put(&updates)
+        .bearer_auth(&deployment.tokens["acme"])
+        .json(&body())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let record: Value = response.json().await.unwrap();
+    assert_eq!(record["status"], "subscribed");
+    assert_eq!(record["verified"], "credential");
+    assert_eq!(record["topics"]["product"], true);
+    assert_eq!(record["topics"]["support"], false);
+    assert!(record["subscription"].as_str().unwrap().starts_with("sub_"));
+
+    // Another credential's subscription is not this one's.
+    assert_eq!(
+        client
+            .get(&updates)
+            .bearer_auth(&deployment.tokens["globex"])
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+
+    // Preferences change only through the authenticated path.
+    let mut revised = body();
+    revised["topics"]["support"] = json!(true);
+    let response = client
+        .put(&updates)
+        .bearer_auth(&deployment.tokens["acme"])
+        .json(&revised)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["topics"]["support"],
+        true
+    );
+
+    // Unsubscribe leaves the record standing as proof the opt-out held.
+    let response = client
+        .delete(&updates)
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["status"],
+        "unsubscribed"
+    );
+    let record: Value = client
+        .get(&updates)
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(record["status"], "unsubscribed");
+
+    // A malformed envelope refuses, it does not subscribe.
+    let response = client
+        .put(&updates)
+        .bearer_auth(&deployment.tokens["acme"])
+        .json(&json!({"v": "openagents.updates-subscription.v1"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }

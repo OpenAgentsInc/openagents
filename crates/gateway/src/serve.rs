@@ -32,8 +32,10 @@ use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN, VARY};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{MethodRouter, get, post};
 use receipts::execution::{
@@ -293,7 +295,116 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     jobs::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
+        .layer(middleware::from_fn_with_state(state.clone(), cors))
         .with_state(state)
+}
+
+/// The API version the catalog declares — the header tests assert it
+/// stays equal so the emitted version cannot drift from the published
+/// contract.
+pub(crate) const API_VERSION: &str = "1.2.0";
+
+/// The GET prefixes a credential protects. Everything else a GET
+/// reaches is the public surface — the discovery corpus, health, the
+/// published skills directory — and answers cross-origin freely.
+const CREDENTIALED_GET: &[&str] = &[
+    "/v1/systemone",
+    "/v1/classify",
+    "/v1/jobs",
+    "/v1/feedback",
+    "/v1/models",
+    "/v1/balance",
+    "/v1/session",
+    "/v1/account",
+    "/v1/accounts",
+    "/v1/invitations",
+    "/v1/recovery",
+    "/v1/workspaces",
+    "/v1/plans",
+    "/v1/billing",
+    "/v1/submissions",
+    "/v1/updates",
+    "/dashboard",
+];
+
+/// Does a credential protect this path? The public surface — the
+/// discovery corpus, health, the published skills directory — is every
+/// GET no credential protects.
+fn credentialed(path: &str) -> bool {
+    CREDENTIALED_GET
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+}
+
+/// Cross-origin and version policy for every response.
+///
+/// A public GET answers `Access-Control-Allow-Origin: *` — the
+/// discovery corpus is published content. A credentialed route answers
+/// cross-origin only when the operator's `cors_origins` lists the
+/// request's `Origin` exactly; anything else gets no CORS headers and a
+/// browser refuses it. An `OPTIONS` preflight answers only for a route
+/// the caller could actually use — public reads or an admitted origin —
+/// and otherwise falls through to the router's own answer.
+async fn cors(State(state): State<Arc<ServeState>>, request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_string();
+    let origin = request
+        .headers()
+        .get(ORIGIN)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    // A preflight asks about the route, not the OPTIONS method itself —
+    // classify by path; a real request is public only as a GET.
+    let public = if method == Method::OPTIONS {
+        !credentialed(&path)
+    } else {
+        method == Method::GET && !credentialed(&path)
+    };
+    let admitted = origin.as_deref().is_some_and(|origin| {
+        state
+            .config
+            .cors_origins
+            .iter()
+            .any(|allowed| allowed == origin)
+    });
+    if method == Method::OPTIONS && (public || admitted) {
+        let mut response = StatusCode::NO_CONTENT.into_response();
+        let headers = response.headers_mut();
+        if public {
+            headers.insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+            headers.insert(
+                "access-control-allow-methods",
+                HeaderValue::from_static("GET, OPTIONS"),
+            );
+        } else if let Some(origin) = origin
+            && let Ok(value) = HeaderValue::from_str(&origin)
+        {
+            headers.insert(ACCESS_CONTROL_ALLOW_ORIGIN, value);
+            headers.insert(VARY, HeaderValue::from_static("origin"));
+            headers.insert(
+                "access-control-allow-methods",
+                HeaderValue::from_static("GET, POST, PUT, DELETE, OPTIONS"),
+            );
+            headers.insert(
+                "access-control-allow-headers",
+                HeaderValue::from_static("authorization, content-type, idempotency-key, x-attempt"),
+            );
+        }
+        return response;
+    }
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert("x-api-version", HeaderValue::from_static(API_VERSION));
+    if public {
+        headers.insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    } else if admitted
+        && let Some(origin) = origin
+        && let Ok(value) = HeaderValue::from_str(&origin)
+    {
+        headers.insert(ACCESS_CONTROL_ALLOW_ORIGIN, value);
+        headers.append(VARY, HeaderValue::from_static("origin"));
+    }
+    response
 }
 
 /// The authenticated API routes this gateway mounts, as `(path,
@@ -312,6 +423,12 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
         ("/v1/jobs/{id}/notify/rotate", post(jobs::rotate_notify)),
         ("/v1/feedback", post(crate::feedback::submit)),
         ("/v1/feedback/{id}", get(crate::feedback::status)),
+        (
+            "/v1/updates",
+            get(crate::updates::view)
+                .put(crate::updates::subscribe)
+                .delete(crate::updates::unsubscribe),
+        ),
         ("/v1/models", get(models)),
         ("/healthz", get(healthz)),
     ];

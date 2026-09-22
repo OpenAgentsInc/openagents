@@ -4,7 +4,8 @@ info:
   version: 1.0.0
   x-generated-by: hand-maintained
   description: 'An OpenAPI 3.1 fragment scoped to the routes `crates/gateway` serves today: `POST /v1/systemone`,
-    `POST /v1/classify`, the durable `/v1/jobs` family, the `/v1/feedback` pair, `GET /v1/models`,
+    `POST /v1/classify`, the durable `/v1/jobs` family, the `/v1/feedback` pair, the `/v1/updates`
+    opt-in subscription surface, `GET /v1/models`,
     `GET /healthz`, the public `/v1/docs` corpus API, and the conditional surfaces — `GET /v1/balance` under monetary admission and the `/v1/sessions`,
     `/v1/accounts`, `/v1/workspaces`, `/v1/invitations`, `/v1/recovery`, and `/v1/session` account-management
     family under the `accounts` document. It claims nothing else: no OAuth
@@ -626,6 +627,81 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FeedbackStatus'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+  /v1/updates:
+    put:
+      summary: Create or replace the credential's updates subscription
+      description: Verified opt-in only — the subscription binds to the authenticated
+        credential, and product and support consent are separate topics. Repeating
+        the call replaces the preferences; the record is durable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - v
+              - topics
+              properties:
+                v:
+                  type: string
+                  enum:
+                  - openagents.updates-subscription.v1
+                topics:
+                  type: object
+                  required:
+                  - product
+                  - support
+                  properties:
+                    product:
+                      type: boolean
+                    support:
+                      type: boolean
+                contact:
+                  type: object
+                  properties:
+                    email:
+                      type: string
+                      maxLength: 256
+      responses:
+        '200':
+          description: The recorded subscription.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatesSubscription'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '422':
+          $ref: '#/components/responses/TypedError'
+    get:
+      summary: Read the credential's own updates subscription
+      responses:
+        '200':
+          description: The subscription record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatesSubscription'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+    delete:
+      summary: Unsubscribe from product updates
+      description: The record survives with status `unsubscribed` — the durable
+        proof the opt-out was honored.
+      responses:
+        '200':
+          description: The record now marked unsubscribed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatesSubscription'
         '401':
           $ref: '#/components/responses/TypedError'
         '404':
@@ -2901,6 +2977,54 @@ components:
                 nullable: true
               actor:
                 type: string
+    UpdatesSubscription:
+      type: object
+      required:
+      - v
+      - subscription
+      - credential
+      - status
+      - topics
+      - verified
+      properties:
+        v:
+          type: string
+          enum:
+          - openagents.updates-subscription.v1
+        subscription:
+          type: string
+          description: The sub_<hex> id.
+        credential:
+          type: string
+          description: The credential id the subscription binds to — a reference,
+            never the secret.
+        status:
+          type: string
+          enum:
+          - subscribed
+          - unsubscribed
+        topics:
+          type: object
+          description: Separate consents — a sender must not merge them.
+          properties:
+            product:
+              type: boolean
+            support:
+              type: boolean
+        contact:
+          type: object
+          properties:
+            email:
+              type: string
+        verified:
+          type: string
+          enum:
+          - credential
+          description: The opt-in was made under an authenticated credential.
+        subscribed:
+          type: string
+        updated:
+          type: string
   responses:
     TypedError:
       description: A typed refusal — see the `refusal_codes` map in `docs/agents/api-catalog.json` and

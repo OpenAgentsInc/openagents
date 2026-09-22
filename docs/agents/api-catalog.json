@@ -49,6 +49,11 @@
    "x-settlement": "the monetary hold's resolution \u2014 settled | outstanding | released \u2014 only under monetary admission",
    "retry-after": "seconds to wait before retrying; present on 429 responses",
    "scope": "These headers are emitted on POST /v1/systemone and POST /v1/classify only. The GET routes do not carry them."
+  },
+  "version": "x-api-version names the catalog version on every response",
+  "cors": {
+   "public": "GET routes on the public surface answer Access-Control-Allow-Origin: * and an OPTIONS preflight for them answers 204 with allow-methods GET, OPTIONS",
+   "credentialed": "credentialed routes answer cross-origin only when the operator's cors_origins lists the request's Origin exactly; the response then reflects that origin with Vary: Origin, and its preflight admits GET, POST, PUT, DELETE, OPTIONS with the authorization, content-type, idempotency-key, and x-attempt headers. Default cors_origins is empty — no credentialed cross-origin use."
   }
  },
  "routes": [
@@ -678,6 +683,97 @@
      "submission_not_found"
     ]
    }
+  },
+  {
+   "method": "PUT",
+   "path": "/v1/updates",
+   "status": "implemented",
+   "summary": "Create or replace the credential's opt-in updates subscription \u2014 product and support consent are separate topics, and authentication is the verification: no subscription exists for a caller that did not present a credential.",
+   "request": {
+    "content_type": "application/json",
+    "headers": [
+     "Authorization \u2014 a tenant bearer key or sess_ session; anonymous callers cannot subscribe"
+    ],
+    "shape": {
+     "v": "openagents.updates-subscription.v1",
+     "topics": "required {product: bool, support: bool} \u2014 separate consents, never merged",
+     "contact": "optional {email} \u2014 at most 256 bytes"
+    }
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.updates-subscription.v1",
+      "subscription": "the sub_<hex> id",
+      "credential": "the credential id the subscription binds to \u2014 a reference, never the secret",
+      "status": "subscribed",
+      "topics": "the recorded {product, support} consent",
+      "verified": "credential \u2014 the opt-in was made under an authenticated credential",
+      "subscribed": "the first subscription's timestamp",
+      "updated": "this write's timestamp"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated \u2014 anonymous callers cannot subscribe"
+    ],
+    "422": [
+     "invalid_request \u2014 v names another envelope or the body failed validation"
+    ],
+    "500": [
+     "subscription_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/updates",
+   "status": "implemented",
+   "summary": "Read the credential's own updates subscription \u2014 status, topics, and timestamps.",
+   "request": {
+    "headers": [
+     "Authorization \u2014 the subscribing credential only"
+    ]
+   },
+   "responses": {
+    "200": "the subscription record",
+    "404": "subscription_not_found \u2014 this credential holds none"
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated"
+    ],
+    "404": [
+     "subscription_not_found"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/v1/updates",
+   "status": "implemented",
+   "summary": "Unsubscribe. The record survives as status: unsubscribed \u2014 the durable proof the opt-out was honored.",
+   "request": {
+    "headers": [
+     "Authorization \u2014 the subscribing credential only"
+    ]
+   },
+   "responses": {
+    "200": "the record with status: unsubscribed",
+    "404": "subscription_not_found \u2014 this credential holds none"
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated"
+    ],
+    "404": [
+     "subscription_not_found"
+    ]
+   },
+   "notes": [
+    "docs/decision-models/api/decision-api.md names the policy: verified opt-in only, product and support consent separate, unsubscribe honored durably."
+   ]
   },
   {
    "method": "GET",
@@ -2019,7 +2115,7 @@
      "session_closed"
     ],
     "402": [
-     "no_subscription",
+     "subscription_not_found",
      "subscription_expired"
     ],
     "403": [
@@ -2099,7 +2195,7 @@
      "session_closed"
     ],
     "402": [
-     "no_subscription",
+     "subscription_not_found",
      "subscription_expired"
     ],
     "403": [
@@ -2142,7 +2238,7 @@
      "session_closed"
     ],
     "402": [
-     "no_subscription",
+     "subscription_not_found",
      "subscription_expired"
     ],
     "403": [
@@ -3080,6 +3176,16 @@
    "meaning": "the registry could not be read",
    "retryable": true
   },
+  "subscription_not_found": {
+   "status": 404,
+   "meaning": "the credential holds no /v1/updates subscription",
+   "retryable": false
+  },
+  "subscription_unavailable": {
+   "status": 500,
+   "meaning": "the updates subscription record could not be persisted",
+   "retryable": true
+  },
   "ledger_unavailable": {
    "status": 500,
    "meaning": "the quota or monetary ledger refused or failed a write",
@@ -3395,7 +3501,7 @@
    "meaning": "a free plan subscribes directly, not through checkout",
    "retryable": false
   },
-  "no_subscription": {
+  "subscription_not_found": {
    "status": 402,
    "meaning": "the route or the named door needs an active subscription",
    "retryable": false

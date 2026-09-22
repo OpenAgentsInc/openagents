@@ -1,0 +1,13 @@
+{
+  "v": "openagents.gateway.v1",
+  "listen": "127.0.0.1:8080",
+  "registry": "~/.openagents/gateway",
+  "max_in_flight": 2,
+  "max_body_bytes": 1048576,
+  "forward_timeout_ms": 120000,
+  "doors": {
+    "local-lev": {
+      "endpoint": "http://127.0.0.1:9080"
+    }
+  }
+}

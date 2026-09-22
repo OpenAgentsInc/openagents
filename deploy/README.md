@@ -13,6 +13,7 @@ install them from a checkout and edit the installed environment files only.
 | `systemd/coder-worker.service` | The hardened worker unit, same shape as the relay's. |
 | `systemd/coder-worker-executor.conf` | Drop-in for a worker that answers through a local executor. |
 | `coder-worker.env.example` | The worker's environment template, with the credential decision in its comments. |
+| `gateway/` | The decision-API gateway's per-lane configs, hardened unit, and install-verification backend stub. Its runbook is `docs/decision-models/service/deployment.md`. |
 
 The relay's runbook is
 [`docs/deployment/runbook-debian-vps.md`](../docs/deployment/runbook-debian-vps.md).

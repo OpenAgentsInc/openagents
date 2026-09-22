@@ -1,0 +1,14 @@
+{
+  "v": "openagents.gateway.v1",
+  "listen": "127.0.0.1:8443",
+  "registry": "/var/lib/openagents-gateway",
+  "require_workspace_membership": true,
+  "max_in_flight": 16,
+  "max_body_bytes": 1048576,
+  "forward_timeout_ms": 120000,
+  "doors": {
+    "acme-kev": {
+      "endpoint": "http://127.0.0.1:9081"
+    }
+  }
+}
