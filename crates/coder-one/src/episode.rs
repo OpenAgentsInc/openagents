@@ -31,7 +31,7 @@
 //! | `CODEX_HOME` | Where the Codex delegate finds `auth.json`; `~/.codex` when unset. |
 //! | `CODER_ONE_DEEP` | `on` runs deep Jev mode: a parallel survey before the first step, a readiness question each step, and repeated-command hints. |
 //! | `CODER_ONE_PROBES` | `on`, with deep mode, runs a battery of read-only probes (listing, git state, README, tests, versions) and lets Jev pick the outputs that go into the survey and the briefing. |
-//! | `CODER_ONE_PROBE_V2` | `on`, with probes and deep mode: a Jev-gated setup pack, git probes in named repositories, whole edit targets, a 40-file survey, and batch-mode directions. |
+//! | `CODER_ONE_PROBE_V2` | `v3` adds directions that test every changed code path. `on`, with probes and deep mode: a Jev-gated setup pack, git probes in named repositories, whole edit targets, a 40-file survey, and batch-mode directions. |
 //!
 //! The bundle is rewritten at the start of every step, so a deadline that
 //! kills the process still leaves the evidence up to the last step.
@@ -302,7 +302,18 @@ fn probe_v2_on() -> bool {
         std::env::var("CODER_ONE_PROBE_V2")
             .as_deref()
             .map(str::trim),
-        Ok("on" | "1" | "true")
+        Ok("on" | "1" | "true" | "v3")
+    )
+}
+
+/// Whether `CODER_ONE_PROBE_V2=v3` asks for probe v2 with checked batch
+/// directions: few, large steps, but every changed code path tested.
+fn probe_v3_on() -> bool {
+    matches!(
+        std::env::var("CODER_ONE_PROBE_V2")
+            .as_deref()
+            .map(str::trim),
+        Ok("v3")
     )
 }
 
@@ -452,7 +463,9 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             max_steps: settings.max_steps,
             prompt: "Complete this task.",
             instruction: &instruction,
-            directions: if probe_v2_on() {
+            directions: if probe_v3_on() {
+                EPISODE_DIRECTIONS_BATCH_CHECKED
+            } else if probe_v2_on() {
                 EPISODE_DIRECTIONS_BATCH
             } else {
                 EPISODE_DIRECTIONS
@@ -541,6 +554,22 @@ possible: write each file whole in one command, chain related commands \
 (installs, builds, tests) with && in one call, and run one final check that \
 covers every requirement. End with a short summary of what you changed and how \
 you checked it.";
+
+/// Probe v3's directions: batch mode, without the single final check that
+/// let v2's delegate stop before its checks reached every change.
+const EPISODE_DIRECTIONS_BATCH_CHECKED: &str = "Complete the task in the current \
+working directory. Nobody answers questions, so decide from the task and the \
+environment. An automated checker grades the final state of the environment \
+against the task, so verify every requirement, including exact paths, names, \
+and formats, before you stop. The files, command outputs, and setup results in \
+this briefing were gathered just before you started and are complete and \
+current: do not list, read, or run them again. Work in few, large steps: write \
+each file whole in one command, and chain related commands (installs, builds) \
+with && in one call. Before you stop, run the checks the task names and \
+exercise every code path you changed, not only the example the task gives. \
+After a bulk find-and-replace, search the result for occurrences it missed or \
+changed twice. End with a short summary of what you changed and how you \
+checked it.";
 
 /// A judge that rewrites the bundle before every step, so a killed
 /// episode leaves its evidence behind.
