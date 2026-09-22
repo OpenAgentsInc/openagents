@@ -25,6 +25,7 @@ mod highlight;
 mod label;
 mod listing;
 mod market;
+mod note;
 mod ots;
 mod profile_link;
 mod relay_list;
@@ -97,6 +98,7 @@ pub use market::{
     open_auction, open_bid, open_bid_confirmation, open_checkout, open_marketplace, open_product,
     open_stall, product_shipping_extra, shipping_cost, shipping_zone, validate_marketplace,
 };
+pub use note::{NoteQuote, NoteRef, TextNote, is_direct_reply, open_note, reply_participants};
 pub use ots::{BitcoinAttestation, open_attestation};
 pub use profile_link::{
     IdentityClaim, ProfileLinks, author_npub, expected_statement, open_profile_links, proof_url,

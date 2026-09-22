@@ -438,6 +438,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 3 {
         super::follow::parse_follow_list(&event.tags)?;
     }
+    if event.kind == 1 {
+        super::note::open_note(event)?;
+    }
     if event.kind == 1_040 {
         super::ots::open_attestation(event)?;
     }

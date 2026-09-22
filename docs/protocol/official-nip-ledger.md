@@ -321,6 +321,22 @@ tag, so a stored comment includes it. Images are not fetched. Unknown
 `n` modifiers are kept. Found-log image tags are not checked. Acceptance
 is `domain::geocache::tests::a_geocache_is_found_verified_and_collected`.
 
+NIP-10 is `configured-and-proven`. Kind `1` is a regular plaintext
+note. A marked `e` tag of `root` names the thread root, and `reply`
+names the direct parent. A direct reply to the root carries only the
+`root` marker, and `is_direct_reply` reports that case. Unmarked `e`
+tags keep the deprecated positional form: one tag is a direct reply,
+and two or more put the root first and the parent last. Tags between
+them are mentions. A `q` tag cites an event id or a replacement
+address. `reply_participants` places the replied-to author first and
+then the other pubkeys, dropping duplicates. A newer note does not
+replace an older one. Kind `1` threading is not added to the NIP-11
+list. The relay does not fetch the referenced event, so it does not
+prove that an `e` tag points at kind `1`. Markup in the content is
+kept. `e` tags are not required to appear in root-to-parent order. A
+reply's `p` tags are not checked against the parent note. Acceptance
+is `domain::note::tests::a_note_threads_from_the_root_to_its_parent`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
