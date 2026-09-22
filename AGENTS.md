@@ -205,6 +205,12 @@ uses, and marks which are implemented and which are only specified.
   job requests from a relay through an Open Responses door.
   `docs/coder/measurements/relay-transport.md` is the measured proof that the two ends
   meet, and it holds the per-transport latency and the refusal causes.
+- `crates/coder-one` — Coder One, a minimal standalone agent that turns a
+  GitHub issue into a pull request. Each step asks Jev for typed
+  judgments over the state, puts them in the prompt, generates one
+  action through `openagents.com/v1/responses`, and runs it. It does not
+  depend on `crates/coder`. Issue #9531 holds the design and the
+  evaluation.
 - `crates/capability` — the capability manifest contract `coder` and
   `coderbench` share. Reading a registry is inert; an executable probe
   runs only under an approval the operator recorded with the
