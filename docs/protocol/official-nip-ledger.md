@@ -259,6 +259,22 @@ Content may be non-empty. The pinned example's event id does not match
 the NIP-01 preimage, so that header is refused. Acceptance is
 `domain::expanded::tests::a_nostr_authorization_matches_the_url_method_and_body`.
 
+NIP-99 is `configured-and-proven`. Kind `30402` is an addressable
+classified listing. Kind `30403` uses the same tags and saves a draft,
+so it does not replace the published listing. The content is Markdown
+and is kept as text, including `nostr:` references. One `d` tag
+identifies the listing. `title`, `summary`, `published_at`, `location`,
+and `price` are optional structured tags. A price is an amount, a
+three-letter currency, and an optional lowercase frequency such as
+`month`. `status` is `active` or `sold`. `image` tags carry an `http://`
+or `https://` URL and optional `widthxheight` dimensions. `t` tags are
+topics and `g` is a geohash. `e` and `a` tags name related events.
+Admission rejects a missing identifier, a malformed price, or any other
+status. A newer listing with the same `d` tag replaces the older one.
+Neither kind is added to the NIP-11 list. The relay does not fetch
+images. Acceptance is
+`domain::listing::tests::a_listing_keeps_its_price_and_a_draft_does_not_replace_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

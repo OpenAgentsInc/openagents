@@ -579,6 +579,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 31_990 {
         super::handler::open_handler(event)?;
     }
+    if matches!(event.kind, 30_402 | 30_403) {
+        super::listing::open_listing(event)?;
+    }
     if event.tags.iter().any(|tag| tag.name() == Some("client")) {
         super::handler::open_client_tag(event)?;
     }

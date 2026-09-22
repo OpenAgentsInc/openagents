@@ -21,6 +21,7 @@ mod handler;
 mod hex;
 mod highlight;
 mod label;
+mod listing;
 mod market;
 mod ots;
 mod profile_link;
@@ -80,6 +81,7 @@ pub use highlight::{
     Attribution, Highlight, HighlightRole, HighlightSource, clean_source_url, open_highlight,
 };
 pub use label::{Label, LabelTarget, Labeling, open_labeling};
+pub use listing::{Listing, ListingImage, ListingStatus, Price, open_listing};
 pub use market::{
     Auction, Bid, BidConfirmation, BidStatus, Checkout, MarketplacePage, Order, OrderStatus,
     PaymentRequest, Product, ShippingZone, Stall, auction_end, bid_confirmation_matches,
