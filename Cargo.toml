@@ -7,7 +7,7 @@ resolver = "2"
 version = "0.1.0"
 publish = false
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.97.1"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

@@ -143,7 +143,10 @@ mod tests {
 
         let filter = chat_filter();
         assert_eq!(filter.kinds, Some(vec![9]));
-        assert!(crate::domain::matches_any(&[filter.clone()], &reply));
+        assert!(crate::domain::matches_any(
+            std::slice::from_ref(&filter),
+            &reply
+        ));
         let note = sign(1, Vec::new(), "not a chat");
         assert!(!crate::domain::matches_any(&[filter], &note));
         assert_eq!(EventClass::from_kind(CHAT_KIND), EventClass::Regular);

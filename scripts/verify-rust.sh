@@ -18,8 +18,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ALL_SLUGS="preflight gate-tooling artifacts delegation backup fmt clippy clippy-features tests tests-features rust-1.95 rust-1.94 deps postgres metal-clippy metal-tests soak"
-CARGO_SCOPED="clippy clippy-features tests tests-features rust-1.95"
+ALL_SLUGS="preflight gate-tooling artifacts delegation backup fmt clippy clippy-features tests tests-features deps postgres metal-clippy metal-tests soak"
+CARGO_SCOPED="clippy clippy-features tests tests-features"
 features='kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http'
 
 postgres=1
@@ -59,8 +59,6 @@ clippy           Default workspace Clippy
 clippy-features  Feature workspace Clippy
 tests            Default workspace tests
 tests-features   Feature workspace tests
-rust-1.95        Rust 1.95 workspace check
-rust-1.94        Rust 1.94 Kev check
 deps             Dependency policy
 postgres         PostgreSQL acceptance
 metal-clippy     Metal Clippy (with --with-metal)
@@ -182,14 +180,6 @@ preflight_checks() {
       ok=1
     fi
   done
-  if phase_wanted rust-1.95 && ! rustup toolchain list 2>/dev/null | grep -q '^1\.95\.0'; then
-    echo "FAIL: rust-1.95 needs the 1.95.0 toolchain: rustup toolchain install 1.95.0"
-    ok=1
-  fi
-  if phase_wanted rust-1.94 && ! rustup toolchain list 2>/dev/null | grep -q '^1\.94\.0'; then
-    echo "FAIL: rust-1.94 needs the 1.94.0 toolchain: rustup toolchain install 1.94.0"
-    ok=1
-  fi
   local free_kib
   free_kib=$(df -k . | awk 'NR==2 {print $4}')
   if (( free_kib < 5242880 )); then
@@ -369,11 +359,6 @@ run_phase tests "Default workspace tests" \
   cargo test --locked "${scope[@]+"${scope[@]}"}" -- --nocapture
 run_phase tests-features "Feature workspace tests" \
   cargo test --locked "${scope[@]+"${scope[@]}"}" "${feature_args[@]+"${feature_args[@]}"}" -- --nocapture
-run_phase rust-1.95 "Rust 1.95 workspace check" \
-  cargo +1.95.0 check --locked "${scope[@]+"${scope[@]}"}" --all-targets "${feature_args[@]+"${feature_args[@]}"}"
-run_phase rust-1.94 "Rust 1.94 Kev check" \
-  cargo +1.94.0 check --locked -p kev --lib
-
 if ! phase_wanted deps; then
   record_skip deps "not in --phases"
 elif cargo +1.97.1 deny --version >/dev/null 2>&1; then

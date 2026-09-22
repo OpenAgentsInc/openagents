@@ -2,7 +2,7 @@
 name = "laya"
 version.workspace = true
 edition.workspace = true
-rust-version = "1.94"
+rust-version.workspace = true
 description = "Rust port of the laya decision model: a ModernBERT encoder plus a marker-scoring decision head, TypeSafe-compatible /v1/systemone."
 publish.workspace = true
 

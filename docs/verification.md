@@ -57,9 +57,8 @@ a standing fact about "the gate." Reuse it only for the coverage it names.
 The `preflight` phase runs first and fails fast on the environmental
 prerequisites the later phases assume: a file-descriptor limit of at least
 2048 (worktree fan-out tests exhaust less; the script first tries raising
-the soft limit itself), `cargo`, `python3`, `git`, and `rustup` on PATH, the
-1.95.0 and 1.94.0 toolchains when their phases are selected, and free disk.
-Fix what it names and rerun; it does not skip or weaken a check.
+the soft limit itself), `cargo`, `python3`, `git`, and `rustup` on PATH, and
+free disk. Fix what it names and rerun; it does not skip or weaken a check.
 
 When a phase fails and its log shows resource exhaustion — file-descriptor
 pressure, address reuse, or `EAGAIN` — the gate retries it once and records
@@ -71,25 +70,21 @@ to **1.97.1**. [`rustfmt.toml`](../rustfmt.toml) pins Rust and formatter style
 editions to **2024**. Run the pinned formatter once for formatting-only
 changes; do not mix a workspace reformat with behavioral fixes.
 
-## Package policy and minimum versions
+## Package policy and compiler version
 
-Workspace packages inherit edition 2024, `publish = false`, and Rust **1.95**
-from the root manifest. Kev is the explicit exception: its standalone library
-retains Rust **1.94** support, while its workspace test dependencies require
-1.95. Every package inherits workspace Rust and Clippy lints, including Nostr
-and the relay. Package-license metadata remains pending the owner decision
-documented in [the dependency policy](dependencies.md).
-
-Install 1.95.0 and 1.94.0 alongside the pinned gate toolchain to check those
-minimums. The script compiles workspace targets with runtime features on
-1.95.0 and Kev's standalone library on 1.94.0. These are minimum-compiler
-checks, not a claim that all runtime tests ran on both compilers.
+The workspace compiles on one compiler: **1.97.1**, the version
+[`rust-toolchain.toml`](../rust-toolchain.toml) pins and the root manifest's
+`rust-version` declares. Every package inherits edition 2024,
+`publish = false`, the pinned Rust version, and the workspace Rust and
+Clippy lints — including Kev, Laya, Nostr, and the relay, which carry no
+per-crate overrides. Package-license metadata remains pending the owner
+decision documented in [the dependency policy](dependencies.md).
 
 ## Feature and infrastructure coverage
 
 The gate checks formatting, strict Clippy, and tests for both default features
-and `kev/serve,lev/serve,gym/tui,jev/blocking`. It then checks minimum compiler
-versions, dependency policy, and disposable PostgreSQL acceptance. It stops
+and `kev/serve,lev/serve,gym/tui,jev/blocking`. It then checks dependency
+policy and disposable PostgreSQL acceptance. It stops
 on the first failed command; later commands have not run when that happens.
 It also runs the small Python artifact-acquisition regression suite before
 Rust checks; this suite needs Python 3 and no model weights or network.
