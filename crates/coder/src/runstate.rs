@@ -982,6 +982,32 @@ impl Task {
     }
 }
 
+/// The stored spelling of `state`. A journal link does not rename it.
+#[must_use]
+pub fn historical_name(state: State) -> &'static str {
+    match state {
+        State::Pending => "pending",
+        State::Dispatched => "dispatched",
+        State::Answered => "answered",
+        State::Refused => "refused",
+        State::Unverifiable => "unverifiable",
+        State::Cancelled => "cancelled",
+        State::Settled => "settled",
+        State::Unknown => "unknown",
+    }
+}
+
+/// Link `state` to a NIP-RUN journal type without rewriting the stored name.
+///
+/// # Errors
+///
+/// Returns the protocol refusal when the name is not one this host stores.
+pub fn durable_link(
+    state: State,
+) -> Result<nostr::run::StateLink, nostr::contracts::ContractError> {
+    nostr::run::link_historical(historical_name(state))
+}
+
 /// Unix seconds now.
 fn unix_now() -> u64 {
     std::time::SystemTime::now()
@@ -993,6 +1019,20 @@ fn unix_now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_crash_mark_stays_unknown_when_it_is_linked_to_the_journal() {
+        let linked = durable_link(State::Unknown).unwrap();
+        assert_eq!(linked.historical, "unknown");
+        assert_eq!(linked.journal, "unknown");
+        let answered = durable_link(State::Answered).unwrap();
+        assert_eq!(answered.historical, "answered");
+        assert_eq!(answered.journal, "resolved");
+        assert_ne!(
+            historical_name(State::Unknown),
+            historical_name(State::Refused)
+        );
+    }
 
     fn claim<'a>(run: &'a str, questions: &'a [String], sources: &'a [String]) -> Claim<'a> {
         Claim {

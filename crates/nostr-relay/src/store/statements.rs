@@ -148,7 +148,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
   AND e.kind <> 39650
   AND (
       (
-          e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 30186)
           AND NOT (
               e.kind = 30181
               AND EXISTS (
@@ -210,11 +210,31 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
               OR e.tags @> '[["shared","true"]]'::jsonb
           )
       )
+      OR (
+          e.kind IN (3187, 30186)
+          AND $10::text[] IS NOT NULL
+          AND (
+              e.pubkey = ANY($10)
+              OR (
+                  (
+                      SELECT count(*) FROM nostr_indexed_tag run_recipient
+                      WHERE run_recipient.event_id = e.id
+                        AND run_recipient.tag_name = 'p'
+                  ) = 1
+                  AND EXISTS (
+                      SELECT 1 FROM nostr_indexed_tag run_reader
+                      WHERE run_reader.event_id = e.id
+                        AND run_reader.tag_name = 'p'
+                        AND run_reader.tag_value = ANY($10)
+                  )
+              )
+          )
+      )
   )
   AND (
       $11::text[] IS NULL
       OR (
-          e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 30186)
           AND NOT (
               e.kind = 30181
               AND EXISTS (
@@ -275,7 +295,7 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
   AND e.kind <> 39650
   AND (
       (
-          e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          e.kind NOT IN (1059, 24200, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 30186)
           AND NOT (
               e.kind = 30181
               AND EXISTS (
@@ -337,11 +357,31 @@ WHERE ($1::text[] IS NULL OR e.id = ANY($1))
               OR e.tags @> '[["shared","true"]]'::jsonb
           )
       )
+      OR (
+          e.kind IN (3187, 30186)
+          AND $8::text[] IS NOT NULL
+          AND (
+              e.pubkey = ANY($8)
+              OR (
+                  (
+                      SELECT count(*) FROM nostr_indexed_tag run_recipient
+                      WHERE run_recipient.event_id = e.id
+                        AND run_recipient.tag_name = 'p'
+                  ) = 1
+                  AND EXISTS (
+                      SELECT 1 FROM nostr_indexed_tag run_reader
+                      WHERE run_reader.event_id = e.id
+                        AND run_reader.tag_name = 'p'
+                        AND run_reader.tag_value = ANY($8)
+                  )
+              )
+          )
+      )
   )
   AND (
       $9::text[] IS NULL
       OR (
-          e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200)
+          e.kind NOT IN (1059, 30078, 30174, 30175, 30178, 30300, 30350, 30622, 44200, 3187, 30186)
           AND NOT (
               e.kind = 30181
               AND EXISTS (
@@ -694,5 +734,24 @@ impl Statements {
             list_dm_hidden: client.prepare(LIST_DM_HIDDEN_SQL).await?,
             record_nostr_effect_import: client.prepare(RECORD_NOSTR_EFFECT_IMPORT_SQL).await?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{QUERY_FILTER_IDS_SQL, QUERY_FILTER_SQL};
+
+    #[test]
+    fn run_records_are_private_on_filter_id_lookup_count_and_search() {
+        for sql in [QUERY_FILTER_SQL, QUERY_FILTER_IDS_SQL] {
+            assert!(
+                sql.contains("e.kind IN (3187, 30186)"),
+                "stored reads admit a run record only for its author or recipient"
+            );
+            assert!(
+                sql.contains("44200, 3187, 30186"),
+                "search does not read run ciphertext"
+            );
+        }
     }
 }
