@@ -1655,6 +1655,290 @@ paths:
         '503':
           $ref: '#/components/responses/TypedError'
 
+  /v1/workspaces/{workspace}/usage:
+    get:
+      summary: Read the workspace's usage position
+      description: Exact totals over the workspace's own execution receipts joined to the money and
+        quota ledgers — calls by outcome, quota-derived units, cost fields, outstanding holds,
+        breakdowns by model, key, lane, and transport, and the billing entitlement. Member-scoped.
+        The disclosure block states scale, timezone, lag, retention, and skipped counts.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: from
+        in: query
+        schema:
+          type: string
+      - name: to
+        in: query
+        schema:
+          type: string
+      - name: key
+        in: query
+        schema:
+          type: string
+      - name: model
+        in: query
+        schema:
+          type: string
+      - name: outcome
+        in: query
+        schema:
+          type: string
+          enum: [answered, refused, unavailable, unattempted, unknown]
+      - name: lane
+        in: query
+        schema:
+          type: string
+      - name: transport
+        in: query
+        schema:
+          type: string
+      - name: job
+        in: query
+        schema:
+          type: string
+      - name: policy
+        in: query
+        schema:
+          type: string
+      - name: capacity
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The usage summary with the disclosure block.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/usage/activity:
+    get:
+      summary: List the workspace's call activity
+      description: The filtered receipt list, newest first, with keyset cursor pagination over
+        (resolved_at, digest). Each item carries the receipt's identity fields plus joined cost and
+        quota units.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      - name: cursor
+        in: query
+        schema:
+          type: string
+      - name: from
+        in: query
+        schema:
+          type: string
+      - name: to
+        in: query
+        schema:
+          type: string
+      - name: key
+        in: query
+        schema:
+          type: string
+      - name: model
+        in: query
+        schema:
+          type: string
+      - name: outcome
+        in: query
+        schema:
+          type: string
+      - name: lane
+        in: query
+        schema:
+          type: string
+      - name: transport
+        in: query
+        schema:
+          type: string
+      - name: job
+        in: query
+        schema:
+          type: string
+      - name: policy
+        in: query
+        schema:
+          type: string
+      - name: capacity
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: A page of activity items and the next cursor.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/usage/timeseries:
+    get:
+      summary: Read the workspace's usage by UTC day
+      description: The same receipts folded into day buckets — calls, outcomes, quota units, and
+        retail spend per day; exact sums of the rows the activity read returns.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: from
+        in: query
+        schema:
+          type: string
+      - name: to
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Day buckets and the undated count.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/usage/receipts/{digest}:
+    get:
+      summary: Read one of the workspace's receipts
+      description: The sealed execution receipt plus its joined hold and quota reservation.
+        Workspace-scoped — a digest another workspace owns is `unknown_receipt`.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: digest
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The receipt, its cost, and its quota units.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/workspaces/{workspace}/usage/export:
+    get:
+      summary: Export the workspace's receipts
+      description: The filtered receipts as NDJSON — the sealed lines verbatim, each re-verifying
+        offline by its own digest. Bounded at 10000 lines.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: One sealed ExecutionReceipt per line.
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /dashboard:
+    get:
+      summary: The customer dashboard
+      description: The workspace picker under an `oa_session` cookie, or the sign-in form without
+        one. Server-rendered HTML — management operations stay on the JSON API.
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      responses:
+        '200':
+          description: The sign-in form or the account's workspace list.
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /dashboard/w/{workspace}:
+    get:
+      summary: The workspace dashboard
+      description: 'Overview, usage, activity, receipts, members, keys, and billing pages live
+        under this prefix: `/dashboard/w/{id}`, `/usage`, `/activity`, `/receipts/{digest}`,
+        `/members`, `/keys`, `/billing`. Member-scoped HTML.'
+      x-conditional: Requires the `accounts` document; absent it the route is not registered.
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The workspace overview page.
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+
 components:
   securitySchemes:
     bearer:

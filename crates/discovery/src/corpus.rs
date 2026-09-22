@@ -97,6 +97,12 @@ static DOCUMENTS: &[Document] = &[
         false
     ),
     document!(
+        "usage-dashboard",
+        "Usage, activity, and the dashboard",
+        "decision-models/service/usage-dashboard.md",
+        false
+    ),
+    document!(
         "mcp-documentation",
         "MCP documentation tools",
         "decision-models/guides/mcp-documentation.md",

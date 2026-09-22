@@ -41,8 +41,12 @@ pub mod advertise;
 pub mod billing;
 pub mod classify;
 pub mod config;
+#[allow(clippy::result_large_err)]
+pub mod dashboard;
 pub mod discovery;
 pub mod jobs;
 pub mod money;
 pub mod relay_worker;
 pub mod serve;
+#[allow(clippy::result_large_err)]
+pub mod usage;

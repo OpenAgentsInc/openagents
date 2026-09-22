@@ -2104,6 +2104,420 @@
      "accounts_unavailable"
     ]
    }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/usage",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's usage position \u2014 exact totals from its own receipts joined to the money and quota ledgers: calls by outcome, quota-derived units, cost fields, outstanding holds, breakdowns, and the billing entitlement.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must hold an active membership in the workspace"
+    ],
+    "query": "from, to (RFC 3339 bounds on resolved_at), key, model, outcome, lane, transport, job, policy, capacity, limit, cursor"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.usage.v1",
+      "workspace": "id",
+      "window": "{from?, to?}",
+      "totals": "{calls, answered, refused, unavailable, unattempted, unknown}",
+      "units": "{questions, input_bytes, reservations_measured, unmeasured}",
+      "cost": "{currency, retail, provider_cost?, hosting_cost?, refunded, priced_calls, unpriced_calls}",
+      "outstanding": "[{hold, reserved, phase}]",
+      "by_model": "[{model, calls, answered, retail}]",
+      "by_key": "[{key, calls}]",
+      "by_lane": "{lane: calls}",
+      "by_transport": "{transport: calls}",
+      "entitlement": "{subscription, plan, plan_version, state, doors}?",
+      "disclosure": "{source, scale, timezone, lag, retention, unattributed, other_workspace, unverifiable, scan_truncated}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "invalid_cursor"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "not_member",
+     "no_account",
+     "out_of_scope"
+    ],
+    "503": [
+     "usage_unavailable",
+     "accounts_unavailable",
+     "sessions_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/usage/activity",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's filtered call list, newest first \u2014 one row per execution receipt with cost and quota units joined. Keyset cursor pagination over (resolved_at, digest).",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must hold an active membership in the workspace"
+    ],
+    "query": "from, to (RFC 3339 bounds on resolved_at), key, model, outcome, lane, transport, job, policy, capacity, limit, cursor"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.usage.v1",
+      "workspace": "id",
+      "items": "[{digest, request, attempt, attempt_id, transport, key, requested_model, served_model, served_artifact, outcome, cause, lane, job, policy, queued_ms, latency_ms, resolved_at, units?, cost?}]",
+      "cursor": "opaque keyset cursor for the next page, or null",
+      "disclosure": "{...}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "400": [
+     "invalid_cursor"
+    ],
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "not_member",
+     "no_account",
+     "out_of_scope"
+    ],
+    "503": [
+     "usage_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/usage/timeseries",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's receipts folded into UTC day buckets \u2014 calls, outcomes, quota units, and retail spend per day; exact sums of the same rows the activity read returns.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must hold an active membership in the workspace"
+    ],
+    "query": "from, to (RFC 3339 bounds on resolved_at), key, model, outcome, lane, transport, job, policy, capacity, limit, cursor"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.usage.v1",
+      "workspace": "id",
+      "days": "[{day, calls, answered, refused, unavailable, unknown, questions, input_bytes, retail}]",
+      "undated": "count of receipts without a resolved_at timestamp",
+      "disclosure": "{...}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "not_member",
+     "no_account",
+     "out_of_scope"
+    ],
+    "503": [
+     "usage_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/usage/receipts/{digest}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "One execution receipt by digest, workspace-scoped \u2014 a digest another workspace owns is unknown_receipt, not a leak. The sealed receipt plus joined cost and quota units.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must hold an active membership in the workspace"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.usage.v1",
+      "receipt": "{the full sealed ExecutionReceipt}",
+      "units": "{questions, input_bytes, options}?",
+      "cost": "{reserved, retail, provider_cost, hosting_cost, refunded, phase, capacity, price_version}?",
+      "disclosure": "{...}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "not_member",
+     "no_account",
+     "out_of_scope"
+    ],
+    "404": [
+     "unknown_receipt"
+    ],
+    "503": [
+     "usage_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/usage/export",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's filtered receipts as application/x-ndjson \u2014 the sealed lines verbatim, each re-verifying offline by its own digest.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer oak_<id>.<secret> or sess_<hex> \u2014 resolves the acting account, which must hold an active membership in the workspace"
+    ],
+    "query": "from, to (RFC 3339 bounds on resolved_at), key, model, outcome, lane, transport, job, policy, capacity, limit, cursor"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "application/x-ndjson",
+      "body": "one sealed ExecutionReceipt JSON object per line, bounded at 10000 lines"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "forbidden",
+     "not_member",
+     "no_account",
+     "out_of_scope"
+    ],
+    "503": [
+     "usage_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The customer dashboard \u2014 the workspace picker under an oa_session cookie, or the sign-in form without one. Server-rendered HTML.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token> (optional)"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html",
+      "body": "the sign-in form or the account's workspace list"
+     }
+    }
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/dashboard/session",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Validate a pasted sess_ session token and set the HttpOnly oa_session cookie; 303 to /dashboard on success.",
+   "request": {
+    "body": "application/x-www-form-urlencoded {token}"
+   },
+   "responses": {
+    "303": {
+     "shape": {
+      "headers": [
+       "Set-Cookie: oa_session=<token>; Path=/; HttpOnly; SameSite=Lax",
+       "Location: /dashboard"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/dashboard/sign-out",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "Expire the oa_session cookie \u2014 the session itself stays live; DELETE /v1/session closes it.",
+   "responses": {
+    "303": {
+     "shape": {
+      "headers": [
+       "Set-Cookie: oa_session=; Max-Age=0",
+       "Location: /dashboard"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/w/{workspace}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace overview \u2014 balance, outstanding reservations, today's calls, subscription state. Member-scoped HTML.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token> \u2014 the session's account must hold an active membership"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "sign-in required"
+    ],
+    "403": [
+     "not a member",
+     "no account"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/w/{workspace}/usage",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's usage summary and per-day call chart with the JSON read's filters, as HTML.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ],
+    "query": "from, to, model, outcome"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/w/{workspace}/activity",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's receipt table, newest first, each row linking to its receipt page.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ],
+    "query": "limit"
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/w/{workspace}/receipts/{digest}",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "One receipt's fields, cost, and quota units \u2014 digests and references only; raw request state and answers are never rendered.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    },
+    "404": [
+     "unknown receipt"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/w/{workspace}/members",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's roster and live invitations \u2014 reads only; member changes go through the JSON API.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/w/{workspace}/keys",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's credentials \u2014 admins see every key on the workspace tenant, members see their own. Secrets are never shown.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/w/{workspace}/billing",
+   "status": "implemented",
+   "condition": "Routed only when the deployment configures the accounts block in gateway.json. Under a configuration without accounts the route does not exist at all.",
+   "summary": "The workspace's subscription and invoices \u2014 reads only; management stays on the owner-only JSON billing API.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "content_type": "text/html"
+     }
+    }
+   }
   }
  ],
  "refusal_codes": {

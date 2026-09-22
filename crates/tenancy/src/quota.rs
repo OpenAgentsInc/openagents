@@ -710,6 +710,14 @@ impl Ledger {
         usage
     }
 
+    /// One reservation by its idempotency pair — the join a usage read
+    /// makes from a receipt's `(request, attempt)` to the units and
+    /// state the ledger recorded. Read-only.
+    #[must_use]
+    pub fn reservation(&self, request: &str, attempt: u32) -> Option<&Reservation> {
+        self.reservations.get(&(request.to_string(), attempt))
+    }
+
     /// The reservations still held — what an operator's `outstanding`
     /// reads.
     #[must_use]

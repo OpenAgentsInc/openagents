@@ -243,6 +243,12 @@ impl ServeState {
         self.attempt_ids.fetch_add(1, Ordering::Relaxed)
     }
 
+    /// The quota ledger's guard — usage reads join receipts to the
+    /// reservations the ledger recorded.
+    pub(crate) async fn quota_lock(&self) -> tokio::sync::MutexGuard<'_, quota::Ledger> {
+        self.ledger.lock().await
+    }
+
     /// The workspace spending ledger's guard — billing effects and the
     /// balance read take it. Present only under monetary admission.
     pub(crate) async fn money_lock(
@@ -295,6 +301,8 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     }
     if state.config.accounts.is_some() {
         routes.extend(crate::accounts::routes());
+        routes.extend(crate::usage::routes());
+        routes.extend(crate::dashboard::routes());
     }
     if state.config.billing.is_some() {
         routes.extend(crate::billing::routes());
@@ -823,6 +831,8 @@ pub(crate) type Context = Box<ReceiptContext>;
 pub(crate) struct ReceiptContext {
     /// The credential reference — the key id, or absent for anonymous.
     pub(crate) tenant_ref: Option<String>,
+    /// The workspace the membership check admitted, when one did.
+    pub(crate) workspace: Option<String>,
     /// The registry revision the call was admitted under.
     pub(crate) registry: Option<ReceiptRegistry>,
     /// The identity the caller asked for — the bound expectation.
@@ -1050,6 +1060,7 @@ fn authenticated(
         })?;
     let ctx = Box::new(ReceiptContext {
         tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),
+        workspace: caller.workspace.clone(),
         ..ReceiptContext::default()
     });
     Ok((registry, caller, ctx))
@@ -2632,6 +2643,7 @@ async fn dispatch(
             Ok(registry) => {
                 *ctx = ReceiptContext {
                     tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),
+                    workspace: caller.workspace.clone(),
                     ..ReceiptContext::default()
                 };
                 dispatch_admitted(state, &registry, caller, sub, &naming, &mut ctx).await
@@ -4541,6 +4553,7 @@ pub(crate) async fn write_receipt(
     );
     receipt.attempt_id = naming.attempt_id.clone();
     receipt.tenant = ctx.tenant_ref.clone();
+    receipt.workspace = ctx.workspace.clone();
     receipt.registry = ctx.registry.clone();
     receipt.requested = ctx.requested.clone();
     receipt.served = ctx.served.clone();

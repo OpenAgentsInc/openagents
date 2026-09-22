@@ -155,6 +155,12 @@ pub struct ExecutionReceipt {
     /// for an anonymous call to a shared door.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant: Option<String>,
+    /// The workspace the call was admitted under — the membership
+    /// scope the spend binds to. Absent on receipts written before the
+    /// field existed and on calls with no workspace, and no reader
+    /// upgrades a missing workspace into a guessed one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
     /// The registry revision the call was admitted under — digest and
     /// sequence, so which binding authorized the call is a lookup.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -288,6 +294,7 @@ impl ExecutionReceipt {
             attempt_id: String::new(),
             transport: transport.into(),
             tenant: None,
+            workspace: None,
             registry: None,
             requested: Served::default(),
             served: Served::default(),

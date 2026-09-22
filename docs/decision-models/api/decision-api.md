@@ -593,6 +593,26 @@ with retention and required financial records. Raw input and answers are
 private by default. Verify mobile layouts, role-based views, totals,
 delayed settlement, and key rotation. Owner: [#9493](https://github.com/OpenAgentsInc/openagents/issues/9493).
 
+Landed in `gateway::usage` and `gateway::dashboard` behind the `accounts`
+document: `GET /v1/workspaces/{id}/usage` reports the workspace's
+position — totals by outcome, quota-derived units, exact cost fields in
+millionths, outstanding holds, breakdowns by model/key/lane/transport,
+and the billing entitlement — and `/usage/activity`, `/usage/timeseries`,
+`/usage/receipts/{digest}`, and `/usage/export` (NDJSON) read the same
+receipts with filters for time window, key, model, outcome, lane,
+transport, job, policy, and capacity, under keyset-cursor pagination.
+`ExecutionReceipt.workspace` attributes each call to the workspace that
+admitted it; unattributed receipts are counted in the disclosure, never
+reassigned. The dashboard at `/dashboard` signs a member in with a
+session token over an `HttpOnly` cookie and renders the overview, usage
+chart, activity, receipt, members, keys, and billing pages — references
+and digests only, no raw input or answers. Every answer carries a
+disclosure block stating scale, UTC timezone and day boundary, lag,
+retention, and skipped/truncated counts. Export is the workspace's own
+sealed receipts verbatim; deletion is not offered — the receipt and
+ledger logs are the financial record. See
+[../service/usage-dashboard.md](../service/usage-dashboard.md).
+
 ## Playground and interactive demo
 
 Provide a playground for pasted inputs, bounded file/dataset uploads,

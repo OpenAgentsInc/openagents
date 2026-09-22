@@ -145,9 +145,20 @@ configuration:
   removal, ownership transfer, recovery tokens, and the workspace's
   access history and keys. `/v1/invitations/accept` and
   `/v1/recovery/redeem` are the out-of-band halves.
+- `GET /v1/workspaces/{id}/usage*` — the member-scoped usage family:
+  the summary's exact totals, the activity list under a keyset cursor,
+  UTC-day timeseries, single receipts by digest, and an NDJSON export.
+  Filters cover time window, key, model, outcome, lane, transport,
+  job, policy, and capacity.
+- `/dashboard` — the customer dashboard: a session-token sign-in sets
+  an `HttpOnly` cookie, and the `w/{id}` pages render the same usage
+  reads plus members, keys, and billing as HTML. Reads only;
+  management stays on the JSON routes.
 
 [workspace-membership](workspace-membership.md) has the full route
-table, the role matrix, and the revocation semantics.
+table, the role matrix, and the revocation semantics;
+[usage-dashboard](usage-dashboard.md) has the usage filters, the
+disclosure contract, and the dashboard's pages.
 
 Under the `billing` document — which requires `accounts` and `money`,
 because a subscription binds a workspace and its grants ride the money

@@ -54,11 +54,13 @@ lists the doors a credential may name.
   exists only where the operator enabled monetary admission, and the
   `/v1/accounts`, `/v1/sessions`, `/v1/workspaces`, `/v1/invitations`,
   and `/v1/recovery` management family exists only where the deployment
-  configures the `accounts` document. The `/v1/plans` catalog and the
-  `/v1/workspaces/{id}/billing/*` family exist only where the
-  deployment configures `billing` — which itself requires `accounts`
-  and `money` — and a decision call under billing names a subscribed
-  workspace whose plan covers the door.
+  configures the `accounts` document. The same `accounts` document
+  mounts the `/v1/workspaces/{id}/usage*` reads and the `/dashboard`
+  pages — both member-scoped, both absent without it. The `/v1/plans`
+  catalog and the `/v1/workspaces/{id}/billing/*` family exist only
+  where the deployment configures `billing` — which itself requires
+  `accounts` and `money` — and a decision call under billing names a
+  subscribed workspace whose plan covers the door.
 - No OAuth discovery, no streaming responses, no image input, no
   hosted endpoint — the catalog says so explicitly where a reader
   might assume otherwise.

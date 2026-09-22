@@ -112,7 +112,8 @@ uses, and marks which are implemented and which are only specified.
   `gateway` binary reads one `gateway.json` — listen address, registry
   directory, each door's backend endpoint, the optional `accounts`
   document that mounts the self-serve account, session, workspace, and
-  key-management surface, and the optional `billing` document that
+  key-management surface plus the member-scoped `/v1/workspaces/{id}/usage*`
+  reads and the `/dashboard` pages, and the optional `billing` document that
   mounts plans, checkout, signed provider webhooks, and owner-only
   subscription management over `tenancy::billing` — under which a
   decision call names a subscribed workspace whose plan covers the

@@ -75,6 +75,12 @@ decision call and authorizes the account's fresh membership — a removed
 member's session refuses on the next call. `DELETE /v1/session` logs
 out; `GET /v1/session` describes standing and deadline.
 
+The same token authorizes the member-scoped usage reads —
+`GET /v1/workspaces/{id}/usage`, `/usage/activity`, `/usage/timeseries`,
+`/usage/receipts/{digest}`, and `/usage/export` — and the dashboard
+under `/dashboard`, which carries it in an `HttpOnly` cookie named
+`oa_session` rather than an `Authorization` header.
+
 ## Anonymous calls
 
 A request with no `Authorization` header is anonymous. Anonymous callers

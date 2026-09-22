@@ -17,4 +17,5 @@ Admission, execution, review, membership, and accounting contracts.
 | [monetary-accounting](monetary-accounting.md) | Monetary accounting |
 | [monetary-ledger](monetary-ledger.md) | Monetary ledger |
 | [review-policies](review-policies.md) | Review and fallback policies for classification |
+| [usage-dashboard](usage-dashboard.md) | Usage, activity, and the dashboard |
 | [workspace-membership](workspace-membership.md) | Workspace membership |
