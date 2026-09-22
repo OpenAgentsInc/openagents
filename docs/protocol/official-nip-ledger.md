@@ -775,6 +775,14 @@ forms are refused. The tag cannot stop a reader republishing the
 content elsewhere — it only keeps this relay from facilitating it, as
 the pinned text says.
 
+NIP-14 is `configured-and-proven`. `subject` reads the `subject` tag on
+a kind `1` event, `subject_fits` applies the recommended 80-character
+bound, and `reply_subject` produces the `Re:`-adorned subject a reply
+SHOULD replicate — without doubling the prefix on a deeper reply. The
+relay stores kind `1` either way, and NIP-14 is a draft, so the tag
+stays off the NIP-11 list. Acceptance is
+`domain::subject::tests::a_reply_replicates_the_subject_with_a_re_prefix`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

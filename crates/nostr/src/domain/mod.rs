@@ -53,6 +53,7 @@ mod report;
 mod repost;
 mod snippet;
 mod storage;
+mod subject;
 mod timestamp;
 mod torrent;
 mod vending;
@@ -205,6 +206,7 @@ pub use storage::{
     FileServers, ProcessingStatus, StorageDocument, StoragePlan, UploadResponse, UploadedFile,
     open_file_servers, parse_processing_status, parse_storage_document, parse_upload_response,
 };
+pub use subject::{SUBJECT_BOUND, reply_subject, subject, subject_fits};
 pub use timestamp::TimestampPolicy;
 pub use torrent::{
     CatalogId, Torrent, TorrentComment, TorrentFile, magnet_uri, open_torrent, open_torrent_comment,

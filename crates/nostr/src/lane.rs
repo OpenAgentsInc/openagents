@@ -920,6 +920,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr and nostr-relay",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "14.md",
+        domain: "a subject tag on kind 1 carries the thread title; a reply replicates it with a Re: adornment; 80 characters is the recommended bound",
+        client: "subject, subject_fits, and reply_subject",
+        server: "kind 1 uses ordinary regular-event storage either way",
+        paths: "crates/nostr/src/domain/subject.rs; crates/nostr/src/domain/event.rs",
+        configuration: "no setting; NIP-14 is a draft and the tag is not added to the NIP-11 list",
+        fixture: "a subject root, its Re:-adorned reply, and an 81-character subject",
+        acceptance: "domain::subject::tests::a_reply_replicates_the_subject_with_a_re_prefix",
+        limitations: "the bound is a recommendation a client enforces in display, not an admission rule; markup in content is kept",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.
