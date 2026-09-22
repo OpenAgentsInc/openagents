@@ -4,8 +4,8 @@ info:
   version: 1.0.0
   x-generated-by: hand-maintained
   description: 'An OpenAPI 3.1 fragment scoped to the routes `crates/gateway` serves today: `POST /v1/systemone`,
-    `POST /v1/classify`, the durable `/v1/jobs` family, `GET /v1/models`, `GET /healthz`, the public `/v1/docs`
-    corpus API, and the conditional surfaces — `GET /v1/balance` under monetary admission and the `/v1/sessions`,
+    `POST /v1/classify`, the durable `/v1/jobs` family, the `/v1/feedback` pair, `GET /v1/models`,
+    `GET /healthz`, the public `/v1/docs` corpus API, and the conditional surfaces — `GET /v1/balance` under monetary admission and the `/v1/sessions`,
     `/v1/accounts`, `/v1/workspaces`, `/v1/invitations`, `/v1/recovery`, and `/v1/session` account-management
     family under the `accounts` document. It claims nothing else: no OAuth
     flow, no streaming, no image or multimodal input, no hosted public origin, and no pricing tiers. `docs/agents/api-catalog.json`
@@ -515,6 +515,121 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TypedError'
+  /v1/feedback:
+    post:
+      summary: Submit a structured agent-feedback report
+      description: Accepts one openagents.feedback.v1 envelope — an observation with optional
+        expected and actual behavior, environment, reproduction, bounded attachments, and a
+        consent flag. The record and its sealed openagents.receipt.feedback.v1 receipt persist
+        before the service acknowledges; an identical replay under the same Idempotency-Key
+        returns the stored status document. Anonymous callers cannot file — a tenant bearer key
+        is required.
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - v
+              - observation
+              properties:
+                v:
+                  type: string
+                  enum:
+                  - openagents.feedback.v1
+                observation:
+                  type: string
+                  maxLength: 4096
+                expected:
+                  type: string
+                actual:
+                  type: string
+                reproduction:
+                  type: string
+                environment:
+                  type: object
+                  additionalProperties:
+                    type: string
+                about:
+                  type: object
+                attachments:
+                  type: array
+                  maxItems: 4
+                  items:
+                    type: object
+                    required:
+                    - name
+                    - content_base64
+                    properties:
+                      name:
+                        type: string
+                      media_type:
+                        type: string
+                      content_base64:
+                        type: string
+                consent:
+                  type: object
+                  properties:
+                    forward:
+                      type: boolean
+      responses:
+        '202':
+          description: The status document — submission id, lifecycle state, sealed feedback
+            receipt, and the triage journal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackStatus'
+        '200':
+          description: An identical replay under the same Idempotency-Key returns the stored
+            status document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackStatus'
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '410':
+          $ref: '#/components/responses/TypedError'
+        '422':
+          $ref: '#/components/responses/TypedError'
+        '429':
+          $ref: '#/components/responses/TypedError'
+        '500':
+          $ref: '#/components/responses/TypedError'
+  /v1/feedback/{id}:
+    get:
+      summary: Read a feedback submission's status document
+      description: The submitting credential's view — lifecycle state, the sealed receipt,
+        operator notes, and the triage journal. Another credential's record answers
+        submission_not_found; existence is not disclosed across tenants.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The status document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackStatus'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
   /v1/docs:
     get:
       summary: List the bundled documentation corpus
@@ -2394,6 +2509,63 @@ components:
           type: string
           description: Present once in the submission response when a notify secret was generated — never
             on later reads.
+    FeedbackStatus:
+      type: object
+      required:
+      - v
+      - submission
+      - status
+      - received_at
+      - receipt
+      - transitions
+      properties:
+        v:
+          type: string
+          enum:
+          - openagents.feedback.v1
+        submission:
+          type: string
+          description: The fb_<hex> id the caller tracks.
+        status:
+          type: string
+          enum:
+          - submitted
+          - duplicate
+          - accepted
+          - needs-information
+          - resolved
+          - rejected
+        duplicate_of:
+          type: string
+          description: Present on a duplicate — the first submission's id.
+        received_at:
+          type: string
+        receipt:
+          type: object
+          description: The sealed openagents.receipt.feedback.v1 — distinct from the execution
+            receipt a decision call leaves.
+        note:
+          type: string
+          description: The operator's latest human-readable note, when one exists.
+        redacted:
+          type: boolean
+          description: Present and true once an operator redacts the record — digests stay,
+            content is gone.
+        transitions:
+          type: array
+          description: The triage journal — operator lifecycle lines in order.
+          items:
+            type: object
+            properties:
+              at:
+                type: string
+              status:
+                type: string
+              note:
+                type: string
+                nullable: true
+              actor:
+                type: string
   responses:
     TypedError:
       description: A typed refusal — see the `refusal_codes` map in `docs/agents/api-catalog.json` and

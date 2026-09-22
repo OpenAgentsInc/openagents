@@ -5619,3 +5619,202 @@ async fn a_backend_outage_fails_the_job_with_honest_counts() {
     assert_eq!(terminal["counts"]["unattempted"], 2);
     assert_eq!(terminal["counts"]["answered"], 0);
 }
+
+/// A valid structured feedback report the tests share.
+fn report() -> Value {
+    json!({
+        "v": "openagents.feedback.v1",
+        "about": {
+            "kind": "call",
+            "door": "acme-kev",
+            "request_id": "req_1",
+            "receipt": "sha256:0123456789abcdef"
+        },
+        "observation": "the door answered '42' for the input '2+2'",
+        "expected": "the door answers '4'",
+        "evidence": [{"kind": "replay", "steps": ["repeat the call"]}],
+        "environment": {"binary": "oak/1.2.3", "os": "macos-26"},
+        "attachments": [{
+            "name": "transcript.txt",
+            "media_type": "text/plain",
+            "content_base64": "aGVsbG8="
+        }],
+        "consent": {"quote_to_operators": true, "forward_artifacts": false}
+    })
+}
+
+/// Submit one report under a credential and idempotency key.
+async fn post_feedback(
+    deployment: &Deployment,
+    body: &Value,
+    credential: Option<&str>,
+    key: Option<&str>,
+) -> reqwest::Response {
+    let mut request = reqwest::Client::new()
+        .post(format!("{}/v1/feedback", deployment.address))
+        .json(body);
+    if let Some(credential) = credential {
+        request = request.bearer_auth(credential);
+    }
+    if let Some(key) = key {
+        request = request.header("idempotency-key", key);
+    }
+    request.send().await.unwrap()
+}
+
+async fn get_feedback(deployment: &Deployment, id: &str, credential: &str) -> reqwest::Response {
+    reqwest::Client::new()
+        .get(format!("{}/v1/feedback/{id}", deployment.address))
+        .bearer_auth(credential)
+        .send()
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_feedback_report_is_received_persisted_and_trackable() {
+    let deployment = deploy(manifest(None), BTreeMap::new()).await;
+    let acme = deployment.tokens["acme"].as_str();
+
+    // No credential, no report.
+    assert_eq!(
+        post_feedback(&deployment, &report(), None, Some("fb-1"))
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    // A malformed report refuses before anything persists.
+    assert_eq!(
+        post_feedback(
+            &deployment,
+            &json!({"v": "openagents.feedback.v1"}),
+            Some(acme),
+            Some("fb-2")
+        )
+        .await
+        .status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    // A real report is acknowledged only after the record and its
+    // receipt exist, and the answer carries both.
+    let accepted = post_feedback(&deployment, &report(), Some(acme), Some("fb-1")).await;
+    assert_eq!(accepted.status(), StatusCode::ACCEPTED);
+    let status: Value = accepted.json().await.unwrap();
+    let id = status["submission"].as_str().unwrap().to_string();
+    assert_eq!(status["status"], "submitted");
+    let receipt: receipts::FeedbackReceipt =
+        serde_json::from_value(status["receipt"].clone()).unwrap();
+    assert!(receipt.verify().is_ok());
+    let record = deployment.dir.path().join("feedback").join(&id);
+    assert!(record.join("manifest.json").exists());
+    assert!(record.join("receipt.json").exists());
+    assert!(record.join("attachments").join("0").exists());
+
+    // The submitter can look the record up; another tenant cannot.
+    let looked_up: Value = get_feedback(&deployment, &id, acme)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(looked_up["submission"], id);
+    assert_eq!(
+        get_feedback(&deployment, &id, deployment.tokens["globex"].as_str())
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+
+    // An identical replay under the same key returns the same record;
+    // a different body under the same key is a conflict.
+    let replay = post_feedback(&deployment, &report(), Some(acme), Some("fb-1")).await;
+    assert_eq!(replay.status(), StatusCode::OK);
+    let replayed: Value = replay.json().await.unwrap();
+    assert_eq!(replayed["submission"], id);
+    let mut different = report();
+    different["observation"] = json!("an unrelated report");
+    assert_eq!(
+        post_feedback(&deployment, &different, Some(acme), Some("fb-1"))
+            .await
+            .status(),
+        StatusCode::CONFLICT
+    );
+
+    // The same report again under a fresh key does not file a second
+    // piece of work — it records against the first submission.
+    let repeat = post_feedback(&deployment, &report(), Some(acme), Some("fb-1b")).await;
+    assert_eq!(repeat.status(), StatusCode::ACCEPTED);
+    let repeated: Value = repeat.json().await.unwrap();
+    assert_eq!(repeated["status"], "duplicate");
+    assert_eq!(repeated["duplicate_of"], id);
+    let repeat_id = repeated["submission"].as_str().unwrap().to_string();
+
+    // Triage is an operator action: the status file carries the note
+    // and the transition log records who moved it.
+    let moved = gateway::feedback::transition(
+        deployment.dir.path(),
+        &repeat_id,
+        "needs-information",
+        Some("which input produced this?"),
+    )
+    .unwrap();
+    assert_eq!(moved["status"], "needs-information");
+    assert_eq!(moved["note"], "which input produced this?");
+    let refreshed: Value = get_feedback(&deployment, &repeat_id, acme)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(refreshed["status"], "needs-information");
+    assert_eq!(
+        refreshed["transitions"].as_array().unwrap().last().unwrap()["note"],
+        "which input produced this?"
+    );
+
+    // Redaction drops the content but keeps the record, its digests,
+    // and its receipt — and the submitter can still look it up.
+    let redacted =
+        gateway::feedback::transition(deployment.dir.path(), &id, "redact", None).unwrap();
+    assert_eq!(redacted["redacted"], true);
+    assert!(!record.join("attachments").exists());
+    let manifest_text = std::fs::read_to_string(record.join("manifest.json")).unwrap();
+    assert!(!manifest_text.contains("2+2"));
+    let still_there = get_feedback(&deployment, &id, acme).await;
+    assert_eq!(still_there.status(), StatusCode::OK);
+    assert_eq!(still_there.json::<Value>().await.unwrap()["redacted"], true);
+}
+
+#[tokio::test]
+async fn a_feedback_report_refuses_over_limit_and_missing_bodies() {
+    let deployment = deploy(manifest(None), BTreeMap::new()).await;
+    let acme = deployment.tokens["acme"].as_str();
+
+    // An absent body refuses as malformed.
+    let empty = reqwest::Client::new()
+        .post(format!("{}/v1/feedback", deployment.address))
+        .bearer_auth(acme)
+        .header("content-type", "application/json")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+
+    // An observation past its bound refuses rather than truncating.
+    let mut oversized = report();
+    oversized["observation"] = json!("x".repeat(16_385));
+    assert_eq!(
+        post_feedback(&deployment, &oversized, Some(acme), Some("fb-big"))
+            .await
+            .status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    // A missing submission id is not another tenant's record.
+    assert_eq!(
+        get_feedback(&deployment, "fb_does_not_exist", acme)
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+}

@@ -28,8 +28,10 @@
 
 pub mod execution;
 pub mod export;
+pub mod feedback;
 pub mod join;
 pub mod replay;
 pub mod validate;
 
 pub use execution::{Evaluation, ExecutionReceipt, Outcome, ReceiptError, SCHEMA, Served, Timing};
+pub use feedback::{FeedbackReceipt, FeedbackState};

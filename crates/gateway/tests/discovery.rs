@@ -124,6 +124,7 @@ async fn every_public_route_answers_without_a_credential() {
         if path.starts_with("/v1/systemone")
             || path.starts_with("/v1/classify")
             || path.starts_with("/v1/jobs")
+            || path.starts_with("/v1/feedback")
             || path.starts_with("/v1/models")
             || path == "/v1/docs/{id}"
             || path == "/v1/docs/search"

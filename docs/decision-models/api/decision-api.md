@@ -676,16 +676,27 @@ Do not add GitHub workflows for recipes or semantic linting. Owner:
 
 ## Agent feedback
 
-Publish a structured feedback policy and API for observations,
-expected/actual behavior, environment/version, reproduction evidence, and
-bounded attachments. Return a receipt and status lookup with an explicit
-triage lifecycle, duplicate handling, ownership, and human-readable updates.
+`POST /v1/feedback` accepts a structured `openagents.feedback.v1` report:
+a required observation with optional expected and actual behavior,
+environment/version, reproduction evidence, and bounded attachments (4 at
+64 KiB each, 256 KiB total). A tenant bearer key is required; the record
+and its sealed `openagents.receipt.feedback.v1` receipt persist before
+the service acknowledges. `GET /v1/feedback/{id}` returns the
+submission's status document — lifecycle state, receipt, operator notes,
+and the triage journal — to the submitting credential only.
 
-Apply authentication, abuse limits, idempotency, redaction, retention, and
-tenant visibility. Forward private content only with explicit consent.
-Automated categorization cannot silently discard reports. A feedback
-receipt is distinct from an inference receipt and a report commitment.
-Owner: [#9497](https://github.com/OpenAgentsInc/openagents/issues/9497).
+An `Idempotency-Key` replay returns the stored record; the same content
+under a new key records a `duplicate` citing the first submission rather
+than dropping it. Operators triage through the `gateway-feedback` binary —
+`accept`, `needs-information`, `resolve`, `reject` — each step appending
+a journal line with a human-readable note the submitter reads on lookup.
+`redact` replaces stored content with its digests in place; deleting a
+record directory leaves the index line, which answers
+`submission_deleted` on replay. A credential may hold at most 64 open
+submissions. `consent.forward` records whether private content may leave
+the deployment; nothing forwards automatically. A feedback receipt is
+distinct from an inference receipt and a report commitment.
+Landed: [#9497](https://github.com/OpenAgentsInc/openagents/issues/9497).
 
 ## Measurement and trained endpoints
 

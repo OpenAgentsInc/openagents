@@ -44,6 +44,7 @@ pub mod config;
 #[allow(clippy::result_large_err)]
 pub mod dashboard;
 pub mod discovery;
+pub mod feedback;
 pub mod jobs;
 pub mod money;
 pub mod relay_worker;

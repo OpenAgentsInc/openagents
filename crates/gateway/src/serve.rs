@@ -293,6 +293,8 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
         ("/v1/jobs/{id}/cancel", post(jobs::cancel)),
         ("/v1/jobs/{id}/results", get(jobs::results)),
         ("/v1/jobs/{id}/notify/rotate", post(jobs::rotate_notify)),
+        ("/v1/feedback", post(crate::feedback::submit)),
+        ("/v1/feedback/{id}", get(crate::feedback::status)),
         ("/v1/models", get(models)),
         ("/healthz", get(healthz)),
     ];

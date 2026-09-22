@@ -11,8 +11,9 @@ A keyed HTTP decision API. A caller posts a state and a map of typed
 questions — `noul` (yes/no), `choice`, and `score` — to
 `POST /v1/systemone` and gets one typed answer per question with
 probabilities. `POST /v1/classify` runs batch classification;
-`POST /v1/jobs` persists a batch as a resumable job. `GET /v1/models`
-lists the doors a credential may name.
+`POST /v1/jobs` persists a batch as a resumable job. `POST /v1/feedback`
+files a structured report and returns a trackable receipt.
+`GET /v1/models` lists the doors a credential may name.
 
 ## Start here
 

@@ -394,7 +394,7 @@ pub fn digest_request(envelope: &Value) -> String {
 /// sorted here rather than trusted to the map: `preserve_order` makes a
 /// `serde_json` map insertion-ordered whenever a sibling crate enables
 /// it, and the digest agreement must not depend on who wrote the bytes.
-fn canonicalize(value: &Value) -> String {
+pub(crate) fn canonicalize(value: &Value) -> String {
     match value {
         Value::Object(map) => {
             let mut keys: Vec<&String> = map.keys().collect();

@@ -591,6 +591,95 @@
    }
   },
   {
+   "method": "POST",
+   "path": "/v1/feedback",
+   "status": "implemented",
+   "summary": "Submit a structured agent-feedback report \u2014 the openagents.feedback.v1 envelope with an observation, optional expected/actual, environment, reproduction, bounded attachments, and a consent flag \u2014 persisted with its receipt before the service acknowledges.",
+   "request": {
+    "content_type": "application/json",
+    "headers": [
+     "Authorization \u2014 a tenant bearer key; anonymous callers cannot file",
+     "Idempotency-Key \u2014 an explicit key dedupes a retry; a keyless submission mints a random one"
+    ],
+    "shape": {
+     "v": "openagents.feedback.v1",
+     "observation": "required non-empty string, bounded",
+     "expected": "optional string",
+     "actual": "optional string",
+     "environment": "optional object of string fields \u2014 version, os, binary",
+     "reproduction": "optional string",
+     "about": "optional object naming the call, door, request_id, or receipt the report concerns",
+     "attachments": "optional array \u2014 at most 4, each {name, media_type?, content_base64}, 64 KiB each, 256 KiB total",
+     "consent": "optional {forward: bool} \u2014 whether private content may leave the deployment"
+    }
+   },
+   "responses": {
+    "202": {
+     "shape": {
+      "submission": "the fb_<hex> id the caller tracks",
+      "status": "submitted, or duplicate with duplicate_of naming the first record",
+      "receipt": "a sealed openagents.receipt.feedback.v1 \u2014 distinct from the execution receipt a decision call leaves",
+      "transitions": "the triage journal, empty at submission"
+     }
+    },
+    "200": "an identical replay under the same Idempotency-Key returns the stored status document",
+    "409": "idempotency_conflict \u2014 the same key against different content",
+    "410": "submission_deleted \u2014 the replayed key's record was removed"
+   },
+   "refusal_statuses": {
+    "400": [
+     "invalid_request \u2014 the body is not a JSON envelope",
+     "malformed"
+    ],
+    "401": [
+     "unauthenticated"
+    ],
+    "422": [
+     "invalid_request \u2014 schema, bound, or attachment validation"
+    ],
+    "429": [
+     "capacity \u2014 too many open submissions under this credential"
+    ],
+    "500": [
+     "submission_unavailable"
+    ]
+   },
+   "notes": [
+    "docs/decision-models/api/decision-api.md names the contract: durable before acknowledge, operator triage through the gateway-feedback binary, no silent discard."
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/v1/feedback/{id}",
+   "status": "implemented",
+   "summary": "Read a feedback submission's status document \u2014 lifecycle state, the sealed receipt, operator notes, and the triage journal.",
+   "request": {
+    "headers": [
+     "Authorization \u2014 the submitting credential's records only"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "submission": "the fb_<hex> id",
+      "status": "submitted|duplicate|accepted|needs-information|resolved|rejected",
+      "receipt": "the sealed feedback receipt",
+      "transitions": "operator lifecycle lines in order",
+      "redacted": "present and true once an operator redacts the record"
+     }
+    },
+    "404": "submission_not_found \u2014 unknown id, or another credential's record (existence is not disclosed across tenants)"
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated"
+    ],
+    "404": [
+     "submission_not_found"
+    ]
+   }
+  },
+  {
    "method": "GET",
    "path": "/v1/docs",
    "status": "implemented",
@@ -2570,6 +2659,26 @@
    "status": 409,
    "meaning": "the (request, attempt) pair is taken \u2014 already resolved, or held for different content",
    "retryable": false
+  },
+  "capacity": {
+   "status": 429,
+   "meaning": "the credential has too many open feedback submissions awaiting triage",
+   "retryable": true
+  },
+  "submission_not_found": {
+   "status": 404,
+   "meaning": "no feedback record by that id under the caller's credential \u2014 another credential's record is not disclosed",
+   "retryable": false
+  },
+  "submission_deleted": {
+   "status": 410,
+   "meaning": "the replayed idempotency key names a feedback record that was deleted; it is not recreated",
+   "retryable": false
+  },
+  "submission_unavailable": {
+   "status": 500,
+   "meaning": "the feedback record could not be persisted or read",
+   "retryable": true
   },
   "too_many_questions": {
    "status": 422,
