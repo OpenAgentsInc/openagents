@@ -30,6 +30,7 @@ mod listing;
 mod market;
 mod note;
 mod ots;
+mod poll;
 mod profile_link;
 mod relay_list;
 mod remote_sign;
@@ -111,6 +112,7 @@ pub use market::{
 };
 pub use note::{NoteQuote, NoteRef, TextNote, is_direct_reply, open_note, reply_participants};
 pub use ots::{BitcoinAttestation, open_attestation};
+pub use poll::{Poll, PollOption, PollResponse, PollType, open_poll, open_poll_response, tally};
 pub use profile_link::{
     IdentityClaim, ProfileLinks, author_npub, expected_statement, open_profile_links, proof_url,
 };

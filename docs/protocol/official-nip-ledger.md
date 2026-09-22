@@ -415,6 +415,22 @@ decide which app owns an identifier. Kind `78` content remains
 searchable. Acceptance is
 `domain::app_data::tests::an_application_record_replaces_on_its_identifier_and_a_plain_event_does_not`.
 
+NIP-88 is `configured-and-proven`. Kind `1068` is a poll.
+`content` is the label. Each `option` tag is an alphanumeric id and a
+label. `relay` tags are `ws://` or `wss://` URLs. `polltype` is
+`singlechoice` or `multiplechoice`; a missing type is single choice.
+`endsAt` is the unix second when voting stops. Kind `1018` is a
+response: one `e` tag names the poll, and each `response` tag names an
+option. `tally` keeps one vote per pubkey, the latest `created_at`
+that is not after `endsAt`. An equal timestamp keeps the greater event
+id. A single-choice vote counts its first response tag. A
+multiple-choice vote counts the first tag for each option id. A newer
+poll does not replace an older one. Kinds `1068` and `1018` are not
+added to the NIP-11 list. The relay does not fetch the poll's relays.
+Kind `5` deletions of votes are still honored. Follow sets, proof of
+work, and web of trust are not applied. Acceptance is
+`domain::poll::tests::a_poll_counts_one_vote_per_pubkey_inside_its_window`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

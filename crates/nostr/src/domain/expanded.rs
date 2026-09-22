@@ -644,6 +644,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if matches!(event.kind, 78 | 30_078) {
         super::app_data::open_app_data(event)?;
     }
+    if event.kind == 1_068 {
+        super::poll::open_poll(event)?;
+    }
+    if event.kind == 1_018 {
+        super::poll::open_poll_response(event)?;
+    }
     Ok(())
 }
 
