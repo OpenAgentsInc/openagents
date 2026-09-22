@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod contracts;
 pub mod decision;
 pub mod domain;
 pub mod nip19;
