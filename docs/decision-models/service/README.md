@@ -11,6 +11,7 @@ Admission, execution, review, membership, and accounting contracts.
 | [billing-terms](billing-terms.md) | Purchase terms for billed plans |
 | [candidate-admission](candidate-admission.md) | Candidate admission |
 | [compatibility](compatibility.md) | Compatibility, deprecation, and migration windows |
+| [confidential-inference](confidential-inference.md) | Confidential hosted inference: threat model and deferral |
 | [decision-advertise](decision-advertise.md) | Service discovery manifests |
 | [decision-worker](decision-worker.md) | The NIP-CJ relay decision worker |
 | [deployment](deployment.md) | Lanes, prerequisites, backup, upgrade, and install verification |

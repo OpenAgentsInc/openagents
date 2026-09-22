@@ -876,6 +876,19 @@ decision, including rejection if requirements cannot be met. Existing
 receipts and hash chains do not imply this guarantee. Owner:
 [#9500](https://github.com/OpenAgentsInc/openagents/issues/9500).
 
+Investigated and decided in
+[confidential hosted inference](../service/confidential-inference.md):
+the threat model fixes the host operator as the adversary, content (not
+metadata) as protected, caller-held keys, and fail-closed availability.
+The mechanism comparison shows TLS, single-tenant processes, and
+dedicated hosting cannot satisfy it; confidential-computing attestation
+can but requires hardware, a verification stack, and independent review
+the service does not have; cryptographic inference is not practical for
+the served models. The feasibility decision is **deferred — keep
+unavailable**, with the local lane (Kev, Laya, Lev on caller hardware)
+as the documented alternative and the PoC requirements a funded attempt
+must meet.
+
 ## Delivery plan and issue ownership
 
 The expanded product is a set of dependent releases, not one gateway
