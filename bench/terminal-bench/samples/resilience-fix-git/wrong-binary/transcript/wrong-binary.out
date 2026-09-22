@@ -1,0 +1,6 @@
+## digest mismatch: real probe, pin of other bytes
+run: artifact sha256 3f171b2bbca9723e91d5190963a6919a284b4017a674861a9f2275a195cee680 doesn't match the pin 637dcce0ca821ebbd6e2d8afac73e393efd0940b8fb803d53946383a11467c41; refusing to run an unpinned build (refusal recorded at <jobs-dir>/resilience--wrong-digest--fix-git/tbench/refusals/20260922T200741790735Z.json)
+exit=1
+## wrong binary: pinned path does not exist
+run: artifact not found: <package>/tests/fixtures/coder-v05-does-not-exist; there is no fallback binary (refusal recorded at <jobs-dir>/resilience--wrong-binary--fix-git/tbench/refusals/20260922T200741956474Z.json)
+exit=1

@@ -138,8 +138,11 @@ collected before deletion. Neither path fabricates a result.
 | --- | --- |
 | Episode exits 0, verifier runs | `completed` with the verifier's reward |
 | Episode exits nonzero | `agent_error` |
+| Artifact missing or digest mismatch, checked on the host | Refused before Harbor starts; a `setup_failure` refusal record, no trial |
 | Install or preflight fails | `install_failure` |
 | Exec deadline expires | `timeout` |
+| Job cancelled | `cancelled`, with the partial bundle collected |
+| Episode exits 0 without a trajectory, or the bundle can't be collected | The verifier's status and reward, with `completeness.trace` `absent` or `completeness.bundle` `collection_failed` |
 | Provider refuses | `provider_refusal` |
 | No verifier result | `unverifiable` |
 

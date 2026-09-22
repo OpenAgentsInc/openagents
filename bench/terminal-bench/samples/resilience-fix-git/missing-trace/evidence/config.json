@@ -1,0 +1,23 @@
+{
+    "task": {
+        "path": "<upstream>/terminal-bench/archive/fix-git"
+    },
+    "trial_name": "fix-git__wZTfDA2",
+    "trials_dir": "<jobs-dir>/resilience--no-trace--fix-git",
+    "agent": {
+        "import_path": "tbench.coder_v05:CoderV05",
+        "model_name": "v0.5-composite",
+        "extra_allowed_hosts": [
+            "host.docker.internal"
+        ],
+        "kwargs": {
+            "artifact_path": "<package>/tests/fixtures/coder-v05-no-trace-probe",
+            "artifact_sha256": "354d63107281c27cc56f3fe8806e4b075dbfca0721fa611ec89b46fb66d421f9"
+        },
+        "env": {
+            "OPENAGENTS_API_KEY": "${OPENAGENTS_API_KEY}",
+            "OPENAGENTS_DOOR_URL": "${OPENAGENTS_DOOR_URL}"
+        }
+    },
+    "job_id": "2a18c446-443f-43e7-8e36-c3532be60d01"
+}

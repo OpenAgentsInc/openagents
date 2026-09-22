@@ -1,0 +1,31 @@
+session leader pid 3635811
+trial fix-git__om7HKzs container fix-git__om7hkzs__env-main-1
+before signal:
+fix-git__om7hkzs__env-main-1 Up 5 seconds
+total 20
+drwxrwxrwx 3 root root 4096 Sep 22 19:52 .
+drwxrwxrwx 5 root root 4096 Sep 22 19:52 ..
+drwxrwxrwx 2 root root 4096 Sep 22 19:52 evaluation
+-rw-rw-rw- 1 root root   82 Sep 22 19:52 manifest.json
+-rw-rw-rw- 1 root root  262 Sep 22 19:52 trajectory.atif.json
+sh: 1: ps: not found
+processes in my session (pgid 3635811):
+    PID    PGID CMD
+3635811 3635811 bash -c . ./env.sh; tb run --profile smoke --agent coder-v05 --task fix-git --job-name resilience--cancel-sigterm--fix-git --agent-kwa
+3635821 3635811 uv run tbench run --profile smoke --agent coder-v05 --task fix-git --job-name resilience--cancel-sigterm--fix-git --agent-kwarg artifa
+3635843 3635811 <package>/.venv/bin/python ~/...
+2026-09-22T19:52:59Z
+sending SIGTERM to process group 3635811
+session leader exit=143
+every process naming the job exited at:
+2026-09-22T19:53:11Z
+after: container for my trial:
+(end)
+after: processes left in my session:
+    PID    PGID CMD
+(end)
+after: processes naming the job (Harbor runs in its own session):
+(end)
+after: compose projects for my trial:
+none
+  1/1 Mean: 0.000 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 0:00:16 0:00:00run: interrupted by SIGTERM; Harbor cancelled the job and exited 130. Evidence is under <jobs-dir>/resilience--cancel-sigterm--fix-git; `tbench resume` continues it

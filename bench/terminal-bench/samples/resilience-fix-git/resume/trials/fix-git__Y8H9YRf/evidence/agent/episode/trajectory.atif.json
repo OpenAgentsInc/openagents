@@ -1,0 +1,8 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "slow-probe-session",
+  "agent": { "name": "coder-v05-slow-probe", "version": "0.0.0-contract-probe" },
+  "steps": [
+    { "step_id": 1, "source": "user", "message": "slow probe episode, partial bundle" }
+  ]
+}

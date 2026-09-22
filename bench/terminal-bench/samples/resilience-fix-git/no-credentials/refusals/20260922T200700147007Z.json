@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.tbench.refusal.v1",
+  "job": "resilience--no-credentials--fix-git",
+  "arm": "coder-v05",
+  "profile": "smoke",
+  "tasks": [
+    "fix-git"
+  ],
+  "refused_at": "2026-09-22T20:07:00.147+00:00",
+  "stage": "credentials",
+  "terminal_status": "setup_failure",
+  "reason": "no credentials for coder-v05; known modes: door-key needs OPENAGENTS_API_KEY, OPENAGENTS_DOOR_URL. A missing credential is a setup failure, not a task failure.",
+  "spend": "none: refused before Harbor started, so no environment was built and no inference ran"
+}

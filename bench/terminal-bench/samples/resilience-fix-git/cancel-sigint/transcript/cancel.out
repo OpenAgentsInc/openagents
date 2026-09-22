@@ -1,0 +1,30 @@
+session leader pid 3631707
+trial fix-git__7WpF487 container fix-git__7wpf487__env-main-1
+before signal:
+fix-git__7wpf487__env-main-1 Up 5 seconds
+total 20
+drwxrwxrwx 3 root root 4096 Sep 22 19:51 .
+drwxrwxrwx 5 root root 4096 Sep 22 19:51 ..
+drwxrwxrwx 2 root root 4096 Sep 22 19:51 evaluation
+-rw-rw-rw- 1 root root   82 Sep 22 19:51 manifest.json
+-rw-rw-rw- 1 root root  262 Sep 22 19:51 trajectory.atif.json
+sh: 1: ps: not found
+processes in my session (pgid 3631707):
+    PID    PGID CMD
+3631707 3631707 bash -c . ./env.sh; tb run --profile smoke --agent coder-v05 --task fix-git --job-name resilience--cancel--fix-git --agent-kwarg artif
+3631717 3631707 uv run tbench run --profile smoke --agent coder-v05 --task fix-git --job-name resilience--cancel--fix-git --agent-kwarg artifact_path=
+3631739 3631707 <package>/.venv/bin/python ~/...
+2026-09-22T19:51:44Z
+sending SIGINT to process group 3631707
+run exit=1
+2026-09-22T19:51:56Z
+after: container for my trial:
+(end)
+after: processes left in my session:
+    PID    PGID CMD
+(end)
+after: processes naming the job (Harbor runs in its own session):
+(end)
+after: compose projects for my trial:
+none
+  1/1 Mean: 0.000 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 0:00:16 0:00:00run: interrupted by SIGINT; Harbor cancelled the job and exited 130. Evidence is under <jobs-dir>/resilience--cancel--fix-git; `tbench resume` continues it

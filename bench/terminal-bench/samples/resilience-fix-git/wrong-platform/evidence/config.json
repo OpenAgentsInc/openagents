@@ -1,0 +1,23 @@
+{
+    "task": {
+        "path": "<upstream>/terminal-bench/archive/fix-git"
+    },
+    "trial_name": "fix-git__6WG34nf",
+    "trials_dir": "<jobs-dir>/resilience--wrong-platform--fix-git",
+    "agent": {
+        "import_path": "tbench.coder_v05:CoderV05",
+        "model_name": "v0.5-composite",
+        "extra_allowed_hosts": [
+            "host.docker.internal"
+        ],
+        "kwargs": {
+            "artifact_path": "<package>/tests/fixtures/coder-v05-macho-stub",
+            "artifact_sha256": "ec4e6562d7cd82c440248efd28ebe56718974bc2fd50d4fbcdaa6f620ad5d879"
+        },
+        "env": {
+            "OPENAGENTS_API_KEY": "${OPENAGENTS_API_KEY}",
+            "OPENAGENTS_DOOR_URL": "${OPENAGENTS_DOOR_URL}"
+        }
+    },
+    "job_id": "c839b1c1-d78b-4d71-b4aa-b14de95b20a7"
+}

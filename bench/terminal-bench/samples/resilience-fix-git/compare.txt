@@ -1,0 +1,22 @@
+# Terminal-Bench comparison — small development sample
+
+attempts: 14   jobs dir: <jobs-dir>
+
+## terminal-bench/fix-git  (commit 3b5caaa4863d, checksum e89f54f2fc73)
+arm                         n pass [95% Wilson]      reward agent time mean (min-max)  cost mean (min-max)                  status
+----------------------------------------------------------------------------------------------------------------------------------
+coder-v05                   1 0/1 single trial         0.00 0.2s                       unknown                              completed  [1 without trace]
+    pin: version pinned-artifact, model v0.5-composite, artifact sha256 354d63107281, task e89f54f2fc73
+coder-v05                   2 0/2 [0.00, 0.66]         0.00 0.1s (0.1s-0.1s)           unknown                              agent_errorx2
+    pin: version pinned-artifact, model v0.5-composite, artifact sha256 3f171b2bbca9, task e89f54f2fc73
+coder-v05                   6 no scored trial             ? 12.2s (3.9s-20.2s)         unknown                              cancelledx2,timeoutx4  [+1 interrupted]
+    pin: version pinned-artifact, model v0.5-composite, artifact sha256 54b412b10ee3, task e89f54f2fc73
+coder-v05                   1 no scored trial             ? unknown                    unknown                              install_failure  [1 without trace]
+    pin: version pinned-artifact, model v0.5-composite, artifact sha256 ec4e6562d7cd, task e89f54f2fc73
+coder-v05                   1 0/1 single trial         0.00 0.2s                       unknown                              completed  [1 without trace; 1 bundle not collected]
+    pin: version pinned-artifact, model v0.5-composite, artifact sha256 f56345e097a4, task e89f54f2fc73
+oracle                      2 2/2 [0.34, 1.00]         1.00 0.3s (0.2s-0.3s)           unknown                              completedx2  [2 without trace]
+
+Reward is the verifier's; status is the trial's terminal state. Pass rates count scored trials only, with a 95% Wilson interval from two scored trials up. An arm listed twice ran under different pins, which never pool. 'unknown' is a recorded absence, not a zero.
+
+wrote <scratch>/report-resilience.json

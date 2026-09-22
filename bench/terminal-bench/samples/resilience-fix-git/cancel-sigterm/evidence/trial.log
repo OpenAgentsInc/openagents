@@ -1,0 +1,6 @@
+Running command: mkdir -p /opt/openagents/bin /opt/openagents/episode /opt/openagents/assets
+Command outputs captured
+Running command: chmod 0755 /opt/openagents/bin/coder-v05 && echo '54b412b10ee3c25be6e044ed9a8cd2f9a3217fe656888ef67c3a9feb88508616  /opt/openagents/bin/coder-v05' | sha256sum -c -
+Command outputs captured
+Trial fix-git__om7HKzs cancelled
+Collecting main service artifacts

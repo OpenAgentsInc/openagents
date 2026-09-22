@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "458b6765-f919-401d-9a08-344031a29b7e",
+    "job": "resilience--collect-fail--fix-git",
+    "trial": "fix-git__jzEMxkK",
+    "arm": "coder-v05",
+    "profile": "smoke",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "<upstream>/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_v05:CoderV05",
+    "requested_model": "v0.5-composite",
+    "observed_name": "coder-v05",
+    "observed_version": "pinned-artifact",
+    "observed_model": "v0.5-composite",
+    "observed_provider": null,
+    "artifact_sha256": "f56345e097a46f4f41b3165a3e8473d6715ed40b5c2cca14f03c601238be6924"
+  },
+  "outcome": {
+    "reward": 0.0,
+    "verifier_rewards": {
+      "reward": 0.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:54:21.744858Z",
+    "finished_at": "2026-09-22T19:54:45.084643Z",
+    "environment_setup_ms": 1193,
+    "agent_setup_ms": 782,
+    "agent_execution_ms": 220,
+    "verifier_ms": 9746,
+    "total_ms": 23339
+  },
+  "usage": {
+    "input_tokens": null,
+    "cache_tokens": null,
+    "output_tokens": null,
+    "input_includes_cache": true,
+    "coverage": "unknown"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "The published image is linux/amd64; on this arm64 Mac it runs under emulation. Record that condition on every run."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "<jobs-dir>/resilience--collect-fail--fix-git/fix-git__jzEMxkK/result.json",
+      "sha256": "df4e2c727f6f7fbee3f9bc600fb4ebdbd59055056207dbb57f11596397f8f1a8",
+      "bytes": 4512
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": true,
+      "path": "<jobs-dir>/resilience--collect-fail--fix-git/fix-git__jzEMxkK/agent/episode-collection-failed.txt",
+      "sha256": "3b16b1bc02d64217adfa576bb810c7a5ac05ee63e3dd360bb159457ddf07f019",
+      "bytes": 1168
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "<jobs-dir>/resilience--collect-fail--fix-git/fix-git__jzEMxkK/verifier/reward.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "<jobs-dir>/resilience--collect-fail--fix-git/fix-git__jzEMxkK/verifier/ctrf.json",
+      "sha256": "1c11ebe46d7f5974c51f445698a0e64804c2cabfe277d642f624fc3f85885ab2",
+      "bytes": 3367
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "<jobs-dir>/resilience--collect-fail--fix-git/fix-git__jzEMxkK/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "<jobs-dir>/resilience--collect-fail--fix-git/tbench/attempts/fix-git__jzEMxkK.json",
+      "sha256": "4eb4dc60f6fb0f78e7ef16f7c0a0532ee8f84ead107dddd20b644f2ed19f4634"
+    }
+  },
+  "collected_at": "2026-09-22T20:04:02.873+00:00"
+}

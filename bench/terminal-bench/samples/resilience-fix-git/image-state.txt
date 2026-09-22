@@ -1,0 +1,15 @@
+Cold: Harbor's docker inspect found no local image, so compose up pulled it.
+
+job smoke--coder-one--fix-git, trial fix-git__Kdrjsmq
+environment_setup 2026-09-22T18:33:16.344993Z -> 2026-09-22T18:33:27.233189Z
+trial.log line 1: Skipping image OS validation for alexgshaw/fix-git:20260403: docker inspect returned 1
+
+job panel--claude-code-opus--headless-terminal, trial headless-terminal__SQXFp7r
+environment_setup 2026-09-22T19:32:21.288779Z -> 2026-09-22T19:32:27.377779Z
+trial.log line 1: Skipping image OS validation for alexgshaw/headless-terminal:20251031: docker inspect returned 1
+
+Warm: no skip line, and the environment setup finished.
+
+job resilience--timeout--fix-git, trial fix-git__Fvweaqb
+environment_setup 2026-09-22T19:53:24.857494Z -> 2026-09-22T19:53:26.084214Z
+trial.log line 1: Running command: mkdir -p /opt/openagents/bin /opt/openagents/episode /opt/openagents/assets

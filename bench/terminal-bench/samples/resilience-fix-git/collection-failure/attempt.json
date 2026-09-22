@@ -1,0 +1,93 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "458b6765-f919-401d-9a08-344031a29b7e",
+    "job": "resilience--collect-fail--fix-git",
+    "trial": "fix-git__jzEMxkK",
+    "arm": "coder-v05",
+    "profile": "smoke",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "<upstream>/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_v05:CoderV05",
+    "requested_model": "v0.5-composite",
+    "observed_name": "coder-v05",
+    "observed_version": "pinned-artifact",
+    "observed_model": "v0.5-composite",
+    "observed_provider": null,
+    "artifact_sha256": "f56345e097a46f4f41b3165a3e8473d6715ed40b5c2cca14f03c601238be6924"
+  },
+  "outcome": {
+    "reward": 0.0,
+    "verifier_rewards": {
+      "reward": 0.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:54:21.744858Z",
+    "finished_at": "2026-09-22T19:54:45.084643Z",
+    "environment_setup_ms": 1193,
+    "agent_setup_ms": 782,
+    "agent_execution_ms": 220,
+    "verifier_ms": 9746,
+    "total_ms": 23339
+  },
+  "environment": {
+    "image": "alexgshaw/fix-git:20260403",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": null,
+    "cache_tokens": null,
+    "output_tokens": null,
+    "input_includes_cache": true,
+    "coverage": "unknown"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": "unknown",
+    "model_invocations": "unknown",
+    "typed_decisions": "unknown",
+    "tool_calls": "unknown",
+    "shell_commands": "unknown",
+    "retries": "unknown",
+    "subagent_steps": "unknown",
+    "note": "no trajectory.json retained"
+  },
+  "evidence": {
+    "trial_result": "<jobs-dir>/resilience--collect-fail--fix-git/fix-git__jzEMxkK/result.json",
+    "trial_dir": "<jobs-dir>/resilience--collect-fail--fix-git/fix-git__jzEMxkK",
+    "manifest": "<jobs-dir>/resilience--collect-fail--fix-git/tbench/manifests/fix-git__jzEMxkK.json"
+  },
+  "completeness": {
+    "trace": "absent",
+    "usage": "unknown",
+    "cost": "unknown",
+    "artifacts": "present",
+    "bundle": "collection_failed"
+  }
+}

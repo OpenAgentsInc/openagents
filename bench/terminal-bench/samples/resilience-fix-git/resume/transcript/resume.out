@@ -1,0 +1,61 @@
+finished trials before the interrupt:
+  fix-git__swLsRNt id=d3f5455f-58fb-4c6e-b9ce-dca792f01f87
+running trial at interrupt: fix-git__WgzE2pn
+2026-09-22T19:58:38Z
+sending SIGINT to process group 3652393
+run exit=1
+containers for this job after the interrupt:
+(end)
+trial dirs after the interrupt:
+config.json
+fix-git__swLsRNt
+fix-git__WgzE2pn
+job.log
+lock.json
+result.json
+tbench
+attempt records after the interrupt:
+fix-git__swLsRNt.json
+fix-git__WgzE2pn.json
+⠋ 2/3 Mean: 0.000 ━━━━━━━━━━━━━━━━━━━━━━━━━━╸              0:00:42 0:00:14run: interrupted by SIGINT; Harbor cancelled the job and exited 130. Evidence is under <jobs-dir>/resilience--resume--fix-git; `tbench resume` continues it
+=== resume
+resume exit=0
+└─────────────────────┴───────┘
+
+job dir: <jobs-dir>/resilience--resume--fix-git
+trial dirs after resume:
+<jobs-dir>/resilience--resume--fix-git:
+config.json
+fix-git__swLsRNt
+fix-git__VkdjH9h
+fix-git__Y8H9YRf
+job.log
+lock.json
+result.json
+tbench
+
+<jobs-dir>/resilience--resume--fix-git/tbench:
+attempts
+context.json
+interrupted
+job-config.json
+manifests
+
+<jobs-dir>/resilience--resume--fix-git/tbench/attempts:
+fix-git__swLsRNt.json
+fix-git__VkdjH9h.json
+fix-git__WgzE2pn.json
+fix-git__Y8H9YRf.json
+
+<jobs-dir>/resilience--resume--fix-git/tbench/interrupted:
+fix-git__WgzE2pn
+no held tbench/ left behind
+  record fix-git__swLsRNt fresh timeout d3f5455f-58fb-4c6e-b9ce-dca792f01f87
+  record fix-git__VkdjH9h fresh timeout 31b2264e-b283-463e-98c7-028d8edf58e7
+  record fix-git__WgzE2pn interrupted cancelled 5593726c-4a32-4c03-86f7-4d7ac05be355
+  record fix-git__Y8H9YRf fresh timeout 2a20032c-d6db-4443-b3f5-83de11e1ab57
+  fix-git__swLsRNt id=d3f5455f-58fb-4c6e-b9ce-dca792f01f87 EpisodeTimeoutError 2026-09-22T19:58:07.286911Z
+  fix-git__VkdjH9h id=31b2264e-b283-463e-98c7-028d8edf58e7 EpisodeTimeoutError 2026-09-22T19:59:19.122099Z
+  fix-git__Y8H9YRf id=2a20032c-d6db-4443-b3f5-83de11e1ab57 EpisodeTimeoutError 2026-09-22T19:58:50.883488Z
+containers for this job after resume:
+(end)

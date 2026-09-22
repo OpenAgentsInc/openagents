@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "<site-packages>/harbor/trial/trial.py", line 406, in run
+    await self._prepare()
+  File "<site-packages>/harbor/trial/trial.py", line 450, in _prepare
+    await self._setup_agent()
+  File "<site-packages>/harbor/trial/trial.py", line 1455, in _setup_agent
+    await asyncio.wait_for(
+    ...<2 lines>...
+    )
+  File "<python>/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "<site-packages>/harbor/agents/installed/base.py", line 953, in setup
+    await self.install(environment)
+  File "<package>/tbench/coder_v05.py", line 197, in install
+    raise EpisodeContractError(
+    ...<2 lines>...
+    )
+tbench.coder_v05.EpisodeContractError: /opt/openagents/bin/coder-v05 --version exited 126: bash: line 1: /opt/openagents/bin/coder-v05: cannot execute binary file: Exec format error
+

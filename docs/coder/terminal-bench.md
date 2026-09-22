@@ -220,6 +220,16 @@ Collection is idempotent: attempt records and episode manifests are
 rewritten from whatever `result.json` files exist, so a resume never loses
 a failed attempt.
 
+Harbor deletes a cancelled trial, and any trial without `result.json`,
+before it runs that trial again, and it deletes any other subdirectory of
+the job without `result.json` too. So `tbench` copies each such trial to
+`tbench/interrupted/` first, and keeps `tbench/` in
+`<jobs-dir>/.tbench-held--<job>/` while Harbor runs. A held directory left
+by a crash moves back on the next run.
+
+The pinned artifact and the credentials are checked before Harbor starts,
+on `resume` as on `run`.
+
 ## Inspect
 
 ```sh
@@ -241,6 +251,15 @@ name are flagged as warnings, never pooled. The default label is *small
 development sample* — keep it until a genuinely unexposed confirmation set
 exists.
 
+Repetitions of an arm pool across job names, such as a `-2` suffix, only
+when the task checksum, agent version, model, and artifact digest match.
+Each cell reports its trials, passes, a 95% Wilson interval from two
+scored trials up (one scored trial is labeled `single trial`), the mean
+reward, and agent time and cost as mean, minimum, and maximum. Pass `--out`
+to write the JSON somewhere other than the shared jobs dir.
+[Terminal-Bench resilience](../terminal-bench/resilience.md#repeated-runs)
+shows a sample.
+
 ## What a run retains
 
 Every attempt writes, under `<jobs-dir>/<job>/tbench/`:
@@ -252,9 +271,23 @@ Every attempt writes, under `<jobs-dir>/<job>/tbench/`:
   verification, total wall); usage with `full`/`partial`/`unknown`
   coverage; cost with its provenance (`provider_reported`,
   `price_estimate`, `billing_verified`, `none`, `unknown`); ATIF step and
-  call counts; and completeness flags.
+  call counts; the environment image and whether this trial pulled,
+  built, or reused it (`environment.image_state` is `cold`, `warm`, or
+  `unknown`, read from Harbor's trial log); the pinned artifact digest;
+  and completeness flags for the trace, usage, cost, artifacts, and
+  episode bundle. `attempt.kind` is `fresh`, or `interrupted` for a
+  trial preserved before a resume ran it again.
 - `manifests/<trial>.json` — the episode manifest: every evidence file
   with a sha256, marked resolved or unresolved.
+- `refusals/<time>.json` — an `openagents.tbench.refusal.v1` record for a
+  run refused before Harbor started: missing credentials, or an artifact
+  that is missing or doesn't match its digest.
+- `interrupted/<trial>/` — a copy of each trial `harbor job resume`
+  deleted to run again: a cancelled trial, or one without `result.json`.
+
+`tbench collect <job>` rewrites a job's attempt records and manifests
+from its trials, for example to add fields to a job collected by an
+earlier harness.
 
 Unknown stays unknown. Missing usage is never zero-filled, a subscription
 reference price is never reported as an observed bill, and a failed or
@@ -268,6 +301,13 @@ provider refusal, verifier failure, missing credentials, and unverifiable
 trials. An adapter timeout surfaces as `timeout`, not a fabricated error;
 a stopped job leaves whatever evidence its trials already wrote, and
 `resume` continues from it.
+
+Harbor runs in a session of its own. On Ctrl-C, SIGTERM, or SIGHUP,
+`tbench` forwards one SIGINT to Harbor and waits while Harbor cancels the
+trials, collects their outputs, and deletes their environments. Don't
+send a second interrupt to hurry it: Harbor then skips that cleanup.
+[Terminal-Bench resilience](../terminal-bench/resilience.md) records each
+failure case observed on a real trial and where its evidence lives.
 
 Bulk logs, provider payloads, and task workspaces stay under
 `~/.openagents/terminal-bench/` — never in the repository. The exception is
@@ -285,5 +325,7 @@ cd bench/terminal-bench && uv run pytest
 ```
 
 The suite covers the profile loaders, credential templating, the
-no-fallback artifact contract, attempt-record accounting, the comparison
-report, and the ATIF-to-Harbor schema contract.
+no-fallback artifact contract, attempt-record accounting and image state,
+the comparison report and its intervals, the runner's refusals, interrupt
+forwarding, and resume preservation, and the ATIF-to-Harbor schema
+contract.

@@ -1,0 +1,43 @@
+{
+  "jobs_dir": "<jobs-dir>",
+  "n_attempts": 1,
+  "n_concurrent_trials": 1,
+  "timeout_multiplier": 1.0,
+  "install_only": false,
+  "retry": {
+    "max_retries": 0
+  },
+  "environment": {
+    "type": "docker",
+    "delete": true,
+    "force_build": false,
+    "cpu_enforcement_policy": "auto",
+    "memory_enforcement_policy": "auto"
+  },
+  "verifier": {
+    "disable": false
+  },
+  "agents": [
+    {
+      "kwargs": {
+        "artifact_path": "<package>/tests/fixtures/coder-v05-slow-probe",
+        "artifact_sha256": "54b412b10ee3c25be6e044ed9a8cd2f9a3217fe656888ef67c3a9feb88508616"
+      },
+      "env": {
+        "OPENAGENTS_API_KEY": "${OPENAGENTS_API_KEY}",
+        "OPENAGENTS_DOOR_URL": "${OPENAGENTS_DOOR_URL}"
+      },
+      "extra_allowed_hosts": [
+        "host.docker.internal"
+      ],
+      "import_path": "tbench.coder_v05:CoderV05",
+      "model_name": "v0.5-composite"
+    }
+  ],
+  "tasks": [
+    {
+      "path": "<upstream>/terminal-bench/archive/fix-git"
+    }
+  ],
+  "job_name": "resilience--cancel-sigterm--fix-git"
+}

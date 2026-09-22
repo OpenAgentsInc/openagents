@@ -1,0 +1,95 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "d3f5455f-58fb-4c6e-b9ce-dca792f01f87",
+    "job": "resilience--resume--fix-git",
+    "trial": "fix-git__swLsRNt",
+    "arm": "coder-v05",
+    "profile": "smoke-comparison",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "<upstream>/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_v05:CoderV05",
+    "requested_model": "v0.5-composite",
+    "observed_name": "coder-v05",
+    "observed_version": "pinned-artifact",
+    "observed_model": "v0.5-composite",
+    "observed_provider": null,
+    "artifact_sha256": "54b412b10ee3c25be6e044ed9a8cd2f9a3217fe656888ef67c3a9feb88508616"
+  },
+  "outcome": {
+    "reward": null,
+    "verifier_rewards": null,
+    "terminal_status": "timeout",
+    "exception": {
+      "exception_type": "EpisodeTimeoutError",
+      "exception_message": "Command timed out after 15 seconds",
+      "exception_traceback": "Traceback (most recent call last):\n  File \"<python>/asyncio/tasks.py\", line 507, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"<python>/asyncio/subprocess.py\", line 201, in communicate\n    stdin, stdout, stderr = await tasks.gather(stdin, stdout, stderr)\n                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<python>/asyncio/subprocess.py\", line 181, in _read_stream\n    output = await stream.read()\n             ^^^^^^^^^^^^^^^^^^^\n  File \"<python>/asyncio/streams.py\", line 723, in read\n    block = await self.read(self._limit)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<python>/asyncio/streams.py\", line 730, in read\n    await self._wait_for_data('read')\n  File \"<python>/asyncio/streams.py\", line 539, in _wait_for_data\n    await self._waiter\nasyncio.exceptions.CancelledError\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<site-packages>/harbor/environments/docker/docker.py\", line 675, in _collect_buffered_output\n    stdout_bytes, stderr_bytes = await asyncio.wait_for(\n                                 ^^^^^^^^^^^^^^^^^^^^^^^\n        process.communicate(input=stdin_data), timeout=timeout_sec\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"<python>/asyncio/tasks.py\", line 506, in wait_for\n    async with timeouts.timeout(timeout):\n               ~~~~~~~~~~~~~~~~^^^^^^^^^\n  File \"<python>/asyncio/timeouts.py\", line 117, in __aexit__\n    raise TimeoutError from exc_val\nTimeoutError\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"<package>/tbench/coder_v05.py\", line 278, in run\n    result = await environment.exec(\n             ^^^^^^^^^^^^^^^^^^^^^^^\n    ...<3 lines>...\n    )\n    ^\n  File \"<site-packages>/harbor/environments/docker/docker.py\", line 1101, in exec\n    return await self._compose_exec(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<6 lines>...\n    )\n    ^\n  File \"<site-packages>/harbor/environments/docker/docker.py\", line 1178, in _compose_exec\n    return await self._run_docker_compose_command(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<4 lines>...\n    )\n    ^\n  File \"<site-packages>/harbor/environments/docker/docker.py\", line 649, in _run_docker_compose_command\n    result = await self._collect_buffered_output(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<3 lines>...\n    )\n    ^\n  File \"<site-packages>/harbor/environments/docker/docker.py\", line 682, in _collect_buffered_output\n    raise RuntimeError(f\"Command timed out after {timeout_sec} seconds\")\nRuntimeError: Command timed out after 15 seconds\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<site-packages>/harbor/trial/trial.py\", line 409, in run\n    await self._run()\n  File \"<site-packages>/harbor/trial/single_step.py\", line 41, in _run\n    await self._run_agent()\n  File \"<site-packages>/harbor/trial/single_step.py\", line 77, in _run_agent\n    await self._run_agent_phase(\n    ...<5 lines>...\n    )\n  File \"<site-packages>/harbor/trial/trial.py\", line 545, in _run_agent_phase\n    await asyncio.wait_for(\n    ...<6 lines>...\n    )\n  File \"<python>/asyncio/tasks.py\", line 507, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"<package>/tbench/coder_v05.py\", line 285, in run\n    raise EpisodeTimeoutError(str(exc)) from exc\ntbench.coder_v05.EpisodeTimeoutError: Command timed out after 15 seconds\n",
+      "occurred_at": "2026-09-22T19:58:24.748989Z"
+    },
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:58:07.286911Z",
+    "finished_at": "2026-09-22T19:58:35.536550Z",
+    "environment_setup_ms": 1125,
+    "agent_setup_ms": 700,
+    "agent_execution_ms": 15170,
+    "verifier_ms": null,
+    "total_ms": 28249
+  },
+  "environment": {
+    "image": "alexgshaw/fix-git:20260403",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": null,
+    "cache_tokens": null,
+    "output_tokens": null,
+    "input_includes_cache": true,
+    "coverage": "unknown"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 1,
+    "model_invocations": 0,
+    "typed_decisions": 0,
+    "tool_calls": 0,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "<jobs-dir>/resilience--resume--fix-git/fix-git__swLsRNt/result.json",
+    "trial_dir": "<jobs-dir>/resilience--resume--fix-git/fix-git__swLsRNt",
+    "manifest": "<jobs-dir>/resilience--resume--fix-git/tbench/manifests/fix-git__swLsRNt.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "unknown",
+    "cost": "unknown",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

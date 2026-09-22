@@ -1,0 +1,28 @@
+⠋ 0/1 Running trials...                                          0:00:06 -:--:--
+⠋ 0:00:05 fix-git__y2kBbJM: running agent...Task was destroyed but it is pending!
+task: <Task cancelling name='Task-1' coro=<start.<locals>._run_job() done, defined at <site-packages>/harbor/cli/jobs.py:1892> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[gather.<locals>._done_callback() at <python>/asyncio/tasks.py:822]>
+<site-packages>/harbor/trial/trial.py:1627: RuntimeWarning: coroutine 'DockerEnvironment.stop' was never awaited
+  self._record_exception(exc)
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+Exception ignored in: <coroutine object TrialQueue._run_trial at 0x72cdae391d50>
+Traceback (most recent call last):
+  File "<site-packages>/harbor/trial/queue.py", line 242, in _run_trial
+    return await self._execute_trial_with_retries(trial_config)
+  File "<site-packages>/harbor/trial/queue.py", line 203, in _execute_trial_with_retries
+    result = await trial.run()
+  File "<site-packages>/harbor/trial/trial.py", line 424, in run
+    await self._finalize()
+  File "<site-packages>/harbor/trial/trial.py", line 462, in _finalize
+    await self._emit(TrialEvent.END)
+  File "<site-packages>/harbor/trial/trial.py", line 399, in _emit
+    await hook(hook_event)
+  File "<site-packages>/harbor/job.py", line 973, in _on_trial_completed
+    await self._write_job_result_async(exclude_trial_results=True)
+  File "<site-packages>/harbor/job.py", line 725, in _write_job_result_async
+    await asyncio.to_thread(
+  File "<python>/asyncio/threads.py", line 23, in to_thread
+    loop = events.get_running_loop()
+RuntimeError: no running event loop
+Task was destroyed but it is pending!
+task: <Task cancelling name='Task-2' coro=<TrialQueue._run_trial() done, defined at <site-packages>/harbor/trial/queue.py:239> wait_for=<_GatheringFuture pending cb=[Task.task_wakeup()]> cb=[TaskGroup._on_task_done(), gather.<locals>._done_callback() at <python>/asyncio/tasks.py:822]>
+run: interrupted by SIGINT; Harbor cancelled the job and exited 130. Evidence is under <jobs-dir>/resilience--cancel--fix-git; `tbench resume` continues it

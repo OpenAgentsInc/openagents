@@ -10,6 +10,7 @@ the arms you run.
 - The artifact contract Coder One implements: [`openagents.coder.episode.v1`](../coder/terminal-bench-contract.md).
 - Coder One's delegate arms: [the delegate runbook](coder-one-delegate-runbook.md).
 - Every result: [the results page](README.md).
+- Cancellation, timeouts, refusals, resume, image state, and repeated-run statistics: [the resilience page](resilience.md).
 
 ## The host
 

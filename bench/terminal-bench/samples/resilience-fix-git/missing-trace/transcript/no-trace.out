@@ -1,0 +1,27 @@
+  1/1 Mean: 0.000 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 0:00:20 0:00:00
+adhoc • coder-v05 • v0.5-composite
+┏━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━┓
+┃ Trials ┃ Exceptions ┃  Mean ┃
+┡━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━┩
+│      1 │          0 │ 0.000 │
+└────────┴────────────┴───────┘
+
+┏━━━━━━━━┳━━━━━━━┓
+┃ Reward ┃ Count ┃
+┡━━━━━━━━╇━━━━━━━┩
+│ 0.0    │     1 │
+└────────┴───────┘
+
+Job Info
+Total runtime: 20s
+Results written to 
+<jobs-dir>/resilience--no-trace--fix
+-git/result.json
+Inspect results by running `harbor view 
+<jobs-dir>`
+Share results by running `harbor upload 
+<jobs-dir>/resilience--no-trace--fix
+-git`
+
+job dir: <jobs-dir>/resilience--no-trace--fix-git
+exit=0

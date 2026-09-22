@@ -1,0 +1,38 @@
+Traceback (most recent call last):
+  File "<python>/subprocess.py", line 1280, in wait
+    return self._wait(timeout=timeout)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "<python>/subprocess.py", line 2085, in _wait
+    (pid, sts) = self._try_wait(0)
+                 ~~~~~~~~~~~~~~^^^
+  File "<python>/subprocess.py", line 2043, in _try_wait
+    (pid, sts) = os.waitpid(self.pid, wait_flags)
+                 ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<package>/.venv/bin/tbench", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "<package>/tbench/cli.py", line 311, in main
+    return int(args.func(args) or 0)
+               ~~~~~~~~~^^^^^^
+  File "<package>/tbench/cli.py", line 151, in cmd_run
+    job_dir = run(_request(args))
+  File "<package>/tbench/runner.py", line 141, in run
+    completed = subprocess.run(command, env=env)
+  File "<python>/subprocess.py", line 556, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<python>/subprocess.py", line 1214, in communicate
+    self.wait()
+    ~~~~~~~~~^^
+  File "<python>/subprocess.py", line 1293, in wait
+    self._wait(timeout=sigint_timeout)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<python>/subprocess.py", line 2079, in _wait
+    time.sleep(delay)
+    ~~~~~~~~~~^^^^^^^
+KeyboardInterrupt

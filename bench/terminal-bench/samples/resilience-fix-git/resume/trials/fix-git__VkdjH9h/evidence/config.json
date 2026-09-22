@@ -1,0 +1,24 @@
+{
+    "task": {
+        "path": "<upstream>/terminal-bench/archive/fix-git"
+    },
+    "trial_name": "fix-git__VkdjH9h",
+    "trials_dir": "<jobs-dir>/resilience--resume--fix-git",
+    "agent": {
+        "import_path": "tbench.coder_v05:CoderV05",
+        "model_name": "v0.5-composite",
+        "extra_allowed_hosts": [
+            "host.docker.internal"
+        ],
+        "kwargs": {
+            "artifact_path": "<package>/tests/fixtures/coder-v05-slow-probe",
+            "artifact_sha256": "54b412b10ee3c25be6e044ed9a8cd2f9a3217fe656888ef67c3a9feb88508616",
+            "episode_timeout_sec": "15"
+        },
+        "env": {
+            "OPENAGENTS_API_KEY": "${OPENAGENTS_API_KEY}",
+            "OPENAGENTS_DOOR_URL": "${OPENAGENTS_DOOR_URL}"
+        }
+    },
+    "job_id": "d2782cd2-6b0c-40db-9cc4-549a0180e81e"
+}

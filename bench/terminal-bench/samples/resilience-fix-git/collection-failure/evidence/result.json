@@ -1,0 +1,126 @@
+{
+    "id": "458b6765-f919-401d-9a08-344031a29b7e",
+    "task_name": "terminal-bench/fix-git",
+    "trial_name": "fix-git__jzEMxkK",
+    "trial_uri": "file://<jobs-dir>/resilience--collect-fail--fix-git/fix-git__jzEMxkK",
+    "task_id": {
+        "path": "<upstream>/terminal-bench/archive/fix-git"
+    },
+    "source": null,
+    "task_checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "config": {
+        "task": {
+            "path": "<upstream>/terminal-bench/archive/fix-git",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "fix-git__jzEMxkK",
+        "trials_dir": "<jobs-dir>/resilience--collect-fail--fix-git",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "tbench.coder_v05:CoderV05",
+            "model_name": "v0.5-composite",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [
+                "host.docker.internal"
+            ],
+            "kwargs": {
+                "artifact_path": "<package>/tests/fixtures/coder-v05-collect-fail-probe",
+                "artifact_sha256": "f56345e097a46f4f41b3165a3e8473d6715ed40b5c2cca14f03c601238be6924"
+            },
+            "env": {
+                "OPENAGENTS_API_KEY": "${OPENAGENTS_API_KEY}",
+                "OPENAGENTS_DOOR_URL": "${OPENAGENTS_DOOR_URL}"
+            },
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "f201cc5b-0803-4e82-8a6f-3fdc20bae83b",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "coder-v05",
+        "version": "pinned-artifact",
+        "model_info": {
+            "name": "v0.5-composite",
+            "provider": null
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-09-22T19:54:21.744858Z",
+    "finished_at": "2026-09-22T19:54:45.084643Z",
+    "environment_setup": {
+        "started_at": "2026-09-22T19:54:21.784547Z",
+        "finished_at": "2026-09-22T19:54:22.978484Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-09-22T19:54:22.978520Z",
+        "finished_at": "2026-09-22T19:54:23.760813Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-09-22T19:54:23.760937Z",
+        "finished_at": "2026-09-22T19:54:23.981149Z"
+    },
+    "verifier": {
+        "started_at": "2026-09-22T19:54:24.491838Z",
+        "finished_at": "2026-09-22T19:54:34.238232Z"
+    },
+    "step_results": null
+}

@@ -1,0 +1,38 @@
+finished trials before the interrupt:
+  fix-git__3UBkUNL id=db01878d-9e18-4318-8fac-2885da6f419e
+running trial at interrupt: fix-git__6Skfq9i
+2026-09-22T19:55:46Z
+sending SIGINT to process group 3644072
+run exit=1
+containers for this job after the interrupt:
+(end)
+trial dirs after the interrupt:
+config.json
+fix-git__3UBkUNL
+fix-git__6Skfq9i
+job.log
+lock.json
+result.json
+tbench
+⠋ 2/3 Mean: 0.000 ━━━━━━━━━━━━━━━━━━━━━━━━━━╸              0:00:42 0:00:15run: interrupted by SIGINT; Harbor cancelled the job and exited 130. Evidence is under <jobs-dir>/resilience--resume--fix-git; `tbench resume` continues it
+=== resume
+resume exit=0
+└─────────────────────┴───────┘
+
+job dir: <jobs-dir>/resilience--resume--fix-git
+trial dirs after resume:
+ls: cannot access '<jobs-dir>/resilience--resume--fix-git/tbench/interrupted': No such file or directory
+<jobs-dir>/resilience--resume--fix-git:
+config.json
+fix-git__3UBkUNL
+fix-git__b2HxpeN
+fix-git__r8XG7gs
+job.log
+lock.json
+result.json
+tbench
+  fix-git__3UBkUNL id=db01878d-9e18-4318-8fac-2885da6f419e EpisodeTimeoutError 2026-09-22T19:55:15.282517Z
+  fix-git__b2HxpeN id=51a80ffe-90cd-4763-9e8a-abc7c66a8460 EpisodeTimeoutError 2026-09-22T19:56:27.277486Z
+  fix-git__r8XG7gs id=1487fe73-0a10-4c9b-a618-16f0c5c4365c EpisodeTimeoutError 2026-09-22T19:55:59.432038Z
+containers for this job after resume:
+(end)

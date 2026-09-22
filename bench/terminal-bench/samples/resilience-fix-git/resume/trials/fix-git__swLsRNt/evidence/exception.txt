@@ -1,0 +1,88 @@
+Traceback (most recent call last):
+  File "<python>/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "<python>/asyncio/subprocess.py", line 201, in communicate
+    stdin, stdout, stderr = await tasks.gather(stdin, stdout, stderr)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<python>/asyncio/subprocess.py", line 181, in _read_stream
+    output = await stream.read()
+             ^^^^^^^^^^^^^^^^^^^
+  File "<python>/asyncio/streams.py", line 723, in read
+    block = await self.read(self._limit)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<python>/asyncio/streams.py", line 730, in read
+    await self._wait_for_data('read')
+  File "<python>/asyncio/streams.py", line 539, in _wait_for_data
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<site-packages>/harbor/environments/docker/docker.py", line 675, in _collect_buffered_output
+    stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                                 ^^^^^^^^^^^^^^^^^^^^^^^
+        process.communicate(input=stdin_data), timeout=timeout_sec
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "<python>/asyncio/tasks.py", line 506, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "<python>/asyncio/timeouts.py", line 117, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<package>/tbench/coder_v05.py", line 278, in run
+    result = await environment.exec(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "<site-packages>/harbor/environments/docker/docker.py", line 1101, in exec
+    return await self._compose_exec(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "<site-packages>/harbor/environments/docker/docker.py", line 1178, in _compose_exec
+    return await self._run_docker_compose_command(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "<site-packages>/harbor/environments/docker/docker.py", line 649, in _run_docker_compose_command
+    result = await self._collect_buffered_output(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "<site-packages>/harbor/environments/docker/docker.py", line 682, in _collect_buffered_output
+    raise RuntimeError(f"Command timed out after {timeout_sec} seconds")
+RuntimeError: Command timed out after 15 seconds
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<site-packages>/harbor/trial/trial.py", line 409, in run
+    await self._run()
+  File "<site-packages>/harbor/trial/single_step.py", line 41, in _run
+    await self._run_agent()
+  File "<site-packages>/harbor/trial/single_step.py", line 77, in _run_agent
+    await self._run_agent_phase(
+    ...<5 lines>...
+    )
+  File "<site-packages>/harbor/trial/trial.py", line 545, in _run_agent_phase
+    await asyncio.wait_for(
+    ...<6 lines>...
+    )
+  File "<python>/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "<package>/tbench/coder_v05.py", line 285, in run
+    raise EpisodeTimeoutError(str(exc)) from exc
+tbench.coder_v05.EpisodeTimeoutError: Command timed out after 15 seconds
