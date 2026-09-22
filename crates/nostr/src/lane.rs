@@ -1063,6 +1063,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "73.md",
+        domain: "an i tag references an external content id — web, isbn, geo, iso3166, isan, doi, hashtag, podcast guids, or a blockchain tx/address — and a k tag declares its kind",
+        client: "external_id_kind classifies a value; open_external_ids pairs every i tag with a declaring k and validates the URL hint",
+        server: "kind 17 admission requires a classifying i+k pair; pairing is not enforced globally because NIP-39 i tags mean identity claims, not NIP-73 ids",
+        paths: "crates/nostr/src/domain/external_id.rs; crates/nostr/src/domain/comment.rs; crates/nostr/src/domain/reaction.rs",
+        configuration: "no setting; NIP-73 is a draft and the tags are not added to the NIP-11 list",
+        fixture: "eleven i tags spanning every defined type with their k declarations, plus the malformed forms the pinned text forbids",
+        acceptance: "domain::external_id::tests::every_i_tag_classifies_and_pairs_with_its_k",
+        limitations: "identifier existence is not verified against the external system; NIP-22 comment external scopes use the same classifier",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

@@ -24,6 +24,7 @@ mod ecash;
 mod error;
 mod event;
 mod expanded;
+mod external_id;
 mod extras;
 mod file;
 mod filter;
@@ -131,6 +132,7 @@ pub use expanded::{
     parse_http_authorization, parse_http_authorization_claim, parse_http_authorization_hash,
     reorder_children,
 };
+pub use external_id::{ExternalId, external_id_kind, open_external_ids};
 pub use extras::{Birthday, ProfileExtras, lowercase_hashtags, open_profile_extras};
 pub use file::{FileImage, FileMetadata, open_file_metadata};
 pub use filter::{

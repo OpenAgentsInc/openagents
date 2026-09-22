@@ -137,15 +137,8 @@ pub fn open_external_reaction(event: &Event) -> Result<ReactionVerdict, DomainEr
     if event.kind != EXTERNAL_REACTION_KIND {
         return Err(invalid("an external reaction is kind 17"));
     }
-    let has_i = event
-        .tags
-        .iter()
-        .any(|tag| tag.name() == Some("i") && tag.value().is_some_and(|v| !v.is_empty()));
-    let has_k = event
-        .tags
-        .iter()
-        .any(|tag| tag.name() == Some("k") && tag.value().is_some_and(|v| !v.is_empty()));
-    if !has_i || !has_k {
+    let ids = super::external_id::open_external_ids(event)?;
+    if ids.is_empty() {
         return Err(invalid("kind 17 requires NIP-73 i and k tags"));
     }
     Ok(reaction_verdict(&event.content))

@@ -873,6 +873,19 @@ finds each decodable code in content while leaving undecodable tokens
 as text. Acceptance is
 `domain::references::tests::nostr_references_decode_to_their_entity`.
 
+NIP-73 is `configured-and-proven`. `external_id_kind` classifies an
+`i` tag's value into every defined kind — `web`, `isbn`, `geo`,
+`iso3166` including subdivisions, `isan`, `doi`, `#`, the three
+podcast guid forms, and `<chain>:tx`/`<chain>:address` — and
+`open_external_ids` requires each `i` to pair with a `k` declaring
+that kind and validates the optional URL hint. The kind `17` reaction
+admission uses the pairing; it is not enforced on every kind because
+NIP-39 `i` tags mean identity claims. NIP-22 comment external scopes
+share the classifier. NIP-73 is a draft, so the tags stay off the
+NIP-11 list. Acceptance is
+`domain::external_id::tests::every_i_tag_classifies_and_pairs_with_its_k`
+and `domain::external_id::tests::malformed_identifiers_and_missing_kinds_are_refused`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

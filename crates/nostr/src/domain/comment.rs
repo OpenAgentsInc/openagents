@@ -15,7 +15,6 @@ use super::hex::decode_lower_hex;
 use super::{DomainError, Event, ReplacementAddress};
 
 const COMMENT_KIND: u16 = 1_111;
-const GEOHASH: &str = "0123456789bcdefghjkmnpqrstuvwxyz";
 
 /// Where a comment is rooted or parented.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,133 +108,6 @@ fn nostr_kind(value: &str) -> Result<u16, DomainError> {
     Ok(kind)
 }
 
-fn external_kind(value: &str) -> Result<String, DomainError> {
-    if value.starts_with("https://") || value.starts_with("http://") {
-        if !is_http(value) {
-            return Err(invalid(
-                "a web identifier is an http URL without a fragment",
-            ));
-        }
-        return Ok("web".to_owned());
-    }
-    if let Some(id) = value.strip_prefix("isbn:") {
-        return isbn(id).map(|_| "isbn".to_owned());
-    }
-    if let Some(id) = value.strip_prefix("geo:") {
-        if id.is_empty() || !id.chars().all(|char| GEOHASH.contains(char)) {
-            return Err(invalid("a geohash uses the lowercase geohash alphabet"));
-        }
-        return Ok("geo".to_owned());
-    }
-    if let Some(id) = value.strip_prefix("iso3166:") {
-        if !matches!(id.len(), 2 | 3) || !id.chars().all(|char| char.is_ascii_uppercase()) {
-            return Err(invalid("an iso3166 code is two or three uppercase letters"));
-        }
-        return Ok("iso3166".to_owned());
-    }
-    if let Some(id) = value.strip_prefix("isan:") {
-        if id.is_empty() || id.chars().any(char::is_whitespace) {
-            return Err(invalid("an isan identifier is empty"));
-        }
-        return Ok("isan".to_owned());
-    }
-    if let Some(id) = value.strip_prefix("doi:") {
-        if id.is_empty()
-            || id
-                .chars()
-                .any(|char| char.is_ascii_uppercase() || char.is_whitespace())
-        {
-            return Err(invalid("a doi identifier is lowercase"));
-        }
-        return Ok("doi".to_owned());
-    }
-    if let Some(topic) = value.strip_prefix('#') {
-        if topic.is_empty()
-            || topic
-                .chars()
-                .any(|char| char.is_ascii_uppercase() || char.is_whitespace())
-        {
-            return Err(invalid("a hashtag is lowercase"));
-        }
-        return Ok("#".to_owned());
-    }
-    if let Some(id) = value.strip_prefix("podcast:item:guid:") {
-        return guid(id).map(|_| "podcast:item:guid".to_owned());
-    }
-    if let Some(id) = value.strip_prefix("podcast:publisher:guid:") {
-        return guid(id).map(|_| "podcast:publisher:guid".to_owned());
-    }
-    if let Some(id) = value.strip_prefix("podcast:guid:") {
-        return guid(id).map(|_| "podcast:guid".to_owned());
-    }
-    blockchain(value)
-}
-
-fn isbn(id: &str) -> Result<(), DomainError> {
-    let chars: Vec<char> = id.chars().collect();
-    let ok = (chars.len() == 13 && chars.iter().all(|char| char.is_ascii_digit()))
-        || (chars.len() == 10
-            && chars[..9].iter().all(|char| char.is_ascii_digit())
-            && (chars[9].is_ascii_digit() || chars[9] == 'X'));
-    if ok {
-        Ok(())
-    } else {
-        Err(invalid(
-            "an isbn identifier has 10 or 13 digits and no hyphens",
-        ))
-    }
-}
-
-fn guid(id: &str) -> Result<(), DomainError> {
-    if id.is_empty() || id.chars().any(char::is_whitespace) {
-        Err(invalid("a podcast guid is empty"))
-    } else {
-        Ok(())
-    }
-}
-
-fn blockchain(value: &str) -> Result<String, DomainError> {
-    let parts: Vec<&str> = value.split(':').collect();
-    let Some(marker_at) = parts
-        .iter()
-        .position(|part| *part == "tx" || *part == "address")
-    else {
-        return Err(invalid(
-            "an external identifier is not one of the NIP-73 types",
-        ));
-    };
-    if marker_at == 0 || marker_at > 2 || parts.len() != marker_at + 2 {
-        return Err(invalid(
-            "an external identifier is not one of the NIP-73 types",
-        ));
-    }
-    let chain = parts[0];
-    if chain.is_empty()
-        || !chain
-            .chars()
-            .all(|char| char.is_ascii_lowercase() || char.is_ascii_digit())
-    {
-        return Err(invalid("a blockchain name is lowercase"));
-    }
-    if marker_at == 2 && parts[1].is_empty() {
-        return Err(invalid("a chain id is empty"));
-    }
-    let id = parts[marker_at + 1];
-    if parts[marker_at] == "tx" {
-        if id.is_empty()
-            || !id.len().is_multiple_of(2)
-            || !id
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-        {
-            return Err(invalid("a transaction id is lowercase hex"));
-        }
-    } else if id.is_empty() || id.chars().any(char::is_whitespace) {
-        return Err(invalid("a blockchain address is empty"));
-    }
-    Ok(format!("{chain}:{}", parts[marker_at]))
-}
-
 fn one<'a>(tags: &'a [super::Tag], name: &str) -> Result<Option<&'a super::Tag>, DomainError> {
     let mut found = tags.iter().filter(|tag| tag.name() == Some(name));
     let tag = found.next();
@@ -289,7 +161,7 @@ fn parse_external(tag: &super::Tag, kind: &str) -> Result<CommentScope, DomainEr
     let Some(value) = tag.value() else {
         return Err(invalid("an external identifier is empty"));
     };
-    let derived = external_kind(value)?;
+    let derived = super::external_id::external_id_kind(value)?;
     if derived != kind {
         return Err(invalid("an external identifier does not match its kind"));
     }
