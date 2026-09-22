@@ -21,6 +21,7 @@
 //! | `CODER_ONE_DELEGATE_AGENT` | `claude-code` or `codex`; `claude-code` when unset. |
 //! | `CODER_ONE_DELEGATE_MODEL` | The delegate's model; `claude-opus-5-5` for Claude Code and `gpt-6-luna` for Codex when unset. |
 //! | `CODER_ONE_DELEGATE_TOOLS` | Claude Code's built-in tools for the delegate, such as `Bash,Read,Edit,Write`; the full default set when unset. |
+//! | `CODER_ONE_DELEGATE_EFFORT` | The delegate's reasoning effort (`low`, `medium`, `high`, …): Claude Code's `--effort` or Codex's `model_reasoning_effort`; each CLI's default when unset. |
 //! | `CODER_ONE_DELEGATE_TIMEOUT` | Seconds the delegate may run; 600 when unset. |
 //! | `CODER_ONE_EXPLORE_STEPS` | The explore phase's step bound; 8 when unset. |
 //! | `CODER_ONE_BRIEFING_CAP` | The briefing's length cap in characters; 12,000 when unset. |

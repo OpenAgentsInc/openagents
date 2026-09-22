@@ -597,6 +597,16 @@ impl BriefingInputs {
 /// The most characters of one surveyed file's contents a briefing carries.
 const SURVEYED_FILE_CHARS: usize = 4_000;
 
+/// The delegate's reasoning effort, from `CODER_ONE_DELEGATE_EFFORT`, or
+/// empty for the CLI's default. Only a plain lowercase word passes.
+fn delegate_effort() -> String {
+    std::env::var("CODER_ONE_DELEGATE_EFFORT")
+        .map(|effort| effort.trim().to_string())
+        .ok()
+        .filter(|effort| effort.chars().all(|c| c.is_ascii_lowercase()))
+        .unwrap_or_default()
+}
+
 /// Claude Code's tool list for the delegate, from `CODER_ONE_DELEGATE_TOOLS`,
 /// or empty for the CLI's full default set.
 fn delegate_tools() -> String {
@@ -1344,12 +1354,14 @@ impl Executor for Cli {
         let script = match self.agent {
             Agent::ClaudeCode => {
                 "exec \"$0\" -p --output-format stream-json --verbose --model \"$1\" \
-                 --permission-mode bypassPermissions ${4:+--tools \"$4\"} < \"$2\" > \"$3\""
+                 --permission-mode bypassPermissions ${4:+--tools \"$4\"} ${5:+--effort \"$5\"} \
+                 < \"$2\" > \"$3\""
             }
             // The task container or the fresh clone is the boundary, so
             // Codex runs without its own sandbox or approval prompts.
             Agent::Codex => {
                 "exec \"$0\" exec --json --skip-git-repo-check -m \"$1\" \
+                 ${5:+-c \"model_reasoning_effort=$5\"} \
                  --dangerously-bypass-approvals-and-sandbox - < \"$2\" > \"$3\""
             }
         };
@@ -1366,6 +1378,10 @@ impl Executor for Cli {
             // smaller fixed prompt on every call: four tools halved it, from
             // about 17,800 to 9,000 tokens, on 2026-09-22.
             .arg(delegate_tools())
+            // `CODER_ONE_DELEGATE_EFFORT` sets the delegate's reasoning
+            // effort: Claude Code's `--effort`, Codex's
+            // `model_reasoning_effort`. Unset keeps each CLI's default.
+            .arg(delegate_effort())
             .current_dir(&self.workdir)
             // A parent Claude Code session's marker makes the CLI refuse to
             // start; the delegate is its own session.
