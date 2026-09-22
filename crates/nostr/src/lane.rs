@@ -855,6 +855,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr and nostr-relay",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "B7.md",
+        domain: "kind 10063 is one replaceable Blossom server list per author; a server tag is an http:// or https:// URL",
+        client: "open_server_list, media_reference, recovery_url, and verifies_media",
+        server: "admission requires at least one valid server tag; the kind uses the ordinary replacement head",
+        paths: "crates/nostr/src/domain/blossom.rs; crates/nostr/src/domain/expanded.rs; crates/nostr/src/domain/replacement.rs",
+        configuration: "no setting; NIP-B7 is a draft and kind 10063 is not added to the NIP-11 list",
+        fixture: "a two-server list and a media URL whose path ends in 64 hex characters plus .png",
+        acceptance: "domain::blossom::tests::a_server_list_recovers_media_by_its_sha256",
+        limitations: "the relay does not download media and does not hash file bytes; a hex tail that does not decode is not a media reference; the separate NIP-96 server list is kind 10096",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

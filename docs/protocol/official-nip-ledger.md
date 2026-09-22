@@ -704,6 +704,19 @@ metadata from non-members. The limitation is that kinds 9003, 9004, 9006, and
 empty because this process does not run LiveKit. The `nostr` and `nostr-relay`
 crates own the row. Its status is distinct from a kind-and-tag check.
 
+NIP-B7 is `configured-and-proven`. `open_server_list` in
+`crates/nostr/src/domain/blossom.rs` reads a kind `10063` event: at least
+one `server` tag, each a valid `http://` or `https://` URL. The kind is
+replaceable, so a newer list supersedes the older one. `media_reference`
+reads the 64-character hex tail of a media URL with its optional file
+extension, `recovery_url` builds `https://server/<hex>.<ext>` against each
+listed server, and `verifies_media` checks the downloaded bytes against
+that digest. Admission refuses an empty or malformed list. The relay does
+not download media and does not hash file bytes. NIP-B7 is a draft, so
+kind `10063` stays off the NIP-11 list. The separate NIP-96 server list is
+kind `10096`. Acceptance is
+`domain::blossom::tests::a_server_list_recovers_media_by_its_sha256`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

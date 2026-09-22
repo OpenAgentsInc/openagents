@@ -738,12 +738,7 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
         super::storage::open_file_servers(event)?;
     }
     if event.kind == 10_063 {
-        let servers = event.tag_values("server").collect::<Vec<_>>();
-        if servers.is_empty() || servers.iter().any(|server| !valid_http_url(server)) {
-            return Err(DomainError::InvalidEvent(
-                "kind 10063 requires valid http:// or https:// server tags".into(),
-            ));
-        }
+        super::blossom::open_server_list(event)?;
     }
     if event.kind == 1_063 {
         super::file::open_file_metadata(event)?;

@@ -10,6 +10,7 @@ mod article;
 mod assertion;
 mod badge;
 mod block;
+mod blossom;
 mod bookmark;
 mod calendar;
 mod comment;
@@ -81,6 +82,9 @@ pub use block::{
     PUSH_LEASE_KIND, READ_STATE_KIND, RELAY_ONLY_BLOCK_KINDS, TEAM_CATALOG_KIND,
     THREAD_SUMMARY_KIND, WINDOW_BOUNDS_KIND, WORKSPACE_PROFILE_KIND, dm_visibility_channel,
     parse_identity_archive_request, validate_block_ingest, workspace_icon,
+};
+pub use blossom::{
+    MediaReference, ServerList, media_reference, open_server_list, recovery_url, verifies_media,
 };
 pub use bookmark::{Bookmark, bookmark_identifier, is_bookmark_reply, open_bookmark};
 pub use calendar::{
