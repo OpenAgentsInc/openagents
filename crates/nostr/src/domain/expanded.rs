@@ -532,6 +532,15 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 9_802 {
         super::highlight::open_highlight(event)?;
     }
+    if event.kind == 31_989 {
+        super::handler::open_recommendation(event)?;
+    }
+    if event.kind == 31_990 {
+        super::handler::open_handler(event)?;
+    }
+    if event.tags.iter().any(|tag| tag.name() == Some("client")) {
+        super::handler::open_client_tag(event)?;
+    }
     if event.kind == 10_063 {
         let servers = event.tag_values("server").collect::<Vec<_>>();
         if servers.is_empty() || servers.iter().any(|server| !valid_http_url(server)) {

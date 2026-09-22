@@ -229,6 +229,24 @@ no source, an unknown role, or an `r` tag that is not `source` or
 `mention`. Acceptance is
 `domain::highlight::tests::a_highlight_names_its_source_and_a_comment_quotes_it`.
 
+NIP-89 is `configured-and-proven`. Kind `31989` recommends
+applications for one event kind. Its `d` tag is that kind, and each `a`
+tag points at a kind `31990` handler, with an optional relay hint and
+platform. Kind `31990` names the kinds it supports in `k` tags. Empty
+content means the client's kind `0` profile carries the display name.
+Non-empty content is a JSON object. `latest` and `next` point at a site
+manifest. A platform tag such as `web` or `ios` carries a URL with the
+literal `bech32`. `handler_url` replaces that placeholder with a NIP-19
+token the caller supplies. A tag without a NIP-19 type is the generic
+handler for that platform. A `client` tag on another event names the
+handler that published it. Leaving the tag off is the opt-out. Both
+kinds are addressable, so a newer event with the same `d` tag replaces
+the older one. A filter on `d` or `k` selects them. Neither kind is
+added to the NIP-11 list. The relay does not fetch the application or
+its kind `0` profile. This crate encodes `npub` and `nsec` only.
+Acceptance is
+`domain::handler::tests::a_recommendation_points_at_a_handler_and_the_url_receives_the_entity`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
