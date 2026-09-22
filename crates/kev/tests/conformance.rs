@@ -4,13 +4,26 @@
 //! Every committed variant runs the same battery: `fixtures/` for
 //! `kev-0.5b`, `fixtures/variants/<id>/` for the rest. Artifacts resolve
 //! per `tests/common`; variants whose weights are absent skip.
+//!
+//! The battery is hours of every core the machine has, so it is off by
+//! default. Run it only under `KEV_CONFORMANCE=1`; nothing automatic
+//! sets that variable.
 
 mod common;
 
 use kev::{Record, SystemOneRequest, to_answers, to_record};
 use serde_json::Value;
 
-use common::{Progress, fixture, model, names, variants};
+use common::{Progress, enabled, fixture, model, names, variants};
+
+/// Whether this test may run. Says why once when the battery is off.
+fn require_enabled() -> bool {
+    if enabled() {
+        return true;
+    }
+    eprintln!("conformance is off; set KEV_CONFORMANCE=1 to run it");
+    false
+}
 
 /// Max absolute difference between two probability tables.
 fn max_delta(a: &[Vec<f64>], b: &[Vec<f64>]) -> f64 {
@@ -22,6 +35,9 @@ fn max_delta(a: &[Vec<f64>], b: &[Vec<f64>]) -> f64 {
 
 #[test]
 fn golden_probabilities_reproduce() {
+    if !require_enabled() {
+        return;
+    }
     let _test_progress = Progress::start("test");
     for variant in variants() {
         let _variant_progress = Progress::start(format!("variant={}", variant.id));
@@ -66,6 +82,9 @@ fn golden_probabilities_reproduce() {
 
 #[test]
 fn packed_matches_separate() {
+    if !require_enabled() {
+        return;
+    }
     let _test_progress = Progress::start("test");
     for variant in variants() {
         let _variant_progress = Progress::start(format!("variant={}", variant.id));
@@ -124,6 +143,9 @@ fn packed_matches_separate() {
 
 #[test]
 fn isolation_probe_holds() {
+    if !require_enabled() {
+        return;
+    }
     let _test_progress = Progress::start("test");
     for variant in variants() {
         let _variant_progress = Progress::start(format!("variant={}", variant.id));
@@ -170,6 +192,9 @@ fn isolation_probe_holds() {
 
 #[test]
 fn permutation_probe_reproduces() {
+    if !require_enabled() {
+        return;
+    }
     let _test_progress = Progress::start("test");
     for variant in variants() {
         let _variant_progress = Progress::start(format!("variant={}", variant.id));
@@ -227,6 +252,9 @@ fn permutation_probe_reproduces() {
 
 #[test]
 fn forgery_cannot_add_options() {
+    if !require_enabled() {
+        return;
+    }
     let _test_progress = Progress::start("test");
     for variant in variants() {
         let _variant_progress = Progress::start(format!("variant={}", variant.id));
@@ -257,6 +285,9 @@ fn forgery_cannot_add_options() {
 /// the loaded model, and its encodings must agree with the flag.
 #[test]
 fn option_isolation_flag_matches_reference() {
+    if !require_enabled() {
+        return;
+    }
     let _test_progress = Progress::start("test");
     for variant in variants() {
         let _variant_progress = Progress::start(format!("variant={}", variant.id));
