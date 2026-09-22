@@ -769,6 +769,28 @@ fn resolve(root: &Path, package: &Package, visiting: &mut Vec<String>) -> Result
     attempted
 }
 
+/// Apply one extension install transition.
+///
+/// The resolver does not run a build, a probe, or inference. A cleanup
+/// that fails stays a tombstone, and a tombstone cannot become an
+/// installation again.
+///
+/// # Errors
+///
+/// Returns the protocol refusal for an illegal transition.
+pub fn extension_transition(
+    state: nostr::ext::Install,
+    step: nostr::ext::InstallStep,
+) -> Result<nostr::ext::Install, nostr::contracts::ContractError> {
+    nostr::ext::transition(&state, step)
+}
+
+/// The lock an in-flight run keeps. A newer release does not replace it.
+#[must_use]
+pub fn extension_active_pin<'a>(active: &'a str, proposed: &'a str) -> &'a str {
+    nostr::ext::preserve_active_pin(active, proposed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1132,5 +1154,37 @@ mod tests {
             serde_json::to_value(&first).unwrap(),
             serde_json::to_value(&second).unwrap()
         );
+    }
+
+    #[test]
+    fn an_extension_cleanup_failure_stays_a_tombstone_and_the_active_pin_stays() {
+        use nostr::ext::{Install, InstallStep};
+
+        let installed = extension_transition(
+            Install::Absent,
+            InstallStep::Stage {
+                lock: "lock-a".into(),
+                verified: true,
+            },
+        )
+        .unwrap();
+        let installed = extension_transition(installed, InstallStep::Commit).unwrap();
+        assert_eq!(
+            installed,
+            Install::Installed {
+                lock: "lock-a".into()
+            }
+        );
+        let disabled = extension_transition(installed, InstallStep::BeginUninstall).unwrap();
+        let tombstone =
+            extension_transition(disabled, InstallStep::Cleanup { succeeded: false }).unwrap();
+        assert_eq!(
+            tombstone,
+            Install::Tombstone {
+                lock: "lock-a".into()
+            }
+        );
+        assert!(extension_transition(tombstone, InstallStep::Reactivate).is_err());
+        assert_eq!(extension_active_pin("lock-a", "lock-b"), "lock-a");
     }
 }

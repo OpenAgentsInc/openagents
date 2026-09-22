@@ -14,6 +14,7 @@ pub mod cap;
 pub mod contracts;
 pub mod decision;
 pub mod domain;
+pub mod ext;
 pub mod nip19;
 pub mod nip44;
 pub mod prg;
