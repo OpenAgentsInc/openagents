@@ -40,6 +40,7 @@ mod highlight;
 mod imeta;
 mod label;
 mod listing;
+mod lists;
 mod live;
 mod market;
 mod mentions;
@@ -175,6 +176,10 @@ pub use highlight::{
 pub use imeta::{Imeta, has_duplicate_urls, imeta_for, open_imetas, parse_imeta};
 pub use label::{Label, LabelTarget, Labeling, open_labeling};
 pub use listing::{Listing, ListingImage, ListingStatus, Price, open_listing};
+pub use lists::{
+    List, ListItem, PrivateItemsEncoding, deprecated_standard_list, is_set_kind, is_standard_list,
+    open_list, private_items, private_items_encoding,
+};
 pub use live::{
     LiveChat, LiveParticipant, LiveStatus, LiveStream, Meeting, MeetingRoom, Presence, RoomStatus,
     live_status_is_stale, open_live_chat, open_live_stream, open_meeting, open_meeting_room,

@@ -1141,6 +1141,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "51.md",
+        domain: "standard replaceable lists and addressable sets; public items are typed ListItem tags, private items are a NIP-44-encrypted JSON tag array under the author's own conversation key",
+        client: "open_list, private_items, private_items_encoding, deprecated_standard_list, is_standard_list, is_set_kind",
+        server: "admission requires a non-empty d on every set kind and a numeric d on kind 30007; content ciphertext shape is checked as NIP-44 v2 when private items decrypt",
+        paths: "crates/nostr/src/domain/lists.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; NIP-51 is a draft and the kinds are not added to the NIP-11 list",
+        fixture: "a kind 10000 mute list, a titled 30004 curation set, a 30007 kind-mute set, a NIP-44 private-items round trip, and the deprecated d mappings",
+        acceptance: "domain::lists::tests::private_items_round_trip_through_nip44",
+        limitations: "legacy NIP-04 private items are detected by the ?iv= marker and refused rather than decrypted; kind 31924 calendar sets open under domain::calendar",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

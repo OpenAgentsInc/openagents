@@ -941,6 +941,26 @@ NIP-34 is a draft, so the kinds stay off the NIP-11 list. Acceptance
 is `domain::git::tests::a_repository_announces_itself_and_its_state`
 and `domain::git::tests::malformed_git_events_are_refused`.
 
+NIP-51 is `configured-and-proven`. `open_list` reads both surfaces of
+the pinned tables: standard replaceable lists (kind `3` and the
+`10000`–`10102` family) and addressable sets (`30000` follow sets and
+the `30002`–`39092` family), each set carrying its required `d` plus
+optional `title`, `image`, and `description`. Public members parse as
+typed `ListItem`s — `p` with relay hint and petname, `e`, `a`, `t`,
+`word`, `relay`, `emoji`, `group`, `server`, `url`, `r`, and a carried
+`Other` — and `private_items` decrypts the content's NIP-44 tag array
+under the author's own conversation key, while
+`private_items_encoding` detects and refuses the deprecated NIP-04
+`?iv=` form. `deprecated_standard_list` maps the legacy `"mute"`,
+`"pin"`, `"bookmark"`, and `"communities"` set shapes to their
+standard kinds. Admission requires a non-empty `d` on every set kind
+and a numeric `d` on the kind-`30007` mute set. NIP-51 is a draft, so
+the kinds stay off the NIP-11 list. Acceptance is
+`domain::lists::tests::private_items_round_trip_through_nip44`,
+`lists_and_sets_open_with_typed_items`,
+`deprecated_set_shapes_map_to_standard_lists`, and
+`malformed_lists_are_refused`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

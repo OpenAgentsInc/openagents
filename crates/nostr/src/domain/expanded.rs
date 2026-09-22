@@ -607,6 +607,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if matches!(event.kind, 1_630..=1_633) {
         super::git::open_patch_status(event)?;
     }
+    if super::lists::is_set_kind(event.kind) {
+        super::lists::open_list(event)?;
+    }
     if event.kind == 40 {
         super::channel::open_channel(event)?;
     }
