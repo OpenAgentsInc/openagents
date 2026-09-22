@@ -403,6 +403,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 4 {
         crate::nip04::direct_message(event)?;
     }
+    if matches!(
+        event.kind,
+        1_021 | 1_022 | 30_017 | 30_018 | 30_019 | 30_020
+    ) {
+        super::market::validate_marketplace(event)?;
+    }
     let group_tags = event
         .tags
         .iter()

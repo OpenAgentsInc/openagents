@@ -13,6 +13,7 @@ mod expanded;
 mod filter;
 mod follow;
 mod hex;
+mod market;
 mod ots;
 mod replacement;
 mod timestamp;
@@ -43,6 +44,12 @@ pub use filter::{
     Filter, SEARCH_EXCLUDED_KINDS, matches_any, search_excludes_kind, search_matches, search_terms,
 };
 pub use follow::{Follow, append_follow, displayed_petname, parse_follow_list};
+pub use market::{
+    Auction, Bid, BidConfirmation, BidStatus, Checkout, MarketplacePage, Order, OrderStatus,
+    PaymentRequest, Product, ShippingZone, Stall, auction_end, bid_confirmation_matches,
+    open_auction, open_bid, open_bid_confirmation, open_checkout, open_marketplace, open_product,
+    open_stall, product_shipping_extra, shipping_cost, shipping_zone, validate_marketplace,
+};
 pub use ots::{BitcoinAttestation, open_attestation};
 pub use replacement::{
     EventClass, ReplacementAddress, ReplacementDecision, compare_replacement,

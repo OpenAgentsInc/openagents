@@ -35,6 +35,19 @@ off the NIP-11 list because the pinned text marks it unrecommended. There is
 no MAC. Acceptance is
 `nip04::tests::a_direct_message_round_trips_and_keeps_a_mention_as_text`.
 
+NIP-15 is `configured-and-proven`. Stalls (`30017`), products (`30018`),
+marketplace pages (`30019`), and auctions (`30020`) are addressable. A
+stall, product, or auction `d` tag must equal its content `id`. A kind
+`1021` bid is a non-negative integer and names one auction event id. A
+kind `1022` confirmation is valid for that version only when the auction
+author signs it. `shipping_cost` adds the stall zone cost to the product
+extra times the number of units. Checkout types 0, 1, and 2 are plaintext
+JSON. NIP-15 stays off the NIP-11 list because the pinned text marks it
+unrecommended. The relay does not read checkout JSON inside kind `4`.
+It does not settle a payment. A later auction edit is still stored.
+Acceptance is
+`domain::market::tests::a_stall_product_and_bid_follow_the_pinned_marketplace_events`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
