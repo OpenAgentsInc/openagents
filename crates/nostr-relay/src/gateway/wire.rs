@@ -23,6 +23,21 @@ pub enum ClientMessage {
         filters: Vec<Filter>,
     },
     Auth(Event),
+    /// NIP-77 open. `message` is the decoded initial frame, not the hex text.
+    NegOpen {
+        subscription_id: String,
+        filter: Filter,
+        message: Vec<u8>,
+    },
+    /// NIP-77 continuation.
+    NegMsg {
+        subscription_id: String,
+        message: Vec<u8>,
+    },
+    /// NIP-77 close. The id namespace is separate from `REQ`.
+    NegClose {
+        subscription_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,6 +158,9 @@ pub fn parse_client_message(input: &str) -> Result<ClientMessage, WireError> {
                 })?;
             Ok(ClientMessage::Count { query_id, filters })
         }
+        "NEG-OPEN" => parse_neg_open(array),
+        "NEG-MSG" => parse_neg_msg(array),
+        "NEG-CLOSE" => parse_neg_close(array),
         "AUTH" => {
             let event_value = array.get(1);
             let event_id = event_value.and_then(event_id_hint);
@@ -163,6 +181,118 @@ pub fn parse_client_message(input: &str) -> Result<ClientMessage, WireError> {
         }
         _ => Err(wire(format!("unsupported message verb {verb:?}"))),
     }
+}
+
+fn parse_neg_open(array: &[Value]) -> Result<ClientMessage, WireError> {
+    let subscription_id = array.get(1).and_then(subscription_id_hint);
+    if array.len() != 4 {
+        return Err(WireError {
+            event_id: None,
+            subscription_id,
+            reason: "NEG-OPEN must contain an id, one filter, and a hex message".to_owned(),
+        });
+    }
+    let Some(subscription_id) = subscription_id else {
+        return Err(wire(
+            "NEG-OPEN subscription id must contain 1 to 64 characters",
+        ));
+    };
+    let filter = serde_json::from_value::<Filter>(array[2].clone()).map_err(|_| WireError {
+        event_id: None,
+        subscription_id: Some(subscription_id.clone()),
+        reason: "NEG-OPEN contains an invalid or unsupported filter".to_owned(),
+    })?;
+    let message = decode_hex(array[3].as_str().unwrap_or("")).map_err(|_| WireError {
+        event_id: None,
+        subscription_id: Some(subscription_id.clone()),
+        reason: "NEG-OPEN message must be hex".to_owned(),
+    })?;
+    Ok(ClientMessage::NegOpen {
+        subscription_id,
+        filter,
+        message,
+    })
+}
+
+fn parse_neg_msg(array: &[Value]) -> Result<ClientMessage, WireError> {
+    let subscription_id = array.get(1).and_then(subscription_id_hint);
+    if array.len() != 3 {
+        return Err(WireError {
+            event_id: None,
+            subscription_id,
+            reason: "NEG-MSG must contain an id and a hex message".to_owned(),
+        });
+    }
+    let Some(subscription_id) = subscription_id else {
+        return Err(wire(
+            "NEG-MSG subscription id must contain 1 to 64 characters",
+        ));
+    };
+    let message = decode_hex(array[2].as_str().unwrap_or("")).map_err(|_| WireError {
+        event_id: None,
+        subscription_id: Some(subscription_id.clone()),
+        reason: "NEG-MSG message must be hex".to_owned(),
+    })?;
+    Ok(ClientMessage::NegMsg {
+        subscription_id,
+        message,
+    })
+}
+
+fn parse_neg_close(array: &[Value]) -> Result<ClientMessage, WireError> {
+    let subscription_id = array.get(1).and_then(subscription_id_hint);
+    if array.len() != 2 {
+        return Err(WireError {
+            event_id: None,
+            subscription_id,
+            reason: "NEG-CLOSE must contain exactly one subscription id".to_owned(),
+        });
+    }
+    subscription_id
+        .map(|subscription_id| ClientMessage::NegClose { subscription_id })
+        .ok_or_else(|| wire("NEG-CLOSE subscription id must contain 1 to 64 characters"))
+}
+
+fn decode_hex(text: &str) -> Result<Vec<u8>, ()> {
+    if text.len() > 256 * 1024 || !text.len().is_multiple_of(2) {
+        return Err(());
+    }
+    let mut out = Vec::with_capacity(text.len() / 2);
+    let bytes = text.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        let high = hex_value(bytes[index])?;
+        let low = hex_value(bytes[index + 1])?;
+        out.push((high << 4) | low);
+        index += 2;
+    }
+    Ok(out)
+}
+
+fn hex_value(byte: u8) -> Result<u8, ()> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        _ => Err(()),
+    }
+}
+
+pub fn neg_msg(subscription_id: &str, message: &[u8]) -> String {
+    json!(["NEG-MSG", subscription_id, hex_encode(message)]).to_string()
+}
+
+pub fn neg_err(subscription_id: &str, reason: &str) -> String {
+    json!(["NEG-ERR", subscription_id, reason]).to_string()
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
 }
 
 fn event_object_raw(input: &str) -> Option<&str> {
@@ -460,6 +590,17 @@ mod tests {
         for message in fixture["invalid"].as_array().unwrap() {
             assert!(parse_client_message(&message.to_string()).is_err());
         }
+    }
+
+    #[test]
+    fn nip77_frames_parse_and_reject_odd_hex() {
+        let open = parse_client_message(r#"["NEG-OPEN","1",{"kinds":[1]},"61"]"#).unwrap();
+        assert!(matches!(open, ClientMessage::NegOpen { message, .. } if message == vec![0x61]));
+        let next = parse_client_message(r#"["NEG-MSG","1","61"]"#).unwrap();
+        assert!(matches!(next, ClientMessage::NegMsg { .. }));
+        let close = parse_client_message(r#"["NEG-CLOSE","1"]"#).unwrap();
+        assert!(matches!(close, ClientMessage::NegClose { .. }));
+        assert!(parse_client_message(r#"["NEG-MSG","1","6"]"#).is_err());
     }
 
     #[test]

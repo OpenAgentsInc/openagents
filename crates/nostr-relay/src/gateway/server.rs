@@ -99,6 +99,8 @@ struct ConnectionContext {
     cancellations: HashMap<String, watch::Sender<bool>>,
     generation: u64,
     query_tasks: JoinSet<()>,
+    /// NIP-77 sessions. The id namespace is not the `REQ` namespace.
+    negentropy: HashMap<String, Vec<nostr::negentropy::Item>>,
 }
 
 impl Gateway {
@@ -561,6 +563,7 @@ async fn handle_websocket(
         cancellations: HashMap::new(),
         generation: 0,
         query_tasks: JoinSet::new(),
+        negentropy: HashMap::new(),
     };
     let mut pending = VecDeque::new();
     if let Some(auth) = &context.auth {
@@ -718,6 +721,148 @@ async fn handle_client_text(
                 .await;
             Ok(())
         }
+        ClientMessage::NegOpen {
+            subscription_id,
+            filter,
+            message,
+        } => handle_neg_open(context, subscription_id, filter, message, pending).await,
+        ClientMessage::NegMsg {
+            subscription_id,
+            message,
+        } => {
+            handle_neg_msg(context, subscription_id, message, pending);
+            Ok(())
+        }
+        ClientMessage::NegClose { subscription_id } => {
+            context.negentropy.remove(&subscription_id);
+            Ok(())
+        }
+    }
+}
+
+const SYNC_LIMIT: usize = 4_096;
+
+async fn handle_neg_open(
+    context: &mut ConnectionContext,
+    subscription_id: String,
+    filter: Filter,
+    message: Vec<u8>,
+    pending: &mut VecDeque<String>,
+) -> Result<(), GatewayError> {
+    if !context.negentropy.contains_key(&subscription_id)
+        && context.negentropy.len() >= context.state.config.limits.max_subscriptions
+    {
+        pending.push_back(wire::neg_err(
+            &subscription_id,
+            "closed: too many sync subscriptions",
+        ));
+        return Ok(());
+    }
+    let filters = match validate_and_clamp_filters(vec![filter], &context.state.config) {
+        Ok(filters) => filters,
+        Err(reason) => {
+            pending.push_back(wire::neg_err(&subscription_id, &reason));
+            return Ok(());
+        }
+    };
+    let read_pubkeys = context
+        .auth
+        .as_ref()
+        .map(AuthState::authenticated_pubkeys)
+        .unwrap_or_default();
+    let (_cancel, cancel) = watch::channel(false);
+    let stored = match context
+        .state
+        .db
+        .history(filters, unix_now(), SYNC_LIMIT + 1, cancel, read_pubkeys)
+        .await
+    {
+        Ok(stored) => stored,
+        Err(error) => {
+            pending.push_back(wire::neg_err(&subscription_id, &format!("error: {error}")));
+            return Ok(());
+        }
+    };
+    if stored.events.len() > SYNC_LIMIT {
+        pending.push_back(wire::neg_err(
+            &subscription_id,
+            &format!("blocked: this query is too big: {SYNC_LIMIT}"),
+        ));
+        return Ok(());
+    }
+    let mut items = Vec::with_capacity(stored.events.len());
+    for stored in stored.events {
+        let Some(id) = decode_id(&stored.event.id) else {
+            continue;
+        };
+        items.push(nostr::negentropy::Item {
+            timestamp: stored.event.created_at,
+            id,
+        });
+    }
+    nostr::negentropy::prepare(&mut items);
+    context
+        .negentropy
+        .insert(subscription_id.clone(), items.clone());
+    reply_sync(&subscription_id, &items, &message, pending);
+    Ok(())
+}
+
+fn handle_neg_msg(
+    context: &mut ConnectionContext,
+    subscription_id: String,
+    message: Vec<u8>,
+    pending: &mut VecDeque<String>,
+) {
+    let Some(items) = context.negentropy.get(&subscription_id).cloned() else {
+        pending.push_back(wire::neg_err(
+            &subscription_id,
+            "closed: sync subscription is not open",
+        ));
+        return;
+    };
+    reply_sync(&subscription_id, &items, &message, pending);
+}
+
+fn reply_sync(
+    subscription_id: &str,
+    items: &[nostr::negentropy::Item],
+    message: &[u8],
+    pending: &mut VecDeque<String>,
+) {
+    match nostr::negentropy::respond(items, message) {
+        Ok(frame) => pending.push_back(wire::neg_msg(subscription_id, &frame)),
+        Err(nostr::negentropy::SyncError::UnsupportedVersion { supported }) => {
+            pending.push_back(wire::neg_msg(subscription_id, &[supported]));
+        }
+        Err(nostr::negentropy::SyncError::Malformed) => {
+            pending.push_back(wire::neg_err(
+                subscription_id,
+                "invalid: the sync frame is malformed",
+            ));
+        }
+    }
+}
+
+fn decode_id(text: &str) -> Option<[u8; 32]> {
+    if text.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    let bytes = text.as_bytes();
+    for index in 0..32 {
+        let high = hex_nibble(bytes[index * 2])?;
+        let low = hex_nibble(bytes[index * 2 + 1])?;
+        out[index] = (high << 4) | low;
+    }
+    Some(out)
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        _ => None,
     }
 }
 
