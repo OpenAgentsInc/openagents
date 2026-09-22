@@ -275,6 +275,9 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
         // WebAssembly is specified and not built. A host that met one and
         // ran the rest would be running a different program.
         Kind::Module => &[],
+        // An invoke names a host operation. It carries no command, and
+        // this host admits none until one is configured.
+        Kind::Invoke => &[],
     }
 }
 
@@ -1656,6 +1659,7 @@ impl Runtime {
                 .unwrap_or_else(Effects::none),
             // Refused at admission and never reaches a grant.
             Kind::Module => Effects::none(),
+            Kind::Invoke => Effects::none(),
         };
         if step.kind == Kind::Delegate {
             match self.survey.capability(&inputs.executor) {
@@ -2109,6 +2113,11 @@ impl Runtime {
                     .await
                 }
                 Kind::Program => self.nested(ctx, step, prefix, depth).await,
+                Kind::Invoke => Err(Refused::at(
+                    &name,
+                    "not_admitted",
+                    "invoke names a host operation and this host has not admitted one",
+                )),
                 // Admission refused these before the first step ran.
                 Kind::Module => Err(Refused::at(
                     &name,

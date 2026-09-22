@@ -661,9 +661,7 @@ async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
     let exotic = root.join("exotic.json");
     std::fs::write(
         &exotic,
-        r#"{"v":1,"slug":"exotic","steps":[
-            {"name":"one","kind":"query","bounds":{}},
-            {"name":"two","kind":"teleport","bounds":{}}]}"#,
+        r#"{"definition":{"v":1,"requires":[],"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/exotic","summary":"no","input":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"result":{"from":"input","pointer":""},"steps":[{"name":"two","kind":"teleport","after":[],"input":{"from":"input","pointer":""},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"on_error":"stop"}]},"binding":{"steps":{}}}"#,
     )
     .unwrap();
     let reason = Program::load(&exotic).expect_err("an unknown kind is refused");
@@ -674,9 +672,7 @@ async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
     let composed = root.join("composed.json");
     std::fs::write(
         &composed,
-        r#"{"v":1,"slug":"composed","steps":[
-            {"name":"one","kind":"query","bounds":{"max_results":4}},
-            {"name":"two","kind":"module","module":{"sha256":"00"},"bounds":{}}]}"#,
+        r#"{"definition":{"v":1,"requires":[],"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/composed","summary":"no","input":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"result":{"from":"step:one","pointer":"/value"},"steps":[{"name":"one","kind":"query","after":[],"input":{"from":"input","pointer":""},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"on_error":"stop"},{"name":"two","kind":"module","after":["one"],"input":{"from":"step:one","pointer":"/value"},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"on_error":"stop"}]},"binding":{"steps":{"one":{"bounds":{"max_results":4}},"two":{"module":{"sha256":"00"}}}}}"#,
     )
     .unwrap();
     let program = Program::load(&composed).expect("composition parses");
