@@ -661,6 +661,22 @@ code is not looked up in ISO 4217. An amount of `0` stays `0`.
 Acceptance is
 `domain::peer_order::tests::a_pending_sell_replaces_when_it_succeeds`.
 
+NIP-F4 is `configured-and-proven`. Kind `10154` is one replaceable
+show per podcast key. It has one `title`, and it may have an image, a
+description, websites, and `p` tags. A `p` tag may name the role
+`host`, `cohost`, or `editor`. Kind `54` is a regular episode with a
+title, one or more `audio` URLs, and markdown content. Kind `10064`
+lists the podcast keys a person authors. `confirmed_hosts` keeps a
+person only when that person's list names the show. A newer show
+replaces the older one. A newer author list replaces the older one.
+An episode does not replace. The pinned prose says kind `10164` once.
+The example and NIP-51 both say kind `10064`, so admission follows
+`10064`. Kind `10054` stays with NIP-51. NIP-F4 is a draft, so these
+kinds are not added to the NIP-11 list. The relay does not download
+audio or images, and it does not read a kind `0` profile. Acceptance
+is
+`domain::podcast::tests::a_show_replaces_and_a_host_is_confirmed_by_their_list`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
