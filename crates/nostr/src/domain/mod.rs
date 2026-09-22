@@ -42,6 +42,7 @@ mod storage;
 mod timestamp;
 mod torrent;
 mod vending;
+mod voice;
 mod zap;
 
 pub use agent::{
@@ -145,6 +146,7 @@ pub use vending::{
     JobFeedback, JobInput, JobInputKind, JobParam, JobRequest, JobResult, JobStatus,
     job_result_kind, open_job_feedback, open_job_request, open_job_result,
 };
+pub use voice::{VoiceMessage, open_voice_message, open_voice_reply};
 pub use zap::{
     ZapReceipt, ZapRequest, ZapShare, bolt11_amount_msat, decode_lnurl, open_zap_receipt,
     open_zap_request, zap_callback_query, zap_split,

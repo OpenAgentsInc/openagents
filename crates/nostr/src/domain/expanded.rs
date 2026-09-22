@@ -644,6 +644,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 1_063 {
         super::file::open_file_metadata(event)?;
     }
+    if event.kind == 1_222 {
+        super::voice::open_voice_message(event)?;
+    }
+    if event.kind == 1_244 {
+        super::voice::open_voice_reply(event)?;
+    }
     if matches!(event.kind, 78 | 30_078) {
         super::app_data::open_app_data(event)?;
     }

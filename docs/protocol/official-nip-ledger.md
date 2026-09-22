@@ -460,6 +460,18 @@ payload hash are not checked. A blurred or resized file is not fetched.
 Acceptance is
 `domain::storage::tests::a_file_server_list_replaces_and_an_upload_keeps_the_original_hash`.
 
+NIP-A0 is `configured-and-proven`. Kind `1222` is a root voice message
+and kind `1244` is a reply. `content` is an `http://` or `https://` URL
+of the audio file. A reply uses the NIP-22 root and parent tags, read
+by `comment_scopes`. An optional `imeta` tag carries a `waveform` of
+whole-number amplitudes and a `duration` in seconds. A newer message
+does not replace an older one. NIP-A0 is a draft, so these kinds are
+not added to the NIP-11 list. The relay does not download the audio,
+so it does not check the codec or the 60-second guidance. A duration
+over 60 seconds is kept. The suggestion of fewer than 100 waveform
+amplitudes is not enforced. Acceptance is
+`domain::voice::tests::a_voice_message_keeps_its_audio_url_and_a_reply_threads_to_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
