@@ -1,0 +1,182 @@
+{
+  "schema": "openagents.gym.commitment.v1",
+  "created": "2026-09-22T14:43:51Z",
+  "suite": "caller-acme-returns-v1",
+  "suite_digest": "bcba0151f2a6dba5d0dd2b7e95e42790a048105ffacd2c67ed362732bd96f6dc",
+  "question_set": "caller-acme-returns-v1",
+  "question_digest": "b81980f77d70814a55d56a3579788d378563e2bd21f313a266f35bcbaebce2b7",
+  "gate_id": "probability-v2",
+  "gate_digest": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758",
+  "provenance_digest": "fc0dbb1fa5e82bcb983c63805eaca3f826b774f31712cc9766bacf60c558ed5f",
+  "selection": {
+    "partitions": [
+      "calibration",
+      "development"
+    ],
+    "doors": [
+      "kev-0.6b",
+      "constant"
+    ]
+  },
+  "expected": [
+    {
+      "partition": "calibration",
+      "item": "acme-001"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-002"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-003"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-006"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-008"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-013"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-017"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-018"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-021"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-022"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-023"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-026"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-028"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-033"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-037"
+    },
+    {
+      "partition": "calibration",
+      "item": "acme-038"
+    },
+    {
+      "partition": "development",
+      "item": "acme-004"
+    },
+    {
+      "partition": "development",
+      "item": "acme-005"
+    },
+    {
+      "partition": "development",
+      "item": "acme-009"
+    },
+    {
+      "partition": "development",
+      "item": "acme-012"
+    },
+    {
+      "partition": "development",
+      "item": "acme-014"
+    },
+    {
+      "partition": "development",
+      "item": "acme-016"
+    },
+    {
+      "partition": "development",
+      "item": "acme-019"
+    },
+    {
+      "partition": "development",
+      "item": "acme-020"
+    },
+    {
+      "partition": "development",
+      "item": "acme-024"
+    },
+    {
+      "partition": "development",
+      "item": "acme-025"
+    },
+    {
+      "partition": "development",
+      "item": "acme-029"
+    },
+    {
+      "partition": "development",
+      "item": "acme-032"
+    },
+    {
+      "partition": "development",
+      "item": "acme-034"
+    },
+    {
+      "partition": "development",
+      "item": "acme-036"
+    },
+    {
+      "partition": "development",
+      "item": "acme-039"
+    },
+    {
+      "partition": "development",
+      "item": "acme-040"
+    }
+  ],
+  "doors": [
+    {
+      "door": "kev-0.6b",
+      "runs": [
+        {
+          "identity": "{\"model\":\"kev-0.6b\",\"base_model_signature\":\"da87bfb608c14b7cf20ba1ce41287e8de496c0cd\",\"artifact_signature\":\"sha256:21bcea1838ad78ff54088b9e06eaf62b1f0702b61c5a38cfc1a84acc5e2cc679\",\"execution\":{\"attention\":\"eager-block-causal-v1\",\"backend\":\"cpu\",\"bucket_size\":\"0\",\"dtype\":\"f32\",\"head_dtype\":\"f32\",\"lora_merge\":\"fp32-before-cast-v1\",\"max_branch\":\"8192\",\"max_state\":\"8192\",\"option_isolation\":\"false\"},\"verified\":true}",
+          "question_digest": "b81980f77d70814a55d56a3579788d378563e2bd21f313a266f35bcbaebce2b7",
+          "gate_digest": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758",
+          "estimator": "unreported",
+          "recorded": 32,
+          "missing": 0
+        }
+      ]
+    },
+    {
+      "door": "constant",
+      "runs": [
+        {
+          "identity": "{\"model\":\"constant\",\"artifact_signature\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"execution\":{\"lane\":\"unmetered-local\"},\"verified\":true}",
+          "question_digest": "b81980f77d70814a55d56a3579788d378563e2bd21f313a266f35bcbaebce2b7",
+          "gate_digest": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758",
+          "estimator": "unreported",
+          "recorded": 32,
+          "missing": 0
+        }
+      ]
+    }
+  ],
+  "rows": 64,
+  "head": "receipt:cd98d470c3b8e1c281fc7cfde73b24a624d5742ae0aa58669d8fe91bc50d203e",
+  "digest": "2e00d7865a182a90904496f657392e146f0d451aac213b8b8aa4dde652b21909"
+}

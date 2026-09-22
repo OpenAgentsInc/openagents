@@ -1,0 +1,28 @@
+{
+  "$comment": "The question text of `caller-acme-returns-v1`, supplied by the caller with the items. Keys are family names where a family shares one question, item ids where items carry their own option sets; `QuestionSet::ask` reads an item id before it reads a family.",
+  "schema": "openagents.gym.question_set.v1",
+  "id": "caller-acme-returns-v1",
+  "suite": "caller-acme-returns-v1",
+  "questions": {
+    "consumer-returns": {
+      "type": "choice",
+      "instructions": "Which disposition should the returns desk apply to this record?",
+      "criteria": {
+        "refund": "Return the customer's money; a billing error or an open-and-return policy applies",
+        "replacement": "Ship a new unit; the item failed under warranty terms and the claim is routine",
+        "warranty_claim": "Route to the manufacturer's claim process; they owe the remedy",
+        "policy_only": "No action; the customer is asking what the policy is"
+      }
+    },
+    "pro-returns": {
+      "type": "choice",
+      "instructions": "Which disposition should the returns desk apply to this record?",
+      "criteria": {
+        "refund": "Return the customer's money; a billing error or an open-and-return policy applies",
+        "replacement": "Ship a new unit; the item failed under warranty terms and the claim is routine",
+        "warranty_claim": "Route to the manufacturer's claim process; they owe the remedy",
+        "policy_only": "No action; the customer is asking what the policy is"
+      }
+    }
+  }
+}

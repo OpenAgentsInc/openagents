@@ -147,3 +147,14 @@ rather than letting the numbers read as authored truth.
 status-and-benchmark page a stranger reads, with the manifest a reader
 recomputes and the preserved snapshot index.
 `docs/gym/published-snapshots.md` covers what its numbers may claim.
+
+## A walked example
+
+[`measurements/2026-09-24-caller-pilot/`](measurements/2026-09-24-caller-pilot/plan.md)
+retains one full pass: the frozen plan, the synthesized caller records and
+their generator, the constant baseline door, the built suite and question
+set, the receipt-chained store, the rendered record, and the commitment
+`gym verify` checks the store against. The caller is synthetic — labelled
+`acme`, a fictional returns desk — so the pass validates the offering's
+mechanics end to end and says plainly that it validates nothing about
+customer demand.

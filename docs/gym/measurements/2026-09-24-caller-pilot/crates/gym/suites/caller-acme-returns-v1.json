@@ -1,0 +1,546 @@
+{
+  "schema": "openagents.gym.suite.v1",
+  "name": "caller-acme-returns-v1",
+  "created": "2026-09-22",
+  "description": "A caller suite: 40 decisions across 2 families, labelled by acme under the rule each item's `label_rule` records, from acme's returns-desk exports, 2026-09 (synthesized for the pilot). Partitions are drawn per family at 40/40/20 under a fixed seed, and a paraphrase group stays in one partition because two spellings of a scenario are one item of evidence. The question text lives in the question set of the same name — keyed by family where a family shares one wording, by item id where items carry their own option sets. Built by `gym build`.",
+  "tier": "scored",
+  "gate": "probability-v2",
+  "questions": "caller-acme-returns-v1",
+  "provenance": {
+    "caller": "acme",
+    "source": "acme's returns-desk exports, 2026-09 (synthesized for the pilot)",
+    "licence": "measurement use only",
+    "input": {
+      "file": "records.jsonl",
+      "sha256": "6a837bb9e8c6ee49a1aab9e10c74b2651b4472aaacb548851588eeddc5cfcda3"
+    },
+    "partition_rule": "per family, paraphrase groups whole, seeded shuffle (seed 9464), 40% calibration / 40% development / 20% locked",
+    "agreement": {
+      "consumer-returns": "0.92",
+      "pro-returns": "0.88"
+    }
+  },
+  "digest": "bcba0151f2a6dba5d0dd2b7e95e42790a048105ffacd2c67ed362732bd96f6dc",
+  "items": [
+    {
+      "id": "acme-001",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Customer was billed twice for order 4471 and wants the second charge back",
+        "channel": "email"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-002",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Blender arrived with a cracked jar; customer wants a new one",
+        "channel": "chat"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-003",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Vacuum motor burned out at 14 months; manufacturer warranty is 2 years",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-004",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Does your store accept returns without a receipt?",
+        "channel": "chat"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-005",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Charged a restocking fee the listing said was waived; refund requested",
+        "channel": "email"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-006",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Headphones left channel is dead after a week; wants a swap",
+        "channel": "chat"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-007",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Washing machine bearing failed; covered under parts warranty, not ours",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "locked"
+    },
+    {
+      "id": "acme-008",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "How long is the return window for sale items?",
+        "channel": "email"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-009",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Subscription renewed after customer cancelled; wants the charge reversed",
+        "channel": "email"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-010",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Laptop battery holds 20 minutes; still inside the 1-year coverage",
+        "channel": "phone"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "locked"
+    },
+    {
+      "id": "acme-011",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Dishwasher control board failed at year three of the maker's five-year plan",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "locked"
+    },
+    {
+      "id": "acme-012",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Can I return an opened software package?",
+        "channel": "chat"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-013",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Duplicate invoice posted after the card was already charged",
+        "channel": "email"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-014",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Tablet screen has dead pixels out of the box",
+        "channel": "chat"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-015",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Compressor in the fridge died; the sealed system warranty applies",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "locked"
+    },
+    {
+      "id": "acme-016",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Is there a fee for returning large appliances?",
+        "channel": "chat"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-017",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "A discount code was applied then the full price was charged anyway",
+        "channel": "email"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-018",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Kettle stopped heating after two weeks of use",
+        "channel": "chat"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-019",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Power supply failed inside the OEM coverage period",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-020",
+      "family": "consumer-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "What is the policy on final-sale clearance items?",
+        "channel": "email"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-021",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Fleet account was billed for 12 units and received 10; refund for the two missing",
+        "channel": "portal"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-022",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Job-site drill failed under load in week one; contractor wants a swap",
+        "channel": "portal"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-023",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Generator stator failed; industrial line is covered by the maker directly",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-024",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Do bulk orders have a different return window?",
+        "channel": "portal"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-025",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Invoice 8804 charged freight the contract caps at zero",
+        "channel": "portal"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-026",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Thermal camera drifts out of spec after a month; lab needs a working unit",
+        "channel": "portal"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-027",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "CNC spindle bearing failed inside the OEM's coverage window",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "locked"
+    },
+    {
+      "id": "acme-028",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Is there a restocking fee on custom-configured gear?",
+        "channel": "portal"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-029",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Duplicate PO processed after the first was already invoiced",
+        "channel": "portal"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-030",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Pressure gauge reads 8% high fresh from the box",
+        "channel": "portal"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "locked"
+    },
+    {
+      "id": "acme-031",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Compressor failed at month ten of the maker's eighteen-month term",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "locked"
+    },
+    {
+      "id": "acme-032",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "What documentation do you need for a warranty return?",
+        "channel": "portal"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-033",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Service contract was renewed at last year's rate but billed at this year's",
+        "channel": "portal"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-034",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Welder overheats after twenty minutes on the bench",
+        "channel": "portal"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-035",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Hydraulic pump failed inside the supplier's parts coverage",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "locked"
+    },
+    {
+      "id": "acme-036",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Can we return consumables bought in bulk?",
+        "channel": "portal"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-037",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Account was charged for a support tier it never had",
+        "channel": "portal"
+      },
+      "truth": "refund",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-038",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Label printer skips every third label out of the box",
+        "channel": "portal"
+      },
+      "truth": "replacement",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "calibration"
+    },
+    {
+      "id": "acme-039",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "Motor controller failed; the drive maker covers years two and three",
+        "channel": "phone"
+      },
+      "truth": "warranty_claim",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    },
+    {
+      "id": "acme-040",
+      "family": "pro-returns",
+      "kind": "choice",
+      "state": {
+        "ticket": "What is the cutoff for next-day replacement shipping?",
+        "channel": "portal"
+      },
+      "truth": "policy_only",
+      "label_source": "acme",
+      "label_rule": "the returns desk's disposition at close",
+      "partition": "development"
+    }
+  ]
+}
