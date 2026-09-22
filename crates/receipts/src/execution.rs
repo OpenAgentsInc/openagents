@@ -4,6 +4,14 @@
 //! under the same `request` id with a later `attempt` — the attempt chain
 //! is how a caller reconstructs what a timeout or a retry actually did,
 //! and settlement counts receipts, not calls imagined.
+//!
+//! A review or a fallback is another attempt on the same chain: its own
+//! receipt, its own `served` identity, its own `result_digest`, and a
+//! `revises` field naming the attempt it replaces. Scores never travel
+//! between receipts — a changed answer binds its reviewer's output, and
+//! the original attempt's receipt keeps the original output. A review
+//! that produced no score is still an attempt: it seals with `revises`
+//! set and whatever outcome it honestly reached.
 
 use std::collections::BTreeMap;
 
@@ -189,6 +197,21 @@ pub struct ExecutionReceipt {
     /// not a reader's guess; an original carries nothing here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revises: Option<String>,
+    /// The job this attempt ran under — a batch job, a program, a
+    /// review chain — when the caller ran it inside one. The job owns
+    /// the items; the receipt names which one it answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job: Option<String>,
+    /// The item or dimension of the job this attempt answered, when
+    /// the job names them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_item: Option<String>,
+    /// The versioned policy digest the call was admitted under — a
+    /// review policy, a fallback policy, a model-admission set — when
+    /// one applied. A policy revision makes the earlier call a
+    /// different function's answer, so the digest rides the receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<String>,
     /// The evaluation context, when the call carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evaluation: Option<Evaluation>,
@@ -276,6 +299,9 @@ impl ExecutionReceipt {
             usage: None,
             lane: None,
             revises: None,
+            job: None,
+            job_item: None,
+            policy: None,
             evaluation: None,
             digest: String::new(),
         }
@@ -441,6 +467,32 @@ mod tests {
         assert_eq!(parsed.digest, receipt.digest);
         assert_eq!(parsed.outcome, Outcome::Answered);
         assert_eq!(parsed.served.artifact_signature, digest_of('a'));
+    }
+
+    /// A review attempt's receipt names the job, the item it answered,
+    /// the policy it ran under, and the attempt it revises — all inside
+    /// the digest.
+    #[test]
+    fn a_review_attempts_receipt_carries_its_chain_and_policy() {
+        let mut receipt = answered();
+        receipt.request = "req-2".to_string();
+        receipt.attempt = 2;
+        receipt.attempt_id = "att-2".to_string();
+        receipt.revises = Some("att-1".to_string());
+        receipt.job = Some("job-review-7".to_string());
+        receipt.job_item = Some("finding-3".to_string());
+        receipt.policy = Some(digest_of('p'));
+        receipt.seal();
+        let parsed = ExecutionReceipt::parse(&receipt.to_json()).unwrap();
+        assert_eq!(parsed.digest, receipt.digest);
+        assert_eq!(parsed.revises.as_deref(), Some("att-1"));
+        assert_eq!(parsed.job.as_deref(), Some("job-review-7"));
+        assert_eq!(parsed.job_item.as_deref(), Some("finding-3"));
+        assert_eq!(parsed.policy.as_deref(), Some(digest_of('p').as_str()));
+        // Mutating any of them breaks the seal.
+        let mut tampered = parsed;
+        tampered.policy = Some(digest_of('x'));
+        assert!(tampered.verify().is_err());
     }
 
     #[test]
