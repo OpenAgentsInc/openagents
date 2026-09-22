@@ -441,6 +441,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 1 {
         super::note::open_note(event)?;
     }
+    if matches!(event.kind, 6 | 16) {
+        super::repost::open_repost(event)?;
+    }
     if event.kind == 1_040 {
         super::ots::open_attestation(event)?;
     }

@@ -337,6 +337,21 @@ kept. `e` tags are not required to appear in root-to-parent order. A
 reply's `p` tags are not checked against the parent note. Acceptance
 is `domain::note::tests::a_note_threads_from_the_root_to_its_parent`.
 
+NIP-18 is `configured-and-proven`. Kind `6` reposts a kind `1`
+note. Kind `16` reposts any other kind. The `e` tag is the event id
+and its third value is a `ws://` or `wss://` relay. The content is
+the JSON of that event, or empty. A non-empty content must be a
+signed event whose id matches the `e` tag. A protected event, one
+with a `["-"]` tag, is not embedded. Kind `16` refuses a kind `1`
+body. When a `k` or `a` tag is present it must match the embedded
+event. A `q` tag cites another event. A newer repost does not replace
+an older one. Kinds `6` and `16` are not added to the NIP-11 list.
+An empty repost does not prove the target kind, because the relay
+does not fetch it. `nostr:` mentions are not rewritten into `q` tags.
+A `p` tag and a `k` tag are not required when the content is empty.
+Acceptance is
+`domain::repost::tests::a_repost_embeds_the_note_and_a_generic_repost_names_its_kind`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
