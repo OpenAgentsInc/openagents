@@ -88,6 +88,18 @@ to the NIP-11 list. Markup inside a code fence is not treated as HTML.
 Acceptance is
 `domain::article::tests::an_article_replaces_on_its_identifier_and_keeps_markdown_paragraphs`.
 
+NIP-32 is `configured-and-proven`. Kind `1985` attaches one or more
+`l` labels to `e`, `p`, `a`, `r`, or `t` targets. When an `L` namespace
+is present, each `l` mark must name one of those namespaces. With no `L`
+tag and no mark, the namespace is `ugc`. A namespace that starts with `#`
+records the tag that value should be associated with. On any other kind,
+`l` and `L` describe that event. Admission rejects a kind `1985` event
+with no target or a mark that does not match. Kind `1985` is a regular
+event, so a newer label does not replace an older one. It is not added to
+the NIP-11 list. The relay does not rewrite the labeled target. A
+correction is a new event plus a NIP-09 deletion. Acceptance is
+`domain::label::tests::a_label_attaches_a_namespace_to_its_targets`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

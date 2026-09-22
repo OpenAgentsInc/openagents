@@ -15,6 +15,7 @@ mod expanded;
 mod filter;
 mod follow;
 mod hex;
+mod label;
 mod market;
 mod ots;
 mod replacement;
@@ -48,6 +49,7 @@ pub use filter::{
     Filter, SEARCH_EXCLUDED_KINDS, matches_any, search_excludes_kind, search_matches, search_terms,
 };
 pub use follow::{Follow, append_follow, displayed_petname, parse_follow_list};
+pub use label::{Label, LabelTarget, Labeling, open_labeling};
 pub use market::{
     Auction, Bid, BidConfirmation, BidStatus, Checkout, MarketplacePage, Order, OrderStatus,
     PaymentRequest, Product, ShippingZone, Stall, auction_end, bid_confirmation_matches,
