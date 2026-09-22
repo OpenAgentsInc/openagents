@@ -144,11 +144,14 @@ implement this shared context system.
 | Guild | Implemented | A named team in a multi-agent world. Every enrolled agent belongs to one; deposits may be owned by a guild and the ledger keeps balances per guild. |
 | Ensemble episode | Implemented | A world whose manifest lists `agents` runs one `mc-bridge` child per member in a single server, rather than the solo curriculum. |
 | Deposit | Implemented | A manifest-registered set of block positions worth credits when dug: an id, an optional owning guild (absent means contested), a required block kind, and a per-block award. |
-| Compute ledger | Implemented | `ledger.jsonl` in a run directory: append-only `award`/`reserve`/`settle`/`release` events replayed into per-guild balances. Awards dedupe on `(deposit, pos)`; an unsettled hold stays reserved across a crash. |
+| Compute ledger | Implemented | `ledger.jsonl` in a run directory: append-only `award`/`reserve`/`settle`/`release`/`xp` events replayed into per-guild balances and a separate per-agent XP fold. Awards dedupe on `(deposit, pos)`; an unsettled hold stays reserved across a crash. |
+| Coding quest | Implemented | The arena's payoff chain: a ledger hold reserves compute, a solver patches a bounded fixture in an isolated tree, the referee verifies the patch artifact against protected cases, and an accepted patch runs a named world effect that a second agent reconciles with `block_at`. Execution, verification, and integration keep separate records under `quest/`. |
+| Quest XP | Implemented | Points a reconciled quest records in the ledger's `xp` fold — evidence of achievement, never spendable credits. |
 | Agent key | Implemented | A member's Nostr identity, derived as `sha256("voyager-agent-key:" + username)` — only pubkeys live in manifests; secrets are re-derived at run time. |
 | World effect | Implemented | A named console command in the manifest's `effects` map that a verified quest may run. A quest names an effect; it never supplies commands. |
 | Guild channel | Implemented | A closed NIP-29 group on the episode's supervised `nostr-relay`, one per guild: members write C7 `kind:9` chat as their enrolled keys, a nonmember write is refused `restricted:`, and reads are public. |
 | Decision door | Implemented | A `POST /v1/systemone` endpoint a world's `relay.decision_url` names — a local `kev-serve` or a live TypeSafe door. A `choice` answer orders admitted work; every call is recorded under `decisions/` with state, questions, model, raw response, and transport. |
+| Achievement label | Implemented | A NIP-32 `kind:1985` event the host's relay-management key signs after a reconciled quest — `openagents.voyager` / `quest-complete` targeting the member's pubkey — published to the episode relay and kept as `quest/label.json`. |
 
 ## Capabilities and programs
 

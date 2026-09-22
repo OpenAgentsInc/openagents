@@ -140,10 +140,11 @@ are proposed to the ledger, and the ledger dedupes `(deposit, pos)` — a
 contested block pays once. Gifts and replays never enter the path.
 
 The ledger is `ledger.jsonl` in the run directory: append-only events
-(`award`, `reserve`, `settle`, `release`), replayed into per-guild
-balances of available, reserved, and spent credits. A reservation that
-was never settled stays reserved across a crash — unknown work keeps
-its hold rather than freeing capacity it may still consume.
+(`award`, `reserve`, `settle`, `release`, `xp`), replayed into
+per-guild balances of available, reserved, and spent credits plus a
+separate per-agent XP fold. A reservation that was never settled stays
+reserved across a crash — unknown work keeps its hold rather than
+freeing capacity it may still consume.
 
 Ore dug without a pickaxe drops nothing, so arena agents earn credits
 rather than items — the ledger, not the inventory, is the award.
@@ -194,6 +195,41 @@ the door call carries a 120-second timeout and a patient retry policy:
 a `busy` answer means a forward is computing, not that the door is
 down.
 
+## The coding quest
+
+A world with a `quest` section runs the arena's payoff: bounded compute
+buys a verified patch, and the patch buys a world change. The chain
+keeps execution, verification, and integration in separate records
+under `quest/` in the run directory:
+
+1. **Reserve.** The guild's ledger holds `quest.cost` before anything
+   runs. If the guild cannot hold it, the quest reports that instead of
+   running.
+2. **Execute.** The fixture — a bounded Rust crate under
+   `quests/<id>/fixture/` with public tests — is copied into the run
+   directory and committed as the base. The solver writes inside the
+   copy, bounded `cargo test` answers each attempt, and `git diff`
+   seals the result as `patch.diff`. The shipped solver is
+   `voyager-quest-builtin/1`, a deterministic planner honestly
+   attributed in `execution.json`; the stage is a seam a model-driven
+   solver plugs into unchanged. Attempts share the budget: the hold
+   settles `cost / attempts` per attempt consumed and returns the rest.
+3. **Verify.** The referee applies `patch.diff` to a fresh copy of the
+   same base plus the `protected/` cases the solver never saw — a patch
+   that only guesses the public case does not pass. The artifact, not
+   the working tree, is what gets verified.
+4. **Integrate.** Only an accepted artifact runs the manifest-named
+   effect from `effects` — the quest names it; it never supplies a
+   command. Another guild's member then reads the `verify_blocks` back
+   through `block_at` until the world update reaches it. A reconciled
+   effect records `quest.xp` in the ledger's separate XP fold and the
+   host's relay-management key publishes a NIP-32 `kind:1985` label —
+   `openagents.voyager` / `quest-complete` targeting the member's
+   pubkey — whose event and verdict land in `quest/label.json`.
+
+`mc-bridge` gained `block_at` for the reconciliation: `{position}` in,
+the block kind and loaded status out, no digging.
+
 ## Agent keys
 
 An enrolled member signs as the username it joined under. The secret is
@@ -217,6 +253,10 @@ real key custody, a later NIP-CAP question.
   deposits; the task list, the action vocabulary, and the mechanical
   critic stay the host's. `coder::generate`-driven task proposals come
   with the curriculum phase.
+- **The quest solver is deterministic.** `voyager-quest-builtin/1`
+  proves the reserve-execute-verify-integrate chain end to end, but it
+  knows the fixture's answer; a `coder`-door solver is the recorded
+  upgrade, and execution records name whichever solver ran.
 - **No skill library.** `seen` block names are remembered inside an
   episode; nothing is banked between episodes yet.
 - **No Gym suite.** The trace is the evidence; the suites that score it

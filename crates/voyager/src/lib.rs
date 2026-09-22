@@ -41,6 +41,7 @@ pub mod error;
 pub mod guild;
 pub mod keys;
 pub mod ledger;
+pub mod quest;
 pub mod relay;
 pub mod server;
 pub mod state;

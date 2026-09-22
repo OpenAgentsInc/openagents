@@ -62,6 +62,19 @@ pub enum Event {
         /// The reservation being closed.
         id: String,
     },
+    /// An achievement a verified quest recorded. XP is a separate
+    /// record from credits: it folds into `xp`, never into a spendable
+    /// balance.
+    Xp {
+        /// The guild the member belongs to.
+        guild: String,
+        /// The enrolled username the achievement credits.
+        agent: String,
+        /// The quest id it came from.
+        quest: String,
+        /// Points recorded.
+        points: u64,
+    },
 }
 
 /// One guild's folded balance.
@@ -113,6 +126,7 @@ pub struct Ledger {
     awarded: HashSet<(String, [i32; 3])>,
     holds: HashMap<String, Hold>,
     balances: BTreeMap<String, Balance>,
+    xp: BTreeMap<String, u64>,
 }
 
 impl Ledger {
@@ -141,6 +155,7 @@ impl Ledger {
             awarded: HashSet::new(),
             holds: HashMap::new(),
             balances: BTreeMap::new(),
+            xp: BTreeMap::new(),
         };
         if path.exists() {
             let bytes = std::fs::read(path)
@@ -268,6 +283,33 @@ impl Ledger {
         })
     }
 
+    /// One agent's recorded XP across quests.
+    #[must_use]
+    pub fn xp_of(&self, agent: &str) -> u64 {
+        self.xp.get(agent).copied().unwrap_or(0)
+    }
+
+    /// Every agent with recorded XP, in order.
+    #[must_use]
+    pub fn xp_earners(&self) -> Vec<String> {
+        self.xp.keys().cloned().collect()
+    }
+
+    /// Records a completed quest's XP. XP is evidence, not currency —
+    /// it appends and folds into `xp`, and nothing can spend it.
+    ///
+    /// # Errors
+    ///
+    /// The append must succeed and flush.
+    pub fn xp(&mut self, guild: &str, agent: &str, quest: &str, points: u64) -> Result<()> {
+        self.append(Event::Xp {
+            guild: guild.to_string(),
+            agent: agent.to_string(),
+            quest: quest.to_string(),
+            points,
+        })
+    }
+
     /// Returns an open hold in full.
     ///
     /// # Errors
@@ -342,6 +384,9 @@ impl Ledger {
                 balance.reserved -= hold.credits;
                 balance.available += hold.credits;
             }
+            Event::Xp { agent, points, .. } => {
+                *self.xp.entry(agent).or_default() += points;
+            }
         }
     }
 }
@@ -365,7 +410,15 @@ pub fn describe(ledger: &Ledger) -> Value {
             )
         })
         .collect();
-    json!({"events": ledger.events(), "guilds": guilds})
+    let xp: BTreeMap<String, Value> = ledger
+        .xp_earners()
+        .into_iter()
+        .map(|agent| {
+            let points = ledger.xp_of(&agent);
+            (agent, json!(points))
+        })
+        .collect();
+    json!({"events": ledger.events(), "guilds": guilds, "xp": xp})
 }
 
 #[cfg(test)]

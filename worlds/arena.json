@@ -113,6 +113,23 @@
     "decision_url": "http://127.0.0.1:8009",
     "decision_model": "kev-latest"
   },
+  "quest": {
+    "id": "bridge-planner",
+    "fixture": "quests/bridge-planner",
+    "cost": 30,
+    "attempts": 3,
+    "effect": "open_bridge",
+    "verify_blocks": [
+      [-1, 0, -11],
+      [0, 0, -11],
+      [1, 0, -11],
+      [-1, 0, -10],
+      [0, 0, -10],
+      [1, 0, -10]
+    ],
+    "verify_kind": "oak_planks",
+    "xp": 25
+  },
   "episode": {
     "max_actions": 80,
     "max_seconds": 900
