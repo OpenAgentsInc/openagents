@@ -6,6 +6,7 @@
 
 mod agent;
 mod article;
+mod badge;
 mod block;
 mod comment;
 mod deletion;
@@ -22,6 +23,7 @@ mod ots;
 mod profile_link;
 mod remote_sign;
 mod replacement;
+mod report;
 mod timestamp;
 mod torrent;
 
@@ -31,6 +33,10 @@ pub use agent::{
     verify_agent_auth_attestation, verify_owner_attestation, verify_owner_binding,
 };
 pub use article::{Article, is_article_reply, open_article};
+pub use badge::{
+    AwardRecipient, BadgeAward, BadgeDefinition, BadgeImage, BadgeSet, ProfileBadge, ProfileBadges,
+    open_badge_award, open_badge_definition, open_badge_set, open_profile_badges,
+};
 pub use block::{
     AGENT_ENGRAM_KIND, AGENT_PERSONA_KIND, BLOCK_GLOBAL_ONLY_KINDS, DM_HIDE_KIND, DM_OPEN_KIND,
     DM_VISIBILITY_KIND, EVENT_REMINDER_KIND, IDENTITY_ARCHIVE_LIST_KIND,
@@ -78,6 +84,7 @@ pub use replacement::{
     EventClass, ReplacementAddress, ReplacementDecision, compare_replacement,
     compare_replacement_order,
 };
+pub use report::{REPORT_TYPES, Report, ReportTarget, open_report};
 pub use timestamp::TimestampPolicy;
 pub use torrent::{
     CatalogId, Torrent, TorrentComment, TorrentFile, magnet_uri, open_torrent, open_torrent_comment,

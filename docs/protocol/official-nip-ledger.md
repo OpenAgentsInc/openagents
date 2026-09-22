@@ -154,6 +154,36 @@ relay does not fetch a NIP-89 announcement or a `nostr.json` document.
 Acceptance is
 `domain::remote_sign::tests::a_client_connects_and_the_signer_returns_a_signed_event`.
 
+NIP-56 is `configured-and-proven`. Kind `1984` names a user in a `p`
+tag, a note in an `e` tag, or a blob hash in an `x` tag. The third value
+of the tag being reported is `nudity`, `malware`, `profanity`, `illegal`,
+`spam`, `impersonation`, or `other`. A blob report also names the event
+that carries the blob. The pinned blob example has no `p` tag, so that
+form may omit the user. A `server` tag, when present, is an `http://` or
+`https://` URL. `l` and `L` tags follow NIP-32 and describe the report
+itself. Admission rejects a report with no target, no type, an unknown
+type, or a blob hash without an event. Kind `1984` is a regular stored
+event. The relay does not delete or hide the referenced event, and the
+kind is not added to the NIP-11 list. The relay does not fetch the blob
+or the server URL. Acceptance is
+`domain::report::tests::a_report_names_the_user_or_the_blob_and_does_not_delete_it`.
+
+NIP-58 is `configured-and-proven`. Kind `30009` defines a badge with
+one `d` identifier and optional `name`, `description`, `image`, and
+`thumb` tags. An image URL is `http://` or `https://`. Dimensions, when
+present, are `widthxheight`. Kind `8` awards that definition to one or
+more pubkeys. The award is a regular event, so it is not replaced or
+transferred. Kind `10008` is the replaceable profile list: consecutive
+`a` and `e` pairs, plus `a` tags that name a kind `30008` set. An `a`
+tag without the following `e` tag is ignored, and so is an `e` tag
+without a preceding `a` tag. Kind `30008` with any other `d` value is a
+labeled set of those pairs. Kind `30008` with `d` equal to
+`profile_badges` is the deprecated profile list. None of these kinds are
+added to the NIP-11 list. The relay does not fetch images and does not
+check that the award event repeats the definition address. Recommended
+1024x1024 dimensions are not required. Acceptance is
+`domain::badge::tests::a_badge_definition_is_awarded_and_the_profile_lists_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
