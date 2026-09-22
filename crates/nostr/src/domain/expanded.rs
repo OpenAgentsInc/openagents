@@ -496,6 +496,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 24_133 {
         super::remote_sign::validate_remote_signing(event)?;
     }
+    if event.kind == 1_984 {
+        super::report::open_report(event)?;
+    }
     if event.kind == 1_059 {
         crate::nip17::validate_gift_wrap(event)?;
     }
