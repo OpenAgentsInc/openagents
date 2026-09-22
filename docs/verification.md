@@ -126,9 +126,13 @@ Linux with user namespaces enabled. On a host without one, the cases in
 `crates/coder/tests/suite_questions.rs` that run or offer a `delegate` step
 print `skipping:` and return, which is not evidence that delegation works.
 Install `bubblewrap` to run them.
-Kev checkpoint conformance, model experiments, hosted Jev calls, and production
-relay/worker proofs require their own documented inputs and records. The
-routine gate does not download weights or authorize new paid measurements.
+Kev checkpoint conformance replays every committed variant on CPU for
+hours, so `crates/kev/tests/conformance.rs` runs only under
+`KEV_CONFORMANCE=1` — an operator sets it by hand, and nothing automatic
+does. `KEV_VARIANT=<id>` narrows the battery to one variant. Model
+experiments, hosted Jev calls, and production relay/worker proofs
+require their own documented inputs and records. The routine gate does
+not download weights or authorize new paid measurements.
 
 Shell orchestration and retained Python training/acceptance tooling are
 infrastructure, not additional product implementation languages. Keep product

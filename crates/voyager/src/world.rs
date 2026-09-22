@@ -137,10 +137,10 @@ impl Member {
     /// stable draw from the username — the same bot keeps the same
     /// personality in every episode.
     pub fn temperament(&self) -> Temperament {
-        if let Some(temperament) = &self.temperament {
-            if let Some(temperament) = Temperament::named(temperament) {
-                return temperament;
-            }
+        if let Some(temperament) = &self.temperament
+            && let Some(temperament) = Temperament::named(temperament)
+        {
+            return temperament;
         }
         match self.seed() % 4 {
             0 => Temperament::Berserker,
@@ -509,13 +509,13 @@ impl World {
                 )));
             }
         }
-        if let Some(combat) = &self.combat {
-            if combat.aggro_radius <= 0.0 || combat.rounds == 0 {
-                return Err(Error::world(format!(
-                    "{}: combat needs a positive aggro_radius and rounds",
-                    self.path.display()
-                )));
-            }
+        if let Some(combat) = &self.combat
+            && (combat.aggro_radius <= 0.0 || combat.rounds == 0)
+        {
+            return Err(Error::world(format!(
+                "{}: combat needs a positive aggro_radius and rounds",
+                self.path.display()
+            )));
         }
         Ok(())
     }

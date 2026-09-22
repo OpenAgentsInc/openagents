@@ -196,6 +196,10 @@ fn drain_stderr(mut stderr: impl Read, tail: &Mutex<Tail>, done: &mpsc::Sender<(
     }
 }
 
+/// A synchronous observer `Bridge` fires for every event frame; see
+/// `Bridge::on_event`.
+type OnEvent = Box<dyn FnMut(&Event) + Send>;
+
 /// A supervised `mc-bridge` process.
 pub struct Bridge {
     child: Child,
@@ -208,7 +212,7 @@ pub struct Bridge {
     /// line cannot wait ninety seconds for a `mine` to end. It runs on
     /// the caller's thread inside [`Bridge::call`]; `Send` because a
     /// bridge can move to its agent's thread.
-    on_event: Option<Box<dyn FnMut(&Event) + Send>>,
+    on_event: Option<OnEvent>,
     retired: bool,
 }
 

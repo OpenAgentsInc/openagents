@@ -76,6 +76,23 @@ pub struct Variant {
     pub fixtures: PathBuf,
 }
 
+/// Whether the conformance battery may run at all.
+///
+/// It loads every committed variant's weights and replays them on
+/// CPU — hours of wall time and every core the machine has — so it is
+/// off unless an operator asks for it by name: `KEV_CONFORMANCE=1`.
+/// Nothing automatic sets that variable; enabling it again is a
+/// deliberate, manual act.
+#[must_use]
+pub fn enabled() -> bool {
+    std::env::var("KEV_CONFORMANCE").is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "on" | "yes" | "true"
+        )
+    })
+}
+
 /// The variants with committed fixtures, `kev-0.5b` first.
 pub fn variants() -> Vec<Variant> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");

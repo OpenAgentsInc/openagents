@@ -595,6 +595,7 @@ fn event_visible_to_reader(event: &Event, readers: &HashSet<String>) -> bool {
             .next()
             .is_some_and(|recipient| readers.contains(recipient)),
         30_300 | 30_350 => readers.contains(&event.pubkey),
+        3_187 | 30_186 => nostr::run::record_visible(event, readers),
         30_181 => {
             if event.tags.iter().any(|tag| {
                 tag.name() == Some("t") && tag.value() == Some(nostr::cap::PRIVATE_POLICY_MARKER)
@@ -678,9 +679,40 @@ mod tests {
     use tokio::{sync::watch, time::timeout};
 
     use crate::{
-        domain::{Event, Filter},
+        domain::{Event, Filter, RelaySigner, Tag},
         store::StoredEvent,
     };
+
+    #[test]
+    fn a_run_record_is_visible_to_its_author_and_recipient_only() {
+        let author = RelaySigner::from_secret_hex(&"11".repeat(32)).unwrap();
+        let recipient = RelaySigner::from_secret_hex(&"22".repeat(32)).unwrap();
+        let owner = RelaySigner::from_secret_hex(&"33".repeat(32)).unwrap();
+        let mailbox = "ab".repeat(32);
+        let event = author.sign(
+            20,
+            nostr::run::RECORD_KIND,
+            vec![
+                Tag::new(vec!["p".into(), recipient.pubkey().into()]),
+                Tag::new(vec!["h".into(), mailbox]),
+                Tag::new(vec!["t".into(), nostr::run::MARKER.into()]),
+            ],
+            "ciphertext".into(),
+        );
+        assert!(event_visible_to_reader(
+            &event,
+            &HashSet::from([author.pubkey().to_string()])
+        ));
+        assert!(event_visible_to_reader(
+            &event,
+            &HashSet::from([recipient.pubkey().to_string()])
+        ));
+        assert!(!event_visible_to_reader(
+            &event,
+            &HashSet::from([owner.pubkey().to_string()])
+        ));
+        assert!(!event_visible_to_reader(&event, &HashSet::new()));
+    }
 
     use super::{
         HubHandle, IndexKey, PublishedEvent, event_index_keys, event_visible_to_reader,
