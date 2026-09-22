@@ -4,6 +4,9 @@ The Gym terminal reads the local Harbor jobs and the sanitized Terminal-Bench
 evidence retained in this repository. It runs no agent, verifier, provider
 call, or container. It needs no credentials.
 
+For text or JSON output and commands that start pinned Harbor jobs, use the
+[Gym CLI](terminal-bench-cli.md).
+
 From the repository root, run:
 
 ```sh

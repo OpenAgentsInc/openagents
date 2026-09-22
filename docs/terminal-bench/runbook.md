@@ -12,6 +12,7 @@ the arms you run.
 - Every result: [the results page](README.md).
 - Cancellation, timeouts, refusals, resume, image state, and repeated-run statistics: [the resilience page](resilience.md).
 - Inspect attempts and evidence: [the Gym TUI](../gym/terminal-bench-tui.md).
+- Inspect or run from the command line: [the Gym CLI](../gym/terminal-bench-cli.md).
 
 ## The host
 

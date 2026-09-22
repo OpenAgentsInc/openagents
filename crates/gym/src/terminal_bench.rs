@@ -79,6 +79,16 @@ impl Attempt {
         matches!(self.arm.as_str(), "oracle" | "nop")
     }
 
+    pub fn has_complete_comparison_identity(&self) -> bool {
+        self.commit.is_some()
+            && self.checksum.is_some()
+            && self.architecture.is_some()
+            && self.host.is_some()
+            && self.image_state.is_some()
+            && self.model.is_some()
+            && self.artifact.is_some()
+    }
+
     pub fn pin(&self) -> String {
         format!(
             "{} / {} / {} / {} / {}",
@@ -146,6 +156,47 @@ pub struct Records {
     pub sources: Vec<String>,
     pub report_label: Option<String>,
     pub report_warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ComparisonGroup {
+    pub task: String,
+    pub pin: String,
+    pub arm: String,
+    pub attempts: Vec<usize>,
+}
+
+impl ComparisonGroup {
+    pub fn from_records(records: &Records) -> Vec<Self> {
+        let mut grouped: BTreeMap<(String, String, String), Vec<usize>> = BTreeMap::new();
+        for (index, attempt) in records.attempts.iter().enumerate() {
+            let identity = format!(
+                "{} / profile {} / model {} / artifact {}",
+                attempt.pin(),
+                attempt.profile,
+                attempt.model.as_deref().unwrap_or("unknown"),
+                attempt.artifact.as_deref().unwrap_or("unknown")
+            );
+            let pin = if attempt.has_complete_comparison_identity() {
+                identity
+            } else {
+                format!("{identity} / job {}", attempt.job)
+            };
+            grouped
+                .entry((attempt.task.clone(), pin, attempt.arm.clone()))
+                .or_default()
+                .push(index);
+        }
+        grouped
+            .into_iter()
+            .map(|((task, pin, arm), attempts)| Self {
+                task,
+                pin,
+                arm,
+                attempts,
+            })
+            .collect()
+    }
 }
 
 impl Records {

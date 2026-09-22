@@ -52,6 +52,9 @@ use gym::suite::{Item, Partition, Suite};
 use jev::{Client, Config, Questions, SystemOneRequest};
 use serde_json::Value;
 
+#[path = "gym/terminal_bench_cli.rs"]
+mod terminal_bench_cli;
+
 /// The gate a run is judged by when the suite names none.
 const DEFAULT_GATE: &str = "probability-v2";
 
@@ -179,6 +182,9 @@ struct Options {
 fn main() {
     let mut args = std::env::args().skip(1);
     let command = args.next().unwrap_or_default();
+    if command == "terminal-bench" {
+        std::process::exit(terminal_bench_cli::run(args.collect()));
+    }
     let options = read_options(args);
     match command.as_str() {
         "eval" => run(eval_command(options)),
@@ -222,6 +228,7 @@ gym build    turn a caller's labelled JSONL into a suite and question set
 gym regress  compare a door with its own last recorded run
 gym admit    judge a frozen admission plan against recorded evidence and
              write the decision a registry activates
+gym terminal-bench  inspect evidence or run the pinned Harbor harness
 
   --door name=url     a door to ask; repeatable
   --jev               hosted Jev, from TYPESAFE_API_KEY

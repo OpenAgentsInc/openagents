@@ -1,6 +1,6 @@
 //! The Gym's read-only Terminal-Bench views.
 
-use crate::terminal_bench::{Attempt, Records};
+use crate::terminal_bench::{Attempt, ComparisonGroup, Records};
 use crate::tui::{DASH, ladder_from_environment, show};
 use coder_terminal::{Intensity, Ladder, frame, rail};
 use ratatui::buffer::Buffer;
@@ -55,17 +55,9 @@ impl View {
     }
 }
 
-#[derive(Clone, Debug)]
-struct Group {
-    task: String,
-    pin: String,
-    arm: String,
-    attempts: Vec<usize>,
-}
-
 pub struct App {
     records: Records,
-    groups: Vec<Group>,
+    groups: Vec<ComparisonGroup>,
     view: View,
     cursor: [usize; 6],
     selected_group: usize,
@@ -76,41 +68,7 @@ pub struct App {
 
 impl App {
     pub fn new(records: Records) -> Self {
-        let mut grouped: BTreeMap<(String, String, String), Vec<usize>> = BTreeMap::new();
-        for (index, attempt) in records.attempts.iter().enumerate() {
-            let complete = attempt.commit.is_some()
-                && attempt.checksum.is_some()
-                && attempt.architecture.is_some()
-                && attempt.host.is_some()
-                && attempt.image_state.is_some()
-                && attempt.model.is_some()
-                && attempt.artifact.is_some();
-            let identity = format!(
-                "{} / profile {} / model {} / artifact {}",
-                attempt.pin(),
-                attempt.profile,
-                attempt.model.as_deref().unwrap_or("unknown"),
-                attempt.artifact.as_deref().unwrap_or("unknown")
-            );
-            let pin = if complete {
-                identity
-            } else {
-                format!("{identity} / job {}", attempt.job)
-            };
-            grouped
-                .entry((attempt.task.clone(), pin, attempt.arm.clone()))
-                .or_default()
-                .push(index);
-        }
-        let groups = grouped
-            .into_iter()
-            .map(|((task, pin, arm), attempts)| Group {
-                task,
-                pin,
-                arm,
-                attempts,
-            })
-            .collect();
+        let groups = ComparisonGroup::from_records(&records);
         let mut history_order: Vec<usize> = (0..records.attempts.len()).collect();
         history_order.sort_by(|&left, &right| {
             records.attempts[right]
@@ -418,15 +376,7 @@ impl App {
             .filter(|a| a.kind == "fresh" && a.reward.is_some())
             .collect();
         let binary = fresh.iter().all(|a| matches!(a.reward, Some(0.0 | 1.0)));
-        let complete_pin = members.iter().all(|a| {
-            a.commit.is_some()
-                && a.checksum.is_some()
-                && a.architecture.is_some()
-                && a.host.is_some()
-                && a.image_state.is_some()
-                && a.model.is_some()
-                && a.artifact.is_some()
-        });
+        let complete_pin = members.iter().all(|a| a.has_complete_comparison_identity());
         let uncertainty = if fresh.len() >= 3 && binary && complete_pin {
             let successes = fresh.iter().filter(|a| a.reward == Some(1.0)).count();
             let (low, high) = wilson_95(successes, fresh.len());

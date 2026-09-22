@@ -242,6 +242,8 @@ To inspect the whole local job history in the Gym TUI, run
 `cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench`
 from the repository root. The [Gym terminal guide](../gym/terminal-bench-tui.md)
 covers navigation, evidence checks, and the retained-trace fallback.
+The [Gym CLI](../gym/terminal-bench-cli.md) also provides text and JSON
+views and forwards pinned run commands to this harness.
 
 ## Compare
 
