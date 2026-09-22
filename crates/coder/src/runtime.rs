@@ -1289,6 +1289,12 @@ impl Runtime {
                     "{bound} is a count above zero, and this step names {value}"
                 )),
             },
+            "fuel" | "memory_bytes" | "output_bytes" | "read_bytes" => match value.as_u64() {
+                Some(count) if count > 0 && usize::try_from(count).is_ok() => Ok(()),
+                _ => refuse(format!(
+                    "{bound} is a count above zero that this host can represent, and this step names {value}"
+                )),
+            },
             "refuse_below" => match value.as_f64() {
                 Some(floor) if (0.0..=1.0).contains(&floor) => Ok(()),
                 _ => refuse(format!(
