@@ -42,6 +42,16 @@ pub struct Door {
     /// than silently capped.
     #[serde(default = "default_item_concurrency")]
     pub classify_item_concurrency: u64,
+    /// How the backend serves batch work, when the operator has
+    /// declared it: `native` packs items into one execution and names
+    /// its bound, `caller-loop` is bounded independent calls with no
+    /// batch bound. Absent means unknown — the facade still loops
+    /// calls, but discovery reports no adapter capability rather than
+    /// guessing one. A declared value is checked against the card the
+    /// backend publishes at request time; a disagreement is an
+    /// `identity_mismatch`, never a silent substitution.
+    #[serde(default)]
+    pub batching: Option<tenancy::backend::Batching>,
 }
 
 /// The parsed `gateway.json`.
@@ -78,6 +88,24 @@ pub struct Config {
     /// unavailable. Default two minutes.
     #[serde(default = "default_forward_timeout_ms")]
     pub forward_timeout_ms: u64,
+    /// How long a `POST /v1/classify` call may run end to end — queue
+    /// waits and forwards share the one deadline. Absent means the
+    /// forward timeout governs. A value longer than `forward_timeout_ms`
+    /// is refused: a single forward cannot outlive the client's own
+    /// timeout, so the call deadline would promise more than a forward
+    /// can deliver.
+    #[serde(default)]
+    pub classify_timeout_ms: Option<u64>,
+    /// The most classify forwards one tenant may hold in flight at
+    /// once, summed over every open `POST /v1/classify` call. Absent
+    /// means a tenant is bounded only by the call's own fan-out, the
+    /// door's slots, and the process's `max_in_flight`. A value is the
+    /// fairness knob for mixed workloads: one tenant's thousand-input
+    /// call cannot hold every door slot while another tenant's call
+    /// waits. Items that cannot take a tenant slot inside the call's
+    /// deadline report `unattempted`.
+    #[serde(default)]
+    pub max_tenant_classify_in_flight: Option<u32>,
     /// How long a reservation may stand unsettled before recovery
     /// orphans it. Default five minutes — comfortably longer than
     /// `forward_timeout_ms`, so a slow door is not mistaken for a dead
@@ -149,6 +177,13 @@ fn default_options() -> u64 {
 }
 
 impl Config {
+    /// The deadline a classification call runs under: its own bound
+    /// when the operator declared one, the forward timeout otherwise.
+    #[must_use]
+    pub fn classify_deadline_ms(&self) -> u64 {
+        self.classify_timeout_ms.unwrap_or(self.forward_timeout_ms)
+    }
+
     /// Read and check a config file.
     ///
     /// Refused: a schema tag this build does not know, a door named
@@ -180,13 +215,34 @@ impl Config {
         {
             return Err("classification input limits must be positive, at most 1,000,000 globally, and per-tenant no larger than global".into());
         }
-        if self.reservation_ttl_secs * 1000 < self.forward_timeout_ms {
+        if let Some(deadline) = self.classify_timeout_ms
+            && deadline > self.forward_timeout_ms
+        {
             return Err(format!(
-                "{}: reservation_ttl_secs ({}s) is shorter than forward_timeout_ms ({}ms) — \
-                 a reservation would expire while its forward still ran",
+                "{}: classify_timeout_ms ({deadline}ms) exceeds forward_timeout_ms ({}ms) — \
+                 a call deadline cannot promise more than a forward can deliver",
+                name.display(),
+                self.forward_timeout_ms
+            ));
+        }
+        if let Some(bound) = self.max_tenant_classify_in_flight
+            && (bound == 0 || bound as usize > self.max_in_flight)
+        {
+            return Err(format!(
+                "{}: max_tenant_classify_in_flight must be positive and no larger than \
+                 the process's `max_in_flight` of {} — a bound that can never be reached \
+                 is not a bound",
+                name.display(),
+                self.max_in_flight
+            ));
+        }
+        if self.reservation_ttl_secs * 1000 < self.classify_deadline_ms() {
+            return Err(format!(
+                "{}: reservation_ttl_secs ({}s) is shorter than the longest call deadline \
+                 ({}ms) — a reservation would expire while its work still ran",
                 name.display(),
                 self.reservation_ttl_secs,
-                self.forward_timeout_ms
+                self.classify_deadline_ms()
             ));
         }
         if let Some(money) = &self.money {
@@ -256,6 +312,26 @@ impl Config {
                     backend.classify_item_concurrency,
                     self.max_in_flight
                 ));
+            }
+            if let Some(batching) = &backend.batching {
+                match (batching.kind, batching.max_items) {
+                    (tenancy::backend::BatchKind::Native, Some(items)) if items >= 2 => {}
+                    (tenancy::backend::BatchKind::Native, _) => {
+                        return Err(format!(
+                            "{}: door `{door}` declares native batching without a `max_items` \
+                             of two or more — one item is a call, not a batch",
+                            name.display()
+                        ));
+                    }
+                    (tenancy::backend::BatchKind::CallerLoop, Some(_)) => {
+                        return Err(format!(
+                            "{}: door `{door}` declares caller-loop batching with a `max_items` \
+                             — there is no batch to bound",
+                            name.display()
+                        ));
+                    }
+                    (tenancy::backend::BatchKind::CallerLoop, None) => {}
+                }
             }
         }
         Ok(())

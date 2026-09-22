@@ -127,20 +127,24 @@ struct Backend {
     /// Every forwarded body, so a test can read the questions the
     /// facade actually sent.
     bodies: Arc<Mutex<Vec<Value>>>,
+    /// The card's `batching` field, when the stub declares one.
+    batching: Option<Value>,
     /// A per-request answer, when the test needs input-dependent
     /// replies — keyed off the request's state.
     respond: Option<Arc<Responder>>,
 }
 
 async fn backend_models(State(backend): State<Arc<Backend>>) -> Json<Value> {
-    Json(json!({
-        "models": [{
-            "id": backend.model,
-            "name": backend.model,
-            "artifact_identity": {"digest": backend.digest},
-            "execution": {},
-        }],
-    }))
+    let mut card = json!({
+        "id": backend.model,
+        "name": backend.model,
+        "artifact_identity": {"digest": backend.digest},
+        "execution": {},
+    });
+    if let Some(batching) = &backend.batching {
+        card["batching"] = batching.clone();
+    }
+    Json(json!({ "models": [card] }))
 }
 
 async fn backend_systemone(State(backend): State<Arc<Backend>>, body: Bytes) -> Response {
@@ -187,6 +191,7 @@ fn honest(digest: String, body: Value) -> Backend {
         in_flight: Arc::new(AtomicUsize::new(0)),
         peak: Arc::new(AtomicUsize::new(0)),
         bodies: Arc::new(Mutex::new(Vec::new())),
+        batching: None,
         respond: None,
     }
 }
@@ -216,6 +221,7 @@ async fn deploy(manifest: Manifest, endpoints: BTreeMap<String, String>) -> Depl
                         endpoint,
                         classify: None,
                         classify_item_concurrency: 1,
+                        batching: None,
                     },
                 )
             })
@@ -253,6 +259,8 @@ async fn deploy_tuned(
         max_body_bytes: 1_048_576,
         max_response_bytes: 4_194_304,
         forward_timeout_ms: 10_000,
+        classify_timeout_ms: None,
+        max_tenant_classify_in_flight: None,
         reservation_ttl_secs: 300,
         max_in_flight: 8,
         max_classify_inputs: 1024,
@@ -320,6 +328,7 @@ async fn workspace_mode_enforces_membership_on_decisions_and_discovery() {
                 endpoint,
                 classify: None,
                 classify_item_concurrency: 1,
+                batching: None,
             },
         )]
         .into_iter()
@@ -861,6 +870,7 @@ fn classify_door(endpoint: String, item_concurrency: u64) -> Door {
         endpoint,
         classify: Some(gateway::classify::BackendLimits::product()),
         classify_item_concurrency: item_concurrency,
+        batching: None,
     }
 }
 
@@ -889,6 +899,19 @@ fn classification_response_fixture(name: &str, body: &Value) {
                     if key == "latency_ms" {
                         assert!(value.as_u64().is_some());
                         *value = json!(0);
+                    } else if key == "queue_ms" {
+                        // Per item a measured wait; under `timing` the
+                        // call's aggregate. Either way the value is a
+                        // measurement, not a contract — zero it.
+                        if let Some(fields) = value.as_object_mut() {
+                            for field in fields.values_mut() {
+                                assert!(field.as_u64().is_some());
+                                *field = json!(0);
+                            }
+                        } else {
+                            assert!(value.as_u64().is_some());
+                            *value = json!(0);
+                        }
                     } else if matches!(key.as_str(), "attempt_id" | "receipt" | "usage_ref") {
                         if let Some(identity) = value.as_str() {
                             let next = identities.len();
@@ -1989,6 +2012,8 @@ async fn classify_serial_and_concurrent_batches_are_measured() {
             "completed_items": items.iter().filter(|i| i["outcome"] == "answered").count(),
             "batch_ms": body["timing"]["latency_ms"],
             "per_item_ms": items.iter().map(|i| i["latency_ms"].clone()).collect::<Vec<_>>(),
+            "per_item_queue_ms": items.iter().map(|i| i["queue_ms"].clone()).collect::<Vec<_>>(),
+            "queue_ms": body["timing"]["queue_ms"],
             "incomplete": items.iter().filter(|i| i["outcome"] != "answered").count(),
             "peak_in_flight": peak,
         })
@@ -2013,6 +2038,212 @@ async fn classify_serial_and_concurrent_batches_are_measured() {
             assert_eq!(item["input"], format!("i{index}"));
         }
     }
+}
+
+#[tokio::test]
+async fn classify_records_each_items_queue_time_and_the_calls() {
+    // Six inputs over a 60ms stub at bound two: the first wave dispatches
+    // at once and every later item waits. Each item reports its own
+    // measured queue time, the response carries the aggregate, and the
+    // sealed receipt keeps the longest wait as the call's queue time.
+    let stub = Backend {
+        delay_ms: 60,
+        ..honest(artifact('b'), choice_answer())
+    };
+    let (endpoint, _) = backend(stub).await;
+    let deployment = classification_deployment_tuned(endpoint, 2, |_| {}).await;
+    let (status, body) = send_classification(&deployment, &classify_batch(6)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let items = body["results"].as_array().unwrap();
+    let queued: Vec<u64> = items
+        .iter()
+        .map(|item| {
+            item["queue_ms"]
+                .as_u64()
+                .unwrap_or_else(|| panic!("item carries no measured queue time: {item}"))
+        })
+        .collect();
+    assert!(
+        queued.iter().any(|wait| *wait > 0),
+        "items behind the first wave must report a wait: {queued:?}"
+    );
+    let max = body["timing"]["queue_ms"]["max"].as_u64().unwrap();
+    let total = body["timing"]["queue_ms"]["total"].as_u64().unwrap();
+    assert_eq!(max, *queued.iter().max().unwrap());
+    assert_eq!(total, queued.iter().sum::<u64>());
+    let receipt = receipt_log(&deployment.dir)
+        .into_iter()
+        .next()
+        .expect("the call sealed a receipt");
+    assert_eq!(receipt.timing.queued_ms, Some(max));
+}
+
+#[tokio::test]
+async fn classify_uses_its_own_deadline_not_the_forward_timeouts() {
+    // A 300ms classification deadline over a 120ms stub at bound two —
+    // while the forward timeout stays at ten seconds. The call resolves
+    // near its own deadline with the tail unattempted; it does not wait
+    // out the forward timeout for work that cannot fit.
+    let stub = Backend {
+        delay_ms: 120,
+        ..honest(artifact('b'), choice_answer())
+    };
+    let (endpoint, forwards) = backend(stub).await;
+    let deployment = classification_deployment_tuned(endpoint, 2, |config| {
+        config.forward_timeout_ms = 10_000;
+        config.classify_timeout_ms = Some(300);
+    })
+    .await;
+    let (status, body) = send_classification(&deployment, &classify_batch(8)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body["timing"]["latency_ms"].as_u64().unwrap() < 2_000,
+        "the call's own deadline governs, not the forward timeout: {body}"
+    );
+    assert!(
+        body["outcomes"]["unattempted"].as_u64().unwrap() > 0,
+        "the short deadline must leave queued items: {body}"
+    );
+    assert!(forwards.load(Ordering::SeqCst) < 8);
+}
+
+#[tokio::test]
+async fn classify_bounds_each_tenants_in_flight_forwards() {
+    // A shared door declared for four concurrent forwards, calls allowed
+    // a fan-out of four, and each tenant's in-flight share capped at
+    // one. Two tenants' calls together never hold more than two
+    // forwards — and the second tenant's smaller call still finishes
+    // while the first tenant's larger one runs.
+    let mut manifest = manifest(None);
+    manifest.shared.get_mut("shared-kev").unwrap().capacity = Some(Capacity {
+        concurrency: Some(4),
+        requests_per_minute: None,
+    });
+    let stub = Backend {
+        delay_ms: 150,
+        ..honest(artifact('a'), choice_answer())
+    };
+    let peak = stub.peak.clone();
+    let (endpoint, _) = backend(stub).await;
+    let deployment = deploy_tuned(
+        manifest,
+        [("shared-kev".into(), classify_door(endpoint, 4))]
+            .into_iter()
+            .collect(),
+        |config| config.max_tenant_classify_in_flight = Some(1),
+    )
+    .await;
+    let mut big = classify_batch(4);
+    big["model"] = json!("shared-kev");
+    big["capacity"] = json!("shared");
+    let mut small = big.clone();
+    small["inputs"] = json!([
+        {"id":"g0","text":"g0"},
+        {"id":"g1","text":"g1"},
+    ]);
+    let acme_token = deployment.tokens["acme"].clone();
+    let globex_token = deployment.tokens["globex"].clone();
+    let acme = tokio::spawn({
+        let address = deployment.address.clone();
+        async move {
+            reqwest::Client::new()
+                .post(format!("{address}/v1/classify"))
+                .bearer_auth(&acme_token)
+                .json(&big)
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    });
+    // Let acme's first item dispatch before globex's call lands.
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    let globex = send_classification_as(&deployment, &small, Some(&globex_token)).await;
+    let acme = acme.await.unwrap();
+    assert_eq!(globex.0, StatusCode::OK, "{}", globex.1);
+    assert_eq!(globex.1["outcome"], "answered", "{}", globex.1);
+    assert_eq!(acme["outcome"], "answered", "{acme}");
+    assert!(
+        peak.load(Ordering::SeqCst) <= 2,
+        "two tenants at one share each may never exceed two forwards: {}",
+        peak.load(Ordering::SeqCst)
+    );
+}
+
+#[tokio::test]
+async fn classify_publishes_and_verifies_declared_adapter_batching() {
+    // The operator declares the adapter loops calls; the backend card
+    // agrees. Discovery reports the declaration under `adapter`, and a
+    // card that disagrees is an identity fault, not a silent substitute.
+    let stub = Backend {
+        batching: Some(json!({"kind": "caller-loop"})),
+        ..honest(artifact('b'), choice_answer())
+    };
+    let (endpoint, _) = backend(stub).await;
+    let door = Door {
+        batching: Some(tenancy::backend::Batching {
+            kind: tenancy::backend::BatchKind::CallerLoop,
+            max_items: None,
+        }),
+        ..classify_door(endpoint, 2)
+    };
+    let deployment = deploy_doors(
+        manifest(None),
+        [("acme-kev".into(), door)].into_iter().collect(),
+    )
+    .await;
+    let cards: Value = reqwest::Client::new()
+        .get(format!("{}/v1/models", deployment.address))
+        .bearer_auth(&deployment.tokens["acme"])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let card = &cards["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["id"] == "acme-kev")
+        .unwrap()["classification"];
+    assert_eq!(
+        card["execution"]["adapter"]["batching"]["kind"],
+        "caller-loop"
+    );
+    let (status, body) = send_classification(&deployment, &classify_batch(2)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "answered");
+
+    // A backend claiming native packing the declaration did not name is
+    // refused before a byte of the request forwards.
+    let mismatch_stub = Backend {
+        batching: Some(json!({"kind": "native", "max_items": 4})),
+        ..honest(artifact('b'), choice_answer())
+    };
+    let (mismatch_endpoint, mismatch_forwards) = backend(mismatch_stub).await;
+    let mismatch = deploy_doors(
+        manifest(None),
+        [(
+            "acme-kev".into(),
+            Door {
+                batching: Some(tenancy::backend::Batching {
+                    kind: tenancy::backend::BatchKind::CallerLoop,
+                    max_items: None,
+                }),
+                ..classify_door(mismatch_endpoint, 2)
+            },
+        )]
+        .into_iter()
+        .collect(),
+    )
+    .await;
+    let (status, body) = send_classification(&mismatch, &classify_batch(2)).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(body["error"]["code"], "identity_mismatch");
+    assert_eq!(mismatch_forwards.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -2245,6 +2476,8 @@ async fn deploy_money(
         max_body_bytes: 1_048_576,
         max_response_bytes: 4_194_304,
         forward_timeout_ms: 10_000,
+        classify_timeout_ms: None,
+        max_tenant_classify_in_flight: None,
         reservation_ttl_secs: 300,
         max_in_flight: 8,
         max_classify_inputs: 1024,
@@ -2324,6 +2557,7 @@ fn money_doors(endpoint: String) -> (BTreeMap<String, Door>, BTreeMap<String, Pr
                 endpoint,
                 classify: None,
                 classify_item_concurrency: 1,
+                batching: None,
             },
         )]
         .into_iter()
@@ -2420,6 +2654,7 @@ async fn money_refusals_reach_no_backend() {
                 endpoint,
                 classify: None,
                 classify_item_concurrency: 1,
+                batching: None,
             },
         );
     }
@@ -3039,6 +3274,7 @@ async fn money_classification_reserves_once_and_settles_the_fan_out() {
             endpoint,
             classify: Some(gateway::classify::BackendLimits::product()),
             classify_item_concurrency: 2,
+            batching: None,
         },
     );
     let priced: BTreeMap<String, Priced> = [("acme-kev".into(), fixture_priced())]
@@ -3090,6 +3326,7 @@ async fn money_classification_stays_outstanding_on_a_silent_item() {
             endpoint,
             classify: Some(gateway::classify::BackendLimits::product()),
             classify_item_concurrency: 1,
+            batching: None,
         },
     );
     let priced: BTreeMap<String, Priced> = [("acme-kev".into(), fixture_priced())]
@@ -3130,6 +3367,7 @@ async fn money_classification_refusals_hold_nothing() {
                 endpoint: endpoint.clone(),
                 classify: Some(gateway::classify::BackendLimits::product()),
                 classify_item_concurrency: 1,
+                batching: None,
             },
         );
     }
@@ -3248,6 +3486,7 @@ async fn review_deployment(primary: String, reviewer: String, fallback: String) 
                     endpoint: reviewer,
                     classify: None,
                     classify_item_concurrency: 1,
+                    batching: None,
                 },
             ),
             (
@@ -3256,6 +3495,7 @@ async fn review_deployment(primary: String, reviewer: String, fallback: String) 
                     endpoint: fallback,
                     classify: None,
                     classify_item_concurrency: 1,
+                    batching: None,
                 },
             ),
         ]
@@ -3712,6 +3952,7 @@ async fn classify_review_dispatches_only_doors_the_caller_is_bound_to() {
                     endpoint: reviewer,
                     classify: None,
                     classify_item_concurrency: 1,
+                    batching: None,
                 },
             ),
         ]
@@ -3817,6 +4058,7 @@ async fn classify_review_holds_money_for_every_attempted_dispatch() {
                 endpoint,
                 classify: None,
                 classify_item_concurrency: 1,
+                batching: None,
             },
         );
     }
@@ -4520,6 +4762,7 @@ async fn disconnect_during_review_keeps_its_hold_and_stops_remaining_reviews() {
                     endpoint: reviewer,
                     classify: None,
                     classify_item_concurrency: 1,
+                    batching: None,
                 },
             ),
         ]

@@ -130,6 +130,9 @@ pub struct ServeState {
     in_flight: Arc<Semaphore>,
     classify_inputs: Arc<Semaphore>,
     tenant_classify_inputs: Mutex<HashMap<Option<String>, Arc<Semaphore>>>,
+    /// Per-tenant concurrent classify forwards — the fairness bound for
+    /// mixed workloads, present only when the operator declared one.
+    tenant_classify_in_flight: Mutex<HashMap<Option<String>, Arc<Semaphore>>>,
     /// Per-door bounds, keyed by door name.
     doors: Mutex<HashMap<String, DoorBounds>>,
     /// Attempt ids minted within this process.
@@ -170,6 +173,7 @@ impl ServeState {
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
             classify_inputs: Arc::new(Semaphore::new(config.max_classify_inputs as usize)),
             tenant_classify_inputs: Mutex::new(HashMap::new()),
+            tenant_classify_in_flight: Mutex::new(HashMap::new()),
             config,
             client,
             ledger: Mutex::new(ledger),
@@ -386,15 +390,22 @@ fn classification_card(state: &ServeState, door: &str, binding: &tenancy::Bindin
         "max_body_bytes": state.config.max_body_bytes,
         "max_pending_inputs": state.config.max_classify_inputs,
         "max_pending_inputs_per_tenant": state.config.max_classify_inputs_per_tenant,
+        "max_tenant_in_flight": state.config.max_tenant_classify_in_flight,
         "requires_workspace_membership": state.config.require_workspace_membership,
         "context_tokens": null,
     });
     card["execution"] = json!({
         "kind": "native-per-input",
         "max_item_concurrency": concurrency,
-        "timeout_ms": state.config.forward_timeout_ms,
+        "timeout_ms": state.config.classify_deadline_ms(),
         "model_packing": false,
     });
+    // The adapter's own batching capability, declared by the operator —
+    // distinct from `model_packing`, which describes what this facade
+    // does. Absent means unknown, never an inferred `caller-loop`.
+    if let Some(batching) = &backend.batching {
+        card["execution"]["adapter"] = json!({"batching": batching});
+    }
     card
 }
 
@@ -538,6 +549,9 @@ struct ReceiptContext {
     served: Served,
     /// Digest of the response body, when one came back.
     result_digest: Option<String>,
+    /// The longest an input waited for its dispatch — a classification
+    /// call's queue time, measured per item rather than guessed.
+    queued_ms: Option<u64>,
     /// The reservation the attempt settled against, when it held one.
     usage: Option<String>,
     /// How the attempt's monetary hold resolved — `settled`,
@@ -949,13 +963,14 @@ async fn verified(
     state: &ServeState,
     endpoint: &str,
     admission: &Admission,
+    batching: Option<&tenancy::backend::Batching>,
     naming: &Naming<'_>,
     ctx: &mut Context,
     hold: &Option<money::Hold>,
 ) -> Result<(), Verdict> {
-    let published =
+    let (published, published_batching) =
         match published_identity(state, endpoint, &admission.binding.artifact.model).await {
-            Ok(published) => published,
+            Ok(found) => found,
             Err(message) => {
                 state.release(naming.request, naming.attempt).await;
                 ctx.settlement = money_release(state, hold).await;
@@ -968,6 +983,26 @@ async fn verified(
                 });
             }
         };
+    // A declared batching capability is part of what the binding means:
+    // the published card must agree, or the door is not the one
+    // admission answered for. Undeclared means unknown — the card may
+    // publish whatever it supports without the check applying.
+    if let Some(expected) = batching
+        && Some(expected) != published_batching.as_ref()
+    {
+        state.release(naming.request, naming.attempt).await;
+        ctx.settlement = money_release(state, hold).await;
+        return Err(Verdict::Refused {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "identity_mismatch",
+            message: format!(
+                "the door's published batching does not match the declared {:?}",
+                expected.kind
+            ),
+            outcome: Outcome::Unattempted,
+            ctx: ctx.clone(),
+        });
+    }
     if let Err(fault) = admission.verify(&published) {
         state.release(naming.request, naming.attempt).await;
         ctx.settlement = money_release(state, hold).await;
@@ -1132,7 +1167,7 @@ async fn cancelled_before_dispatch(
 
 async fn verified_cancellable(
     state: &ServeState,
-    endpoint: &str,
+    backend: &Door,
     admission: &Admission,
     naming: &Naming<'_>,
     ctx: &mut Context,
@@ -1142,7 +1177,7 @@ async fn verified_cancellable(
     tokio::select! {
         biased;
         _ = cancellation.wait() => Err(cancelled_before_dispatch(state, naming, ctx, hold).await),
-        result = verified(state, endpoint, admission, naming, ctx, hold) => result,
+        result = verified(state, &backend.endpoint, admission, backend.batching.as_ref(), naming, ctx, hold) => result,
     }
 }
 
@@ -1250,7 +1285,7 @@ async fn admitted(
     };
     if let Err(verdict) = verified_cancellable(
         state,
-        &endpoint,
+        &backend,
         &admission,
         naming,
         &mut ctx,
@@ -1449,7 +1484,7 @@ async fn classify_admitted(
     };
     if let Err(verdict) = verified_cancellable(
         state,
-        &endpoint,
+        &backend,
         &admission,
         naming,
         &mut ctx,
@@ -1477,7 +1512,7 @@ async fn classify_admitted(
         .max(1) as usize;
     let slots = Arc::new(Semaphore::new(item_bound));
     let halt = Arc::new(AtomicBool::new(false));
-    let deadline = started + Duration::from_millis(state.config.forward_timeout_ms);
+    let deadline = started + Duration::from_millis(state.config.classify_deadline_ms());
     let mut scheduled = tokio::task::JoinSet::new();
     for (index, input) in request.inputs.iter().enumerate() {
         let (body, asked) = forward_body(&request, &plan, input, &artifact);
@@ -1487,6 +1522,7 @@ async fn classify_admitted(
             body,
             asked,
             state: state.clone(),
+            tenant: caller.tenant.clone(),
             door: request.model.clone(),
             endpoint: endpoint.clone(),
             model: artifact.clone(),
@@ -1494,6 +1530,7 @@ async fn classify_admitted(
             slots: slots.clone(),
             halt: halt.clone(),
             deadline,
+            queued_at: Instant::now(),
             attempt_id: format!("{}:{index}", naming.attempt_id),
             cancellation: cancellation.clone(),
         }));
@@ -1515,6 +1552,8 @@ async fn classify_admitted(
     let mut forwards = 0_u64;
     let mut input_tokens = CompleteCounter::default();
     let mut output_tokens = CompleteCounter::default();
+    let mut queue_max = 0_u64;
+    let mut queue_total = 0_u64;
     // Every dispatched item's own usage report — the settlement reads.
     let mut dispatched_reports: Vec<Option<Value>> = Vec::new();
     for (index, slot) in done.into_iter().enumerate() {
@@ -1529,8 +1568,13 @@ async fn classify_admitted(
                 None,
             ),
             usage: None,
+            queue_ms: None,
             attempt_id: format!("{}:{index}", naming.attempt_id),
         });
+        if let Some(queue_ms) = result.queue_ms {
+            queue_max = queue_max.max(queue_ms);
+            queue_total += queue_ms;
+        }
         if result.dispatched {
             forwards += 1;
             input_tokens.add(
@@ -1669,8 +1713,14 @@ async fn classify_admitted(
         "selections": selections,
         "aggregates": aggregates,
         "usage": usage,
-        "timing": {"latency_ms": started.elapsed().as_millis() as u64},
+        "timing": {
+            "latency_ms": started.elapsed().as_millis() as u64,
+            "queue_ms": {"max": queue_max, "total": queue_total},
+        },
     });
+    // The receipt's queue time is the longest an input waited for its
+    // dispatch — queue and execution are different measurements.
+    ctx.queued_ms = Some(queue_max);
     // A declared review policy reports its own accounting: the digested
     // policy document, the bound identities it dispatched under, and
     // the usage its dispatches carried separately from the primary's.
@@ -1811,6 +1861,8 @@ struct ItemWork {
     /// The question ids the body asked, mapped back to (unit, label).
     asked: Asked,
     state: Arc<ServeState>,
+    /// The caller's tenant — the fairness pool this forward counts in.
+    tenant: Option<String>,
     /// The door's name, for its declared concurrency pool.
     door: String,
     endpoint: String,
@@ -1823,6 +1875,9 @@ struct ItemWork {
     halt: Arc<AtomicBool>,
     /// The call's execution deadline — queue waits and forwards share it.
     deadline: Instant,
+    /// When the item entered the call's queue — queue time is measured,
+    /// not guessed.
+    queued_at: Instant,
     /// This forward's recorded identity within the call's attempt —
     /// the attempt chain's name for it when a review policy runs.
     attempt_id: String,
@@ -1839,6 +1894,9 @@ struct ItemResult {
     item: Value,
     /// The door's own usage report, when it sent one.
     usage: Option<Value>,
+    /// Milliseconds the item waited for its dispatch — queue time
+    /// measured from when its work entered the call.
+    queue_ms: Option<u64>,
     /// The forward's recorded identity within the call's attempt.
     attempt_id: String,
 }
@@ -1855,19 +1913,24 @@ async fn classify_item(work: ItemWork) -> ItemResult {
     let index = work.index;
     let input = work.input.clone();
     let plan = work.plan.clone();
+    let queued_at = work.queued_at;
     let attempt_id = work.attempt_id.clone();
     tokio::select! {
         biased;
         _ = cancellation.wait() => {
             let attempted = dispatched.load(Ordering::SeqCst);
+            let queue_ms = queued_at.elapsed().as_millis() as u64;
+            let mut item = failed_item(&input, &plan,
+                if attempted { "unavailable" } else { "unattempted" },
+                if attempted { "caller disconnected after dispatch; completion is unknown" }
+                else { "caller disconnected before dispatch" }, None);
+            item["queue_ms"] = json!(queue_ms);
             ItemResult {
                 index,
                 dispatched: attempted,
-                item: failed_item(&input, &plan,
-                    if attempted { "unavailable" } else { "unattempted" },
-                    if attempted { "caller disconnected after dispatch; completion is unknown" }
-                    else { "caller disconnected before dispatch" }, None),
+                item,
                 usage: None,
+                queue_ms: Some(queue_ms),
                 attempt_id,
             }
         }
@@ -1882,6 +1945,7 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
         body,
         asked,
         state,
+        tenant,
         door,
         endpoint,
         model,
@@ -1889,15 +1953,22 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
         slots,
         halt,
         deadline,
+        queued_at,
         attempt_id,
         cancellation: _,
     } = work;
-    let unattempted = |cause: &'static str| ItemResult {
-        index,
-        dispatched: false,
-        item: unattempted_item(&input, &plan, cause),
-        usage: None,
-        attempt_id: attempt_id.clone(),
+    let unattempted = |cause: &'static str| {
+        let queue_ms = queued_at.elapsed().as_millis() as u64;
+        let mut item = unattempted_item(&input, &plan, cause);
+        item["queue_ms"] = json!(queue_ms);
+        ItemResult {
+            index,
+            dispatched: false,
+            item,
+            usage: None,
+            queue_ms: Some(queue_ms),
+            attempt_id: attempt_id.clone(),
+        }
     };
     // The call's own fan-out bound. The pool closes on halt, which is
     // how a stopped call frees its queue instead of waiting it out.
@@ -1911,6 +1982,20 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
     if halt.load(Ordering::SeqCst) {
         return unattempted("the call stopped before this input's forward");
     }
+    // The tenant's forward share, when the operator declared one — the
+    // fairness bound that keeps one tenant's call from holding every
+    // slot while another tenant's call waits.
+    let _share = match tenant_slots(&state, &tenant).await {
+        Some(pool) => match tokio::time::timeout_at(cutoff, pool.acquire_owned()).await {
+            Ok(Ok(permit)) => Some(permit),
+            _ => {
+                return unattempted(
+                    "the call's execution deadline passed while the tenant's slots were full",
+                );
+            }
+        },
+        None => None,
+    };
     // The binding's declared concurrency, when it names one — waited
     // on, never borrowed: a busy door's items queue inside the deadline.
     let _door = match door_slots(&state, &door).await {
@@ -1940,6 +2025,7 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
     if Instant::now() >= deadline {
         return unattempted("the call's execution deadline passed before dispatch");
     }
+    let queue_ms = queued_at.elapsed().as_millis() as u64;
     dispatched.store(true, Ordering::SeqCst);
     let forwarded = tokio::time::timeout_at(cutoff, forward(&state, &endpoint, &body))
         .await
@@ -1947,7 +2033,7 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
             message: "the classification call exceeded its execution deadline".to_string(),
         });
     let latency = item_started.elapsed();
-    let (item, usage) = match forwarded {
+    let (mut item, usage) = match forwarded {
         Forwarded::Served { body, .. } => {
             served_item(&input, &plan, &asked, &model, &body, latency)
         }
@@ -1966,11 +2052,13 @@ async fn classify_item_running(work: ItemWork, dispatched: Arc<AtomicBool>) -> I
             )
         }
     };
+    item["queue_ms"] = json!(queue_ms);
     ItemResult {
         index,
         dispatched: true,
         item,
         usage,
+        queue_ms: Some(queue_ms),
         attempt_id,
     }
 }
@@ -1985,6 +2073,22 @@ async fn door_slots(state: &ServeState, door: &str) -> Option<Arc<Semaphore>> {
         .await
         .get(door)
         .and_then(|bounds| bounds.slots.clone())
+}
+
+/// The tenant's share of concurrent classify forwards — `None` when the
+/// operator declared no per-tenant bound. An owned permit retains its
+/// semaphore; entries with no active reservations are removed so
+/// departed tenants do not accumulate process state.
+async fn tenant_slots(state: &ServeState, tenant: &Option<String>) -> Option<Arc<Semaphore>> {
+    let bound = state.config.max_tenant_classify_in_flight? as usize;
+    let mut pools = state.tenant_classify_in_flight.lock().await;
+    pools.retain(|_, pool| Arc::strong_count(pool) > 1);
+    Some(
+        pools
+            .entry(tenant.clone())
+            .or_insert_with(|| Arc::new(Semaphore::new(bound)))
+            .clone(),
+    )
 }
 
 /// A review or fallback dispatch's identities and work: a secondary
@@ -2249,7 +2353,7 @@ async fn dispatch_admitted(
         cutoff,
         verified_cancellable(
             state,
-            &backend.endpoint,
+            &backend,
             &admission,
             naming,
             ctx,
@@ -3808,12 +3912,12 @@ fn attempt_of(headers: &HeaderMap) -> u32 {
 }
 
 /// The `Published` identity a backend's `GET /v1/models` reports for the
-/// bound model id.
+/// bound model id, plus the card's batching declaration when it makes one.
 async fn published_identity(
     state: &ServeState,
     endpoint: &str,
     model: &str,
-) -> Result<Published, String> {
+) -> Result<(Published, Option<tenancy::backend::Batching>), String> {
     let response = state
         .client
         .get(format!("{endpoint}/v1/models"))
@@ -3837,39 +3941,51 @@ async fn published_identity(
         .iter()
         .find(|card| card.get("id").and_then(Value::as_str) == Some(model))
         .ok_or_else(|| format!("the door publishes no card for `{model}`"))?;
-    Ok(Published {
-        model: card
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        adapter: card
-            .get("adapter")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        // kev publishes the loaded-bytes digest under
-        // `artifact_identity.digest`; a TypeSafe-shaped card may carry a
-        // flat `artifact_signature` instead. Either counts; neither is
-        // trusted beyond being the process's own claim.
-        artifact_signature: card
-            .get("artifact_identity")
-            .and_then(|identity| identity.get("digest"))
-            .or_else(|| card.get("artifact_signature"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        execution: card
-            .get("execution")
-            .and_then(Value::as_object)
-            .map(|execution| {
-                execution
-                    .iter()
-                    .map(|(key, value)| (key.clone(), scalar(value)))
-                    .collect()
-            })
-            .unwrap_or_default(),
-    })
+    // The adapter's batching declaration, when the card carries one.
+    // A malformed field is an identity fault, not an absent claim.
+    let batching = match card.get("batching") {
+        None => None,
+        Some(value) => Some(
+            serde_json::from_value::<tenancy::backend::Batching>(value.clone())
+                .map_err(|error| format!("the door's `batching` did not parse: {error}"))?,
+        ),
+    };
+    Ok((
+        Published {
+            model: card
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            adapter: card
+                .get("adapter")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            // kev publishes the loaded-bytes digest under
+            // `artifact_identity.digest`; a TypeSafe-shaped card may carry a
+            // flat `artifact_signature` instead. Either counts; neither is
+            // trusted beyond being the process's own claim.
+            artifact_signature: card
+                .get("artifact_identity")
+                .and_then(|identity| identity.get("digest"))
+                .or_else(|| card.get("artifact_signature"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            execution: card
+                .get("execution")
+                .and_then(Value::as_object)
+                .map(|execution| {
+                    execution
+                        .iter()
+                        .map(|(key, value)| (key.clone(), scalar(value)))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        },
+        batching,
+    ))
 }
 
 /// A card field's comparable form: a string stays itself, a number or
@@ -3999,7 +4115,7 @@ async fn write_receipt(
     receipt.outcome = outcome;
     receipt.cause = cause.map(str::to_string);
     receipt.timing = Timing {
-        queued_ms: None,
+        queued_ms: ctx.queued_ms,
         latency_ms: Some(started.elapsed().as_millis() as u64),
         resolved_at: Some(now_utc()),
     };

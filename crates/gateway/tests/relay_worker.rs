@@ -413,6 +413,7 @@ async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
                     endpoint: endpoint.to_string(),
                     classify: None,
                     classify_item_concurrency: 1,
+                    batching: None,
                 },
             )
         })
@@ -426,6 +427,8 @@ async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
         max_body_bytes: 1_048_576,
         max_response_bytes: 4_194_304,
         forward_timeout_ms: 10_000,
+        classify_timeout_ms: None,
+        max_tenant_classify_in_flight: None,
         reservation_ttl_secs: 300,
         max_in_flight: 8,
         max_classify_inputs: 1024,

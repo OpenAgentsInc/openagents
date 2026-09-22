@@ -38,7 +38,8 @@
           "selected": null
         }
       ],
-      "latency_ms": 0
+      "latency_ms": 0,
+      "queue_ms": 0
     }
   ],
   "selections": [],
@@ -64,6 +65,10 @@
     "output_tokens_complete": false
   },
   "timing": {
-    "latency_ms": 0
+    "latency_ms": 0,
+    "queue_ms": {
+      "max": 0,
+      "total": 0
+    }
   }
 }

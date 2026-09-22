@@ -755,6 +755,16 @@ async fn models(State(state): State<Arc<ServeState>>) -> Json<Value> {
                 "base_model_signature": v.base_revision,
                 "artifact_identity": v.model.artifacts,
                 "execution": v.execution_identity(),
+                // kev packs the questions of one request into one
+                // forward; it does not pack separate requests. A batch
+                // of inputs is the caller's loop of bounded calls.
+                "batching": {"kind": "caller-loop"},
+                "limits": {
+                    "context_tokens": state.admission.max_total_tokens,
+                    "questions_per_call": state.admission.max_questions,
+                    "options_per_call": state.admission.max_total_options,
+                    "concurrent_calls": state.admission.concurrency,
+                },
                 "aliases": if i == state.default { state.aliases.clone() } else { Vec::<String>::new() },
                 "run": v.run,
                 "base": v.base,

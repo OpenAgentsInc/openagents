@@ -107,6 +107,7 @@
           }
         ],
         "latency_ms": 0,
+        "queue_ms": 0,
         "attempts": [
           {
             "role": "primary",
@@ -182,7 +183,11 @@
     }
   },
   "timing": {
-    "latency_ms": 0
+    "latency_ms": 0,
+    "queue_ms": {
+      "max": 0,
+      "total": 0
+    }
   },
   "review": {
     "v": "openagents.classify-review.v1",

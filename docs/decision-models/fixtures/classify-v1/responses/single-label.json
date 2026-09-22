@@ -51,7 +51,8 @@
         "input_tokens": 3,
         "output_tokens": 1
       },
-      "review_status": "not-reviewed"
+      "review_status": "not-reviewed",
+      "queue_ms": 0
     },
     {
       "input": "first",
@@ -78,7 +79,8 @@
         "input_tokens": 3,
         "output_tokens": 1
       },
-      "review_status": "not-reviewed"
+      "review_status": "not-reviewed",
+      "queue_ms": 0
     }
   ],
   "selections": [],
@@ -106,6 +108,10 @@
     "output_tokens": 2
   },
   "timing": {
-    "latency_ms": 0
+    "latency_ms": 0,
+    "queue_ms": {
+      "max": 0,
+      "total": 0
+    }
   }
 }
