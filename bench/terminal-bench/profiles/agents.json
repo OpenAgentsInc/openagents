@@ -1,0 +1,111 @@
+{
+  "schema_version": "openagents.tbench.agents.v1",
+  "agents": {
+    "claude-code": {
+      "role": "external-baseline",
+      "harbor_name": "claude-code",
+      "version": "2.1.278",
+      "model": "claude-sonnet-4-5",
+      "kwargs": {
+        "version": "2.1.278",
+        "reasoning_effort": "high"
+      },
+      "env_forward": [
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "CLAUDE_FORCE_OAUTH"
+      ],
+      "auth_modes": {
+        "api-key": {
+          "requires_any": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+          "note": "Direct API billing. Cost is provider-reported or a Harbor pricing estimate; label which."
+        },
+        "subscription-oauth": {
+          "requires_all": ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_FORCE_OAUTH"],
+          "force_value": { "CLAUDE_FORCE_OAUTH": "1" },
+          "note": "Subscription billing through `claude setup-token`. Reference pricing is not an observed incremental bill; record cost provenance as estimate."
+        }
+      },
+      "cost_provenance": "provider_reported",
+      "note": "Harbor installs Claude Code inside the task environment at the pinned version. A host login does not authenticate the container."
+    },
+    "codex": {
+      "role": "external-baseline",
+      "harbor_name": "codex",
+      "version": "0.153.3",
+      "model": "gpt-5.2-codex",
+      "kwargs": {
+        "version": "0.153.3",
+        "reasoning_effort": "high"
+      },
+      "env_forward": [
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "api-key": {
+          "requires_any": ["OPENAI_API_KEY"],
+          "note": "Direct API billing. Codex reports token usage; cost is a Harbor pricing estimate unless the provider reports otherwise."
+        },
+        "auth-json": {
+          "requires_any": ["CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"],
+          "force_value": { "CODEX_FORCE_AUTH_JSON": "1" },
+          "note": "Subscription billing through the host's auth.json (CODEX_AUTH_JSON_PATH selects the file; CODEX_FORCE_AUTH_JSON selects ~/.codex/auth.json). Follow Codex's noninteractive contract."
+        }
+      },
+      "cost_provenance": "price_estimate",
+      "cost_note": "The adapter estimates cost from token usage and a pricing registry; that is a price estimate, not a provider-reported amount.",
+      "note": "Harbor installs Codex inside the task environment at the pinned version."
+    },
+    "coder-v05": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_v05:CoderV05",
+      "version": null,
+      "model": "v0.5-composite",
+      "kwargs": {},
+      "required_kwargs": ["artifact_path", "artifact_sha256"],
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "OPENAGENTS_MODEL",
+        "CODER_V05_CONFIG"
+      ],
+      "extra_allowed_hosts": ["host.docker.internal"],
+      "auth_modes": {
+        "door-key": {
+          "requires_all": ["OPENAGENTS_API_KEY", "OPENAGENTS_DOOR_URL"],
+          "note": "The episode's model and decision calls go through the named door. The key is forwarded by name only; its value never enters a checked file, a log line, or an artifact."
+        }
+      },
+      "cost_provenance": "mixed",
+      "cost_note": "v0.5 usage comes from its own episode result record. Door-side cost follows the serving side's receipts; mark unavailable usage unknown, never zero.",
+      "note": "The artifact pin names an exact Linux v0.5 binary or bundle plus its sha256. Version is the binary's own --version output, recorded per trial. A macOS binary cannot run in these Linux task environments."
+    },
+    "oracle": {
+      "role": "control",
+      "harbor_name": "oracle",
+      "version": null,
+      "model": null,
+      "kwargs": {},
+      "env_forward": [],
+      "auth_modes": {},
+      "cost_provenance": "none",
+      "note": "Applies the task's own solution. An oracle failure is an environment or task problem, not evidence against an agent."
+    },
+    "nop": {
+      "role": "control",
+      "harbor_name": "nop",
+      "version": null,
+      "model": null,
+      "kwargs": {},
+      "env_forward": [],
+      "auth_modes": {},
+      "cost_provenance": "none",
+      "note": "Does nothing. The negative control: a nop pass means the verifier is not discriminating."
+    }
+  }
+}
