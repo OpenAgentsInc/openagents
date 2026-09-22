@@ -23,6 +23,9 @@ The [Terminal-Bench task comparison](measurements/2026-09-22-terminal-bench-chat
 locates the CoderBench golden and ranks upstream tasks against recent work.
 The [v0.5 algorithm and golden-trace proposal](design/coder-terminal-v05-algorithm-and-goldens.md)
 connects those tasks to task state, evidence, execution, and the OpenAgents NIPs.
+The [Terminal-Bench runbook](terminal-bench.md) covers the pinned local
+harness, and the [episode contract](terminal-bench-contract.md) defines how
+a v0.5 artifact plugs into it.
 
 [Decision model documentation](../decision-models/README.md) covers the
 models, API, and measurements that inform Coder's decisions.
