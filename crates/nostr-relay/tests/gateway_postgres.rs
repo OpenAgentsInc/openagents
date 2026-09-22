@@ -23,6 +23,11 @@ use tokio::{
 use tokio_postgres::NoTls;
 use tokio_tungstenite::tungstenite::{Message, WebSocket, client};
 
+/// Whether `message` is an EOSE for `id`, hint or no hint (NIP-67).
+fn is_eose_for(message: &Value, id: &str) -> bool {
+    message.get(0) == Some(&json!("EOSE")) && message.get(1) == Some(&json!(id))
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn m3_gateway_contract_against_postgres() {
     let Ok(database_url) = std::env::var("NOSTR_RELAY_TEST_DATABASE_URL") else {
@@ -1003,7 +1008,7 @@ fn websocket_contract(address_one: SocketAddr, address_two: SocketAddr) {
     );
     assert_eq!(read_json(&mut subscriber)[0], "CLOSED");
     send_json(&mut subscriber, json!(["REQ", "sub", {}]));
-    assert_eq!(read_json(&mut subscriber), json!(["EOSE", "sub"]));
+    assert!(is_eose_for(&read_json(&mut subscriber), "sub"));
 
     let mut publisher = connect_client(address_one);
     let publisher_challenge = expect_auth_challenge(&mut publisher);
@@ -1051,10 +1056,10 @@ fn websocket_contract(address_one: SocketAddr, address_two: SocketAddr) {
         &mut subscriber,
         json!(["REQ", "ephemeral-history", {"ids": [ephemeral.id]}]),
     );
-    assert_eq!(
-        read_json(&mut subscriber),
-        json!(["EOSE", "ephemeral-history"])
-    );
+    assert!(is_eose_for(
+        &read_json(&mut subscriber),
+        "ephemeral-history"
+    ));
 
     send_json(&mut subscriber, json!(["CLOSE", "sub"]));
     let after_close = signed_event(23, now(), 1, Vec::new(), "after close");
@@ -1113,7 +1118,7 @@ fn openagents_profile_contract(address: SocketAddr) {
         &mut stranger,
         json!(["REQ", "hidden", {"ids": [record.id]}]),
     );
-    assert_eq!(read_json(&mut stranger), json!(["EOSE", "hidden"]));
+    assert!(is_eose_for(&read_json(&mut stranger), "hidden"));
 
     let mut reader = connect_client(address);
     let reader_challenge = expect_auth_challenge(&mut reader);
@@ -1122,7 +1127,7 @@ fn openagents_profile_contract(address: SocketAddr) {
     let found = read_json(&mut reader);
     assert_eq!(found[0], "EVENT");
     assert_eq!(found[2]["id"], record.id);
-    assert_eq!(read_json(&mut reader), json!(["EOSE", "own"]));
+    assert!(is_eose_for(&read_json(&mut reader), "own"));
 }
 
 fn management_contract(address: SocketAddr) {
@@ -1214,12 +1219,12 @@ fn block_server_contract(address_one: SocketAddr, address_two: SocketAddr) {
         &mut owner,
         json!(["REQ", "observer-owner", {"kinds":[24200], "#p":[pubkey(21)]}]),
     );
-    assert_eq!(read_json(&mut owner), json!(["EOSE", "observer-owner"]));
+    assert!(is_eose_for(&read_json(&mut owner), "observer-owner"));
     send_json(
         &mut agent,
         json!(["REQ", "observer-agent", {"kinds":[24200], "#p":[pubkey(22)]}]),
     );
-    assert_eq!(read_json(&mut agent), json!(["EOSE", "observer-agent"]));
+    assert!(is_eose_for(&read_json(&mut agent), "observer-agent"));
     let control = signed_event(
         21,
         now(),
@@ -1252,13 +1257,13 @@ fn block_server_contract(address_one: SocketAddr, address_two: SocketAddr) {
         &mut owner,
         json!(["REQ", "observer-history", {"kinds":[24200], "#p":[pubkey(21)]}]),
     );
-    assert_eq!(read_json(&mut owner), json!(["EOSE", "observer-history"]));
+    assert!(is_eose_for(&read_json(&mut owner), "observer-history"));
 
     send_json(
         &mut owner,
         json!(["REQ", "turn-metrics", {"kinds":[44200], "#p":[pubkey(21)]}]),
     );
-    assert_eq!(read_json(&mut owner), json!(["EOSE", "turn-metrics"]));
+    assert!(is_eose_for(&read_json(&mut owner), "turn-metrics"));
     let metric = signed_event(
         22,
         now(),
@@ -1290,7 +1295,7 @@ fn block_server_contract(address_one: SocketAddr, address_two: SocketAddr) {
         json!(["REQ", "engram-owner", {"kinds":[30174], "#p":[pubkey(21)]}]),
     );
     assert_eq!(read_json(&mut owner)[2]["id"], engram.id);
-    assert_eq!(read_json(&mut owner), json!(["EOSE", "engram-owner"]));
+    assert!(is_eose_for(&read_json(&mut owner), "engram-owner"));
 
     let unshared = signed_event(
         21,
@@ -1381,7 +1386,7 @@ fn block_server_contract(address_one: SocketAddr, address_two: SocketAddr) {
     let mut archival_kinds = Vec::new();
     loop {
         let message = read_json(&mut owner);
-        if message == json!(["EOSE", "archive-state"]) {
+        if is_eose_for(&message, "archive-state") {
             break;
         }
         archival_kinds.push(message[2]["kind"].as_u64().unwrap());
@@ -1411,7 +1416,7 @@ fn block_server_contract(address_one: SocketAddr, address_two: SocketAddr) {
         json!(["REQ", "personas", {"kinds":[30175], "authors":[pubkey(21)]}]),
     );
     assert_eq!(read_json(&mut outsider)[2]["id"], shared.id);
-    assert_eq!(read_json(&mut outsider), json!(["EOSE", "personas"]));
+    assert!(is_eose_for(&read_json(&mut outsider), "personas"));
     send_json(
         &mut outsider,
         json!(["REQ", "foreign-reminder", {"kinds":[30300], "authors":[pubkey(21)]}]),
@@ -1426,7 +1431,7 @@ fn block_server_contract(address_one: SocketAddr, address_two: SocketAddr) {
     );
     loop {
         let message = read_json(&mut outsider);
-        if message == json!(["EOSE", "cw-degrade"]) {
+        if is_eose_for(&message, "cw-degrade") {
             break;
         }
         assert_ne!(message[2]["kind"], 39_006);
@@ -1451,7 +1456,7 @@ fn block_server_contract(address_one: SocketAddr, address_two: SocketAddr) {
     let snapshot = read_json(&mut admin);
     assert_eq!(snapshot[2]["kind"], 30_622);
     assert_eq!(snapshot[2]["pubkey"], pubkey(90));
-    assert_eq!(read_json(&mut admin), json!(["EOSE", "hidden"]));
+    assert!(is_eose_for(&read_json(&mut admin), "hidden"));
     send_json(&mut admin, json!(["CLOSE", "hidden"]));
     let open = signed_event(
         30,
@@ -1475,7 +1480,7 @@ fn block_server_contract(address_one: SocketAddr, address_two: SocketAddr) {
             .iter()
             .all(|tag| tag[0] != "h")
     );
-    assert_eq!(read_json(&mut admin), json!(["EOSE", "visible"]));
+    assert!(is_eose_for(&read_json(&mut admin), "visible"));
 
     let mut manager = connect_client(address_one);
     let challenge = expect_auth_challenge(&mut manager);
@@ -1588,7 +1593,7 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
         &mut recipient,
         json!(["REQ", "dm", {"kinds": [1059], "#p": [pubkey(30)]}]),
     );
-    assert_eq!(read_json(&mut recipient), json!(["EOSE", "dm"]));
+    assert!(is_eose_for(&read_json(&mut recipient), "dm"));
 
     let mut unauthenticated = connect_client(address_two);
     let _challenge = expect_auth_challenge(&mut unauthenticated);
@@ -1624,7 +1629,7 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
     send_json(&mut outsider, json!(["REQ", "broad-outsider", {}]));
     loop {
         let message = read_json(&mut outsider);
-        if message == json!(["EOSE", "broad-outsider"]) {
+        if is_eose_for(&message, "broad-outsider") {
             break;
         }
         assert_ne!(message[2]["kind"], 1_059);
@@ -1668,11 +1673,11 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
         json!(["REQ", "wrap-history", {"kinds": [1059], "#p": [pubkey(30)]}]),
     );
     assert_eq!(read_json(&mut history)[2]["id"], wrap.id);
-    assert_eq!(read_json(&mut history), json!(["EOSE", "wrap-history"]));
+    assert!(is_eose_for(&read_json(&mut history), "wrap-history"));
 
     send_json(&mut history, json!(["REQ", "wrap-id", {"ids": [wrap.id]}]));
     assert_eq!(read_json(&mut history)[2]["id"], wrap.id);
-    assert_eq!(read_json(&mut history), json!(["EOSE", "wrap-id"]));
+    assert!(is_eose_for(&read_json(&mut history), "wrap-id"));
 
     send_json(
         &mut history,
@@ -1687,7 +1692,7 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
         &mut history,
         json!(["REQ", "wrap-search", {"search": "encrypted gift wrap"}]),
     );
-    assert_eq!(read_json(&mut history), json!(["EOSE", "wrap-search"]));
+    assert!(is_eose_for(&read_json(&mut history), "wrap-search"));
     send_json(
         &mut history,
         json!(["COUNT", "wrap-search-count", {"search": "encrypted gift wrap"}]),
@@ -1701,10 +1706,7 @@ fn protected_and_private_contract(address_one: SocketAddr, address_two: SocketAd
         &mut outsider,
         json!(["REQ", "wrap-id-outsider", {"ids": [wrap.id]}]),
     );
-    assert_eq!(
-        read_json(&mut outsider),
-        json!(["EOSE", "wrap-id-outsider"])
-    );
+    assert!(is_eose_for(&read_json(&mut outsider), "wrap-id-outsider"));
     send_json(
         &mut outsider,
         json!(["COUNT", "wrap-id-count-outsider", {"ids": [wrap.id]}]),
@@ -1788,7 +1790,7 @@ fn malformed_legacy_wrap_contract(address: SocketAddr) {
         &mut reader,
         json!(["REQ", "malformed-wrap-id", {"ids": [malformed_wrap.id]}]),
     );
-    assert_eq!(read_json(&mut reader), json!(["EOSE", "malformed-wrap-id"]));
+    assert!(is_eose_for(&read_json(&mut reader), "malformed-wrap-id"));
     send_json(
         &mut reader,
         json!(["COUNT", "malformed-wrap-count", {"ids": [malformed_wrap.id]}]),
@@ -1822,7 +1824,7 @@ fn search_and_count_contract(address_one: SocketAddr, address_two: SocketAddr) {
     let result = read_json(&mut reader);
     assert_eq!(result[0], "EVENT");
     assert_eq!(result[2]["id"], searchable.id);
-    assert_eq!(read_json(&mut reader), json!(["EOSE", "search"]));
+    assert!(is_eose_for(&read_json(&mut reader), "search"));
 
     send_json(
         &mut reader,
@@ -1871,7 +1873,7 @@ fn search_and_count_contract(address_one: SocketAddr, address_two: SocketAddr) {
     let mut replayed = Vec::new();
     loop {
         let message = read_json(&mut reader);
-        if message == json!(["EOSE", "cat"]) {
+        if is_eose_for(&message, "cat") {
             break;
         }
         assert_eq!(message[0], "EVENT");
@@ -1927,7 +1929,7 @@ fn search_and_count_contract(address_one: SocketAddr, address_two: SocketAddr) {
     let mut accented = Vec::new();
     loop {
         let message = read_json(&mut reader);
-        if message == json!(["EOSE", "accent"]) {
+        if is_eose_for(&message, "accent") {
             break;
         }
         let event: Event = serde_json::from_value(message[2].clone()).unwrap();
@@ -1953,7 +1955,7 @@ fn group_contract(address_one: SocketAddr, address_two: SocketAddr) {
     let mut metadata_kinds = Vec::new();
     loop {
         let message = read_json(&mut metadata_reader);
-        if message == json!(["EOSE", "metadata"]) {
+        if is_eose_for(&message, "metadata") {
             break;
         }
         let event: Event = serde_json::from_value(message[2].clone()).unwrap();
@@ -2084,7 +2086,7 @@ fn group_contract(address_one: SocketAddr, address_two: SocketAddr) {
     let mut accepted_requests = std::collections::HashSet::new();
     loop {
         let message = read_json(&mut joiner);
-        if message == json!(["EOSE", "relay-membership-history"]) {
+        if is_eose_for(&message, "relay-membership-history") {
             break;
         }
         let event: Event = serde_json::from_value(message[2].clone()).unwrap();
@@ -2145,12 +2147,12 @@ fn group_contract(address_one: SocketAddr, address_two: SocketAddr) {
         &mut stranger,
         json!(["REQ", "secret-chat", {"kinds":[1], "#h":["secret-room"]}]),
     );
-    assert_eq!(read_json(&mut stranger), json!(["EOSE", "secret-chat"]));
+    assert!(is_eose_for(&read_json(&mut stranger), "secret-chat"));
     send_json(
         &mut stranger,
         json!(["REQ", "secret-meta", {"kinds":[39000], "#d":["secret-room"]}]),
     );
-    assert_eq!(read_json(&mut stranger), json!(["EOSE", "secret-meta"]));
+    assert!(is_eose_for(&read_json(&mut stranger), "secret-meta"));
 
     let mut member_reader = connect_client(address_one);
     let challenge = expect_auth_challenge(&mut member_reader);
@@ -2163,10 +2165,7 @@ fn group_contract(address_one: SocketAddr, address_two: SocketAddr) {
     assert_eq!(visible[0], "EVENT", "{visible}");
     let visible_event: Event = serde_json::from_value(visible[2].clone()).unwrap();
     assert_eq!(visible_event.id, secret_message.id);
-    assert_eq!(
-        read_json(&mut member_reader),
-        json!(["EOSE", "secret-member"])
-    );
+    assert!(is_eose_for(&read_json(&mut member_reader), "secret-member"));
     member_reader.close(None).unwrap();
 
     let create_parent = signed_event(
@@ -2245,7 +2244,7 @@ fn expiration_contract(address_one: SocketAddr, address_two: SocketAddr) -> Stri
     let challenge = expect_auth_challenge(&mut reader);
     authenticate(&mut reader, 20, &challenge);
     send_json(&mut reader, json!(["REQ", "expired", {"ids": [event.id]}]));
-    assert_eq!(read_json(&mut reader), json!(["EOSE", "expired"]));
+    assert!(is_eose_for(&read_json(&mut reader), "expired"));
     reader.close(None).unwrap();
     publisher.close(None).unwrap();
     event.id

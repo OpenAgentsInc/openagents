@@ -516,7 +516,7 @@ impl GatewayConfig {
     }
 
     pub(crate) fn active_supported_nips(&self) -> Vec<u16> {
-        let mut supported_nips = vec![1, 9, 11, 40, 45, 50, 65, 77, 94];
+        let mut supported_nips = vec![1, 9, 11, 40, 45, 50, 65, 67, 77, 94];
         if self.relay_url.is_some() {
             supported_nips.extend([17, 42, 59, 70]);
         }

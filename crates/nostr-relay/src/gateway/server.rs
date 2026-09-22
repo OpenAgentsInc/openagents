@@ -1716,6 +1716,7 @@ async fn handle_req(
                     generation,
                     history.high_water,
                     history.events,
+                    history.complete,
                 )
                 .await;
             }

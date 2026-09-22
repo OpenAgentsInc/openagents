@@ -155,6 +155,9 @@ enum DbRequest {
 pub struct HistoryResult {
     pub high_water: i64,
     pub events: Vec<StoredEvent>,
+    /// NIP-67 completeness: `true` when every stored event matching the
+    /// filters was returned, `false` when truncation dropped some.
+    pub complete: bool,
 }
 
 #[derive(Debug)]
@@ -789,17 +792,34 @@ async fn query_history(
     let high_water = store.latest_ingest_seq().await?;
     let mut events = HashMap::new();
     let per_filter = max_results.div_ceil(filters.len().max(1));
+    // NIP-67: probe one row past each filter's share so truncation is
+    // observable, and again past the combined cap after dedup. Either
+    // overflow means the relay holds matching stored events it did not
+    // send, which the EOSE carries as "more" instead of "finish".
+    let mut complete = true;
     for filter in filters {
-        let rows = store
+        // The store applies the client's own `limit`, so probing past
+        // the smaller of it and this filter's budget share is what
+        // reveals withheld events: a fuller page means the relay holds
+        // matching stored events it is not sending, whether the cut is
+        // the client's limit or the relay's cap.
+        let want = filter.limit.unwrap_or(per_filter).min(per_filter);
+        let mut probe = filter.clone();
+        probe.limit = Some(want.saturating_add(1));
+        let mut rows = store
             .query_filter_for(
-                &filter,
+                &probe,
                 now,
-                per_filter,
+                want.saturating_add(1),
                 high_water,
                 cancel.clone(),
                 &read_pubkeys,
             )
             .await?;
+        if rows.len() > want {
+            complete = false;
+            rows.truncate(want);
+        }
         for stored in rows {
             events.entry(stored.event.id.clone()).or_insert(stored);
         }
@@ -812,8 +832,15 @@ async fn query_history(
             .cmp(&left.event.created_at)
             .then_with(|| left.event.id.cmp(&right.event.id))
     });
-    events.truncate(max_results);
-    Ok(HistoryResult { high_water, events })
+    if events.len() > max_results {
+        complete = false;
+        events.truncate(max_results);
+    }
+    Ok(HistoryResult {
+        high_water,
+        events,
+        complete,
+    })
 }
 
 fn is_fatal(error: &StoreError) -> bool {

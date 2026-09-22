@@ -961,11 +961,29 @@ the kinds stay off the NIP-11 list. Acceptance is
 `deprecated_set_shapes_map_to_standard_lists`, and
 `malformed_lists_are_refused`.
 
-Event-shaped files other than the rows above are still a `Shape`: the kind
-and one tag that occur in the pinned text. That check is partial. It signs
-an event with that kind and tag, accepts it, and refuses the same event
-with the tag removed. It does not re-state every optional field, and it is
-not configured-and-proven.
+NIP-67 is `configured-and-proven`. The relay's `query_history` probes
+one row past the smaller of each filter's own `limit` and its budget
+share — the store applies the client's `limit` itself, so the probe
+clones the filter with the bound lifted — and again past the combined
+cap after dedup. Either overflow sets `HistoryResult::complete` false
+and the EOSE carries `["more"]`; otherwise it carries `["finish"]`.
+`wire::eose_message` always sends the third element, and NIP-11
+advertises `67` unconditionally. On the read side,
+`domain::eose::open_eose` parses two- and three-element forms,
+`Eose::complete` returns `Some(true)` for finish, `Some(false)` for
+more-only, and `None` for absent, empty, or unknown hints — unknown
+values are ignored without error per the pinned rule — and
+`should_paginate` is true everywhere except a definitive finish. The
+hint covers stored events only; live delivery is unchanged, and the
+boundary-`created_at` tie rule is not yet implemented. Acceptance is
+`gateway::subscription::tests::a_truncated_history_announces_more_at_eose`
+and `domain::eose::tests::finish_and_more_answer_completeness`.
+
+Every event-shaped official file is now `configured-and-proven` — the
+`Shape` list is empty. A `Shape` was the partial check: the kind and
+one tag that occur in the pinned text, an event signed with them
+accepted and the same event without the tag refused, re-stating none
+of the optional fields.
 
 Files whose body says the rules moved to NIP-01 are not a second protocol.
 The check requires that sentence and still verifies a signed NIP-01 event.

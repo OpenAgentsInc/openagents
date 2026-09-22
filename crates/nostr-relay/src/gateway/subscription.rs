@@ -47,6 +47,7 @@ enum HubCommand {
         generation: u64,
         high_water: i64,
         events: Vec<StoredEvent>,
+        complete: bool,
     },
     Remove {
         key: SubscriptionKey,
@@ -240,6 +241,7 @@ impl HubHandle {
         generation: u64,
         high_water: i64,
         events: Vec<StoredEvent>,
+        complete: bool,
     ) {
         let _ = self
             .sender
@@ -251,6 +253,7 @@ impl HubHandle {
                 generation,
                 high_water,
                 events,
+                complete,
             })
             .await;
     }
@@ -337,7 +340,8 @@ impl Hub {
                 generation,
                 high_water,
                 events,
-            } => self.history_ready(&key, generation, high_water, events),
+                complete,
+            } => self.history_ready(&key, generation, high_water, events, complete),
             HubCommand::Remove { key } => self.remove_subscription(&key),
             HubCommand::CloseSubscription { key, message } => {
                 self.send_one(
@@ -394,6 +398,7 @@ impl Hub {
         generation: u64,
         high_water: i64,
         events: Vec<StoredEvent>,
+        complete: bool,
     ) {
         let Some(subscription) = self.subscriptions.get_mut(key) else {
             return;
@@ -436,7 +441,10 @@ impl Hub {
                 break;
             }
         }
-        if !self.send_one(key.connection_id, wire::eose_message(&key.subscription_id)) {
+        if !self.send_one(
+            key.connection_id,
+            wire::eose_message(&key.subscription_id, complete),
+        ) {
             return;
         }
         for published in &live {
@@ -783,6 +791,7 @@ mod tests {
                 event: historical.clone(),
                 ingest_seq: 5,
             }],
+            true,
         )
         .await;
 
@@ -791,7 +800,7 @@ mod tests {
         let third = receive_json(&mut channels.outbound).await;
         assert_eq!(first[0], "EVENT");
         assert_eq!(first[2]["id"], "a".repeat(64));
-        assert_eq!(second, serde_json::json!(["EOSE", "sub"]));
+        assert_eq!(second, serde_json::json!(["EOSE", "sub", ["finish"]]));
         assert_eq!(third[0], "EVENT");
         assert_eq!(third[2]["id"], "b".repeat(64));
         for (event, ingest_seq) in [(historical, 5), (after_boundary, 6)] {
@@ -816,6 +825,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_truncated_history_announces_more_at_eose() {
+        let (shutdown, receiver) = watch::channel(false);
+        let (hub, task) = HubHandle::start(32, 8, 128 * 1024, receiver);
+        let mut channels = hub.add_connection(1, 8).await.unwrap();
+        assert!(
+            hub.register(1, "sub".into(), 1, vec![Filter::default()])
+                .await
+                .unwrap()
+        );
+        hub.history_ready(1, "sub".into(), 1, 0, Vec::new(), false)
+            .await;
+        assert_eq!(
+            receive_json(&mut channels.outbound).await,
+            serde_json::json!(["EOSE", "sub", ["more"]])
+        );
+
+        shutdown.send(true).unwrap();
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn full_send_queue_closes_only_its_connection() {
         let (shutdown, receiver) = watch::channel(false);
         let (hub, task) = HubHandle::start(32, 2, 128 * 1024, receiver);
@@ -825,10 +855,11 @@ mod tests {
                 .await
                 .unwrap()
         );
-        hub.history_ready(1, "sub".into(), 1, 0, Vec::new()).await;
+        hub.history_ready(1, "sub".into(), 1, 0, Vec::new(), true)
+            .await;
         assert_eq!(
             receive_json(&mut channels.outbound).await,
-            serde_json::json!(["EOSE", "sub"])
+            serde_json::json!(["EOSE", "sub", ["finish"]])
         );
         for id in ['a', 'b'] {
             hub.publish(

@@ -22,6 +22,7 @@ mod content_warning;
 mod deletion;
 mod draft;
 mod ecash;
+mod eose;
 mod error;
 mod event;
 mod expanded;
@@ -135,6 +136,7 @@ pub use ecash::{
     EcashNetwork, MintAnnouncement, MintEndpoint, MintKind, MintPointer, MintRecommendation,
     open_cashu_mint, open_fedimint, open_mint_recommendation,
 };
+pub use eose::{Eose, EoseHint, open_eose};
 pub use error::DomainError;
 pub use event::{EXTENDED_INDEXED_TAG_NAMES, Event, Tag, is_indexed_tag_name};
 pub use expanded::{

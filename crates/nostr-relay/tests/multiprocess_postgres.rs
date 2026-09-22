@@ -38,7 +38,9 @@ fn m4_two_process_gap_and_chaos_contract() {
 
     let mut subscriber = connect_client(relay_two.address);
     send_json(&mut subscriber, json!(["REQ", "all", {"kinds": [1]}]));
-    assert_eq!(read_json(&mut subscriber), json!(["EOSE", "all"]));
+    let eose = read_json(&mut subscriber);
+    assert_eq!(eose[0], "EOSE");
+    assert_eq!(eose[1], "all");
 
     let mut publisher = connect_client(relay_one.address);
     let first = signed_event(31, now(), "cross-process");

@@ -1154,6 +1154,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "67.md",
+        domain: "EOSE completeness hints: the relay probes one row past each filter's effective limit and past the combined cap, then emits [\"finish\"] or [\"more\"] as the third EOSE element; the client parser ignores unknown hints and treats their absence as unknown",
+        client: "open_eose, Eose::complete, Eose::should_paginate",
+        server: "query_history's limit+1 probe, HistoryResult::complete, wire::eose_message emits the hint, NIP-11 advertises 67",
+        paths: "crates/nostr/src/domain/eose.rs; crates/nostr-relay/src/gateway/db.rs; crates/nostr-relay/src/gateway/subscription.rs; crates/nostr-relay/src/gateway/wire.rs",
+        configuration: "none; the hint is always sent and 67 is in the base supported_nips list",
+        fixture: "a buffering subscription whose history resolves complete and one resolved truncated, plus client parses of finish, more, legacy two-element, and unknown-hint EOSEs",
+        acceptance: "nostr-relay::gateway::subscription::tests::a_truncated_history_announces_more_at_eose; domain::eose::tests::finish_and_more_answer_completeness",
+        limitations: "the boundary-created_at tie rule is not yet implemented — pagination can still miss same-timestamp events; the hint is stored events only",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

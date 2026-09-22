@@ -99,7 +99,7 @@ fn m8_long_run_soak() -> TestResult<()> {
     )?;
     loop {
         let message = read_json(&mut subscriber)?;
-        if message == json!(["EOSE", "m8-soak"]) {
+        if message.get(0) == Some(&json!("EOSE")) && message.get(1) == Some(&json!("m8-soak")) {
             break;
         }
         if message.get(0) != Some(&json!("EVENT")) {

@@ -366,8 +366,12 @@ pub fn ok_message(event_id: &str, accepted: bool, message: &str) -> String {
         .expect("serializing an OK message cannot fail")
 }
 
-pub fn eose_message(subscription_id: &str) -> String {
-    serde_json::to_string(&json!(["EOSE", subscription_id]))
+/// The NIP-67 completeness hint: `complete` says every stored event
+/// matching the subscription's filters was sent (`"finish"`), and
+/// `!complete` says more matching stored events exist (`"more"`).
+pub fn eose_message(subscription_id: &str, complete: bool) -> String {
+    let hint = if complete { "finish" } else { "more" };
+    serde_json::to_string(&json!(["EOSE", subscription_id, [hint]]))
         .expect("serializing an EOSE message cannot fail")
 }
 
