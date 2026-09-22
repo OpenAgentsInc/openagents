@@ -4074,7 +4074,7 @@ fn digest_bytes(bytes: &[u8]) -> String {
 
 /// The current UTC time, as RFC 3339 — the same Howard Hinnant civil
 /// calendar the registry stamps its revisions with.
-fn now_utc() -> String {
+pub(crate) fn now_utc() -> String {
     let seconds = unix_now();
     let days = seconds / 86400;
     let day_seconds = seconds % 86400;
@@ -4107,7 +4107,7 @@ fn civil_from_days(days: i64) -> (i64, u64, u64) {
 }
 
 /// Unix seconds now.
-fn unix_now() -> u64 {
+pub(crate) fn unix_now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|span| span.as_secs())

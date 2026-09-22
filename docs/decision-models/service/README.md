@@ -8,6 +8,7 @@ Admission, execution, review, membership, and accounting contracts.
 | --- | --- |
 | [batch-execution](batch-execution.md) | Bounded batch execution for classify |
 | [candidate-admission](candidate-admission.md) | Candidate admission |
+| [decision-worker](decision-worker.md) | The NIP-CJ relay decision worker |
 | [gateway](gateway.md) | The gateway |
 | [monetary-accounting](monetary-accounting.md) | Monetary accounting |
 | [monetary-ledger](monetary-ledger.md) | Monetary ledger |

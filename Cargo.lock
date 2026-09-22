@@ -1487,15 +1487,19 @@ name = "gateway"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "futures-util",
  "jev",
+ "nostr",
  "receipts",
  "reqwest",
+ "secp256k1",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
  "tenancy",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

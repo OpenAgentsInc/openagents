@@ -32,4 +32,5 @@
 pub mod classify;
 pub mod config;
 pub mod money;
+pub mod relay_worker;
 pub mod serve;
