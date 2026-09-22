@@ -236,6 +236,49 @@
         }
       },
       "note": "Coder One without Jev: the baseline arm for measuring what the Jev step adds. Same binary, lane, and bounds as coder-one."
+    },
+    "claude-code-opus": {
+      "role": "external-baseline",
+      "harbor_name": "claude-code",
+      "version": "2.1.280",
+      "model": "claude-opus-5-5",
+      "kwargs": {
+        "version": "2.1.280",
+        "reasoning_effort": "high"
+      },
+      "env_forward": [
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "CLAUDE_FORCE_OAUTH"
+      ],
+      "auth_modes": {
+        "api-key": {
+          "requires_any": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_FORCE_OAUTH"
+          ],
+          "note": "Direct API billing. Cost is provider-reported or a Harbor pricing estimate; label which."
+        },
+        "subscription-oauth": {
+          "requires_all": [
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "CLAUDE_FORCE_OAUTH"
+          ],
+          "note": "Subscription billing through `claude setup-token`. The API-key variables are excluded rather than overridden: with no key forwarded the CLI uses the OAuth token, and a forwarded truthy selector would be treated as a credential value and scrubbed from the evidence. Reference pricing is not an observed incremental bill; record cost provenance as estimate."
+        }
+      },
+      "cost_provenance": "provider_reported",
+      "note": "Claude Code on Opus 5.5, the headline comparison arm for Coder One. Pinned to 2.1.280 because the API refuses Opus 5.5 to Claude Code 2.1.278 (claude_code_version_too_old); otherwise the same settings as claude-code."
     }
   }
 }

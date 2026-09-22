@@ -13,6 +13,7 @@ def agents():
 def test_known_arms(agents):
     assert set(agents) == {
         "claude-code",
+        "claude-code-opus",
         "codex",
         "devin",
         "coder-v05",
