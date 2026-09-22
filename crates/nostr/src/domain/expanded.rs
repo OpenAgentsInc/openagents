@@ -529,6 +529,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 10_002 {
         super::relay_list::open_relay_list(event)?;
     }
+    if event.kind == 9_802 {
+        super::highlight::open_highlight(event)?;
+    }
     if event.kind == 10_063 {
         let servers = event.tag_values("server").collect::<Vec<_>>();
         if servers.is_empty() || servers.iter().any(|server| !valid_http_url(server)) {

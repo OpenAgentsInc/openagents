@@ -213,6 +213,22 @@ keep two to four relays is not enforced, and indexer discovery is not
 implemented. Acceptance is
 `domain::relay_list::tests::a_relay_list_splits_read_and_write_and_replaces`.
 
+NIP-84 is `configured-and-proven`. Kind `9802` is a highlight.
+The content is the highlighted text, and it may be empty for non-text
+media. The source is an `a` tag, an `e` tag, or an `r` tag marked
+`source`. An `r` tag marked `mention` is a URL inside the commentary,
+not the source. `p` tags credit pubkeys as `author` or `editor`. A
+mention uses `mention` so it is not read as an author. A `context` tag
+keeps the surrounding paragraph. A `comment` tag makes the event a
+quote highlight and keeps that commentary. `clean_source_url` drops
+tracker query parameters before a client publishes the source URL. The
+relay stores the URL as tagged and does not fetch it. Kind `9802` is a
+regular event, so a newer highlight does not replace an older one, and
+it is not added to the NIP-11 list. Admission rejects a highlight with
+no source, an unknown role, or an `r` tag that is not `source` or
+`mention`. Acceptance is
+`domain::highlight::tests::a_highlight_names_its_source_and_a_comment_quotes_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

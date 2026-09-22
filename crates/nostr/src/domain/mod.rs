@@ -18,6 +18,7 @@ mod filter;
 mod follow;
 mod gift_wrap;
 mod hex;
+mod highlight;
 mod label;
 mod market;
 mod ots;
@@ -69,6 +70,9 @@ pub use follow::{Follow, append_follow, displayed_petname, parse_follow_list};
 pub use gift_wrap::{
     RANDOMIZE_WINDOW_SECONDS, Rumor, open_wrap, randomized_timestamp, recipient_removed_wrap,
     seal_rumor, validate_seal, validate_wrap, wrap_seal,
+};
+pub use highlight::{
+    Attribution, Highlight, HighlightRole, HighlightSource, clean_source_url, open_highlight,
 };
 pub use label::{Label, LabelTarget, Labeling, open_labeling};
 pub use market::{
