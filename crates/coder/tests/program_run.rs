@@ -675,13 +675,13 @@ async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
         &composed,
         r#"{"v":1,"slug":"composed","steps":[
             {"name":"one","kind":"query","bounds":{"max_results":4}},
-            {"name":"two","kind":"program","program":"naddr1abc","bounds":{}}]}"#,
+            {"name":"two","kind":"module","module":{"sha256":"00"},"bounds":{}}]}"#,
     )
     .unwrap();
     let program = Program::load(&composed).expect("composition parses");
     let refused = runtime
         .admit(&program)
-        .expect_err("this host runs no program step");
+        .expect_err("this host runs no module step");
     assert_eq!(refused.step, "two");
     assert_eq!(refused.code, "step_kind_unavailable");
 

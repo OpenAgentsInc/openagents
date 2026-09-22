@@ -213,7 +213,7 @@ async fn cli_requires_pinned_artifacts_and_never_accepts_missing_suite_evidence(
             .env("HOME", host.path())
             .env("CODER_CAPABILITY_TRUST", &store)
             .env("CODER_PROGRAM_EFFECTS", "reads,network,subprocesses,spend")
-            .env("CODER_DECISION_PROFILE", "local")
+            .env("CODER_DECISION_PROFILE", "direct_local")
             .env("CODER_DECISION_URL", "http://127.0.0.1:9")
             .env("CODER_DECISION_MODEL", "fixture")
             .args([
@@ -294,7 +294,7 @@ async fn cli_requires_pinned_artifacts_and_never_accepts_missing_suite_evidence(
         .env("HOME", host.path())
         .env("CODER_CAPABILITY_TRUST", &store)
         .env("CODER_PROGRAM_EFFECTS", "reads,network,subprocesses,spend")
-        .env("CODER_DECISION_PROFILE", "local")
+        .env("CODER_DECISION_PROFILE", "direct_local")
         .env("CODER_DECISION_URL", endpoint)
         .env("CODER_DECISION_MODEL", "fixture")
         .args([
