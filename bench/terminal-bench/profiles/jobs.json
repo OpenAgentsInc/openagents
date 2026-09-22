@@ -1,53 +1,76 @@
 {
-  "schema_version": "openagents.tbench.jobs.v1",
-  "defaults": {
-    "n_concurrent_trials": 1,
-    "n_attempts": 1,
-    "timeout_multiplier": 1.0,
-    "retry": { "max_retries": 0 },
-    "environment": {
-      "type": "docker",
-      "delete": true,
-      "force_build": false,
-      "cpu_enforcement_policy": "auto",
-      "memory_enforcement_policy": "auto"
-    },
-    "verifier": { "disable": false },
-    "notes": "One concurrent trial is the declared default for this Mac. Environments are deleted after artifact collection; all timing phases, traces, and usage are retained in the job dir first."
+ "schema_version": "openagents.tbench.jobs.v1",
+ "defaults": {
+  "n_concurrent_trials": 1,
+  "n_attempts": 1,
+  "timeout_multiplier": 1.0,
+  "retry": {
+   "max_retries": 0
   },
-  "profiles": {
-    "smoke": {
-      "description": "Two-task smoke profile. Validates the harness, task environments, and protected verifiers before any paid run.",
-      "tasks": ["fix-git", "build-cython-ext"],
-      "n_attempts": 1,
-      "controls": true
-    },
-    "smoke-comparison": {
-      "description": "The smoke panel with three fresh repetitions per arm for the first labeled development comparison.",
-      "tasks": ["fix-git", "build-cython-ext"],
-      "n_attempts": 3,
-      "controls": false
-    },
-    "panel": {
-      "description": "The seven CPU-capable development tasks. math-eval-grader stays excluded until a declared GPU backend exists.",
-      "tasks": [
-        "fix-git",
-        "build-cython-ext",
-        "fix-code-vulnerability",
-        "cancel-async-tasks",
-        "headless-terminal",
-        "vllm-deepseek-streaming",
-        "batched-eval-parity"
-      ],
-      "n_attempts": 1,
-      "controls": true
-    },
-    "install-check": {
-      "description": "Agent install and environment build only; skips the agent run and verification. The cheapest proof that a profile's in-container installation works.",
-      "tasks": ["fix-git"],
-      "n_attempts": 1,
-      "install_only": true,
-      "controls": false
-    }
+  "environment": {
+   "type": "docker",
+   "delete": true,
+   "force_build": false,
+   "cpu_enforcement_policy": "auto",
+   "memory_enforcement_policy": "auto"
+  },
+  "verifier": {
+   "disable": false
+  },
+  "notes": "One concurrent trial is the declared default for this Mac. Environments are deleted after artifact collection; all timing phases, traces, and usage are retained in the job dir first."
+ },
+ "profiles": {
+  "smoke": {
+   "description": "Two-task smoke profile. Validates the harness, task environments, and protected verifiers before any paid run.",
+   "tasks": [
+    "fix-git",
+    "build-cython-ext"
+   ],
+   "n_attempts": 1,
+   "controls": true
+  },
+  "smoke-comparison": {
+   "description": "The smoke panel with three fresh repetitions per arm for the first labeled development comparison.",
+   "tasks": [
+    "fix-git",
+    "build-cython-ext"
+   ],
+   "n_attempts": 3,
+   "controls": false
+  },
+  "panel": {
+   "description": "The seven CPU-capable development tasks. math-eval-grader stays excluded until a declared GPU backend exists.",
+   "tasks": [
+    "fix-git",
+    "build-cython-ext",
+    "fix-code-vulnerability",
+    "cancel-async-tasks",
+    "headless-terminal",
+    "vllm-deepseek-streaming",
+    "batched-eval-parity"
+   ],
+   "n_attempts": 1,
+   "controls": true
+  },
+  "install-check": {
+   "description": "Agent install and environment build only; skips the agent run and verification. The cheapest proof that a profile's in-container installation works.",
+   "tasks": [
+    "fix-git"
+   ],
+   "n_attempts": 1,
+   "install_only": true,
+   "controls": false
+  },
+  "extended": {
+   "description": "Four archive tasks beyond the design panel, added to test Coder One's Jev-probe configurations on unseen task shapes: async Python, git forensics, log processing, and SQLite recovery.",
+   "tasks": [
+    "cancel-async-tasks",
+    "git-leak-recovery",
+    "log-summary-date-ranges",
+    "sqlite-db-truncate"
+   ],
+   "n_attempts": 1,
+   "controls": false
   }
+ }
 }

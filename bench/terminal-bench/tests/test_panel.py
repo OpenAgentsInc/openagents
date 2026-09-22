@@ -21,6 +21,9 @@ def test_panel_loads_all_tasks(panel):
         "vllm-deepseek-streaming",
         "batched-eval-parity",
         "math-eval-grader",
+        "git-leak-recovery",
+        "log-summary-date-ranges",
+        "sqlite-db-truncate",
     }
 
 
