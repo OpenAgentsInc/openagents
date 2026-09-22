@@ -521,6 +521,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 5_128 {
         super::nsite::open_site_snapshot(event)?;
     }
+    if event.kind == 10_019 {
+        super::nutzap::open_nutzap_info(event)?;
+    }
+    if event.kind == 9_321 {
+        super::nutzap::open_nutzap(event)?;
+    }
     if event.kind == 7_375 {
         super::wallet::open_token_event(event)?;
     }

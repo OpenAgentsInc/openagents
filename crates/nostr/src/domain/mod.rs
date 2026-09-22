@@ -35,6 +35,7 @@ mod live;
 mod market;
 mod note;
 mod nsite;
+mod nutzap;
 mod ots;
 mod poll;
 mod profile_link;
@@ -147,6 +148,10 @@ pub use market::{
 pub use note::{NoteQuote, NoteRef, TextNote, is_direct_reply, open_note, reply_participants};
 pub use nsite::{
     SiteFile, SiteManifest, open_site, open_site_snapshot, resolve_site_path, site_aggregate,
+};
+pub use nutzap::{
+    Nutzap, NutzapInfo, NutzapMint, NutzapProof, nutzap_inbox, nutzap_matches, open_nutzap,
+    open_nutzap_info,
 };
 pub use ots::{BitcoinAttestation, open_attestation};
 pub use poll::{Poll, PollOption, PollResponse, PollType, open_poll, open_poll_response, tally};

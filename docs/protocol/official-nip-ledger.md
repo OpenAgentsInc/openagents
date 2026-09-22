@@ -607,6 +607,23 @@ fetch Blossom blobs. Kind `5128` sits in the NIP-90 numeric range, and
 admission reads it as a snapshot. Acceptance is
 `domain::nsite::tests::a_root_site_replaces_and_a_snapshot_keeps_the_aggregate`.
 
+NIP-61 is `configured-and-proven`. Kind `10019` is a replaceable
+receiving policy. `relay` tags are where a sender publishes the
+nutzap. `mint` tags are the URLs the recipient accepts, with optional
+unit markers such as `sat` and `usd`. `pubkey` is the P2PK key from
+the NIP-60 wallet. It is a 32-byte key, or 33 bytes starting with `02`,
+and it is not the user's Nostr key. Kind `9321` carries one or more
+P2PK proofs, one mint in `u`, the recipient in `p`, and an optional
+comment. `nutzap_matches` checks that the mint, the unit, and the lock
+key come from that policy. `nutzap_inbox` is the kind `9321` filter
+with `#p`, `#u`, and `since`. A newer policy replaces the older one. A
+nutzap does not replace. A kind `7376` history row can mark the nutzap
+`redeemed`. NIP-61 is a draft, so these kinds are not added to the
+NIP-11 list. The relay does not talk to a mint, verify a DLEQ proof,
+or swap a token. The pinned NIP-65 text does not define URL
+normalization, so a mint matches only as written. Acceptance is
+`domain::nutzap::tests::a_nutzap_uses_the_recipients_mint_and_lock_key`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
