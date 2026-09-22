@@ -48,9 +48,12 @@ mod ots;
 mod peer_order;
 mod podcast;
 mod poll;
+mod pow;
 mod profile_link;
+mod proxy;
 mod public_message;
 mod reaction;
+mod references;
 mod relay_list;
 mod remote_sign;
 mod replacement;
@@ -192,15 +195,18 @@ pub use podcast::{
     confirmed_hosts, open_authored_podcasts, open_podcast_episode, open_podcast_show,
 };
 pub use poll::{Poll, PollOption, PollResponse, PollType, open_poll, open_poll_response, tally};
+pub use pow::{meets_committed_target, nonce_commitment, pow_difficulty};
 pub use profile_link::{
     IdentityClaim, ProfileLinks, author_npub, expected_statement, open_profile_links, proof_url,
 };
+pub use proxy::{ProxySource, is_bridged, known_protocol, proxy_sources};
 pub use public_message::{
     MessageReceiver, PublicMessage, link_kind, open_public_message, targets_public_message,
 };
 pub use reaction::{
     Reaction, ReactionVerdict, open_external_reaction, open_reaction, reaction_verdict,
 };
+pub use references::{TextReference, decode_reference, text_references};
 pub use relay_list::{
     ListedRelay, RelayList, RelayMarker, open_relay_list, publish_relays, read_relays, write_relays,
 };

@@ -849,6 +849,30 @@ kind `1111` comment whose root `E` scope names the thread and whose
 so the kind stays off the NIP-11 list. Acceptance is
 `domain::thread::tests::a_thread_carries_its_title_and_a_reply_points_at_the_root`.
 
+NIP-13 is `configured-and-proven`. `pow_difficulty` counts an id's
+leading zero bits — the pinned 36-bit example checks — and
+`nonce_commitment` reads the `nonce` tag's declared target, so
+`meets_committed_target` can refuse a lucky low-target id; a missing
+commitment reports `None` for caller policy, as the pinned MAY allows.
+The relay does not mine or require work, and NIP-13 is a draft, so it
+stays off the NIP-11 list. Acceptance is
+`domain::pow::tests::difficulty_counts_leading_zero_bits_and_the_commitment_gates`.
+
+NIP-48 is `configured-and-proven`. `proxy_sources` reads each `proxy`
+tag's id and protocol, `known_protocol` names the defined set —
+`activitypub`, `atproto`, `rss`, `web` — and `is_bridged` reports the
+marking; unknown protocols parse because the list may extend. The tag
+is stored data binding client reconciliation only. Acceptance is
+`domain::proxy::tests::a_proxy_tag_links_the_bridged_source`.
+
+NIP-27 is `configured-and-proven`. `decode_reference` turns a `nostr:`
+entity into its typed reference — `npub`/`nprofile` author,
+`note`/`nevent` id with relay hints, author, and kind, or `naddr`
+reassembled into its `kind:author:d` address — and `text_references`
+finds each decodable code in content while leaving undecodable tokens
+as text. Acceptance is
+`domain::references::tests::nostr_references_decode_to_their_entity`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event
