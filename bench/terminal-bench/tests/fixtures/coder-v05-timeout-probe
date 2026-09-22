@@ -1,0 +1,16 @@
+#!/bin/sh
+# A timeout probe for openagents.coder.episode.v1: installs and doctors
+# like the contract probe, then sleeps past the exec deadline in episode
+# run. It exists to prove the adapter reports a real timeout rather than
+# fabricating a result.
+set -eu
+case "${1:-}" in
+  --version) echo "coder-v05-timeout-probe 0.0.0" ;;
+  episode)
+    case "${2:-}" in
+      doctor) echo "doctor ok" ;;
+      run) sleep 600 ;;
+      *) exit 2 ;;
+    esac ;;
+  *) exit 2 ;;
+esac

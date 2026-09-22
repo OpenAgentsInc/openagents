@@ -1,0 +1,87 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "7233d1fa-9675-4615-9ef0-17d3aa5d9358",
+    "job": "smoke--coder-v05--fix-git",
+    "trial": "fix-git__aQ6BJAN",
+    "arm": "coder-v05",
+    "profile": "smoke",
+    "auth_mode": null,
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "<upstream>/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_v05:CoderV05",
+    "requested_model": "v0.5-composite",
+    "observed_name": "coder-v05",
+    "observed_version": "0.0.0-contract-probe",
+    "observed_model": "v0.5-composite",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 0.0,
+    "verifier_rewards": {
+      "reward": 0.0
+    },
+    "terminal_status": "agent_error",
+    "exception": {
+      "exception_type": "NonZeroAgentExitCodeError",
+      "exception_message": "episode exited 7: probe: honest failure, no model calls made\n",
+      "exception_traceback": "Traceback (most recent call last):\n  File \"<package>/.venv/lib/python3.12/site-packages/harbor/trial/single_step.py\", line 77, in _run_agent\n    await self._run_agent_phase(\n  File \"<package>/.venv/lib/python3.12/site-packages/harbor/trial/trial.py\", line 545, in _run_agent_phase\n    await asyncio.wait_for(\n  File \"<python>/asyncio/tasks.py\", line 520, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"<package>/tbench/coder_v05.py\", line 277, in run\n    raise NonZeroAgentExitCodeError(\nharbor.agents.installed.base.NonZeroAgentExitCodeError: episode exited 7: probe: honest failure, no model calls made\n\n",
+      "occurred_at": "2026-09-22T14:50:21.739518Z"
+    },
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T14:50:19.850330Z",
+    "finished_at": "2026-09-22T14:50:33.203296Z",
+    "environment_setup_ms": 942,
+    "agent_setup_ms": 636,
+    "agent_execution_ms": 208,
+    "verifier_ms": 9408,
+    "total_ms": 13352
+  },
+  "usage": {
+    "input_tokens": null,
+    "cache_tokens": null,
+    "output_tokens": null,
+    "input_includes_cache": true,
+    "coverage": "unknown"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 1,
+    "model_invocations": 0,
+    "typed_decisions": 0,
+    "tool_calls": 0,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "<jobs-dir>/smoke--coder-v05--fix-git/fix-git__aQ6BJAN/result.json",
+    "manifest": "<jobs-dir>/smoke--coder-v05--fix-git/tbench/manifests/fix-git__aQ6BJAN.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "unknown",
+    "cost": "unknown",
+    "artifacts": "present"
+  }
+}

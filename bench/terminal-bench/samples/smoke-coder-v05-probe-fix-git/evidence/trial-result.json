@@ -1,0 +1,132 @@
+{
+    "id": "7233d1fa-9675-4615-9ef0-17d3aa5d9358",
+    "task_name": "terminal-bench/fix-git",
+    "trial_name": "fix-git__aQ6BJAN",
+    "trial_uri": "file://<jobs-dir>/smoke--coder-v05--fix-git/fix-git__aQ6BJAN",
+    "task_id": {
+        "path": "<upstream>/terminal-bench/archive/fix-git"
+    },
+    "source": null,
+    "task_checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "config": {
+        "task": {
+            "path": "<upstream>/terminal-bench/archive/fix-git",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "fix-git__aQ6BJAN",
+        "trials_dir": "<jobs-dir>/smoke--coder-v05--fix-git",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "tbench.coder_v05:CoderV05",
+            "model_name": "v0.5-composite",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [
+                "host.docker.internal"
+            ],
+            "kwargs": {
+                "artifact_path": "<package>/tests/fixtures/coder-v05-probe",
+                "artifact_sha256": "3f171b2bbca9723e91d5190963a6919a284b4017a674861a9f2275a195cee680",
+                "artifact_version": "0.0.0-contract-probe"
+            },
+            "env": {
+                "OPENAGENTS_API_KEY": "${OPENAGENTS_API_KEY}",
+                "OPENAGENTS_DOOR_URL": "${OPENAGENTS_DOOR_URL}"
+            },
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "2ae65324-03cb-46fa-994e-7b131f512b32",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "coder-v05",
+        "version": "0.0.0-contract-probe",
+        "model_info": {
+            "name": "v0.5-composite",
+            "provider": null
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": {
+        "exception_type": "NonZeroAgentExitCodeError",
+        "exception_message": "episode exited 7: probe: honest failure, no model calls made\n",
+        "exception_traceback": "Traceback (most recent call last):\n  File \"<package>/.venv/lib/python3.12/site-packages/harbor/trial/single_step.py\", line 77, in _run_agent\n    await self._run_agent_phase(\n  File \"<package>/.venv/lib/python3.12/site-packages/harbor/trial/trial.py\", line 545, in _run_agent_phase\n    await asyncio.wait_for(\n  File \"<python>/asyncio/tasks.py\", line 520, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"<package>/tbench/coder_v05.py\", line 277, in run\n    raise NonZeroAgentExitCodeError(\nharbor.agents.installed.base.NonZeroAgentExitCodeError: episode exited 7: probe: honest failure, no model calls made\n\n",
+        "occurred_at": "2026-09-22T14:50:21.739518Z"
+    },
+    "started_at": "2026-09-22T14:50:19.850330Z",
+    "finished_at": "2026-09-22T14:50:33.203296Z",
+    "environment_setup": {
+        "started_at": "2026-09-22T14:50:19.949811Z",
+        "finished_at": "2026-09-22T14:50:20.892798Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-09-22T14:50:20.892868Z",
+        "finished_at": "2026-09-22T14:50:21.529179Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-09-22T14:50:21.529315Z",
+        "finished_at": "2026-09-22T14:50:21.738227Z"
+    },
+    "verifier": {
+        "started_at": "2026-09-22T14:50:22.090079Z",
+        "finished_at": "2026-09-22T14:50:31.498949Z"
+    },
+    "step_results": null
+}

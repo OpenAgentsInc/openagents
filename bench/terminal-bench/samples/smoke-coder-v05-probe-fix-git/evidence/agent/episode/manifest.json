@@ -1,0 +1,7 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "artifact": "coder-v05-probe 0.0.0-contract-probe",
+  "model": "v0.5-composite",
+  "door_url_present": true,
+  "outcome": "failed"
+}

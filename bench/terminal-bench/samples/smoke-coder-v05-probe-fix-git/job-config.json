@@ -1,0 +1,44 @@
+{
+  "jobs_dir": "<jobs-dir>",
+  "n_attempts": 1,
+  "n_concurrent_trials": 1,
+  "timeout_multiplier": 1.0,
+  "install_only": false,
+  "retry": {
+    "max_retries": 0
+  },
+  "environment": {
+    "type": "docker",
+    "delete": true,
+    "force_build": false,
+    "cpu_enforcement_policy": "auto",
+    "memory_enforcement_policy": "auto"
+  },
+  "verifier": {
+    "disable": false
+  },
+  "agents": [
+    {
+      "kwargs": {
+        "artifact_path": "/private/tmp/openagents-9530/bench/terminal-bench/tests/fixtures/coder-v05-probe",
+        "artifact_sha256": "3f171b2bbca9723e91d5190963a6919a284b4017a674861a9f2275a195cee680",
+        "artifact_version": "0.0.0-contract-probe"
+      },
+      "env": {
+        "OPENAGENTS_API_KEY": "${OPENAGENTS_API_KEY}",
+        "OPENAGENTS_DOOR_URL": "${OPENAGENTS_DOOR_URL}"
+      },
+      "extra_allowed_hosts": [
+        "host.docker.internal"
+      ],
+      "import_path": "tbench.coder_v05:CoderV05",
+      "model_name": "v0.5-composite"
+    }
+  ],
+  "tasks": [
+    {
+      "path": "<upstream>/terminal-bench/archive/fix-git"
+    }
+  ],
+  "job_name": "smoke--coder-v05--fix-git"
+}

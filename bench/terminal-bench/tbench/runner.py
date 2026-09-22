@@ -85,7 +85,13 @@ def materialize(request: RunRequest) -> tuple[Path, dict[str, Any]]:
     The job name is deterministic per arm, profile, and pin: re-running a
     name resumes the same job rather than forking a second evidence tree.
     """
-    auth_mode = _check_credentials(request.agent, request.auth_mode)
+    # install_only proves the in-container install; it never runs the
+    # agent, so absent credentials do not block it.
+    auth_mode = (
+        request.auth_mode
+        if request.profile.install_only
+        else _check_credentials(request.agent, request.auth_mode)
+    )
     jobs_dir = request.jobs_dir or paths.jobs_dir()
     job_name = request.job_name or (
         f"{request.profile.id}--{request.agent.id}"
@@ -141,6 +147,7 @@ def resume(request: RunRequest, *, harbor_argv0: str = "harbor") -> Path:
         harbor_argv0,
         "job",
         "resume",
+        "--job-path",
         str(job_dir),
     ]
     completed = subprocess.run(command)
@@ -197,13 +204,26 @@ def collect(job_dir: Path, request: RunRequest) -> list[Path]:
                 "manifest": str(manifest_path),
             },
         )
-        attempt_path.write_text(json.dumps(record, indent=2) + "\n")
         manifest = episode_manifest(
             record,
             trial_dir=trial_dir,
             arm=request.agent.id,
             task_notes=task_notes,
         )
+        record["completeness"] = {
+            "trace": (
+                "present"
+                if manifest["evidence"]["trajectory"]["resolved"]
+                or manifest["evidence"]["native_traces"]
+                else "absent"
+            ),
+            "usage": record["usage"]["coverage"],
+            "cost": record["completeness"]["cost"],
+            "artifacts": (
+                "present" if manifest["evidence"]["artifacts"] else "absent"
+            ),
+        }
+        attempt_path.write_text(json.dumps(record, indent=2) + "\n")
         manifest["evidence"]["attempt_record"] = {
             "kind": "attempt-record",
             "resolved": True,

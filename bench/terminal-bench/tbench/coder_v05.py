@@ -145,7 +145,7 @@ class CoderV05(BaseInstalledAgent):
         """Stage the pinned artifact and its assets, then preflight them."""
         await self.exec_as_root(
             environment,
-            command=f"mkdir -p {INSTALL_ROOT}/bin {EPISODE_DIR}",
+            command=f"mkdir -p {INSTALL_ROOT}/bin {EPISODE_DIR} {ASSETS_PATH}",
         )
 
         with tempfile.TemporaryDirectory() as tmp:

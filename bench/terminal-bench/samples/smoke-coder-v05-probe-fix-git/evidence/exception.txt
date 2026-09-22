@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "<package>/.venv/lib/python3.12/site-packages/harbor/trial/single_step.py", line 77, in _run_agent
+    await self._run_agent_phase(
+  File "<package>/.venv/lib/python3.12/site-packages/harbor/trial/trial.py", line 545, in _run_agent_phase
+    await asyncio.wait_for(
+  File "<python>/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "<package>/tbench/coder_v05.py", line 277, in run
+    raise NonZeroAgentExitCodeError(
+harbor.agents.installed.base.NonZeroAgentExitCodeError: episode exited 7: probe: honest failure, no model calls made
+

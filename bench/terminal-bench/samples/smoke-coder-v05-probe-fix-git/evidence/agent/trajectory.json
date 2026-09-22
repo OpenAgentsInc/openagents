@@ -1,0 +1,15 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "probe-session",
+  "agent": {
+    "name": "coder-v05-probe",
+    "version": "0.0.0-contract-probe"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "source": "user",
+      "message": "probe episode"
+    }
+  ]
+}

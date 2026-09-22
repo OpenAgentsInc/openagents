@@ -122,6 +122,17 @@ def cmd_profiles(args: argparse.Namespace) -> int:
 def _request(args: argparse.Namespace) -> RunRequest:
     request = _load(args.profile, args.agent)
     assert request is not None
+    if getattr(args, "task", None):
+        try:
+            request.tasks = request.panel.select(args.task)
+        except (KeyError, ValueError) as exc:
+            raise RunError(str(exc)) from exc
+        # A narrowed task set is a different job, not a resume of the
+        # profile's; give it a distinct deterministic name.
+        request.job_name = args.job_name or (
+            f"{request.profile.id}--{request.agent.id}--"
+            + "_".join(task.id for task in request.tasks)
+        )
     request_kwargs = {}
     for pair in args.agent_kwarg or []:
         key, _, value = pair.partition("=")
@@ -259,6 +270,11 @@ def build_parser() -> argparse.ArgumentParser:
             "--agent-kwarg",
             action="append",
             help="key=value adapter kwargs (e.g. artifact_sha256=...)",
+        )
+        p.add_argument(
+            "--task",
+            action="append",
+            help="narrow the profile to these task ids",
         )
         p.add_argument("--job-name", help="override the deterministic job name")
 

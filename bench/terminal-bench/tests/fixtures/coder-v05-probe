@@ -1,0 +1,74 @@
+#!/bin/sh
+# A contract probe for openagents.coder.episode.v1.
+#
+# This is not Coder v0.5 and never pretends to be: it implements the
+# contract's command surface, writes an honest bundle, and fails the
+# episode. Its purpose is to prove the adapter pipeline — install,
+# in-environment digest check, episode doctor, bundle collection, and
+# failure retention — before a real artifact exists. The benchmark
+# records this run as an agent_error, which is the correct evidence for
+# "an honest failed solution demonstrates a functioning integration".
+set -eu
+
+case "${1:-}" in
+  --version)
+    echo "coder-v05-probe 0.0.0-contract-probe"
+    ;;
+  episode)
+    case "${2:-}" in
+      doctor)
+        # Preflight without inference: the contract id must match and the
+        # assets directory the adapter exports must exist.
+        shift 2
+        while [ $# -gt 0 ]; do
+          case "$1" in --contract) shift; contract="$1";; esac
+          shift
+        done
+        [ "${contract:-}" = "openagents.coder.episode.v1" ] || {
+          echo "unknown contract ${contract:-none}" >&2; exit 2; }
+        [ -d "${OPENAGENTS_ASSETS_DIR:-/nonexistent}" ] || {
+          echo "assets dir missing" >&2; exit 3; }
+        echo "doctor ok: contract ${contract}"
+        ;;
+      run)
+        shift 2
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            --instruction-file) shift; instruction="$1";;
+            --output-dir) shift; outdir="$1";;
+            --contract) shift; contract="$1";;
+            --model) shift; model="$1";;
+          esac
+          shift
+        done
+        mkdir -p "$outdir/artifacts" "$outdir/verification" "$outdir/evaluation"
+        cat > "$outdir/manifest.json" <<EOF
+{
+  "contract": "${contract:-}",
+  "artifact": "coder-v05-probe 0.0.0-contract-probe",
+  "model": "${model:-none}",
+  "door_url_present": $( [ -n "${OPENAGENTS_DOOR_URL:-}" ] && echo true || echo false ),
+  "outcome": "failed"
+}
+EOF
+        cat > "$outdir/evaluation/usage.json" <<'EOF'
+{ "tokens": {}, "cost": { "amount_usd": null, "provenance": "unknown" }, "calls": {} }
+EOF
+        cat > "$outdir/trajectory.atif.json" <<'EOF'
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "probe-session",
+  "agent": { "name": "coder-v05-probe", "version": "0.0.0-contract-probe" },
+  "steps": [
+    { "step_id": 1, "source": "user", "message": "probe episode" }
+  ]
+}
+EOF
+        echo "probe: honest failure, no model calls made" >&2
+        exit 7
+        ;;
+      *) echo "unknown episode subcommand" >&2; exit 2;;
+    esac
+    ;;
+  *) echo "usage: coder-v05-probe --version | episode <doctor|run>" >&2; exit 2;;
+esac

@@ -1,0 +1,5 @@
+Running command: mkdir -p /opt/openagents/bin /opt/openagents/episode /opt/openagents/assets
+Command outputs captured
+Running command: chmod 0755 /opt/openagents/bin/coder-v05 && echo '3f171b2bbca9723e91d5190963a6919a284b4017a674861a9f2275a195cee680  /opt/openagents/bin/coder-v05' | sha256sum -c -
+Command outputs captured
+Collecting main service artifacts
