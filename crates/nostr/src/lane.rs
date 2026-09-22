@@ -1128,6 +1128,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "34.md",
+        domain: "kind 30617 announces a repository (d required, euc-marked r identifies the project across forks), 30618 its refs state, 1617 patches, 1618/1619 pull requests and updates (a + c + clone), 1621 issues, 1630-1633 their status",
+        client: "open_repository, open_repository_state, open_patch, open_pull_request, open_issue, open_patch_status, patch_markers, applied_commits",
+        server: "admission validates each kind's required tags: d on 30617/30618, the 30617:pubkey:id a tag, tip commit and clone on PRs, e root on status",
+        paths: "crates/nostr/src/domain/git.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; NIP-34 is a draft and the kinds are not added to the NIP-11 list",
+        fixture: "a repository with euc and maintainers, a refs/HEAD state, a rooted patch, a PR with tip and clone, an issue, and a merged status with its merge commit",
+        acceptance: "domain::git::tests::a_repository_announces_itself_and_its_state",
+        limitations: "nostr:// clone URLs and cover-letter parsing are client concerns carried as data; a ref's commit existence on the git side is not checked; replies to issues and PRs use the NIP-22 row",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

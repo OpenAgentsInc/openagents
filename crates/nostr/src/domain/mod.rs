@@ -32,6 +32,7 @@ mod filter;
 mod follow;
 mod geocache;
 mod gift_wrap;
+mod git;
 mod goal;
 mod handler;
 mod hex;
@@ -155,6 +156,10 @@ pub use geocache::{
 pub use gift_wrap::{
     RANDOMIZE_WINDOW_SECONDS, Rumor, open_wrap, randomized_timestamp, recipient_removed_wrap,
     seal_rumor, validate_seal, validate_wrap, wrap_seal,
+};
+pub use git::{
+    PatchStatus, PullRequest, Repository, RepositoryState, applied_commits, open_issue, open_patch,
+    open_patch_status, open_pull_request, open_repository, open_repository_state, patch_markers,
 };
 pub use goal::{
     GoalReference, GoalSubject, ZapGoal, goal_progress, open_goal_references, open_zap_goal,

@@ -924,6 +924,23 @@ it — so the kinds stay off the NIP-11 list. Acceptance is
 `domain::channel::tests::channels_open_update_and_take_messages` and
 `domain::channel::tests::malformed_channel_events_are_refused`.
 
+NIP-34 is `configured-and-proven`. `open_repository` reads a kind
+`30617` announcement — the required `d`, the optional `name`,
+`description`, `web`, `clone`, `relays`, `maintainers`, `t` labels,
+and the `euc`-marked `r` commit that identifies the project across
+forks — and `open_repository_state` reads `30618`'s `refs/heads` and
+`refs/tags` commit ids plus the `HEAD` ref. `open_patch` (1617),
+`open_pull_request` (1618 and the `1619` update form), and
+`open_issue` (1621) require the `30617:pubkey:identifier` `a` tag;
+the PR forms also require a `c` tip commit and at least one `clone`
+URL. `open_patch_status` maps kinds `1630`–`1633` to open, applied,
+closed, and draft against an `e` `root` target, and `applied_commits`
+reads the merge or applied commit evidence. Admission validates every
+required tag; all kinds store as regular or addressable events.
+NIP-34 is a draft, so the kinds stay off the NIP-11 list. Acceptance
+is `domain::git::tests::a_repository_announces_itself_and_its_state`
+and `domain::git::tests::malformed_git_events_are_refused`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

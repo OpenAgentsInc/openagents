@@ -589,6 +589,24 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 24 {
         super::public_message::open_public_message(event)?;
     }
+    if event.kind == 30_617 {
+        super::git::open_repository(event)?;
+    }
+    if event.kind == 30_618 {
+        super::git::open_repository_state(event)?;
+    }
+    if event.kind == 1_617 {
+        super::git::open_patch(event)?;
+    }
+    if matches!(event.kind, 1_618 | 1_619) {
+        super::git::open_pull_request(event)?;
+    }
+    if event.kind == 1_621 {
+        super::git::open_issue(event)?;
+    }
+    if matches!(event.kind, 1_630..=1_633) {
+        super::git::open_patch_status(event)?;
+    }
     if event.kind == 40 {
         super::channel::open_channel(event)?;
     }
