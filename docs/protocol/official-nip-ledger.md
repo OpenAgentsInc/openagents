@@ -27,6 +27,14 @@ pinned text marks it unrecommended. The height is not compared to a Bitcoin
 block header. Acceptance is
 `domain::ots::tests::a_bitcoin_proof_binds_the_event_id_and_one_height`.
 
+NIP-04 is `configured-and-proven`. `nip04::encrypt` and `nip04::decrypt`
+use AES-256-CBC. The key is the X coordinate of the ECDH point and is not
+hashed. The content form is `base64(ciphertext)?iv=base64(iv)`. Admission
+checks the single `p` tag and that form, and does not decrypt. NIP-04 stays
+off the NIP-11 list because the pinned text marks it unrecommended. There is
+no MAC. Acceptance is
+`nip04::tests::a_direct_message_round_trips_and_keeps_a_mention_as_text`.
+
 NIP-29 is `configured-and-proven`. The domain role is `GroupMetadata` and
 `GroupAction` in `crates/nostr/src/domain/expanded.rs`. The server role is
 admission, query filtering, and metadata regeneration in
