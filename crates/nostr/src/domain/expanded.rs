@@ -144,6 +144,47 @@ pub fn parse_http_authorization_claim(
     })
 }
 
+fn validate_http_auth_event(event: &Event) -> Result<(), DomainError> {
+    if event.kind != HTTP_AUTH_KIND {
+        return Err(DomainError::InvalidEvent(
+            "HTTP authorization event must have kind 27235".into(),
+        ));
+    }
+    let urls = event.tag_values("u").collect::<Vec<_>>();
+    if urls.len() != 1 || !valid_http_url(urls[0]) {
+        return Err(DomainError::InvalidEvent(
+            "HTTP authorization requires one absolute http:// or https:// URL".into(),
+        ));
+    }
+    let methods = event.tag_values("method").collect::<Vec<_>>();
+    if methods.len() != 1
+        || methods[0].is_empty()
+        || methods[0].len() > 16
+        || !methods[0].bytes().all(|byte| byte.is_ascii_alphabetic())
+    {
+        return Err(DomainError::InvalidEvent(
+            "HTTP authorization requires one HTTP method".into(),
+        ));
+    }
+    let payloads = event.tag_values("payload").collect::<Vec<_>>();
+    let payload_ok = match payloads.as_slice() {
+        [] => true,
+        [hash] => {
+            hash.len() == 64
+                && hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        }
+        _ => false,
+    };
+    if !payload_ok {
+        return Err(DomainError::InvalidEvent(
+            "HTTP authorization payload tag must be one lowercase SHA-256".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn require_single_tag(event: &Event, name: &str, expected: &str) -> Result<(), DomainError> {
     let values = event.tag_values(name).collect::<Vec<_>>();
     if values.as_slice() == [expected] {
@@ -541,6 +582,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.tags.iter().any(|tag| tag.name() == Some("client")) {
         super::handler::open_client_tag(event)?;
     }
+    if event.kind == HTTP_AUTH_KIND {
+        validate_http_auth_event(event)?;
+    }
     if event.kind == 10_063 {
         let servers = event.tag_values("server").collect::<Vec<_>>();
         if servers.is_empty() || servers.iter().any(|server| !valid_http_url(server)) {
@@ -721,5 +765,126 @@ mod tests {
             .unwrap(),
             vec!["spec".to_owned(), "nip29".to_owned()]
         );
+    }
+
+    #[test]
+    fn a_nostr_authorization_matches_the_url_method_and_body() {
+        use crate::domain::EventClass;
+
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../nips/official/98.md"
+        ))
+        .unwrap();
+        assert!(text.contains("kind 27235"));
+        assert!(text.contains("https://api.snort.social/api/v1/n5sp/list"));
+        assert!(text.contains("Authorization: Nostr"));
+        let row = crate::lane::PROVEN
+            .iter()
+            .find(|row| row.file == "98.md")
+            .unwrap();
+        assert_eq!(row.status, "configured-and-proven");
+        assert!(
+            crate::lane::SHAPES
+                .iter()
+                .all(|shape| shape.file != "98.md")
+        );
+
+        let header = format!(
+            "Nostr {}",
+            text.split("Authorization: Nostr")
+                .nth(1)
+                .unwrap()
+                .split("```")
+                .next()
+                .unwrap()
+                .split_whitespace()
+                .next()
+                .unwrap()
+        );
+        let url = "https://api.snort.social/api/v1/n5sp/list";
+        let now = 1_682_327_852;
+        // The published example id does not match the NIP-01 preimage.
+        assert!(parse_http_authorization_claim(&header, "GET", url, now).is_err());
+
+        let signer = RelaySigner::from_secret_hex(&"98".repeat(32)).unwrap();
+        let get = signer.sign(
+            now,
+            HTTP_AUTH_KIND,
+            vec![
+                Tag::new(vec!["u".into(), url.into()]),
+                Tag::new(vec!["method".into(), "GET".into()]),
+            ],
+            String::new(),
+        );
+        get.validate_structure().unwrap();
+        assert_eq!(get.class(), EventClass::Ephemeral);
+        let header = format!(
+            "Nostr {}",
+            base64_encode(&serde_json::to_vec(&get).unwrap())
+        );
+        let claim = parse_http_authorization_claim(&header, "GET", url, now).unwrap();
+        assert_eq!(claim.auth.pubkey, signer.pubkey());
+        assert_eq!(claim.auth.event_id, get.id);
+        assert!(claim.payload_hash.is_none());
+        assert!(parse_http_authorization_claim(&header, "POST", url, now).is_err());
+        assert!(parse_http_authorization_claim(&header, "GET", url, now + 61).is_err());
+        assert!(
+            parse_http_authorization_claim(&header, "GET", "https://api.snort.social/other", now)
+                .is_err()
+        );
+
+        let body = br#"{"hello":"world"}"#;
+        let hash = encode_lower_hex(&Sha256::digest(body));
+        let event = signer.sign(
+            now,
+            HTTP_AUTH_KIND,
+            vec![
+                Tag::new(vec!["u".into(), url.into()]),
+                Tag::new(vec!["method".into(), "POST".into()]),
+                Tag::new(vec!["payload".into(), hash.clone()]),
+            ],
+            String::new(),
+        );
+        event.validate_structure().unwrap();
+        assert_eq!(event.class(), EventClass::Ephemeral);
+        let post = format!(
+            "Nostr {}",
+            base64_encode(&serde_json::to_vec(&event).unwrap())
+        );
+        let authorized = parse_http_authorization(&post, "POST", url, body, now).unwrap();
+        assert_eq!(authorized.pubkey, signer.pubkey());
+        assert!(parse_http_authorization(&post, "POST", url, b"other", now).is_err());
+    }
+
+    fn base64_encode(bytes: &[u8]) -> String {
+        const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        let mut index = 0;
+        while index + 3 <= bytes.len() {
+            let value = (u32::from(bytes[index]) << 16)
+                | (u32::from(bytes[index + 1]) << 8)
+                | u32::from(bytes[index + 2]);
+            out.push(char::from(TABLE[((value >> 18) & 63) as usize]));
+            out.push(char::from(TABLE[((value >> 12) & 63) as usize]));
+            out.push(char::from(TABLE[((value >> 6) & 63) as usize]));
+            out.push(char::from(TABLE[(value & 63) as usize]));
+            index += 3;
+        }
+        let rest = bytes.len() - index;
+        if rest == 1 {
+            let value = u32::from(bytes[index]) << 16;
+            out.push(char::from(TABLE[((value >> 18) & 63) as usize]));
+            out.push(char::from(TABLE[((value >> 12) & 63) as usize]));
+            out.push('=');
+            out.push('=');
+        } else if rest == 2 {
+            let value = (u32::from(bytes[index]) << 16) | (u32::from(bytes[index + 1]) << 8);
+            out.push(char::from(TABLE[((value >> 18) & 63) as usize]));
+            out.push(char::from(TABLE[((value >> 12) & 63) as usize]));
+            out.push(char::from(TABLE[((value >> 6) & 63) as usize]));
+            out.push('=');
+        }
+        out
     }
 }

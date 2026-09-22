@@ -247,6 +247,18 @@ its kind `0` profile. This crate encodes `npub` and `nsec` only.
 Acceptance is
 `domain::handler::tests::a_recommendation_points_at_a_handler_and_the_url_receives_the_entity`.
 
+NIP-98 is `configured-and-proven`. Kind `27235` is an ephemeral
+HTTP authorization. The event has one absolute `u` URL and one `method`.
+`parse_http_authorization_claim` checks the kind, the signature, a 60
+second window, the URL, and the method before the server reads a body.
+When the caller has a body, `parse_http_authorization` also checks the
+lowercase SHA-256 in the `payload` tag. The `Authorization` scheme is
+`Nostr` followed by the base64 event. Kind `27235` is not stored. NIP-11
+lists `98` when a management pubkey or media storage is configured.
+Content may be non-empty. The pinned example's event id does not match
+the NIP-01 preimage, so that header is refused. Acceptance is
+`domain::expanded::tests::a_nostr_authorization_matches_the_url_method_and_body`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
