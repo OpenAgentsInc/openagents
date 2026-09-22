@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from . import paths
-from .agents import AgentProfile, agent_config_env
+from .agents import AgentProfile, agent_config_env, model_for
 from .panel import Panel, Task
 
 JOBS_SCHEMA = "openagents.tbench.jobs.v1"
@@ -140,8 +140,9 @@ def build_job_config(
         agent_config["import_path"] = agent.harbor_import_path
     else:
         agent_config["name"] = agent.harbor_name
-    if agent.model:
-        agent_config["model_name"] = agent.model
+    model = model_for(agent, auth_mode)
+    if model:
+        agent_config["model_name"] = model
 
     config: dict[str, Any] = {
         "jobs_dir": str(jobs_dir or paths.jobs_dir()),

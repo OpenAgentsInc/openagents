@@ -112,6 +112,14 @@ def materialize(request: RunRequest) -> tuple[Path, dict[str, Any]]:
     trial_paths.tbench_dir.mkdir(parents=True, exist_ok=True)
     config["job_name"] = job_name
     write_job_config(config, trial_paths.config_path)
+    write_job_config(
+        {
+            "agent_id": request.agent.id,
+            "profile_id": request.profile.id,
+            "auth_mode": auth_mode,
+        },
+        trial_paths.context_path,
+    )
     return job_dir, config
 
 
@@ -169,6 +177,9 @@ def collect(job_dir: Path, request: RunRequest) -> list[Path]:
     trial_paths = TrialPaths(job_dir)
     trial_paths.attempts_dir.mkdir(parents=True, exist_ok=True)
     trial_paths.manifests_dir.mkdir(parents=True, exist_ok=True)
+    context: dict[str, Any] = {}
+    if trial_paths.context_path.is_file():
+        context = json.loads(trial_paths.context_path.read_text())
     written: list[Path] = []
     pin = {
         "git_url": request.panel.git_url,
@@ -195,7 +206,7 @@ def collect(job_dir: Path, request: RunRequest) -> list[Path]:
             trial_dir=trial_dir,
             arm=request.agent.id,
             profile_id=request.profile.id,
-            auth_mode=request.auth_mode,
+            auth_mode=context.get("auth_mode") or request.auth_mode,
             declared_cost_provenance=request.agent.cost_provenance,
             pin=pin,
             counts=counts_for_trial(trial_dir),

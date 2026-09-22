@@ -20,12 +20,13 @@
       "auth_modes": {
         "api-key": {
           "requires_any": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+          "exclude_env": ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_FORCE_OAUTH"],
           "note": "Direct API billing. Cost is provider-reported or a Harbor pricing estimate; label which."
         },
         "subscription-oauth": {
-          "requires_all": ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_FORCE_OAUTH"],
-          "force_value": { "CLAUDE_FORCE_OAUTH": "1" },
-          "note": "Subscription billing through `claude setup-token`. Reference pricing is not an observed incremental bill; record cost provenance as estimate."
+          "requires_all": ["CLAUDE_CODE_OAUTH_TOKEN"],
+          "exclude_env": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_FORCE_OAUTH"],
+          "note": "Subscription billing through `claude setup-token`. The API-key variables are excluded rather than overridden: with no key forwarded the CLI uses the OAuth token, and a forwarded truthy selector would be treated as a credential value and scrubbed from the evidence. Reference pricing is not an observed incremental bill; record cost provenance as estimate."
         }
       },
       "cost_provenance": "provider_reported",
@@ -49,12 +50,15 @@
       "auth_modes": {
         "api-key": {
           "requires_any": ["OPENAI_API_KEY"],
+          "exclude_env": ["CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"],
           "note": "Direct API billing. Codex reports token usage; cost is a Harbor pricing estimate unless the provider reports otherwise."
         },
         "auth-json": {
           "requires_any": ["CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"],
-          "force_value": { "CODEX_FORCE_AUTH_JSON": "1" },
-          "note": "Subscription billing through the host's auth.json (CODEX_AUTH_JSON_PATH selects the file; CODEX_FORCE_AUTH_JSON selects ~/.codex/auth.json). Follow Codex's noninteractive contract."
+          "env_overrides": { "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json" },
+          "exclude_env": ["CODEX_FORCE_AUTH_JSON"],
+          "model": "gpt-6-astra",
+          "note": "Subscription billing through the host's auth.json (CODEX_AUTH_JSON_PATH selects the file; CODEX_FORCE_AUTH_JSON selects ~/.codex/auth.json). ChatGPT-account sessions cannot serve gpt-5.2-codex or gpt-5.1-codex; the backend's live model catalog serves gpt-6-astra and the gpt-5.6 family instead, so this mode pins the account's top model. Follow Codex's noninteractive contract."
         }
       },
       "cost_provenance": "price_estimate",

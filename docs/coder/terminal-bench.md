@@ -96,9 +96,14 @@ Two modes:
 
 - **API key** — set `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`).
   Direct API billing; the attempt record marks cost `provider_reported`.
-- **Subscription** — run `claude setup-token`, set `CLAUDE_CODE_OAUTH_TOKEN`,
-  and let the profile force `CLAUDE_FORCE_OAUTH=1`. The attempt record
-  labels this a reference price, not an observed incremental bill.
+- **Subscription** — run `claude setup-token` and set
+  `CLAUDE_CODE_OAUTH_TOKEN`. The mode excludes the API-key variables so
+  the CLI uses the subscription token; `CLAUDE_FORCE_OAUTH` stays a
+  host-side selector and is never forwarded, because Harbor scrubs the
+  values of credential-named variables from retained evidence and a
+  forwarded `1` would redact every digit in the results. The attempt
+  record labels this a reference price, not an observed incremental
+  bill.
 
 ### Codex
 
@@ -107,8 +112,12 @@ Two modes:
 - **API key** — set `OPENAI_API_KEY`. Codex reports token usage; the cost
   field is a Harbor price estimate and the record says so.
 - **Auth file** — set `CODEX_AUTH_JSON_PATH` to a readable `auth.json`, or
-  set `CODEX_FORCE_AUTH_JSON=1` to use `~/.codex/auth.json`. The auth file
-  itself is never copied into retained public artifacts.
+  set `CODEX_FORCE_AUTH_JSON=1` as a host-side selector for
+  `~/.codex/auth.json`. The resolved path is what reaches the job; the
+  selector and its truthy value never do. The auth file itself is never
+  copied into retained public artifacts. ChatGPT-account sessions cannot
+  serve `gpt-5.2-codex`; this mode pins the model the account's live
+  catalog serves instead.
 
 A run with no configured mode stops before any environment spend with a
 credential error, which is a setup failure, not a task failure.

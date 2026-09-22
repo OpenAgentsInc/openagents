@@ -24,12 +24,27 @@ AGENTS_SCHEMA = "openagents.tbench.agents.v1"
 
 @dataclass(frozen=True)
 class AuthMode:
-    """One way an agent can be authenticated, stated in env-var names."""
+    """One way an agent can be authenticated, stated in env-var names.
+
+    ``model`` overrides the profile's model pin for this mode: provider
+    tiers gate models by account type, and a ChatGPT-account session
+    cannot serve every model an API key can.
+
+    ``env_overrides`` injects literal values into the job's agent env when
+    the host does not already set the variable. ``exclude_env`` strips
+    variables from the forwarded whitelist for this mode. Both matter
+    because Harbor scrubs every env value whose key names a credential:
+    a selector like ``CODEX_FORCE_AUTH_JSON=1`` forwarded literally would
+    redact every ``1`` in the retained evidence, so selectors stay on the
+    host and the mode forwards the resolved file path instead.
+    """
 
     name: str
     requires_any: tuple[str, ...] = ()
     requires_all: tuple[str, ...] = ()
-    force_value: dict[str, str] = field(default_factory=dict)
+    env_overrides: dict[str, str] = field(default_factory=dict)
+    exclude_env: tuple[str, ...] = ()
+    model: str | None = None
     note: str = ""
 
     def configured(self, env: dict[str, str] | None = None) -> bool:
@@ -84,7 +99,9 @@ def _load_auth_modes(raw: dict[str, Any]) -> dict[str, AuthMode]:
             name=name,
             requires_any=tuple(body.get("requires_any") or ()),
             requires_all=tuple(body.get("requires_all") or ()),
-            force_value=dict(body.get("force_value") or {}),
+            env_overrides=dict(body.get("env_overrides") or {}),
+            exclude_env=tuple(body.get("exclude_env") or ()),
+            model=body.get("model"),
             note=body.get("note", ""),
         )
     return modes
@@ -124,6 +141,16 @@ def load_agents(path: Path | None = None) -> dict[str, AgentProfile]:
     }
 
 
+def model_for(
+    profile: AgentProfile, auth_mode: str | None = None
+) -> str | None:
+    """The model pin in effect: the auth mode's override, else the profile's."""
+    mode = profile.auth_modes.get(auth_mode) if auth_mode else None
+    if mode and mode.model:
+        return mode.model
+    return profile.model
+
+
 def configured_auth_modes(
     profile: AgentProfile, env: dict[str, str] | None = None
 ) -> list[AuthMode]:
@@ -140,16 +167,28 @@ def agent_config_env(
 
     Every forwarded variable becomes a ``${NAME}`` template resolved by
     Harbor inside its own process; the materialized config holds no value.
-    Variables the mode forces (such as ``CLAUDE_FORCE_OAUTH=1``) are literal.
+    Mode overrides inject literals — ``~`` is expanded on the host so a
+    resolved path is what Harbor scrubs, never a digit — and exclusions
+    remove variables the mode must not see (a truthy selector's value
+    would otherwise be treated as a credential and corrupt the evidence).
     """
     env = os.environ if env is None else env
     out: dict[str, str] = {}
     mode = profile.auth_modes.get(auth_mode) if auth_mode else None
-    forced = dict(mode.force_value) if mode else {}
+    excluded = set(mode.exclude_env) if mode else set()
+    overrides = dict(mode.env_overrides) if mode else {}
     for name in profile.env_forward:
-        if name in forced:
-            out[name] = forced.pop(name)
+        if name in excluded:
+            continue
+        if name in overrides:
+            if env.get(name):
+                overrides.pop(name)
+                out[name] = f"${{{name}}}"
+            else:
+                out[name] = str(Path(overrides.pop(name)).expanduser())
         elif env.get(name):
             out[name] = f"${{{name}}}"
-    out.update(forced)
+    for name, value in overrides.items():
+        if name not in excluded:
+            out[name] = str(Path(value).expanduser())
     return out

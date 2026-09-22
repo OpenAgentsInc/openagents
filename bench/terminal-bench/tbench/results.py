@@ -311,6 +311,10 @@ class TrialPaths:
         return self.tbench_dir / "job-config.json"
 
     @property
+    def context_path(self) -> Path:
+        return self.tbench_dir / "context.json"
+
+    @property
     def report_path(self) -> Path:
         return self.tbench_dir / "report.json"
 

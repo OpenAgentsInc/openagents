@@ -30,10 +30,8 @@ def test_claude_api_key_mode_detected(agents):
     assert [m.name for m in modes] == ["api-key"]
 
 
-def test_claude_oauth_needs_force_flag(agents):
+def test_claude_oauth_needs_token_only(agents):
     env = {"CLAUDE_CODE_OAUTH_TOKEN": "redacted"}
-    assert configured_auth_modes(agents["claude-code"], env=env) == []
-    env["CLAUDE_FORCE_OAUTH"] = "1"
     modes = configured_auth_modes(agents["claude-code"], env=env)
     assert [m.name for m in modes] == ["subscription-oauth"]
 
@@ -53,16 +51,35 @@ def test_env_templates_never_carry_values(agents):
     assert "sk-secret-value" not in str(out)
 
 
-def test_forced_values_are_literals(agents):
+def test_oauth_excludes_api_key_vars(agents):
     env = {
+        "ANTHROPIC_API_KEY": "sk-secret-value",
         "CLAUDE_CODE_OAUTH_TOKEN": "tok",
-        "CLAUDE_FORCE_OAUTH": "0",
+        "CLAUDE_FORCE_OAUTH": "1",
     }
     out = agent_config_env(
         agents["claude-code"], auth_mode="subscription-oauth", env=env
     )
-    assert out["CLAUDE_FORCE_OAUTH"] == "1"
     assert out["CLAUDE_CODE_OAUTH_TOKEN"] == "${CLAUDE_CODE_OAUTH_TOKEN}"
+    assert "ANTHROPIC_API_KEY" not in out
+    assert "ANTHROPIC_AUTH_TOKEN" not in out
+    # A truthy selector is never forwarded: Harbor scrubs credential-named
+    # values from retained evidence, and "1" would redact every digit.
+    assert "CLAUDE_FORCE_OAUTH" not in out
+
+
+def test_codex_auth_json_default_path_override(agents):
+    env = {"CODEX_FORCE_AUTH_JSON": "1"}
+    out = agent_config_env(agents["codex"], auth_mode="auth-json", env=env)
+    assert out["CODEX_AUTH_JSON_PATH"].endswith(".codex/auth.json")
+    assert "~" not in out["CODEX_AUTH_JSON_PATH"]
+    assert "CODEX_FORCE_AUTH_JSON" not in out
+
+
+def test_codex_auth_json_host_path_wins(agents):
+    env = {"CODEX_AUTH_JSON_PATH": "/private/auth.json"}
+    out = agent_config_env(agents["codex"], auth_mode="auth-json", env=env)
+    assert out["CODEX_AUTH_JSON_PATH"] == "${CODEX_AUTH_JSON_PATH}"
 
 
 def test_unset_vars_are_not_forwarded(agents):
