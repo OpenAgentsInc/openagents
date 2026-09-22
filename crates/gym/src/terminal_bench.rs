@@ -16,6 +16,7 @@ pub enum EvidenceState {
     Missing,
     Edited,
     Sanitized,
+    NotPresent,
     Unresolved,
     Unchecked,
 }
@@ -27,6 +28,7 @@ impl EvidenceState {
             Self::Missing => "missing",
             Self::Edited => "digest mismatch",
             Self::Sanitized => "sanitized copy",
+            Self::NotPresent => "none recorded",
             Self::Unresolved => "unresolved",
             Self::Unchecked => "no digest",
         }
@@ -685,6 +687,9 @@ fn collect_evidence(value: &Value, attempt: &mut Attempt, sample_evidence: Optio
                 path.as_deref(),
                 digest.as_deref(),
             ) {
+                (Some(false), None, None) if kind == "collection-failure" => {
+                    EvidenceState::NotPresent
+                }
                 (Some(false), _, _) | (_, None, _) => EvidenceState::Unresolved,
                 (_, Some(path), _) if !path.is_file() => EvidenceState::Missing,
                 (_, Some(path), Some(digest)) => {
@@ -1275,6 +1280,18 @@ mod tests {
         );
         assert_eq!(attempt.evidence[0].state, EvidenceState::Edited);
         assert_eq!(attempt.evidence[1].state, EvidenceState::Missing);
+    }
+
+    #[test]
+    fn absent_collection_failure_marker_does_not_make_a_success_unhealthy() {
+        let mut attempt = test_attempt();
+        collect_evidence(
+            &serde_json::json!({"kind":"collection-failure", "resolved":false, "path":null, "sha256":null}),
+            &mut attempt,
+            None,
+        );
+        assert_eq!(attempt.evidence[0].state, EvidenceState::NotPresent);
+        assert_eq!(attempt.evidence_health(), "not checked");
     }
 
     #[test]

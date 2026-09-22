@@ -69,7 +69,8 @@ failure, while a missing reward stays unknown.
 
 **Evidence** lists every retained file and its path. It checks SHA-256
 against the bytes that exist now when a manifest supplies a digest. Missing,
-unresolved, edited, and unchecked files have separate labels. The selected
+unresolved, edited, and unchecked files have separate labels. An absent
+optional collection-failure marker reads as **none recorded**. The selected
 file's full path appears below the list. Sanitized samples can differ from
 the original manifest digest; the TUI labels those files **sanitized copy**
 instead of claiming the original file still verifies.
