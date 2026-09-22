@@ -13,6 +13,7 @@ result.
 
 | Lead | Question | State |
 | --- | --- | --- |
+| [Jev opportunities in OpenAgents](../../audits/2026-09-22-jev-opportunities/README.md) | Could broader semantic evidence coverage improve repository answers, review, and project preparation? | Ranked designs and evaluation plan; retained-record audit finds material reporting discrepancies; no new inference results |
 | [`2026-09-19-inference-side-scoring.md`](2026-09-19-inference-side-scoring.md) | Does an inference engine's scoring endpoint turn any open model into a decision model, without training a readout? | **settled**: mechanism real, quality claim contradicted by a public paired measurement |
 | [`2026-09-19-question-text-optimization.md`](2026-09-19-question-text-optimization.md) | Is the question text a tunable parameter, and does a gain found on one door transfer to the others? | lead open, **tool settled**: its own authors' benchmark shows the technique lowering Jev's accuracy |
 | [`2026-09-19-compiled-functions.md`](2026-09-19-compiled-functions.md) | Can a compiler turn an English description into a working adapter without labelled data? | **settled on what it is**; one cheap experiment left that tests our guide's root |

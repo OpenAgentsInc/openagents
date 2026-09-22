@@ -1,0 +1,49 @@
+{
+  "model": "jev-1.13.0",
+  "state": {
+    "fixture": "Authored illustration. Identity checks and diff anchoring precede this request.",
+    "requirement": "Unknown discount codes must return an error without panicking.",
+    "change": {
+      "before": "let discount = DISCOUNTS.get(code).ok_or(Error::UnknownCode)?;",
+      "after": "let discount = DISCOUNTS.get(code).unwrap();",
+      "scope": "These are complete changed statements. Caller validation is not supplied."
+    },
+    "finding": {
+      "claim": "The changed statement panics if the lookup returns None.",
+      "trigger": "DISCOUNTS.get(code) returns None."
+    },
+    "test": {
+      "name": "known_discount_applies",
+      "source": "assert!(apply_discount(\"SUMMER\").is_ok());",
+      "run": "passed"
+    }
+  },
+  "questions": {
+    "conditional_defect": {
+      "type": "choice",
+      "instructions": "Given exactly `finding.trigger`, does `change.after` have the panic behavior in `finding.claim`? Do not infer whether a real caller can supply the trigger.",
+      "criteria": {
+        "supported": "The supplied statement has the claimed behavior under the stated trigger.",
+        "contradicted": "The supplied statement does not have that behavior under the stated trigger.",
+        "insufficient": "The statement is insufficient to determine the conditional behavior."
+      }
+    },
+    "introduced_behavior": {
+      "type": "noul",
+      "instructions": "Under `finding.trigger`, does changing `change.before` to `change.after` replace an error return with a panic? Judge only these two statements."
+    },
+    "trigger_reachability": {
+      "type": "choice",
+      "instructions": "Does the supplied evidence establish whether a real caller can reach `finding.trigger`? Do not treat the finding's assertion as proof of reachability.",
+      "criteria": {
+        "established_reachable": "Supplied caller code or an observed execution demonstrates a missing lookup reaching this statement.",
+        "established_prevented": "Supplied caller validation proves that missing lookups cannot reach this statement.",
+        "not_established": "Neither demonstration is present in the supplied evidence."
+      }
+    },
+    "test_exercises_requirement": {
+      "type": "noul",
+      "instructions": "Does `test.source` actually exercise the unknown-discount behavior required by `requirement`? A passing test of a known code is not an unknown-code test."
+    }
+  }
+}
