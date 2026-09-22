@@ -17,6 +17,27 @@ counts, plus an analysis of each Coder One run. Update it after every run.
 Every row is a single trial. Treat the tables as behavioral evidence for
 development, not a pass-rate estimate or a significance claim.
 
+## Headline: Coder One against Claude Code on Opus 5.5
+
+The comparison we care about most. Both arms ran on the same task pins, on
+the same x86_64 Linux host, with Harbor's phase timings.
+
+| Task | Arm | Reward | Total cost | Agent time | Model calls | Tokens in / cached / out |
+| --- | --- | --- | --- | --- | --- | --- |
+| `fix-git` | Claude Code 2.1.280 / Opus 5.5 | 1.0 | $0.1420 | 23.8 s | 7 steps, 6 tool calls | 126,361 / 116,005 / 1,799 |
+| `fix-git` | Coder One / Gemini 3.8 Flash + Jev | 1.0 | $0.0604 | 73.8 s | 17 generations, 17 Jev | 50,613 / 0 / 5,369 |
+| `build-cython-ext` | Claude Code 2.1.280 / Opus 5.5 | 1.0 | $0.4173 | 114.9 s | 17 steps, 16 tool calls | 456,887 / 431,183 / 6,277 |
+| `build-cython-ext` | Coder One / Gemini 3.8 Flash + Jev | 1.0 | $0.3748 | 338.4 s | 49 generations, 48 Jev | 403,209 / 0 / 16,631 |
+
+Both arms solved both tasks. Coder One cost 43% of Opus 5.5 on `fix-git`
+but 90% on `build-cython-ext`, and it took about three times as long on
+both. Opus 5.5 needed far fewer steps, and about 94% of its input was
+cached, which keeps a strong model's long conversation cheap. Coder One's
+small uncached prompts win on a short task and lose most of that edge as
+the step count grows. The delegate mode in
+[#9532](https://github.com/OpenAgentsInc/openagents/issues/9532) tests the
+combination: Jev and Gemini explore, then Opus finishes from a briefing.
+
 ## How to read the columns
 
 - **Reward** is the task's own verifier result. *No result* means the
@@ -54,6 +75,7 @@ development, not a pass-rate estimate or a significance claim.
 | Arm | Model | Reward | Cost | Cost source | Jev cost | Agent time | Steps | Tool calls | Tokens in / cached / out | Trace |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Coder One** | Gemini 3.8 Flash (`free` lane) + `jev-1.13.0` | **1.0** | **$0.0604** | Door-reported + Jev list price | $0.0022524 | 73.8 | 17 generations, 17 Jev | 16 shell | 50,613 / 0 / 5,369 | [trace](../../bench/terminal-bench/traces/smoke--coder-one--fix-git/) |
+| Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.1420 | CLI list price | — | 23.8 | 7 | 6 | 126,361 / 116,005 / 1,799 | [trace](../../bench/terminal-bench/traces/smoke--claude-code-opus--fix-git/) |
 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.3630 | CLI list price | — | 30.5† | 6 | 5 | 118,946 / 106,631 / 1,833 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--fix-git-fable/) |
 | Claude Code 2.1.278 | Sonnet 4.5 | 1.0 | $0.1463 | CLI list price | — | 42.6† | 8 | 10 | 179,343 / 168,918 / 2,216 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--fix-git-2/) |
 | Codex 0.153.3 | gpt-6-astra | 1.0 | $0.2607 | Harbor estimate | — | 53.3 | 6 | 5 | 103,959 / 91,776 / 941 | [trace](../../bench/terminal-bench/traces/smoke--codex--fix-git-4/) |
@@ -69,6 +91,7 @@ log; its trajectory spans 46.1 seconds.
 | Arm | Model | Reward | Cost | Cost source | Jev cost | Agent time | Steps | Tool calls | Tokens in / cached / out | Trace |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Coder One** | Gemini 3.8 Flash (`free` lane) + `jev-1.13.0` | **1.0** | **$0.3748** | Door-reported + Jev list price | $0.0100300 | 338.4 | 49 generations, 48 Jev | 48 shell | 403,209 / 0 / 16,631 | [trace](../../bench/terminal-bench/traces/smoke--coder-one--build-cython-ext/) |
+| Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.4173 | CLI list price | — | 114.9 | 17 | 16 | 456,887 / 431,183 / 6,277 | [trace](../../bench/terminal-bench/traces/smoke--claude-code-opus--build-cython-ext/) |
 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.4420 | CLI list price | — | 201.8† | 20 | 19 | 702,690 / 666,599 / 11,193 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--build-cython-ext-fable/) |
 | Claude Code 2.1.278 | Sonnet 4.5 | 0.0 | $0.9172 | CLI list price | — | 263.7† | 46 | 55 | 1,800,515 / 1,760,664 / 10,070 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--build-cython-ext/) |
 | Codex 0.153.3 | gpt-6-astra | 1.0 | $1.4277 | Harbor estimate | — | 222.2† | 21 | 20 | 801,816 / 758,528 / 4,726 | [trace](../../bench/terminal-bench/traces/smoke--codex--build-cython-ext/) |
@@ -235,6 +258,12 @@ five times in slices and re-ran the same alias search three times.
 5. Commit and push.
 
 ## Data problems
+
+- The first `claude-code-opus` attempts on both tasks ended in about a
+  second with no inference: the API refuses Opus 5.5 to Claude Code
+  2.1.278 (`claude_code_version_too_old`). The arm now pins 2.1.280. The
+  failed job directories are kept outside the results, under
+  `~/.openagents/terminal-bench/failed/` on the Linux host.
 
 - Three Codex `fix-git` trajectories (`smoke--codex--fix-git`, `-2`, and
   `-3`) are not valid JSON: Harbor's credential scrubber rewrote literal
