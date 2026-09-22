@@ -111,8 +111,10 @@ relays; relay selection is a client responsibility. Operators should keep
 relay lists compact because the normal event, content, tag-count, and frame
 limits apply.
 
-NIP-77 did not add a sync engine or wire verb in M6; it is now an explicit
-full-official-lane implementation target. NIP-91 was not present in the pinned
+NIP-77 `NEG-OPEN`, `NEG-MSG`, and `NEG-CLOSE` reconcile id sets with the
+version-1 frame in `crates/nostr/src/negentropy.rs`. A filter that matches
+more than 4096 events is refused `blocked` rather than scanned. NIP-11
+advertises 77 because that path is what the relay runs. NIP-91 was not present in the pinned
 official source lane, so M6 could not advertise or implement it; it enters the
 same process if a future reviewed sync pins it. See `source-lanes.md` for the
 recorded lane decisions and their 2026-08-04 supersession.

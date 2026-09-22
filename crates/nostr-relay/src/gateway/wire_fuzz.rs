@@ -129,6 +129,9 @@ fn message_verb(message: &ClientMessage) -> &'static str {
         ClientMessage::Close { .. } => "CLOSE",
         ClientMessage::Count { .. } => "COUNT",
         ClientMessage::Auth(_) => "AUTH",
+        ClientMessage::NegOpen { .. } => "NEG-OPEN",
+        ClientMessage::NegMsg { .. } => "NEG-MSG",
+        ClientMessage::NegClose { .. } => "NEG-CLOSE",
     }
 }
 
