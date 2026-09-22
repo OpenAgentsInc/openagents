@@ -20,6 +20,7 @@ mod label;
 mod market;
 mod ots;
 mod profile_link;
+mod remote_sign;
 mod replacement;
 mod timestamp;
 mod torrent;
@@ -67,6 +68,11 @@ pub use market::{
 pub use ots::{BitcoinAttestation, open_attestation};
 pub use profile_link::{
     IdentityClaim, ProfileLinks, author_npub, expected_statement, open_profile_links, proof_url,
+};
+pub use remote_sign::{
+    BunkerUrl, NostrConnectUrl, Permission, RemoteRequest, RemoteResponse, RemoteSigner,
+    auth_challenge_url, open_response, parse_bunker, parse_nostrconnect, seal_request,
+    validate_remote_signing,
 };
 pub use replacement::{
     EventClass, ReplacementAddress, ReplacementDecision, compare_replacement,

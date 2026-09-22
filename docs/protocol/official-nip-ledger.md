@@ -139,6 +139,21 @@ match. A newer list from the same author replaces the older one. Kind
 proof. Acceptance is
 `domain::profile_link::tests::a_profile_link_list_names_each_platform_and_replaces`.
 
+NIP-46 is `configured-and-proven`. Kind `24133` is an ephemeral request
+or response. The content is NIP-44 ciphertext, and the event has one `p`
+tag naming the other party. `parse_bunker` and `parse_nostrconnect` read
+the connection tokens, including percent-encoded relays and a permission
+list. `RemoteSigner::handle` decrypts a request and answers `connect`,
+`ping`, `get_public_key`, `sign_event`, the NIP-04 and NIP-44 helpers,
+`switch_relays`, and `logout`, then seals the response. A bunker secret
+works for one connection. A permission list limits `sign_event` and the
+cipher methods. Admission checks the `p` tag and the NIP-44 framing and
+does not decrypt. The kind is ephemeral, so the relay fans the event out
+and does not store it. Kind `24133` is not added to the NIP-11 list. The
+relay does not fetch a NIP-89 announcement or a `nostr.json` document.
+Acceptance is
+`domain::remote_sign::tests::a_client_connects_and_the_signer_returns_a_signed_event`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
