@@ -1,0 +1,125 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "1513685ca293d9daf9ae8c62b35d5a06821848c64233890d17522aa94f8855de",
+        "chars": 10812,
+        "bytes": 10814,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ ls -la /app/logs",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": [
+          "file logs/2025-07-07_api.log (4052 characters)",
+          "file logs/2025-08-10_db.log (4051 characters)",
+          "file logs/2025-07-22_api.log (4052 characters)"
+        ]
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": null,
+      "total_cost_usd": 0.0009649400000000001,
+      "milliseconds": 21896,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 4903,
+        "kept_bytes": 4903,
+        "truncated": false,
+        "sha256": "6e5a10dbfd400b75a4a53f4be6b0fd506bbef292ff59b47910b22253b3541364"
+      },
+      "close": {
+        "done": 0.67,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (88f47d67b405)",
+    "sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:07:18.610Z",
+  "updated_at": "2026-09-22T23:07:42.825Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 84331,
+      "sha256": "4a15abf7b702b43be54d293035ac2612e18b2f71267be291b4671caac139e29d"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1915,
+      "sha256": "23b0a7030a05ce3e232af6b1e03b1935374eda97624a88311cd5d48046f9026c"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 37249,
+      "sha256": "58e2cac0a10ac9d353ea4962c8fc9142ac08d73923c53721ea55833ca979a398"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 10814,
+      "sha256": "1513685ca293d9daf9ae8c62b35d5a06821848c64233890d17522aa94f8855de"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 4903,
+      "sha256": "6e5a10dbfd400b75a4a53f4be6b0fd506bbef292ff59b47910b22253b3541364"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM…",
+    "summary": "Created `/app/summary.csv` with the requested header and 15 rows in the specified order. The counts use filename dates and the reference date 2025-08-12; the CSV structure and numeric counts were verified.",
+    "delegate_status": "answered"
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "fe5f325a43ec534e48395c64cc3127f1688612bc43be9ec0cebc92086a92caab",
+        "chars": 2766,
+        "bytes": 2766,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git -C /app/repo reflog -n 40",
+          "file $ git -C /app/repo log --oneline --graph --all -n 40",
+          "file $ git -C /app/repo status",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ git -C /app/repo branch -a -vv",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 5,
+      "api_calls": null,
+      "total_cost_usd": 0.0012351,
+      "milliseconds": 26112,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 4914,
+        "kept_bytes": 4914,
+        "truncated": false,
+        "sha256": "3dd82e4b370e105d97487256b8f695e663fa6036b4152da2edfb6ebad9bc8726"
+      },
+      "close": {
+        "done": 0.63,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (88f47d67b405)",
+    "sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:14:36.813Z",
+  "updated_at": "2026-09-22T23:15:03.790Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 25980,
+      "sha256": "6c92944a7ebcb00abaac39e9d93238eb95c7ec500f1da19fe1ee845c2a1b4a29"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1893,
+      "sha256": "93a22bd10fbbf3983b6f85d36fc76c68965b1efef1a92cfb6041204bbbbbc8b0"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2310,
+      "sha256": "14c751d2772ac94d064ed690abeaf8e09f273af82103f98fd9bc7ee138f2a001"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2766,
+      "sha256": "fe5f325a43ec534e48395c64cc3127f1688612bc43be9ec0cebc92086a92caab"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 4914,
+      "sha256": "3dd82e4b370e105d97487256b8f695e663fa6036b4152da2edfb6ebad9bc8726"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "A secret was accidentally committed to this repository in /app and then removed by rewriting history…",
+    "summary": "Recovered the secret to [/app/secret.txt](/app/secret.txt). Pruned the repository’s reflogs and unreachable Git objects; the repository search found no remaining `secret[...]` string. The working tree is clean, and the existing commit messages remain unchanged.",
+    "delegate_status": "answered"
+  }
+}

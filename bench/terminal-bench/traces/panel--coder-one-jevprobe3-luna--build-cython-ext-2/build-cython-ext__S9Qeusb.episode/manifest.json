@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "7612a14a95ec7c4ab3912b12b3cdc76cd3ffc9401ef7fe056791f92378e55d2e",
+        "chars": 9687,
+        "bytes": 9689,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git /app/pyknotid   (setup the host already ran: exit 0)",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' -o -name tests -o -name '*.test.*' \\) -not -path '*/.git/*' | head -40",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file $ git -C /app/pyknotid status",
+          "file $ git -C /app/pyknotid branch -a -vv",
+          "file pyknotid/setup.py"
+        ],
+        "omitted": [
+          "file pyknotid/pyknotid/spacecurves/periodic.py (4070 characters)"
+        ]
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 18,
+      "api_calls": null,
+      "total_cost_usd": 0.0096863,
+      "milliseconds": 141875,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 68584,
+        "kept_bytes": 68584,
+        "truncated": false,
+        "sha256": "bdeee6dda72a9d5185a35b1dfb29f656a6e42c26273d8123be10fc29f90c4681"
+      },
+      "close": {
+        "done": 0.75,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (88f47d67b405)",
+    "sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:55:32.139Z",
+  "updated_at": "2026-09-22T22:57:58.736Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 90112,
+      "sha256": "104e0f0422777c53934733db9782e6df73e2e434e4c5d2f5766989b2154d7371"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1911,
+      "sha256": "471755c62cdce8dd326491866f722fb38fe946736a10552225ef990e63ba069f"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 18590,
+      "sha256": "74193f27cb9133f23cf2e3de2ba51cf99417b0f8b8ab407735aa823c26bc31c1"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 9689,
+      "sha256": "7612a14a95ec7c4ab3912b12b3cdc76cd3ffc9401ef7fe056791f92378e55d2e"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 68584,
+      "sha256": "bdeee6dda72a9d5185a35b1dfb29f656a6e42c26273d8123be10fc29f90c4681"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "pyknotid is a Python package for computational topology and knot theory.",
+    "summary": "Installed pyknotid 0.5.3 from `/app/pyknotid` into the system Python. The installed extensions—`chelpers`, `ccomplexity`, and `cinvariants`—load from site packages with NumPy 2.3.0.\n\nI replaced removed NumPy type aliases across the package and updated the torus-knot generator to use `math.gcd`, which was also unavailable in Python 3.13.\n\nThe README example ran and returned `7.0`. The allowed core tests passed: **18 passed**. I also exercised the Cython complexity functions and `cinvariants` directly.",
+    "delegate_status": "answered"
+  }
+}

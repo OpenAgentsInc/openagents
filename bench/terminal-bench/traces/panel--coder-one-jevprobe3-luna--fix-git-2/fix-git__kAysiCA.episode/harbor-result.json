@@ -1,0 +1,36 @@
+{
+  "trial_name": "fix-git__kAysiCA",
+  "task_name": "terminal-bench/fix-git",
+  "started_at": "2026-09-22T22:50:11.039564Z",
+  "finished_at": "2026-09-22T22:56:52.980279Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T22:50:11.088101Z",
+    "finished_at": "2026-09-22T22:50:12.355765Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T22:50:12.355822Z",
+    "finished_at": "2026-09-22T22:55:45.633647Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T22:55:45.633788Z",
+    "finished_at": "2026-09-22T22:56:27.774401Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T22:56:28.002517Z",
+    "finished_at": "2026-09-22T22:56:41.492559Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 121672,
+    "n_cache_tokens": 103680,
+    "n_output_tokens": 1077,
+    "cost_usd": 0.002777216,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

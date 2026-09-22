@@ -1,0 +1,36 @@
+{
+  "trial_name": "git-leak-recovery__2iSZSJs",
+  "task_name": "terminal-bench/git-leak-recovery",
+  "started_at": "2026-09-22T23:10:28.620138Z",
+  "finished_at": "2026-09-22T23:15:34.157190Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T23:10:28.670120Z",
+    "finished_at": "2026-09-22T23:10:30.038753Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T23:10:30.038809Z",
+    "finished_at": "2026-09-22T23:14:36.617982Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T23:14:36.618185Z",
+    "finished_at": "2026-09-22T23:15:04.040247Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T23:15:04.358676Z",
+    "finished_at": "2026-09-22T23:15:22.443885Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 62801,
+    "n_cache_tokens": 56320,
+    "n_output_tokens": 608,
+    "cost_usd": 0.001352784,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

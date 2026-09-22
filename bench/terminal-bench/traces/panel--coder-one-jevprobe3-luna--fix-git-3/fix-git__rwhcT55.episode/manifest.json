@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "92187d77cf9fbcf8ccbbc06060ddbfaf3284096d805462579f10eceff621eeb5",
+        "chars": 4046,
+        "bytes": 4046,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 8,
+      "api_calls": null,
+      "total_cost_usd": 0.00228474,
+      "milliseconds": 27127,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 12618,
+        "kept_bytes": 12618,
+        "truncated": false,
+        "sha256": "ac21dc030f8a03d217c2acfeffb08453e3608be58b1833fb856231283ff1bc49"
+      },
+      "close": {
+        "done": 0.89,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (88f47d67b405)",
+    "sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:08:22.673Z",
+  "updated_at": "2026-09-22T23:08:51.860Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 74322,
+      "sha256": "66f9226e676281b7ee19d9a6621eedd9c3a755226a7a4afdd8ece07cc59e1380"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1886,
+      "sha256": "a941969f06b7de3a3681132700cd1c7871be1479595bd669e2a4b024c83f3370"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 3603,
+      "sha256": "fd0bb04515ca20cce014af537c93771786f8026bc93a0d24a9679fef884358d8"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4914,
+      "sha256": "eb9f0aeb5b67effd7f595799642413a622bfd9a1d3b2e42d687f8a63a269fbc5"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 4046,
+      "sha256": "92187d77cf9fbcf8ccbbc06060ddbfaf3284096d805462579f10eceff621eeb5"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 12618,
+      "sha256": "ac21dc030f8a03d217c2acfeffb08453e3608be58b1833fb856231283ff1bc49"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "Recovered and merged commit `c499730` (“Move to Stanford”) into `master` as merge commit `3592f96`. The bio now reflects the Stanford postdoc update, and the layout includes “Postdoc @ Stanford.”\n\nVerified the merge is in `master` and the working tree is clean.",
+    "delegate_status": "answered"
+  }
+}

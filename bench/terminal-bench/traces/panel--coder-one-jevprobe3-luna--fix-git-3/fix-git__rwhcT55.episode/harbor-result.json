@@ -1,0 +1,36 @@
+{
+  "trial_name": "fix-git__rwhcT55",
+  "task_name": "terminal-bench/fix-git",
+  "started_at": "2026-09-22T23:03:50.806676Z",
+  "finished_at": "2026-09-22T23:09:07.688659Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T23:03:50.852243Z",
+    "finished_at": "2026-09-22T23:03:52.142750Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T23:03:52.142793Z",
+    "finished_at": "2026-09-22T23:08:22.570284Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T23:08:22.570368Z",
+    "finished_at": "2026-09-22T23:08:51.989159Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T23:08:52.225754Z",
+    "finished_at": "2026-09-22T23:08:56.285295Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 110590,
+    "n_cache_tokens": 90624,
+    "n_output_tokens": 825,
+    "cost_usd": 0.002717592,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

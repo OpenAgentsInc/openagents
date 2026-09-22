@@ -1,0 +1,122 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "3b153babfc8aa1907403cebd2a577103cf0401176ede3e2598098cf038671a05",
+        "chars": 2891,
+        "bytes": 2891,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": null,
+      "total_cost_usd": 0.0014583200000000001,
+      "milliseconds": 39440,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 13137,
+        "kept_bytes": 13137,
+        "truncated": false,
+        "sha256": "b9d9639dffd1511d888ebcb2fc51317f443f642b57a44fe64cbaa8de9b405aee"
+      },
+      "close": {
+        "done": 0.48,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (88f47d67b405)",
+    "sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:01:24.782Z",
+  "updated_at": "2026-09-22T23:02:05.979Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 23384,
+      "sha256": "180909dea29bb34247d81effdb06f4fa98fcaad39e8e4b6ab0761b017c5bb5f3"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1917,
+      "sha256": "08f14eaef8ce85ac030a21c7275afe135482d1fa6849fb0f0d4c704d615e3a8c"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2344,
+      "sha256": "aaf5da0342b54a53b6a93cff36cb95612cc00044cf0589240ce453a82b6abfa9"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2891,
+      "sha256": "3b153babfc8aa1907403cebd2a577103cf0401176ede3e2598098cf038671a05"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 13137,
+      "sha256": "b9d9639dffd1511d888ebcb2fc51317f443f642b57a44fe64cbaa8de9b405aee"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "Implemented [headless_terminal.py](/app/headless_terminal.py) with `HeadlessTerminal(BaseTerminal)`, backed by an interactive Bash shell attached to a PTY. It captures output, accepts control characters such as Ctrl-C, and includes `get_output()`, `read()`, and cleanup helpers.\n\nChecked that shell commands run, Ctrl-C interrupts a running command, and an interactive `read` accepts input and returns to the shell.",
+    "delegate_status": "answered"
+  }
+}

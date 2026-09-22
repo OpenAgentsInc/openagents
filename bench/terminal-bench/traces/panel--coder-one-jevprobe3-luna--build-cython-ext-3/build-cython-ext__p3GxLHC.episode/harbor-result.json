@@ -1,0 +1,36 @@
+{
+  "trial_name": "build-cython-ext__p3GxLHC",
+  "task_name": "terminal-bench/build-cython-ext",
+  "started_at": "2026-09-22T23:04:17.507858Z",
+  "finished_at": "2026-09-22T23:10:40.562269Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T23:04:17.548539Z",
+    "finished_at": "2026-09-22T23:04:28.975834Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T23:04:28.975897Z",
+    "finished_at": "2026-09-22T23:07:41.901196Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T23:07:41.901326Z",
+    "finished_at": "2026-09-22T23:10:23.916844Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T23:10:24.235199Z",
+    "finished_at": "2026-09-22T23:10:28.912807Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 929962,
+    "n_cache_tokens": 872192,
+    "n_output_tokens": 4159,
+    "cost_usd": 0.01591229,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

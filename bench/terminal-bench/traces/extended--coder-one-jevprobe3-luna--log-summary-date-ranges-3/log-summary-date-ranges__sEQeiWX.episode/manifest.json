@@ -1,0 +1,125 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "99c35f7f4bbd4e48549b5425ffd8931f0762151f28c0b594c51c46681f0fdde0",
+        "chars": 10812,
+        "bytes": 10814,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ ls -la /app/logs",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": [
+          "file logs/2025-08-10_db.log (4051 characters)",
+          "file logs/2025-07-07_api.log (4052 characters)",
+          "file logs/2025-08-07_api.log (4052 characters)"
+        ]
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": null,
+      "total_cost_usd": 0.0015102,
+      "milliseconds": 24611,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 5312,
+        "kept_bytes": 5312,
+        "truncated": false,
+        "sha256": "d48af28f5d38f6c29c92b0ed5fe83849df4d7e02319c0c8eedfbc68225520e5e"
+      },
+      "close": {
+        "done": 0.67,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (88f47d67b405)",
+    "sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:16:18.677Z",
+  "updated_at": "2026-09-22T23:16:45.253Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 84345,
+      "sha256": "1a3ae87bb7471d9e317513a245b2d4a477b44a3dd5057178d138a68d650f3d61"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1883,
+      "sha256": "d6a1016992622fec2581f0022792206796748c1f20ed6eaa166bdf112f942eec"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 37250,
+      "sha256": "8e7ce14a5fc2eb360b984763fb84f95b31604939db0e223c85e5262b732601e3"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 10814,
+      "sha256": "99c35f7f4bbd4e48549b5425ffd8931f0762151f28c0b594c51c46681f0fdde0"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 5312,
+      "sha256": "d48af28f5d38f6c29c92b0ed5fe83849df4d7e02319c0c8eedfbc68225520e5e"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM…",
+    "summary": "Created [`summary.csv`](/app/summary.csv) with the requested header, period and severity order, and counts based on 2025-08-12. Verified the CSV has 15 data rows and that the date ranges’ counts are consistent.",
+    "delegate_status": "answered"
+  }
+}

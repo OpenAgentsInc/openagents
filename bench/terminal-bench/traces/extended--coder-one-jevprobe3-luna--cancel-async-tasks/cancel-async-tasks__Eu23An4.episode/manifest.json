@@ -1,0 +1,121 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "90d5b9c22f081c0e1e30f96028e3b44ad9a824556c8efb141a15b70686106118",
+        "chars": 2150,
+        "bytes": 2150,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 4,
+      "api_calls": null,
+      "total_cost_usd": 0.0016174400000000002,
+      "milliseconds": 36125,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 9648,
+        "kept_bytes": 9648,
+        "truncated": false,
+        "sha256": "5207d15544c968114dca17b6c5e803353862c9228c3538916eba6424bf846d58"
+      },
+      "close": {
+        "done": 0.67,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (88f47d67b405)",
+    "sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:55:49.336Z",
+  "updated_at": "2026-09-22T22:56:26.767Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 18020,
+      "sha256": "2cc9254ce45a9b242d63fe5227f466c732e716874c7133a18f8f943e4e16d3f0"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1908,
+      "sha256": "03f669e3e3dc95d59fb57653f172c0d30bcdeaf51bd43f0c21ab7ded6a85557f"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1504,
+      "sha256": "4f764e4a5a60dd35a9a8bf3d9478e1d62683c3f6e8de8fb9888106c5e2ddbaf9"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2150,
+      "sha256": "90d5b9c22f081c0e1e30f96028e3b44ad9a824556c8efb141a15b70686106118"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 9648,
+      "sha256": "5207d15544c968114dca17b6c5e803353862c9228c3538916eba6424bf846d58"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_con…",
+    "summary": "Created [run.py](/app/run.py) with `run_tasks`, which limits concurrency and cancels and awaits started workers if the caller is cancelled or a task fails, allowing their cleanup code to run.\n\nVerified bounded concurrency, cancellation cleanup, task failure cleanup, invalid concurrency, and Python compilation.",
+    "delegate_status": "answered"
+  }
+}

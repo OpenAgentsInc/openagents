@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "222e4f272dc6b840d3714232a827a4c6f15643d75d15f64b0be2ea24f265e181",
+        "chars": 4046,
+        "bytes": 4046,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 8,
+      "api_calls": null,
+      "total_cost_usd": 0.0026387600000000004,
+      "milliseconds": 28622,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 13679,
+        "kept_bytes": 13679,
+        "truncated": false,
+        "sha256": "b962b6d1db5de42d42b010cbfa1c67f53fc59edace6fb36d0a8286e3cf69b097"
+      },
+      "close": {
+        "done": 0.89,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (88f47d67b405)",
+    "sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T22:45:23.460Z",
+  "updated_at": "2026-09-22T22:45:54.130Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 74263,
+      "sha256": "a6aa1d1662fd641a1bd0ff05585fbefe393d8a2bf8581b627c0a709a8868bce0"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1905,
+      "sha256": "87d420f5f56f65a5343579b3cf98ee3b33968df1a2b3bc6b9f4b9e5c8d427378"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 3603,
+      "sha256": "4d081ed9924d9e66a6ee41ae5795521c83d036c9e037075ed8af5915cdbe0768"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4915,
+      "sha256": "e9abef8652d2595c760c40df17973faf7631d1473404509aa87f733b99c4b7c8"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 4046,
+      "sha256": "222e4f272dc6b840d3714232a827a4c6f15643d75d15f64b0be2ea24f265e181"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 13679,
+      "sha256": "b962b6d1db5de42d42b010cbfa1c67f53fc59edace6fb36d0a8286e3cf69b097"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "Recovered and merged commit `c499730` (“Move to Stanford”) into `master` as merge commit `e50d68c`. The about page now has the Stanford role, and the layout updates are included.\n\nVerified the merge history and confirmed the working tree is clean.",
+    "delegate_status": "answered"
+  }
+}

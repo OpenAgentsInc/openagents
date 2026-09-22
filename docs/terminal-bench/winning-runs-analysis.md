@@ -227,3 +227,30 @@ Full tables: [the results page](README.md#jev-probe-arms-2026-09-22).
 Neither closes the gap alone. The Luna arm's panel time is bound by
 `build-cython-ext` (158 seconds with v2), and Opus's cost floor is about
 $0.03 a task even with the shorter cache.
+
+## Probe v3
+
+v3 (commit `88f47d67b4`) made both changes above and ran three trials per
+task on all eight tasks.
+
+| Configuration | Panel: passed, cost, time | Extended: passed, cost, time |
+| --- | --- | --- |
+| **Jev-probe v3 → Luna** | 11/12, **$0.0198**, 275.2 s | 8/12, $0.0087, 145.0 s |
+| **Jev-probe v3 → lean Opus, low effort, five-minute cache** | 12/12, $0.2853, 162.4 s | 12/12, **$0.2008**, 67.4 s |
+
+- **The checked directions fixed Luna's failure mode.** `build-cython-ext`
+  passed 3 of 3, in 163.8 seconds against 185.8 for the original probe
+  arm. The one v3 miss was on `headless-terminal`. Across the panel it's
+  the cheapest configuration so far.
+- **The five-minute cache works as measured.** Every Opus v3 cache write
+  was a five-minute write, and the arm's cost fell 12% on both sets.
+- **The checked directions cost the Opus arm time.** On
+  `build-cython-ext` it took more turns (8.7 against 6.3) and 50% longer.
+  Opus didn't need the extra checking: v2's Opus arm passed all 24
+  trials without it.
+
+The best configuration per delegate is now different: Luna with v3's
+directions, and Opus with v2's directions plus the five-minute cache. The
+second hasn't been run yet. Neither closes the gap between the two
+winners: the cheapest time on the panel is still an Opus arm, and the
+cheapest cost a Luna arm.

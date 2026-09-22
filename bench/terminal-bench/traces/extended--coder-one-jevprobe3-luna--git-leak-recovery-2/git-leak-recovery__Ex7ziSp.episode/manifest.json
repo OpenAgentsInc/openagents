@@ -1,0 +1,124 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "fb9fc490efae522e2864e5cb6e39129677fe265c3ed392a0245d758bf6ee61d3",
+        "chars": 2766,
+        "bytes": 2766,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git -C /app/repo reflog -n 40",
+          "file $ git -C /app/repo log --oneline --graph --all -n 40",
+          "file $ pwd && ls -la",
+          "file $ git -C /app/repo branch -a -vv",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ git -C /app/repo status"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 6,
+      "api_calls": null,
+      "total_cost_usd": 0.00126676,
+      "milliseconds": 22947,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 4549,
+        "kept_bytes": 4549,
+        "truncated": false,
+        "sha256": "c5ea02fda758ff72286b608e4081c393c4bbb6a8bd5a9c7221da676b0f92caf9"
+      },
+      "close": {
+        "done": 0.6,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (88f47d67b405)",
+    "sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:03:09.822Z",
+  "updated_at": "2026-09-22T23:03:34.028Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 26392,
+      "sha256": "737b017486a9e1ffb6dd76036634b7889b61769c2453eba44164e7bbfbf4e432"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1894,
+      "sha256": "41851419fc7eeb4e1ccf913b2cb4302d7a9287db460e37c336fb15e4d4254523"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2309,
+      "sha256": "77de580db74c0176fe2ce59229ae0f97f11873f3aa1953404ecf3fc098f53eb3"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2766,
+      "sha256": "fb9fc490efae522e2864e5cb6e39129677fe265c3ed392a0245d758bf6ee61d3"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 4549,
+      "sha256": "c5ea02fda758ff72286b608e4081c393c4bbb6a8bd5a9c7221da676b0f92caf9"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "A secret was accidentally committed to this repository in /app and then removed by rewriting history…",
+    "summary": "Recovered the secret to [`/app/secret.txt`](/app/secret.txt). Expired reflogs and pruned unreachable Git objects, removing the secret from the repository while preserving the reachable commits and their messages.\n\nVerified the recovered value, searched the working tree for `secret[...]`, confirmed the old commit and blob were no longer reported by `git fsck`, and confirmed the repository is clean.",
+    "delegate_status": "answered"
+  }
+}
