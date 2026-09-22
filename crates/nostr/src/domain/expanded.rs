@@ -443,6 +443,11 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     }
     if matches!(event.kind, 6 | 16) {
         super::repost::open_repost(event)?;
+        if event.tags.iter().any(|tag| {
+            tag.name() == Some("a") && tag.value().is_some_and(|value| value.starts_with("34550:"))
+        }) {
+            super::community::open_community_repost(event)?;
+        }
     }
     if matches!(event.kind, 31_922 | 31_923) {
         super::calendar::open_calendar_event(event)?;
@@ -497,6 +502,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     }
     if event.kind == 30_819 {
         super::wiki::open_wiki_redirect(event)?;
+    }
+    if event.kind == 34_550 {
+        super::community::open_community(event)?;
+    }
+    if event.kind == 4_550 {
+        super::community::open_community_approval(event)?;
     }
     if event.kind == 7_375 {
         super::wallet::open_token_event(event)?;
@@ -582,6 +593,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     }
     if event.kind == 1_111 {
         super::comment::open_comment(event)?;
+        if event.tag_values("K").any(|kind| kind == "34550") {
+            super::community::open_community_post(event)?;
+        }
     }
     if matches!(event.kind, 30_023 | 30_024) {
         super::article::open_article(event)?;

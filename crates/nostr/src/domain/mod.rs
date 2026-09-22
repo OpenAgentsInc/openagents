@@ -12,6 +12,7 @@ mod block;
 mod bookmark;
 mod calendar;
 mod comment;
+mod community;
 mod deletion;
 mod draft;
 mod ecash;
@@ -77,6 +78,11 @@ pub use calendar::{
     Rsvp, day_stamp, open_calendar, open_calendar_event, open_rsvp,
 };
 pub use comment::{Comment, CommentScope, is_top_level, open_comment};
+pub use community::{
+    Community, CommunityApproval, CommunityImage, CommunityModerator, CommunityPost,
+    CommunityRelay, CommunityRelayRole, is_community_moderator, open_community,
+    open_community_approval, open_community_post, open_community_repost,
+};
 pub use deletion::{DeletionRequest, DeletionTombstone};
 pub use draft::{
     Checkpoint, DraftWrap, PrivateRelayList, RECOMMENDED_DRAFT_TTL_SECONDS, UnsignedDraft,

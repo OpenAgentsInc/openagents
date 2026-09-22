@@ -559,6 +559,21 @@ not rendered, and the merge source event is not fetched. Acceptance
 is
 `domain::wiki::tests::a_wiki_article_normalizes_its_name_and_a_merge_names_the_fork`.
 
+NIP-72 is `configured-and-proven`. Kind `34550` is an addressable
+community. `p` tags marked `moderator` are the moderators, and the
+event author is also a moderator. `relay` tags use the markers
+`author`, `requests`, and `approvals`. A kind `1111` post whose `K`
+tag is `34550` is rooted at that community. A top-level post includes
+the NIP-22 `e` version tag. Kind `4550` approves a post. An approval
+that names an `e` tag carries that event as JSON. `is_community_moderator`
+reports whether the approval pubkey is the founder or a listed
+moderator. A kind `6` or `16` repost into the community embeds the
+original event, not an approval. A newer community with the same `d`
+tag replaces the older one. An approval does not replace. NIP-72 is
+unrecommended, so these kinds are not added to the NIP-11 list. The
+relay does not fetch posts or rank approvals. Acceptance is
+`domain::community::tests::a_community_lists_moderators_and_a_moderator_approves_a_post`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
