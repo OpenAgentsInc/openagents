@@ -50,6 +50,9 @@ pub enum Turn {
     /// A command ran, and this is what it produced.
     Shell {
         command: String,
+        /// The model's note on why it ran the command.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
         observation: Observation,
     },
     /// The generator's reply was not a valid action. The error goes back

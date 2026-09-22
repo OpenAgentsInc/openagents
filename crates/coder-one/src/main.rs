@@ -1,26 +1,47 @@
 //! `coder-one`: the command line.
 //!
 //! ```text
-//! coder-one doctor         report which credentials resolve, and from where
-//! coder-one <issue-url>    fetch the issue and print the initial state
+//! coder-one doctor
+//! coder-one <issue-url> [--lane free|flash|pro] [--max-steps N]
+//!                       [--timeout SECONDS] [--no-jev] [--open-pr]
 //! ```
 //!
-//! Running the loop against live Jev, generation, and a checkout is the
-//! next step in issue #9531; this binary stops at the initial state.
+//! A run clones the issue's repository fresh under
+//! `~/.openagents/coder-one/runs/`, works on a new branch there, and
+//! streams every step to the console. When the agent finishes with
+//! changes, the host commits them; `--open-pr` also pushes the branch and
+//! opens a draft pull request.
 
+use std::io::Write as _;
+use std::path::Path;
 use std::process::{Command, ExitCode};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use coder_one::agent::INSTRUCTIONS;
 use coder_one::credentials;
-use coder_one::{Environment, Issue, State};
+use coder_one::generate::Door;
+use coder_one::judge::JevJudge;
+use coder_one::shell::Checkout;
+use coder_one::{Bounds, Ended, Environment, Issue, State, run};
 use serde::Deserialize;
 
-const USAGE: &str = "usage: coder-one doctor | coder-one <github-issue-url>";
+const USAGE: &str = "usage: coder-one doctor
+       coder-one <github-issue-url> [--lane free|flash|pro] [--max-steps N]
+                 [--timeout SECONDS] [--no-jev] [--open-pr]";
 
-fn main() -> ExitCode {
+const PROMPT: &str = "Solve this issue.";
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let result = match args.as_slice() {
-        [command] if command == "doctor" => doctor(),
-        [url] if url.starts_with("https://github.com/") && url.contains("/issues/") => show(url),
+    let result = match args.first().map(String::as_str) {
+        Some("doctor") if args.len() == 1 => doctor(),
+        Some(url) if url.starts_with("https://github.com/") && url.contains("/issues/") => {
+            match Options::parse(&args[1..]) {
+                Ok(options) => solve(url, options).await,
+                Err(error) => Err(format!("{error}\n{USAGE}")),
+            }
+        }
         _ => Err(USAGE.to_string()),
     };
     match result {
@@ -29,6 +50,52 @@ fn main() -> ExitCode {
             eprintln!("coder-one: {message}");
             ExitCode::FAILURE
         }
+    }
+}
+
+struct Options {
+    lane: String,
+    max_steps: usize,
+    timeout: Duration,
+    jev: bool,
+    open_pr: bool,
+}
+
+impl Options {
+    fn parse(args: &[String]) -> Result<Self, String> {
+        let mut options = Options {
+            lane: "free".to_string(),
+            max_steps: 30,
+            timeout: Duration::from_secs(120),
+            jev: true,
+            open_pr: false,
+        };
+        let mut args = args.iter();
+        while let Some(arg) = args.next() {
+            let mut value = |name: &str| {
+                args.next()
+                    .cloned()
+                    .ok_or_else(|| format!("{name} needs a value"))
+            };
+            match arg.as_str() {
+                "--lane" => options.lane = value("--lane")?,
+                "--max-steps" => {
+                    options.max_steps = value("--max-steps")?
+                        .parse()
+                        .map_err(|_| "--max-steps takes a number".to_string())?;
+                }
+                "--timeout" => {
+                    let seconds: u64 = value("--timeout")?
+                        .parse()
+                        .map_err(|_| "--timeout takes seconds".to_string())?;
+                    options.timeout = Duration::from_secs(seconds);
+                }
+                "--no-jev" => options.jev = false,
+                "--open-pr" => options.open_pr = true,
+                other => return Err(format!("unknown option {other}")),
+            }
+        }
+        Ok(options)
     }
 }
 
@@ -65,6 +132,194 @@ fn doctor() -> Result<(), String> {
     }
 }
 
+async fn solve(url: &str, options: Options) -> Result<(), String> {
+    let started = Instant::now();
+    let dir = credentials::openagents_dir().ok_or("HOME is not set")?;
+    let env = |name: &str| std::env::var(name).ok();
+    let bearer = credentials::bearer(env, &dir)?;
+    let jev = if options.jev {
+        let key = credentials::jev_key(env, &dir)?;
+        Some(credentials::jev_client(&key.secret)?)
+    } else {
+        None
+    };
+
+    let issue = fetch_issue(url)?;
+    let (repository, number) = parse_issue_url(url).ok_or("cannot read the issue URL")?;
+    println!("issue   {}#{number}: {}", repository, issue.title);
+
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    let run_dir = dir
+        .join("coder-one")
+        .join("runs")
+        .join(format!("{}-{number}-{stamp}", repository.replace('/', "-")));
+    let workdir = run_dir.join("repo");
+    std::fs::create_dir_all(&run_dir)
+        .map_err(|error| format!("cannot create {}: {error}", run_dir.display()))?;
+    println!("clone   {repository} → {}", workdir.display());
+    command(
+        Path::new("."),
+        "gh",
+        &[
+            "repo",
+            "clone",
+            &repository,
+            &workdir.to_string_lossy(),
+            "--",
+            "--depth",
+            "1",
+            "--quiet",
+        ],
+    )?;
+    let branch = format!("coder-one/issue-{number}-{stamp}");
+    command(&workdir, "git", &["checkout", "-q", "-b", &branch])?;
+    println!("branch  {branch}");
+    println!(
+        "doors   generation {}/v1/responses ({}), jev {}",
+        credentials::GENERATION_BASE_URL,
+        options.lane,
+        if options.jev {
+            credentials::JEV_MODEL
+        } else {
+            "off"
+        }
+    );
+
+    let mut state = State::new(
+        Environment {
+            repository: repository.clone(),
+            workdir: workdir.to_string_lossy().into_owned(),
+            os: std::env::consts::OS.to_string(),
+        },
+        issue,
+    );
+    let mut judge = JevJudge::new(jev, workdir.clone(), &state.issue);
+    let mut door = Door::new(
+        credentials::GENERATION_BASE_URL,
+        bearer.secret,
+        &options.lane,
+        INSTRUCTIONS,
+        Box::new(|delta| {
+            print!("{delta}");
+            let _ = std::io::stdout().flush();
+        }),
+    )?;
+    let mut shell = Checkout {
+        workdir: workdir.clone(),
+        deadline: options.timeout,
+    };
+
+    let ended = run(
+        &mut state,
+        PROMPT,
+        Bounds {
+            max_steps: options.max_steps,
+        },
+        &mut judge,
+        &mut door,
+        &mut shell,
+    )
+    .await;
+
+    let saved = run_dir.join("state.json");
+    if let Ok(json) = serde_json::to_string_pretty(&state) {
+        let _ = std::fs::write(&saved, json);
+    }
+
+    println!("\n── result ──");
+    let finished = match &ended {
+        Ended::Finished {
+            title,
+            summary,
+            steps,
+        } => {
+            println!("finished after {steps} steps: {title}");
+            println!("{summary}");
+            Some((title.clone(), summary.clone()))
+        }
+        Ended::StepLimit { steps } => {
+            println!("stopped: the {steps}-step limit ran out");
+            None
+        }
+        Ended::GenerationFailed { error, steps } => {
+            println!("stopped after {steps} steps: generation failed: {error}");
+            None
+        }
+    };
+
+    command(&workdir, "git", &["add", "-A"])?;
+    let changed = !Command::new("git")
+        .args(["diff", "--cached", "--quiet"])
+        .current_dir(&workdir)
+        .status()
+        .map_err(|error| format!("cannot run git: {error}"))?
+        .success();
+
+    match (finished, changed) {
+        (_, false) => println!("no changes in the checkout"),
+        (None, true) => {
+            println!("changes are staged but not committed, because the run did not finish:");
+            println!(
+                "{}",
+                command(&workdir, "git", &["diff", "--cached", "--stat"])?
+            );
+        }
+        (Some((title, summary)), true) => {
+            command(
+                &workdir,
+                "git",
+                &["commit", "-q", "-m", &title, "-m", &summary],
+            )?;
+            println!(
+                "{}",
+                command(
+                    &workdir,
+                    "git",
+                    &["show", "--stat", "--format=commit %h %s", "HEAD"]
+                )?
+            );
+            if options.open_pr {
+                println!("push    {branch}");
+                command(&workdir, "git", &["push", "-q", "-u", "origin", &branch])?;
+                let body = format!(
+                    "{summary}\n\nCloses {url}\n\n---\nOpened by coder-one in {} steps (lane `{}`, Jev {}).",
+                    state.history.len() + 1,
+                    options.lane,
+                    if options.jev { "on" } else { "off" }
+                );
+                let pr = command(
+                    &workdir,
+                    "gh",
+                    &[
+                        "pr", "create", "--draft", "--head", &branch, "--title", &title, "--body",
+                        &body,
+                    ],
+                )?;
+                println!("pull request {}", pr.trim());
+            } else {
+                println!(
+                    "committed on {branch}; pass --open-pr to push it and open a draft pull request"
+                );
+            }
+        }
+    }
+
+    println!(
+        "\nsteps {} · generation {} in / {} out tokens · jev {} calls, {} input tokens · {:.0}s",
+        state.history.len() + usize::from(matches!(ended, Ended::Finished { .. })),
+        door.usage.input_tokens,
+        door.usage.output_tokens,
+        judge.calls,
+        judge.input_tokens,
+        started.elapsed().as_secs_f64()
+    );
+    println!("checkout {}", workdir.display());
+    println!("state    {}", saved.display());
+    Ok(())
+}
+
 /// The fields `gh issue view --json` returns that the state uses.
 #[derive(Deserialize)]
 struct GhIssue {
@@ -79,45 +334,49 @@ struct GhLabel {
     name: String,
 }
 
-/// Fetches the issue with `gh` and prints the state a run starts from.
-fn show(url: &str) -> Result<(), String> {
-    let output = Command::new("gh")
-        .args(["issue", "view", url, "--json", "url,title,body,labels"])
-        .output()
-        .map_err(|error| format!("cannot run gh: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "gh issue view failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    let issue: GhIssue = serde_json::from_slice(&output.stdout)
-        .map_err(|error| format!("unexpected gh output: {error}"))?;
-    let repository = repository_of(&issue.url).ok_or("cannot read the repository from the URL")?;
-
-    let state = State::new(
-        Environment {
-            repository,
-            workdir: String::new(),
-            os: std::env::consts::OS.to_string(),
-        },
-        Issue {
-            url: issue.url,
-            title: issue.title,
-            body: issue.body,
-            labels: issue.labels.into_iter().map(|label| label.name).collect(),
-        },
-    );
-    let json = serde_json::to_string_pretty(&state).map_err(|error| error.to_string())?;
-    println!("{json}");
-    Ok(())
+fn fetch_issue(url: &str) -> Result<Issue, String> {
+    let json = command(
+        Path::new("."),
+        "gh",
+        &["issue", "view", url, "--json", "url,title,body,labels"],
+    )?;
+    let issue: GhIssue =
+        serde_json::from_str(&json).map_err(|error| format!("unexpected gh output: {error}"))?;
+    Ok(Issue {
+        url: issue.url,
+        title: issue.title,
+        body: issue.body,
+        labels: issue.labels.into_iter().map(|label| label.name).collect(),
+    })
 }
 
-/// `owner/name` from `https://github.com/owner/name/issues/N`.
-fn repository_of(url: &str) -> Option<String> {
+/// `(owner/name, number)` from `https://github.com/owner/name/issues/N`.
+fn parse_issue_url(url: &str) -> Option<(String, u64)> {
     let path = url.strip_prefix("https://github.com/")?;
     let mut parts = path.split('/');
     let owner = parts.next().filter(|part| !part.is_empty())?;
     let name = parts.next().filter(|part| !part.is_empty())?;
-    Some(format!("{owner}/{name}"))
+    if parts.next()? != "issues" {
+        return None;
+    }
+    let number = parts.next()?.split(['#', '?']).next()?.parse().ok()?;
+    Some((format!("{owner}/{name}"), number))
+}
+
+/// Runs a host command and returns its stdout, or its stderr as the error.
+fn command(dir: &Path, program: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(program)
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|error| format!("cannot run {program}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "{program} {} failed: {}",
+            args.first().copied().unwrap_or_default(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }

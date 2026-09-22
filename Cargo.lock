@@ -563,9 +563,12 @@ dependencies = [
 name = "coder-one"
 version = "0.1.0"
 dependencies = [
+ "indexmap",
  "jev",
+ "reqwest",
  "serde",
  "serde_json",
+ "supervise",
  "tokio",
 ]
 

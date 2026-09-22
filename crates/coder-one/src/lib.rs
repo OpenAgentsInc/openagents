@@ -19,6 +19,9 @@
 pub mod action;
 pub mod agent;
 pub mod credentials;
+pub mod generate;
+pub mod judge;
+pub mod shell;
 pub mod state;
 
 pub use action::Action;

@@ -83,7 +83,7 @@ where
 {
     for step in 1..=bounds.max_steps {
         let judgments = judge.judge(state).await;
-        let ai_prompt = render_prompt(state, prompt, &judgments);
+        let ai_prompt = render_prompt(state, prompt, &judgments, (step, bounds.max_steps));
         let reply = match generator.generate(&ai_prompt).await {
             Ok(reply) => reply,
             Err(error) => {
@@ -101,10 +101,14 @@ where
                     steps: step,
                 };
             }
-            Ok(Action::Shell { command }) => {
+            Ok(Action::Shell { command, reason }) => {
+                if let Some(reason) = &reason {
+                    println!("  why ▸ {reason}");
+                }
                 let observation = shell.run(&command).await;
                 state.history.push(Turn::Shell {
                     command,
+                    reason,
                     observation,
                 });
             }
@@ -116,28 +120,107 @@ where
     }
 }
 
-/// The instructions every prompt carries: what an action looks like.
-const ACTION_CONTRACT: &str = "Reply with exactly one JSON object and nothing else. \
-To run one shell command in the repository checkout, reply \
-{\"action\":\"shell\",\"command\":\"...\"}. When the issue is resolved and \
-checked, reply {\"action\":\"finished\",\"title\":\"...\",\"summary\":\"...\"}; \
-the title and summary become the pull request's.";
+/// The system prompt: how the agent works in the checkout.
+pub const INSTRUCTIONS: &str = "You are Coder One, a coding agent working in a fresh \
+clone of a GitHub repository. Your job is to resolve the GitHub issue in the state. \
+You act by calling exactly one tool per step: `shell` runs one bash command in the \
+repository root, without a terminal or standard input, and its output appears in \
+`state.history` on the next step; `finished` ends the run. Investigate before you edit. Edit files with non-interactive tools \
+such as heredocs, sed, or short Python scripts; never open an editor or pager. \
+Work efficiently: once you understand the fix, write it into the files, add the \
+tests the issue asks for, run the test suite, and finish. Do not keep re-checking \
+the same behavior with throwaway scripts. \
+Do not commit, push, or create branches: the host does that when you finish. \
+`judgments` holds hints from a fast classifier about which files look relevant, \
+what the last command showed, and which requirements look satisfied; treat them as \
+evidence, not orders.";
+
+/// The reminder every prompt ends with, nearest the model's answer.
+const ACTION_CONTRACT: &str = "Call exactly one tool now: `shell` with the next \
+command, or `finished` with a pull request title and summary once the issue is \
+resolved and checked.";
+
+/// How many of the most recent turns show their output at length.
+const RECENT_TURNS: usize = 3;
 
 /// The generator's input: the state, the user's prompt, and the
 /// judgments, with the action contract last so it is nearest the reply.
-pub fn render_prompt(state: &State, prompt: &str, judgments: &Judgments) -> String {
+/// Recent turns keep up to 6,000 characters of output; older turns keep
+/// a short tail, so the prompt stays bounded as the run grows.
+pub fn render_prompt(
+    state: &State,
+    prompt: &str,
+    judgments: &Judgments,
+    (step, max_steps): (usize, usize),
+) -> String {
     let judgments = match judgments {
         Judgments::Answered(hints) => json!({ "hints": hints }),
         Judgments::Unavailable(reason) => json!({ "unavailable": reason }),
     };
+    let recent = state.history.len().saturating_sub(RECENT_TURNS);
+    let history: Vec<_> = state
+        .history
+        .iter()
+        .enumerate()
+        .map(|(index, turn)| match turn {
+            Turn::Shell {
+                command,
+                reason,
+                observation,
+            } => {
+                let output = if index >= recent {
+                    head_and_tail(&observation.output, 1_500, 4_500)
+                } else {
+                    head_and_tail(&observation.output, 0, 300)
+                };
+                json!({
+                    "step": index + 1,
+                    "command": command,
+                    "reason": reason,
+                    "exit": observation.exit,
+                    "output": output,
+                })
+            }
+            Turn::Malformed { reply, error } => json!({
+                "step": index + 1,
+                "malformed_reply": head_and_tail(reply, 300, 0),
+                "error": error,
+            }),
+        })
+        .collect();
     let input = json!({
         "task": prompt,
-        "state": state,
+        "budget": {
+            "step": step,
+            "max_steps": max_steps,
+            "steps_left_after_this": max_steps - step,
+        },
+        "state": {
+            "environment": state.environment,
+            "issue": state.issue,
+            "history": history,
+        },
         "judgments": judgments,
     });
     format!(
         "{}\n\n{ACTION_CONTRACT}",
         serde_json::to_string_pretty(&input).unwrap_or_else(|_| input.to_string())
+    )
+}
+
+/// The first `head` and last `tail` characters of `text`, with a marker
+/// naming how much was left out between them.
+fn head_and_tail(text: &str, head: usize, tail: usize) -> String {
+    let count = text.chars().count();
+    if count <= head + tail {
+        return text.to_string();
+    }
+    let byte = |n: usize| text.char_indices().nth(n).map_or(text.len(), |(i, _)| i);
+    format!(
+        "{}\n…[{} characters omitted]…\n{}",
+        &text[..byte(head)],
+        count - head - tail,
+        &text[byte(count - tail)..]
     )
 }
 
