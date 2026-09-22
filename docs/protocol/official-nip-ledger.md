@@ -63,6 +63,18 @@ caller supplies the one-time wrapper key. Kind `21059` belongs to NIP-59.
 Acceptance is
 `nip17::tests::a_private_message_round_trips_and_rejects_an_impersonated_rumor`.
 
+NIP-22 is `configured-and-proven`. A kind `1111` comment names one
+uppercase root scope (`A`, `E`, or `I`) and one lowercase parent scope
+(`a`, `e`, or `i`). `K` and `k` are required. A nostr scope requires its
+author tag. An addressable parent also carries the parent event id in `e`.
+External scopes use the NIP-73 identifier types, and the kind tag has to
+match that type. Kind `1` is refused. A top-level comment uses the same
+scope for the root and the parent. Admission rejects a malformed comment.
+Kind `1111` stays a regular stored event and is not added to the NIP-11
+list. Content is kept as text. A URL with a fragment is refused and is not
+rewritten. Acceptance is
+`domain::comment::tests::a_comment_scopes_to_the_root_and_refuses_a_kind_1_reply`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

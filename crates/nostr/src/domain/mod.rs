@@ -6,6 +6,7 @@
 
 mod agent;
 mod block;
+mod comment;
 mod deletion;
 mod error;
 mod event;
@@ -32,6 +33,7 @@ pub use block::{
     THREAD_SUMMARY_KIND, WINDOW_BOUNDS_KIND, WORKSPACE_PROFILE_KIND, dm_visibility_channel,
     parse_identity_archive_request, validate_block_ingest, workspace_icon,
 };
+pub use comment::{Comment, CommentScope, is_top_level, open_comment};
 pub use deletion::{DeletionRequest, DeletionTombstone};
 pub use error::DomainError;
 pub use event::{EXTENDED_INDEXED_TAG_NAMES, Event, Tag, is_indexed_tag_name};

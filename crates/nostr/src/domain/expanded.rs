@@ -461,6 +461,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
             "group invite code must contain at most 256 bytes".into(),
         ));
     }
+    if event.kind == 1_111 {
+        super::comment::open_comment(event)?;
+    }
     if event.kind == 1_059 {
         crate::nip17::validate_gift_wrap(event)?;
     }
