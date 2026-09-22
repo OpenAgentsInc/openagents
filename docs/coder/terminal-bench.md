@@ -97,13 +97,31 @@ Two modes:
 - **API key** — set `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`).
   Direct API billing; the attempt record marks cost `provider_reported`.
 - **Subscription** — run `claude setup-token` and set
-  `CLAUDE_CODE_OAUTH_TOKEN`. The mode excludes the API-key variables so
-  the CLI uses the subscription token; `CLAUDE_FORCE_OAUTH` stays a
-  host-side selector and is never forwarded, because Harbor scrubs the
-  values of credential-named variables from retained evidence and a
-  forwarded `1` would redact every digit in the results. The attempt
-  record labels this a reference price, not an observed incremental
-  bill.
+  `CLAUDE_CODE_OAUTH_TOKEN`, or reuse the host session. The mode
+  excludes the API-key variables so the CLI uses the subscription
+  token; `CLAUDE_FORCE_OAUTH` stays a host-side selector and is never
+  forwarded, because Harbor scrubs the values of credential-named
+  variables from retained evidence and a forwarded `1` would redact
+  every digit in the results. The attempt record labels this a
+  reference price, not an observed incremental bill.
+
+  On macOS the host session's access token lives in the login keychain
+  and can be read straight into the variable without printing it:
+
+  ```sh
+  export CLAUDE_CODE_OAUTH_TOKEN="$(
+    security find-generic-password -s 'Claude Code-credentials' -w \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin)["claudeAiOauth"]["accessToken"])'
+  )"
+  ```
+
+  The token is short-lived (about eight hours) and the CLI refreshes it
+  lazily, so a session that has been idle can hold an empty or expired
+  token. If extraction returns an empty string, run `claude -p ok` or
+  `claude setup-token` interactively first — a refreshed entry is what
+  gets forwarded. If `claude -p` itself reports that the OAuth session
+  expired and could not be refreshed, only an interactive re-login
+  (`claude login`) can mint a new one.
 
 ### Codex
 
@@ -121,6 +139,31 @@ Two modes:
 
 A run with no configured mode stops before any environment spend with a
 credential error, which is a setup failure, not a task failure.
+
+### Devin
+
+One mode:
+
+- **API key** — set `DEVIN_API_KEY` and, when the key is scoped to a
+  non-default backend, `DEVIN_API_SERVER_URL`. The adapter writes the
+  key to the container's `credentials.toml` as `windsurf_api_key`; it
+  never enters the agent environment. A host login is reusable:
+  `~/.local/share/devin/credentials.toml` already holds both values
+  after `devin auth login`.
+
+  ```sh
+  CREDS=~/.local/share/devin/credentials.toml
+  export DEVIN_API_KEY="$(python3 -c \
+    "import re; print(re.search(r'windsurf_api_key\s*=\s*\"([^\"]+)\"', open('$CREDS').read()).group(1))")"
+  export DEVIN_API_SERVER_URL="$(python3 -c \
+    "import re; print(re.search(r'api_server_url\s*=\s*\"([^\"]+)\"', open('$CREDS').read()).group(1))")"
+  ```
+
+  Usage quota is account-level: a metered model fails with a provider
+  refusal (`resource_exhausted`) that the attempt record keeps as an
+  honest error, while free-tier models such as `swe-2-high` are not
+  metered and still run. Free-tier trials report no token usage, so
+  their records carry `unknown` usage and cost rather than zeros.
 
 ### Coder v0.5
 
