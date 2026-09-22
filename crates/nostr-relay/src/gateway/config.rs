@@ -90,6 +90,9 @@ pub struct GatewayConfig {
     pub limits: GatewayLimits,
     pub identity: RelayIdentity,
     pub advertised_nips: Option<Vec<u16>>,
+    /// When set, NIP-11 advertises the OpenAgents profile roles the
+    /// admission tests cover. Unset, those names stay out of the document.
+    pub openagents_profiles: bool,
     pub log_level: String,
 }
 
@@ -112,6 +115,7 @@ impl GatewayConfig {
             limits: GatewayLimits::default(),
             identity: RelayIdentity::default(),
             advertised_nips: None,
+            openagents_profiles: false,
             log_level: "info".to_owned(),
         }
     }
@@ -195,6 +199,7 @@ impl GatewayConfig {
         config.advertised_nips = optional_string("NOSTR_RELAY_SUPPORTED_NIPS")?
             .map(|value| parse_supported_nips(&value))
             .transpose()?;
+        config.openagents_profiles = parse_bool("NOSTR_RELAY_OPENAGENTS_PROFILES", false)?;
         if let Some(signer) = &config.relay_signer {
             if config
                 .identity

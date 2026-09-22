@@ -883,6 +883,19 @@ async fn handle_event(
         ));
         return Ok(());
     }
+    if nostr::profile::requires_author_auth(&event)
+        && !context
+            .auth
+            .as_ref()
+            .is_some_and(|auth| auth.is_authenticated_as(&event.pubkey))
+    {
+        pending.push_back(ok_message(
+            &event.id,
+            false,
+            "auth-required: this OpenAgents record requires authentication by its author",
+        ));
+        return Ok(());
+    }
     if event.is_protected()
         && !context
             .auth

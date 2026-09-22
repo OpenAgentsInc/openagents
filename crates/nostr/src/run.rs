@@ -537,6 +537,28 @@ pub fn link_evidence(receipt: Option<&str>, artifact: Option<&str>) -> EvidenceL
     }
 }
 
+/// Accept a run envelope's tags. The content stays ciphertext.
+///
+/// # Errors
+///
+/// Returns [`RefusalCode::Malformed`] when the tags are not one recipient
+/// and one mailbox, or when the content is empty or plaintext JSON.
+pub fn admit_envelope(event: &Event) -> Result<(), ContractError> {
+    if event.kind != RECORD_KIND && event.kind != HEAD_KIND {
+        return Err(ContractError::new(
+            RefusalCode::UnsupportedVersion,
+            "run kind",
+        ));
+    }
+    if !envelope_tags_ok(event)
+        || event.content.is_empty()
+        || event.content.trim_start().starts_with('{')
+    {
+        return Err(ContractError::new(RefusalCode::Malformed, "run envelope"));
+    }
+    Ok(())
+}
+
 /// Whether a run record may be shown to `readers`.
 ///
 /// The author and the single `p` recipient may read it. A relay owner who is

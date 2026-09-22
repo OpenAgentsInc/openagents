@@ -58,7 +58,9 @@ pub fn validate_block_ingest(event: &Event, now: u64) -> Result<(), String> {
         EVENT_REMINDER_KIND => validate_reminder(event, now),
         PROJECT_KIND => validate_project(event),
         PUSH_LEASE_KIND => validate_push_lease_envelope(event, now),
-        _ => Ok(()),
+        _ => {
+            crate::profile::admit(event).map_err(|error| format!("{} {}", error.code, error.detail))
+        }
     }
 }
 

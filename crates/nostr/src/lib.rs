@@ -19,4 +19,5 @@ pub mod ext;
 pub mod nip19;
 pub mod nip44;
 pub mod prg;
+pub mod profile;
 pub mod run;

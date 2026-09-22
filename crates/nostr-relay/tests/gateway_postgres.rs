@@ -232,6 +232,7 @@ fn test_config(database_url: String, media_root: PathBuf) -> GatewayConfig {
         .as_ref()
         .map(|signer| signer.pubkey().to_owned());
     config.management_pubkey = Some(pubkey(91));
+    config.openagents_profiles = true;
     config.media = Some(MediaConfig {
         root: media_root,
         cloud_base_url: None,
@@ -287,8 +288,22 @@ async fn assert_nip11_http(address: SocketAddr) {
         );
     }
     for extension in [
-        "nip-aa", "nip-ae", "nip-am", "nip-ao", "nip-ap", "nip-dv", "nip-er", "nip-ia", "nip-mp",
-        "nip-oa", "nip-rs", "nip-wp",
+        "nip-aa",
+        "nip-ae",
+        "nip-am",
+        "nip-ao",
+        "nip-ap",
+        "nip-cap-v1",
+        "nip-dv",
+        "nip-er",
+        "nip-ext-v1",
+        "nip-ia",
+        "nip-mp",
+        "nip-oa",
+        "nip-prg-v1",
+        "nip-rs",
+        "nip-run-v1",
+        "nip-wp",
     ] {
         assert!(
             document["supported_extensions"]
@@ -1047,6 +1062,65 @@ fn websocket_contract(address_one: SocketAddr, address_two: SocketAddr) {
 
     subscriber.close(None).unwrap();
     publisher.close(None).unwrap();
+    openagents_profile_contract(address_one);
+}
+
+fn openagents_profile_contract(address: SocketAddr) {
+    let mut publisher = connect_client(address);
+    let challenge = expect_auth_challenge(&mut publisher);
+    authenticate(&mut publisher, 41, &challenge);
+
+    let bad = signed_event(
+        41,
+        now(),
+        30_180,
+        vec![
+            Tag::new(vec!["d".into(), "demo".into()]),
+            Tag::new(vec!["t".into(), "oa:cap:v1".into()]),
+        ],
+        "{}",
+    );
+    send_json(&mut publisher, json!(["EVENT", bad]));
+    let rejected = read_json(&mut publisher);
+    assert_eq!(rejected[0], "OK");
+    assert_eq!(rejected[2], false);
+    assert!(rejected[3].as_str().unwrap_or("").starts_with("invalid:"));
+
+    let author = pubkey(41);
+    let record = signed_event(
+        41,
+        now(),
+        3_187,
+        vec![
+            Tag::new(vec!["p".into(), author.clone()]),
+            Tag::new(vec!["h".into(), "ab".repeat(32)]),
+            Tag::new(vec!["t".into(), "oa:run:v1".into()]),
+        ],
+        &fake_nip44_v2(),
+    );
+    send_json(&mut publisher, json!(["EVENT", record.clone()]));
+    let accepted = read_json(&mut publisher);
+    assert_eq!(accepted[0], "OK");
+    assert_eq!(accepted[2], true);
+    assert!(!accepted[3].as_str().unwrap_or("").contains("executed"));
+
+    let mut stranger = connect_client(address);
+    let stranger_challenge = expect_auth_challenge(&mut stranger);
+    authenticate(&mut stranger, 42, &stranger_challenge);
+    send_json(
+        &mut stranger,
+        json!(["REQ", "hidden", {"ids": [record.id]}]),
+    );
+    assert_eq!(read_json(&mut stranger), json!(["EOSE", "hidden"]));
+
+    let mut reader = connect_client(address);
+    let reader_challenge = expect_auth_challenge(&mut reader);
+    authenticate(&mut reader, 41, &reader_challenge);
+    send_json(&mut reader, json!(["REQ", "own", {"ids": [record.id]}]));
+    let found = read_json(&mut reader);
+    assert_eq!(found[0], "EVENT");
+    assert_eq!(found[2]["id"], record.id);
+    assert_eq!(read_json(&mut reader), json!(["EOSE", "own"]));
 }
 
 fn management_contract(address: SocketAddr) {

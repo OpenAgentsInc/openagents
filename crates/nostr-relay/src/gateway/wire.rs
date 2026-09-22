@@ -329,6 +329,9 @@ pub fn nip11_json_with_icon(
     if config.relay_url.is_some() && config.management_pubkey.is_some() {
         supported_extensions.push("nip-wp");
     }
+    if config.openagents_profiles {
+        supported_extensions.extend(["nip-cap-v1", "nip-ext-v1", "nip-prg-v1", "nip-run-v1"]);
+    }
     supported_extensions.sort_unstable();
     let document = Nip11Document {
         name: &config.identity.name,
@@ -609,6 +612,40 @@ mod tests {
                 .validate()
                 .expect_err(invalid["name"].as_str().unwrap());
             assert!(error.to_string().contains("NOSTR_RELAY_SUPPORTED_NIPS"));
+        }
+    }
+
+    #[test]
+    fn openagents_profiles_stay_out_of_nip11_until_configured() {
+        let mut config = GatewayConfig::new(
+            "host=/tmp dbname=test".to_owned(),
+            "127.0.0.1:0".parse::<SocketAddr>().unwrap(),
+        );
+        let policy = RelayPolicy {
+            closed_membership: false,
+            max_content_bytes: 1_024,
+            max_tags: 48,
+            max_future_seconds: 120,
+            max_past_seconds: 7_200,
+        };
+        let quiet = serde_json::from_str::<Value>(&nip11_json(&config, &policy)).unwrap();
+        let names = quiet["supported_extensions"].as_array().unwrap();
+        assert!(names.iter().all(|name| {
+            !matches!(
+                name.as_str(),
+                Some("nip-cap-v1" | "nip-prg-v1" | "nip-ext-v1" | "nip-run-v1")
+            )
+        }));
+        config.openagents_profiles = true;
+        let advertised = serde_json::from_str::<Value>(&nip11_json(&config, &policy)).unwrap();
+        for role in ["nip-cap-v1", "nip-prg-v1", "nip-ext-v1", "nip-run-v1"] {
+            assert!(
+                advertised["supported_extensions"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!(role)),
+                "{role}"
+            );
         }
     }
 }
