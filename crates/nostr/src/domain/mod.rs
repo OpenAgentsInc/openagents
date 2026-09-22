@@ -22,6 +22,7 @@ mod label;
 mod market;
 mod ots;
 mod profile_link;
+mod relay_list;
 mod remote_sign;
 mod replacement;
 mod report;
@@ -79,6 +80,9 @@ pub use market::{
 pub use ots::{BitcoinAttestation, open_attestation};
 pub use profile_link::{
     IdentityClaim, ProfileLinks, author_npub, expected_statement, open_profile_links, proof_url,
+};
+pub use relay_list::{
+    ListedRelay, RelayList, RelayMarker, open_relay_list, publish_relays, read_relays, write_relays,
 };
 pub use remote_sign::{
     BunkerUrl, NostrConnectUrl, Permission, RemoteRequest, RemoteResponse, RemoteSigner,

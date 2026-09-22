@@ -200,6 +200,19 @@ NIP-11 lists `59` when `NOSTR_RELAY_URL` is set. Proof of work is not
 required. Acceptance is
 `domain::gift_wrap::tests::a_rumor_is_sealed_and_the_ephemeral_wrap_is_not_stored`.
 
+NIP-65 is `configured-and-proven`. Kind `10002` is a replaceable
+list of `r` tags. Each value is a `ws://` or `wss://` URL. A missing
+marker means the relay is both read and write. `read` and `write` narrow
+that. `write_relays` and `read_relays` split the list. `publish_relays`
+names the author's write relays and then each mentioned user's read
+relays, without repeats. Admission rejects an empty list, a non-relay
+URL, and any marker other than `read` or `write`. A newer list from the
+same author replaces the older one. NIP-11 lists `65` with no extra
+setting. The relay does not publish to those URLs. The suggestion to
+keep two to four relays is not enforced, and indexer discovery is not
+implemented. Acceptance is
+`domain::relay_list::tests::a_relay_list_splits_read_and_write_and_replaces`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

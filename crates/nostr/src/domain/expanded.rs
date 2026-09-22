@@ -527,28 +527,7 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
         crate::nip17::validate_inbox(event)?;
     }
     if event.kind == 10_002 {
-        let relays = event
-            .tags
-            .iter()
-            .filter(|tag| tag.name() == Some("r"))
-            .collect::<Vec<_>>();
-        if relays.is_empty()
-            || relays.iter().any(|tag| {
-                let values = tag.as_slice();
-                values.len() < 2
-                    || values.len() > 3
-                    || (!values[1].starts_with("ws://") && !values[1].starts_with("wss://"))
-                    || values[1].len() > 2_048
-                    || values[1].chars().any(char::is_whitespace)
-                    || values
-                        .get(2)
-                        .is_some_and(|marker| !matches!(marker.as_str(), "read" | "write"))
-            })
-        {
-            return Err(DomainError::InvalidEvent(
-                "kind 10002 requires valid r relay tags and read/write markers".into(),
-            ));
-        }
+        super::relay_list::open_relay_list(event)?;
     }
     if event.kind == 10_063 {
         let servers = event.tag_values("server").collect::<Vec<_>>();
