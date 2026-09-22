@@ -32,6 +32,28 @@
       "cost_provenance": "provider_reported",
       "note": "Harbor installs Claude Code inside the task environment at the pinned version. A host login does not authenticate the container."
     },
+    "devin": {
+      "role": "external-baseline",
+      "harbor_name": "devin",
+      "version": "3000.11.1",
+      "model": "devin/swe-2-high",
+      "kwargs": {
+        "version": "3000.11.1"
+      },
+      "env_forward": [
+        "DEVIN_API_KEY",
+        "DEVIN_API_SERVER_URL"
+      ],
+      "auth_modes": {
+        "api-key": {
+          "requires_all": ["DEVIN_API_KEY"],
+          "note": "The adapter writes the key to the container's credentials.toml as windsurf_api_key; it never enters the agent environment. DEVIN_API_SERVER_URL is forwarded alongside so a key scoped to a non-default backend reaches it."
+        }
+      },
+      "cost_provenance": "price_estimate",
+      "cost_note": "The adapter prices ACUs at a flat rate; that is a Harbor estimate, not a provider-reported bill.",
+      "note": "Harbor installs Devin CLI inside the task environment at the pinned version. Devin emits ATIF trajectories natively."
+    },
     "codex": {
       "role": "external-baseline",
       "harbor_name": "codex",
