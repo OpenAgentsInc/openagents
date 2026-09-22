@@ -809,6 +809,30 @@ NIP-11 list. Acceptance is
 `domain::extras::tests::extra_profile_fields_parse_and_deprecated_ones_are_ignored`
 and `domain::extras::tests::hashtags_are_lowercase`.
 
+NIP-31 is `configured-and-proven`. `fallback_summary` hands a
+`kind:1`-only client the `alt` tag's human-readable summary for any
+kind it does not render natively, and leaves kind `1` alone — its
+content is already text. NIP-31 is unrecommended and a draft, so the
+tag stays off the NIP-11 list and admission does not require it.
+Acceptance is
+`domain::alt::tests::an_alt_tag_summarizes_a_kind_a_text_client_does_not_render`.
+
+NIP-36 is `configured-and-proven`. `content_warning` reports whether an
+event carries the `content-warning` tag and the optional reason the
+author attached; a reader hides the content until its user acts. The
+NIP binds client display only — the relay stores the tag — and as a
+draft it stays off the NIP-11 list. Acceptance is
+`domain::content_warning::tests::a_content_warning_hides_the_content_until_the_reader_acts`.
+
+NIP-08 is `configured-and-proven` for compatibility.
+`resolve_mentions` walks a kind `1` content for `#[index]`
+placeholders and returns those that name an `e` or `p` tag at that
+tags position; an out-of-range index or a placeholder pointing at any
+other tag is normal text and is never replaced, as the pinned MUST NOT
+requires. NIP-08 is unrecommended — NIP-27 `nostr:` links supersede
+it — so it stays off the NIP-11 list. Acceptance is
+`domain::mentions::tests::an_index_mention_resolves_to_its_e_or_p_tag_only`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

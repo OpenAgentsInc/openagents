@@ -5,6 +5,7 @@
 //! deterministic and fixture-testable.
 
 mod agent;
+mod alt;
 mod app_data;
 mod article;
 mod assertion;
@@ -16,6 +17,7 @@ mod calendar;
 mod chat;
 mod comment;
 mod community;
+mod content_warning;
 mod deletion;
 mod draft;
 mod ecash;
@@ -36,6 +38,7 @@ mod label;
 mod listing;
 mod live;
 mod market;
+mod mentions;
 mod mls;
 mod monitor;
 mod note;
@@ -70,6 +73,7 @@ pub use agent::{
     OwnerAttestation, agent_observer_route, agent_turn_metric_owner, validate_nip44_v2_content,
     verify_agent_auth_attestation, verify_owner_attestation, verify_owner_binding,
 };
+pub use alt::{alt_text, fallback_summary, needs_fallback};
 pub use app_data::{AppData, AppTag, open_app_data};
 pub use article::{Article, is_article_reply, open_article};
 pub use assertion::{
@@ -104,6 +108,7 @@ pub use community::{
     CommunityRelay, CommunityRelayRole, is_community_moderator, open_community,
     open_community_approval, open_community_post, open_community_repost,
 };
+pub use content_warning::{ContentWarning, content_warning};
 pub use deletion::{DeletionRequest, DeletionTombstone};
 pub use draft::{
     Checkpoint, DraftWrap, PrivateRelayList, RECOMMENDED_DRAFT_TTL_SECONDS, UnsignedDraft,
@@ -160,6 +165,7 @@ pub use market::{
     open_auction, open_bid, open_bid_confirmation, open_checkout, open_marketplace, open_product,
     open_stall, product_shipping_extra, shipping_cost, shipping_zone, validate_marketplace,
 };
+pub use mentions::{IndexMention, note_mentions, resolve_mentions};
 pub use mls::{
     KeyPackage, KeyPackageRelays, Welcome, commit_wins, exporter_conversation_key,
     inner_event_hides_the_group, open_group_message, open_key_package, open_key_package_relays,
