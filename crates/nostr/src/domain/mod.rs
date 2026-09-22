@@ -17,6 +17,7 @@ mod event;
 mod expanded;
 mod filter;
 mod follow;
+mod geocache;
 mod gift_wrap;
 mod handler;
 mod hex;
@@ -72,6 +73,11 @@ pub use filter::{
     Filter, SEARCH_EXCLUDED_KINDS, matches_any, search_excludes_kind, search_matches, search_terms,
 };
 pub use follow::{Follow, append_follow, displayed_petname, parse_follow_list};
+pub use geocache::{
+    CacheLogType, CacheSize, CurationList, FoundLog, Geocache, Verification, cache_log_type,
+    confirm_find, exclusive_finder, open_curation, open_found_log, open_geocache,
+    open_verification, rot13,
+};
 pub use gift_wrap::{
     RANDOMIZE_WINDOW_SECONDS, Rumor, open_wrap, randomized_timestamp, recipient_removed_wrap,
     seal_rumor, validate_seal, validate_wrap, wrap_seal,

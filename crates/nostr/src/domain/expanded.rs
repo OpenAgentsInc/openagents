@@ -588,6 +588,18 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 1_337 {
         super::snippet::open_snippet(event)?;
     }
+    if event.kind == 37_516 {
+        super::geocache::open_geocache(event)?;
+    }
+    if event.kind == 7_516 {
+        super::geocache::open_found_log(event)?;
+    }
+    if event.kind == 7_517 {
+        super::geocache::open_verification(event)?;
+    }
+    if event.kind == 37_517 {
+        super::geocache::open_curation(event)?;
+    }
     if event.tags.iter().any(|tag| tag.name() == Some("client")) {
         super::handler::open_client_tag(event)?;
     }

@@ -303,6 +303,24 @@ NIP-11 list. The relay does not run the snippet or fetch the repository.
 SPDX identifiers are not checked against the SPDX list. Acceptance is
 `domain::snippet::tests::a_snippet_keeps_its_source_and_does_not_replace`.
 
+NIP-CC is `configured-and-proven`. Kind `37516` is an addressable
+geocache. It requires one `d` identifier, one `name`, one or more `g`
+geohashes, difficulty `D`, terrain `T`, and size `S`. Kind `7516` is a
+found log that names the cache. Kind `7517` is a verification whose
+content is `Geocache verification for` plus the finder `npub`, and
+`confirm_find` checks that the cache verification key signed it and
+that it names the log author. `exclusive_finder` attributes a
+`first-to-find` cache to the `F` tag when one is present, and otherwise
+to the earliest verified log. Kind `37517` is an addressable curation
+list. A non-found log is a kind `1111` comment. A newer cache with the
+same `d` tag replaces the older one. These kinds are not added to the
+NIP-11 list. The 8-character geohash guidance is not enforced, because
+the pinned example includes shorter prefixes. The verification `naddr`
+is not decoded. The pinned DNF example omits the NIP-22 `e` version
+tag, so a stored comment includes it. Images are not fetched. Unknown
+`n` modifiers are kept. Found-log image tags are not checked. Acceptance
+is `domain::geocache::tests::a_geocache_is_found_verified_and_collected`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
