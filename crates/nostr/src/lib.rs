@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod cap;
 pub mod contracts;
 pub mod decision;
 pub mod domain;

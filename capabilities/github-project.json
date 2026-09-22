@@ -1,15 +1,27 @@
 {
-  "v": 1,
-  "slug": "github-project",
-  "name": "GitHub project intake",
-  "summary": "Approves the GitHub CLI for the host's bounded read-only project adapter. It is not a delegated executor.",
-  "transport": "subprocess",
-  "detect": {"binary": "gh", "version": ["gh", "--version"]},
-  "enforces": [],
-  "cannot_enforce": ["budget_cents"],
-  "sees_repository": false,
-  "concurrent_max": 1,
-  "cost": "local",
-  "isolation": [],
-  "invoke": []
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/github-project",
+    "profile": "adapter",
+    "summary": "Approves the GitHub CLI for the host's bounded read-only project adapter. It is not a delegated executor.",
+    "input": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+    "output": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+    "effects": {"reads": ["project"], "writes": [], "network": ["github"], "process": true, "delegates": false, "spend": false},
+    "minimum": {},
+    "support": {"bounds": {}, "cancellation": "host_terminated", "idempotency": "pure", "evidence": []},
+    "binding_contract": {
+      "interface": "github.project.v1",
+      "transport": "subprocess",
+      "operations": ["list"]
+    }
+  },
+  "binding": {
+    "name": "GitHub project intake",
+    "detect": {"binary": "gh", "version": ["gh", "--version"]},
+    "sees_repository": false,
+    "concurrent_max": 1,
+    "cost": "local",
+    "claims_not_enforced": ["budget_cents"]
+  }
 }

@@ -65,7 +65,9 @@ mod trust;
 
 use std::path::{Path, PathBuf};
 
-pub use manifest::{Claim, Detect, Manifest, RELAY, Refusal, SUBPROCESS, WorkspaceProbe};
+pub use manifest::{
+    Claim, Detect, Manifest, RELAY, Refusal, SUBPROCESS, WorkspaceProbe, executor_document,
+};
 pub use probe::{Found, Presence};
 pub use registry::{Entry, Registry, Source, SourceDir, resolve, search, search_dirs};
 pub use trust::{

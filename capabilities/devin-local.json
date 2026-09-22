@@ -1,31 +1,43 @@
 {
-  "v": 1,
-  "slug": "devin-local",
-  "name": "Devin CLI, this computer",
-  "summary": "Hands a bounded task to the Devin CLI on this computer.",
-  "transport": "subprocess",
-  "detect": {
-    "binary": "devin",
-    "version": ["devin", "--version"]
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/devin-local",
+    "profile": "executor",
+    "summary": "Hands a bounded task to the Devin CLI on this computer.",
+    "input": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+    "output": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+    "effects": {"reads": ["workspace"], "writes": ["workspace"], "network": [], "process": true, "delegates": false, "spend": true},
+    "minimum": {},
+    "support": {"bounds": {"wall_ms": "unknown", "calls": "unknown"}, "cancellation": "host_terminated", "idempotency": "none", "evidence": []},
+    "binding_contract": {
+      "interface": "devin.task.v1",
+      "transport": "subprocess",
+      "task": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+      "context": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+      "isolation": ["worktree", "directory"]
+    }
   },
-  "enforces": ["max_turns", "minutes", "model"],
-  "cannot_enforce": ["tool_set", "role", "budget_cents", "effort"],
-  "sees_repository": true,
-  "concurrent_max": 6,
-  "cost": "operator_account",
-  "isolation": ["worktree", "directory"],
-  "invoke": ["devin", "-p", "--"],
-  "invoke_writing": ["devin", "-p", "--permission-mode", "dangerous", "--"],
-  "workspace_probe": {
-    "argv": ["devin", "-p", "capability probe", "--model", "openagents-capability-probe"],
-    "accepts": ["openagents-capability-probe"],
-    "note": "The model name is deliberately not a model. The executor checks workspace trust before it validates the model, so this argv exits non-zero either way: on an untrusted workspace it names the declared refusal, and on an accepted one it stops at an unknown-model error that echoes the fake name — the acceptance word. An exit naming neither is unknown, not a route."
-  },
-  "refuses": [
-    {
+  "binding": {
+    "name": "Devin CLI, this computer",
+    "detect": {"binary": "devin", "version": ["devin", "--version"]},
+    "invoke": ["devin", "-p", "--"],
+    "invoke_writing": ["devin", "-p", "--permission-mode", "dangerous", "--"],
+    "workspace_probe": {
+      "argv": ["devin", "-p", "capability probe", "--model", "openagents-capability-probe"],
+      "accepts": ["openagents-capability-probe"],
+      "note": "The model name is deliberately not a model. The executor checks workspace trust before it validates the model, so this argv exits non-zero either way: on an untrusted workspace it names the declared refusal, and on an accepted one it stops at an unknown-model error that echoes the fake name — the acceptance word. An exit naming neither is unknown, not a route."
+    },
+    "refuses": [{
       "name": "untrusted_workspace",
       "match": "Refusing to run in an untrusted workspace",
       "explanation": "The executor declines a directory nobody has trusted interactively. Six of six delegations from a git worktree under /private/tmp were declined this way while the capability was installed, detected, and reporting its version, which is the state a present-or-absent probe cannot report."
-    }
-  ]
+    }],
+    "sees_repository": true,
+    "concurrent_max": 6,
+    "cost": "operator_account",
+    "claims_enforced": ["max_turns", "minutes", "model"],
+    "claims_not_enforced": ["tool_set", "role", "budget_cents", "effort"],
+    "enforcement": [{"bound": "wall_ms", "ceiling": 0, "assurance": "host", "mechanism": "supervisor"}]
+  }
 }

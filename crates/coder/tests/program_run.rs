@@ -148,26 +148,27 @@ fn manifest(root: &Path) -> String {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
-    json!({
-        "v": 1,
-        "slug": "stub-local",
-        "name": "A stub executor",
-        "summary": "Answers one question, for a test.",
-        "transport": "subprocess",
-        "detect": {"binary": "sh", "version": ["sh", "-c", "echo stub 1.0.0"]},
-        "enforces": ["minutes"],
-        "cannot_enforce": ["tool_set", "role", "budget_cents", "effort"],
-        "sees_repository": true,
-        "concurrent_max": 6,
-        "cost": "local",
-        "isolation": ["worktree", "directory"],
-        "invoke": ["sh", script.display().to_string()],
-        "refuses": [{
-            "name": "untrusted_workspace",
-            "match": "Refusing to run in an untrusted workspace",
-            "explanation": "The executor declines a directory nobody has trusted."
-        }]
-    })
+    capability::executor_document(
+        "stub-local",
+        "sh",
+        vec!["sh".into(), "-c".into(), "echo stub 1.0.0".into()],
+        json!({
+            "summary": "Answers one question, for a test.",
+            "name": "A stub executor",
+            "enforces": ["minutes"],
+            "cannot_enforce": ["tool_set", "role", "budget_cents", "effort"],
+            "sees_repository": true,
+            "concurrent_max": 6,
+            "cost": "local",
+            "isolation": ["worktree", "directory"],
+            "invoke": ["sh", script.display().to_string()],
+            "refuses": [{
+                "name": "untrusted_workspace",
+                "match": "Refusing to run in an untrusted workspace",
+                "explanation": "The executor declines a directory nobody has trusted."
+            }]
+        }),
+    )
     .to_string()
 }
 
@@ -699,7 +700,7 @@ async fn an_executor_claim_does_not_establish_enforcement() {
     let machine = machine();
     let root = machine.path();
     let mut manifest = declared(root);
-    manifest["enforces"] = json!(["minutes", "memory_mb"]);
+    manifest["binding"]["claims_enforced"] = json!(["minutes", "memory_mb"]);
     redeclare(root, &manifest);
     let mut program = fan_out(root);
     let delegate = program
@@ -732,8 +733,8 @@ async fn the_host_holds_minutes_even_when_the_executor_does_not() {
         let machine = machine();
         let root = machine.path();
         let mut manifest = declared(root);
-        manifest["enforces"] = json!([]);
-        manifest["cannot_enforce"] = ignored;
+        manifest["binding"]["claims_enforced"] = json!([]);
+        manifest["binding"]["claims_not_enforced"] = ignored;
         redeclare(root, &manifest);
         let run = runtime(root)
             .await

@@ -1,25 +1,37 @@
 {
-  "v": 1,
-  "slug": "minecraft-local",
-  "name": "Minecraft, a supervised local server",
-  "summary": "Runs a bounded agent episode in a local vanilla Minecraft server. The host boots the world, the mc-bridge bot joins it as an offline player, and the agent works under the action and wall-clock bounds the world manifest declares.",
-  "transport": "subprocess",
-  "detect": {
-    "binary": "java",
-    "version": ["java", "-version"]
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/minecraft-local",
+    "profile": "executor",
+    "summary": "Runs a bounded agent episode in a local vanilla Minecraft server. The host boots the world, the mc-bridge bot joins it as an offline player, and the agent works under the action and wall-clock bounds the world manifest declares.",
+    "input": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+    "output": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+    "effects": {"reads": ["world"], "writes": ["world"], "network": [], "process": true, "delegates": false, "spend": false},
+    "minimum": {},
+    "support": {"bounds": {"wall_ms": "unknown", "calls": "unknown"}, "cancellation": "host_terminated", "idempotency": "none", "evidence": []},
+    "binding_contract": {
+      "interface": "minecraft.episode.v1",
+      "transport": "subprocess",
+      "task": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+      "context": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+      "isolation": ["directory"]
+    }
   },
-  "enforces": ["max_actions", "max_seconds", "world", "port"],
-  "cannot_enforce": ["tool_set", "budget_cents", "model", "effort"],
-  "sees_repository": false,
-  "concurrent_max": 1,
-  "cost": "local",
-  "isolation": ["directory"],
-  "invoke": ["voyager", "run", "--world"],
-  "refuses": [
-    {
+  "binding": {
+    "name": "Minecraft, a supervised local server",
+    "detect": {"binary": "voyager", "version": ["voyager", "--version"]},
+    "invoke": ["voyager", "run", "--world"],
+    "refuses": [{
       "name": "missing_prerequisites",
       "match": "run ./scripts/build-mc-bridge.sh",
       "explanation": "An episode needs three things built or fetched ahead of time — the mc-bridge helper, the server jar for the manifest's Minecraft version, and a Java runtime — and the runner names the missing one rather than substituting a different world or a remote server."
-    }
-  ]
+    }],
+    "sees_repository": false,
+    "concurrent_max": 1,
+    "cost": "local",
+    "claims_enforced": ["max_actions", "max_seconds", "world", "port"],
+    "claims_not_enforced": ["tool_set", "budget_cents", "model", "effort"],
+    "enforcement": [{"bound": "wall_ms", "ceiling": 0, "assurance": "host", "mechanism": "supervisor"}]
+  }
 }

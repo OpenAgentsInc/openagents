@@ -33,19 +33,23 @@ pub const SUBPROCESS: &str = "subprocess";
 /// manifest names no binary, and the probe that finds it is the host's
 /// relay door rather than an argv, so this crate records it `unprobed`
 /// and leaves the question to the host.
-pub const RELAY: &str = "relay";
+pub const RELAY: &str = "nostr-cj";
 
 /// One capability manifest: how to drive one executor.
 ///
 /// `slug` and `name` are the `d` and `name` tags the published
 /// `kind:30180` carries; everything else is the body. The file on disk
 /// holds them together so one document is one manifest.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Manifest {
     /// The body schema version.
     pub v: u32,
-    /// The capability slug — the `d` tag.
+    /// The capability slug — the component of the qualified id, and the file stem.
     pub slug: String,
+    /// The qualified definition id.
+    pub qualified_id: String,
+    /// `native`, `executor`, `plugin`, or `adapter`.
+    pub profile: String,
     #[serde(default)]
     pub name: String,
     #[serde(default)]
@@ -164,6 +168,212 @@ pub enum Claim {
     Unknown,
 }
 
+fn enforcement_plan(
+    value: Option<&serde_json::Value>,
+) -> Result<Vec<nostr::contracts::BoundAssignment>, String> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let items = value
+        .as_array()
+        .ok_or_else(|| "binding.enforcement is not an array".to_string())?;
+    items
+        .iter()
+        .map(|item| nostr::contracts::parse_bound(item).map_err(|error| error.to_string()))
+        .collect()
+}
+
+fn manifest_from(
+    definition: nostr::cap::Definition,
+    binding: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Manifest, String> {
+    for key in binding.keys() {
+        if ![
+            "name",
+            "detect",
+            "invoke",
+            "invoke_writing",
+            "workspace_probe",
+            "refuses",
+            "sees_repository",
+            "concurrent_max",
+            "cost",
+            "claims_enforced",
+            "claims_not_enforced",
+            "enforcement",
+        ]
+        .contains(&key.as_str())
+        {
+            return Err(format!("unsupported binding field {key}"));
+        }
+    }
+    let detect = match binding.get("detect") {
+        None => Detect::default(),
+        Some(value) => serde_json::from_value(value.clone()).map_err(|error| error.to_string())?,
+    };
+    let invoke = strings(binding.get("invoke"))?;
+    let invoke_writing = strings(binding.get("invoke_writing"))?;
+    let workspace_probe = match binding.get("workspace_probe") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(value) => {
+            Some(serde_json::from_value(value.clone()).map_err(|error| error.to_string())?)
+        }
+    };
+    let refuses = match binding.get("refuses") {
+        None => Vec::new(),
+        Some(value) => serde_json::from_value(value.clone()).map_err(|error| error.to_string())?,
+    };
+    Ok(Manifest {
+        v: crate::MANIFEST_VERSION,
+        slug: definition.component,
+        qualified_id: definition.id,
+        profile: match definition.profile {
+            nostr::cap::Profile::Native => "native",
+            nostr::cap::Profile::Executor => "executor",
+            nostr::cap::Profile::Plugin => "plugin",
+            nostr::cap::Profile::Adapter => "adapter",
+        }
+        .to_string(),
+        name: binding
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(definition.summary.as_str())
+            .to_string(),
+        summary: definition.summary,
+        transport: definition.transport,
+        detect,
+        enforces: strings(binding.get("claims_enforced"))?,
+        cannot_enforce: strings(binding.get("claims_not_enforced"))?,
+        sees_repository: binding
+            .get("sees_repository")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        concurrent_max: binding
+            .get("concurrent_max")
+            .and_then(serde_json::Value::as_u64)
+            .map(|value| u32::try_from(value).map_err(|_| "concurrent_max".to_string()))
+            .transpose()?,
+        cost: binding
+            .get("cost")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        isolation: definition.isolation,
+        invoke,
+        invoke_writing,
+        workspace_probe,
+        refuses,
+    })
+}
+
+/// A subprocess executor file for tests and fixtures.
+///
+/// `extra` may set `summary`, `transport`, `isolation`, `invoke`,
+/// `invoke_writing`, `detect`, `workspace_probe`, `refuses`,
+/// `sees_repository`, `cost`, `concurrent_max`, `enforces`, and
+/// `cannot_enforce`. Those last two are claims on the host binding, not
+/// proven enforcement.
+#[must_use]
+pub fn executor_document(
+    slug: &str,
+    binary: &str,
+    version: Vec<String>,
+    extra: serde_json::Value,
+) -> serde_json::Value {
+    let publisher = "a".repeat(64);
+    let schema = serde_json::json!({
+        "digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+        "size": 17,
+        "media_type": "application/schema+json"
+    });
+    let extra = extra.as_object().cloned().unwrap_or_default();
+    let transport = extra
+        .get("transport")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(SUBPROCESS);
+    let mut contract = serde_json::json!({
+        "interface": "task.v1",
+        "transport": transport,
+        "task": schema,
+        "context": schema,
+        "isolation": extra.get("isolation").cloned().unwrap_or_else(|| serde_json::json!([]))
+    });
+    if transport == "http" {
+        contract["remote"] = serde_json::json!({"endpoint": "http://127.0.0.1/"});
+    }
+    if transport == RELAY {
+        contract["remote"] = serde_json::json!({
+            "worker": publisher,
+            "relays": ["ws://127.0.0.1/"]
+        });
+    }
+    let detect = if transport == RELAY {
+        serde_json::json!({"binary": "", "version": []})
+    } else {
+        extra
+            .get("detect")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({"binary": binary, "version": version}))
+    };
+    let invoke = if transport == RELAY {
+        serde_json::json!([])
+    } else {
+        extra
+            .get("invoke")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([binary, "--"]))
+    };
+    serde_json::json!({
+        "definition": {
+            "v": 1,
+            "requires": [],
+            "id": format!("{publisher}:openagents/{slug}"),
+            "profile": "executor",
+            "summary": extra.get("summary").and_then(serde_json::Value::as_str).unwrap_or("a contract-test capability"),
+            "input": schema,
+            "output": schema,
+            "effects": {"reads": ["workspace"], "writes": [], "network": [], "process": true, "delegates": false, "spend": false},
+            "minimum": {},
+            "support": {
+                "bounds": {},
+                "cancellation": "host_terminated",
+                "idempotency": "none",
+                "evidence": []
+            },
+            "binding_contract": contract
+        },
+        "binding": {
+            "name": extra.get("name").cloned().unwrap_or_else(|| serde_json::json!(slug)),
+            "detect": detect,
+            "invoke": invoke,
+            "invoke_writing": extra.get("invoke_writing").cloned().unwrap_or_else(|| serde_json::json!([])),
+            "workspace_probe": extra.get("workspace_probe").cloned().unwrap_or(serde_json::Value::Null),
+            "refuses": extra.get("refuses").cloned().unwrap_or_else(|| serde_json::json!([])),
+            "sees_repository": extra.get("sees_repository").cloned().unwrap_or(serde_json::json!(true)),
+            "concurrent_max": extra.get("concurrent_max").cloned().unwrap_or(serde_json::Value::Null),
+            "cost": extra.get("cost").cloned().unwrap_or(serde_json::json!("local")),
+            "claims_enforced": extra.get("enforces").cloned().unwrap_or_else(|| serde_json::json!([])),
+            "claims_not_enforced": extra.get("cannot_enforce").cloned().unwrap_or_else(|| serde_json::json!([]))
+        }
+    })
+}
+
+fn strings(value: Option<&serde_json::Value>) -> Result<Vec<String>, String> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    value
+        .as_array()
+        .ok_or_else(|| "expected an array of strings".to_string())?
+        .iter()
+        .map(|item| {
+            item.as_str()
+                .map(str::to_string)
+                .ok_or_else(|| "expected an array of strings".to_string())
+        })
+        .collect()
+}
+
 impl Claim {
     /// The word a trace or a check records.
     #[must_use]
@@ -187,13 +397,43 @@ impl Manifest {
     /// argv whose head is not the binary `detect` names. A manifest a
     /// host half-understands drives an executor by a rule nobody stated.
     pub fn load(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path)
-            .map_err(|error| format!("{}: {error}", path.display()))?;
-        let manifest: Self =
-            serde_json::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
-        manifest
-            .validate()
-            .map_err(|reason| format!("{}: {reason}", path.display()))?;
+        let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        Self::parse(&bytes).map_err(|reason| format!("{}: {reason}", path.display()))
+    }
+
+    /// Parses a NIP-CAP file: a `definition` plus a host `binding`.
+    ///
+    /// Root fields from the earlier executor draft (`slug`, `enforces`,
+    /// `invoke`, and the rest) are refused. They are not read as authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first reason the document is not a v1 capability file.
+    pub fn parse(bytes: &[u8]) -> Result<Self, String> {
+        let value = nostr::cap::parse_json(bytes).map_err(|error| error.to_string())?;
+        let root = value
+            .as_object()
+            .ok_or_else(|| "capability file is not an object".to_string())?;
+        for key in root.keys() {
+            if key != "definition" && key != "binding" {
+                return Err(format!(
+                    "unsupported field {key}: earlier executor fields are not a capability definition"
+                ));
+            }
+        }
+        let definition = nostr::cap::parse_definition(
+            root.get("definition")
+                .ok_or_else(|| "capability file has no definition".to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        let binding = root
+            .get("binding")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| "capability file has no host binding".to_string())?;
+        let plan = enforcement_plan(binding.get("enforcement"))?;
+        nostr::cap::cover(&definition, &plan).map_err(|error| error.to_string())?;
+        let manifest = manifest_from(definition, binding)?;
+        manifest.validate()?;
         Ok(manifest)
     }
 
@@ -212,8 +452,8 @@ impl Manifest {
     /// # Errors
     ///
     /// Returns the parse error if the content is not a manifest.
-    pub fn event(content: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(content)
+    pub fn event(content: &str) -> Result<Self, String> {
+        Self::parse(content.as_bytes())
     }
 
     /// Whether this manifest is one this version runs.
@@ -234,7 +474,7 @@ impl Manifest {
         if self.transport.is_empty() {
             return Err("no transport".to_string());
         }
-        if self.transport == RELAY {
+        if self.transport == RELAY || self.profile == "native" || self.profile == "plugin" {
             if !self.detect.binary.is_empty() || !self.detect.version.is_empty() {
                 return Err("a relay manifest detects nothing on this machine".to_string());
             }

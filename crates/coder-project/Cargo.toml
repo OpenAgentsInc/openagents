@@ -19,6 +19,7 @@ supervise = { path = "../supervise" }
 tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
+capability = { path = "../capability" }
 tempfile = "3"
 
 [lints]

@@ -5992,6 +5992,8 @@ mod tests {
             manifest: capability::Manifest {
                 v: 1,
                 slug: "stub-local".to_string(),
+                qualified_id: "stub-local".to_string(),
+                profile: "executor".to_string(),
                 name: "A stub".to_string(),
                 summary: String::new(),
                 transport: capability::SUBPROCESS.to_string(),
@@ -7544,12 +7546,16 @@ mod tests {
         let manifest = host.path().join("suite.json");
         std::fs::write(
             &manifest,
-            serde_json::to_vec(&json!({
-                "v":1,"slug":"suite-fixture","name":"Suite fixture","transport":"subprocess",
-                "detect":{"binary":"/bin/sh","version":["/bin/sh","--version"]},
-                "enforces":[],"cannot_enforce":[],"sees_repository":true,
-                "cost":"local","invoke":["/bin/sh"],"isolation":["directory"]
-            }))
+            serde_json::to_vec(&capability::executor_document(
+                "suite-fixture",
+                "/bin/sh",
+                vec!["/bin/sh".into(), "--version".into()],
+                json!({
+                    "name": "Suite fixture",
+                    "invoke": ["/bin/sh"],
+                    "isolation": ["directory"]
+                }),
+            ))
             .unwrap(),
         )
         .unwrap();

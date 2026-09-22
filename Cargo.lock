@@ -392,6 +392,7 @@ name = "capability"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "nostr",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -502,6 +503,7 @@ name = "coder-project"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "capability",
  "coder",
  "coder-scheduler",
  "futures-util",

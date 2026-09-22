@@ -1991,13 +1991,12 @@ mod tests {
         let manifest = capabilities.join("approved-local.json");
         std::fs::write(
             &manifest,
-            json!({
-                "v": 1,
-                "slug": "approved-local",
-                "transport": "subprocess",
-                "detect": {"binary": binary, "version": [binary, "--version"]},
-                "invoke": invoke,
-            })
+            crate::capability::executor_document(
+                "approved-local",
+                binary,
+                vec![binary.to_string(), "--version".to_string()],
+                json!({"invoke": invoke}),
+            )
             .to_string(),
         )
         .unwrap();
@@ -2979,7 +2978,7 @@ mod tests {
         // change — the store now names the new bytes.
         let mut changed: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
-        changed["invoke"] = json!([binary.display().to_string(), "--eager"]);
+        changed["binding"]["invoke"] = json!([binary.display().to_string(), "--eager"]);
         std::fs::write(&manifest, serde_json::to_vec_pretty(&changed).unwrap()).unwrap();
         crate::capability::Trust::load(&store)
             .unwrap()

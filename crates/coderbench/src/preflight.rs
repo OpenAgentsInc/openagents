@@ -525,10 +525,17 @@ mod tests {
         let marker = dir.path().join("ran");
         std::fs::write(
             registry_dir.join("side-effect.json"),
-            format!(
-                r#"{{"v":1,"slug":"side-effect","name":"A","transport":"subprocess","detect":{{"binary":"sh","version":["sh","-c","touch {}; echo side-effect 1.0.0"]}}}}"#,
-                marker.display()
-            ),
+            serde_json::to_string(&capability::executor_document(
+                "side-effect",
+                "sh",
+                vec![
+                    "sh".into(),
+                    "-c".into(),
+                    format!("touch {}; echo side-effect 1.0.0", marker.display()),
+                ],
+                serde_json::json!({"name": "A"}),
+            ))
+            .unwrap(),
         )
         .unwrap();
 
@@ -558,10 +565,17 @@ mod tests {
         let marker = dir.path().join("ran");
         std::fs::write(
             registry_dir.join("side-effect.json"),
-            format!(
-                r#"{{"v":1,"slug":"side-effect","name":"A","transport":"subprocess","detect":{{"binary":"sh","version":["sh","-c","touch {}; echo side-effect 1.0.0"]}}}}"#,
-                marker.display()
-            ),
+            serde_json::to_string(&capability::executor_document(
+                "side-effect",
+                "sh",
+                vec![
+                    "sh".into(),
+                    "-c".into(),
+                    format!("touch {}; echo side-effect 1.0.0", marker.display()),
+                ],
+                serde_json::json!({"name": "A"}),
+            ))
+            .unwrap(),
         )
         .unwrap();
 

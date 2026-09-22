@@ -143,7 +143,17 @@ async fn pinned_gym_pass_fail_and_stale_results_cross_the_readonly_boundary() {
     std::fs::create_dir(work.path().join("capabilities")).unwrap();
     let binary = env!("CARGO_BIN_EXE_coder-project");
     let manifest = work.path().join("capabilities/gym-check.json");
-    std::fs::write(&manifest, serde_json::to_vec(&json!({"v":1,"slug":"gym-check","name":"Gym fixture","transport":"subprocess","detect":{"binary":binary,"version":[binary,"--help"]},"enforces":[],"cannot_enforce":[],"sees_repository":true,"cost":"local","invoke":[binary],"isolation":["directory"]})).unwrap()).unwrap();
+    std::fs::write(
+        &manifest,
+        serde_json::to_vec(&capability::executor_document(
+            "gym-check",
+            binary,
+            vec![binary.into(), "--help".into()],
+            serde_json::json!({"name":"Gym fixture","invoke":[binary],"isolation":["directory"]}),
+        ))
+        .unwrap(),
+    )
+    .unwrap();
     let mut trust = Trust::load(&host.path().join("trust.json")).unwrap();
     trust.approve(Some(work.path()), "gym-check", &[]).unwrap();
     let entry = Entry::load(&manifest, Source::Repository).unwrap();

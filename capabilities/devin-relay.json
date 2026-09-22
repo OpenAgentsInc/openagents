@@ -1,13 +1,33 @@
 {
-  "v": 1,
-  "slug": "devin-relay",
-  "name": "Devin CLI, through a coder-worker on the relay",
-  "summary": "Publishes each bounded task as one NIP-CJ job to the worker named by CODER_WORKER; the worker runs it through its own approved Devin CLI.",
-  "transport": "relay",
-  "enforces": ["minutes"],
-  "cannot_enforce": ["tool_set", "role", "budget_cents", "effort", "max_turns", "model"],
-  "sees_repository": false,
-  "concurrent_max": 6,
-  "cost": "operator_account",
-  "isolation": ["worktree", "directory"]
+  "definition": {
+    "v": 1,
+    "requires": [],
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/devin-relay",
+    "profile": "executor",
+    "summary": "Publishes each bounded task as one NIP-CJ job to the worker named by CODER_WORKER; the worker runs it through its own approved Devin CLI.",
+    "input": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+    "output": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+    "effects": {"reads": [], "writes": [], "network": ["relay"], "process": false, "delegates": true, "spend": true},
+    "minimum": {},
+    "support": {"bounds": {"wall_ms": "unknown"}, "cancellation": "unsupported", "idempotency": "request_attempt", "evidence": []},
+    "binding_contract": {
+      "interface": "devin.task.v1",
+      "transport": "nostr-cj",
+      "task": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+      "context": {"digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0", "size": 17, "media_type": "application/schema+json"},
+      "isolation": ["worktree", "directory"],
+      "remote": {
+        "worker": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "relays": ["ws://127.0.0.1:7447"]
+      }
+    }
+  },
+  "binding": {
+    "name": "Devin CLI, through a coder-worker on the relay",
+    "sees_repository": false,
+    "concurrent_max": 6,
+    "cost": "operator_account",
+    "claims_enforced": ["minutes"],
+    "claims_not_enforced": ["tool_set", "role", "budget_cents", "effort", "max_turns", "model"]
+  }
 }
