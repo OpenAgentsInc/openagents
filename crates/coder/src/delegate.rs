@@ -2046,6 +2046,19 @@ mod tests {
             .collect()
     }
 
+    /// The most peers any task in a counted fan-out observed running
+    /// alongside it, from the `seen-*` records each left behind.
+    fn peak_concurrency(state: &Path) -> usize {
+        (1..=6)
+            .filter_map(|n| {
+                std::fs::read_to_string(state.join(format!("seen-{n}")))
+                    .ok()
+                    .and_then(|content| content.trim().parse().ok())
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
     /// The answer is stdout, and it is graded against what the task
     /// expected.
     #[tokio::test]
@@ -2210,21 +2223,22 @@ mod tests {
             dir.path(),
             "backgrounding",
             &format!(
-                "(sleep 3; printf harmless > '{}') & printf 'partway through'; wait",
+                "(sleep 5; printf harmless > '{}') & printf 'partway through'; wait",
                 marker.display()
             ),
         );
         let executor = executor(&binary).under(Policy::empty().granting(&state));
         let delegation = Delegator::new(executor)
             .in_directory(dir.path())
-            .run(Task::reading("anything", "a.rs").bounded(Bounds::within(Duration::from_secs(1))))
+            .run(Task::reading("anything", "a.rs").bounded(Bounds::within(Duration::from_secs(3))))
             .await;
 
         assert_eq!(delegation.status, Status::TimedOut);
         // What the executor printed before the bound expired is the only
-        // account of what it was doing, so the record keeps it.
+        // account of what it was doing, so the record keeps it. The bound
+        // leaves room for a loaded machine's spawn overhead to land first.
         assert_eq!(delegation.output, "partway through");
-        tokio::time::sleep(Duration::from_secs(4)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         assert!(
             !marker.exists(),
             "a delegate's background child outlived the bound the delegation ran under"
@@ -2281,45 +2295,64 @@ mod tests {
     }
 
     /// Six delegations run at once, and six at a width of one do not.
+    ///
+    /// Concurrency is counted rather than timed: each task marks itself
+    /// running, waits for the width it was given, and records how many were
+    /// running alongside it. A loaded machine can slow every spawn without
+    /// moving the count, where a wall-clock comparison reads the load
+    //  rather than the bound.
     #[tokio::test]
     async fn the_fan_out_is_concurrent_under_its_bound() {
         if !boundary_supported() {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
-        let binary = stub(dir.path(), "devin", "sleep 0.4\nprintf 'done\\n'");
-        let executor = executor(&binary);
+        let state = tempfile::tempdir().unwrap();
+        let binary = stub(
+            dir.path(),
+            "devin",
+            &format!(
+                "for a in \"$@\"; do prompt=\"$a\"; done\n\
+                 n=\"${{prompt##* }}\"\n\
+                 touch '{0}/started-'\"$n\"\n\
+                 i=0\n\
+                 while [ \"$(ls '{0}'/started-* 2>/dev/null | wc -l)\" -lt \"$(cat '{0}/target')\" ] && [ \"$i\" -lt 400 ]; do sleep 0.05; i=$((i+1)); done\n\
+                 ls '{0}'/started-* 2>/dev/null | wc -l | tr -d ' ' > '{0}/seen-'\"$n\"\n\
+                 rm '{0}/started-'\"$n\"\n\
+                 printf 'done\\n'",
+                state.path().display()
+            ),
+        );
+        let executor = executor(&binary).under(Policy::empty().granting(state.path()));
 
-        let started = Instant::now();
+        std::fs::write(state.path().join("target"), "6").unwrap();
         let wide = Delegator::new(executor.clone())
             .bounded_to(6)
             .fan_out(six_tasks())
             .await;
-        let parallel = started.elapsed();
-        let summed: Duration = wide.iter().map(|delegation| delegation.elapsed).sum();
         assert_eq!(wide.len(), 6);
         assert!(wide.iter().all(Delegation::answered));
-        // Wall clock against summed delegation time, which is the
-        // measurement the recorded episode reports and the one a busy
-        // machine does not move: contention inflates both together, while
-        // a fixed ceiling on the wall clock alone turns a loaded test
-        // machine into a failure about concurrency.
-        assert!(
-            parallel * 2 < summed,
-            "a width of six is not concurrent: {parallel:?} of wall clock against {summed:?} summed"
+        let peak = peak_concurrency(state.path());
+        assert_eq!(
+            peak, 6,
+            "a width of six held fewer than six at once: {peak}"
         );
 
-        let started = Instant::now();
+        for entry in std::fs::read_dir(state.path()).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_name().to_string_lossy().starts_with("seen-") {
+                std::fs::remove_file(entry.path()).unwrap();
+            }
+        }
+        std::fs::write(state.path().join("target"), "1").unwrap();
         let narrow = Delegator::new(executor)
             .bounded_to(1)
             .fan_out(six_tasks())
             .await;
-        let sequential = started.elapsed();
         assert_eq!(narrow.len(), 6);
-        assert!(
-            sequential > parallel,
-            "a width of one is the sequential case: {sequential:?} against {parallel:?}"
-        );
+        assert!(narrow.iter().all(Delegation::answered));
+        let peak = peak_concurrency(state.path());
+        assert_eq!(peak, 1, "a width of one held more than one at once: {peak}");
     }
 
     /// A completed later task releases its slot even while the first task waits.

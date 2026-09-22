@@ -92,7 +92,7 @@ async fn verify_program(
     if before.tip != requirements.tip || before.digest() != requirements.plan.input_digest {
         return Err("verification plan does not bind the inspected artifact".into());
     }
-    let program: coder::Program = serde_json::from_str(program_json).map_err(|e| e.to_string())?;
+    let program = coder::Program::parse(program_json.as_bytes())?;
     let survey = coder::Survey::read(Some(repository), repository);
     let runtime = coder::Runtime::using(survey, Some(repository)).with_verification(
         worktree.into(),
@@ -196,9 +196,8 @@ pub async fn review_changes(
             policy: requirements.policy,
             trust: coder::capability::Trust::operator(),
         });
-    let program: coder::Program =
-        serde_json::from_str(include_str!("../../../programs/review-changes.json"))
-            .map_err(|error| error.to_string())?;
+    let program =
+        coder::Program::parse(include_str!("../../../programs/review-changes.json").as_bytes())?;
     let run = runtime
         .run(
             &program,

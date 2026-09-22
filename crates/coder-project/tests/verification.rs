@@ -152,8 +152,10 @@ async fn cli_requires_pinned_artifacts_and_never_accepts_missing_suite_evidence(
         assert_eq!(
             result.status.code(),
             Some(expected),
-            "{}",
-            String::from_utf8_lossy(&result.stderr)
+            "case={} stderr={} result={}",
+            name,
+            String::from_utf8_lossy(&result.stderr),
+            std::fs::read_to_string(out.join("result.json")).unwrap_or_default(),
         );
         let report: serde_json::Value =
             serde_json::from_slice(&std::fs::read(out.join("result.json")).unwrap()).unwrap();
