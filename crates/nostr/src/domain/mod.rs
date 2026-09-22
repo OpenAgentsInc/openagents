@@ -23,6 +23,7 @@ mod filter;
 mod follow;
 mod geocache;
 mod gift_wrap;
+mod goal;
 mod handler;
 mod hex;
 mod highlight;
@@ -102,6 +103,10 @@ pub use geocache::{
 pub use gift_wrap::{
     RANDOMIZE_WINDOW_SECONDS, Rumor, open_wrap, randomized_timestamp, recipient_removed_wrap,
     seal_rumor, validate_seal, validate_wrap, wrap_seal,
+};
+pub use goal::{
+    GoalReference, GoalSubject, ZapGoal, goal_progress, open_goal_references, open_zap_goal,
+    zap_counts_toward_goal, zap_request_covers_goal,
 };
 pub use handler::{
     AppHandler, ClientAttribution, HandlerLink, HandlerRecommendation, ManifestRef,

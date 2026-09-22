@@ -459,6 +459,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 9_735 {
         super::zap::open_zap_receipt(event)?;
     }
+    if event.kind == 9_041 {
+        super::goal::open_zap_goal(event)?;
+    }
+    if event.tags.iter().any(|tag| tag.name() == Some("goal")) {
+        super::goal::open_goal_references(event)?;
+    }
     if event.tags.iter().any(|tag| tag.name() == Some("zap")) {
         super::zap::zap_split(event, 0)?;
     }

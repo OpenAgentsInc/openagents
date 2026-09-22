@@ -486,6 +486,20 @@ does not contact a mint, decode an invite code, or read a kind `0`
 profile when content is empty. Acceptance is
 `domain::ecash::tests::a_mint_announcement_replaces_and_a_recommendation_names_it`.
 
+NIP-75 is `configured-and-proven`. Kind `9041` is a fundraising goal.
+`amount` is the target in millisats and `relays` lists where zaps are
+sent and tallied. `closed_at` is the last second that still counts. A
+zap request covers the goal when it includes every goal relay.
+`goal_progress` adds those amounts and skips a later zap. Optional
+`image`, `summary`, `r`, and `a` tags are kept. `zap` tags name
+beneficiaries and the split sums to the target. A `goal` tag on
+another event stores the goal id and an optional relay. A newer goal
+does not replace an older one. NIP-75 is a draft, so kind `9041` is
+not added to the NIP-11 list. The relay does not send or tally
+Lightning payments, and it does not fetch the goal when a zap request
+arrives. Acceptance is
+`domain::goal::tests::a_zap_goal_tallies_until_it_closes_and_a_request_lists_its_relays`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
