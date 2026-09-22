@@ -48,6 +48,21 @@ It does not settle a payment. A later auction edit is still stored.
 Acceptance is
 `domain::market::tests::a_stall_product_and_bid_follow_the_pinned_marketplace_events`.
 
+NIP-17 is `configured-and-proven`. A kind `14` rumor is unsigned plain
+text. Its `p` tags name the receivers, and the chat room is that set plus
+the author. Kind `15` is a file rumor: the algorithm is `aes-gcm`, and `x`
+and `ox` are SHA-256 hashes. The author seals the rumor as kind `13` with
+NIP-44 and gift-wraps that seal as kind `1059` once per participant,
+including a copy for the author. The reader decrypts both layers and
+refuses the rumor when its pubkey differs from the seal. Kind `10050` is
+the replaceable inbox list. The relay does not decrypt a wrap. It requires
+one `p` tag, and with `NOSTR_RELAY_URL` set it serves kind `1059` only to
+that authenticated reader and lists 17 in NIP-11. A wrap timestamp may sit
+at most two days before the rumor. File bytes are not downloaded. The
+caller supplies the one-time wrapper key. Kind `21059` belongs to NIP-59.
+Acceptance is
+`nip17::tests::a_private_message_round_trips_and_rejects_an_impersonated_rumor`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

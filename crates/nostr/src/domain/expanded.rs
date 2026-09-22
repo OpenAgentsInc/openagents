@@ -462,27 +462,10 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
         ));
     }
     if event.kind == 1_059 {
-        let recipients = event.tag_values("p").collect::<Vec<_>>();
-        if recipients.len() != 1 {
-            return Err(DomainError::InvalidEvent(
-                "gift wraps require exactly one p-tagged recipient".into(),
-            ));
-        }
-        decode_lower_hex::<32>(recipients[0], "gift wrap recipient")?;
+        crate::nip17::validate_gift_wrap(event)?;
     }
     if event.kind == 10_050 {
-        let relays = event.tag_values("relay").collect::<Vec<_>>();
-        if relays.is_empty()
-            || relays.iter().any(|relay| {
-                (!relay.starts_with("ws://") && !relay.starts_with("wss://"))
-                    || relay.len() > 2_048
-                    || relay.chars().any(char::is_whitespace)
-            })
-        {
-            return Err(DomainError::InvalidEvent(
-                "kind 10050 requires valid ws:// or wss:// relay tags".into(),
-            ));
-        }
+        crate::nip17::validate_inbox(event)?;
     }
     if event.kind == 10_002 {
         let relays = event
