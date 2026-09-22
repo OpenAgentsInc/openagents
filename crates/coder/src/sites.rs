@@ -49,6 +49,12 @@ pub const INVENTORY_VERSION: u32 = 1;
 /// purpose.
 const PROGRAM_SET_DIGEST: &str = "96e1f232caa393982b76fd141da8561e472a42756eea41529e850e95e7a8aaef";
 
+/// The digest the repository-evidence selection site was written
+/// against for `openagents.evidence-relevance.v1` — the wording the
+/// held-out measurement covers.
+const EVIDENCE_SET_DIGEST: &str =
+    "f827ab947d875a714e83cc66a04e5fa51951bfdb30605d73503907f369b1beb0";
+
 /// The value a question's `options` field takes when the run fills the
 /// options in. [`crate::questions`] keeps the constant private, so the
 /// inventory spells it here.
@@ -449,6 +455,19 @@ fn declared_sites() -> Vec<Site> {
                 asked: Vec::new(),
             }),
         },
+        Site {
+            id: "repository/select".to_string(),
+            provenance: Provenance::File,
+            location: "crates/coder/src/agent.rs".to_string(),
+            set: "openagents.evidence-relevance.v1".to_string(),
+            version: None,
+            digest: None,
+            pinned: Some(EVIDENCE_SET_DIGEST.to_string()),
+            contract: Some(Contract {
+                state: strings(&["task", "question_set", "candidates", "omitted"]),
+                asked: Vec::new(),
+            }),
+        },
     ]
 }
 
@@ -661,6 +680,7 @@ mod tests {
                 "delegate-fan-out/accept",
                 "delegate-fan-out/independence",
                 "program",
+                "repository/select",
                 "review-changes/review",
                 "shell_judge",
             ]
@@ -685,22 +705,16 @@ mod tests {
             assert!(set.digest.is_some(), "{} is digested", set.id);
         }
         // Every shipped set answers a site and every site answers its
-        // set, so the only reports are the genuinely unbound sets:
-        // `openagents.evidence-relevance.v1` shipped ahead of the site
-        // that will ask it, and `openagents.independence.v1` stays on
-        // disk after v2 took both bindings — kept so the digests
-        // historical runs recorded stay resolvable. The inventory says
-        // so rather than letting a run find out at admission.
+        // set, so the only report is the genuinely unbound set:
+        // `openagents.independence.v1` stays on disk after v2 took both
+        // bindings — kept so the digests historical runs recorded stay
+        // resolvable. The inventory says so rather than letting a run
+        // find out at admission.
         assert_eq!(
             inventory.problems(),
-            [
-                Problem::UnboundSet {
-                    set: "openagents.evidence-relevance.v1".to_string()
-                },
-                Problem::UnboundSet {
-                    set: "openagents.independence.v1".to_string()
-                },
-            ]
+            [Problem::UnboundSet {
+                set: "openagents.independence.v1".to_string()
+            },]
         );
     }
 

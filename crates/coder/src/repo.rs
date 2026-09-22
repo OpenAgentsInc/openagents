@@ -137,7 +137,7 @@ impl Repo {
     }
 
     /// The prompt block for `draft`: the card plus whatever the draft's
-    /// terms turn up in the tree.
+    /// terms turn up in the tree, in the order the sniff observed them.
     pub fn context_for(&self, draft: &str) -> String {
         self.context_with_evidence(draft).0
     }
@@ -145,19 +145,21 @@ impl Repo {
     /// Collect once and return the prompt together with its structured evidence.
     /// Both surfaces refer to the same observed source contents.
     pub fn context_with_evidence(&self, draft: &str) -> (String, RepositoryEvidence) {
+        let sniff = self.observe(draft);
+        let (sniffed, evidence) = self.render(&sniff, None);
         let mut context = format!("repo context:\n{}", self.card);
-        let (sniff, evidence) = self.sniff_with_evidence(draft);
-        context.push_str(&sniff);
+        context.push_str(&sniffed);
         (context, evidence)
     }
 
-    #[cfg(test)]
-    fn sniff(&self, draft: &str) -> String {
-        self.sniff_with_evidence(draft).0
-    }
-
-    /// Follow the draft's terms and retain only references actually rendered.
-    fn sniff_with_evidence(&self, draft: &str) -> (String, RepositoryEvidence) {
+    /// The observation half of the sniff: the draft's terms, the paths
+    /// `git grep` named, each captured file and the lines its terms
+    /// touched, and the declared [`crate::evidence::Candidates`] the
+    /// same observation produces — the recorded search hits beside the
+    /// reads the host granted itself, under the bounds the evidence
+    /// builder enforces. Nothing here ranks anything; ordering is a
+    /// judgment, and this is what a judgment may rank.
+    pub fn observe(&self, draft: &str) -> Sniff {
         let terms = terms(draft);
         let mut paths = BTreeSet::new();
         let mut diagnostics = BTreeSet::new();
@@ -192,41 +194,124 @@ impl Repo {
             }
         }
         let base = git(&self.root, &["rev-parse", "HEAD"]);
-        let mut rendered = String::new();
-        let mut references = Vec::new();
-        let mut count = 0;
-        let mut excerpt_bytes = 0;
         let lowered: Vec<_> = terms.iter().map(|t| t.to_lowercase()).collect();
-        for path in paths {
-            let source = match SourceFile::capture(&self.root, &path) {
+        let mut hits = Vec::new();
+        for path in &paths {
+            let source = match SourceFile::capture(&self.root, path) {
                 Ok(source) => source,
                 Err(reason) => {
                     diagnostics.insert(reason);
                     continue;
                 }
             };
-            for (offset, line) in source.text.lines().enumerate() {
-                if !lowered
-                    .iter()
-                    .any(|term| line.to_lowercase().contains(term))
-                {
-                    continue;
-                }
+            let lines: Vec<usize> = source
+                .text
+                .lines()
+                .enumerate()
+                .filter(|(_, line)| {
+                    lowered
+                        .iter()
+                        .any(|term| line.to_lowercase().contains(term))
+                })
+                .map(|(offset, _)| offset)
+                .collect();
+            hits.push(Hit {
+                path: path.clone(),
+                lines,
+                source,
+            });
+        }
+        // The candidates declare the same observations: every grep hit
+        // as a recorded reference at its first matching line, and every
+        // named path as a read under the grant the host gave it — the
+        // read set is exactly the paths the sniff observed.
+        let read_set: BTreeSet<String> = paths.iter().cloned().collect();
+        let first_line = |path: &str| {
+            hits.iter()
+                .find(|hit| hit.path == path)
+                .and_then(|hit| hit.lines.first())
+                .map(|offset| crate::evidence::Span {
+                    start: offset + 1,
+                    end: offset + 1,
+                })
+        };
+        let request = crate::evidence::Request {
+            base: base.clone(),
+            read_set: read_set.clone(),
+            reads: paths
+                .iter()
+                .map(|path| crate::evidence::FileAsk::read(path.as_str()))
+                .collect(),
+            exists: Vec::new(),
+            searches: Vec::new(),
+            references: paths
+                .iter()
+                .map(|path| crate::evidence::Reference {
+                    path: path.clone(),
+                    span: first_line(path),
+                    kind: "search".to_string(),
+                })
+                .collect(),
+            bounds: crate::evidence::Bounds {
+                max_files: PATHS_MAX,
+                max_bytes_per_file: SOURCE_BYTES,
+                max_total_bytes: SOURCE_BYTES * PATHS_MAX as u64,
+            },
+        };
+        let candidates = crate::evidence::Candidates::of(&self.root, &request);
+        Sniff {
+            terms,
+            hits,
+            diagnostics,
+            base,
+            candidates,
+            read_set,
+        }
+    }
+
+    /// The render half of the sniff: excerpts in `order` when a ranking
+    /// supplied one, the sniff's own sorted order otherwise. The order
+    /// decides which path's excerpts reach the bounded block first;
+    /// every path still renders within the same budgets — a judgment
+    /// reorders evidence, it does not erase it.
+    pub fn render(&self, sniff: &Sniff, order: Option<&[String]>) -> (String, RepositoryEvidence) {
+        let mut hits: Vec<&Hit> = sniff.hits.iter().collect();
+        if let Some(order) = order {
+            let rank: std::collections::BTreeMap<&str, usize> = order
+                .iter()
+                .enumerate()
+                .map(|(index, path)| (path.as_str(), index))
+                .collect();
+            hits.sort_by_key(|hit| rank.get(hit.path.as_str()).copied().unwrap_or(usize::MAX));
+        }
+        let mut diagnostics: BTreeSet<String> = sniff
+            .diagnostics
+            .iter()
+            .map(|reason| reason.to_string())
+            .collect();
+        let mut rendered = String::new();
+        let mut references = Vec::new();
+        let mut count = 0;
+        let mut excerpt_bytes = 0;
+        for hit in hits {
+            let lines: Vec<&str> = hit.source.text.lines().collect();
+            for &offset in &hit.lines {
+                let line = lines[offset];
                 let end = line.floor_char_boundary(LINE_MAX.min(line.len()));
                 let excerpt = &line[..end];
                 let reference = SourceSpan {
                     schema: "openagents.repository-source.v1",
-                    path: path.clone(),
+                    path: hit.path.clone(),
                     line: offset + 1,
-                    source_digest: source.digest.clone(),
+                    source_digest: hit.source.digest.clone(),
                     excerpt_digest: atif::digest(&serde_json::json!(excerpt)),
                     truncated: end < line.len(),
-                    base: base.clone(),
+                    base: sniff.base.clone(),
                 };
                 let record = format!(
                     "source {}\n  {}:{}:{}\n",
                     serde_json::to_string(&reference).expect("source reference serializes"),
-                    path,
+                    hit.path,
                     offset + 1,
                     excerpt
                 );
@@ -234,7 +319,7 @@ impl Repo {
                     || excerpt_bytes + excerpt.len() > SNIFF_BYTES
                     || rendered.len() + record.len() > EVIDENCE_BYTES - 512
                 {
-                    diagnostics.insert("excerpt budget omitted matching evidence");
+                    diagnostics.insert("excerpt budget omitted matching evidence".to_string());
                     break;
                 }
                 rendered.push_str(&record);
@@ -243,19 +328,28 @@ impl Repo {
                 excerpt_bytes += excerpt.len();
             }
         }
-        let diagnostics: Vec<String> = diagnostics.into_iter().map(str::to_owned).collect();
+        let diagnostics: Vec<String> = diagnostics.into_iter().collect();
         if !diagnostics.is_empty() {
             rendered.push_str(&format!("evidence coverage: {}\n", diagnostics.join("; ")));
         }
         let evidence = RepositoryEvidence {
             schema: "openagents.repository-context.v1",
-            terms,
+            terms: sniff.terms.clone(),
             references,
             diagnostics,
             rendered_digest: atif::digest(&serde_json::json!(rendered)),
             card_digest: atif::digest(&serde_json::json!(self.card)),
+            candidates: sniff.candidates.candidates.clone(),
+            omitted: sniff.candidates.omitted.clone(),
+            selection: None,
         };
         (rendered, evidence)
+    }
+
+    #[cfg(test)]
+    fn sniff(&self, draft: &str) -> String {
+        let sniff = self.observe(draft);
+        self.render(&sniff, None).0
     }
 }
 
@@ -303,6 +397,42 @@ impl SourceFile {
     }
 }
 
+/// The sniff's observations, before anything ranks them: the captured
+/// files with the lines the terms touched, and the declared candidates
+/// the same observations produce. A ranking reads the candidates;
+/// a render reads the hits.
+pub struct Sniff {
+    terms: Vec<String>,
+    hits: Vec<Hit>,
+    diagnostics: BTreeSet<&'static str>,
+    base: Option<String>,
+    candidates: crate::evidence::Candidates,
+    /// The paths the host granted content reads on — the read set the
+    /// candidates' reads ran under.
+    read_set: BTreeSet<String>,
+}
+
+/// One captured file and the line offsets the terms matched.
+struct Hit {
+    path: String,
+    lines: Vec<usize>,
+    source: SourceFile,
+}
+
+impl Sniff {
+    /// The candidates this observation declared: every named path as a
+    /// recorded search reference and, under the read set, a read.
+    pub fn candidates(&self) -> &crate::evidence::Candidates {
+        &self.candidates
+    }
+
+    /// The host's read grants for this observation: the paths the sniff
+    /// named, no more — a ranking cannot widen it.
+    pub fn read_set(&self) -> &BTreeSet<String> {
+        &self.read_set
+    }
+}
+
 /// Evidence collected for one repository context block. References describe
 /// rendered search excerpts; the card digest identifies the separate card and
 /// document prefixes without claiming they have complete source coverage.
@@ -314,6 +444,21 @@ pub struct RepositoryEvidence {
     diagnostics: Vec<String>,
     rendered_digest: String,
     card_digest: String,
+    /// Every candidate the observation declared — the manifest of what
+    /// the selection ranked, refused candidates and all.
+    candidates: Vec<crate::evidence::Candidate>,
+    /// Every input the bounds excluded, and why.
+    omitted: Vec<crate::evidence::Omitted>,
+    /// The selection record, when a decision door ranked the candidates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selection: Option<crate::select::Record>,
+}
+
+impl RepositoryEvidence {
+    /// Records the selection the candidates were ranked under.
+    pub(crate) fn set_selection(&mut self, record: crate::select::Record) {
+        self.selection = Some(record);
+    }
 }
 
 /// A source link binds a line to the observed contents, not only a Git commit.

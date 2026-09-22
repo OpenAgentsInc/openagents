@@ -6,6 +6,7 @@
 //! [`Agent::reply`] runs Generate when the route says to. The transcript
 //! folds each side in as it lands.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::path::Path;
 use std::time::Instant;
@@ -170,14 +171,32 @@ pub enum Classified {
     Skipped(String),
 }
 
+/// What an answered evidence selection hands the render: the order the
+/// gate's distribution ranked the candidate paths into — `None` when it
+/// abstained, because an abstention ranks nothing — and the manifest
+/// record of the judgment itself.
+struct Ranked {
+    order: Option<Vec<String>>,
+    record: crate::select::Record,
+}
+
 /// The conversation: a transcript, a classifier that may be absent, and a
 /// door to Generate.
 pub struct Agent {
     classify: Option<jev::Client>,
+    /// The profile the classifier resolved under — `None` for an agent
+    /// built from a bare client, which cannot say what locality its
+    /// door has and so decides no disclosure bound.
+    decision_profile: Option<crate::profiles::Profile>,
     generate: Door,
     transcript: Vec<Message>,
     /// The repo the shell sits in, when it sits in one.
     repo: Option<Repo>,
+    /// The ranking the current task's repository evidence was given.
+    /// A new task clears it; an unchanged candidate set reuses it, and
+    /// the reuse check — content, wording, policy, and artifact all
+    /// identical — is what "unchanged" means.
+    evidence_ranking: Option<crate::select::Ranking>,
     /// What the running application knows about itself and where it ran.
     about: About,
     /// The draft the current turn is classifying, kept until the reply
@@ -252,11 +271,18 @@ impl Agent {
             Ok(recorder) => (recorder, None),
             Err(error) => (None, Some(error)),
         };
+        let decision_profile = crate::decision::profile_from_env()?;
+        let classify = decision_profile
+            .as_ref()
+            .map(|profile| profile.client().map_err(|refusal| refusal.to_string()))
+            .transpose()?;
         Ok(Self {
-            classify: crate::decision::from_env()?,
+            classify,
+            decision_profile,
             generate,
             transcript: Vec::new(),
             repo,
+            evidence_ranking: None,
             about,
             task: String::new(),
             trace,
@@ -270,9 +296,11 @@ impl Agent {
     pub fn new(classify: Option<jev::Client>, generate: Door) -> Self {
         Self {
             classify,
+            decision_profile: None,
             generate,
             transcript: Vec::new(),
             repo: None,
+            evidence_ranking: None,
             about: About::observe(&env::current_dir().unwrap_or_default(), None),
             task: String::new(),
             trace: None,
@@ -515,6 +543,9 @@ impl Agent {
     /// and becomes the state Classify reads.
     pub fn push_user(&mut self, draft: &str) {
         self.task = draft.to_string();
+        // A new task is a different judgment input; the last turn's
+        // ranking is not this one's answer.
+        self.evidence_ranking = None;
         self.transcript.push(Message {
             role: Role::User,
             text: draft.to_string(),
@@ -594,6 +625,92 @@ impl Agent {
         }
     }
 
+    /// Asks the door which of the sniff's observed candidates the task
+    /// wants — once per distinct evidence set, then reused while
+    /// content, wording, policy, and artifact all stay identical. A
+    /// door that will not answer, or an answer that reads as no
+    /// ranking, costs the turn its ordering rather than its context:
+    /// the refusal lands in the trace and the sniff renders in its own
+    /// order. A set naming one path asks nothing — the deterministic
+    /// order already names its own most relevant, whichever of its
+    /// observations a pick would choose.
+    async fn select_evidence(&mut self, sniff: &crate::repo::Sniff) -> Option<Ranked> {
+        let classify = self.classify.clone()?;
+        let candidates = sniff.candidates();
+        let paths: BTreeSet<&str> = candidates
+            .candidates
+            .iter()
+            .map(|candidate| candidate.path.as_str())
+            .collect();
+        if paths.len() < 2 {
+            return None;
+        }
+        let reused = self.evidence_ranking.as_ref().is_some_and(|ranking| {
+            ranking.reusable_for(
+                candidates,
+                classify.default_model(),
+                crate::select::Select::set(),
+            )
+        });
+        let ranking = if reused {
+            self.evidence_ranking
+                .clone()
+                .expect("the reuse check passed")
+        } else {
+            let request = crate::select::Select::request(&self.task, candidates);
+            let asked = request
+                .body(classify.default_model())
+                .map_or(Value::Null, Value::Object);
+            let started = Instant::now();
+            let answered = classify.system_one(request).await;
+            let milliseconds = started.elapsed().as_millis() as u64;
+            let ((ranking, fault), answers, model, error) = match &answered {
+                Ok(response) => (
+                    match crate::select::Select::ranking(response, candidates) {
+                        Ok(ranking) => (Some(ranking), None),
+                        Err(fault) => (None, Some(fault.to_string())),
+                    },
+                    answers_value(&response.answers),
+                    response.model.clone(),
+                    None,
+                ),
+                Err(error) => (
+                    (None, None),
+                    Value::Null,
+                    classify.default_model().to_string(),
+                    Some(error.to_string()),
+                ),
+            };
+            self.record_decision(
+                crate::select::Select::provenance(),
+                Decision {
+                    id: String::new(),
+                    name: "repository/select".to_string(),
+                    door: classify.base_url().to_string(),
+                    model,
+                    request: asked,
+                    answers,
+                    route: ranking
+                        .as_ref()
+                        .map(|ranking| ranking.verdict.word().to_string()),
+                    error: error.or(fault),
+                    attempts: Vec::new(),
+                    review: None,
+                    milliseconds,
+                },
+            );
+            ranking?
+        };
+        self.evidence_ranking = Some(ranking.clone());
+        let disclosure = self.decision_profile.as_ref().map(|profile| {
+            crate::select::Select::disclosure(profile, sniff.read_set(), candidates, &ranking)
+        });
+        Some(Ranked {
+            order: ranking.order(candidates),
+            record: crate::select::Record::of(&ranking, candidates, disclosure.as_ref()),
+        })
+    }
+
     /// Puts one decision call in the trace, when there is one, with the
     /// wording record beside it — the same fields a file-defined
     /// question set's provenance carries on a program's `decide` step.
@@ -618,7 +735,7 @@ impl Agent {
         sink: &mut (dyn FnMut(&str) + Send),
         meta: &mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
-        let (instructions, evidence) = self.instructions(clarify, false, false);
+        let (instructions, evidence) = self.selected_instructions(clarify, false, false).await;
         if let Some(trace) = &mut self.trace {
             trace.instructions_with_repository(&instructions, evidence.as_ref());
         }
@@ -680,7 +797,9 @@ impl Agent {
             // so — except while clarifying, where the one question it is
             // asking for is the whole instruction.
             let final_only = !permit.executes() && !clarify;
-            let (instructions, evidence) = self.instructions(clarify, final_only, retries > 0);
+            let (instructions, evidence) = self
+                .selected_instructions(clarify, final_only, retries > 0)
+                .await;
             if let Some(trace) = &mut self.trace {
                 trace.instructions_with_repository(&instructions, evidence.as_ref());
             }
@@ -807,12 +926,50 @@ impl Agent {
     }
 
     /// The instructions for one generation: the base text, the clarify,
-    /// retry, or final suffix, and the repo context block.
+    /// retry, or final suffix, and the repo context block — the
+    /// deterministic path, exercised directly by tests; `reply` and
+    /// `turn` take the selected path.
+    #[cfg(test)]
     fn instructions(
         &self,
         clarify: bool,
         final_only: bool,
         retrying: bool,
+    ) -> (String, Option<crate::repo::RepositoryEvidence>) {
+        self.instructions_from(clarify, final_only, retrying, None, None, None)
+    }
+
+    /// The instructions a generation round takes: the text `instructions`
+    /// composes, except the repo block renders from an observation
+    /// already made — in the order a ranking gave it, when a decision
+    /// door answered, with the manifest recording the judgment beside
+    /// the evidence it ranked.
+    async fn selected_instructions(
+        &mut self,
+        clarify: bool,
+        final_only: bool,
+        retrying: bool,
+    ) -> (String, Option<crate::repo::RepositoryEvidence>) {
+        let sniff = self.repo.as_ref().map(|repo| repo.observe(&self.task));
+        let ranked = match &sniff {
+            Some(sniff) => self.select_evidence(sniff).await,
+            None => None,
+        };
+        let (order, record) = match ranked {
+            Some(ranked) => (ranked.order, Some(ranked.record)),
+            None => (None, None),
+        };
+        self.instructions_from(clarify, final_only, retrying, sniff, order, record)
+    }
+
+    fn instructions_from(
+        &self,
+        clarify: bool,
+        final_only: bool,
+        retrying: bool,
+        sniff: Option<crate::repo::Sniff>,
+        order: Option<Vec<String>>,
+        record: Option<crate::select::Record>,
     ) -> (String, Option<crate::repo::RepositoryEvidence>) {
         let mut instructions = if clarify {
             format!("{INSTRUCTIONS}{CLARIFY_SUFFIX}")
@@ -825,7 +982,20 @@ impl Agent {
             instructions.push_str(RETRY_SUFFIX);
         }
         instructions.push_str("\n\n");
-        let (context, evidence) = self.context_with_evidence();
+        let mut context = self.about.context();
+        let mut evidence = None;
+        if let Some(repo) = &self.repo {
+            context.push_str("\n\n");
+            let (rendered, mut captured) = match &sniff {
+                Some(sniff) => repo.render(sniff, order.as_deref()),
+                None => repo.context_with_evidence(&self.task),
+            };
+            if let Some(record) = record {
+                captured.set_selection(record);
+            }
+            context.push_str(&rendered);
+            evidence = Some(captured);
+        }
         instructions.push_str(&context);
         (instructions, evidence)
     }

@@ -14,7 +14,7 @@
 //! profile no System One client can carry all reach the caller as the
 //! refusal the resolver named, never a quieter door.
 
-use crate::profiles::{Profile, Profiles, Refusal};
+use crate::profiles::{Profile, Profiles};
 
 /// The variables whose presence means a decision door was configured:
 /// the profile's own settings and the `TYPESAFE_*` set the hosted
@@ -49,6 +49,22 @@ const CONFIGURED: &[&str] = &[
 /// cannot use, a name it does not know, a setting it does not take, or
 /// a profile no System One client carries.
 pub fn from_env() -> Result<Option<jev::Client>, String> {
+    profile_from_env()?
+        .map(|profile| profile.client().map_err(|refusal| refusal.to_string()))
+        .transpose()
+}
+
+/// Resolve the active profile without building its door — the same
+/// environment check [`from_env`] runs, answered as the profile itself.
+/// A call site that binds behavior to the profile's identity — which
+/// disclosures stay on this machine, which reach the network — reads
+/// the resolved profile rather than re-deriving locality from a URL.
+///
+/// # Errors
+///
+/// Returns the [`Refusal`] text for a configuration that resolved
+/// badly, exactly as [`from_env`] does.
+pub fn profile_from_env() -> Result<Option<Profile>, String> {
     // A variable holding bytes that are not Unicode counts as set: it
     // is malformed configuration, and resolution is what says so.
     let configured = CONFIGURED.iter().any(|name| match std::env::var(name) {
@@ -59,7 +75,10 @@ pub fn from_env() -> Result<Option<jev::Client>, String> {
     if !configured {
         return Ok(None);
     }
-    door(Profiles::new().resolve_env())
+    Profiles::new()
+        .resolve_env()
+        .map(Some)
+        .map_err(|refusal| refusal.to_string())
 }
 
 /// `read` decides what the environment says, so a test fixes it.
@@ -79,7 +98,10 @@ fn resolve(read: impl Fn(&str) -> Option<String>) -> Result<Option<jev::Client>,
 
 /// The resolved profile's door — or its refusal, either way as the
 /// string the call sites carry.
-fn door(resolved: Result<Profile, Refusal>) -> Result<Option<jev::Client>, String> {
+#[cfg(test)]
+fn door(
+    resolved: Result<Profile, crate::profiles::Refusal>,
+) -> Result<Option<jev::Client>, String> {
     resolved
         .and_then(|profile| profile.client())
         .map(Some)

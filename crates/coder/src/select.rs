@@ -68,6 +68,20 @@ static SET: LazyLock<Set> = LazyLock::new(|| {
 pub struct Select;
 
 impl Select {
+    /// The set this binding asks from: its digest and policy are the
+    /// identities a ranking's reuse check compares.
+    #[must_use]
+    pub fn set() -> &'static Set {
+        &SET
+    }
+
+    /// What a trace records about the wording the request asked from:
+    /// the same record a file-defined set's `decide` step carries.
+    #[must_use]
+    pub fn provenance() -> Value {
+        SET.provenance()
+    }
+
     /// The decide request the set asks over these candidates.
     ///
     /// The state carries the task, every candidate's observable record —
@@ -203,6 +217,17 @@ pub enum Verdict {
     Abstained,
 }
 
+impl Verdict {
+    /// The word a record spells this with.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Verdict::Chosen(_) => "chosen",
+            Verdict::Abstained => "abstained",
+        }
+    }
+}
+
 /// What the answer says about the candidate set, kept whole enough for a
 /// caller to act on and a reviewer to audit.
 #[derive(Clone, Debug, PartialEq)]
@@ -276,6 +301,34 @@ impl Ranking {
             && self.evidence_digest == evidence_digest(candidates)
             && self.set_digest == set.digest()
             && self.policy_digest == policy_digest_of(set)
+    }
+
+    /// The candidate paths in the order the gate's distribution ranks
+    /// them: each path scored by the probability its option carried,
+    /// descending, with ties keeping the order the request listed.
+    /// `None` on an abstention — a `none` answer ranks nothing, and an
+    /// ordering read off it would be a ranking the model did not give.
+    /// Candidates the distribution left unranked carry no probability
+    /// and fall to the end rather than disappearing: the ordering
+    /// decides which evidence a bounded render reaches first, not which
+    /// evidence exists.
+    #[must_use]
+    pub fn order(&self, candidates: &Candidates) -> Option<Vec<String>> {
+        if self.abstained() {
+            return None;
+        }
+        let names = option_names(candidates);
+        let mut seen = BTreeSet::new();
+        let mut scored: Vec<(String, f64)> = Vec::new();
+        for (candidate, name) in candidates.candidates.iter().zip(&names) {
+            if !seen.insert(candidate.path.as_str()) {
+                continue;
+            }
+            let probability = self.choice.probabilities.get(name).copied().unwrap_or(0.0);
+            scored.push((candidate.path.clone(), probability));
+        }
+        scored.sort_by(|a, b| b.1.total_cmp(&a.1));
+        Some(scored.into_iter().map(|(path, _)| path).collect())
     }
 }
 
@@ -428,6 +481,130 @@ impl Basis {
             Basis::Refused => "refused",
             Basis::Truncated => "truncated",
             Basis::Admitted => "admitted",
+        }
+    }
+}
+
+/// What a context manifest records about one selection under
+/// `openagents.evidence-selection.v1`: the judgment as the door
+/// supplied it, the identities that make it attributable — the wording,
+/// the policy, the evidence, and the artifact — and the disclosure
+/// each candidate sat under. A caller that never asked records no
+/// record rather than an empty one.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Record {
+    /// The record's own versioned schema.
+    pub schema: &'static str,
+    /// The identifier of the question set that answered.
+    pub question_set: String,
+    /// The digest of that set's wording.
+    pub set_digest: String,
+    /// The digest of the policy the set bound, when it bound one.
+    pub policy_digest: Option<String>,
+    /// The digest of the evidence the judgment scored.
+    pub evidence_digest: String,
+    /// The model the door reported answering with.
+    pub model: String,
+    /// `chosen` or `abstained` — what the gate's pick meant.
+    pub verdict: &'static str,
+    /// The pick the gate named, resolved back to its path and span.
+    pub selected: Option<Picked>,
+    /// The gate's distribution as supplied, over every option offered.
+    pub probabilities: indexmap::IndexMap<String, f64>,
+    /// The `any_relevant` probability, carried as supplied.
+    pub any_relevant: Option<f64>,
+    /// The `coverage` probability, carried as supplied.
+    pub coverage: Option<f64>,
+    /// The options the distribution never named.
+    pub unranked: Vec<String>,
+    /// The paths the state listed as omitted.
+    pub omitted: Vec<String>,
+    /// The bound each candidate sat under, when the caller resolved a
+    /// profile to decide it. Absent records an undisclosed judgment
+    /// rather than an unbounded one.
+    pub disclosure: Option<Disclosed>,
+}
+
+/// The gate's pick as the manifest records it.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Picked {
+    /// The option name the gate answered.
+    pub option: String,
+    /// The candidate path that option stood for.
+    pub path: String,
+    /// The span the candidate covers, when it covers one.
+    pub span: Option<Span>,
+}
+
+/// The disclosure a selection ran under, as the manifest records it.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Disclosed {
+    /// The profile the bounds were decided under, by name.
+    pub profile: &'static str,
+    /// Whether that profile keeps the reveal on this machine or network.
+    pub local: bool,
+    /// One bound per candidate, in the order the set listed them.
+    pub bounds: Vec<BoundRecord>,
+}
+
+/// One candidate's bound, spelled in words.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct BoundRecord {
+    /// The candidate's path.
+    pub path: String,
+    /// The span it covers, when it covers one.
+    pub span: Option<Span>,
+    /// `path-only`, `path-span`, or `content`.
+    pub allowance: &'static str,
+    /// The rule that set the level.
+    pub basis: &'static str,
+}
+
+impl Record {
+    /// The manifest record for one answered ranking, joined to the
+    /// candidates it ranked and the disclosure it sat under.
+    #[must_use]
+    pub fn of(ranking: &Ranking, candidates: &Candidates, disclosure: Option<&Disclosure>) -> Self {
+        let names = option_names(candidates);
+        let selected = match ranking.verdict {
+            Verdict::Chosen(index) => {
+                let candidate = &candidates.candidates[index];
+                Some(Picked {
+                    option: names[index].clone(),
+                    path: candidate.path.clone(),
+                    span: candidate.span,
+                })
+            }
+            Verdict::Abstained => None,
+        };
+        Record {
+            schema: "openagents.evidence-selection.v1",
+            question_set: ranking.question_set.clone(),
+            set_digest: ranking.set_digest.clone(),
+            policy_digest: ranking.policy_digest.clone(),
+            evidence_digest: ranking.evidence_digest.clone(),
+            model: ranking.model.clone(),
+            verdict: ranking.verdict.word(),
+            selected,
+            probabilities: ranking.choice.probabilities.clone(),
+            any_relevant: ranking.any_relevant,
+            coverage: ranking.coverage,
+            unranked: ranking.unranked.clone(),
+            omitted: ranking.omitted.clone(),
+            disclosure: disclosure.map(|disclosure| Disclosed {
+                profile: disclosure.profile,
+                local: disclosure.local,
+                bounds: disclosure
+                    .bounds
+                    .iter()
+                    .map(|bound| BoundRecord {
+                        path: bound.path.clone(),
+                        span: bound.span,
+                        allowance: bound.allowance.word(),
+                        basis: bound.basis.word(),
+                    })
+                    .collect(),
+            }),
         }
     }
 }
