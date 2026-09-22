@@ -31,6 +31,7 @@
 //! | `CODEX_HOME` | Where the Codex delegate finds `auth.json`; `~/.codex` when unset. |
 //! | `CODER_ONE_DEEP` | `on` runs deep Jev mode: a parallel survey before the first step, a readiness question each step, and repeated-command hints. |
 //! | `CODER_ONE_PROBES` | `on`, with deep mode, runs a battery of read-only probes (listing, git state, README, tests, versions) and lets Jev pick the outputs that go into the survey and the briefing. |
+//! | `CODER_ONE_PROBE_V2` | `on`, with probes and deep mode: a Jev-gated setup pack, git probes in named repositories, whole edit targets, a 40-file survey, and batch-mode directions. |
 //!
 //! The bundle is rewritten at the start of every step, so a deadline that
 //! kills the process still leaves the evidence up to the last step.
@@ -293,6 +294,18 @@ fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
     Some((parts.next()??, parts.next()??, parts.next()??))
 }
 
+/// Whether `CODER_ONE_PROBE_V2` asks for probe v2: the setup pack, git
+/// probes in named repositories, whole edit targets, a smaller survey, and
+/// batch-mode directions for the delegate.
+fn probe_v2_on() -> bool {
+    matches!(
+        std::env::var("CODER_ONE_PROBE_V2")
+            .as_deref()
+            .map(str::trim),
+        Ok("on" | "1" | "true")
+    )
+}
+
 /// Whether `CODER_ONE_PROBES` asks for the probe battery. It runs with the
 /// deep survey, so it needs `CODER_ONE_DEEP` too.
 fn probes_on() -> bool {
@@ -376,7 +389,8 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
 
     let mut judge = JevJudge::new(jev_client, workdir.clone(), &state.issue, recorder.clone())
         .deep(settings.deep)
-        .probing(settings.deep && probes_on());
+        .probing(settings.deep && probes_on())
+        .probe_v2(settings.deep && probes_on() && probe_v2_on());
     judge.survey(&mut state).await;
     let mut judge = Snapshots {
         inner: judge,
@@ -438,7 +452,11 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             max_steps: settings.max_steps,
             prompt: "Complete this task.",
             instruction: &instruction,
-            directions: EPISODE_DIRECTIONS,
+            directions: if probe_v2_on() {
+                EPISODE_DIRECTIONS_BATCH
+            } else {
+                EPISODE_DIRECTIONS
+            },
             cap: settings.briefing_cap,
             isolation: "none",
             base: bundle.base.as_deref(),
@@ -509,6 +527,20 @@ and formats, before you stop. The files and command outputs in this briefing \
 were gathered just before you started and are current: use them instead of \
 re-running those commands, and go straight to the work. End with a short \
 summary of what you changed and how you checked it.";
+
+/// Probe v2's directions: the same contract, plus batch mode. Each turn
+/// costs the delegate seconds, so it should take few, large steps.
+const EPISODE_DIRECTIONS_BATCH: &str = "Complete the task in the current working \
+directory. Nobody answers questions, so decide from the task and the \
+environment. An automated checker grades the final state of the environment \
+against the task, so verify every requirement, including exact paths, names, \
+and formats, before you stop. The files, command outputs, and setup results in \
+this briefing were gathered just before you started and are complete and \
+current: do not list, read, or run them again. Work in as few steps as \
+possible: write each file whole in one command, chain related commands \
+(installs, builds, tests) with && in one call, and run one final check that \
+covers every requirement. End with a short summary of what you changed and how \
+you checked it.";
 
 /// A judge that rewrites the bundle before every step, so a killed
 /// episode leaves its evidence behind.

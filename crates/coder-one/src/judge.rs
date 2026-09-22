@@ -72,6 +72,9 @@ pub struct JevJudge {
     /// Probe mode: before the survey, run a fixed battery of read-only
     /// commands and let Jev pick the outputs worth handing on.
     probes: bool,
+    /// Probe v2: a Jev-gated setup pack, git probes in the repositories the
+    /// task names, and a smaller survey pool.
+    v2: bool,
 }
 
 /// The most characters of one probe's output Jev reads and a briefing keeps.
@@ -82,6 +85,10 @@ const PROBE_TOTAL_CHARS: usize = 14_000;
 
 /// The most files the survey judges, in batches of [`SURVEY_BATCH`].
 const SURVEY_FILES: usize = 100;
+/// Probe v2's smaller survey pool: Jev's file survey was most of its cost.
+const SURVEY_FILES_V2: usize = 40;
+/// The most characters of one likely edit target probe v2 hands on.
+const EDIT_TARGET_CHARS: usize = 16_000;
 const SURVEY_BATCH: usize = 20;
 /// The most files, and characters, the survey puts in the prompt.
 const SURVEY_KEEP: usize = 6;
@@ -128,7 +135,163 @@ impl JevJudge {
             evidence,
             deep: false,
             probes: false,
+            v2: false,
         }
+    }
+
+    /// Turns on probe v2.
+    #[must_use]
+    pub fn probe_v2(mut self, v2: bool) -> Self {
+        self.v2 = v2;
+        self
+    }
+
+    /// The setup pack: commands the instruction itself names in code spans
+    /// (a `git clone`, a `pip install`) that a delegate would otherwise
+    /// spend its first turns on. One Jev request decides, per command,
+    /// whether the task needs it run before the work; the host runs the
+    /// approved ones in order, bounded and without credentials, and the
+    /// outcomes join the survey so the briefing reports them.
+    async fn setup(&mut self, client: &jev::Client, state: &mut State) {
+        let commands = setup_commands(&state.issue.body);
+        if commands.is_empty() {
+            return;
+        }
+        let mut questions = Questions::new();
+        for i in 0..commands.len() {
+            questions = questions.with(
+                format!("setup_{i}"),
+                Noul::new(format!(
+                    "Does the task in `issue` require running the command `setup[{i}]` as written before the rest of the work can start?"
+                )),
+            );
+        }
+        let jev_state = json!({
+            "issue": { "title": state.issue.title, "body": clip(&state.issue.body, 8_000) },
+            "setup": commands,
+        });
+        let Some(answers) = self
+            .ask_nouls(client, "jev_setup", jev_state, questions)
+            .await
+        else {
+            return;
+        };
+        for (i, command) in commands.iter().enumerate() {
+            let p = answers.get(&format!("setup_{i}")).copied().unwrap_or(0.0);
+            if p < YES {
+                println!("  setup ▸ skipped `{command}` p={p:.2}");
+                continue;
+            }
+            if let Some(destination) = clone_destination(command)
+                && std::path::Path::new(&destination).exists()
+            {
+                println!("  setup ▸ `{command}`: {destination} already exists");
+                continue;
+            }
+            let mut prepared = std::process::Command::new("bash");
+            prepared
+                .arg("-c")
+                .arg(command)
+                .current_dir(&self.workdir)
+                .env("GIT_TERMINAL_PROMPT", "0")
+                .env("PYTHONDONTWRITEBYTECODE", "1");
+            for (name, _) in std::env::vars_os() {
+                if name.to_str().is_some_and(crate::shell::is_credential) {
+                    prepared.env_remove(&name);
+                }
+            }
+            let started = Instant::now();
+            let ended = supervise::Job::from_command(prepared)
+                .bounded(
+                    supervise::Limits::within(std::time::Duration::from_secs(240))
+                        .keeping(16 * 1024),
+                )
+                .run()
+                .await;
+            let mut output = ended.stdout.marked();
+            if !ended.stderr.is_empty() {
+                output.push('\n');
+                output.push_str(&ended.stderr.marked());
+            }
+            println!(
+                "  setup ▸ ran `{command}` p={p:.2}: {} in {:.1}s",
+                ended.ending,
+                started.elapsed().as_secs_f64()
+            );
+            state.survey.push(Surveyed {
+                path: format!(
+                    "$ {command}   (setup the host already ran: {})",
+                    ended.ending
+                ),
+                relevance: p,
+                edit: 0.0,
+                content: clip_tail(output.trim(), 2_000),
+            });
+        }
+    }
+
+    /// One Jev request of Nouls, recorded like the others; the answers by
+    /// question id, or `None` when Jev could not answer.
+    async fn ask_nouls(
+        &mut self,
+        client: &jev::Client,
+        name: &str,
+        jev_state: serde_json::Value,
+        questions: Questions,
+    ) -> Option<BTreeMap<String, f64>> {
+        let request = SystemOneRequest::new(Entry::from(jev_state), questions);
+        let body = request
+            .body(JEV_MODEL)
+            .map(serde_json::Value::Object)
+            .unwrap_or_else(|_| json!({}));
+        let asked = Instant::now();
+        let result = client.system_one(request).await;
+        let milliseconds = u64::try_from(asked.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let mut decision = Decision {
+            id: format!("{name}-{}", self.calls + self.failed + 1),
+            name: name.to_string(),
+            door: JEV_BASE_URL.to_string(),
+            model: JEV_MODEL.to_string(),
+            request: body,
+            answers: serde_json::Value::Null,
+            route: None,
+            error: None,
+            attempts: Vec::new(),
+            review: None,
+            milliseconds,
+        };
+        let response = match result {
+            Ok(response) => response,
+            Err(error) => {
+                self.failed += 1;
+                decision.error = Some(error.to_string());
+                self.recorder
+                    .push(Step::called(decision.call()).taking(milliseconds));
+                println!("  {name} ▸ Jev unavailable: {error}");
+                return None;
+            }
+        };
+        self.calls += 1;
+        self.input_tokens += response.usage.input_tokens.unwrap_or(0);
+        decision.model = response.model.clone();
+        decision.answers = serde_json::from_str::<serde_json::Value>(&response.raw().text())
+            .ok()
+            .and_then(|body| body.get("answers").cloned())
+            .unwrap_or(serde_json::Value::Null);
+        self.recorder
+            .push(Step::called(decision.call()).taking(milliseconds).noting(
+                "jev_usage",
+                json!({
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                }),
+            ));
+        Some(
+            response
+                .nouls()
+                .map(|(id, answer)| (id.to_string(), answer.noul))
+                .collect(),
+        )
     }
 
     /// Turns on probe mode.
@@ -172,6 +335,20 @@ impl JevJudge {
                 let path = std::path::Path::new(token);
                 if path.is_dir() {
                     named.insert(format!("ls -la {token}"));
+                    // A repository the task names, outside the workdir.
+                    if self.v2
+                        && git(path, &["rev-parse", "--is-inside-work-tree"]).trim() == "true"
+                        && !self.is_git
+                    {
+                        for sub in [
+                            "status",
+                            "log --oneline --graph --all -n 40",
+                            "reflog -n 40",
+                            "branch -a -vv",
+                        ] {
+                            named.insert(format!("git -C {token} {sub}"));
+                        }
+                    }
                 } else if path.is_file() {
                     named.insert(format!("head -200 {token}"));
                 }
@@ -330,6 +507,9 @@ impl JevJudge {
         let Some(client) = self.client.clone().filter(|_| self.deep) else {
             return;
         };
+        if self.probes && self.v2 {
+            self.setup(&client, state).await;
+        }
         if self.probes {
             self.probe(&client, state).await;
         }
@@ -442,7 +622,14 @@ impl JevJudge {
             let Ok(text) = std::fs::read_to_string(self.workdir.join(&candidate.path)) else {
                 continue;
             };
-            let room = SURVEY_FILE_CHARS.min(SURVEY_TOTAL_CHARS.saturating_sub(total));
+            // Probe v2 hands likely edit targets on whole, so the delegate
+            // edits instead of reading first.
+            let cap = if self.v2 && *edit >= 0.8 {
+                EDIT_TARGET_CHARS
+            } else {
+                SURVEY_FILE_CHARS
+            };
+            let room = cap.min(SURVEY_TOTAL_CHARS.saturating_sub(total));
             if room < 500 {
                 break;
             }
@@ -499,14 +686,24 @@ impl JevJudge {
             .chain(manifests)
             .chain(rest)
         {
-            if order.len() >= SURVEY_FILES {
+            if order.len()
+                >= if self.v2 {
+                    SURVEY_FILES_V2
+                } else {
+                    SURVEY_FILES
+                }
+            {
                 break;
             }
             if !order.contains(path) {
                 order.push(path.clone());
             }
         }
-        order.truncate(SURVEY_FILES);
+        order.truncate(if self.v2 {
+            SURVEY_FILES_V2
+        } else {
+            SURVEY_FILES
+        });
         order
             .into_iter()
             .map(|path| {
@@ -1118,6 +1315,53 @@ impl JevJudge {
     }
 }
 
+/// Setup commands the instruction names in inline code spans: a
+/// `git clone`, or a `pip install`, at most three. A clone with no
+/// destination gets the absolute path named after it in the same sentence
+/// ("to `/app/pyknotid`").
+pub fn setup_commands(text: &str) -> Vec<String> {
+    let spans: Vec<&str> = text.split('`').collect();
+    let mut out = Vec::new();
+    for i in (1..spans.len()).step_by(2) {
+        let command = spans[i].trim();
+        let setup = command.starts_with("git clone ")
+            || command.starts_with("pip install ")
+            || command.starts_with("pip3 install ")
+            || command.starts_with("python3 -m pip install ")
+            || command.starts_with("python -m pip install ");
+        if !setup || command.contains('\n') || out.len() == 3 {
+            continue;
+        }
+        let mut command = command.to_string();
+        if command.starts_with("git clone ") && clone_destination(&command).is_none() {
+            // The next code span in the same sentence, when it is a path.
+            let between = spans.get(i + 1).copied().unwrap_or_default();
+            if let Some(next) = spans.get(i + 2)
+                && next.starts_with('/')
+                && !between.contains('.')
+                && between
+                    .split_whitespace()
+                    .any(|word| word == "to" || word == "into")
+            {
+                command.push(' ');
+                command.push_str(next.trim());
+            }
+        }
+        out.push(command);
+    }
+    out
+}
+
+/// A `git clone` command's explicit destination: its last argument when
+/// that is an absolute path.
+fn clone_destination(command: &str) -> Option<String> {
+    if !command.starts_with("git clone ") {
+        return None;
+    }
+    let last = command.split_whitespace().last()?;
+    last.starts_with('/').then(|| last.to_string())
+}
+
 /// Words from the issue worth searching for: code spans first, then
 /// identifier-like words, then plain title words.
 fn keywords(issue: &Issue) -> Vec<String> {
@@ -1294,6 +1538,23 @@ mod tests {
         assert!(words.contains(&"tokenstream".to_string()));
         assert!(words.contains(&"parser".to_string()));
         assert!(!words.contains(&"with".to_string()));
+    }
+
+    #[test]
+    fn setup_commands_come_from_code_spans_with_their_destination() {
+        let text = "You should clone the source code with `git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git` to `/app/pyknotid`.\nThen `import pyknotid` works. Run `pip install -e .` too.";
+        assert_eq!(
+            setup_commands(text),
+            [
+                "git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git /app/pyknotid",
+                "pip install -e .",
+            ]
+        );
+        assert_eq!(
+            clone_destination("git clone url /app/x"),
+            Some("/app/x".to_string())
+        );
+        assert!(setup_commands("Use `ls` and `python3 run.py`.").is_empty());
     }
 
     #[test]

@@ -102,6 +102,7 @@ class CoderOneDelegate(CoderOne):
         "CODER_ONE_BRIEFING_CAP",
         "CODER_ONE_DELEGATE_TOOLS",
         "CODER_ONE_DELEGATE_EFFORT",
+        "CODER_ONE_PROBE_V2",
     )
 
     # Harbor's claude-code agent resolves the CLI this way after its

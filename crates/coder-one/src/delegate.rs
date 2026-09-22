@@ -571,7 +571,14 @@ impl BriefingInputs {
                         (
                             file.path.clone(),
                             Some(file.relevance),
-                            clip(&file.content, SURVEYED_FILE_CHARS),
+                            clip(
+                                &file.content,
+                                if file.edit >= 0.8 {
+                                    EDIT_TARGET_FILE_CHARS
+                                } else {
+                                    SURVEYED_FILE_CHARS
+                                },
+                            ),
                         )
                     })
                     .collect();
@@ -596,6 +603,10 @@ impl BriefingInputs {
 
 /// The most characters of one surveyed file's contents a briefing carries.
 const SURVEYED_FILE_CHARS: usize = 4_000;
+/// A surveyed file Jev judged likely to need an edit (0.8 or higher) goes
+/// on whole, up to this many characters, so the delegate edits it instead
+/// of reading it first.
+const EDIT_TARGET_FILE_CHARS: usize = 16_000;
 
 /// The delegate's reasoning effort, from `CODER_ONE_DELEGATE_EFFORT`, or
 /// empty for the CLI's default. Only a plain lowercase word passes.
