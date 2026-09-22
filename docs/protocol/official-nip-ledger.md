@@ -352,6 +352,25 @@ A `p` tag and a `k` tag are not required when the content is empty.
 Acceptance is
 `domain::repost::tests::a_repost_embeds_the_note_and_a_generic_repost_names_its_kind`.
 
+NIP-52 is `configured-and-proven`. Kind `31922` is a date-based
+calendar event. `start` is an inclusive `YYYY-MM-DD` date and `end`,
+when present, is exclusive and later. Kind `31923` is a time-based
+event. `start` and `end` are unix seconds, `start_tzid` names the
+start zone, and an omitted `end_tzid` uses that same zone. `D` is
+`day_stamp`, `floor(unix seconds / 86400)`, and must include the
+start day. Kind `31924` is a calendar list of kind `31922` and
+`31923` addresses. Kind `31925` is an RSVP whose `status` is
+`accepted`, `declined`, or `tentative`. A declined RSVP ignores
+`fb`. A `name` tag supplies the title only when `title` is absent.
+An `a` tag on a calendar event requests inclusion in a kind `31924`
+calendar. A newer event with the same `d` tag replaces the older
+one. These kinds are not added to the NIP-11 list. Time zone names
+are not checked against the IANA database. `D` tags are not required
+to list every day through the exclusive end. Images and links are
+not fetched. Recurring events are not expanded. The relay does not
+decide who may attend. Acceptance is
+`domain::calendar::tests::a_calendar_event_keeps_its_span_and_an_rsvp_names_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

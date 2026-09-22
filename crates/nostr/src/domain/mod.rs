@@ -9,6 +9,7 @@ mod article;
 mod badge;
 mod block;
 mod bookmark;
+mod calendar;
 mod comment;
 mod deletion;
 mod draft;
@@ -57,6 +58,10 @@ pub use block::{
     parse_identity_archive_request, validate_block_ingest, workspace_icon,
 };
 pub use bookmark::{Bookmark, bookmark_identifier, is_bookmark_reply, open_bookmark};
+pub use calendar::{
+    Attendance, Availability, Calendar, CalendarEvent, CalendarRef, CalendarSpan, Participant,
+    Rsvp, day_stamp, open_calendar, open_calendar_event, open_rsvp,
+};
 pub use comment::{Comment, CommentScope, is_top_level, open_comment};
 pub use deletion::{DeletionRequest, DeletionTombstone};
 pub use draft::{

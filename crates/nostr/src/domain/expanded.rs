@@ -444,6 +444,15 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if matches!(event.kind, 6 | 16) {
         super::repost::open_repost(event)?;
     }
+    if matches!(event.kind, 31_922 | 31_923) {
+        super::calendar::open_calendar_event(event)?;
+    }
+    if event.kind == 31_924 {
+        super::calendar::open_calendar(event)?;
+    }
+    if event.kind == 31_925 {
+        super::calendar::open_rsvp(event)?;
+    }
     if event.kind == 1_040 {
         super::ots::open_attestation(event)?;
     }
