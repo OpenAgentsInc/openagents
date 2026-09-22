@@ -762,6 +762,19 @@ any regular event, and NIP-C7 is a draft, so it stays off the NIP-11
 list. Acceptance is
 `domain::chat::tests::a_chat_reply_quotes_its_parent_and_the_stream_fetches_kind_9`.
 
+NIP-70 is `configured-and-proven`. `Event::is_protected` reads the lone
+`-` tag, and the gateway refuses the event with `auth-required:` unless
+the connection has completed NIP-42 `AUTH` as the event's own author —
+the pinned alternative to rejecting every protected event outright.
+`Event::embeds_protected_repost` catches a kind `6` or `16` whose content
+embeds a protected event, and the gateway refuses that too. Live
+acceptance is `protected_and_private_contract` in
+`crates/nostr-relay/tests/gateway_postgres.rs`: the author's own event is
+accepted after AUTH, another key's copy is refused, and both repost
+forms are refused. The tag cannot stop a reader republishing the
+content elsewhere — it only keeps this relay from facilitating it, as
+the pinned text says.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

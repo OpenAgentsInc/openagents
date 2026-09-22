@@ -907,6 +907,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "70.md",
+        domain: "a single-item \"-\" tag marks an event protected; only the author may publish it, and a repost must not embed it",
+        client: "Event::is_protected and Event::embeds_protected_repost",
+        server: "the gateway answers auth-required unless the connection is authenticated as the event author, and refuses a kind 6 or 16 that embeds a protected event",
+        paths: "crates/nostr/src/domain/event.rs; crates/nostr/src/domain/repost.rs; crates/nostr-relay/src/gateway/server.rs",
+        configuration: "no setting; the check runs on every EVENT, which is the pinned default of rejecting protected events except from their authenticated author",
+        fixture: "a kind 1 event with a lone - tag, published first by its authenticated author and then by another key",
+        acceptance: "protected_and_private_contract in crates/nostr-relay/tests/gateway_postgres.rs, plus repost::tests for the embedded-event refusal",
+        limitations: "the mark cannot stop a reader from republishing the content elsewhere, as the pinned text says; it only keeps this relay from facilitating it",
+        owner: "nostr and nostr-relay",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

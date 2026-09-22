@@ -11,7 +11,6 @@
     Shape { file: "48.md", kind: 1, tag: "proxy" },
     Shape { file: "67.md", kind: 1, tag: "limit" },
     Shape { file: "68.md", kind: 20, tag: "imeta" },
-    Shape { file: "70.md", kind: 1, tag: "-" },
     Shape { file: "73.md", kind: 1, tag: "i" },
     Shape { file: "92.md", kind: 1, tag: "imeta" },
     Shape { file: "27.md", kind: 1, tag: "q" },
