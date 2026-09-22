@@ -113,6 +113,19 @@ not added to the NIP-11 list. The info hash is not checked against torrent
 bytes, and trackers are not contacted. Acceptance is
 `domain::torrent::tests::a_torrent_builds_a_magnet_and_a_comment_names_it`.
 
+NIP-37 is `configured-and-proven`. Kind `31234` stores an unsigned
+draft encrypted with NIP-44 to the author's own key. One `d` tag
+identifies it and one `k` tag names the draft kind. Empty content
+deletes that addressable draft. A newer wrap with the same `d` tag
+replaces the older one. Kind `1234` is a checkpoint whose `a` tag is
+`31234:<pubkey>:<identifier>`. Kind `10013` is the replaceable list of
+`wss://` or `ws://` relays, encrypted in the content, with no public
+`relay` tag. Admission checks those tags and NIP-44 framing and does not
+decrypt. None of these kinds are added to the NIP-11 list. The recommended
+expiration is 90 days. This module does not require authentication on a
+private-storage relay. Acceptance is
+`domain::draft::tests::a_draft_wrap_round_trips_and_a_blank_content_deletes_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

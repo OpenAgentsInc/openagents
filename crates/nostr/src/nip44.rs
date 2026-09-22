@@ -44,6 +44,26 @@ pub fn encrypt(
     Ok(base64_encode(&payload))
 }
 
+/// Whether `payload` has the NIP-44 v2 framing a relay can check without a key.
+pub fn payload_shape(payload: &str) -> Result<(), String> {
+    if payload.starts_with('#') {
+        return Err("NIP-44 payload encoding is unsupported".to_owned());
+    }
+    if payload.len() < MIN_PAYLOAD_CHARS
+        || payload.len() > primitives::encoded_maximum(MAX_CLIENT_PLAINTEXT_BYTES)
+        || !payload.len().is_multiple_of(4)
+    {
+        return Err("NIP-44 payload size is outside the client bound".to_owned());
+    }
+    if payload
+        .bytes()
+        .any(|byte| byte != b'=' && !BASE64.contains(&byte))
+    {
+        return Err("NIP-44 payload is not base64".to_owned());
+    }
+    Ok(())
+}
+
 pub fn decrypt(payload: &str, conversation_key: &[u8; 32]) -> Result<String, String> {
     if payload.starts_with('#') {
         return Err("NIP-44 payload encoding is unsupported".to_owned());
