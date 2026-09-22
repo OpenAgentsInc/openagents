@@ -37,8 +37,10 @@ integration beneath it.
 | [Delivery and sources](delivery-and-sources.md) | Implementation slices, current gaps, source inventory, and design provenance |
 
 [Watch a Voyager episode live](voyager-runbook.md) is the operational
-runbook for the shipped `crates/voyager` slice; the documents above are
-the proposed profile.
+runbook for the shipped `crates/voyager` slice, and
+[Operate the arena episode](arena-operations.md) covers the multi-agent
+combat world — services, launch discipline, debugging, and traps; the
+documents above are the proposed profile.
 
 ## The loop
 

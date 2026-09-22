@@ -268,7 +268,13 @@ pub fn run_ensemble(
             log: Mutex::new(log),
             decision_model: door
                 .as_ref()
-                .map(|door| door.model().to_string())
+                .map(|door| {
+                    door.model()
+                        .split('-')
+                        .next()
+                        .unwrap_or(door.model())
+                        .to_string()
+                })
                 .unwrap_or_else(|| "the model".to_string()),
             door: Mutex::new(door),
             asks: Mutex::new(None),
