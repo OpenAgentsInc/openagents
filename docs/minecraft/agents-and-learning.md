@@ -140,11 +140,14 @@ but it is not autonomous skill discovery. A saved prose memory is not an
 executable skill. A successful run on the original task is not evidence of
 generalization.
 
-The issue's Rhai-versus-Starlark interpreter spike remains unresolved. Select a
-runtime only after proving instruction/fuel limits, wall-time cancellation,
-memory and output bounds, typed argument validation, and isolation from host
-filesystem, process, network, signing keys, and server control. Every effect
-must pass through the admitted adapter. A script imports only pinned interfaces.
+The issue's interpreter spike resolved to vendored Lua 5.4 through `mlua` —
+Rhai was rejected when its non-optional `smartstring` dependency carried an
+unmaintained advisory, and Starlark's tree pulled `derivative` for the same
+finding. The engine proves instruction limits through an execution hook,
+wall-time cancellation on a worker thread, a Lua memory cap, and a host
+vocabulary that is the only path to effects: a script reaches no filesystem,
+process, network, signing keys, or server control, and every call crosses as
+one bound-checked bridge op.
 Do not execute arbitrary generated Rust in the host process.
 
 Store the skill source, interface, parameter schema, provenance, dependency

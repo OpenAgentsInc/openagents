@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use jev::{Choice, Questions, RetryPolicy, SystemOneRequest};
+use jev::{Choice, Noul, Questions, RetryPolicy, SystemOneRequest};
 use serde_json::{Map, Value, json};
 
 use crate::error::{Error, Result};
@@ -34,6 +34,10 @@ pub struct Door {
     dir: PathBuf,
     /// How many calls this door has answered.
     calls: u64,
+    /// Whether the door is a loopback endpoint — the record's
+    /// `transport` reads `local-http` for one and `live-http` for the
+    /// remote API, so a claim never names a transport it did not use.
+    local: bool,
 }
 
 /// What a `choice` question returned, decoded for the caller.
@@ -45,6 +49,15 @@ pub struct Picked {
     pub confidence: f64,
     /// Every option's probability.
     pub probabilities: Map<String, Value>,
+    /// The recorded request and answer.
+    pub record: PathBuf,
+}
+
+/// What a `noul` question returned, decoded for the caller.
+#[derive(Clone, Debug)]
+pub struct Judged {
+    /// The probability the condition holds.
+    pub probability: f64,
     /// The recorded request and answer.
     pub record: PathBuf,
 }
@@ -66,6 +79,7 @@ impl Door {
             model: model.to_string(),
             dir: dir.as_ref().to_path_buf(),
             calls: 0,
+            local: true,
         })
     }
 
@@ -87,12 +101,94 @@ impl Door {
             model: model.to_string(),
             dir: dir.as_ref().to_path_buf(),
             calls: 0,
+            local: false,
         })
     }
 
     /// The model this door asks — `jev-latest`, `kev-latest`, and so on.
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// One `POST /v1/systemone` exchange and its record file. The
+    /// question set is the caller's — `choose` and `verify` both land
+    /// here so every decision the episode makes keeps the same
+    /// evidence shape.
+    fn call(
+        &mut self,
+        state: &Value,
+        questions: Questions,
+        purpose: &str,
+    ) -> Result<(jev::SystemOneResponse, PathBuf)> {
+        // A `busy` answer means a forward is computing, not that the
+        // door is down — wait it out rather than fail the episode.
+        let retry = RetryPolicy {
+            max_retries: 8,
+            backoff_initial: Duration::from_secs(1),
+            backoff_max: Duration::from_secs(15),
+            budget: Some(Duration::from_secs(360)),
+            ..RetryPolicy::default()
+        };
+        let request = SystemOneRequest::new(state.clone(), questions)
+            .model(self.model.clone())
+            // CPU inference runs tens of seconds, and concurrent asks
+            // queue behind each other — two guild forwards can hold a
+            // small door for minutes. The SDK's ten-second default
+            // abandons a healthy answer mid-flight.
+            .timeout(Duration::from_secs(240))
+            .retry(retry);
+        let body = request
+            .body(&self.model)
+            .map_err(|error| Error::decision(format!("request: {error}")))?;
+        let started = std::time::Instant::now();
+        let response = self.client.system_one(request);
+        let milliseconds = started.elapsed().as_millis() as u64;
+        self.calls += 1;
+        let record = self.dir.join(format!("decision-{}.json", self.calls));
+        let response = match response {
+            Ok(response) => response,
+            Err(error) => {
+                // A call that got no answer is still a call: the record
+                // holds the request, the wait, and the error, so a lost
+                // reply leaves evidence instead of silence.
+                std::fs::write(
+                    &record,
+                    serde_json::to_vec_pretty(&json!({
+                        "purpose": purpose,
+                        "transport": if self.local { "local-http" } else { "live-http" },
+                        "milliseconds": milliseconds,
+                        "request": body,
+                        "error": error.to_string(),
+                    }))?,
+                )?;
+                return Err(Error::decision(format!("{error}")));
+            }
+        };
+        // The raw body is the evidence: the answers and probabilities
+        // exactly as the door sent them, with the call's own latency —
+        // the evidence renderer reads it for the demo's decision-time
+        // metric.
+        let raw = response.raw();
+        let raw_body: Value =
+            serde_json::from_slice(&raw.bytes).unwrap_or_else(|_| json!({"text": raw.text()}));
+        std::fs::write(
+            &record,
+            serde_json::to_vec_pretty(&json!({
+                "purpose": purpose,
+                // Direct `POST /v1/systemone` HTTP, not a CJ relay
+                // transport — the coverage record names it so.
+                "transport": if self.local { "local-http" } else { "live-http" },
+                "milliseconds": milliseconds,
+                "request": body,
+                "response": {
+                    "status": raw.status,
+                    "request_id": response.request_id(),
+                    "model": response.model,
+                    "body": raw_body,
+                },
+            }))?,
+        )?;
+        Ok((response, record))
     }
 
     /// Asks one `choice` question over `state` and returns the picked
@@ -116,52 +212,8 @@ impl Door {
         for (name, description) in options {
             choice = choice.option(name.clone(), description.clone());
         }
-        let questions = Questions::new().with("pick", choice);
-        // A `busy` answer means a forward is computing, not that the
-        // door is down — wait it out rather than fail the episode.
-        let retry = RetryPolicy {
-            max_retries: 8,
-            backoff_initial: Duration::from_secs(1),
-            backoff_max: Duration::from_secs(15),
-            budget: Some(Duration::from_secs(180)),
-            ..RetryPolicy::default()
-        };
-        let request = SystemOneRequest::new(state.clone(), questions)
-            .model(self.model.clone())
-            // CPU inference runs tens of seconds; the SDK's ten-second
-            // default abandons a healthy answer mid-flight.
-            .timeout(Duration::from_secs(120))
-            .retry(retry);
-        let body = request
-            .body(&self.model)
-            .map_err(|error| Error::decision(format!("request: {error}")))?;
-        let response = self
-            .client
-            .system_one(request)
-            .map_err(|error| Error::decision(format!("{error}")))?;
-        self.calls += 1;
-        let record = self.dir.join(format!("decision-{}.json", self.calls));
-        // The raw body is the evidence: the answers and probabilities
-        // exactly as the door sent them.
-        let raw = response.raw();
-        let raw_body: Value =
-            serde_json::from_slice(&raw.bytes).unwrap_or_else(|_| json!({"text": raw.text()}));
-        std::fs::write(
-            &record,
-            serde_json::to_vec_pretty(&json!({
-                "purpose": purpose,
-                // Local `POST /v1/systemone` HTTP, not a CJ relay
-                // transport — the coverage record names it so.
-                "transport": "local-http",
-                "request": body,
-                "response": {
-                    "status": raw.status,
-                    "request_id": response.request_id(),
-                    "model": response.model,
-                    "body": raw_body,
-                },
-            }))?,
-        )?;
+        let (response, record) =
+            self.call(&state, Questions::new().with("pick", choice), purpose)?;
         let picked = response
             .choice("pick")
             .map_err(|error| Error::decision(format!("answer: {error}")))?;
@@ -183,6 +235,29 @@ impl Door {
                 .iter()
                 .map(|(name, probability)| (name.clone(), json!(probability)))
                 .collect(),
+            record,
+        })
+    }
+
+    /// Asks one `noul` question over `state` — the critic's call:
+    /// the probability that a stated condition holds, with the same
+    /// recorded evidence a `choice` leaves.
+    ///
+    /// # Errors
+    ///
+    /// The door must answer a typed `noul` answer; a refusal is an
+    /// error carrying the door's code.
+    pub fn verify(&mut self, state: Value, instructions: &str, purpose: &str) -> Result<Judged> {
+        let (response, record) = self.call(
+            &state,
+            Questions::new().with("verdict", Noul::new(instructions)),
+            purpose,
+        )?;
+        let answer = response
+            .noul("verdict")
+            .map_err(|error| Error::decision(format!("answer: {error}")))?;
+        Ok(Judged {
+            probability: answer.noul,
             record,
         })
     }
@@ -278,5 +353,28 @@ mod tests {
             record["response"]["body"]["answers"]["pick"]["probabilities"]["beta"],
             0.67
         );
+    }
+
+    /// Against a live local door (`VOYAGER_TEST_DOOR_URL`): the same
+    /// `choose` the ensemble posts, so a silent fallback in a run can be
+    /// reproduced and read directly.
+    #[test]
+    #[ignore]
+    fn live_door_choose() {
+        let url = std::env::var("VOYAGER_TEST_DOOR_URL").expect("VOYAGER_TEST_DOOR_URL");
+        let dir = tempfile::tempdir().expect("dir");
+        let mut door = Door::local(&url, "kev-latest", dir.path()).expect("door");
+        let picked = door
+            .choose(
+                json!({"guild": "ferro"}),
+                "Which contested deposit should this guild work first?",
+                &[
+                    ("alpha".to_string(), "the first".to_string()),
+                    ("beta".to_string(), "the second".to_string()),
+                ],
+                "live decision",
+            )
+            .expect("choose");
+        assert!(picked.record.is_file());
     }
 }

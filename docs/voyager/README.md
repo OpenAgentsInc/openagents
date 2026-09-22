@@ -1,9 +1,9 @@
 # Voyager
 
 An open-ended agent that lives in a Minecraft world, after the Voyager
-paper (arXiv:2305.16291). Phase 1 is the vertical slice: a supervised
-local server, a bot that can join it, and an episode that surveys,
-explores, and gathers — everything bounded, everything traced.
+paper (arXiv:2305.16291): a curriculum proposes tasks, programs run as
+bounded code-as-action, a critic checks what each attempt did, and what
+passes banks into a persistent skill library.
 
 ## What runs where
 
@@ -40,10 +40,11 @@ cargo run -p voyager --bin voyager -- run --world meadow
 ```
 
 The episode boots a local server for `worlds/meadow.json`, joins the bot
-as an offline player, and walks its curriculum: survey the spawn area,
-explore north, survey again, gather wood, and report. The bot narrates
-in game chat as it goes — `say` is a first-class action, so watching the
-world means watching the agent work.
+as an offline player, and runs the curriculum loop: for each task —
+survey the spawn area, explore north, gather wood — resolve a program,
+run it through the bounded interpreter, check it against the critic, and
+bank what passes. The bot narrates in game chat as it goes — `say` is a
+first-class action, so watching the world means watching the agent work.
 
 A run leaves everything in `~/.openagents/voyager/runs/<stamp>-<world>/`:
 
@@ -51,6 +52,15 @@ A run leaves everything in `~/.openagents/voyager/runs/<stamp>-<world>/`:
 - `server.log` — the server's own log
 - `trace.jsonl` — the ATIF trace: every bridge exchange as a `Call`,
   every event the bot reported as a step
+- `decisions/` — the decision door's recorded exchanges, when a
+  `curriculum.decisions` section points at one
+- `program-N.json` — the `act` door's requests and answers, when one is
+  wired
+
+`voyager evidence <run-dir>` renders a finished run into
+`coverage.json` (the demo's protocol matrix), `metrics.json` (decision
+and bridge-call latency, ledger sums), and `evidence.md` (the readable
+causal chain).
 
 To watch live, join the server with any Minecraft client at
 `127.0.0.1:25565` while the episode runs, or read the trace.
@@ -89,8 +99,52 @@ Answers:
 The action vocabulary is deliberately typed and bounded. The paper's
 agents emit executable code; the host here decides what may run, which is
 the seam the workspace's execution model already asks for. Generated
-actions — when they come — are proposed text the host admits into this
-vocabulary, never text that runs itself.
+programs are proposed text the interpreter admits into this vocabulary,
+never text that runs itself.
+
+## Programs and the interpreter
+
+A task's program is Lua — vendored Lua 5.4 through `mlua` — run inside a
+bounded engine: the paper's code-as-action claim with the host owning the
+vocabulary. Scripts call the same ops the bridge speaks, under
+script-facing names:
+`say`, `walk` (the bridge's `goto`; `goto` is a Lua keyword),
+`explore`, `mine`, `mine_at`, `players`, `state`, `block_at`, `wait`,
+and `feedback`, which drains the bot's narration. Every engine bound is
+set: operations, call depth, string and data size, and wall seconds, and
+every host call is one traced, bound-checked bridge exchange.
+
+A program comes from one of four places, in order:
+
+1. `skill` — a banked skill by `name` or `name@version`, looked up in
+   `VOYAGER_SKILL_DIR`, the repository's `skills/`, then
+   `~/.openagents/voyager/skills`.
+2. `script` — inline source in the task itself.
+3. Retrieval — the decision door answers one `choice` question over the
+   banked skills' descriptions, with `none` always an option.
+4. The `act` door — a `curriculum.act` section names an Open Responses
+   door (`POST {url}/v1/responses`) that writes the program from the
+   goal and the state, and rewrites it when the interpreter faults. A
+   task gets at most four attempts — the paper's self-correction loop —
+   and each write lands beside the decisions as `program-N.json`.
+
+A task that can get none of those fails as unwritten rather than
+improvising.
+
+## The critic and the skill library
+
+A task's `verify` spec decides success: `moved` and `inventory` read
+before/after deltas, `block_at` reads a named position, `ran` records
+completion honestly, and `noul` asks the decision door over the
+before/after state where no mechanical rule covers the goal. The verdict
+and its evidence land in the trace either way.
+
+A passing task marked `bank` writes its program into the skill store: a
+digested, versioned record under `~/.openagents/voyager/skills/`
+(`VOYAGER_SKILL_DIR` overrides). Rebanking a name versions up; a record
+whose bytes moved fails its digest. A skill that proves itself can
+promote into the repository's `skills/` directory the way a question set
+lives in `questions/` — files before events, digested as a whole.
 
 ## World manifests
 
@@ -121,6 +175,17 @@ A manifest can go further and enroll a roster. The optional sections:
   gamerules: world edits, `forceload`, `setworldspawn`. Gamerule names
   are the 1.21.11 snake_case forms (`advance_time`, `spawn_mobs`), and
   edits outside the spawn chunks need `forceload` first.
+- `curriculum` — the solo episode's task source: `tasks` declares the
+  list verbatim (each with `id`, `goal`, an optional `script` or
+  `skill`, a `verify` spec, and `bank`), `generate` names the Open
+  Responses door that proposes what comes next with a warm-up schedule,
+  `act` names the door that writes programs, `decisions` names the
+  `POST /v1/systemone` door for retrieval and `noul` verdicts, and
+  `max_tasks` bounds the episode's task count. A world with no
+  `curriculum` section runs the built-in starter tasks.
+- `scenario` — `quest` (the default) runs the economy and coding-quest
+  chain with no combat; `war` adds the skirmish the `combat` section
+  declares. `--scenario` on the command line overrides the manifest.
 
 ## The arena
 
@@ -130,6 +195,15 @@ guild, a private iron deposit per guild, a contested diamond deposit,
 an emerald deposit across a trench, forges, and a quest board.
 `voyager run --world arena` picks the ensemble runner instead of the
 solo curriculum: one `mc-bridge` child per member, all in one world.
+
+Two scenarios share the arena. The default `quest` scenario — the coder
+scenario — runs the mining economy, the guild channels, the decision
+door, and the coding quest; the `combat` section is inert. The `war`
+scenario keeps everything `quest` runs and adds the skirmish: enemy
+scans between work stretches, model-called engagements, rallies, and
+the round-robin patrol the combat section declares. The manifest can
+pick either, and `--scenario quest|war` on the command line overrides
+the manifest.
 
 Every member joins under its enrolled username, walks to camp, digs its
 guild's deposit, and then one member per guild swings at each contested
@@ -246,21 +320,23 @@ identities, and a trace can verify a signature without a keystore. This
 is the arena's key story, not a production one — outside operators need
 real key custody, a later NIP-CAP question.
 
-## What phase 1 does not do
+## What is still not done
 
-- **The model orders work; it does not choose it.** Where a decision
-  door answers, a `choice` question picks among already-admitted
-  deposits; the task list, the action vocabulary, and the mechanical
-  critic stay the host's. `coder::generate`-driven task proposals come
-  with the curriculum phase.
 - **The quest solver is deterministic.** `voyager-quest-builtin/1`
   proves the reserve-execute-verify-integrate chain end to end, but it
   knows the fixture's answer; a `coder`-door solver is the recorded
   upgrade, and execution records name whichever solver ran.
-- **No skill library.** `seen` block names are remembered inside an
-  episode; nothing is banked between episodes yet.
-- **No Gym suite.** The trace is the evidence; the suites that score it
-  come with the measurement phase.
+- **Decisions stay local.** `local-http` is the recorded transport; a
+  NIP-CJ decision worker would carry the same request bodies over the
+  relay, and the coverage matrix marks the CJ rows `absent` until one
+  runs.
+- **No embeddings.** Retrieval is a `choice` over the banked
+  descriptions; the paper's ada-002 index is a measured upgrade, and
+  the gym suite's top-5 retrieval accuracy is where it would show.
+- **No remote worlds.** Servers are local and supervised; a remote
+  world is a different admission story, not a flag.
 
-The proposal for the rest lives in
-[issue #9528](https://github.com/OpenAgentsInc/openagents/issues/9528).
+The issue this closes proposed the shape in
+[#9528](https://github.com/OpenAgentsInc/openagents/issues/9528); the
+guild demo's evidence bar is
+[#9529](https://github.com/OpenAgentsInc/openagents/issues/9529).

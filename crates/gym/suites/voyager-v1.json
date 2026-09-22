@@ -1,0 +1,607 @@
+{
+ "schema": "openagents.gym.suite.v1",
+ "name": "voyager-v1",
+ "created": "2026-09-22",
+ "tier": "scored",
+ "gate": "probability-v2",
+ "questions": "voyager-v1",
+ "description": "The two decision calls a Voyager episode makes, asked over states built the way crates/voyager builds them. `skill` items give a goal and a candidate set of banked skills \u2014 the retrieval that decides whether a task reuses code or writes new. `verdict` items give a goal with before/after agent states \u2014 the critic's noul check where no mechanical spec applies. Each item pins the meadow world digest and the task id in its state so a row is attributable to a declared task. The paper's ablations map to suite variants by name: no-curriculum runs a fixed list (the suite arm), no-skill-library never retrieves (none), no-critic accepts ran-only, and manual-curriculum is this suite's declared arm; a variant suite gets its own id and digest rather than an item flag.",
+ "sampling": {
+  "skill_items": 12,
+  "verdict_items": 6,
+  "partitions": [
+   "calibration",
+   "development",
+   "locked"
+  ],
+  "world": "worlds/meadow.json",
+  "label_review": "none yet"
+ },
+ "items": [
+  {
+   "id": "skill/meadow#01",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "gather wood",
+    "goal": "Dig log blocks until the inventory holds them.",
+    "candidates": [
+     {
+      "name": "gather-wood@1",
+      "description": "find nearby log blocks and mine three"
+     },
+     {
+      "name": "walk-home@1",
+      "description": "walk back to the camp position"
+     },
+     {
+      "name": "survey@1",
+      "description": "read the world and say what is nearby"
+     }
+    ]
+   },
+   "truth": "gather-wood@1",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "skill/meadow#02",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "explore north",
+    "goal": "Walk north and see what the ground reveals.",
+    "candidates": [
+     {
+      "name": "gather-wood@1",
+      "description": "find nearby log blocks and mine three"
+     },
+     {
+      "name": "explore@1",
+      "description": "walk a compass direction for a stretch"
+     },
+     {
+      "name": "survey@1",
+      "description": "read the world and say what is nearby"
+     }
+    ]
+   },
+   "truth": "explore@1",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "skill/meadow#03",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "smelt iron",
+    "goal": "Put iron ore in the furnace and take out ingots.",
+    "candidates": [
+     {
+      "name": "gather-wood@1",
+      "description": "find nearby log blocks and mine three"
+     },
+     {
+      "name": "walk-home@1",
+      "description": "walk back to the camp position"
+     },
+     {
+      "name": "survey@1",
+      "description": "read the world and say what is nearby"
+     }
+    ]
+   },
+   "truth": "none",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "skill/meadow#04",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "return to camp",
+    "goal": "Walk back to where the guild keeps its forge.",
+    "candidates": [
+     {
+      "name": "gather-wood@1",
+      "description": "find nearby log blocks and mine three"
+     },
+     {
+      "name": "walk-home@1",
+      "description": "walk back to the camp position"
+     },
+     {
+      "name": "mine-iron@2",
+      "description": "dig iron ore at the private deposit"
+     }
+    ]
+   },
+   "truth": "walk-home@1",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "skill/meadow#05",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "stock the chest",
+    "goal": "Move every log the agent holds into the camp chest.",
+    "candidates": [
+     {
+      "name": "gather-wood@1",
+      "description": "find nearby log blocks and mine three"
+     },
+     {
+      "name": "walk-home@1",
+      "description": "walk back to the camp position"
+     },
+     {
+      "name": "survey@1",
+      "description": "read the world and say what is nearby"
+     }
+    ]
+   },
+   "truth": "none",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "skill/meadow#06",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "dig iron",
+    "goal": "Mine the guild's private iron deposit.",
+    "candidates": [
+     {
+      "name": "mine-iron@1",
+      "description": "dig iron ore at the camp deposit"
+     },
+     {
+      "name": "mine-iron@2",
+      "description": "dig iron ore at the private deposit, then walk home"
+     },
+     {
+      "name": "gather-wood@1",
+      "description": "find nearby log blocks and mine three"
+     }
+    ]
+   },
+   "truth": "mine-iron@2",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the newest skill that covers the goal; a newer version supersedes"
+  },
+  {
+   "id": "skill/meadow#07",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "survey after exploring",
+    "goal": "Read what the walk revealed around the new position.",
+    "candidates": [
+     {
+      "name": "survey@1",
+      "description": "read the world and say what is nearby"
+     },
+     {
+      "name": "gather-wood@1",
+      "description": "find nearby log blocks and mine three"
+     },
+     {
+      "name": "explore@1",
+      "description": "walk a compass direction for a stretch"
+     }
+    ]
+   },
+   "truth": "survey@1",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "skill/meadow#08",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "cross the bridge",
+    "goal": "Walk the opened bridge to the far camp.",
+    "candidates": [
+     {
+      "name": "walk-home@1",
+      "description": "walk back to the camp position"
+     },
+     {
+      "name": "survey@1",
+      "description": "read the world and say what is nearby"
+     },
+     {
+      "name": "mine-iron@2",
+      "description": "dig iron ore at the private deposit"
+     }
+    ]
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "skill/meadow#09",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "gather wood again",
+    "goal": "Hold three more log blocks.",
+    "candidates": [
+     {
+      "name": "gather-wood@1",
+      "description": "find nearby log blocks and mine three"
+     },
+     {
+      "name": "gather-wood@2",
+      "description": "find nearby log blocks, mine them, and stack them in the chest"
+     },
+     {
+      "name": "walk-home@1",
+      "description": "walk back to the camp position"
+     }
+    ]
+   },
+   "truth": "gather-wood@2",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the newest skill that covers the goal; a newer version supersedes"
+  },
+  {
+   "id": "skill/meadow#10",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "defend the claim",
+    "goal": "Stand at the contested deposit and swing at intruders.",
+    "candidates": [
+     {
+      "name": "mine-iron@2",
+      "description": "dig iron ore at the private deposit"
+     },
+     {
+      "name": "walk-home@1",
+      "description": "walk back to the camp position"
+     },
+     {
+      "name": "survey@1",
+      "description": "read the world and say what is nearby"
+     }
+    ]
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "skill/meadow#11",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "head east",
+    "goal": "Walk east for a stretch and look around.",
+    "candidates": [
+     {
+      "name": "explore@1",
+      "description": "walk a compass direction for a stretch"
+     },
+     {
+      "name": "walk-home@1",
+      "description": "walk back to the camp position"
+     }
+    ]
+   },
+   "truth": "explore@1",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "skill/meadow#12",
+   "family": "skill",
+   "kind": "choice",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "craft planks",
+    "goal": "Turn the held logs into planks.",
+    "candidates": [
+     {
+      "name": "gather-wood@2",
+      "description": "find nearby log blocks, mine them, and stack them"
+     },
+     {
+      "name": "survey@1",
+      "description": "read the world and say what is nearby"
+     }
+    ]
+   },
+   "truth": "none",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the skill whose description covers the goal, or none when none does"
+  },
+  {
+   "id": "verdict/meadow#01",
+   "family": "verdict",
+   "kind": "noul",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "gather wood",
+    "goal": "Dig log blocks until the inventory holds them.",
+    "before": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {
+      "minecraft:dirt": 2
+     },
+     "nearby_blocks": [
+      "minecraft:oak_log",
+      "minecraft:dirt"
+     ]
+    },
+    "after": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {
+      "minecraft:dirt": 2,
+      "minecraft:oak_log": 3
+     },
+     "nearby_blocks": [
+      "minecraft:oak_log",
+      "minecraft:dirt"
+     ]
+    },
+    "blocks_read": []
+   },
+   "truth": "yes",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "yes when the after state shows the goal's evidence \u2014 items held, blocks placed, ground covered \u2014 and no otherwise"
+  },
+  {
+   "id": "verdict/meadow#02",
+   "family": "verdict",
+   "kind": "noul",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "gather wood",
+    "goal": "Dig log blocks until the inventory holds them.",
+    "before": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {},
+     "nearby_blocks": [
+      "minecraft:oak_log"
+     ]
+    },
+    "after": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {},
+     "nearby_blocks": [
+      "minecraft:dirt"
+     ]
+    },
+    "blocks_read": []
+   },
+   "truth": "no",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "yes when the after state shows the goal's evidence \u2014 items held, blocks placed, ground covered \u2014 and no otherwise"
+  },
+  {
+   "id": "verdict/meadow#03",
+   "family": "verdict",
+   "kind": "noul",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "explore north",
+    "goal": "Walk north and see what the ground reveals.",
+    "before": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {},
+     "nearby_blocks": [
+      "minecraft:grass_block"
+     ]
+    },
+    "after": {
+     "position": [
+      0,
+      64,
+      -60
+     ],
+     "inventory": {},
+     "nearby_blocks": [
+      "minecraft:oak_log",
+      "minecraft:birch_log"
+     ]
+    },
+    "blocks_read": []
+   },
+   "truth": "yes",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "yes when the after state shows the goal's evidence \u2014 items held, blocks placed, ground covered \u2014 and no otherwise"
+  },
+  {
+   "id": "verdict/meadow#04",
+   "family": "verdict",
+   "kind": "noul",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "explore north",
+    "goal": "Walk north and see what the ground reveals.",
+    "before": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {},
+     "nearby_blocks": [
+      "minecraft:grass_block"
+     ]
+    },
+    "after": {
+     "position": [
+      1,
+      64,
+      -2
+     ],
+     "inventory": {},
+     "nearby_blocks": [
+      "minecraft:grass_block"
+     ]
+    },
+    "blocks_read": []
+   },
+   "truth": "no",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "yes when the after state shows the goal's evidence \u2014 items held, blocks placed, ground covered \u2014 and no otherwise"
+  },
+  {
+   "id": "verdict/meadow#05",
+   "family": "verdict",
+   "kind": "noul",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "place the plank",
+    "goal": "Leave an oak plank at the marked position.",
+    "before": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {
+      "minecraft:oak_planks": 4
+     },
+     "nearby_blocks": [
+      "minecraft:dirt"
+     ]
+    },
+    "after": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {
+      "minecraft:oak_planks": 3
+     },
+     "nearby_blocks": [
+      "minecraft:dirt"
+     ]
+    },
+    "blocks_read": [
+     {
+      "position": [
+       1,
+       64,
+       -5
+      ],
+      "kind": "minecraft:oak_planks"
+     }
+    ]
+   },
+   "truth": "yes",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "yes when the after state shows the goal's evidence \u2014 items held, blocks placed, ground covered \u2014 and no otherwise"
+  },
+  {
+   "id": "verdict/meadow#06",
+   "family": "verdict",
+   "kind": "noul",
+   "state": {
+    "world": "sha256:meadow",
+    "task": "place the plank",
+    "goal": "Leave an oak plank at the marked position.",
+    "before": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {
+      "minecraft:oak_planks": 4
+     },
+     "nearby_blocks": [
+      "minecraft:dirt"
+     ]
+    },
+    "after": {
+     "position": [
+      0,
+      64,
+      0
+     ],
+     "inventory": {
+      "minecraft:oak_planks": 4
+     },
+     "nearby_blocks": [
+      "minecraft:dirt"
+     ]
+    },
+    "blocks_read": [
+     {
+      "position": [
+       1,
+       64,
+       -5
+      ],
+      "kind": "minecraft:dirt"
+     }
+    ]
+   },
+   "truth": "no",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "yes when the after state shows the goal's evidence \u2014 items held, blocks placed, ground covered \u2014 and no otherwise"
+  }
+ ],
+ "digest": "918a127359b8f102503cb01cc4fdd64002d34aedf70c29e002ac0758f8e957da"
+}

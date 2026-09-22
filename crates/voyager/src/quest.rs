@@ -285,6 +285,12 @@ pub fn verify(fixture: &Path, verify_dir: &Path, patch: &Path, dir: &Path) -> Re
 fn run_bounded(work: &Path, argv: &[&str], log: &Path) -> Result<supervise::Ending> {
     let mut command = Command::new(argv[0]);
     command.args(&argv[1..]).current_dir(work);
+    // The caller's target dir must not leak into the check: a shared
+    // CARGO_TARGET_DIR can hand a stale, passing artifact to a patch
+    // that never built. The fixture copy builds in its own target/.
+    command
+        .env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET_DIR");
     let out = std::fs::File::create(log)
         .map_err(|error| Error::episode(format!("{}: {error}", log.display())))?;
     let err = out

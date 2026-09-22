@@ -496,6 +496,26 @@ mod tests {
     }
 
     #[test]
+    fn competing_guilds_share_one_award_per_position() {
+        // The contested-deposit case: both guilds dig the same block
+        // and the first claim wins — the loser's award folds to
+        // Duplicate and no second credit lands.
+        let dir = tempfile::tempdir().unwrap();
+        let mut ledger = Ledger::open(dir.path().join("ledger.jsonl")).unwrap();
+        let pos = [0, 0, 0];
+        assert_eq!(
+            ledger.award("ferro", "ferro_a", "diamond", pos, 5).unwrap(),
+            Awarded::Recorded
+        );
+        assert_eq!(
+            ledger.award("lumen", "lumen_b", "diamond", pos, 5).unwrap(),
+            Awarded::Duplicate
+        );
+        assert_eq!(ledger.balance("ferro").awarded, 5);
+        assert_eq!(ledger.balance("lumen").awarded, 0);
+    }
+
+    #[test]
     fn settle_past_the_hold_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let mut ledger = Ledger::open(dir.path().join("ledger.jsonl")).unwrap();

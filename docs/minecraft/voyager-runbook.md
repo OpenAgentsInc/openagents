@@ -35,19 +35,30 @@ cargo run -p voyager -- run --world meadow
 
 The runner boots a fresh server for `worlds/meadow.json`, waits for the
 vanilla `Done` line, joins the bot as an offline player named `voyager`,
-and works a fixed curriculum: survey the spawn area, explore, gather
-wood, report. Episodes are bounded by the manifest (`max_actions`,
-`max_seconds`); this one finishes in a few minutes.
+and works the manifest's curriculum: survey the spawn area, explore
+north, gather wood — each task a bounded program through the
+interpreter, checked by the critic, banked when it passes. Episodes are
+bounded by the manifest (`max_actions`, `max_seconds`); this one
+finishes in a few minutes.
 
 The terminal narrates as it goes — `bot says:` lines are the agent's own
 chat, `bot:` lines are helper feedback, `chat:` lines are what the
-server saw.
+server saw, and `task:` lines are the curriculum proposing work.
 
 `cargo run -p voyager -- run --world arena` runs the multi-agent episode
 instead: four enrolled bots in two guilds on a flat world, mining
 registered deposits for ledger credits. The run directory gains a
 `ledger.jsonl` alongside the trace, and the spectator advice below
 works the same — there is just more to watch.
+
+The arena runs two scenarios. `quest` — the default, the coder
+scenario — mines, talks, decides, and solves the coding quest with no
+combat. `--scenario war` adds the skirmish the manifest's `combat`
+section declares. To run PvP:
+
+```sh
+cargo run -p voyager -- run --world arena --scenario war
+```
 
 ## Watch in the world
 
@@ -89,12 +100,47 @@ Every run leaves a directory under `~/.openagents/voyager/runs/`:
 - `server.log` — the server's own log
 - `trace.jsonl` — the ATIF trace: every bridge exchange as a `Call`,
   every event the bot reported as a step
+- `decisions/`, `ledger.jsonl`, `quest/` — an ensemble run's decision
+  records, ledger, and quest chain
 
 Watch a run live without a client:
 
 ```sh
 tail -f ~/.openagents/voyager/runs/<stamp>-meadow/trace.jsonl
 ```
+
+## Render the evidence
+
+`voyager evidence` turns a finished run directory into the demo's D4
+record — the coverage matrix, the metrics, and the readable chain:
+
+```sh
+cargo run -p voyager -- evidence ~/.openagents/voyager/runs/<stamp>-arena
+```
+
+It writes `coverage.json`, `metrics.json`, and `evidence.md` beside the
+trace. A coverage row is `demonstrated` only when the artifacts it names
+exist and hold the required evidence; anything else reads `absent`,
+which is an honest gap, not a failure of the renderer.
+
+## Rehearse
+
+`scripts/voyager-rehearse.sh` runs the arena end to end — twice by
+default — and renders each run's evidence as it finishes:
+
+```sh
+./scripts/voyager-rehearse.sh                    # two quest rehearsals
+./scripts/voyager-rehearse.sh --scenario war     # the combat arms
+./scripts/voyager-rehearse.sh --count 3          # more repetitions
+```
+
+Each rehearsal lands in its own run directory with the full artifact
+set. The demo's acceptance bar is two retained rehearsals plus the
+fault checks the crate's tests cover: duplicate and reconnect delivery
+(the ledger dedupes and replays), competing claims (one award per
+position across guilds), unknown holds (unsettled work stays reserved),
+and stop behavior (the supervised server and helpers die with the
+episode).
 
 ## Inspect the aftermath
 

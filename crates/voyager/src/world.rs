@@ -53,10 +53,55 @@ pub struct World {
     /// The coding quest the arena posts. `None` means no quest runs.
     pub quest: Option<QuestSection>,
     /// Guild combat rules. `None` means members pass each other
-    /// peaceably on the contested ground.
+    /// peaceably on the contested ground. The section is only honored
+    /// under the `war` scenario — `quest` ignores it.
     pub combat: Option<CombatSection>,
+    /// The scenario an ensemble episode performs. `quest` — the
+    /// default — runs the economy and coding-quest chain with no
+    /// combat; `war` adds the skirmish the combat section declares.
+    /// `--scenario` on the command line overrides the manifest.
+    pub scenario: Scenario,
+    /// The task curriculum a solo episode runs: a declared task list,
+    /// an automatic `generate` arm behind it, or both. `None` falls
+    /// back to the episode's built-in starter curriculum.
+    pub curriculum: Option<crate::curriculum::CurriculumSection>,
     /// How long one episode may run.
     pub episode: Bounds,
+}
+
+/// What an ensemble episode performs. The solo path does not read this
+/// — a solo world runs its curriculum either way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Scenario {
+    /// The coder scenario: mine for credits, hold them for the quest,
+    /// spend them on a verified patch, open the bridge. Combat sections
+    /// in the manifest are inert — no sweeps, hunts, rallies, or
+    /// patrols.
+    #[default]
+    Quest,
+    /// The war scenario: everything `quest` runs plus the guild
+    /// skirmish — enemy scans between work stretches, model-called
+    /// engagements, rallies, and the round-robin patrol.
+    War,
+}
+
+impl Scenario {
+    /// Parse a `--scenario` value or a manifest's `scenario` field.
+    pub fn named(name: &str) -> Option<Self> {
+        match name {
+            "quest" => Some(Self::Quest),
+            "war" => Some(Self::War),
+            _ => None,
+        }
+    }
+
+    /// The name as it appears in records.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Quest => "quest",
+            Self::War => "war",
+        }
+    }
 }
 
 /// The `minecraft` section: what the server is told at boot.
@@ -398,6 +443,10 @@ struct Manifest {
     #[serde(default)]
     combat: Option<CombatSection>,
     #[serde(default)]
+    scenario: Option<String>,
+    #[serde(default)]
+    curriculum: Option<crate::curriculum::CurriculumSection>,
+    #[serde(default)]
     episode: Bounds,
 }
 
@@ -455,6 +504,16 @@ impl World {
             relay: manifest.relay,
             quest: manifest.quest,
             combat: manifest.combat,
+            scenario: match manifest.scenario.as_deref() {
+                None => Scenario::default(),
+                Some(name) => Scenario::named(name).ok_or_else(|| {
+                    Error::world(format!(
+                        "{}: scenario {name:?} is not quest or war",
+                        path.display()
+                    ))
+                })?,
+            },
+            curriculum: manifest.curriculum,
             episode: manifest.episode,
         };
         world.check()?;

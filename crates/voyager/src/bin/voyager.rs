@@ -24,14 +24,16 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use voyager::episode::{self, Plan};
-use voyager::world::World;
+use voyager::world::{Scenario, World};
 use voyager::{Error, Result};
 
 const USAGE: &str = "usage:
-  voyager run --world <manifest-or-name> [--jar PATH] [--bridge PATH]
+  voyager run --world <manifest-or-name> [--scenario quest|war]
+              [--jar PATH] [--bridge PATH]
               [--java PATH] [--runs DIR] [--port N]
   voyager worlds [DIR]
   voyager keys <username>...
+  voyager evidence <run-dir>
   voyager paths";
 
 fn main() -> ExitCode {
@@ -65,6 +67,13 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("evidence") => match evidence(&args[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("voyager: {error}");
+                ExitCode::FAILURE
+            }
+        },
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -80,6 +89,7 @@ fn run(args: &[String]) -> Result<()> {
     let mut java: Option<PathBuf> = None;
     let mut runs: Option<PathBuf> = None;
     let mut port: u16 = 25565;
+    let mut scenario: Option<Scenario> = None;
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
@@ -88,6 +98,12 @@ fn run(args: &[String]) -> Result<()> {
             "--bridge" => bridge = rest.next().map(PathBuf::from),
             "--java" => java = rest.next().map(PathBuf::from),
             "--runs" => runs = rest.next().map(PathBuf::from),
+            "--scenario" => {
+                let name = rest.next().cloned().unwrap_or_default();
+                scenario = Some(Scenario::named(&name).ok_or_else(|| {
+                    Error::episode(format!("scenario {name:?} is not quest or war"))
+                })?);
+            }
             "--port" => {
                 port = rest
                     .next()
@@ -120,6 +136,7 @@ fn run(args: &[String]) -> Result<()> {
         relay_database: std::env::var("VOYAGER_RELAY_DATABASE_URL")
             .unwrap_or_else(|_| "postgres://127.0.0.1:5432/voyager_relay".to_string()),
         repo: std::env::current_dir()?,
+        scenario,
     };
     // A world that enrolls agents runs the guild loop; a world with a
     // single `agent` runs the solo curriculum.
@@ -149,6 +166,19 @@ fn run(args: &[String]) -> Result<()> {
     } else {
         Err(Error::episode("one or more tasks failed (see above)"))
     }
+}
+
+/// `voyager evidence`: render a run directory into `coverage.json`,
+/// `metrics.json`, and `evidence.md` — the demo's D4 record.
+fn evidence(args: &[String]) -> Result<()> {
+    let Some(dir) = args.first() else {
+        return Err(Error::episode(format!(
+            "evidence needs a run directory\n{USAGE}"
+        )));
+    };
+    let path = voyager::evidence::render(Path::new(dir))?;
+    println!("{}", path.display());
+    Ok(())
 }
 
 /// `voyager keys`: the Nostr pubkey each enrolled username derives. The

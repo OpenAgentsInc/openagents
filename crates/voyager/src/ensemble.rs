@@ -42,7 +42,7 @@ use crate::keys;
 use crate::ledger::{Awarded, Ledger, Reserved};
 use crate::relay::Relay;
 use crate::server::Server;
-use crate::world::{CombatSection, Deposit, Member, Temperament, World};
+use crate::world::{CombatSection, Deposit, Member, Scenario, Temperament, World};
 
 /// Seconds one `mine` chunk call may run — the roaming loop digs a
 /// few blocks per call so scans stay frequent.
@@ -115,6 +115,10 @@ struct Shared<'a> {
     pending: Arc<Mutex<std::collections::HashSet<String>>>,
     /// Task results accumulate here while the legs run in parallel.
     tasks: Mutex<Vec<TaskResult>>,
+    /// The scenario the episode performs: the flag's value, else the
+    /// manifest's, `quest` when neither names one. Combat machinery
+    /// reads through [`Shared::combat`], which is `None` under `quest`.
+    scenario: Scenario,
     /// Skirmish kills per guild — the score every thread adds to.
     kills: Mutex<std::collections::BTreeMap<String, u64>>,
     actions: AtomicUsize,
@@ -279,6 +283,7 @@ pub fn run_ensemble(world: &World, plan: &Plan, progress: impl Fn(&str) + Sync) 
             pending: Arc::new(Mutex::new(std::collections::HashSet::new())),
             intel: Mutex::new(std::collections::HashMap::new()),
             tasks: Mutex::new(Vec::new()),
+            scenario: plan.scenario.unwrap_or(world.scenario),
             kills: Mutex::new(std::collections::BTreeMap::new()),
             actions: AtomicUsize::new(0),
             started: Instant::now(),
@@ -286,7 +291,11 @@ pub fn run_ensemble(world: &World, plan: &Plan, progress: impl Fn(&str) + Sync) 
             progress: &progress,
         },
     };
-    ensemble.note(Source::System, "server ready", json!({"port": plan.port}));
+    ensemble.note(
+        Source::System,
+        "server ready",
+        json!({"port": plan.port, "scenario": ensemble.shared.scenario.as_str()}),
+    );
 
     let result = ensemble.episode();
     ensemble.note(Source::System, "episode over", json!({}));
@@ -366,6 +375,7 @@ impl Ensemble<'_> {
                 let server = Arc::clone(&self.shared.server);
                 let kitted = Arc::clone(&self.shared.kitted);
                 let admins = self.shared.world.admins.clone();
+                let armed = self.shared.combat().is_some();
                 self.agents[index].bridge.set_event_hook(move |event| {
                     if event.event != "chat" {
                         return;
@@ -381,7 +391,7 @@ impl Ensemble<'_> {
                         let mut server = server.lock().expect("the server lock is not poisoned");
                         let _ = server.command(&format!("gamemode creative {name}"));
                     }
-                    let _ = Shared::kit(&server, &kitted, name);
+                    let _ = Shared::kit(&server, &kitted, name, armed);
                 });
             }
             self.call(
@@ -407,7 +417,12 @@ impl Ensemble<'_> {
         // member gets a kit at the gate — any join the event stream
         // already caught is skipped by the kitted set.
         for member in &self.shared.world.agents {
-            Shared::kit(&self.shared.server, &self.shared.kitted, &member.username)?;
+            Shared::kit(
+                &self.shared.server,
+                &self.shared.kitted,
+                &member.username,
+                self.shared.combat().is_some(),
+            )?;
         }
         self.check_membership_boundary(&mut tasks)?;
 
@@ -510,7 +525,7 @@ impl Ensemble<'_> {
             .iter()
             .map(|member| member.guild.as_str())
             .collect();
-        if self.shared.world.combat.is_some() && guilds.len() >= 2 {
+        if self.shared.combat().is_some() && guilds.len() >= 2 {
             let score = {
                 let kills = self
                     .shared
@@ -982,13 +997,19 @@ impl Ensemble<'_> {
         self.shared.note(source, message, extra)
     }
 
-    /// What the episode leaves behind.
+    /// What the episode leaves behind. The solo metrics — attempts,
+    /// banked skills, seen-set, traversal — belong to the curriculum
+    /// loop; an ensemble records its own evidence instead.
     fn report(&self, tasks: Vec<TaskResult>) -> Report {
         Report {
             world: self.shared.world.name.clone(),
             digest: self.shared.world.digest.clone(),
             tasks,
             actions: self.shared.actions.load(Ordering::Relaxed),
+            attempts: 0,
+            banked: Vec::new(),
+            seen: 0,
+            distance: 0.0,
             run_dir: self.shared.run_dir.clone(),
             trace: self.trace.clone(),
         }
@@ -1006,6 +1027,17 @@ impl Leg<'_, '_> {
 }
 
 impl Shared<'_> {
+    /// The combat rules the scenario honors: the manifest's section
+    /// under `war`, `None` under `quest` — every sweep, hunt, rally,
+    /// and patrol reads through here, so the coder scenario keeps the
+    /// whole code path but never arms it.
+    fn combat(&self) -> Option<CombatSection> {
+        self.world
+            .combat
+            .clone()
+            .filter(|_| self.scenario == Scenario::War)
+    }
+
     /// The episode bounds, checked before every exchange.
     fn bounded(&self) -> Result<()> {
         if self.actions.load(Ordering::Relaxed) >= self.world.episode.max_actions as usize {
@@ -1068,16 +1100,17 @@ impl Shared<'_> {
 
     /// The roaming loop every member runs: dig the guild's deposits a
     /// few blocks at a time — the contested deposits too, for the
-    /// first member of each guild — and between every stretch scan for
-    /// enrolled enemies inside the aggro radius. The door decides
-    /// whether a sighting becomes a hunt, so combat breaks out
-    /// wherever paths cross, not on a schedule. When the work runs
-    /// out, the member keeps patrolling the contested ground for the
-    /// round budget.
+    /// first member of each guild — and under the `war` scenario,
+    /// between every stretch scan for enrolled enemies inside the
+    /// aggro radius. The door decides whether a sighting becomes a
+    /// hunt, so combat breaks out wherever paths cross, not on a
+    /// schedule. When the work runs out under `war`, the member keeps
+    /// patrolling the contested ground; under `quest` the leg ends
+    /// with the last deposit and the quest phase owns the clock.
     fn task_work(&self, agent: &mut AgentHandle<'_>) -> Result<()> {
         let guild = agent.member.guild.clone();
         let username = agent.member.username.clone();
-        let combat = self.world.combat.clone();
+        let combat = self.combat();
         let first = self
             .world
             .agents
@@ -1941,14 +1974,15 @@ impl Shared<'_> {
     }
 
     /// Hands the work kit to one player: a diamond pickaxe so ore
-    /// actually drops, a diamond sword so nobody punches bare-handed,
-    /// and a bow with arrows for range. The `kitted` set makes it once
-    /// per episode — the same join line reaches several bots' event
-    /// streams.
+    /// actually drops, and — only when the scenario arms combat — a
+    /// diamond sword and a bow with arrows. The `kitted` set makes it
+    /// once per episode — the same join line reaches several bots'
+    /// event streams.
     fn kit(
         server: &Mutex<Server>,
         kitted: &Mutex<std::collections::HashSet<String>>,
         player: &str,
+        armed: bool,
     ) -> Result<()> {
         if !kitted
             .lock()
@@ -1959,6 +1993,9 @@ impl Shared<'_> {
         }
         let mut server = server.lock().expect("the server lock is not poisoned");
         server.command(&format!("give {player} minecraft:diamond_pickaxe"))?;
+        if !armed {
+            return Ok(());
+        }
         server.command(&format!("give {player} minecraft:diamond_sword"))?;
         server.command(&format!("give {player} minecraft:bow"))?;
         server.command(&format!("give {player} minecraft:arrow 64"))
@@ -2030,9 +2067,26 @@ impl Shared<'_> {
         let guild = agent.member.guild.clone();
         // The ask went out when work started; whatever has landed by
         // now is the answer. Nothing is waited on — a slow door just
-        // leaves the manifest's order.
-        let Some(Ok(picked)) = self.take_answer(key) else {
-            return Ok(deposits);
+        // leaves the manifest's order, and either kind of miss is
+        // recorded rather than silent.
+        let picked = match self.take_answer(key) {
+            Some(Ok(picked)) => picked,
+            Some(Err(error)) => {
+                self.note(
+                    Source::System,
+                    &format!("{guild} decision: the door refused — {error}; manifest order"),
+                    serde_json::json!({"key": key, "error": error}),
+                );
+                return Ok(deposits);
+            }
+            None => {
+                self.note(
+                    Source::System,
+                    &format!("{guild} decision: no answer yet; manifest order"),
+                    serde_json::json!({"key": key}),
+                );
+                return Ok(deposits);
+            }
         };
         self.note(
             Source::System,

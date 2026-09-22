@@ -14,10 +14,46 @@
       "keep_inventory": "true",
       "mob_griefing": "false"
     },
-    "setup_commands": ["time set day", "weather clear"]
+    "setup_commands": [
+      "time set day",
+      "weather clear"
+    ]
   },
   "agent": {
     "username": "voyager"
+  },
+  "curriculum": {
+    "max_tasks": 6,
+    "tasks": [
+      {
+        "id": "survey the spawn area",
+        "goal": "Read the world around spawn and report what is there.",
+        "script": "local s = state() say(\"I see \" .. #s.nearby_blocks .. \" kinds of blocks\")",
+        "verify": {
+          "kind": "ran"
+        }
+      },
+      {
+        "id": "explore north",
+        "goal": "Walk north and see what the ground reveals.",
+        "script": "explore(\"north\", 64)",
+        "verify": {
+          "kind": "moved",
+          "min_blocks": 8.0
+        }
+      },
+      {
+        "id": "gather wood",
+        "goal": "Dig log blocks until the inventory holds them.",
+        "script": "local s = state() local logs = {} for _, block in ipairs(s.nearby_blocks) do if string.find(block, \"_log\", 1, true) then table.insert(logs, block) end end if #logs > 0 then mine(logs, 3) end",
+        "verify": {
+          "kind": "inventory",
+          "item": "_log",
+          "at_least": 1
+        },
+        "bank": true
+      }
+    ]
   },
   "episode": {
     "max_actions": 24,

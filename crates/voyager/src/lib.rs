@@ -3,8 +3,8 @@
 //! The shape follows the Voyager paper (arXiv:2305.16291): an agent lives
 //! in an open-ended environment, proposes its own next task, acts, checks
 //! whether the task finished, and banks what worked as a reusable skill.
-//! Phase 1 builds the load-bearing pieces and leaves the model-driven
-//! halves stubbed behind honest, mechanical stand-ins:
+//! Each half of the loop is a module with an honest mechanical arm and a
+//! model-driven arm:
 //!
 //! - **Environment.** A local Minecraft server is a supervised child
 //!   process ([`server::Server`]): its own process group, a deadline on
@@ -16,34 +16,45 @@
 //!   `swift/lev-bridge` precedent: the product crate orchestrates, the
 //!   helper is a process, never a dependency.
 //! - **Worlds.** A world is a manifest in `worlds/` ([`world::World`]):
-//!   Minecraft version, seed, difficulty, gamerules, and the episode
-//!   bounds, digested by file so two runs are comparable.
-//! - **The agent.** [`episode::run`] walks a small curriculum of tasks —
-//!   survey, explore, gather — and checks each against mechanical
-//!   predicates (inventory deltas, position deltas) rather than claiming
-//!   success. Where the paper's critic is a model call, phase 1 asks the
-//!   world.
-//! - **The record.** Every bridge exchange and every event the bot
-//!   reports is a step in an `atif` log under the run directory, so an
-//!   episode reads back the same way a Coder session does.
-//!
-//! What this crate deliberately does not do yet: generate code with a
-//! model, retrieve skills from an index, or ask a decision model whether
-//! a task succeeded. The bridge's action vocabulary is typed and bounded
-//! — the host owns what may run — and the seams for the model halves are
-//! where `docs/voyager/` says they are.
+//!   Minecraft version, seed, difficulty, gamerules, deposits, economy,
+//!   guild and quest sections, a `scenario` (`quest` by default, `war`
+//!   for the combat arms), a `curriculum` section, and the episode
+//!   bounds — digested by file so two runs are comparable.
+//! - **Curriculum.** [`curriculum::Curriculum`] proposes tasks: the
+//!   manifest's declared list first, then an Open Responses door's
+//!   proposals behind a warm-up schedule. A world with no section runs
+//!   the built-in starter tasks.
+//! - **Programs.** Tasks act through [`interpret`], a bounded Lua
+//!   engine over the bridge's typed ops — the paper's code-as-action
+//!   claim with the host owning the vocabulary. A task's program is its
+//!   own script, a banked [`skills::Skill`], a retrieval the decision
+//!   door picks, or a program the `act` door writes; a fault feeds back
+//!   for repair across [`episode`]'s four-round refinement loop.
+//! - **Critic.** [`critic::Spec`] checks a task: mechanical specs first,
+//!   a `noul` call to the decision door ([`decide::Door`]) where a spec
+//!   names one. A passing task marked `bank` lands in the digested
+//!   [`skills::SkillStore`].
+//! - **The record.** Every exchange and every event lands in an `atif`
+//!   log inside the run directory, beside `server.log`, the ledger, and
+//!   the decisions. [`evidence::render`] turns a finished run into the
+//!   demo's coverage matrix, metrics, and readable chain.
 
 pub mod bridge;
+pub mod critic;
+pub mod curriculum;
 pub mod decide;
 pub mod ensemble;
 pub mod episode;
 pub mod error;
+pub mod evidence;
 pub mod guild;
+pub mod interpret;
 pub mod keys;
 pub mod ledger;
 pub mod quest;
 pub mod relay;
 pub mod server;
+pub mod skills;
 pub mod state;
 pub mod world;
 

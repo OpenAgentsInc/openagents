@@ -74,7 +74,7 @@ shared runtime is absent, record that dependency and narrow the demo honestly.
 | Which Minecraft version and client? | No pair selected; compatibility spike first | Build, protocol actions, cancellation, and reproducible pins |
 | How to attribute ore without new Java product code? | Controlled arena, Rust referee, serialized actions, server observations | Proved attribution fixture; stronger server integration before public admission |
 | Which generation model and real budget? | Configured admitted door; no cost assumed | Known maximum liability, service receipts, explicit operator allocation |
-| Which generated-skill language? | Seed Rust/program skills first | Rhai/Starlark isolation and cancellation spike from #9528 |
+| Which generated-skill language? | Vendored Lua 5.4 through `mlua`; Rhai and Starlark failed the dependency-advisory gate | Skill corpus grows as generated Lua programs bank |
 | Is all guild communication public? | Public plans and summaries in the first relay profile | Tested access-gated transport and disclosure rules for private work |
 | Does winning require a production merge? | No; accepted disposable quest branch | Maintainer-authorized repository integration contract |
 | Can guilds trade or recruit strangers? | No transfers or public enrollment initially | Anti-farming, admission, fairness, and accounting experiments |

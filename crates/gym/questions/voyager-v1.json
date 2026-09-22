@@ -1,0 +1,24 @@
+{
+ "$comment": [
+  "The two decision calls a Voyager episode makes, lifted out of crates/voyager and given names a row can pin. `skill` is the wording SkillStore::retrieve sends: which banked skill fits a goal, with the candidates supplied per item and `none` always an option. `verdict` is the wording the critic's noul spec sends: did the agent accomplish the goal, judged by the before/after state rather than by what was attempted.",
+  "Skill options are per-item because the candidate set is the episode's own store — a suite item carries the candidates it asks over, the way program-selection items carry the programs the host resolved.",
+  "A new wording is a new set, not an edit to this one."
+ ],
+ "schema": "openagents.gym.question_set.v1",
+ "id": "voyager-v1",
+ "suite": "voyager-v1",
+ "questions": {
+  "skill": {
+   "type": "choice",
+   "instructions": "Which banked skill best fits this goal? Answer none when nothing fits.",
+   "options": "supplied",
+   "criteria": {
+    "none": "no banked skill fits"
+   }
+  },
+  "verdict": {
+   "type": "noul",
+   "instructions": "Did the agent accomplish the stated goal? Answer by what the state shows, not what was attempted."
+  }
+ }
+}

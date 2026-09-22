@@ -1,23 +1,35 @@
-//! One episode: server up, bot in, tasks attempted, everything traced.
+//! One episode: server up, bot in, the Voyager loop, everything traced.
 //!
-//! The paper's loop is a curriculum agent proposing tasks, an action
-//! agent writing code, and a critic deciding success. Phase 1 keeps the
-//! loop and swaps the model halves for honest stand-ins:
+//! The paper's loop is a curriculum proposing tasks, an action agent
+//! writing programs, an interpreter running them, and a critic deciding
+//! success — with failed programs fed back for repair and finished ones
+//! banked as skills. Each piece is a module:
 //!
-//! - **Curriculum** is a fixed small program — survey, explore, gather —
-//!   because a deterministic plan is what a harness needs before it can
-//!   judge anything smarter.
-//! - **Actions** are the bridge's typed ops, so what may run is a
-//!   vocabulary the host owns, not generated text.
-//! - **Critic** is mechanical: exploration must move the bot, gathering
-//!   must change the inventory. A task that cannot prove itself fails,
-//!   and the failure is recorded, not smoothed over.
+//! - **Curriculum** — [`crate::curriculum`]: the manifest's declared
+//!   list, an Open Responses door proposing what comes next, or the
+//!   built-in starter tasks. Completed and failed history goes back in
+//!   with the state, the way the paper's curriculum reads it.
+//! - **Programs** — a task's own `script`, a banked `skill` by name, a
+//!   skill the decision door retrieves for the goal, or a program the
+//!   `act` door writes. A task that can get none of those fails as
+//!   *unwritten*, not as silently skipped.
+//! - **Execution** — [`crate::interpret`]: bounded Lua over the
+//!   bridge's typed ops. A fault — parse, runtime, exhausted, timed
+//!   out — feeds the `act` door for a rewrite, up to
+//!   [`REFINE_ROUNDS`] attempts per task, the paper's self-correction
+//!   loop.
+//! - **Critic** — [`crate::critic`]: mechanical specs first, a `noul`
+//!   call to the decision door where a spec names one. The verdict's
+//!   evidence lands in the trace either way.
+//! - **Skills** — [`crate::skills`]: a passing task marked `bank`
+//!   writes its program to the digested store, where later tasks can
+//!   retrieve it.
 //!
 //! Every exchange and every event lands in an `atif` log inside the run
 //! directory, beside `server.log` and the world data — an episode is a
 //! thing a person can inspect afterwards, not a terminal scroll.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -25,20 +37,22 @@ use atif::document::{Call, Outcome, Session, Source, Step};
 use serde_json::{Map, Value, json};
 
 use crate::bridge::{Bridge, Event};
+use crate::critic::{self, Readings};
+use crate::curriculum::{Context, Curriculum, DecisionSection, Responses, Task};
+use crate::decide::Door;
 use crate::error::{Error, Result};
+use crate::interpret::{self, Host, Limits, ScriptError};
 use crate::server::Server;
+use crate::skills::{self, SkillStore};
 use crate::state::AgentState;
-use crate::world::World;
+use crate::world::{Scenario, World};
 
-/// How far an explore task travels before it times out.
-const EXPLORE_SECONDS: u64 = 45;
-/// The blocks a survey scans, in each direction.
+/// The most program attempts one task may spend — the paper's four
+/// rounds of write, run, and repair.
+const REFINE_ROUNDS: u32 = 4;
+/// The blocks a `state` call scans, in each direction.
 const SURVEY_RADIUS: u32 = 24;
-/// How many log blocks the gather task asks for.
-const GATHER_COUNT: u32 = 3;
-/// How long the gather task may take, in all.
-const GATHER_SECONDS: u64 = 120;
-/// Log kinds worth digging, in rough order of usefulness.
+/// Log kinds worth reporting on at the close.
 const LOG_KINDS: [&str; 8] = [
     "oak_log",
     "spruce_log",
@@ -71,6 +85,9 @@ pub struct Plan {
     /// The repository root — a world manifest's relative paths, like a
     /// quest's `fixture`, resolve against it.
     pub repo: PathBuf,
+    /// The `--scenario` override: `Some` wins over the manifest's own
+    /// `scenario` field. A solo world ignores it either way.
+    pub scenario: Option<Scenario>,
 }
 
 /// How one task ended.
@@ -94,6 +111,17 @@ pub struct Report {
     pub tasks: Vec<TaskResult>,
     /// How many bridge calls ran.
     pub actions: usize,
+    /// How many program attempts ran, summed over tasks — the paper's
+    /// "prompting iterations" axis.
+    pub attempts: usize,
+    /// The `name@version` of every skill banked this episode.
+    pub banked: Vec<String>,
+    /// Distinct block kinds `state` reported — the paper's "unique
+    /// items" axis, measured at block granularity.
+    pub seen: usize,
+    /// Horizontal blocks walked, summed over `goto` and `explore`
+    /// answers — the paper's traversal axis.
+    pub distance: f64,
     /// The directory holding the world data, the server log, and the trace.
     pub run_dir: PathBuf,
     /// The ATIF trace file.
@@ -109,7 +137,8 @@ impl Report {
 }
 
 /// A runner holds the live halves of an episode: the server, the bridge,
-/// the trace, and the counters the bounds check.
+/// the trace, the loop's doors and store, and the counters the bounds
+/// check.
 struct Runner<'a> {
     world: &'a World,
     plan: &'a Plan,
@@ -118,18 +147,44 @@ struct Runner<'a> {
     log: atif::log::Log,
     run_dir: PathBuf,
     trace: PathBuf,
+    curriculum: Curriculum,
+    /// The `act` door: writes a task's program and repairs a faulted
+    /// one. `None` means tasks run only what they carry.
+    writer: Option<Responses>,
+    /// The decisions door: skill retrieval and `noul` checks.
+    door: Option<Door>,
+    /// The banked-skill store.
+    store: SkillStore,
+    /// Task ids that passed, in order — curriculum context.
+    completed: Vec<String>,
+    /// Task ids that failed with their endings — curriculum context.
+    failed: Vec<(String, String)>,
+    /// Event texts not yet handed to a script's `feedback()` call —
+    /// the paper's bot narration channel.
+    feedback: VecDeque<String>,
     actions: usize,
+    /// Program attempts over the whole episode.
+    attempts: usize,
+    /// `name@version` banked this episode.
+    banked: Vec<String>,
+    /// Distinct block kinds `state` has reported.
     seen: BTreeSet<String>,
+    /// Horizontal blocks walked.
+    distance: f64,
+    /// Program-generation calls made, for evidence file names.
+    written: u64,
     started: Instant,
     progress: &'a dyn Fn(&str),
 }
 
 /// Runs one episode of `world` under `plan`, narrating to `progress`.
 ///
-/// The sequence is: server ready, bot joined, survey, explore, survey,
-/// gather, report, disconnect. Any fault — a server that will not boot,
-/// a helper that breaks the protocol — stops the episode and is still
-/// traced.
+/// The sequence is: server ready, bot joined, then the curriculum loop
+/// — propose a task, find or write its program, run it through the
+/// bounded interpreter with repair rounds, check it against the
+/// critic, and bank what passed. Any fault — a server that will not
+/// boot, a helper that breaks the protocol — stops the episode and is
+/// still traced.
 ///
 /// # Errors
 ///
@@ -154,6 +209,21 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
     progress("starting the minecraft server");
     let server = Server::start(world, &plan.jar, &plan.java, &server_dir, plan.port)?;
 
+    let section = world.curriculum.as_ref();
+    let curriculum = match section {
+        Some(section) => Curriculum::from_manifest(section)?,
+        None => Curriculum::fallback(),
+    };
+    let writer = section
+        .and_then(|section| section.act.as_ref())
+        .map(Responses::from_manifest)
+        .transpose()?;
+    let door = section
+        .and_then(|section| section.decisions.as_ref())
+        .map(|section| decision_door(section, run_dir.join("decisions")))
+        .transpose()?;
+    let store = SkillStore::open(SkillStore::default_dir())?;
+
     let session = Session::opening(
         &run_dir
             .file_name()
@@ -173,8 +243,19 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
         log,
         run_dir,
         trace,
+        curriculum,
+        writer,
+        door,
+        store,
+        completed: Vec::new(),
+        failed: Vec::new(),
+        feedback: VecDeque::new(),
         actions: 0,
+        attempts: 0,
+        banked: Vec::new(),
         seen: BTreeSet::new(),
+        distance: 0.0,
+        written: 0,
         started: Instant::now(),
         progress: &progress,
     };
@@ -193,8 +274,23 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
     result
 }
 
+/// The decisions door a `curriculum.decisions` section builds — a
+/// loopback URL is a local `kev-serve`; anything else is the live
+/// TypeSafe API and wants its credential.
+fn decision_door(section: &DecisionSection, dir: PathBuf) -> Result<Door> {
+    let model = section.model.as_deref().unwrap_or("kev-latest");
+    let local = ["127.0.0.1", "localhost", "[::1]"]
+        .iter()
+        .any(|host| section.url.contains(host));
+    if local {
+        Door::local(&section.url, model, dir)
+    } else {
+        Door::live(&section.url, model, dir)
+    }
+}
+
 impl Runner<'_> {
-    /// The bounded task loop.
+    /// The bounded curriculum loop.
     fn episode(&mut self) -> Result<Report> {
         let mut tasks = Vec::new();
 
@@ -208,148 +304,263 @@ impl Runner<'_> {
             "join the world",
         )?;
         let name = self.world.agent.username.clone();
-        self.say(&format!("{name} reporting. Surveying the area."))?;
+        self.say(&format!("{name} reporting."))?;
         self.bounded()?;
 
-        // Task 1: survey.
-        let survey = self.task_survey("survey the spawn area")?;
-        tasks.push(survey);
-        self.bounded()?;
-
-        // Task 2: explore.
-        let direction = "north";
-        self.say("Heading north to see what is out there.")?;
-        let explore = self.task_explore("explore north", direction, 64)?;
-        tasks.push(explore);
-        self.bounded()?;
-
-        // Task 3: survey again — what did the walk reveal?
-        let survey = self.task_survey("survey after exploring")?;
-        tasks.push(survey);
-        self.bounded()?;
-
-        // Task 4: gather wood. When nothing woody is in reach, walk one
-        // more leg before giving up — a task may only fail once.
-        self.say("Time to gather wood.")?;
-        let mut gather = self.task_gather("gather wood", GATHER_COUNT)?;
-        if !gather.ok {
-            self.say("No logs in reach; trying west.")?;
-            let explore = self.task_explore("explore west", "west", 64)?;
-            tasks.push(explore);
-            self.bounded()?;
-            gather = self.task_gather("gather wood", GATHER_COUNT)?;
+        // The curriculum loop: propose, attempt, record. A task that
+        // fails goes into the history the next proposal reads.
+        while self.bounded().is_ok() {
+            let before = self.state("read the world")?;
+            let context = Context {
+                state: &before,
+                completed: &self.completed,
+                failed: &self.failed,
+            };
+            let Some(task) = self.curriculum.next(&context)? else {
+                break;
+            };
+            (self.progress)(&format!("task: {} — {}", task.id, task.goal));
+            let result = self.attempt(&task, &before)?;
+            if result.ok {
+                self.completed.push(task.id.clone());
+            } else {
+                self.failed.push((task.id.clone(), result.detail.clone()));
+            }
+            tasks.push(result);
         }
-        tasks.push(gather);
-        self.bounded()?;
 
         // Report.
         let state = self.state("report")?;
         let logs = LOG_KINDS.iter().map(|kind| state.count(kind)).sum::<i64>();
         let detail = format!(
-            "Episode done: {} logs held, {} block kinds seen.",
+            "Episode done: {} tasks passed, {} failed, {} skills banked, {} logs held.",
+            self.completed.len(),
+            self.failed.len(),
+            self.banked.len(),
             logs,
-            self.seen.len()
         );
         self.say(&detail)?;
         self.note(
             Source::Agent,
             "reported",
-            json!({"logs": logs, "seen": self.seen.len()}),
+            json!({
+                "completed": self.completed,
+                "failed": self.failed,
+                "banked": self.banked,
+                "logs": logs,
+                "seen": self.seen.len(),
+                "distance": self.distance,
+            }),
         );
         let _ = self.bridge.disconnect();
 
         Ok(self.report(tasks))
     }
 
-    /// Task: read the world and say what is there. The critic accepts a
-    /// survey that produced a state; what the survey learned feeds the
-    /// `seen` set so later surveys can say what is new.
-    fn task_survey(&mut self, task: &str) -> Result<TaskResult> {
-        let state = self.state(task)?;
-        let fresh: Vec<String> = state
-            .nearby_blocks
-            .iter()
-            .filter(|name| self.seen.insert((*name).clone()))
-            .cloned()
-            .collect();
-        let news = if fresh.is_empty() {
-            "nothing new".to_string()
-        } else {
-            format!("new to me: {}", fresh.join(", "))
-        };
-        self.say(&format!(
-            "Survey: {}; {}",
-            state.describe(),
-            trim(&news, 200)
-        ))?;
-        Ok(TaskResult {
-            task: task.to_string(),
-            ok: true,
-            detail: state.describe(),
-        })
-    }
-
-    /// Task: walk a direction. The critic accepts the task when the bot
-    /// actually moved — a goto that ends where it began did not explore.
-    fn task_explore(&mut self, task: &str, direction: &str, distance: u32) -> Result<TaskResult> {
-        let args =
-            json!({"direction": direction, "distance": distance, "seconds": EXPLORE_SECONDS});
-        let result = self.call(
-            "explore",
-            args,
-            Duration::from_secs(EXPLORE_SECONDS + 15),
-            task,
-        )?;
-        let from = vec3(&result, "from");
-        let to = vec3(&result, "to");
-        let moved = ((to[0] - from[0]).powi(2) + (to[2] - from[2]).powi(2)).sqrt();
-        let ok = moved >= 8.0;
-        let detail = format!("moved {moved:.1} blocks {direction}");
-        if !ok {
-            self.say(&format!("Could not get anywhere {direction}: {detail}"))?;
-        }
-        Ok(TaskResult {
-            task: task.to_string(),
-            ok,
-            detail,
-        })
-    }
-
-    /// Task: put logs in the inventory. The critic counts them — the
-    /// bridge may report `mined` blocks that burned up, despawned, or
-    /// went to another player, and only what is held is evidence.
-    fn task_gather(&mut self, task: &str, count: u32) -> Result<TaskResult> {
-        // Find which log kinds are actually in reach; a manifest that
-        // spawns in a plains biome sees oak, a spruce taiga sees spruce.
-        let state = self.state(task)?;
-        let visible = state.matching("_log");
-        if visible.is_empty() {
+    /// One task: resolve a program, run it through the interpreter
+    /// with repair rounds, then let the critic judge. The before
+    /// state is the curriculum's own read, reused so a task's delta
+    /// measures what the task did.
+    fn attempt(&mut self, task: &Task, before: &AgentState) -> Result<TaskResult> {
+        let Some(mut source) = self.program(task, before)? else {
             return Ok(TaskResult {
-                task: task.to_string(),
+                task: task.id.clone(),
                 ok: false,
-                detail: "no logs within the survey radius".to_string(),
+                detail: "no program: no script, no matching skill, and no act door".to_string(),
             });
+        };
+        let mut rounds = 0u32;
+        let mut last_error = String::new();
+        let mut ran = false;
+        let mut blocks = Vec::new();
+        for round in 1..=REFINE_ROUNDS {
+            rounds = round;
+            self.attempts += 1;
+            match self.interpret(&task.id, &source, &mut blocks) {
+                Ok(_) => {
+                    ran = true;
+                    break;
+                }
+                Err(error) => {
+                    last_error = error.to_string();
+                    self.note(
+                        Source::System,
+                        &format!("round {round} failed: {error}"),
+                        json!({"task": task.id, "round": round}),
+                    );
+                    if self.writer.is_none() || round == REFINE_ROUNDS {
+                        break;
+                    }
+                    match self.rewrite(task, before, &source, &error)? {
+                        Some(fixed) => source = fixed,
+                        None => break,
+                    }
+                }
+            }
         }
-        let names: Vec<&str> = visible.iter().take(4).map(String::as_str).collect();
-        self.say(&format!("Logs in reach: {}. Digging.", names.join(", ")))?;
-        let before: i64 = LOG_KINDS.iter().map(|kind| state.count(kind)).sum();
-        let args = json!({
-            "names": names, "count": count, "radius": 32, "seconds": GATHER_SECONDS
-        });
-        match self.call("mine", args, Duration::from_secs(GATHER_SECONDS + 15), task) {
-            Ok(_) | Err(Error::Refused { .. }) => {}
-            Err(error) => return Err(error),
+        let after = self.state(&task.id)?;
+        let readings = Readings {
+            before,
+            after: &after,
+            blocks: &blocks,
+        };
+        let verdict = if ran {
+            critic::verify(
+                &task.verify,
+                &readings,
+                &task.goal,
+                self.door.as_mut(),
+                &task.id,
+            )?
+        } else {
+            critic::Verdict {
+                ok: false,
+                detail: format!("the program never ran: {last_error}"),
+            }
+        };
+        self.note(
+            Source::System,
+            &format!(
+                "{}: {}",
+                if verdict.ok { "passed" } else { "failed" },
+                verdict.detail
+            ),
+            json!({"task": task.id, "rounds": rounds, "ok": verdict.ok}),
+        );
+        if verdict.ok && task.bank {
+            let skill = self.store.add(&slug(&task.id), &task.goal, &source)?;
+            let name = format!("{}@{}", skill.name, skill.version);
+            self.note(
+                Source::Agent,
+                &format!("banked skill {name}"),
+                json!({"digest": skill.digest}),
+            );
+            self.banked.push(name);
         }
-        let after = self.state(task)?;
-        let gained: i64 = LOG_KINDS.iter().map(|kind| after.count(kind)).sum::<i64>() - before;
-        let ok = gained >= 1;
-        let detail = format!("gathered {gained} logs (wanted {count})");
-        self.say(&format!("Gather: {detail}"))?;
         Ok(TaskResult {
-            task: task.to_string(),
-            ok,
-            detail,
+            task: task.id.clone(),
+            ok: verdict.ok,
+            detail: verdict.detail,
         })
+    }
+
+    /// Where a task's program comes from, in order: a named skill, an
+    /// inline script, a skill the decisions door retrieves for the
+    /// goal, or a program the `act` door writes. `None` means the
+    /// task could not be attempted at all.
+    fn program(&mut self, task: &Task, before: &AgentState) -> Result<Option<String>> {
+        if let Some(name) = &task.skill {
+            let skill = skills::lookup(&self.plan.repo, name)?;
+            self.note(
+                Source::Agent,
+                &format!("using skill {}@{}", skill.name, skill.version),
+                json!({"task": task.id, "digest": skill.digest}),
+            );
+            return Ok(Some(skill.source));
+        }
+        if let Some(script) = &task.script {
+            return Ok(Some(script.clone()));
+        }
+        if let Some(door) = self.door.as_mut()
+            && let Some(skill) = self.store.retrieve(door, &task.goal, &task.id)?
+        {
+            self.note(
+                Source::Agent,
+                &format!("retrieved skill {}@{}", skill.name, skill.version),
+                json!({"task": task.id, "digest": skill.digest}),
+            );
+            return Ok(Some(skill.source));
+        }
+        if self.writer.is_some() {
+            return self.write_program(task, before, None);
+        }
+        Ok(None)
+    }
+
+    /// One `act` door call: the goal and the state go out, a program
+    /// comes back. The exchange is evidence — it lands beside the
+    /// decisions as `program-N.json`.
+    fn write_program(
+        &mut self,
+        task: &Task,
+        before: &AgentState,
+        previous: Option<(&str, &ScriptError)>,
+    ) -> Result<Option<String>> {
+        let Some(writer) = self.writer.take() else {
+            return Ok(None);
+        };
+        let input = json!({
+            "goal": task.goal,
+            "state": {
+                "position": before.position,
+                "health": before.health,
+                "food": before.food,
+                "inventory": before.inventory,
+                "nearby_blocks": before.nearby_blocks,
+                "nearby_entities": before.nearby_entities,
+            },
+            "previous": previous.map(|(source, error)| json!({
+                "program": source,
+                "error": error.to_string(),
+            })),
+        });
+        let asked = writer.ask(PROGRAM_INSTRUCTIONS, &input.to_string());
+        self.writer = Some(writer);
+        let text = asked?;
+        self.written += 1;
+        std::fs::write(
+            self.run_dir.join(format!("program-{}.json", self.written)),
+            serde_json::to_vec_pretty(&json!({
+                "task": task.id,
+                "request": {"instructions": PROGRAM_INSTRUCTIONS, "input": input},
+                "answer": text,
+            }))?,
+        )?;
+        let source = program_text(&text);
+        if source.trim().is_empty() {
+            self.note(
+                Source::System,
+                "the act door answered no program",
+                json!({"task": task.id}),
+            );
+            return Ok(None);
+        }
+        Ok(Some(source))
+    }
+
+    /// A faulted program goes back to the `act` door with its error —
+    /// the refinement step of the paper's iterative prompting.
+    fn rewrite(
+        &mut self,
+        task: &Task,
+        before: &AgentState,
+        source: &str,
+        error: &ScriptError,
+    ) -> Result<Option<String>> {
+        self.write_program(task, before, Some((source, error)))
+    }
+
+    /// Runs one program under the interpreter, with the runner as its
+    /// host — every op is a traced, bound-checked bridge call. Block
+    /// reads land in `blocks` for the critic's `block_at` specs.
+    fn interpret(
+        &mut self,
+        task: &str,
+        source: &str,
+        blocks: &mut Vec<([i32; 3], String)>,
+    ) -> std::result::Result<interpret::Outcome, ScriptError> {
+        let mut host = TaskHost {
+            runner: self,
+            task,
+            blocks,
+        };
+        let outcome = interpret::run(&mut host, source, &Limits::default())?;
+        self.note(
+            Source::System,
+            &format!("program ran: {} host calls", outcome.calls),
+            json!({"task": task, "returned": outcome.returned}),
+        );
+        Ok(outcome)
     }
 
     /// One `state` call, decoded.
@@ -360,7 +571,11 @@ impl Runner<'_> {
             Duration::from_secs(60),
             task,
         )?;
-        Ok(AgentState::from_result(&result))
+        let state = AgentState::from_result(&result);
+        for name in &state.nearby_blocks {
+            self.seen.insert(name.clone());
+        }
+        Ok(state)
     }
 
     /// The bot says something in the world. Minecraft chat caps a line
@@ -399,6 +614,9 @@ impl Runner<'_> {
             .by(concat!("mc-bridge/", env!("CARGO_PKG_VERSION"))),
         )?;
         for event in self.bridge.drain_events() {
+            if let Some(text) = event.text("text") {
+                self.feedback.push_back(text.to_string());
+            }
             self.record_event(&event)?;
         }
         outcome
@@ -449,9 +667,144 @@ impl Runner<'_> {
             digest: self.world.digest.clone(),
             tasks,
             actions: self.actions,
+            attempts: self.attempts,
+            banked: self.banked.clone(),
+            seen: self.seen.len(),
+            distance: self.distance,
             run_dir: self.run_dir.clone(),
             trace: self.trace.clone(),
         }
+    }
+}
+
+/// The interpreter's host over a live runner: a script's op is a
+/// traced, bound-checked bridge call — `interpret` never touches the
+/// wire itself. Movement answers feed the traversal counter, `state`
+/// answers feed the seen-set, and `block_at` answers land in `blocks`
+/// where the critic's spec reads them.
+struct TaskHost<'a, 'b> {
+    runner: &'a mut Runner<'b>,
+    /// The task id, for call purposes in the trace.
+    task: &'a str,
+    /// `block_at` readings this program took.
+    blocks: &'a mut Vec<([i32; 3], String)>,
+}
+
+impl Host for TaskHost<'_, '_> {
+    fn op(&mut self, op: &str, args: &Value) -> Result<Value> {
+        let seconds = match op {
+            "state" | "say" | "block_at" | "players" => 30,
+            "goto" | "explore" => 75,
+            "mine" => 90,
+            "wait" => 45,
+            other => return Err(Error::episode(format!("unknown op {other:?}"))),
+        };
+        let result = self
+            .runner
+            .call(op, args.clone(), Duration::from_secs(seconds), self.task)?;
+        match op {
+            "state" => {
+                if let Some(list) = result.get("nearby_blocks").and_then(Value::as_array) {
+                    for name in list.iter().filter_map(Value::as_str) {
+                        self.runner.seen.insert(name.to_string());
+                    }
+                }
+            }
+            "goto" | "explore" => {
+                let from = vec3(&result, "from");
+                let to = vec3(&result, "to");
+                self.runner.distance +=
+                    ((to[0] - from[0]).powi(2) + (to[2] - from[2]).powi(2)).sqrt();
+            }
+            "block_at" => {
+                let position = args
+                    .get("position")
+                    .and_then(Value::as_array)
+                    .map(|pos| {
+                        [
+                            pos.first().and_then(Value::as_i64).unwrap_or(0) as i32,
+                            pos.get(1).and_then(Value::as_i64).unwrap_or(0) as i32,
+                            pos.get(2).and_then(Value::as_i64).unwrap_or(0) as i32,
+                        ]
+                    })
+                    .unwrap_or_default();
+                if let Some(kind) = result.get("kind").and_then(Value::as_str) {
+                    self.blocks.push((position, kind.to_string()));
+                }
+            }
+            _ => {}
+        }
+        Ok(result)
+    }
+
+    fn feedback(&mut self) -> Vec<String> {
+        self.runner.feedback.drain(..).collect()
+    }
+}
+
+/// The `act` door's standing instructions: what the action language
+/// is and what a reply may contain. Programs are the only output —
+/// prose around them is stripped before the interpreter sees it.
+const PROGRAM_INSTRUCTIONS: &str = concat!(
+    "You are the action agent of an open-ended Minecraft bot. Write a program that ",
+    "accomplishes the stated goal. The language is Lua with these host functions:\n",
+    "  say(text)              — speak in world chat\n",
+    "  walk(x, z)             — path to a position (y optional: walk(x, y, z))\n",
+    "  explore(dir, distance) — walk a compass direction\n",
+    "  mine(names, count)     — dig nearby blocks of the named kinds\n",
+    "  mine_at(positions)     — dig exact [x,y,z] positions\n",
+    "  players()              — who is online and where\n",
+    "  state()                — position, health, inventory, nearby blocks\n",
+    "  block_at(x, y, z)      — the kind one position holds\n",
+    "  wait(seconds)          — pause, at most 30\n",
+    "  feedback()             — the bot's narration since the last call\n",
+    "Write only the program. Keep it short — a few calls, a loop where one helps. ",
+    "If a previous program and its error are given, fix it rather than starting over."
+);
+
+/// A door answer as program text: a fenced block's contents when the
+/// model wrapped its code in one, else the whole answer — the
+/// interpreter is the parser of record, and a prose line is a parse
+/// error the refinement loop can repair.
+fn program_text(answer: &str) -> String {
+    let mut fenced = String::new();
+    let mut inside = false;
+    let mut found = false;
+    for line in answer.lines() {
+        if line.trim_start().starts_with("```") {
+            if inside {
+                found = true;
+                break;
+            }
+            inside = true;
+            continue;
+        }
+        if inside {
+            fenced.push_str(line);
+            fenced.push('\n');
+        }
+    }
+    if found { fenced } else { format!("{answer}\n") }
+}
+
+/// A task id as a skill-store name: word characters and dashes.
+fn slug(id: &str) -> String {
+    let mut name = String::with_capacity(id.len().min(40));
+    for c in id.chars() {
+        if c.is_ascii_alphanumeric() {
+            name.push(c);
+        } else if !name.ends_with('-') && !name.is_empty() {
+            name.push('-');
+        }
+        if name.len() >= 40 {
+            break;
+        }
+    }
+    let name = name.trim_end_matches('-').to_string();
+    if name.is_empty() {
+        "task".to_string()
+    } else {
+        name
     }
 }
 
@@ -473,5 +826,23 @@ fn trim(text: &str, max: usize) -> String {
         format!("{cut}…")
     } else {
         cut
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_task_id_slugs_to_a_skill_name() {
+        assert_eq!(slug("gather wood"), "gather-wood");
+        assert_eq!(slug("walk home!"), "walk-home");
+        assert_eq!(slug("!!!"), "task");
+    }
+
+    #[test]
+    fn a_fenced_answer_unfences() {
+        let answer = "Here you go:\n```lua\nwalk(10, 0)\nsay(\"done\")\n```";
+        assert_eq!(program_text(answer), "walk(10, 0)\nsay(\"done\")\n");
     }
 }

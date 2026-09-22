@@ -1,0 +1,33 @@
+{
+  "schema": "openagents.coderbench.task.v1",
+  "id": "voyager-meadow",
+  "family": "voyager",
+  "request": "Run one Voyager episode in the meadow world: join as the world's agent, work the declared curriculum — survey the spawn area, explore north, gather wood — and leave the trace, the ledger, and any banked skills in the run directory.",
+  "requires": {
+    "capabilities": [
+      "minecraft-local"
+    ]
+  },
+  "grade": {
+    "kind": "path",
+    "checks": [
+      "mc-bridge:join",
+      "mc-bridge:state",
+      "mc-bridge:explore",
+      "mc-bridge:mine",
+      "mc-bridge:say"
+    ],
+    "path": [
+      "mc-bridge:join",
+      "mc-bridge:state",
+      "mc-bridge:explore",
+      "mc-bridge:mine"
+    ],
+    "writes_expected": 0,
+    "endings": [
+      "ended"
+    ]
+  },
+  "timeout_secs": 600,
+  "notes": "The subject under test is the episode loop, not a model: meadow's curriculum is declared in the manifest, so every program is manifest text run through the bounded interpreter, and the critic's specs are mechanical. checks names the bridge vocabulary the run owes — join before state, state before explore and mine — because a run that gathered before it surveyed did not run the loop. endings names the trace's own close: a run killed mid-episode leaves `interrupted`, which must not grade clean. The capability is minecraft-local: a supervised server and the mc-bridge helper on the same machine. A task whose curriculum needs doors — generated tasks, written programs, noul verdicts — is a different task; this one is the deterministic arm a machine can replay."
+}
