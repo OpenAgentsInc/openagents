@@ -48,6 +48,7 @@ mod vending;
 mod voice;
 mod wallet;
 mod wallet_connect;
+mod wiki;
 mod zap;
 
 pub use agent::{
@@ -178,6 +179,10 @@ pub use wallet_connect::{
     open_wallet_info, open_wallet_request, open_wallet_response, parse_connection,
     read_wallet_command, read_wallet_message, read_wallet_reply, request_is_current,
     seal_wallet_message,
+};
+pub use wiki::{
+    WikiArticle, WikiLink, WikiMerge, WikiRedirect, WikiTarget, WikiVersion,
+    normalize_wiki_identifier, open_wiki_article, open_wiki_merge, open_wiki_redirect,
 };
 pub use zap::{
     ZapReceipt, ZapRequest, ZapShare, bolt11_amount_msat, decode_lnurl, open_zap_receipt,

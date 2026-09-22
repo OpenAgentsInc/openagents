@@ -489,6 +489,15 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 10_312 {
         super::live::open_presence(event)?;
     }
+    if event.kind == 30_818 {
+        super::wiki::open_wiki_article(event)?;
+    }
+    if event.kind == 818 {
+        super::wiki::open_wiki_merge(event)?;
+    }
+    if event.kind == 30_819 {
+        super::wiki::open_wiki_redirect(event)?;
+    }
     if event.kind == 7_375 {
         super::wallet::open_token_event(event)?;
     }

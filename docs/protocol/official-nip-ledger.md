@@ -543,6 +543,22 @@ NIP-11 list. The relay does not open the stream or the meeting
 service, and it does not rewrite a stale `live` status. Acceptance is
 `domain::live::tests::a_live_stream_replaces_and_a_chat_names_it`.
 
+NIP-54 is `configured-and-proven`. Kind `30818` is an addressable
+wiki article. `normalize_wiki_identifier` lowercases letters, turns
+whitespace into `-`, drops punctuation, and keeps numbers and
+non-ASCII letters. The `d` tag must already be that form. Djot
+reference links with no definition become wikilinks. A defined
+reference such as `nostr:npub...` stays a URI. A `fork` or `defer`
+marker names both the article address and the event id. Kind `818` is
+a merge request: one `a` tag, one `p` tag for that author, and one
+`e` tag marked `source`. Kind `30819` redirects a normalized name to
+an article. A newer article or redirect with the same `d` tag
+replaces the older one. A merge request does not replace. NIP-54 is
+a draft, so these kinds are not added to the NIP-11 list. Djot is
+not rendered, and the merge source event is not fetched. Acceptance
+is
+`domain::wiki::tests::a_wiki_article_normalizes_its_name_and_a_merge_names_the_fork`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
