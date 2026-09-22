@@ -16,6 +16,7 @@ Admission, execution, review, membership, and accounting contracts.
 | [deployment](deployment.md) | Lanes, prerequisites, backup, upgrade, and install verification |
 | [durable-jobs](durable-jobs.md) | Durable classification jobs |
 | [gateway](gateway.md) | The gateway |
+| [image-decisions](image-decisions.md) | Image-capable decisions: contract and deferral |
 | [monetary-accounting](monetary-accounting.md) | Monetary accounting |
 | [monetary-ledger](monetary-ledger.md) | Monetary ledger |
 | [operations](operations.md) | Status, contacts, capacity, and commercial policies |

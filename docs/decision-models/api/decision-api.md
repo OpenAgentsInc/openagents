@@ -846,6 +846,18 @@ Carry image handling through receipts, retention, batches, review, and
 client/tool contracts. Keep availability experimental until capability
 and evidence pass. Owner: [#9499](https://github.com/OpenAgentsInc/openagents/issues/9499).
 
+Specified and evaluated in
+[image-capable decisions](../service/image-decisions.md):
+`openagents.state.image.v1` fixes the versioned representation — a
+bounded `images` array beside text `state`, wire and canonical-decoded
+digests, the PNG/JPEG/WebP allowlist, and count/size/resolution bounds —
+plus the upload-only boundary, deterministic decode, refuse-don't-degrade
+rule, and the receipt/retention/SDK carve-outs. The candidate survey
+recorded that Jev, Kev, Laya, and Lev are all text-only; with no
+image-capable backend the capability is **deferred**, and the doc states
+the admission requirements a future candidate must meet. Discovery and
+client surfaces make no image claim.
+
 ## Confidential hosted inference
 
 Investigate protecting input from the host operator under an explicit
