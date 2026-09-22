@@ -788,7 +788,10 @@ pub fn usage(steps: &[Step], delegating: bool) -> Value {
         .iter()
         .map(|step| step.extensions.get("cost_microusd").and_then(Value::as_u64))
         .collect();
-    let priced = costs.iter().all(Option::is_some) && !costs.is_empty();
+    // No generation at all is a known cost of zero, as in a Jev-brief
+    // episode that delegates before the explorer runs; one unreported call
+    // leaves the generation cost unknown.
+    let priced = costs.iter().all(Option::is_some);
     let gen_cost = costs.iter().flatten().sum::<u64>() as f64 / 1_000_000.0;
 
     let jev_input: Option<u64> = steps
@@ -1003,6 +1006,13 @@ fn hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_episode_with_no_generation_has_a_known_generation_cost_of_zero() {
+        let usage = super::usage(&[], false);
+        assert_eq!(usage["components"]["generation"]["cost_usd"], 0.0);
+        assert_eq!(usage["cost"]["amount_usd"], 0.0);
+    }
+
     use atif::document::Decision;
 
     use super::*;
