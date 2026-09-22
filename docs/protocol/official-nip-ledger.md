@@ -168,6 +168,22 @@ kind is not added to the NIP-11 list. The relay does not fetch the blob
 or the server URL. Acceptance is
 `domain::report::tests::a_report_names_the_user_or_the_blob_and_does_not_delete_it`.
 
+NIP-58 is `configured-and-proven`. Kind `30009` defines a badge with
+one `d` identifier and optional `name`, `description`, `image`, and
+`thumb` tags. An image URL is `http://` or `https://`. Dimensions, when
+present, are `widthxheight`. Kind `8` awards that definition to one or
+more pubkeys. The award is a regular event, so it is not replaced or
+transferred. Kind `10008` is the replaceable profile list: consecutive
+`a` and `e` pairs, plus `a` tags that name a kind `30008` set. An `a`
+tag without the following `e` tag is ignored, and so is an `e` tag
+without a preceding `a` tag. Kind `30008` with any other `d` value is a
+labeled set of those pairs. Kind `30008` with `d` equal to
+`profile_badges` is the deprecated profile list. None of these kinds are
+added to the NIP-11 list. The relay does not fetch images and does not
+check that the award event repeats the definition address. Recommended
+1024x1024 dimensions are not required. Acceptance is
+`domain::badge::tests::a_badge_definition_is_awarded_and_the_profile_lists_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
