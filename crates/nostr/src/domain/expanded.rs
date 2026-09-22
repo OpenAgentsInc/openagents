@@ -462,6 +462,21 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 9_041 {
         super::goal::open_zap_goal(event)?;
     }
+    if event.kind == 17_375 {
+        super::wallet::open_wallet(event)?;
+    }
+    if event.kind == 7_375 {
+        super::wallet::open_token_event(event)?;
+    }
+    if event.kind == 7_376 {
+        super::wallet::open_history_event(event)?;
+    }
+    if event.kind == 7_374 {
+        super::wallet::open_quote_event(event)?;
+    }
+    if event.kind == 5 && event.tag_values("k").any(|kind| kind == "7375") {
+        super::wallet::open_token_deletion(event)?;
+    }
     if event.tags.iter().any(|tag| tag.name() == Some("goal")) {
         super::goal::open_goal_references(event)?;
     }

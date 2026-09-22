@@ -45,6 +45,7 @@ mod timestamp;
 mod torrent;
 mod vending;
 mod voice;
+mod wallet;
 mod zap;
 
 pub use agent::{
@@ -157,6 +158,13 @@ pub use vending::{
     job_result_kind, open_job_feedback, open_job_request, open_job_result,
 };
 pub use voice::{VoiceMessage, open_voice_message, open_voice_reply};
+pub use wallet::{
+    CashuProof, CashuToken, CashuWallet, HistoryDirection, MintQuote, SpendHistory, TokenRef,
+    TokenRole, WalletSecrets, open_history_event, open_mint_quote, open_quote_event,
+    open_spend_history, open_token, open_token_deletion, open_token_event, open_wallet,
+    open_wallet_secrets, read_wallet_content, roll_over_token, seal_wallet_content,
+    token_plaintext,
+};
 pub use zap::{
     ZapReceipt, ZapRequest, ZapShare, bolt11_amount_msat, decode_lnurl, open_zap_receipt,
     open_zap_request, zap_callback_query, zap_split,

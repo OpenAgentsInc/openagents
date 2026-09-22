@@ -500,6 +500,21 @@ Lightning payments, and it does not fetch the goal when a zap request
 arrives. Acceptance is
 `domain::goal::tests::a_zap_goal_tallies_until_it_closes_and_a_request_lists_its_relays`.
 
+NIP-60 is `configured-and-proven`. Kind `17375` is a replaceable Cashu
+wallet. Public `mint` tags name its mints. The content is NIP-44
+ciphertext to the author. After decryption it holds a wallet private
+key, which is not the Nostr key, and the same mint URLs. Kind `7375`
+is one set of unspent proofs. Spending a proof rolls the unspent
+proofs into a new token whose `del` list names the old event, and the
+kind `5` deletion includes `k` `7375`. Kind `7376` records direction,
+amount, and the created and destroyed token ids. Kind `7374` keeps a
+mint quote. Its expiration is after the event and at most 14 days
+later. A newer wallet replaces the older one. Token, history, and
+quote events do not replace. NIP-60 is a draft, so these kinds are
+not added to the NIP-11 list. The relay does not decrypt the content,
+talk to a mint, or check a proof signature. Acceptance is
+`domain::wallet::tests::a_wallet_replaces_and_a_spent_proof_rolls_into_a_new_token`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
