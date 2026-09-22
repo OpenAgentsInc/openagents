@@ -1115,6 +1115,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "28.md",
+        domain: "kind 40 creates a channel, 41 updates its metadata against an e root, 42 is a message rooted at the channel, 43 hides a message, 44 mutes a user — client-side moderation only",
+        client: "open_channel, open_channel_metadata, metadata_updates_channel, open_channel_message, open_hide_message, and open_mute_user",
+        server: "admission validates each kind's root, target, and metadata JSON; all five store as regular events",
+        paths: "crates/nostr/src/domain/channel.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; NIP-28 is unrecommended — NIP-29 supersedes it — and the kinds are not added to the NIP-11 list",
+        fixture: "a channel with relays and categories, an author-versus-stranger metadata update, a rooted reply, and the hide/mute targets",
+        acceptance: "domain::channel::tests::channels_open_update_and_take_messages",
+        limitations: "a kind 41's e root naming a kind 40 is structural; whether the named event is a channel is the reader's check via metadata_updates_channel; kept for compatibility only",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

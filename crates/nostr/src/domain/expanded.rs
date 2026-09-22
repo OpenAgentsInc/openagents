@@ -589,6 +589,21 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 24 {
         super::public_message::open_public_message(event)?;
     }
+    if event.kind == 40 {
+        super::channel::open_channel(event)?;
+    }
+    if event.kind == 41 {
+        super::channel::open_channel_metadata(event)?;
+    }
+    if event.kind == 42 {
+        super::channel::open_channel_message(event)?;
+    }
+    if event.kind == 43 {
+        super::channel::open_hide_message(event)?;
+    }
+    if event.kind == 44 {
+        super::channel::open_mute_user(event)?;
+    }
     if event.kind == 30_315 {
         super::status::open_user_status(event)?;
     }

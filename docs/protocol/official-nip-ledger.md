@@ -911,6 +911,19 @@ integer `waveform`. Admission enforces each requirement. NIP-71 is a
 draft, so the kinds stay off the NIP-11 list. Acceptance is
 `domain::video::tests::a_video_event_carries_streams_and_its_address`.
 
+NIP-28 is `configured-and-proven` for compatibility. `open_channel`
+parses kind `40`'s JSON `name`, `about`, `picture`, and `relays` plus
+`t` categories; `open_channel_metadata` requires the `e` `root` naming
+the channel and `metadata_updates_channel` enforces the pinned rule
+that only the channel's author updates it; `open_channel_message`
+reads the `root` and `reply` markers; `open_hide_message` and
+`open_mute_user` name their `e` and `p` targets with an optional
+`reason`. Admission validates each kind's structure while all five
+store as regular events. NIP-28 is unrecommended — NIP-29 supersedes
+it — so the kinds stay off the NIP-11 list. Acceptance is
+`domain::channel::tests::channels_open_update_and_take_messages` and
+`domain::channel::tests::malformed_channel_events_are_refused`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

@@ -14,6 +14,7 @@ mod block;
 mod blossom;
 mod bookmark;
 mod calendar;
+mod channel;
 mod chat;
 mod comment;
 mod community;
@@ -109,6 +110,10 @@ pub use bookmark::{Bookmark, bookmark_identifier, is_bookmark_reply, open_bookma
 pub use calendar::{
     Attendance, Availability, Calendar, CalendarEvent, CalendarRef, CalendarSpan, Participant,
     Rsvp, day_stamp, open_calendar, open_calendar_event, open_rsvp,
+};
+pub use channel::{
+    Channel, ChannelMessage, ChannelMetadata, channel_metadata, metadata_updates_channel,
+    open_channel, open_channel_message, open_channel_metadata, open_hide_message, open_mute_user,
 };
 pub use chat::{Chat, ChatQuote, chat_filter, is_chat_reply, open_chat};
 pub use comment::{Comment, CommentScope, is_top_level, open_comment};
