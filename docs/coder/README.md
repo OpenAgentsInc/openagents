@@ -9,7 +9,7 @@ approved work through a shared terminal and headless runtime.
 | [Runtime](runtime/) | Execution contracts, subprocesses, terminal behavior, traces, and repository evidence. |
 | [Design](design/) | Product direction, architecture analysis, roadmap, and historical proposals. |
 | [Programs and extensions](../extensions/) | Target specification for programs, Wasm plugins, skills, discovery, and packages. |
-| [Measurements](measurements/) | Observed fan-out and relay transport results. |
+| [Measurements](measurements/) | Observed results, task-selection studies, and supporting evidence. |
 | [Verification](verification/) | Dated acceptance records and supporting evidence. |
 | [Examples](examples/) | Work lists and project supervisor configuration. |
 | [Source archive](thoughts-on-a-typesafe-coding-agent/) | Original exports and images for the coding-agent proposal. |
@@ -18,6 +18,9 @@ Start with the [headless guide](guides/headless.md) to run a turn or the
 [Devin delegation runbook](guides/devin-delegation-runbook.md) to assign work.
 The [rebuild plan](design/rebuild-plan.md) describes the implementation and
 links to the proposed delivery roadmap.
+
+The [Terminal-Bench task comparison](measurements/2026-09-22-terminal-bench-chat-fit.md)
+locates the CoderBench golden and ranks upstream tasks against recent work.
 
 [Decision model documentation](../decision-models/README.md) covers the
 models, API, and measurements that inform Coder's decisions.
