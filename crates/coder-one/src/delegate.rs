@@ -597,6 +597,14 @@ impl BriefingInputs {
 /// The most characters of one surveyed file's contents a briefing carries.
 const SURVEYED_FILE_CHARS: usize = 4_000;
 
+/// Claude Code's tool list for the delegate, from `CODER_ONE_DELEGATE_TOOLS`,
+/// or empty for the CLI's full default set.
+fn delegate_tools() -> String {
+    std::env::var("CODER_ONE_DELEGATE_TOOLS")
+        .map(|tools| tools.trim().to_string())
+        .unwrap_or_default()
+}
+
 /// The briefing sent to the delegate, and exactly what was left out.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Briefing {
@@ -1336,7 +1344,7 @@ impl Executor for Cli {
         let script = match self.agent {
             Agent::ClaudeCode => {
                 "exec \"$0\" -p --output-format stream-json --verbose --model \"$1\" \
-                 --permission-mode bypassPermissions < \"$2\" > \"$3\""
+                 --permission-mode bypassPermissions ${4:+--tools \"$4\"} < \"$2\" > \"$3\""
             }
             // The task container or the fresh clone is the boundary, so
             // Codex runs without its own sandbox or approval prompts.
@@ -1353,6 +1361,11 @@ impl Executor for Cli {
             .arg(&self.model)
             .arg(&briefing_path)
             .arg(&stream_path)
+            // `CODER_ONE_DELEGATE_TOOLS` names Claude Code's built-in tools
+            // (for example `Bash,Read,Edit,Write`). Fewer tools make a
+            // smaller fixed prompt on every call: four tools halved it, from
+            // about 17,800 to 9,000 tokens, on 2026-09-22.
+            .arg(delegate_tools())
             .current_dir(&self.workdir)
             // A parent Claude Code session's marker makes the CLI refuse to
             // start; the delegate is its own session.

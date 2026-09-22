@@ -99,6 +99,7 @@ class CoderOneDelegate(CoderOne):
         "ANTHROPIC_AUTH_TOKEN",
         "ANTHROPIC_BASE_URL",
         "CODER_ONE_BRIEFING_CAP",
+        "CODER_ONE_DELEGATE_TOOLS",
     )
 
     # Harbor's claude-code agent resolves the CLI this way after its
