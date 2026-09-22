@@ -2103,6 +2103,7 @@ impl Runtime {
                         ctx.run,
                         ctx.grant,
                         ctx.until,
+                        ctx.record,
                         ctx.trace.as_deref_mut(),
                     )
                     .await
@@ -3533,7 +3534,8 @@ impl Runtime {
         run: &mut Run,
         grant: &Grant,
         until: Option<Instant>,
-        trace: Option<&mut Recorder>,
+        record: &mut Option<(Store, String)>,
+        mut trace: Option<&mut Recorder>,
     ) -> Result<String, Refused> {
         // A step that hands over nothing did not run: it reported "0 of 0
         // answered" and the program carried on. That is the shape a
@@ -3636,6 +3638,19 @@ impl Runtime {
                 task
             })
             .collect();
+        // Each task's record marks its dispatch as the fan-out takes
+        // the list — the width queues inside the executor's bound, so
+        // from the record the whole list was handed over at once — and
+        // settles as each delegation comes back. A crash between the
+        // two leaves `dispatched` for recovery to mark `unknown`.
+        for (n, _) in bounded.iter().enumerate() {
+            let name = requirement_name(n);
+            let mut mark = Mark::task(&name, 1, State::Dispatched);
+            if let Some(path) = trace.as_deref().map(Recorder::path) {
+                mark = mark.result(format!("atif:{}", path.display()));
+            }
+            self.advance_runstate(record, mark, trace.as_deref_mut());
+        }
         // A relay capability runs nothing here: each task becomes one
         // NIP-CJ job to the worker, which applies its own approval.
         let delegations = match (relayed, executor) {
@@ -3653,10 +3668,28 @@ impl Runtime {
             }
             (None, None) => unreachable!("one of the two routes was resolved above"),
         };
-        if let Some(trace) = trace {
+        if let Some(trace) = trace.as_deref_mut() {
             for delegation in &delegations {
                 trace.delegation(delegation);
             }
+        }
+        for (n, delegation) in delegations.iter().enumerate() {
+            let state = match &delegation.status {
+                Status::Answered => State::Answered,
+                Status::Refused(_) => State::Refused,
+                Status::Harness(_) => State::Unverifiable,
+                // A bound the host enforced ended it, and a non-zero
+                // exit is the end the work produced — evidence in the
+                // trace either way, never `unknown` which is a crash's.
+                Status::TimedOut => State::Cancelled,
+                Status::Failed(_) => State::Answered,
+            };
+            let name = requirement_name(n);
+            let mut mark = Mark::task(&name, 1, state);
+            if let Some(worktree) = &delegation.retained {
+                mark = mark.retaining(worktree.clone());
+            }
+            self.advance_runstate(record, mark, trace.as_deref_mut());
         }
         let started = delegations.len();
         let answered = delegations
@@ -5685,6 +5718,72 @@ mod tests {
         let crashed = store.get("run-crashed").unwrap().unwrap();
         assert_eq!(crashed.state, State::Unknown);
         assert_eq!(crashed.steps[0].state, State::Unknown);
+    }
+
+    /// A fan-out's task records show what it handed over: each task
+    /// `dispatched` — under the same `atif:` reference the step's mark
+    /// carries — then the end its delegation came back with, so a
+    /// crash mid-fan-out leaves `dispatched` for recovery to mark
+    /// `unknown`, never a settled-looking gap.
+    #[tokio::test]
+    async fn a_fan_outs_task_records_show_what_it_handed_over() {
+        let Some(repo) = scratch_repository() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stub(dir.path(), "answers", "echo done");
+        let runtime = stub_runtime(repo.path(), &binary, dir.path());
+        let program: Program = serde_json::from_value(json!({
+            "v": 1, "slug": "burn-down",
+            "steps": [
+                {"name": "select", "kind": "query", "bounds": {}},
+                {"name": "work", "kind": "delegate", "bounds": {"minutes": 5}}
+            ]
+        }))
+        .unwrap();
+        let inputs = Inputs {
+            request: "two tasks".to_string(),
+            tasks: vec![Task::asking("first"), Task::asking("second")],
+            executor: "stub-local".to_string(),
+        };
+        let logs = tempfile::tempdir().unwrap();
+        let mut recorder =
+            Recorder::open(logs.path(), "fixture", "fixture", "fixture-repo").unwrap();
+        let trace = recorder.path().to_string_lossy().into_owned();
+
+        let run = runtime
+            .run(&program, &inputs, &Grant::all(), Some(&mut recorder))
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        assert_eq!(run.delegations.len(), 2);
+
+        let store = Store::open(dir.path()).unwrap();
+        let ids = claimed(dir.path());
+        let record = store.get(&ids[0]).unwrap().unwrap();
+        for name in ["t1", "t2"] {
+            let task = record
+                .tasks
+                .iter()
+                .find(|task| task.task == name)
+                .unwrap_or_else(|| panic!("no task record for {name}"));
+            assert_eq!(task.state, State::Answered, "{name}");
+            assert_eq!(task.attempt, 1);
+        }
+        // And each dispatched mark named the trace its evidence lands
+        // in, the same reference the step's mark carries.
+        let text = std::fs::read_to_string(dir.path().join(format!("{}.jsonl", ids[0]))).unwrap();
+        let tasks: Vec<Value> = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|record| record["record"] == "task" && record["state"] == "dispatched")
+            .collect();
+        assert_eq!(tasks.len(), 2, "{text}");
+        for task in &tasks {
+            assert_eq!(
+                task["result"].as_str(),
+                Some(format!("atif:{trace}").as_str())
+            );
+        }
     }
 
     /// A run refused at admission or by the grant claims nothing: a
