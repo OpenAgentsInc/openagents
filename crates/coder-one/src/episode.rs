@@ -17,6 +17,13 @@
 //! | `CODER_ONE_JEV` | `off` runs the search-hit baseline without Jev. |
 //! | `CODER_ONE_MAX_STEPS` | The step limit; 50 when unset. |
 //! | `CODER_ONE_COMMAND_TIMEOUT` | Seconds each command may run; 300 when unset. |
+//! | `CODER_ONE_DELEGATE` | `off`, `always`, or `auto`; `off` when unset. |
+//! | `CODER_ONE_DELEGATE_MODEL` | The delegate's model; `claude-opus-5-5` when unset. |
+//! | `CODER_ONE_DELEGATE_TIMEOUT` | Seconds the delegate may run; 600 when unset. |
+//! | `CODER_ONE_EXPLORE_STEPS` | The explore phase's step bound; 8 when unset. |
+//! | `CODER_ONE_BRIEFING_CAP` | The briefing's length cap in characters; 12,000 when unset. |
+//! | `CODER_ONE_CLAUDE_BIN` | The `claude` binary; the first on `PATH` when unset. |
+//! | `CLAUDE_CODE_OAUTH_TOKEN` | The delegate's subscription token; or `ANTHROPIC_API_KEY`. |
 //!
 //! The bundle is rewritten at the start of every step, so a deadline that
 //! kills the process still leaves the evidence up to the last step.
@@ -30,6 +37,7 @@ use sha2::{Digest, Sha256};
 
 use crate::agent::{EPISODE_INSTRUCTIONS, Judge, Judgments};
 use crate::credentials::{self, Secret};
+use crate::delegate::{self, ClaudeCode, Credential, Delegated, Explorer, Mode, Plan, Policy};
 use crate::generate::Door;
 use crate::judge::JevJudge;
 use crate::record::Recorder;
@@ -63,6 +71,13 @@ struct Settings {
     jev: bool,
     max_steps: usize,
     command_timeout: Duration,
+    delegate: Mode,
+    delegate_model: String,
+    delegate_timeout: Duration,
+    policy: Policy,
+    briefing_cap: usize,
+    claude: Option<PathBuf>,
+    credential: Credential,
 }
 
 impl Settings {
@@ -98,6 +113,24 @@ impl Settings {
             jev,
             max_steps: usize::try_from(number("CODER_ONE_MAX_STEPS", 50)?).unwrap_or(50),
             command_timeout: Duration::from_secs(number("CODER_ONE_COMMAND_TIMEOUT", 300)?),
+            delegate: Mode::parse(env("CODER_ONE_DELEGATE").as_deref().unwrap_or("off"))?,
+            delegate_model: env("CODER_ONE_DELEGATE_MODEL")
+                .unwrap_or_else(|| delegate::DEFAULT_MODEL.to_string()),
+            delegate_timeout: Duration::from_secs(number("CODER_ONE_DELEGATE_TIMEOUT", 600)?),
+            policy: Policy {
+                explore_steps: usize::try_from(number("CODER_ONE_EXPLORE_STEPS", 8)?).unwrap_or(8),
+                ..Policy::default()
+            },
+            briefing_cap: usize::try_from(number(
+                "CODER_ONE_BRIEFING_CAP",
+                delegate::BRIEFING_CAP as u64,
+            )?)
+            .unwrap_or(delegate::BRIEFING_CAP),
+            claude: delegate::claude_binary(|name| env(name)),
+            credential: Credential::detect(
+                |name| env(name),
+                delegate::stored_login(env("HOME").as_deref().map(Path::new)),
+            ),
         })
     }
 }
@@ -151,12 +184,77 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
         println!("jev: off (CODER_ONE_JEV)");
     }
 
+    if settings.delegate == Mode::Off {
+        println!("delegate: off (CODER_ONE_DELEGATE)");
+    } else {
+        println!(
+            "delegate: {} to claude-code ({}), explore {} steps, deadline {}s",
+            settings.delegate.word(),
+            settings.delegate_model,
+            settings.policy.explore_steps,
+            settings.delegate_timeout.as_secs()
+        );
+        problems.extend(check_claude(&settings).await);
+    }
+
     if problems.is_empty() {
         println!("ok");
         Ok(())
     } else {
         Err(problems.join("; "))
     }
+}
+
+/// The oldest Claude Code the delegate accepts: the API refuses Opus 5.5
+/// to 2.1.278.
+const CLAUDE_MIN: (u64, u64, u64) = (2, 1, 280);
+
+/// Checks that `claude --version` runs, is new enough, and that a
+/// credential is present, without any inference.
+async fn check_claude(settings: &Settings) -> Vec<String> {
+    let mut problems = Vec::new();
+    match &settings.claude {
+        None => problems
+            .push("no claude binary: set CODER_ONE_CLAUDE_BIN or put claude on PATH".to_string()),
+        Some(binary) => {
+            let mut command = std::process::Command::new(binary);
+            command.arg("--version").env_remove("CLAUDECODE");
+            let ended = supervise::Job::from_command(command)
+                .bounded(supervise::Limits::within(Duration::from_secs(30)))
+                .run()
+                .await;
+            let text = ended.stdout.text.trim().to_string();
+            match (ended.ending.success(), parse_version(&text)) {
+                (true, Some(version)) if version >= CLAUDE_MIN => {
+                    println!("claude: {} at {}", text, binary.display());
+                }
+                (true, Some(_)) => problems.push(format!(
+                    "claude {text} is older than {}.{}.{}",
+                    CLAUDE_MIN.0, CLAUDE_MIN.1, CLAUDE_MIN.2
+                )),
+                _ => problems.push(format!(
+                    "{} --version failed: {} {}",
+                    binary.display(),
+                    ended.ending,
+                    crate::judge::clip(ended.stderr.text.trim(), 200)
+                )),
+            }
+        }
+    }
+    match settings.credential {
+        Credential::Missing => problems.push(
+            "no delegate credential: set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY".to_string(),
+        ),
+        found => println!("claude credential: {}", found.word()),
+    }
+    problems
+}
+
+/// `(major, minor, patch)` from `2.1.280 (Claude Code)`.
+fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
+    let word = text.split_whitespace().next()?;
+    let mut parts = word.split('.').map(|part| part.parse::<u64>().ok());
+    Some((parts.next()??, parts.next()??, parts.next()??))
 }
 
 /// The arguments `episode run` takes.
@@ -168,8 +266,9 @@ pub struct RunArgs {
 }
 
 /// `episode run`: one headless episode in the current directory. Returns
-/// the process exit code: 0 when the agent finished, 3 when the step limit
-/// ran out, and 4 when generation failed.
+/// the process exit code: 0 when the agent or its delegate finished, 3 when
+/// the step limit ran out, 4 when generation failed, and 5 when the
+/// delegate did not answer.
 pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     if args.contract != CONTRACT {
         return Err(format!(
@@ -216,7 +315,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     );
     println!("{} · {CONTRACT}", version());
     println!(
-        "workdir {} · lane {} · jev {} · {} steps · {}s per command",
+        "workdir {} · lane {} · jev {} · {} steps · {}s per command · delegate {}",
         workdir.display(),
         settings.lane,
         if settings.jev {
@@ -225,7 +324,8 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             "off"
         },
         settings.max_steps,
-        settings.command_timeout.as_secs()
+        settings.command_timeout.as_secs(),
+        settings.delegate.word()
     );
 
     let judge = JevJudge::new(jev_client, workdir.clone(), &state.issue, recorder.clone());
@@ -253,17 +353,66 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         commands: 0,
     };
 
-    let ended = run(
-        &mut state,
-        "Complete this task.",
-        Bounds {
+    let (ended, delegated) = if settings.delegate == Mode::Off {
+        let ended = run(
+            &mut state,
+            "Complete this task.",
+            Bounds {
+                max_steps: settings.max_steps,
+            },
+            &mut judge,
+            &mut door,
+            &mut shell,
+        )
+        .await;
+        (ended, None)
+    } else {
+        let mut executor = ClaudeCode {
+            binary: settings.claude.clone(),
+            model: settings.delegate_model.clone(),
+            deadline: settings.delegate_timeout,
+            workdir: workdir.clone(),
+            artifacts: args.output_dir.join("artifacts"),
+            artifacts_label: "artifacts".to_string(),
+            // The task container is the boundary, and the agent often runs
+            // as root there, where the CLI refuses to bypass permissions
+            // unless told it is in a sandbox.
+            env: vec![("IS_SANDBOX".to_string(), "1".to_string())],
+            credential: settings.credential,
+            runs: 0,
+        };
+        let plan = Plan {
+            mode: settings.delegate,
+            policy: settings.policy,
             max_steps: settings.max_steps,
-        },
-        &mut judge,
-        &mut door,
-        &mut shell,
-    )
-    .await;
+            prompt: "Complete this task.",
+            instruction: &instruction,
+            directions: EPISODE_DIRECTIONS,
+            cap: settings.briefing_cap,
+            isolation: "none",
+            base: bundle.base.as_deref(),
+        };
+        let bundle_ref = &bundle;
+        let steps_recorder = recorder.clone();
+        let mut checkpoint = |state: &State| {
+            if let Err(error) =
+                bundle_ref.write(state, &steps_recorder.steps(), "running", None, None)
+            {
+                eprintln!("coder-one: cannot write the bundle: {error}");
+            }
+        };
+        delegate::explore_then_delegate(
+            &mut state,
+            &plan,
+            &mut judge,
+            &mut door,
+            &mut shell,
+            &mut executor,
+            &recorder,
+            &mut checkpoint,
+        )
+        .await
+    };
 
     let (outcome, code) = match &ended {
         Ended::Finished { title, summary, .. } => {
@@ -273,13 +422,40 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             ));
             ("finished", 0)
         }
-        Ended::StepLimit { .. } => ("step_limit", 3),
+        Ended::Delegated {
+            answered: true,
+            title,
+            summary,
+            ..
+        } => {
+            recorder.push(Step::said(
+                Source::Agent,
+                &format!("finished by the delegate: {title}\n\n{summary}"),
+            ));
+            ("delegated", 0)
+        }
+        Ended::Delegated { .. } => ("delegate_failed", 5),
+        Ended::StepLimit { .. } | Ended::Stopped { .. } => ("step_limit", 3),
         Ended::GenerationFailed { .. } => ("generation_failed", 4),
     };
     println!("\n── {outcome} ──");
-    bundle.write(&state, &recorder.steps(), outcome, Some(&ended))?;
+    bundle.write(
+        &state,
+        &recorder.steps(),
+        outcome,
+        Some(&ended),
+        delegated.as_ref(),
+    )?;
     Ok(code)
 }
+
+/// The delegate's closing directions in an episode.
+const EPISODE_DIRECTIONS: &str = "Complete the task in the current working \
+directory. Nobody answers questions, so decide from the task and the \
+environment. An automated checker grades the final state of the environment \
+against the task, so verify every requirement, including exact paths, names, \
+and formats, before you stop. End with a short summary of what you changed \
+and how you checked it.";
 
 /// A judge that rewrites the bundle before every step, so a killed
 /// episode leaves its evidence behind.
@@ -289,11 +465,20 @@ struct Snapshots<'a> {
     recorder: Recorder,
 }
 
+impl Explorer for Snapshots<'_> {
+    fn jev(&self) -> &JevJudge {
+        &self.inner
+    }
+    fn jev_mut(&mut self) -> &mut JevJudge {
+        &mut self.inner
+    }
+}
+
 impl Judge for Snapshots<'_> {
     async fn judge(&mut self, state: &State) -> Judgments {
         if let Err(error) = self
             .bundle
-            .write(state, &self.recorder.steps(), "running", None)
+            .write(state, &self.recorder.steps(), "running", None, None)
         {
             eprintln!("coder-one: cannot write the bundle: {error}");
         }
@@ -338,6 +523,21 @@ impl Bundle {
             .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string());
         let header = json!({
             "contract": CONTRACT,
+            "delegate": if settings.delegate == Mode::Off {
+                json!({ "mode": "off" })
+            } else {
+                json!({
+                    "mode": settings.delegate.word(),
+                    "agent": "claude-code",
+                    "model": settings.delegate_model,
+                    "executor_path": settings.claude.as_ref().map(|path| path.to_string_lossy()),
+                    "credential": settings.credential.word(),
+                    "deadline_sec": settings.delegate_timeout.as_secs(),
+                    "briefing_cap": settings.briefing_cap,
+                    "policy": settings.policy.record(),
+                    "isolation": "none: the task container is the boundary",
+                })
+            },
             "artifact": {
                 "name": "coder-one",
                 "version": version(),
@@ -376,6 +576,7 @@ impl Bundle {
         steps: &[Step],
         outcome: &str,
         ended: Option<&Ended>,
+        delegated: Option<&Delegated>,
     ) -> Result<(), String> {
         let now = atif::document::now_ms();
         let mut session = self.session.clone();
@@ -389,7 +590,8 @@ impl Bundle {
         let mut trajectory = atif::document::document(&session, steps);
         trajectory["agent"]["name"] = json!("coder-one");
 
-        let usage = usage(steps);
+        let delegating = self.header["delegate"]["mode"].as_str() != Some("off");
+        let usage = usage(steps, delegating);
         let state_json = serde_json::to_value(state).unwrap_or(Value::Null);
         let diff = self.diff();
 
@@ -407,6 +609,29 @@ impl Bundle {
                 "diff".to_string(),
                 self.put("artifacts/diff.patch", diff.as_bytes())?,
             );
+        }
+        // The delegate writes its briefing and stream itself; the manifest
+        // names each one that exists.
+        if let Ok(entries) = std::fs::read_dir(self.dir.join("artifacts")) {
+            let mut names: Vec<String> = entries
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.starts_with("delegate-"))
+                .collect();
+            names.sort();
+            for name in names {
+                let relative = format!("artifacts/{name}");
+                if let Ok(bytes) = std::fs::read(self.dir.join(&relative)) {
+                    files.insert(
+                        name.replace('.', "_"),
+                        json!({
+                            "path": relative,
+                            "bytes": bytes.len(),
+                            "sha256": hex(&Sha256::digest(&bytes)),
+                        }),
+                    );
+                }
+            }
         }
 
         let mut manifest = self.header.clone();
@@ -426,6 +651,22 @@ impl Bundle {
         }
         if let Some(Ended::GenerationFailed { error, .. }) = ended {
             manifest["error"] = json!(error);
+        }
+        if let Some(Ended::Delegated {
+            title,
+            summary,
+            status,
+            ..
+        }) = ended
+        {
+            manifest["result"] =
+                json!({ "title": title, "summary": summary, "delegate_status": status });
+        }
+        if let Some(Ended::Stopped { reason, .. }) = ended {
+            manifest["stopped"] = json!({ "code": reason.code(), "reason": reason.to_string() });
+        }
+        if let Some(delegated) = delegated {
+            manifest["delegate"]["delegation"] = delegated.record();
         }
         let text = serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())?;
         self.put("manifest.json", text.as_bytes())?;
@@ -465,8 +706,9 @@ impl Bundle {
 }
 
 /// The usage record, derived from the trajectory so both say the same
-/// thing. Unreported values are null, never zero.
-fn usage(steps: &[Step]) -> Value {
+/// thing. Unreported values are null, never zero. `delegating` adds the
+/// delegate component, which a run with delegation off leaves out.
+pub fn usage(steps: &[Step], delegating: bool) -> Value {
     let generations: Vec<&Step> = steps
         .iter()
         .filter(|step| step.source == Source::Agent && step.call.is_none() && step.tokens.is_some())
@@ -516,42 +758,171 @@ fn usage(steps: &[Step]) -> Value {
         .sum();
     let jev_cost = jev_input.map(|tokens| tokens as f64 * JEV_USD_PER_MILLION_INPUT / 1_000_000.0);
 
+    let delegate = delegate_usage(steps);
+    let delegations = delegate.calls.len();
+    let delegate_failed = delegate
+        .calls
+        .iter()
+        .filter(|call| call.outcome != atif::document::Outcome::Completed)
+        .count();
+
+    let gen_cost_known = priced.then_some(gen_cost);
+    let delegate_cost_known = if delegations == 0 {
+        Some(0.0)
+    } else {
+        delegate.cost_usd
+    };
+    let total = match (gen_cost_known, jev_cost, delegate_cost_known) {
+        (Some(generation), Some(jev), Some(delegated)) => json!(generation + jev + delegated),
+        _ => Value::Null,
+    };
+    let delegate_input = if delegations == 0 {
+        Some(0)
+    } else {
+        delegate.total_input()
+    };
+
+    let mut components = json!({
+        "generation": {
+            "input_tokens": gen_input,
+            "output_tokens": gen_output,
+            "cost_usd": gen_cost_known,
+            "cost_provenance": if priced { "provider_reported" } else { "unknown" },
+            "unpriced_calls": costs.iter().filter(|cost| cost.is_none()).count(),
+        },
+        "jev": {
+            "model": credentials::JEV_MODEL,
+            "requests": decisions.len(),
+            "input_tokens": jev_input,
+            "output_tokens_billed": false,
+            "cost_usd": jev_cost,
+            "cost_provenance": if jev_cost.is_some() { "price_estimate" } else { "unknown" },
+            "rate": "$0.042 per million input tokens, retrieved 2026-09-22",
+        },
+    });
+    if delegating || delegations > 0 {
+        components["delegate"] = delegate.record();
+    }
+
     json!({
         "tokens": {
-            "input": gen_input + jev_input.unwrap_or(0),
-            "cache": Value::Null,
-            "output": gen_output,
+            "input": match delegate_input {
+                Some(delegated) => json!(gen_input + jev_input.unwrap_or(0) + delegated),
+                None => Value::Null,
+            },
+            "cache": if delegations > 0 { json!(delegate.cache_read) } else { Value::Null },
+            "output": match (delegations, delegate.output) {
+                (0, _) => json!(gen_output),
+                (_, Some(delegated)) => json!(gen_output + delegated),
+                _ => Value::Null,
+            },
+            "note": "input sums generation, Jev, and delegate input tokens, the delegate's cache reads and writes included; cache is the delegate's cache reads, since generation does not report its own",
         },
         "cost": {
-            "amount_usd": if priced { json!(gen_cost) } else { Value::Null },
-            "provenance": if priced { "provider_reported" } else { "unknown" },
-            "covers": "generation only; the Jev estimate is under components.jev",
+            "amount_usd": total,
+            "provenance": if total.is_null() { "unknown" } else { "mixed" },
+            "covers": "generation (provider_reported), jev (price_estimate), and delegate (cli_list_price or cli_reported); each is under components",
         },
         "calls": {
             "generation": generations.len(),
             "decisions": decisions.len(),
-            "failed": failed_generations + decisions_failed,
+            "delegates": delegations,
+            "failed": failed_generations + decisions_failed + delegate_failed,
             "retries": retries,
         },
-        "components": {
-            "generation": {
-                "input_tokens": gen_input,
-                "output_tokens": gen_output,
-                "cost_usd": if priced { json!(gen_cost) } else { Value::Null },
-                "cost_provenance": if priced { "provider_reported" } else { "unknown" },
-                "unpriced_calls": costs.iter().filter(|cost| cost.is_none()).count(),
-            },
-            "jev": {
-                "model": credentials::JEV_MODEL,
-                "requests": decisions.len(),
-                "input_tokens": jev_input,
-                "output_tokens_billed": false,
-                "cost_usd": jev_cost,
-                "cost_provenance": if jev_cost.is_some() { "price_estimate" } else { "unknown" },
-                "rate": "$0.042 per million input tokens, retrieved 2026-09-22",
-            },
-        },
+        "components": components,
     })
+}
+
+/// The delegate component, summed over every `delegate` call.
+#[derive(Default)]
+struct DelegateUsage<'a> {
+    calls: Vec<&'a atif::document::Call>,
+    turns: Option<u64>,
+    api_calls: Option<u64>,
+    input: Option<u64>,
+    cache_read: Option<u64>,
+    cache_creation: Option<u64>,
+    output: Option<u64>,
+    cost_usd: Option<f64>,
+    per_call: Vec<u64>,
+}
+
+impl DelegateUsage<'_> {
+    fn total_input(&self) -> Option<u64> {
+        Some(self.input? + self.cache_read? + self.cache_creation?)
+    }
+
+    fn record(&self) -> Value {
+        let extra = |key: &str| -> Value {
+            self.calls
+                .first()
+                .and_then(|call| call.extra.get(key))
+                .cloned()
+                .unwrap_or(Value::Null)
+        };
+        let provenance = if self.cost_usd.is_some() && !self.calls.is_empty() {
+            extra("cost_provenance")
+        } else if self.calls.is_empty() {
+            json!("none")
+        } else {
+            json!("unknown")
+        };
+        json!({
+            "agent": "claude-code",
+            "model": extra("model"),
+            "credential": extra("credential"),
+            "delegations": self.calls.len(),
+            "turns": self.turns,
+            "api_calls": self.api_calls,
+            "input_tokens": self.input,
+            "cache_read_input_tokens": self.cache_read,
+            "cache_creation_input_tokens": self.cache_creation,
+            "total_input_tokens": self.total_input(),
+            "output_tokens": self.output,
+            "input_tokens_per_call": self.per_call,
+            "max_input_tokens_per_call": self.per_call.iter().max(),
+            "cost_usd": if self.calls.is_empty() { json!(0.0) } else { json!(self.cost_usd) },
+            "cost_provenance": provenance,
+            "cost_note": "Claude Code's own total_cost_usd. On a subscription token it is a list-price figure, not a bill.",
+        })
+    }
+}
+
+fn delegate_usage(steps: &[Step]) -> DelegateUsage<'_> {
+    let calls: Vec<&atif::document::Call> = steps
+        .iter()
+        .filter_map(|step| step.call.as_ref())
+        .filter(|call| {
+            call.name == "delegate"
+                && call.extra.get("schema").and_then(Value::as_str) == Some(delegate::CALL_SCHEMA)
+        })
+        .collect();
+    let sum = |read: &dyn Fn(&atif::document::Call) -> Option<u64>| -> Option<u64> {
+        calls.iter().map(|call| read(call)).sum()
+    };
+    let usage = |key: &'static str| {
+        move |call: &atif::document::Call| call.extra.get("usage")?.get(key)?.as_u64()
+    };
+    DelegateUsage {
+        turns: sum(&|call| call.extra.get("num_turns")?.as_u64()),
+        api_calls: sum(&|call| call.extra.get("api_calls")?.as_u64()),
+        input: sum(&usage("input_tokens")),
+        cache_read: sum(&usage("cache_read_input_tokens")),
+        cache_creation: sum(&usage("cache_creation_input_tokens")),
+        output: sum(&usage("output_tokens")),
+        cost_usd: calls
+            .iter()
+            .map(|call| call.extra.get("total_cost_usd")?.as_f64())
+            .sum(),
+        per_call: calls
+            .iter()
+            .filter_map(|call| call.extra.get("input_tokens_per_call")?.as_array().cloned())
+            .flatten()
+            .filter_map(|value| value.as_u64())
+            .collect(),
+        calls,
+    }
 }
 
 fn trajectory_models(steps: &[Step]) -> Value {
@@ -577,4 +948,125 @@ fn self_digest() -> Value {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use atif::document::Decision;
+
+    use super::*;
+    use crate::delegate::tests::{FakeExecutor, report};
+    use crate::delegate::{Briefing, BriefingInputs, Delegation, Reason, Status};
+
+    fn generation(input: u64, output: u64, microusd: u64) -> Step {
+        let mut step = Step::said(Source::Agent, "").noting("cost_microusd", json!(microusd));
+        step.tokens = Some((input, output));
+        step
+    }
+
+    fn jev(input_tokens: u64) -> Step {
+        let decision = Decision {
+            id: "jev-1".to_string(),
+            name: "jev_step".to_string(),
+            door: credentials::JEV_BASE_URL.to_string(),
+            model: credentials::JEV_MODEL.to_string(),
+            request: json!({}),
+            answers: json!({}),
+            route: None,
+            error: None,
+            attempts: Vec::new(),
+            review: None,
+            milliseconds: 5,
+        };
+        Step::called(decision.call()).noting("jev_usage", json!({ "input_tokens": input_tokens }))
+    }
+
+    fn delegation(status: Status) -> Step {
+        let executor = FakeExecutor {
+            reports: vec![],
+            sent: vec![],
+        };
+        let inputs = BriefingInputs {
+            instruction: "Fix the parser.".to_string(),
+            requirements: vec![],
+            files: vec![],
+            spans: vec![],
+            commands: vec![],
+            last_output: None,
+            conclusion: String::new(),
+            directions: "Go.".to_string(),
+        };
+        let briefing = Briefing::build(&inputs, 1_000);
+        delegate::record(
+            &executor,
+            &briefing,
+            &Delegation {
+                mode: Mode::Always,
+                reason: &Reason::Always,
+                isolation: "none",
+            },
+            &report(status),
+            1,
+        )
+    }
+
+    #[test]
+    fn the_total_covers_generation_jev_and_the_delegate() {
+        let steps = [
+            generation(1_000, 100, 20_000),
+            jev(1_000_000),
+            delegation(Status::Answered),
+        ];
+        let usage = usage(&steps, true);
+        // $0.02 generation + $0.042 Jev + $0.25 delegate.
+        let total = usage["cost"]["amount_usd"].as_f64().unwrap();
+        assert!((total - 0.312).abs() < 1e-9, "{total}");
+        assert_eq!(usage["calls"]["delegates"], 1);
+        assert_eq!(usage["calls"]["generation"], 1);
+        assert_eq!(usage["calls"]["decisions"], 1);
+        let delegate = &usage["components"]["delegate"];
+        assert_eq!(delegate["cost_usd"], 0.25);
+        assert_eq!(delegate["cost_provenance"], "cli_list_price");
+        assert_eq!(delegate["turns"], 3);
+        assert_eq!(delegate["api_calls"], 2);
+        assert_eq!(delegate["total_input_tokens"], 38_508);
+        assert_eq!(delegate["max_input_tokens_per_call"], 19_505);
+        assert_eq!(usage["tokens"]["input"], 1_000 + 1_000_000 + 38_508);
+        assert_eq!(usage["tokens"]["cache"], 29_000);
+        assert_eq!(usage["tokens"]["output"], 100 + 110);
+    }
+
+    #[test]
+    fn an_unreported_delegate_cost_is_null_never_zero() {
+        let steps = [generation(1_000, 100, 20_000), delegation(Status::TimedOut)];
+        let usage = usage(&steps, true);
+        assert_eq!(usage["cost"]["amount_usd"], Value::Null);
+        assert_eq!(usage["cost"]["provenance"], "unknown");
+        let delegate = &usage["components"]["delegate"];
+        assert_eq!(delegate["cost_usd"], Value::Null);
+        assert_eq!(delegate["cost_provenance"], "unknown");
+        assert_eq!(delegate["turns"], Value::Null);
+        assert_eq!(usage["tokens"]["input"], Value::Null);
+        assert_eq!(usage["calls"]["failed"], 1);
+    }
+
+    #[test]
+    fn delegation_off_leaves_the_component_out() {
+        let recorded = usage(&[generation(10, 1, 5), jev(100)], false);
+        assert!(recorded["components"].get("delegate").is_none());
+        assert_eq!(recorded["calls"]["delegates"], 0);
+        assert!(recorded["cost"]["amount_usd"].as_f64().is_some());
+        // With delegation on but never escalated, the delegate cost is a
+        // true zero.
+        let recorded = usage(&[generation(10, 1, 5)], true);
+        assert_eq!(recorded["components"]["delegate"]["delegations"], 0);
+        assert_eq!(recorded["components"]["delegate"]["cost_usd"], 0.0);
+    }
+
+    #[test]
+    fn claude_versions_parse() {
+        assert_eq!(parse_version("2.1.280 (Claude Code)"), Some((2, 1, 280)));
+        assert!(parse_version("2.1.278 (Claude Code)").unwrap() < CLAUDE_MIN);
+        assert_eq!(parse_version("claude"), None);
+    }
 }

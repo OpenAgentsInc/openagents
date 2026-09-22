@@ -26,6 +26,7 @@ use atif::document::{Decision, Step};
 
 use crate::agent::{Judge, Judgments};
 use crate::credentials::{JEV_BASE_URL, JEV_MODEL};
+use crate::delegate::{Evidence, Span};
 use crate::record::Recorder;
 use crate::state::{Issue, State, Turn};
 
@@ -62,6 +63,9 @@ pub struct JevJudge {
     pub input_tokens: u64,
     /// Requests that failed.
     pub failed: u32,
+    /// What the judgments found so far, kept structured for a delegate's
+    /// briefing and the escalation policy.
+    pub evidence: Evidence,
 }
 
 impl JevJudge {
@@ -72,16 +76,22 @@ impl JevJudge {
         recorder: Recorder,
     ) -> Self {
         let is_git = git(&workdir, &["rev-parse", "--is-inside-work-tree"]).trim() == "true";
+        let criteria = criteria(&issue.body);
+        let evidence = Evidence {
+            criteria: criteria.iter().map(|c| (c.clone(), None)).collect(),
+            ..Evidence::default()
+        };
         Self {
             client,
             workdir,
             keywords: keywords(issue),
-            criteria: criteria(&issue.body),
+            criteria,
             is_git,
             recorder,
             calls: 0,
             input_tokens: 0,
             failed: 0,
+            evidence,
         }
     }
 
@@ -399,6 +409,18 @@ impl JevJudge {
                 candidate.path, candidate.excerpt
             ));
         }
+        let outcome_label = response
+            .choice("outcome")
+            .ok()
+            .map(|outcome| outcome.choice.clone());
+        if last.is_some() {
+            self.evidence.outcomes.push(outcome_label);
+        }
+        for (i, candidate) in candidates.iter().enumerate() {
+            if let Ok(answer) = response.noul(&format!("file_{i}")) {
+                self.evidence.relevance(&candidate.path, answer.noul);
+            }
+        }
         if let Ok(outcome) = response.choice("outcome") {
             println!(
                 "  jev ▸ last command: {} ({:.2})",
@@ -418,6 +440,14 @@ impl JevJudge {
         picked.sort_by_key(|(_, k)| *k);
         for (p, k) in picked {
             println!("  jev ▸ key output chunk {k} p={p:.2}");
+            if let Some((command, _)) = last {
+                self.evidence.spans.push(Span {
+                    step: state.history.len(),
+                    command: clip(command, 200),
+                    p,
+                    text: chunks[k].clone(),
+                });
+            }
             hints.push(format!(
                 "Key span of the last command's output (Jev p={p:.2}, chunk {k}):\n{}",
                 chunks[k]
@@ -425,10 +455,15 @@ impl JevJudge {
         }
         for (j, criterion) in self.criteria.iter().enumerate() {
             match response.noul(&format!("criterion_{j}")) {
-                Ok(answer) => hints.push(format!(
+                Ok(answer) => {
+                    if let Some(slot) = self.evidence.criteria.get_mut(j) {
+                        slot.1 = Some(answer.noul);
+                    }
+                    hints.push(format!(
                     "Requirement from the issue: {criterion} — evidence shows it satisfied: p={:.2} (Jev)",
                     answer.noul
-                )),
+                ))
+                }
                 Err(_) => hints.push(format!("Requirement from the issue: {criterion}")),
             }
         }
@@ -479,6 +514,10 @@ impl JevJudge {
     async fn judge_step(&mut self, state: &State) -> Judgments {
         println!("\n── step {} ──", state.history.len() + 1);
         let candidates = self.candidates(&state.issue);
+        for candidate in &candidates {
+            self.evidence
+                .candidate(&candidate.path, candidate.hits, &candidate.excerpt);
+        }
         let Some(client) = self.client.take() else {
             println!(
                 "  jev ▸ off; {} candidate files by search hits",
@@ -500,6 +539,124 @@ impl JevJudge {
                 )
             }
         }
+    }
+}
+
+/// The closing check's answers: whether the task looks done, and each
+/// requirement's probability of being met, after a delegate ran.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Close {
+    /// Jev's probability that the evidence shows the whole task done.
+    pub done: Option<f64>,
+    /// Each requirement with its probability of being met.
+    pub criteria: Vec<(String, Option<f64>)>,
+    /// Why the check has no answers, when it has none.
+    pub unavailable: Option<String>,
+}
+
+impl JevJudge {
+    /// Asks Jev once more, after a delegate ran, whether the task and each
+    /// requirement now look satisfied. `delegate` is the delegate's final
+    /// report and `changes` is what changed in the working directory.
+    pub async fn close(&mut self, state: &State, delegate: &str, changes: &str) -> Close {
+        let unanswered = |criteria: &[String], why: String| Close {
+            done: None,
+            criteria: criteria.iter().map(|c| (c.clone(), None)).collect(),
+            unavailable: Some(why),
+        };
+        let Some(client) = self.client.take() else {
+            return unanswered(&self.criteria, "Jev is off".to_string());
+        };
+        let jev_state = json!({
+            "issue": {
+                "title": state.issue.title,
+                "body": clip(&state.issue.body, 8_000),
+            },
+            "criteria": self.criteria,
+            "delegate": {
+                "report": clip_tail(delegate, 3_000),
+                "changes": clip(changes, 5_000),
+            },
+        });
+        let mut questions = Questions::new().with(
+            "done",
+            Noul::new(
+                "Do the delegate's report in `delegate.report` and the changes in `delegate.changes` show that the task described in `issue` is complete?",
+            ),
+        );
+        for j in 0..self.criteria.len() {
+            questions = questions.with(
+                format!("criterion_{j}"),
+                Noul::new(format!(
+                    "Do `delegate.report` and `delegate.changes` show that the requirement `criteria[{j}]` from the issue is satisfied?"
+                )),
+            );
+        }
+        let request = SystemOneRequest::new(Entry::from(jev_state), questions);
+        let body = request
+            .body(JEV_MODEL)
+            .map(serde_json::Value::Object)
+            .unwrap_or_else(|_| json!({}));
+        let started = Instant::now();
+        let result = client.system_one(request).await;
+        self.client = Some(client);
+        let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let mut decision = Decision {
+            id: format!("jev-{}", self.calls + self.failed + 1),
+            name: "jev_close".to_string(),
+            door: JEV_BASE_URL.to_string(),
+            model: JEV_MODEL.to_string(),
+            request: body,
+            answers: serde_json::Value::Null,
+            route: None,
+            error: None,
+            attempts: Vec::new(),
+            review: None,
+            milliseconds,
+        };
+        let response = match result {
+            Ok(response) => response,
+            Err(error) => {
+                self.failed += 1;
+                decision.error = Some(error.to_string());
+                self.recorder
+                    .push(Step::called(decision.call()).taking(milliseconds));
+                return unanswered(&self.criteria, error.to_string());
+            }
+        };
+        self.calls += 1;
+        self.input_tokens += response.usage.input_tokens.unwrap_or(0);
+        decision.model = response.model.clone();
+        decision.answers = serde_json::from_str::<serde_json::Value>(&response.raw().text())
+            .ok()
+            .and_then(|body| body.get("answers").cloned())
+            .unwrap_or(serde_json::Value::Null);
+        let close = Close {
+            done: response.noul("done").ok().map(|answer| answer.noul),
+            criteria: self
+                .criteria
+                .iter()
+                .enumerate()
+                .map(|(j, c)| {
+                    let p = response
+                        .noul(&format!("criterion_{j}"))
+                        .ok()
+                        .map(|answer| answer.noul);
+                    (c.clone(), p)
+                })
+                .collect(),
+            unavailable: None,
+        };
+        self.evidence.criteria.clone_from(&close.criteria);
+        self.recorder
+            .push(Step::called(decision.call()).taking(milliseconds).noting(
+                "jev_usage",
+                json!({
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                }),
+            ));
+        close
     }
 }
 
@@ -581,7 +738,7 @@ fn chunk(output: &str) -> Vec<String> {
 /// Files under `root` a search should read: relative paths, skipping
 /// hidden directories, dependency and build trees, and files over 256
 /// KiB, at most 5,000 files.
-fn walk(root: &std::path::Path) -> Vec<String> {
+pub(crate) fn walk(root: &std::path::Path) -> Vec<String> {
     const SKIP: &[&str] = &[
         "node_modules",
         "target",
@@ -626,7 +783,7 @@ fn walk(root: &std::path::Path) -> Vec<String> {
     files
 }
 
-fn git(workdir: &std::path::Path, args: &[&str]) -> String {
+pub(crate) fn git(workdir: &std::path::Path, args: &[&str]) -> String {
     Command::new("git")
         .args(args)
         .current_dir(workdir)
@@ -644,7 +801,7 @@ pub fn clip(text: &str, max: usize) -> String {
 }
 
 /// The last `max` characters of `text`, marked when cut.
-fn clip_tail(text: &str, max: usize) -> String {
+pub(crate) fn clip_tail(text: &str, max: usize) -> String {
     let count = text.chars().count();
     if count <= max {
         return text.to_string();

@@ -14,11 +14,14 @@
 //!
 //! Code owns the loop, the bounds, and what an action may do. Judgments
 //! change what the generator sees; they never run or authorize anything.
-//! Issue #9531 describes the design and the evaluation.
+//! Issue #9531 describes the design and the evaluation. Delegate mode
+//! (issue #9532, [`delegate`]) lets the loop explore first and then hands
+//! the task to Claude Code with a briefing code builds from the evidence.
 
 pub mod action;
 pub mod agent;
 pub mod credentials;
+pub mod delegate;
 pub mod episode;
 pub mod generate;
 pub mod judge;

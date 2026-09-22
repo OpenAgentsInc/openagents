@@ -414,6 +414,132 @@
       "cost_provenance": "price_estimate",
       "cost_note": "The adapter estimates cost from token usage and a pricing registry; that is a price estimate, not a provider-reported amount.",
       "note": "Codex CLI 0.155.1 on gpt-6-luna. Harbor installs the CLI inside the task environment at the pinned version; the host login does not authenticate the container, the forwarded auth.json does."
+    },
+    "coder-one-delegate-opus": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneDelegate",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "delegate": "always",
+        "claude_code_version": "2.1.280",
+        "delegate_model": "claude-opus-5-5"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "api.anthropic.com",
+        "downloads.claude.ai"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL"
+      ],
+      "auth_modes": {
+        "subscription-oauth": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "Generation and Jev as in coder-one; the delegate runs on a Claude subscription token from `claude setup-token`. The API-key variables are excluded so the CLI uses the token. The delegate's total_cost_usd is then a list-price figure, not a bill (cli_list_price)."
+        },
+        "api-key": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "requires_any": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "note": "The delegate bills the Anthropic API directly; its total_cost_usd is the CLI's own figure (cli_reported)."
+        }
+      },
+      "note": "Coder One in delegate mode `always` (issue #9532): the Gemini-plus-Jev loop explores for up to 8 steps without editing, then code briefs Claude Code 2.1.280 on claude-opus-5-5 with what it found. The adapter installs the pinned Claude Code inside the task environment the way Harbor's claude-code agent does. The profile's model is the explorer's openagents.com lane."
+    },
+    "coder-one-delegate-auto": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneDelegate",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "delegate": "auto",
+        "claude_code_version": "2.1.280",
+        "delegate_model": "claude-opus-5-5"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "api.anthropic.com",
+        "downloads.claude.ai"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the delegate is Claude Code's own total_cost_usd, a list-price figure on a subscription token. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL"
+      ],
+      "auth_modes": {
+        "subscription-oauth": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "note": "Generation and Jev as in coder-one; the delegate runs on a Claude subscription token from `claude setup-token`. The API-key variables are excluded so the CLI uses the token. The delegate's total_cost_usd is then a list-price figure, not a bill (cli_list_price)."
+        },
+        "api-key": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "requires_any": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "note": "The delegate bills the Anthropic API directly; its total_cost_usd is the CLI's own figure (cli_reported)."
+        }
+      },
+      "note": "Coder One in delegate mode `auto` (issue #9532): the loop works on its own and escalates to Claude Code on claude-opus-5-5 only when it stalls: the 8-step explore bound without finishing, three consecutive Jev `error` outcomes, or an unchanged checkout after six steps. Every threshold is an unmeasured development value."
     }
   }
 }

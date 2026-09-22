@@ -205,6 +205,14 @@ class CoderV05(BaseInstalledAgent):
             ),
             env=self._episode_env(),
         )
+        # The doctor's report is install evidence; it prints names and
+        # versions, never a credential value.
+        try:
+            (self.logs_dir / "episode-doctor.txt").write_text(
+                f"exit {doctor.return_code}\n{doctor.stdout or ''}{doctor.stderr or ''}"
+            )
+        except OSError:
+            pass
         if doctor.return_code != 0:
             raise EpisodeContractError(
                 "episode doctor failed before inference: "

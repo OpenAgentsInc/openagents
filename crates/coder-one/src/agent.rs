@@ -9,6 +9,7 @@ use std::future::Future;
 use serde_json::json;
 
 use crate::action::Action;
+use crate::delegate::Reason;
 use crate::state::{Observation, State, Turn};
 
 /// Typed judgments over the state, rendered for the prompt.
@@ -19,6 +20,9 @@ pub enum Judgments {
     /// The judge could not answer. The loop continues with the
     /// deterministic view, and the reason goes on the record.
     Unavailable(String),
+    /// The host's policy ends the loop here, before generating. Only code
+    /// returns this; it never reaches the prompt.
+    Stop(Reason),
 }
 
 /// The step that asks Jev about the state.
@@ -63,6 +67,17 @@ pub enum Ended {
     StepLimit { steps: usize },
     /// The generator failed, so no step could be taken.
     GenerationFailed { error: String, steps: usize },
+    /// The host's escalation policy stopped the loop before this step.
+    Stopped { reason: Reason, steps: usize },
+    /// The host delegated the task, and the delegate ended with `status`.
+    Delegated {
+        /// Whether the delegate answered.
+        answered: bool,
+        status: String,
+        title: String,
+        summary: String,
+        steps: usize,
+    },
 }
 
 /// Runs the loop until the generator finishes or a bound ends the run.
@@ -83,6 +98,12 @@ where
 {
     for step in 1..=bounds.max_steps {
         let judgments = judge.judge(state).await;
+        if let Judgments::Stop(reason) = judgments {
+            return Ended::Stopped {
+                reason,
+                steps: step - 1,
+            };
+        }
         let ai_prompt = render_prompt(state, prompt, &judgments, (step, bounds.max_steps));
         let reply = match generator.generate(&ai_prompt).await {
             Ok(reply) => reply,
@@ -174,6 +195,7 @@ pub fn render_prompt(
     let judgments = match judgments {
         Judgments::Answered(hints) => json!({ "hints": hints }),
         Judgments::Unavailable(reason) => json!({ "unavailable": reason }),
+        Judgments::Stop(reason) => json!({ "unavailable": reason.to_string() }),
     };
     let recent = state.history.len().saturating_sub(RECENT_TURNS);
     let history: Vec<_> = state
@@ -429,6 +451,36 @@ mod tests {
         assert!(matches!(ended, Ended::Finished { .. }));
         assert!(generator.prompts[0].contains("src/parser.rs is likely relevant"));
         assert!(generator.prompts[1].contains("door unreachable"));
+    }
+
+    #[tokio::test]
+    async fn a_host_stop_ends_the_run_before_generating() {
+        let mut state = state();
+        let mut judge = judge(vec![
+            Judgments::Answered(vec![]),
+            Judgments::Stop(Reason::ErrorStreak(3)),
+        ]);
+        let mut generator = generator(&[LS, LS]);
+        let mut shell = RecordingShell::default();
+
+        let ended = run(
+            &mut state,
+            "Solve this issue.",
+            Bounds::default(),
+            &mut judge,
+            &mut generator,
+            &mut shell,
+        )
+        .await;
+
+        assert_eq!(
+            ended,
+            Ended::Stopped {
+                reason: Reason::ErrorStreak(3),
+                steps: 1,
+            }
+        );
+        assert_eq!(generator.prompts.len(), 1);
     }
 
     #[tokio::test]

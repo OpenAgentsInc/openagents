@@ -22,6 +22,8 @@ def test_known_arms(agents):
         "coder-v05",
         "coder-one",
         "coder-one-no-jev",
+        "coder-one-delegate-opus",
+        "coder-one-delegate-auto",
         "oracle",
         "nop",
     }
@@ -87,6 +89,43 @@ def test_codex_auth_json_host_path_wins(agents):
     env = {"CODEX_AUTH_JSON_PATH": "/private/auth.json"}
     out = agent_config_env(agents["codex"], auth_mode="auth-json", env=env)
     assert out["CODEX_AUTH_JSON_PATH"] == "${CODEX_AUTH_JSON_PATH}"
+
+
+def test_delegate_arms_pin_opus_and_a_new_enough_claude_code(agents):
+    for arm, mode in (
+        ("coder-one-delegate-opus", "always"),
+        ("coder-one-delegate-auto", "auto"),
+    ):
+        profile = agents[arm]
+        assert profile.harbor_import_path == "tbench.coder_one:CoderOneDelegate"
+        assert profile.kwargs["delegate"] == mode
+        assert profile.kwargs["delegate_model"] == "claude-opus-5-5"
+        assert profile.kwargs["claude_code_version"] == "2.1.280"
+        assert "CLAUDE_CODE_OAUTH_TOKEN" in profile.env_forward
+
+
+def test_delegate_oauth_mode_forwards_the_token_by_name_only(agents):
+    env = {
+        "OPENAGENTS_API_KEY": "oak_secret",
+        "TYPESAFE_API_KEY": "ts_secret",
+        "CLAUDE_CODE_OAUTH_TOKEN": "tok-secret",
+        "ANTHROPIC_API_KEY": "sk-secret",
+    }
+    profile = agents["coder-one-delegate-opus"]
+    assert [m.name for m in configured_auth_modes(profile, env=env)] == [
+        "subscription-oauth",
+        "api-key",
+    ]
+    out = agent_config_env(profile, auth_mode="subscription-oauth", env=env)
+    assert out["CLAUDE_CODE_OAUTH_TOKEN"] == "${CLAUDE_CODE_OAUTH_TOKEN}"
+    assert out["TYPESAFE_API_KEY"] == "${TYPESAFE_API_KEY}"
+    assert "ANTHROPIC_API_KEY" not in out
+    assert "secret" not in str(out)
+
+
+def test_delegate_modes_need_the_door_keys_too(agents):
+    env = {"CLAUDE_CODE_OAUTH_TOKEN": "tok"}
+    assert configured_auth_modes(agents["coder-one-delegate-auto"], env=env) == []
 
 
 def test_unset_vars_are_not_forwarded(agents):

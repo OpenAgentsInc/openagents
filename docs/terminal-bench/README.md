@@ -7,6 +7,7 @@ counts, plus an analysis of each Coder One run. Update it after every run.
 - Harness: `bench/terminal-bench/` (Harbor 0.22.0). How to run it:
   [the runbook](../coder/terminal-bench.md). The artifact contract:
   [`openagents.coder.episode.v1`](../coder/terminal-bench-contract.md).
+- Coder One's delegate arms: [the delegate runbook](coder-one-delegate-runbook.md).
 - Tasks: the upstream Terminal-Bench repository at `3b5caaa4863d`.
 - Evidence: each row links its retained trajectory under
   [`bench/terminal-bench/traces/`](../../bench/terminal-bench/traces/).

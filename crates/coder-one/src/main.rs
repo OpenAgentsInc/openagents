@@ -4,6 +4,8 @@
 //! coder-one doctor
 //! coder-one <issue-url> [--lane free|flash|pro] [--max-steps N]
 //!                       [--timeout SECONDS] [--no-jev] [--open-pr]
+//!                       [--delegate off|always|auto] [--explore-steps N]
+//!                       [--delegate-model MODEL] [--delegate-timeout SECONDS]
 //! coder-one --version
 //! coder-one episode doctor --contract openagents.coder.episode.v1
 //! coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
@@ -17,6 +19,11 @@
 //! streams every step to the console. When the agent finishes with
 //! changes, the host commits them; `--open-pr` also pushes the branch and
 //! opens a draft pull request.
+//!
+//! `--delegate always` lets the loop explore for `--explore-steps` steps
+//! without editing, then hands the task to Claude Code with a briefing
+//! built from what it found; `--delegate auto` delegates only when the
+//! explorer stalls. `coder_one::delegate` documents the phases.
 
 use std::io::Write as _;
 use std::path::Path;
@@ -25,6 +32,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use coder_one::agent::INSTRUCTIONS;
 use coder_one::credentials;
+use coder_one::delegate::{self, ClaudeCode, Credential, Mode, Plan, Policy};
 use coder_one::episode::{self, RunArgs};
 use coder_one::generate::Door;
 use coder_one::judge::JevJudge;
@@ -36,6 +44,8 @@ use serde::Deserialize;
 const USAGE: &str = "usage: coder-one doctor
        coder-one <github-issue-url> [--lane free|flash|pro] [--max-steps N]
                  [--timeout SECONDS] [--no-jev] [--open-pr]
+                 [--delegate off|always|auto] [--explore-steps N]
+                 [--delegate-model MODEL] [--delegate-timeout SECONDS]
        coder-one --version
        coder-one episode doctor --contract openagents.coder.episode.v1
        coder-one episode run --instruction-file F --output-dir D --contract C [--model M]";
@@ -111,6 +121,10 @@ struct Options {
     timeout: Duration,
     jev: bool,
     open_pr: bool,
+    delegate: Mode,
+    explore_steps: usize,
+    delegate_model: String,
+    delegate_timeout: Duration,
 }
 
 impl Options {
@@ -121,6 +135,10 @@ impl Options {
             timeout: Duration::from_secs(120),
             jev: true,
             open_pr: false,
+            delegate: Mode::Off,
+            explore_steps: Policy::default().explore_steps,
+            delegate_model: delegate::DEFAULT_MODEL.to_string(),
+            delegate_timeout: Duration::from_secs(1_200),
         };
         let mut args = args.iter();
         while let Some(arg) = args.next() {
@@ -144,6 +162,19 @@ impl Options {
                 }
                 "--no-jev" => options.jev = false,
                 "--open-pr" => options.open_pr = true,
+                "--delegate" => options.delegate = Mode::parse(&value("--delegate")?)?,
+                "--explore-steps" => {
+                    options.explore_steps = value("--explore-steps")?
+                        .parse()
+                        .map_err(|_| "--explore-steps takes a number".to_string())?;
+                }
+                "--delegate-model" => options.delegate_model = value("--delegate-model")?,
+                "--delegate-timeout" => {
+                    let seconds: u64 = value("--delegate-timeout")?
+                        .parse()
+                        .map_err(|_| "--delegate-timeout takes seconds".to_string())?;
+                    options.delegate_timeout = Duration::from_secs(seconds);
+                }
                 other => return Err(format!("unknown option {other}")),
             }
         }
@@ -177,6 +208,16 @@ fn doctor() -> Result<(), String> {
         "generation door: {}/v1/responses",
         credentials::GENERATION_BASE_URL
     );
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let credential = Credential::detect(env, delegate::stored_login(home.as_deref()));
+    match delegate::claude_binary(env) {
+        Some(path) => println!(
+            "delegate: claude at {} (credential: {})",
+            path.display(),
+            credential.word()
+        ),
+        None => println!("delegate: no claude binary; --delegate needs one"),
+    }
     if ok {
         Ok(())
     } else {
@@ -248,6 +289,14 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
         issue,
     );
     let recorder = Recorder::default();
+    recorder.push(atif::document::Step::said(
+        atif::document::Source::System,
+        INSTRUCTIONS,
+    ));
+    recorder.push(atif::document::Step::said(
+        atif::document::Source::User,
+        &format!("{}\n\n{}", state.issue.title, state.issue.body),
+    ));
     let mut judge = JevJudge::new(jev, workdir.clone(), &state.issue, recorder.clone());
     let mut door = Door::new(
         credentials::GENERATION_BASE_URL,
@@ -267,21 +316,94 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
         commands: 0,
     };
 
-    let ended = run(
-        &mut state,
-        PROMPT,
-        Bounds {
+    let base = command(&workdir, "git", &["rev-parse", "HEAD"])
+        .map(|out| out.trim().to_string())
+        .ok();
+    let (ended, delegated) = if options.delegate == Mode::Off {
+        let ended = run(
+            &mut state,
+            PROMPT,
+            Bounds {
+                max_steps: options.max_steps,
+            },
+            &mut judge,
+            &mut door,
+            &mut shell,
+        )
+        .await;
+        (ended, None)
+    } else {
+        let env = |name: &str| std::env::var(name).ok();
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let mut executor = ClaudeCode {
+            binary: delegate::claude_binary(env),
+            model: options.delegate_model.clone(),
+            deadline: options.delegate_timeout,
+            workdir: workdir.clone(),
+            artifacts: run_dir.clone(),
+            artifacts_label: run_dir.to_string_lossy().into_owned(),
+            env: Vec::new(),
+            credential: Credential::detect(env, delegate::stored_login(home.as_deref())),
+            runs: 0,
+        };
+        let instruction = format!("{}\n\n{}", state.issue.title, state.issue.body);
+        let plan = Plan {
+            mode: options.delegate,
+            policy: Policy {
+                explore_steps: options.explore_steps,
+                ..Policy::default()
+            },
             max_steps: options.max_steps,
-        },
-        &mut judge,
-        &mut door,
-        &mut shell,
-    )
-    .await;
+            prompt: PROMPT,
+            instruction: &instruction,
+            directions: ISSUE_DIRECTIONS,
+            cap: delegate::BRIEFING_CAP,
+            isolation: "none",
+            base: base.as_deref(),
+        };
+        delegate::explore_then_delegate(
+            &mut state,
+            &plan,
+            &mut judge,
+            &mut door,
+            &mut shell,
+            &mut executor,
+            &recorder,
+            &mut |_| {},
+        )
+        .await
+    };
 
     let saved = run_dir.join("state.json");
     if let Ok(json) = serde_json::to_string_pretty(&state) {
         let _ = std::fs::write(&saved, json);
+    }
+    let steps = recorder.steps();
+    let mut session = atif::document::Session::opening(
+        &format!("coder-one-{stamp}"),
+        &options.lane,
+        credentials::GENERATION_BASE_URL,
+        &repository,
+        &episode::version(),
+    );
+    session.directive = PROMPT.to_string();
+    session.state = "ended".to_string();
+    session.seconds = started.elapsed().as_secs();
+    let mut trajectory = atif::document::document(&session, &steps);
+    trajectory["agent"]["name"] = serde_json::json!("coder-one");
+    let usage = episode::usage(&steps, options.delegate != Mode::Off);
+    for (name, value) in [
+        ("trajectory.atif.json", &trajectory),
+        ("usage.json", &usage),
+    ] {
+        if let Ok(json) = serde_json::to_string_pretty(value) {
+            let _ = std::fs::write(run_dir.join(name), json);
+        }
+    }
+    if let Some(delegated) = &delegated
+        && let Ok(json) = serde_json::to_string_pretty(&delegated.record())
+    {
+        let _ = std::fs::write(run_dir.join("delegation.json"), json);
     }
 
     println!("\n── result ──");
@@ -302,6 +424,21 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
         Ended::GenerationFailed { error, steps } => {
             println!("stopped after {steps} steps: generation failed: {error}");
             None
+        }
+        Ended::Stopped { reason, steps } => {
+            println!("stopped after {steps} steps: {reason}");
+            None
+        }
+        Ended::Delegated {
+            answered,
+            status,
+            title,
+            summary,
+            steps,
+        } => {
+            println!("explored {steps} steps, then delegated: {status}");
+            println!("{summary}");
+            answered.then(|| (title.clone(), summary.clone()))
         }
     };
 
@@ -339,8 +476,20 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             if options.open_pr {
                 println!("push    {branch}");
                 command(&workdir, "git", &["push", "-q", "-u", "origin", &branch])?;
+                let delegated_note = match &delegated {
+                    Some(delegated) => format!(
+                        ", delegated to Claude Code ({}) for {} turns",
+                        options.delegate_model,
+                        delegated
+                            .report
+                            .summary
+                            .num_turns
+                            .map_or("an unknown number of".to_string(), |n| n.to_string())
+                    ),
+                    None => String::new(),
+                };
                 let body = format!(
-                    "{summary}\n\nCloses {url}\n\n---\nOpened by coder-one in {} steps (lane `{}`, Jev {}).",
+                    "{summary}\n\nCloses {url}\n\n---\nOpened by coder-one in {} steps (lane `{}`, Jev {}{delegated_note}).",
                     state.history.len() + 1,
                     options.lane,
                     if options.jev { "on" } else { "off" }
@@ -371,9 +520,52 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
         judge.input_tokens,
         started.elapsed().as_secs_f64()
     );
+    let cost = &usage["cost"]["amount_usd"];
+    let components = &usage["components"];
+    println!(
+        "cost    total {} · generation {} · jev {} · delegate {}",
+        usd(cost),
+        usd(&components["generation"]["cost_usd"]),
+        usd(&components["jev"]["cost_usd"]),
+        usd(&components["delegate"]["cost_usd"])
+    );
+    if let Some(delegated) = &delegated {
+        let summary = &delegated.report.summary;
+        println!(
+            "delegate {} · {} turns · {} API calls · {} input / {} output tokens · {:.0}s",
+            delegated.report.status,
+            summary
+                .num_turns
+                .map_or("unknown".to_string(), |n| n.to_string()),
+            summary
+                .api_calls
+                .map_or("unknown".to_string(), |n| n.to_string()),
+            components["delegate"]["total_input_tokens"],
+            components["delegate"]["output_tokens"],
+            delegated.report.milliseconds as f64 / 1000.0
+        );
+    }
     println!("checkout {}", workdir.display());
     println!("state    {}", saved.display());
+    println!(
+        "trace    {}",
+        run_dir.join("trajectory.atif.json").display()
+    );
     Ok(())
+}
+
+/// The delegate's closing directions in issue mode.
+const ISSUE_DIRECTIONS: &str = "Resolve the issue in the current working \
+directory, a fresh clone on a new branch. Make the change, add the tests the \
+issue asks for, and run the test suite. Do not commit, push, or create \
+branches: the host does that when you finish. End with a short summary of \
+what you changed and how you checked it.";
+
+/// A dollar amount, or `unknown` for a null.
+fn usd(value: &serde_json::Value) -> String {
+    value
+        .as_f64()
+        .map_or("unknown".to_string(), |usd| format!("${usd:.4}"))
 }
 
 /// The fields `gh issue view --json` returns that the state uses.
