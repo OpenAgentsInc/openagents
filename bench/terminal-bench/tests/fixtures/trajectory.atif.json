@@ -1,0 +1,173 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "example-session",
+  "trajectory_id": "example-session",
+  "agent": {
+    "name": "openagents-coder",
+    "version": "0.0.0-example",
+    "model_name": "example-model",
+    "extra": {
+      "door": "example-door"
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-09-22T14:42:30.412Z",
+      "source": "system",
+      "message": "you are Coder"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-09-22T14:42:30.415Z",
+      "source": "user",
+      "message": "count the crates"
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-09-22T14:42:30.419Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "example-model",
+      "reasoning_content": "list the workspace members first",
+      "metrics": {
+        "prompt_tokens": 40,
+        "completion_tokens": 9
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-09-22T14:42:30.429Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "example-model",
+      "tool_calls": [
+        {
+          "tool_call_id": "call-1",
+          "function_name": "shell",
+          "arguments": {
+            "command": "ls crates",
+            "workdir": "/work/example"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call-1",
+            "content": "atif\ncoder",
+            "extra": {
+              "status": "completed",
+              "duration_ms": 12
+            }
+          }
+        ]
+      },
+      "extra": {
+        "purpose": "look"
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-09-22T14:42:30.432Z",
+      "source": "agent",
+      "message": "",
+      "model_name": "example-model",
+      "tool_calls": [
+        {
+          "tool_call_id": "call-2",
+          "function_name": "classify",
+          "arguments": {
+            "state": {
+              "task": "count the crates"
+            },
+            "model": "jev-latest",
+            "questions": {
+              "action": {
+                "type": "choice"
+              }
+            }
+          },
+          "extra": {
+            "schema": "openagents.decision-call.v1",
+            "door": "https://api.typesafe.ai",
+            "model": "jev-latest",
+            "state_digest": "8b3c25bc6895a8ff8bf8ffe334d7caee8bf3d028e34ea7107911dda982c7220d",
+            "questions_digest": "9cfa6a2e2ac74218e70109552e04b97be5626fd28a492808b0d2f8edb2160421",
+            "question_ids": [
+              "action"
+            ],
+            "answers": {
+              "action": {
+                "choice": "respond",
+                "confidence": 0.8
+              }
+            },
+            "route": "respond"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call-2",
+            "content": "{\"action\":{\"choice\":\"respond\",\"confidence\":0.8}}",
+            "extra": {
+              "status": "completed",
+              "duration_ms": 240
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-09-22T14:42:30.435Z",
+      "source": "agent",
+      "message": "two crates",
+      "model_name": "example-model"
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 40,
+    "total_completion_tokens": 9,
+    "total_steps": 6,
+    "extra": {
+      "door": "example-door",
+      "calls_total": 2,
+      "tool_calls_total": 1,
+      "tool_calls_failed": 0,
+      "decision_calls": {
+        "total": 1,
+        "by_name": [
+          {
+            "name": "classify",
+            "asked": 1,
+            "failed": 0,
+            "duration_ms": 240
+          }
+        ]
+      },
+      "reads_total": 0,
+      "search_calls_total": 0,
+      "largest_tool_result_chars": 10,
+      "median_inter_round_text_chars": 0,
+      "wall_seconds": 0,
+      "waste": {
+        "repeated_calls": 0,
+        "wasted_ms": 0,
+        "repeated": []
+      }
+    }
+  },
+  "extra": {
+    "exporter": "openagents.atif.v1",
+    "exported_at": "2026-09-22T14:42:30.442Z",
+    "repository": "/work/example",
+    "directive": "count the crates",
+    "state": "ended",
+    "source_path": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/atif-export-97245/example-session.atif.jsonl",
+    "unreadable_lines": 0,
+    "faults": []
+  }
+}

@@ -238,10 +238,14 @@ impl Step {
                 json!(self.model.as_deref().unwrap_or(model)),
             );
         }
-        if let Some(reasoning) = &self.reasoning {
+        if let Some(reasoning) = &self.reasoning
+            && self.source == Source::Agent
+        {
             step.insert("reasoning_content".to_string(), json!(reasoning));
         }
-        if let Some(call) = &self.call {
+        if let Some(call) = &self.call
+            && self.source == Source::Agent
+        {
             let mut tool_call = json!({
                 "tool_call_id": call.id,
                 "function_name": call.name,
@@ -257,13 +261,17 @@ impl Step {
                     "results": [{
                         "source_call_id": call.id,
                         "content": call.output,
-                        "status": call.outcome.word(),
-                        "duration_ms": call.milliseconds,
+                        "extra": {
+                            "status": call.outcome.word(),
+                            "duration_ms": call.milliseconds,
+                        },
                     }]
                 }),
             );
         }
-        if let Some((prompt, completion)) = self.tokens {
+        if let Some((prompt, completion)) = self.tokens
+            && self.source == Source::Agent
+        {
             step.insert(
                 "metrics".to_string(),
                 json!({ "prompt_tokens": prompt, "completion_tokens": completion }),
@@ -272,6 +280,23 @@ impl Step {
         let mut extra = self.extensions.clone();
         if let Some(milliseconds) = self.milliseconds {
             extra.insert("duration_ms".to_string(), json!(milliseconds));
+        }
+        if let Some(call) = &self.call
+            && self.source != Source::Agent
+        {
+            // ATIF reserves tool_calls for agent steps; a call recorded on
+            // another source is still evidence, kept verbatim under extra.
+            extra.insert(
+                "call".to_string(),
+                json!({
+                    "tool_call_id": call.id,
+                    "function_name": call.name,
+                    "arguments": call.arguments,
+                    "content": call.output,
+                    "status": call.outcome.word(),
+                    "duration_ms": call.milliseconds,
+                }),
+            );
         }
         if let Some(call) = &self.call
             && let Some(purpose) = &call.purpose
@@ -900,8 +925,14 @@ mod tests {
             "call-1"
         );
         assert_eq!(step["observation"]["results"][0]["content"], "atif\ncoder");
-        assert_eq!(step["observation"]["results"][0]["status"], "completed");
-        assert_eq!(step["observation"]["results"][0]["duration_ms"], 12);
+        assert_eq!(
+            step["observation"]["results"][0]["extra"]["status"],
+            "completed"
+        );
+        assert_eq!(
+            step["observation"]["results"][0]["extra"]["duration_ms"],
+            12
+        );
         assert_eq!(step["extra"]["purpose"], "look");
     }
 
