@@ -1,0 +1,36 @@
+{
+  "tokens": {
+    "input": 642018,
+    "cache": null,
+    "output": 16631
+  },
+  "cost": {
+    "amount_usd": 0.364791,
+    "provenance": "provider_reported",
+    "covers": "generation only; the Jev estimate is under components.jev"
+  },
+  "calls": {
+    "generation": 49,
+    "decisions": 48,
+    "failed": 0,
+    "retries": 0
+  },
+  "components": {
+    "generation": {
+      "input_tokens": 403209,
+      "output_tokens": 16631,
+      "cost_usd": 0.364791,
+      "cost_provenance": "provider_reported",
+      "unpriced_calls": 0
+    },
+    "jev": {
+      "model": "jev-1.13.0",
+      "requests": 48,
+      "input_tokens": 238809,
+      "output_tokens_billed": false,
+      "cost_usd": 0.010029978,
+      "cost_provenance": "price_estimate",
+      "rate": "$0.042 per million input tokens, retrieved 2026-09-22"
+    }
+  }
+}

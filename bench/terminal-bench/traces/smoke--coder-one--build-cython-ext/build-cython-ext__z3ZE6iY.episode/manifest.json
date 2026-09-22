@@ -1,0 +1,56 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (cb6968b9faa6)",
+    "sha256": "dbfe9879ce2cb932b9fb775dca81691acf363839e930a121b0f9e5f12449577c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T18:41:09.841Z",
+  "updated_at": "2026-09-22T18:46:48.016Z",
+  "outcome": "finished",
+  "steps": 48,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 1461713,
+      "sha256": "a70b7a646f9d43bd8b7be02ebfca163a5edbe737f7776a0e663ad65a328072d8"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 825,
+      "sha256": "70d397f9da5c755d6d92c6529b6937cf46f357f7aaf0c4bf14ab35063bd5adc5"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 170889,
+      "sha256": "ac8bd1ecefc6fb9d1aa0069e9dd1c6584b9820521202c176b4f469c475783db4"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Make pyknotid compatible with NumPy >= 2.0 and compile Cython extensions",
+    "summary": "Cloned pyknotid 0.5.3 to /app/pyknotid, resolved compatibility issues with NumPy 2.x and Python 3.13 (replaced deprecated NumPy scalar aliases np.float, np.int, np.bool, np.complex with standard Python types, updated fractions.gcd import to math.gcd, and updated planarity node/edge attribute access), compiled Cython extensions (chelpers, ccomplexity, cinvariants), installed pyknotid into the system's global Python environment with NumPy 2.3.0, and verified test suite and README example execution."
+  }
+}

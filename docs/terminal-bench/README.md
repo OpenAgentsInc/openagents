@@ -68,7 +68,7 @@ log; its trajectory spans 46.1 seconds.
 
 | Arm | Model | Reward | Cost | Cost source | Jev cost | Agent time | Steps | Tool calls | Tokens in / cached / out | Trace |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Coder One** | Gemini 3.8 Flash (`free` lane) + `jev-1.13.0` | Running | | | | | | | | |
+| **Coder One** | Gemini 3.8 Flash (`free` lane) + `jev-1.13.0` | **1.0** | **$0.3748** | Door-reported + Jev list price | $0.0100300 | 338.4 | 49 generations, 48 Jev | 48 shell | 403,209 / 0 / 16,631 | [trace](../../bench/terminal-bench/traces/smoke--coder-one--build-cython-ext/) |
 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.4420 | CLI list price | — | 201.8† | 20 | 19 | 702,690 / 666,599 / 11,193 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--build-cython-ext-fable/) |
 | Claude Code 2.1.278 | Sonnet 4.5 | 0.0 | $0.9172 | CLI list price | — | 263.7† | 46 | 55 | 1,800,515 / 1,760,664 / 10,070 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--build-cython-ext/) |
 | Codex 0.153.3 | gpt-6-astra | 1.0 | $1.4277 | Harbor estimate | — | 222.2† | 21 | 20 | 801,816 / 758,528 / 4,726 | [trace](../../bench/terminal-bench/traces/smoke--codex--build-cython-ext/) |
@@ -174,6 +174,49 @@ in fewer steps at a comparable cost.
 zero" but still reports a `cost_microusd` for each call. The table uses the
 reported figure until we confirm whether it is a bill or a market-rate
 estimate.
+
+### `build-cython-ext`, 2026-09-22
+
+Same artifact and bounds. Reward 1.0: all 11 verifier tests passed,
+including `test_ccomplexity`, the test Claude Code on Sonnet 4.5 failed
+because it never searched the `.pyx` sources. Harbor phases: environment
+53.9 s, agent setup 1.2 s, agent 338.4 s, verifier 4.2 s, 408.7 s in all.
+
+| | Coder One | Claude Code / Fable 5.1 | Codex / gpt-6-astra | Claude Code / Sonnet 4.5 |
+| --- | --- | --- | --- | --- |
+| Reward | 1.0 | 1.0 | 1.0 | 0.0 |
+| Total cost | $0.3748 | $1.4420 | $1.4277 | $0.9172 |
+| Generation calls | 49 | 20 | 21 | 46 |
+| Jev calls | 48 | — | — | — |
+| Shell or tool calls | 48 | 19 | 20 | 55 |
+| Generation input tokens | 403,209 | 702,690 | 801,816 | 1,800,515 |
+| Of which cached | 0 | 666,599 | 758,528 | 1,760,664 |
+| Generation output tokens | 16,631 | 11,193 | 4,726 | 10,070 |
+| Mean input tokens per generation | 8,229 (980 to 14,065) | 35,135 | 38,182 | 39,142 |
+| Generation cost | $0.3648 | $1.4420 | $1.4277 | $0.9172 |
+| Jev input tokens | 238,809 | — | — | — |
+| Jev cost | $0.0100300 | — | — | — |
+| Cost per 1,000 tokens moved (in + out) | $0.0009 | $0.0020 | $0.0018 | $0.0005 |
+| Agent time | 338.4 s | 201.8 s† | 222.2 s† | 263.7 s† |
+| Time in generation | 219.1 s (65%) | | | |
+| Time in shell commands | 103.9 s (31%) | | | |
+| Time in Jev | 13.9 s over 48 calls (4%) | | | |
+
+**Why it was cheap:** the same reasons as `fix-git`. The model is cheaper
+per token, and each prompt is rebuilt small (8,229 tokens on average,
+against 35,000 to 39,000 for the external agents). Coder One made more
+than twice as many generation calls as Fable 5.1 or Codex (49 against 20
+and 21) and still cost about a quarter as much. Jev was 2.7% of the bill.
+
+**Why it succeeded where Sonnet 4.5 failed:** after the first round of
+fixes, Coder One listed every `.c`, `.pyx`, and `.so` file (step 21) and
+searched the `.pyx` sources for NumPy aliases (step 22). Sonnet 4.5
+limited every search to `*.py` and never reached `ccomplexity.pyx`.
+
+**Why it was slower:** 49 sequential generations took 219 seconds, and
+the builds, installs, and test runs the task needs took 104 seconds. Jev
+took 14 seconds. Coder One also repeated some work: it read `setup.py`
+five times in slices and re-ran the same alias search three times.
 
 ## After every Coder One run
 
