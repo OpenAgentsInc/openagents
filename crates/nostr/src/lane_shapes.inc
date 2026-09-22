@@ -1,12 +1,4 @@
 [
-    Shape { file: "94.md", kind: 1063, tag: "url" },
-    Shape { file: "78.md", kind: 30078, tag: "d" },
-    Shape { file: "88.md", kind: 1068, tag: "option" },
-    Shape { file: "90.md", kind: 5001, tag: "i" },
-    Shape { file: "96.md", kind: 10096, tag: "server" },
-    Shape { file: "A0.md", kind: 1222, tag: "t" },
-    Shape { file: "87.md", kind: 38173, tag: "d" },
-    Shape { file: "75.md", kind: 9041, tag: "amount" },
     Shape { file: "60.md", kind: 17375, tag: "mint" },
     Shape { file: "47.md", kind: 23194, tag: "p" },
     Shape { file: "53.md", kind: 30311, tag: "d" },

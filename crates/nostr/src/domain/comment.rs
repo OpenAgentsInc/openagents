@@ -316,6 +316,14 @@ pub fn open_comment(event: &Event) -> Result<Comment, DomainError> {
     if event.kind != COMMENT_KIND {
         return Err(invalid("a comment has kind 1111"));
     }
+    comment_scopes(event)
+}
+
+/// Read NIP-22 root and parent scopes.
+///
+/// Kind `1244` voice replies use these tags. The kind check stays in
+/// `open_comment`.
+pub(crate) fn comment_scopes(event: &Event) -> Result<Comment, DomainError> {
     let tags = &event.tags;
     let root_kind = required(tags, "K")?
         .value()

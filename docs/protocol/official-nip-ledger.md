@@ -389,6 +389,117 @@ not compared with a provider `nostrPubkey`, because that profile is
 not fetched. A published kind `9734` is stored. Acceptance is
 `domain::zap::tests::a_zap_receipt_matches_the_request_amount_and_description`.
 
+NIP-94 is `configured-and-proven`. Kind `1063` describes a shared
+file. `url` is an `http://` or `https://` download address. `m` is
+one lowercase MIME type. `x` is the SHA-256 of the file. `ox` is the
+hash before a server transformation and may be omitted. `size` is a
+byte count. `dim` is `<width>x<height>`. `magnet` starts with
+`magnet:?`. `i` is a 40- or 64-character lowercase infohash.
+`blurhash`, `thumb`, `image`, `summary`, `alt`, `fallback`, and
+`service` are optional. Kind `1063` is a regular event, so a newer
+description does not replace an older one. It is not added to the
+NIP-11 list. The relay does not download the file or recompute the
+hash. A blurhash is not decoded into pixels. A magnet URI is not
+matched against the infohash. Acceptance is
+`domain::file::tests::a_file_keeps_its_hash_and_does_not_replace`.
+
+NIP-78 is `configured-and-proven`. Kind `30078` is an addressable
+application record. Its `d` tag names the app and the context, or any
+other string of 1 to 1024 characters. Kind `78` is a regular event for
+many rows of the same type. A `d` tag on kind `78` groups those rows
+and does not replace them. Content and the other tags stay opaque.
+A newer kind `30078` record with the same `d` tag replaces the older
+one. Kind `30078` stays out of search. Kinds `78` and `30078` are not
+added to the NIP-11 list. The relay does not decrypt the content or
+decide which app owns an identifier. Kind `78` content remains
+searchable. Acceptance is
+`domain::app_data::tests::an_application_record_replaces_on_its_identifier_and_a_plain_event_does_not`.
+
+NIP-88 is `configured-and-proven`. Kind `1068` is a poll.
+`content` is the label. Each `option` tag is an alphanumeric id and a
+label. `relay` tags are `ws://` or `wss://` URLs. `polltype` is
+`singlechoice` or `multiplechoice`; a missing type is single choice.
+`endsAt` is the unix second when voting stops. Kind `1018` is a
+response: one `e` tag names the poll, and each `response` tag names an
+option. `tally` keeps one vote per pubkey, the latest `created_at`
+that is not after `endsAt`. An equal timestamp keeps the greater event
+id. A single-choice vote counts its first response tag. A
+multiple-choice vote counts the first tag for each option id. A newer
+poll does not replace an older one. Kinds `1068` and `1018` are not
+added to the NIP-11 list. The relay does not fetch the poll's relays.
+Kind `5` deletions of votes are still honored. Follow sets, proof of
+work, and web of trust are not applied. Acceptance is
+`domain::poll::tests::a_poll_counts_one_vote_per_pubkey_inside_its_window`.
+
+NIP-90 is `configured-and-proven`. Kinds `5000` through `5999`
+are job requests. The result kind is that number plus `1000`. Kind
+`7000` is feedback. An `i` tag is `url`, `event`, `job`, or `text`.
+`output` is a lowercase MIME type. `bid` and `amount` are
+millisatoshis. A result embeds the signed request in `request`, and
+its `e` tag and kind must name that request. Feedback `status` is
+`payment-required`, `processing`, `error`, `success`, or `partial`.
+A newer job event does not replace an older one. NIP-90 is
+unrecommended, so these kinds are not added to the NIP-11 list. The
+relay does not run the job, fetch inputs, or pay invoices. An
+`encrypted` payload is checked as NIP-04 framing and is not decrypted.
+Kind `5` deletion still follows NIP-09. Acceptance is
+`domain::vending::tests::a_job_result_uses_the_request_kind_plus_one_thousand`.
+
+NIP-96 is `configured-and-proven`. Kind `10096` is a replaceable
+list of `https://` file servers. `parse_storage_document` reads
+`/.well-known/nostr/nip96.json`. A normal document requires `api_url`.
+A delegated document has an empty `api_url`, a `delegated_to_url`, and
+no other fields. The free plan defaults `is_nip98_required` to true.
+`parse_upload_response` requires `url` and `ox` on a successful upload.
+`ox` is the SHA-256 of the original file. `parse_processing_status`
+reads a delayed job whose percentage is an integer from 0 to 100. A
+newer server list replaces the older one. NIP-96 is unrecommended, so
+kind `10096` is not added to the NIP-11 list. The relay does not
+upload, download, or delete files. HTTP status codes and a NIP-98
+payload hash are not checked. A blurred or resized file is not fetched.
+Acceptance is
+`domain::storage::tests::a_file_server_list_replaces_and_an_upload_keeps_the_original_hash`.
+
+NIP-A0 is `configured-and-proven`. Kind `1222` is a root voice message
+and kind `1244` is a reply. `content` is an `http://` or `https://` URL
+of the audio file. A reply uses the NIP-22 root and parent tags, read
+by `comment_scopes`. An optional `imeta` tag carries a `waveform` of
+whole-number amplitudes and a `duration` in seconds. A newer message
+does not replace an older one. NIP-A0 is a draft, so these kinds are
+not added to the NIP-11 list. The relay does not download the audio,
+so it does not check the codec or the 60-second guidance. A duration
+over 60 seconds is kept. The suggestion of fewer than 100 waveform
+amplitudes is not enforced. Acceptance is
+`domain::voice::tests::a_voice_message_keeps_its_audio_url_and_a_reply_threads_to_it`.
+
+NIP-87 is `configured-and-proven`. Kind `38172` announces a Cashu mint,
+kind `38173` announces a Fedimint, and kind `38000` recommends one of
+them. A mint names one `d` identifier, one or more `u` endpoints, and
+a network of `mainnet`, `testnet`, `signet`, or `regtest`. A Cashu
+mint lists `nuts`. A Fedimint lists `modules`. A Cashu `d` tag is a
+32-byte pubkey. Empty mint content is kept, and non-empty content must
+be a JSON object. A recommendation's `k` and `d` name that mint, and
+each `a` tag repeats the same address. A newer announcement or
+recommendation with the same identifier replaces the older one. NIP-87
+is a draft, so these kinds are not added to the NIP-11 list. The relay
+does not contact a mint, decode an invite code, or read a kind `0`
+profile when content is empty. Acceptance is
+`domain::ecash::tests::a_mint_announcement_replaces_and_a_recommendation_names_it`.
+
+NIP-75 is `configured-and-proven`. Kind `9041` is a fundraising goal.
+`amount` is the target in millisats and `relays` lists where zaps are
+sent and tallied. `closed_at` is the last second that still counts. A
+zap request covers the goal when it includes every goal relay.
+`goal_progress` adds those amounts and skips a later zap. Optional
+`image`, `summary`, `r`, and `a` tags are kept. `zap` tags name
+beneficiaries and the split sums to the target. A `goal` tag on
+another event stores the goal id and an optional relay. A newer goal
+does not replace an older one. NIP-75 is a draft, so kind `9041` is
+not added to the NIP-11 list. The relay does not send or tally
+Lightning payments, and it does not fetch the goal when a zap request
+arrives. Acceptance is
+`domain::goal::tests::a_zap_goal_tallies_until_it_closes_and_a_request_lists_its_relays`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

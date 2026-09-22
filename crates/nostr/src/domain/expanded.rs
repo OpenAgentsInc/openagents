@@ -459,6 +459,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 9_735 {
         super::zap::open_zap_receipt(event)?;
     }
+    if event.kind == 9_041 {
+        super::goal::open_zap_goal(event)?;
+    }
+    if event.tags.iter().any(|tag| tag.name() == Some("goal")) {
+        super::goal::open_goal_references(event)?;
+    }
     if event.tags.iter().any(|tag| tag.name() == Some("zap")) {
         super::zap::zap_split(event, 0)?;
     }
@@ -630,6 +636,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == HTTP_AUTH_KIND {
         validate_http_auth_event(event)?;
     }
+    if event.kind == 10_096 {
+        super::storage::open_file_servers(event)?;
+    }
     if event.kind == 10_063 {
         let servers = event.tag_values("server").collect::<Vec<_>>();
         if servers.is_empty() || servers.iter().any(|server| !valid_http_url(server)) {
@@ -639,44 +648,42 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
         }
     }
     if event.kind == 1_063 {
-        let url = exactly_one(event, "url")?.value().unwrap_or_default();
-        if !valid_http_url(url) {
-            return Err(DomainError::InvalidEvent(
-                "kind 1063 requires one valid HTTP url tag".into(),
-            ));
-        }
-        let media_type = exactly_one(event, "m")?.value().unwrap_or_default();
-        if !valid_media_type(media_type) {
-            return Err(DomainError::InvalidEvent(
-                "kind 1063 requires one lowercase MIME type tag".into(),
-            ));
-        }
-        let sha256 = exactly_one(event, "x")?.value().unwrap_or_default();
-        decode_lower_hex::<32>(sha256, "file metadata hash")?;
-        let sizes = event.tag_values("size").collect::<Vec<_>>();
-        if sizes.len() > 1
-            || sizes
-                .first()
-                .is_some_and(|size| size.parse::<u64>().is_err())
-        {
-            return Err(DomainError::InvalidEvent(
-                "kind 1063 size tag must be one unsigned integer".into(),
-            ));
-        }
+        super::file::open_file_metadata(event)?;
+    }
+    if event.kind == 1_222 {
+        super::voice::open_voice_message(event)?;
+    }
+    if event.kind == 1_244 {
+        super::voice::open_voice_reply(event)?;
+    }
+    if event.kind == 38_172 {
+        super::ecash::open_cashu_mint(event)?;
+    }
+    if event.kind == 38_173 {
+        super::ecash::open_fedimint(event)?;
+    }
+    if event.kind == 38_000 {
+        super::ecash::open_mint_recommendation(event)?;
+    }
+    if matches!(event.kind, 78 | 30_078) {
+        super::app_data::open_app_data(event)?;
+    }
+    if event.kind == 1_068 {
+        super::poll::open_poll(event)?;
+    }
+    if event.kind == 1_018 {
+        super::poll::open_poll_response(event)?;
+    }
+    if (5_000..6_000).contains(&event.kind) {
+        super::vending::open_job_request(event)?;
+    }
+    if (6_000..7_000).contains(&event.kind) {
+        super::vending::open_job_result(event)?;
+    }
+    if event.kind == 7_000 {
+        super::vending::open_job_feedback(event)?;
     }
     Ok(())
-}
-
-fn valid_media_type(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 127
-        && value == value.to_ascii_lowercase()
-        && value.split_once('/').is_some_and(|(top, subtype)| {
-            !top.is_empty()
-                && !subtype.is_empty()
-                && top.bytes().all(media_type_byte)
-                && subtype.bytes().all(media_type_byte)
-        })
 }
 
 fn valid_http_url(value: &str) -> bool {
@@ -688,10 +695,6 @@ fn valid_http_url(value: &str) -> bool {
     };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     !authority.is_empty() && value.len() <= 2_048 && !value.chars().any(char::is_whitespace)
-}
-
-fn media_type_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || b"!#$&^_.+-".contains(&byte)
 }
 
 fn exactly_one<'a>(event: &'a Event, name: &str) -> Result<&'a Tag, DomainError> {
