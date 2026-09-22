@@ -559,12 +559,32 @@ impl BriefingInputs {
         Self {
             instruction: instruction.to_string(),
             requirements: evidence.criteria.clone(),
-            files: evidence
-                .ranked()
-                .into_iter()
-                .take(8)
-                .map(|(path, file)| (path.to_string(), file.p, file.excerpt.clone()))
-                .collect(),
+            files: {
+                // Surveyed files come first, with their contents: with a
+                // short or empty explore phase, the survey is the only
+                // look at the code the delegate gets. Jev's per-step
+                // evidence follows, without repeating a surveyed path.
+                let mut files: Vec<(String, Option<f64>, String)> = state
+                    .survey
+                    .iter()
+                    .map(|file| {
+                        (
+                            file.path.clone(),
+                            Some(file.relevance),
+                            clip(&file.content, SURVEYED_FILE_CHARS),
+                        )
+                    })
+                    .collect();
+                for (path, file) in evidence.ranked() {
+                    if files.len() >= 8 {
+                        break;
+                    }
+                    if !files.iter().any(|(seen, ..)| seen == path) {
+                        files.push((path.to_string(), file.p, file.excerpt.clone()));
+                    }
+                }
+                files
+            },
             spans: evidence.spans.iter().rev().take(6).rev().cloned().collect(),
             commands,
             last_output,
@@ -573,6 +593,9 @@ impl BriefingInputs {
         }
     }
 }
+
+/// The most characters of one surveyed file's contents a briefing carries.
+const SURVEYED_FILE_CHARS: usize = 4_000;
 
 /// The briefing sent to the delegate, and exactly what was left out.
 #[derive(Debug, Clone, PartialEq)]
@@ -1913,6 +1936,32 @@ pub(crate) mod tests {
         let briefing = Briefing::build(&inputs, 2_000);
         assert!(briefing.chars() <= 2_000);
         assert!(briefing.omitted[0].starts_with("instruction tail"));
+    }
+
+    #[test]
+    fn surveyed_files_lead_the_briefing_with_their_contents() {
+        let mut state = state();
+        state.survey.push(crate::state::Surveyed {
+            path: "src/lexer.rs".to_string(),
+            relevance: 0.97,
+            edit: 0.9,
+            content: "pub fn lex(input: &str) {}".to_string(),
+        });
+        let inputs = BriefingInputs::gather(
+            &state,
+            &evidence(),
+            &Ended::StepLimit { steps: 0 },
+            "task",
+            "go",
+        );
+        assert_eq!(inputs.files[0].0, "src/lexer.rs");
+        assert!(inputs.files[0].2.contains("pub fn lex"));
+        assert!(
+            inputs
+                .files
+                .iter()
+                .any(|(path, ..)| path == "src/parser.rs")
+        );
     }
 
     #[test]

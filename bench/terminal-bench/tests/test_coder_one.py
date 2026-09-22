@@ -220,3 +220,9 @@ def test_codex_install_refuses_the_wrong_version_or_a_missing_auth_file(
     auth.unlink()
     with pytest.raises(EpisodeContractError, match="existing auth.json"):
         asyncio.run(agent.install(_CodexEnvironment()))
+
+
+def test_an_explore_bound_of_zero_reaches_the_episode(tmp_path):
+    agent = _delegate(tmp_path, delegate="always", explore_steps=0)
+    agent._claude_bin = "/root/.local/share/claude/versions/2.1.280"
+    assert agent._episode_env()["CODER_ONE_EXPLORE_STEPS"] == "0"

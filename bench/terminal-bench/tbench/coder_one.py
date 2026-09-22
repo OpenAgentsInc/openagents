@@ -315,6 +315,7 @@ class CoderOneDelegate(CoderOne):
                 env["CODER_ONE_CODEX_BIN"] = self._codex_bin
         if self._delegate_timeout_sec:
             env["CODER_ONE_DELEGATE_TIMEOUT"] = str(int(self._delegate_timeout_sec))
-        if self._explore_steps:
+        # Zero is a real bound: it skips the explore phase entirely.
+        if self._explore_steps is not None:
             env["CODER_ONE_EXPLORE_STEPS"] = str(int(self._explore_steps))
         return env
