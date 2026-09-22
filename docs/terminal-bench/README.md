@@ -32,16 +32,16 @@ Harbor's phase timings. GPT-6 costs use the operator's list prices (‡, see
 | `fix-git` | Coder One / Gemini 3.8 Flash + Jev | 1.0 | $0.0604 | 73.8 s | 17 generations, 17 Jev |
 | `fix-git` | Coder One delegating to Opus 5.5 (`always`) | 1.0 | $0.1055 | 47.4 s | 1 generation, 3 Jev, 4 Opus turns |
 | `fix-git` | Coder One delegating to Opus 5.5 (`auto`) | 1.0 | $0.1408 | 70.3 s | 5 generations, 7 Jev, 4 Opus turns |
-| `fix-git` | Codex 0.155.1 / GPT-6 Astra | 1.0 | $1.1275‡ | 47.8 s | 6 steps |
-| `fix-git` | Codex 0.155.1 / GPT-6 Sol | 1.0 | $0.4464‡ | 64.8 s | 11 steps |
-| `fix-git` | Codex 0.155.1 / GPT-6 Luna | 1.0 | $0.0180‡ | 65.3 s | 9 steps |
+| `fix-git` | Codex 0.155.1 / GPT-6 Astra | 1.0 | $0.2370‡ | 47.8 s | 6 steps |
+| `fix-git` | Codex 0.155.1 / GPT-6 Sol | 1.0 | $0.1056‡ | 64.8 s | 11 steps |
+| `fix-git` | Codex 0.155.1 / GPT-6 Luna | 1.0 | $0.0052‡ | 65.3 s | 9 steps |
 | `build-cython-ext` | Claude Code 2.1.280 / Opus 5.5 | 1.0 | $0.4173 | 114.9 s | 17 steps |
 | `build-cython-ext` | Coder One / Gemini 3.8 Flash + Jev | 1.0 | $0.3748 | 338.4 s | 49 generations, 48 Jev |
 | `build-cython-ext` | Coder One delegating to Opus 5.5 (`always`) | 1.0 | $0.3905 | 128.9 s | 8 generations, 8 Jev, 16 Opus turns |
 | `build-cython-ext` | Coder One delegating to Opus 5.5 (`auto`) | 1.0 | $0.4145 | 153.5 s | 8 generations, 8 Jev, 13 Opus turns |
-| `build-cython-ext` | Codex 0.155.1 / GPT-6 Astra | 1.0 | $6.7650‡ | 223.6 s | 18 steps |
-| `build-cython-ext` | Codex 0.155.1 / GPT-6 Sol | 1.0 | $1.9323‡ | 357.7 s | 28 steps |
-| `build-cython-ext` | Codex 0.155.1 / GPT-6 Luna | 1.0 | $0.0988‡ | 204.7 s | 31 steps |
+| `build-cython-ext` | Codex 0.155.1 / GPT-6 Astra | 1.0 | $1.2447‡ | 223.6 s | 18 steps |
+| `build-cython-ext` | Codex 0.155.1 / GPT-6 Sol | 1.0 | $0.3195‡ | 357.7 s | 28 steps |
+| `build-cython-ext` | Codex 0.155.1 / GPT-6 Luna | 1.0 | $0.0174‡ | 204.7 s | 31 steps |
 
 Every arm solved both tasks. What separates them is cost and time:
 
@@ -58,9 +58,11 @@ Every arm solved both tasks. What separates them is cost and time:
   alone: the explore phase added 30 to 40 seconds, and on `fix-git` the
   free lane's rate limit cost another 30 seconds (see
   [Data problems](#data-problems)).
-- **GPT-6 Luna is the cheapest arm by far** at the stated rates, and it
-  solved both tasks. GPT-6 Astra is the most expensive: its upper-bound
-  cost on `build-cython-ext` is $6.77.
+- **GPT-6 Luna is the cheapest arm by far**, at $0.0052 and $0.0174, and
+  it solved both tasks, though it took more steps than Opus 5.5 and about
+  twice as long on `build-cython-ext`. GPT-6 Sol cost less than Opus 5.5
+  but was the slowest arm on `build-cython-ext`. GPT-6 Astra matched Opus
+  5.5's step counts but cost about three times as much there.
 
 ## How to read the columns
 
@@ -75,9 +77,10 @@ Every arm solved both tasks. What separates them is cost and time:
     Codex ran on a ChatGPT subscription, so this is not a bill either.
   - *Door-reported + Jev list price*: Coder One's generation cost as
     openagents.com reports it per call (`cost_microusd`), plus the Jev cost.
-  - *Manual list price* ‡: GPT-6 costs computed from list prices the
-    operator supplied on 2026-09-22, not from Harbor, which has no price
-    for these models under Codex 0.155.1. See [GPT-6 pricing](#gpt-6-pricing).
+  - *Manual list price* ‡: GPT-6 costs computed by hand from OpenAI's
+    standard pricing, which the operator supplied on 2026-09-22, not from
+    Harbor, which has no price for these models under Codex 0.155.1. See
+    [GPT-6 pricing](#gpt-6-pricing).
   - *Door + Jev + CLI list price*: a Coder One delegate arm's generation,
     Jev, and Opus 5.5 costs added together.
   - Devin shows `—`. Devin does not report what the run would cost to buy,
@@ -107,9 +110,9 @@ Every arm solved both tasks. What separates them is cost and time:
 | **Coder One → Opus 5.5** (delegate, `always`) | Gemini 3.8 Flash + `jev-1.13.0`, then Opus 5.5 | **1.0** | **$0.1055** | Door + Jev + CLI list price | $0.0002955 | 47.4 | 1 generation, 3 Jev, 4 Opus turns | 1 shell | Gemini 900 / — / 240; Opus 71,496 / 62,267 / 870 | [trace](../../bench/terminal-bench/traces/smoke--coder-one-delegate-opus--fix-git/) |
 | **Coder One → Opus 5.5** (delegate, `auto`) | Gemini 3.8 Flash + `jev-1.13.0`, then Opus 5.5 | **1.0** | **$0.1408** | Door + Jev + CLI list price | $0.0008844 | 70.3 | 5 generations, 7 Jev, 4 Opus turns | 5 shell | Gemini 12,660 / — / 1,307; Opus 83,036 / 72,060 / 1,166 | [trace](../../bench/terminal-bench/traces/smoke--coder-one-delegate-auto--fix-git/) |
 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.1420 | CLI list price | — | 23.8 | 7 | 6 | 126,361 / 116,005 / 1,799 | [trace](../../bench/terminal-bench/traces/smoke--claude-code-opus--fix-git/) |
-| Codex 0.155.1 | GPT-6 Astra | 1.0 | $1.1275‡ | Manual list price | — | 47.8 | 6 | 5 | 107,937 / 98,944 / 963 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-astra--fix-git/) |
-| Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.4464‡ | Manual list price | — | 64.8 | 11 | 10 | 209,964 / 189,312 / 2,646 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-sol--fix-git/) |
-| Codex 0.155.1 | GPT-6 Luna | 1.0 | $0.0180‡ | Manual list price | — | 65.3 | 9 | 8 | 166,488 / 142,080 / 2,724 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-luna--fix-git/) |
+| Codex 0.155.1 | GPT-6 Astra | 1.0 | $0.2370‡ | Manual list price | — | 47.8 | 6 | 5 | 107,937 / 98,944 / 963 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-astra--fix-git/) |
+| Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.1056‡ | Manual list price | — | 64.8 | 11 | 10 | 209,964 / 189,312 / 2,646 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-sol--fix-git/) |
+| Codex 0.155.1 | GPT-6 Luna | 1.0 | $0.0052‡ | Manual list price | — | 65.3 | 9 | 8 | 166,488 / 142,080 / 2,724 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-luna--fix-git/) |
 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.3630 | CLI list price | — | 30.5† | 6 | 5 | 118,946 / 106,631 / 1,833 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--fix-git-fable/) |
 | Claude Code 2.1.278 | Sonnet 4.5 | 1.0 | $0.1463 | CLI list price | — | 42.6† | 8 | 10 | 179,343 / 168,918 / 2,216 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--fix-git-2/) |
 | Codex 0.153.3 | gpt-6-astra | 1.0 | $0.2607 | Harbor estimate | — | 53.3 | 6 | 5 | 103,959 / 91,776 / 941 | [trace](../../bench/terminal-bench/traces/smoke--codex--fix-git-4/) |
@@ -128,9 +131,9 @@ log; its trajectory spans 46.1 seconds.
 | **Coder One → Opus 5.5** (delegate, `always`) | Gemini 3.8 Flash + `jev-1.13.0`, then Opus 5.5 | **1.0** | **$0.3905** | Door + Jev + CLI list price | $0.0010810 | 128.9 | 8 generations, 8 Jev, 16 Opus turns | 7 shell | Gemini 17,873 / — / 2,660; Opus 404,204 / 380,950 / 5,199 | [trace](../../bench/terminal-bench/traces/smoke--coder-one-delegate-opus--build-cython-ext/) |
 | **Coder One → Opus 5.5** (delegate, `auto`) | Gemini 3.8 Flash + `jev-1.13.0`, then Opus 5.5 | **1.0** | **$0.4145** | Door + Jev + CLI list price | $0.0013304 | 153.5 | 8 generations, 8 Jev, 13 Opus turns | 8 shell | Gemini 33,773 / — / 2,500; Opus 396,041 / 370,767 / 5,112 | [trace](../../bench/terminal-bench/traces/smoke--coder-one-delegate-auto--build-cython-ext/) |
 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.4173 | CLI list price | — | 114.9 | 17 | 16 | 456,887 / 431,183 / 6,277 | [trace](../../bench/terminal-bench/traces/smoke--claude-code-opus--build-cython-ext/) |
-| Codex 0.155.1 | GPT-6 Astra | 1.0 | $6.7650‡ | Manual list price | — | 223.6 | 18 | 17 | 652,905 / 613,376 / 4,720 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-astra--build-cython-ext/) |
-| Codex 0.155.1 | GPT-6 Sol | 1.0 | $1.9323‡ | Manual list price | — | 357.7 | 28 | 27 | 936,445 / 896,000 / 5,943 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-sol--build-cython-ext/) |
-| Codex 0.155.1 | GPT-6 Luna | 1.0 | $0.0988‡ | Manual list price | — | 204.7 | 31 | 30 | 952,216 / 904,448 / 7,151 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-luna--build-cython-ext/) |
+| Codex 0.155.1 | GPT-6 Astra | 1.0 | $1.2447‡ | Manual list price | — | 223.6 | 18 | 17 | 652,905 / 613,376 / 4,720 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-astra--build-cython-ext/) |
+| Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.3195‡ | Manual list price | — | 357.7 | 28 | 27 | 936,445 / 896,000 / 5,943 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-sol--build-cython-ext/) |
+| Codex 0.155.1 | GPT-6 Luna | 1.0 | $0.0174‡ | Manual list price | — | 204.7 | 31 | 30 | 952,216 / 904,448 / 7,151 | [trace](../../bench/terminal-bench/traces/smoke--codex-gpt-6-luna--build-cython-ext/) |
 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.4420 | CLI list price | — | 201.8† | 20 | 19 | 702,690 / 666,599 / 11,193 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--build-cython-ext-fable/) |
 | Claude Code 2.1.278 | Sonnet 4.5 | 0.0 | $0.9172 | CLI list price | — | 263.7† | 46 | 55 | 1,800,515 / 1,760,664 / 10,070 | [trace](../../bench/terminal-bench/traces/smoke--claude-code--build-cython-ext/) |
 | Codex 0.153.3 | gpt-6-astra | 1.0 | $1.4277 | Harbor estimate | — | 222.2† | 21 | 20 | 801,816 / 758,528 / 4,726 | [trace](../../bench/terminal-bench/traces/smoke--codex--build-cython-ext/) |
@@ -163,28 +166,33 @@ log; its trajectory spans 46.1 seconds.
 
 ### GPT-6 pricing
 
-The GPT-6 costs are **manual**: they come from list prices the operator
-supplied on 2026-09-22, not from Harbor. Harbor records no cost for these
-models under Codex 0.155.1.
+The GPT-6 costs are **manual**: computed by hand from OpenAI's standard
+pricing, which the operator supplied on 2026-09-22, not reported by Harbor.
+Harbor records no cost for these models under Codex 0.155.1. Prices are per
+million tokens, standard tier, short context; every request here was well
+under the long-context threshold.
 
-| Model | Input, per million tokens | Output, per million tokens |
-| --- | --- | --- |
-| GPT-6 Astra | $10.00 | $50.00 |
-| GPT-6 Sol | $2.00 | $10.00 |
-| GPT-6 Luna | $0.10 | $0.50 |
+| Model | Input | Cached input | Cache writes | Output |
+| --- | --- | --- | --- | --- |
+| GPT-6 Astra | $10.00 | $1.00 | $12.50 | $50.00 |
+| GPT-6 Sol | $2.00 | $0.20 | $2.50 | $10.00 |
+| GPT-6 Luna | $0.10 | $0.01 | $0.125 | $0.50 |
 
-No cached-input rate was supplied, so the tables charge cached input at the
-full input rate. That is an upper bound: about 90% of each run's input was
-cached. The lower bound charges only uncached input:
+Cost = uncached input × input rate + cached input × cached rate + output
+× output rate. Codex reports cached input but not cache writes, so uncached
+input is priced at the ordinary input rate; if some of it was billed as cache
+writes, the true cost is up to 25% higher on that part. The method matches
+Harbor's: repricing the two earlier Codex 0.153.3 GPT-6 Astra trials this
+way gives $0.2607 and $1.4277, exactly Harbor's figures.
 
-| Trial | Upper bound (cached at the input rate) | Lower bound (cached input free) |
-| --- | --- | --- |
-| GPT-6 Astra, `fix-git` | $1.1275 | $0.1381 |
-| GPT-6 Astra, `build-cython-ext` | $6.7650 | $0.6313 |
-| GPT-6 Sol, `fix-git` | $0.4464 | $0.0678 |
-| GPT-6 Sol, `build-cython-ext` | $1.9323 | $0.1403 |
-| GPT-6 Luna, `fix-git` | $0.0180 | $0.0038 |
-| GPT-6 Luna, `build-cython-ext` | $0.0988 | $0.0084 |
+| Trial | Uncached input | Cached input | Output | Cost |
+| --- | --- | --- | --- | --- |
+| GPT-6 Astra, `fix-git` | 8,993 | 98,944 | 963 | $0.2370 |
+| GPT-6 Astra, `build-cython-ext` | 39,529 | 613,376 | 4,720 | $1.2447 |
+| GPT-6 Sol, `fix-git` | 20,652 | 189,312 | 2,646 | $0.1056 |
+| GPT-6 Sol, `build-cython-ext` | 40,445 | 896,000 | 5,943 | $0.3195 |
+| GPT-6 Luna, `fix-git` | 24,408 | 142,080 | 2,724 | $0.0052 |
+| GPT-6 Luna, `build-cython-ext` | 47,768 | 904,448 | 7,151 | $0.0174 |
 
 ### Not yet run
 
