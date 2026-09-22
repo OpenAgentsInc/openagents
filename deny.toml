@@ -19,6 +19,7 @@ ignore = [
 confidence-threshold = 0.95
 allow = [
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
     "BSD-3-Clause",
     "CC0-1.0",
     "CDLA-Permissive-2.0",

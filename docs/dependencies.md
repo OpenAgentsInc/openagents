@@ -121,6 +121,15 @@ allowed license identifiers are the ones the resolved graph declares; no
 identifier is allowed that no dependency uses, and no clarification or
 exception entry exists.
 
+On 2026-09-22 the allowlist gained a ninth identifier:
+`Apache-2.0 WITH LLVM-exception`. The `wasmtime` dependency (through
+`plugin`) resolves to the Cranelift compiler crates, which declare that
+expression. The LLVM exception keeps the Apache-2.0 terms while waiving
+GPL-2.0 incompatibility from the patent clause and relaxing attribution for
+compiler output; it is a permissive superset for downstream use. The
+dependency is reachable and intentional, so the identifier is allowed
+graph-wide rather than as a per-crate exception.
+
 To inspect license assignments without changing policy:
 
 ```sh
