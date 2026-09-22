@@ -5,7 +5,7 @@
       "role": "external-baseline",
       "harbor_name": "claude-code",
       "version": "2.1.278",
-      "model": "claude-sonnet-4-5",
+      "model": "claude-fable-5-1",
       "kwargs": {
         "version": "2.1.278",
         "reasoning_effort": "high"
