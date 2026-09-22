@@ -9,12 +9,14 @@
 //! [`crate::Action::parse`] validates: the tool name becomes `action`, and
 //! the arguments become the other fields.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use atif::document::{Source, Step};
 use serde_json::{Value, json};
 
 use crate::agent::Generate;
 use crate::credentials::Secret;
+use crate::record::Recorder;
 
 /// How long one generation may take, from request to the last event.
 const REQUEST_DEADLINE: Duration = Duration::from_secs(300);
@@ -22,11 +24,31 @@ const REQUEST_DEADLINE: Duration = Duration::from_secs(300);
 /// How many times a rate-limited or failed request is retried.
 const RETRIES: u32 = 3;
 
-/// Token counts the door reported for one generation.
+/// What the door reported for one generation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Usage {
     pub input_tokens: u64,
     pub output_tokens: u64,
+    /// Input tokens served from the provider's cache, when reported.
+    pub cached_tokens: u64,
+    /// The door's reported cost in millionths of a dollar, when reported.
+    pub cost_microusd: Option<u64>,
+}
+
+/// Every generation's accounting, summed over the run.
+#[derive(Debug, Clone, Default)]
+pub struct Tally {
+    pub usage: Usage,
+    /// Generations that returned an answer.
+    pub calls: u32,
+    /// Attempts that failed, including ones a retry recovered.
+    pub failed: u32,
+    /// Retries sent after a failed attempt.
+    pub retries: u32,
+    /// Answered generations that reported no cost.
+    pub unpriced: u32,
+    /// The models the door reported serving, in first-seen order.
+    pub models: Vec<String>,
 }
 
 /// An Open Responses door on one lane.
@@ -37,8 +59,9 @@ pub struct Door {
     lane: String,
     instructions: String,
     on_delta: Box<dyn FnMut(&str)>,
-    /// The usage of every generation so far, summed.
-    pub usage: Usage,
+    recorder: Recorder,
+    /// Every generation's accounting so far.
+    pub tally: Tally,
 }
 
 impl Door {
@@ -51,6 +74,7 @@ impl Door {
         lane: &str,
         instructions: &str,
         on_delta: Box<dyn FnMut(&str)>,
+        recorder: Recorder,
     ) -> Result<Self, String> {
         let http = reqwest::Client::builder()
             .timeout(REQUEST_DEADLINE)
@@ -63,11 +87,12 @@ impl Door {
             lane: lane.to_string(),
             instructions: instructions.to_string(),
             on_delta,
-            usage: Usage::default(),
+            recorder,
+            tally: Tally::default(),
         })
     }
 
-    async fn attempt(&mut self, prompt: &str) -> Result<(String, Usage), Attempt> {
+    async fn attempt(&mut self, prompt: &str) -> Result<(String, Usage, String), Attempt> {
         let body = json!({
             "model": self.lane,
             "instructions": self.instructions,
@@ -121,7 +146,7 @@ impl Door {
             Some((name, arguments)) => action_json(&name, &arguments),
             None => events.text,
         };
-        Ok((reply, usage))
+        Ok((reply, usage, events.model))
     }
 }
 
@@ -150,8 +175,9 @@ fn tools() -> Value {
         {
             "type": "function",
             "name": "finished",
-            "description": "Stop because the issue is resolved and checked. The host \
-                commits the changes and uses the title and summary for the pull request.",
+            "description": "Stop because the task is done and checked. The title and \
+                summary describe the change; when the task is a GitHub issue, they become \
+                the pull request's.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -185,41 +211,86 @@ enum Attempt {
 
 impl Generate for Door {
     async fn generate(&mut self, prompt: &str) -> Result<String, String> {
-        let started = std::time::Instant::now();
-        let before = self.usage;
-        let result = self.generate_retrying(prompt).await;
-        println!(
-            "\n  gen ▸ {:.1}s, {} in / {} out tokens",
-            started.elapsed().as_secs_f64(),
-            self.usage.input_tokens - before.input_tokens,
-            self.usage.output_tokens - before.output_tokens
-        );
-        result
-    }
-}
-
-impl Door {
-    async fn generate_retrying(&mut self, prompt: &str) -> Result<String, String> {
+        let started = Instant::now();
         print!("  gen ▸ ");
         let mut last = String::new();
         for attempt in 0..=RETRIES {
             if attempt > 0 {
+                self.tally.retries += 1;
                 let wait = Duration::from_secs(5 * u64::from(attempt));
                 println!("\n  gen ▸ retry {attempt} in {}s: {last}", wait.as_secs());
                 tokio::time::sleep(wait).await;
             }
             match self.attempt(prompt).await {
-                Ok((text, usage)) => {
-                    self.usage.input_tokens += usage.input_tokens;
-                    self.usage.output_tokens += usage.output_tokens;
-                    return Ok(text);
+                Ok((reply, usage, model)) => {
+                    self.account(usage, &model);
+                    let milliseconds = elapsed_ms(started);
+                    println!(
+                        "\n  gen ▸ {:.1}s, {} in / {} out tokens, {}",
+                        milliseconds as f64 / 1000.0,
+                        usage.input_tokens,
+                        usage.output_tokens,
+                        if model.is_empty() { &self.lane } else { &model }
+                    );
+                    let mut step = Step::said(Source::Agent, &reply)
+                        .taking(milliseconds)
+                        .noting("lane", json!(self.lane))
+                        .noting("attempts", json!(attempt + 1));
+                    if !model.is_empty() {
+                        step = step.by(&model);
+                    }
+                    step.spent(atif::document::Usage {
+                        prompt: usage.input_tokens,
+                        completion: usage.output_tokens,
+                    });
+                    if let Some(cost) = usage.cost_microusd {
+                        step = step.noting("cost_microusd", json!(cost));
+                    }
+                    self.recorder.push(step);
+                    return Ok(reply);
                 }
-                Err(Attempt::Fatal(why)) => return Err(why),
-                Err(Attempt::Retry(why)) => last = why,
+                Err(Attempt::Fatal(why)) => {
+                    self.tally.failed += 1;
+                    last = why;
+                    break;
+                }
+                Err(Attempt::Retry(why)) => {
+                    self.tally.failed += 1;
+                    last = why;
+                }
             }
         }
+        println!("\n  gen ▸ failed: {last}");
+        self.recorder.push(
+            Step::said(Source::System, &format!("generation failed: {last}"))
+                .taking(elapsed_ms(started))
+                .noting("lane", json!(self.lane)),
+        );
         Err(last)
     }
+}
+
+impl Door {
+    fn account(&mut self, usage: Usage, model: &str) {
+        let tally = &mut self.tally;
+        tally.calls += 1;
+        tally.usage.input_tokens += usage.input_tokens;
+        tally.usage.output_tokens += usage.output_tokens;
+        tally.usage.cached_tokens += usage.cached_tokens;
+        match usage.cost_microusd {
+            Some(cost) => {
+                tally.usage.cost_microusd = Some(tally.usage.cost_microusd.unwrap_or(0) + cost);
+            }
+            None => tally.unpriced += 1,
+        }
+        if !model.is_empty() && !tally.models.iter().any(|seen| seen == model) {
+            tally.models.push(model.to_string());
+        }
+    }
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 /// One Server-Sent Event, as far as the loop cares.
@@ -237,6 +308,8 @@ struct Events {
     /// The first completed function call: its name and raw arguments.
     call: Option<(String, String)>,
     usage: Option<Usage>,
+    /// The model the door reported serving, from `response.completed`.
+    model: String,
 }
 
 impl Events {
@@ -282,7 +355,15 @@ impl Events {
                 self.usage = Some(Usage {
                     input_tokens: usage["input_tokens"].as_u64().unwrap_or(0),
                     output_tokens: usage["output_tokens"].as_u64().unwrap_or(0),
+                    cached_tokens: usage["input_tokens_details"]["cached_tokens"]
+                        .as_u64()
+                        .unwrap_or(0),
+                    cost_microusd: usage["cost_microusd"].as_u64(),
                 });
+                self.model = event["response"]["model"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
                 Event::Other
             }
             "response.failed" | "error" => Event::Failed(
@@ -354,7 +435,9 @@ mod tests {
             events.usage,
             Some(Usage {
                 input_tokens: 12,
-                output_tokens: 3
+                output_tokens: 3,
+                cached_tokens: 0,
+                cost_microusd: None,
             })
         );
     }

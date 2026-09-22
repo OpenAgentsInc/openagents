@@ -82,6 +82,16 @@ class CoderV05(BaseInstalledAgent):
     # Artifact contents are not secrets; the door key travels by name.
     ENV_VARS: ClassVar = []
 
+    # Where the artifact installs, and which variables reach the episode
+    # by name. A subclass for another artifact of the same contract
+    # overrides these rather than the install and run paths.
+    BINARY_PATH: ClassVar[PurePosixPath] = BINARY_PATH
+    EPISODE_ENV: ClassVar[tuple[str, ...]] = (
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "OPENAGENTS_MODEL",
+    )
+
     @staticmethod
     def name() -> str:
         return "coder-v05"
@@ -136,7 +146,7 @@ class CoderV05(BaseInstalledAgent):
         return self._artifact_version or "pinned-artifact"
 
     def get_version_command(self) -> str | None:
-        return f"{BINARY_PATH} --version"
+        return f"{self.BINARY_PATH} --version"
 
     def parse_version(self, stdout: str) -> str:
         return stdout.strip().splitlines()[0] if stdout.strip() else "unknown"
@@ -160,13 +170,13 @@ class CoderV05(BaseInstalledAgent):
                 raise ArtifactIdentityError(
                     "staged artifact digest changed between pin and upload"
                 )
-            await environment.upload_file(str(staged), str(BINARY_PATH))
+            await environment.upload_file(str(staged), str(self.BINARY_PATH))
 
         check = await self.exec_as_root(
             environment,
             command=(
-                f"chmod 0755 {BINARY_PATH} && "
-                f"echo '{self._artifact_sha256}  {BINARY_PATH}' | sha256sum -c -"
+                f"chmod 0755 {self.BINARY_PATH} && "
+                f"echo '{self._artifact_sha256}  {self.BINARY_PATH}' | sha256sum -c -"
             ),
         )
         if check.return_code != 0:
@@ -182,16 +192,16 @@ class CoderV05(BaseInstalledAgent):
                 str(Path(self._assets_path).expanduser()), str(ASSETS_PATH)
             )
 
-        version = await environment.exec(command=f"{BINARY_PATH} --version")
+        version = await environment.exec(command=f"{self.BINARY_PATH} --version")
         if version.return_code != 0:
             raise EpisodeContractError(
-                f"{BINARY_PATH} --version exited {version.return_code}: "
+                f"{self.BINARY_PATH} --version exited {version.return_code}: "
                 f"{version.stderr or version.stdout}"
             )
 
         doctor = await environment.exec(
             command=(
-                f"{BINARY_PATH} episode doctor --contract {self._contract}"
+                f"{self.BINARY_PATH} episode doctor --contract {self._contract}"
             ),
             env=self._episode_env(),
         )
@@ -213,11 +223,7 @@ class CoderV05(BaseInstalledAgent):
     def _episode_env(self) -> dict[str, str]:
         """Forward door credentials by name; values never appear here."""
         env: dict[str, str] = {}
-        for name in (
-            "OPENAGENTS_API_KEY",
-            "OPENAGENTS_DOOR_URL",
-            "OPENAGENTS_MODEL",
-        ):
+        for name in self.EPISODE_ENV:
             value = self._get_env(name)
             if value:
                 env[name] = value
@@ -246,7 +252,7 @@ class CoderV05(BaseInstalledAgent):
 
         command = " ".join(
             [
-                str(BINARY_PATH),
+                str(self.BINARY_PATH),
                 "episode",
                 "run",
                 "--instruction-file",

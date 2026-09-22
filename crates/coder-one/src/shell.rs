@@ -4,7 +4,11 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use atif::document::{Call, Outcome, Step};
+use serde_json::json;
+
 use crate::agent::Shell;
+use crate::record::Recorder;
 use crate::state::Observation;
 
 /// Output past this many bytes a stream is counted and dropped.
@@ -17,6 +21,9 @@ const CONSOLE_LINES: usize = 40;
 pub struct Checkout {
     pub workdir: PathBuf,
     pub deadline: Duration,
+    pub recorder: Recorder,
+    /// Commands run so far.
+    pub commands: u32,
 }
 
 impl Shell for Checkout {
@@ -53,6 +60,31 @@ impl Shell for Checkout {
         if let supervise::Ending::Failed(why) = &ended.ending {
             output.push_str(&format!("\n[could not run: {why}]"));
         }
+
+        self.commands += 1;
+        let milliseconds = u64::try_from(ended.elapsed.as_millis()).unwrap_or(u64::MAX);
+        let mut extra = serde_json::Map::new();
+        extra.insert("exit".to_string(), json!(ended.ending.code()));
+        extra.insert("ending".to_string(), json!(ended.ending.to_string()));
+        extra.insert("bytes".to_string(), json!(ended.bytes()));
+        extra.insert("truncated".to_string(), json!(ended.truncated()));
+        self.recorder.push(
+            Step::called(Call {
+                id: format!("shell-{}", self.commands),
+                name: "shell".to_string(),
+                arguments: json!({ "command": command }),
+                output: output.clone(),
+                outcome: if ended.ending.success() {
+                    Outcome::Completed
+                } else {
+                    Outcome::Failed
+                },
+                milliseconds,
+                purpose: None,
+                extra,
+            })
+            .taking(milliseconds),
+        );
 
         print_tail(&output);
         println!(

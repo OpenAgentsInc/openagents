@@ -7,11 +7,13 @@ description = "Coder One: a minimal agent that turns a GitHub issue into a pull 
 publish.workspace = true
 
 [dependencies]
+atif = { path = "../atif" }
 indexmap = "2"
 jev = { path = "../jev" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 supervise = { path = "../supervise" }
 tokio = { version = "1", features = ["macros", "rt", "time"] }
 

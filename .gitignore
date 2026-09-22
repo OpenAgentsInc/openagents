@@ -1,6 +1,7 @@
 /target
 /target-mc/
 /target-voyager/
+/target-coder-one/
 /.coder/
 
 # Local build products; measurement records and fixtures stay tracked.

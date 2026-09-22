@@ -19,13 +19,25 @@
       ],
       "auth_modes": {
         "api-key": {
-          "requires_any": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
-          "exclude_env": ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_FORCE_OAUTH"],
+          "requires_any": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_FORCE_OAUTH"
+          ],
           "note": "Direct API billing. Cost is provider-reported or a Harbor pricing estimate; label which."
         },
         "subscription-oauth": {
-          "requires_all": ["CLAUDE_CODE_OAUTH_TOKEN"],
-          "exclude_env": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_FORCE_OAUTH"],
+          "requires_all": [
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "CLAUDE_FORCE_OAUTH"
+          ],
           "note": "Subscription billing through `claude setup-token`. The API-key variables are excluded rather than overridden: with no key forwarded the CLI uses the OAuth token, and a forwarded truthy selector would be treated as a credential value and scrubbed from the evidence. Reference pricing is not an observed incremental bill; record cost provenance as estimate."
         }
       },
@@ -46,7 +58,9 @@
       ],
       "auth_modes": {
         "api-key": {
-          "requires_all": ["DEVIN_API_KEY"],
+          "requires_all": [
+            "DEVIN_API_KEY"
+          ],
           "note": "The adapter writes the key to the container's credentials.toml as windsurf_api_key; it never enters the agent environment. DEVIN_API_SERVER_URL is forwarded alongside so a key scoped to a non-default backend reaches it."
         }
       },
@@ -71,14 +85,26 @@
       ],
       "auth_modes": {
         "api-key": {
-          "requires_any": ["OPENAI_API_KEY"],
-          "exclude_env": ["CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"],
+          "requires_any": [
+            "OPENAI_API_KEY"
+          ],
+          "exclude_env": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
           "note": "Direct API billing. Codex reports token usage; cost is a Harbor pricing estimate unless the provider reports otherwise."
         },
         "auth-json": {
-          "requires_any": ["CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"],
-          "env_overrides": { "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json" },
-          "exclude_env": ["CODEX_FORCE_AUTH_JSON"],
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON"
+          ],
           "model": "gpt-6-astra",
           "note": "Subscription billing through the host's auth.json (CODEX_AUTH_JSON_PATH selects the file; CODEX_FORCE_AUTH_JSON selects ~/.codex/auth.json). ChatGPT-account sessions cannot serve gpt-5.2-codex or gpt-5.1-codex; the backend's live model catalog serves gpt-6-astra and the gpt-5.6 family instead, so this mode pins the account's top model. Follow Codex's noninteractive contract."
         }
@@ -93,17 +119,25 @@
       "version": null,
       "model": "v0.5-composite",
       "kwargs": {},
-      "required_kwargs": ["artifact_path", "artifact_sha256"],
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
       "env_forward": [
         "OPENAGENTS_API_KEY",
         "OPENAGENTS_DOOR_URL",
         "OPENAGENTS_MODEL",
         "CODER_V05_CONFIG"
       ],
-      "extra_allowed_hosts": ["host.docker.internal"],
+      "extra_allowed_hosts": [
+        "host.docker.internal"
+      ],
       "auth_modes": {
         "door-key": {
-          "requires_all": ["OPENAGENTS_API_KEY", "OPENAGENTS_DOOR_URL"],
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "OPENAGENTS_DOOR_URL"
+          ],
           "note": "The episode's model and decision calls go through the named door. The key is forwarded by name only; its value never enters a checked file, a log line, or an artifact."
         }
       },
@@ -132,6 +166,76 @@
       "auth_modes": {},
       "cost_provenance": "none",
       "note": "Does nothing. The negative control: a nop pass means the verifier is not discriminating."
+    },
+    "coder-one": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOne",
+      "version": null,
+      "model": "free",
+      "kwargs": {},
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation cost is the door's provider-reported cost_microusd per call; Jev cost is a price estimate at the published input-token rate. Both are kept apart in evaluation/usage.json; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT"
+      ],
+      "auth_modes": {
+        "door-key": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "note": "OPENAGENTS_API_KEY is an openagents.com API key or session bearer for generation; TYPESAFE_API_KEY reaches Jev directly at api.typesafe.ai. Both travel by name only."
+        }
+      },
+      "note": "Coder One (crates/coder-one): one Jev request per step steers a generate-and-run loop. Build the pinned static Linux binary with scripts/build-coder-one-linux.sh. The profile's model is the openagents.com lane the episode generates on."
+    },
+    "coder-one-no-jev": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOne",
+      "version": null,
+      "model": "free",
+      "kwargs": {},
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation cost is the door's provider-reported cost_microusd per call; Jev cost is a price estimate at the published input-token rate. Both are kept apart in evaluation/usage.json; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CODER_ONE_JEV"
+      ],
+      "auth_modes": {
+        "door-key": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY"
+          ],
+          "env_overrides": {
+            "CODER_ONE_JEV": "off"
+          },
+          "note": "The ablation arm: the same binary and loop with Jev off, so candidate files reach the prompt ordered by search hits."
+        }
+      },
+      "note": "Coder One without Jev: the baseline arm for measuring what the Jev step adds. Same binary, lane, and bounds as coder-one."
     }
   }
 }

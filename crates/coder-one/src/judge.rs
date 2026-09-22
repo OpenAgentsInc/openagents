@@ -22,7 +22,11 @@ use indexmap::IndexMap;
 use jev::{Choice, Entry, Noul, Questions, SystemOneRequest};
 use serde_json::json;
 
+use atif::document::{Decision, Step};
+
 use crate::agent::{Judge, Judgments};
+use crate::credentials::{JEV_BASE_URL, JEV_MODEL};
+use crate::record::Recorder;
 use crate::state::{Issue, State, Turn};
 
 /// The most candidate files one request judges.
@@ -49,31 +53,66 @@ pub struct JevJudge {
     workdir: PathBuf,
     keywords: Vec<String>,
     criteria: Vec<String>,
-    /// Requests sent and input tokens reported, for the run summary.
+    /// Whether the workdir is a Git work tree. Terminal-Bench task
+    /// directories often are not, and search falls back to a file walk.
+    is_git: bool,
+    recorder: Recorder,
+    /// Requests answered and input tokens reported, for the run summary.
     pub calls: u32,
     pub input_tokens: u64,
+    /// Requests that failed.
+    pub failed: u32,
 }
 
 impl JevJudge {
-    pub fn new(client: Option<jev::Client>, workdir: PathBuf, issue: &Issue) -> Self {
+    pub fn new(
+        client: Option<jev::Client>,
+        workdir: PathBuf,
+        issue: &Issue,
+        recorder: Recorder,
+    ) -> Self {
+        let is_git = git(&workdir, &["rev-parse", "--is-inside-work-tree"]).trim() == "true";
         Self {
             client,
             workdir,
             keywords: keywords(issue),
             criteria: criteria(&issue.body),
+            is_git,
+            recorder,
             calls: 0,
             input_tokens: 0,
+            failed: 0,
         }
     }
 
-    /// Files mentioned in the issue or already changed come first, then
-    /// files by how many issue keywords they contain.
-    fn candidates(&self, issue: &Issue) -> Vec<Candidate> {
+    /// Every searchable file and how many of its lines hold a keyword,
+    /// through Git when the workdir is a work tree and a bounded walk when
+    /// it is not.
+    fn search(&self) -> (BTreeSet<String>, BTreeMap<String, usize>) {
+        let mut hits: BTreeMap<String, usize> = BTreeMap::new();
+        if !self.is_git {
+            let files = walk(&self.workdir);
+            for path in &files {
+                let Ok(text) = std::fs::read_to_string(self.workdir.join(path)) else {
+                    continue;
+                };
+                let count = text
+                    .lines()
+                    .filter(|line| {
+                        let lower = line.to_lowercase();
+                        self.keywords.iter().any(|k| lower.contains(k.as_str()))
+                    })
+                    .count();
+                if count > 0 {
+                    hits.insert(path.clone(), count);
+                }
+            }
+            return (files.into_iter().collect(), hits);
+        }
         let tracked: BTreeSet<String> = git(&self.workdir, &["ls-files"])
             .lines()
             .map(str::to_string)
             .collect();
-        let mut hits: BTreeMap<String, usize> = BTreeMap::new();
         if !self.keywords.is_empty() {
             let mut args = vec!["grep", "-I", "-i", "-c", "-F"];
             for keyword in &self.keywords {
@@ -85,18 +124,33 @@ impl JevJudge {
                 }
             }
         }
+        (tracked, hits)
+    }
+
+    /// Files mentioned in the issue or already changed come first, then
+    /// files by how many issue keywords they contain.
+    fn candidates(&self, issue: &Issue) -> Vec<Candidate> {
+        let (tracked, hits) = self.search();
         let mut first: Vec<String> = Vec::new();
         let text = format!("{}\n{}", issue.title, issue.body);
         for token in text.split(|c: char| c.is_whitespace() || "`'\"()[],".contains(c)) {
             let token = token.trim_matches(|c: char| c == '.' || c == ':');
             if token.contains('/') || token.contains('.') {
+                // An absolute path inside the workdir names a file in it.
+                let root = format!("{}/", self.workdir.to_string_lossy());
+                let token = token.strip_prefix(root.as_str()).unwrap_or(token);
                 let token = token.trim_start_matches("./");
                 if tracked.contains(token) && !first.contains(&token.to_string()) {
                     first.push(token.to_string());
                 }
             }
         }
-        for line in git(&self.workdir, &["status", "--porcelain"]).lines() {
+        let status = if self.is_git {
+            git(&self.workdir, &["status", "--porcelain"])
+        } else {
+            String::new()
+        };
+        for line in status.lines() {
             let path = line.get(3..).unwrap_or_default().to_string();
             if !path.is_empty() && !first.contains(&path) {
                 first.push(path);
@@ -265,14 +319,54 @@ impl JevJudge {
             );
         }
 
+        if questions.is_empty() {
+            // Nothing to judge yet: no candidate files and no command run.
+            println!("  jev ▸ nothing to judge yet");
+            return Ok(self
+                .criteria
+                .iter()
+                .map(|criterion| format!("Requirement from the issue: {criterion}"))
+                .collect());
+        }
+        let request = SystemOneRequest::new(Entry::from(jev_state), questions);
+        let body = request
+            .body(JEV_MODEL)
+            .map(serde_json::Value::Object)
+            .unwrap_or_else(|_| json!({}));
         let started = Instant::now();
-        let response = client
-            .system_one(SystemOneRequest::new(Entry::from(jev_state), questions))
-            .await
-            .map_err(|error| error.to_string())?;
+        let result = client.system_one(request).await;
+        let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let mut decision = Decision {
+            id: format!("jev-{}", self.calls + self.failed + 1),
+            name: "jev_step".to_string(),
+            door: JEV_BASE_URL.to_string(),
+            model: JEV_MODEL.to_string(),
+            request: body,
+            answers: serde_json::Value::Null,
+            route: None,
+            error: None,
+            attempts: Vec::new(),
+            review: None,
+            milliseconds,
+        };
+        let response = match result {
+            Ok(response) => response,
+            Err(error) => {
+                self.failed += 1;
+                decision.error = Some(error.to_string());
+                self.recorder
+                    .push(Step::called(decision.call()).taking(milliseconds));
+                return Err(error.to_string());
+            }
+        };
         self.calls += 1;
         let tokens = response.usage.input_tokens.unwrap_or(0);
         self.input_tokens += tokens;
+        decision.model = response.model.clone();
+        decision.answers = serde_json::from_str::<serde_json::Value>(&response.raw().text())
+            .ok()
+            .and_then(|body| body.get("answers").cloned())
+            .unwrap_or(serde_json::Value::Null);
         println!(
             "  jev ▸ {} answers in {} ms, {} input tokens",
             response.answers.len(),
@@ -338,6 +432,18 @@ impl JevJudge {
                 Err(_) => hints.push(format!("Requirement from the issue: {criterion}")),
             }
         }
+        self.recorder.push(
+            Step::called(decision.call())
+                .taking(milliseconds)
+                .noting("hints", json!(hints))
+                .noting(
+                    "jev_usage",
+                    json!({
+                        "input_tokens": response.usage.input_tokens,
+                        "output_tokens": response.usage.output_tokens,
+                    }),
+                ),
+        );
         Ok(hints)
     }
 }
@@ -353,7 +459,7 @@ impl Judge for JevJudge {
             .trim()
             .is_empty();
         match judgments {
-            Judgments::Answered(mut hints) if clean && steps >= STALL_STEPS => {
+            Judgments::Answered(mut hints) if self.is_git && clean && steps >= STALL_STEPS => {
                 println!("  host ▸ no file changed after {steps} steps");
                 hints.insert(
                     0,
@@ -470,6 +576,54 @@ fn chunk(output: &str) -> Vec<String> {
     let mut kept = vec![chunks[0].clone()];
     kept.extend(chunks[chunks.len() - (MAX_CHUNKS - 1)..].iter().cloned());
     kept
+}
+
+/// Files under `root` a search should read: relative paths, skipping
+/// hidden directories, dependency and build trees, and files over 256
+/// KiB, at most 5,000 files.
+fn walk(root: &std::path::Path) -> Vec<String> {
+    const SKIP: &[&str] = &[
+        "node_modules",
+        "target",
+        "__pycache__",
+        "venv",
+        "site-packages",
+        "dist",
+        "build",
+    ];
+    let mut files = Vec::new();
+    let mut pending = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+        for entry in entries {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') {
+                continue;
+            }
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            let path = entry.path();
+            if kind.is_dir() {
+                if depth < 8 && !SKIP.contains(&name.as_str()) {
+                    pending.push((path, depth + 1));
+                }
+            } else if kind.is_file()
+                && entry.metadata().is_ok_and(|meta| meta.len() <= 256 * 1024)
+                && let Ok(relative) = path.strip_prefix(root)
+            {
+                files.push(relative.to_string_lossy().into_owned());
+                if files.len() == 5_000 {
+                    return files;
+                }
+            }
+        }
+    }
+    files
 }
 
 fn git(workdir: &std::path::Path, args: &[&str]) -> String {

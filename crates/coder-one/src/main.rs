@@ -4,7 +4,13 @@
 //! coder-one doctor
 //! coder-one <issue-url> [--lane free|flash|pro] [--max-steps N]
 //!                       [--timeout SECONDS] [--no-jev] [--open-pr]
+//! coder-one --version
+//! coder-one episode doctor --contract openagents.coder.episode.v1
+//! coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
 //! ```
+//!
+//! The `episode` commands implement the Terminal-Bench harness's headless
+//! contract; `coder_one::episode` documents them.
 //!
 //! A run clones the issue's repository fresh under
 //! `~/.openagents/coder-one/runs/`, works on a new branch there, and
@@ -19,15 +25,20 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use coder_one::agent::INSTRUCTIONS;
 use coder_one::credentials;
+use coder_one::episode::{self, RunArgs};
 use coder_one::generate::Door;
 use coder_one::judge::JevJudge;
+use coder_one::record::Recorder;
 use coder_one::shell::Checkout;
 use coder_one::{Bounds, Ended, Environment, Issue, State, run};
 use serde::Deserialize;
 
 const USAGE: &str = "usage: coder-one doctor
        coder-one <github-issue-url> [--lane free|flash|pro] [--max-steps N]
-                 [--timeout SECONDS] [--no-jev] [--open-pr]";
+                 [--timeout SECONDS] [--no-jev] [--open-pr]
+       coder-one --version
+       coder-one episode doctor --contract openagents.coder.episode.v1
+       coder-one episode run --instruction-file F --output-dir D --contract C [--model M]";
 
 const PROMPT: &str = "Solve this issue.";
 
@@ -35,6 +46,11 @@ const PROMPT: &str = "Solve this issue.";
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
+        Some("--version") => {
+            println!("{}", episode::version());
+            Ok(())
+        }
+        Some("episode") => return episode_command(&args[1..]).await,
         Some("doctor") if args.len() == 1 => doctor(),
         Some(url) if url.starts_with("https://github.com/") && url.contains("/issues/") => {
             match Options::parse(&args[1..]) {
@@ -46,6 +62,42 @@ async fn main() -> ExitCode {
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
+        Err(message) => {
+            eprintln!("coder-one: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `coder-one episode doctor|run …`, whose exit code is the contract's.
+async fn episode_command(args: &[String]) -> ExitCode {
+    let flag = |name: &str| {
+        args.iter()
+            .position(|arg| arg == name)
+            .and_then(|index| args.get(index + 1))
+            .cloned()
+    };
+    let contract = flag("--contract").unwrap_or_default();
+    let result = match args.first().map(String::as_str) {
+        Some("doctor") => episode::doctor(&contract).await.map(|()| 0),
+        Some("run") => match (flag("--instruction-file"), flag("--output-dir")) {
+            (Some(instruction), Some(output)) => {
+                episode::run_episode(RunArgs {
+                    instruction_file: instruction.into(),
+                    output_dir: output.into(),
+                    contract,
+                    model: flag("--model"),
+                })
+                .await
+            }
+            _ => Err(format!(
+                "episode run needs --instruction-file and --output-dir\n{USAGE}"
+            )),
+        },
+        _ => Err(USAGE.to_string()),
+    };
+    match result {
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
         Err(message) => {
             eprintln!("coder-one: {message}");
             ExitCode::FAILURE
@@ -195,7 +247,8 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
         },
         issue,
     );
-    let mut judge = JevJudge::new(jev, workdir.clone(), &state.issue);
+    let recorder = Recorder::default();
+    let mut judge = JevJudge::new(jev, workdir.clone(), &state.issue, recorder.clone());
     let mut door = Door::new(
         credentials::GENERATION_BASE_URL,
         bearer.secret,
@@ -205,10 +258,13 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             print!("{delta}");
             let _ = std::io::stdout().flush();
         }),
+        recorder.clone(),
     )?;
     let mut shell = Checkout {
         workdir: workdir.clone(),
         deadline: options.timeout,
+        recorder: recorder.clone(),
+        commands: 0,
     };
 
     let ended = run(
@@ -309,8 +365,8 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
     println!(
         "\nsteps {} · generation {} in / {} out tokens · jev {} calls, {} input tokens · {:.0}s",
         state.history.len() + usize::from(matches!(ended, Ended::Finished { .. })),
-        door.usage.input_tokens,
-        door.usage.output_tokens,
+        door.tally.usage.input_tokens,
+        door.tally.usage.output_tokens,
         judge.calls,
         judge.input_tokens,
         started.elapsed().as_secs_f64()

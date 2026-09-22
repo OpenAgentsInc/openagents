@@ -48,7 +48,7 @@ def test_materialized_config_pins_git(panel, agents, tmp_path):
         assert entry["git_url"] == panel.git_url
     agent = config["agents"][0]
     assert agent["name"] == "claude-code"
-    assert agent["model_name"] == "claude-sonnet-4-5"
+    assert agent["model_name"] == "claude-fable-5-1"
 
 
 def test_local_checkout_overrides_git_entry(panel, agents, tmp_path):

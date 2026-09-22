@@ -19,8 +19,10 @@
 pub mod action;
 pub mod agent;
 pub mod credentials;
+pub mod episode;
 pub mod generate;
 pub mod judge;
+pub mod record;
 pub mod shell;
 pub mod state;
 
