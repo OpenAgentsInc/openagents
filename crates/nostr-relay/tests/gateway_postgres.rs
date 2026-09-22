@@ -294,6 +294,7 @@ async fn assert_nip11_http(address: SocketAddr) {
         "nip-ao",
         "nip-ap",
         "nip-cap-v1",
+        "nip-cw",
         "nip-dv",
         "nip-er",
         "nip-ext-v1",

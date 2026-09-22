@@ -42,6 +42,8 @@ use super::{
     db::{DbPool, DbProtocolConfig},
     management::{is_management_request, serve_management},
     media::{MediaStorage, STALE_RESERVATION_AGE, is_media_request, serve_media},
+    push::{self, prepare_lease},
+    query::{is_query_request, serve_query},
     rate::{ConnectionPermit, RateLimiter},
     socket::{
         ServerWebSocket, effective_ip, is_websocket_upgrade, read_http_head, serve_http,
@@ -524,6 +526,9 @@ async fn handle_socket(
         }
         if is_management_request(&head) {
             return serve_management(stream, &head, &state.config, &state.db).await;
+        }
+        if is_query_request(&head) {
+            return serve_query(stream, &head, &state.config, &state.db).await;
         }
         let icon = state.db.workspace_icon().await?;
         let nip11 = wire::nip11_json_with_icon(&state.config, &state.policy, icon.as_deref());
@@ -1148,15 +1153,18 @@ async fn handle_event(
         return Ok(());
     }
     if event.kind == PUSH_LEASE_KIND {
-        // This relay deliberately has no external push service. Without an
-        // advertised executor key it cannot decrypt and bind a lease, so the
-        // NIP-PL handler fails closed instead of persisting unusable state.
-        pending.push_back(ok_message(
-            &event.id,
-            false,
-            "restricted: push executor is not configured or advertised",
-        ));
-        return Ok(());
+        let Some(executor) = context.state.config.push.clone() else {
+            pending.push_back(ok_message(
+                &event.id,
+                false,
+                "restricted: push executor is not configured or advertised",
+            ));
+            return Ok(());
+        };
+        if let Err(reason) = prepare_lease(&context.state.db, &executor, &event, unix_now()).await {
+            pending.push_back(ok_message(&event.id, false, &format!("invalid: {reason}")));
+            return Ok(());
+        }
     }
 
     if let Some(rejection) = event_key_rate_rejection(context, &event) {
@@ -1516,6 +1524,7 @@ async fn admit_event(
         return Ok(());
     }
     let event_id = event.id.clone();
+    let wake_event = event.clone();
     let ephemeral = (event.class() == EventClass::Ephemeral).then(|| Arc::new(event.clone()));
     let admission_now = unix_now();
     match context
@@ -1546,6 +1555,15 @@ async fn admit_event(
                 }
             }
             let (accepted, reason) = admission_response(outcome);
+            if accepted
+                && wake_event.kind != PUSH_LEASE_KIND
+                && let Some(executor) = context.state.config.push.clone()
+            {
+                let db = context.state.db.clone();
+                tokio::spawn(async move {
+                    push::deliver_wakes(&db, &executor, &wake_event).await;
+                });
+            }
             pending.push_back(ok_message(&event_id, accepted, &reason));
         }
         Err(error) => {

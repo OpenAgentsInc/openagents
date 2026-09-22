@@ -43,14 +43,16 @@ OpenAgents-lane fixtures are not part of this repository.
   checksum, a prefix swap, and wrong lengths.
 - `nipoa/attestation.json`, `nipaa/auth.json`, `nipao/observer.json`, and
   `nipam/turn-metrics.json` pin the Block agent ownership, agent-authentication,
-  ephemeral observer, and private turn-metric envelopes against Buzz commit
-  `027a74a61c8643a1d1086d3e8307fad89d7735f7`.
+  ephemeral observer, and private turn-metric envelopes against the Block
+  commit in `nips/manifest.json`, `8342dfcc5890b81a269a8ec3db73a8a56f76ce79`.
 - `nipae/`, `nipap/`, `niper/`, `nipmp/`, `nippl/`, `nipia/`, `nipdv/`,
   `nipwp/`, `nipcw/`, `niprs/`, and `nipgs/` each contain a committed server
   contract derived from the corresponding pinned Block text. They cover
-  private-data ACLs, validators, relay commands and snapshots, safe query
-  degradation, race-free standard relay semantics, the no-relay-handler Git
-  signature case, and NIP-PL's fail-closed unadvertised executor posture.
+  private-data ACLs, validators, relay commands and snapshots, channel-window
+  degradation on WebSocket `REQ`, race-free standard relay semantics, the
+  client-side NIP-GS git signature, and NIP-PL's refusal when no executor is
+  configured. Configured `POST /query` and push delivery are covered by the
+  Rust checks in `docs/protocol/block-nip-ledger.md`.
 - `migration/relay-shadow-v1.json` and `migration/signed-event-import-v1.json`
   pin the shadow-relay comparison workload and the signed JSONL import lane.
 

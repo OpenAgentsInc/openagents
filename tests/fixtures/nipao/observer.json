@@ -1,5 +1,5 @@
 {
-  "source": "Block NIP-AO and Buzz observer handler at commit 027a74a61c8643a1d1086d3e8307fad89d7735f7",
+  "source": "Block NIP-AO and Buzz observer handler at commit 8342dfcc5890b81a269a8ec3db73a8a56f76ce79",
   "cases": [
     { "name": "agent telemetry", "sender": "agent", "recipient": "owner", "agent": "agent", "frame": "telemetry", "content": "nip44", "duplicate_p": false, "outcome": "telemetry" },
     { "name": "owner control", "sender": "owner", "recipient": "agent", "agent": "agent", "frame": "control", "content": "nip44", "duplicate_p": false, "outcome": "control" },

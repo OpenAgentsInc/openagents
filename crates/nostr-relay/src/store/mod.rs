@@ -1072,6 +1072,48 @@ impl Store {
             .get(0))
     }
 
+    /// True when a channel window may be served to `reader`.
+    ///
+    /// A missing group and an open group are readable. A closed group is
+    /// readable only for a recorded member. A hidden channel is
+    /// indistinguishable from an empty response with no bounds overlay.
+    pub async fn channel_window_served(
+        &mut self,
+        channel: &str,
+        reader: &str,
+    ) -> Result<bool, StoreError> {
+        self.ensure_current()?;
+        let transaction = self.client.transaction().await?;
+        let served = match load_group(&transaction, &self.statements, channel).await? {
+            None => true,
+            Some(group) if !group.closed => true,
+            Some(_) => group_member(&transaction, &self.statements, channel, reader)
+                .await?
+                .is_some(),
+        };
+        Ok(served)
+    }
+
+    /// Stored push leases. This read is the executor's, not a client's.
+    pub async fn push_leases(&mut self, now: u64, limit: i64) -> Result<Vec<Event>, StoreError> {
+        self.ensure_current()?;
+        let now = i64::try_from(now).map_err(|_| StoreError::CorruptRow("now".to_owned()))?;
+        let rows = self
+            .client
+            .query(
+                "SELECT id, pubkey, created_at, kind, tags::text, content, sig, ingest_seq
+                 FROM nostr_event
+                 WHERE kind = 30350 AND (expires_at IS NULL OR expires_at > $1)
+                 ORDER BY created_at DESC
+                 LIMIT $2",
+                &[&now, &limit],
+            )
+            .await?;
+        rows.into_iter()
+            .map(|row| decode_event_row(row).map(|stored| stored.event))
+            .collect()
+    }
+
     pub async fn set_workspace_icon(
         &mut self,
         event: &Event,

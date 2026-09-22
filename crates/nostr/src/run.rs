@@ -737,6 +737,7 @@ fn parse_record(value: &Value, digest: &str) -> Result<Record, ContractError> {
         .ok_or_else(|| malformed("time"))?;
     let data = as_map(require(object, "data", "record")?, "data")?.clone();
     require_data(&record_type, &data)?;
+    validate_block_refs(&data)?;
     Ok(Record {
         run,
         seq,
@@ -923,6 +924,49 @@ fn is_hex(value: &str) -> bool {
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+/// Check optional references to Block events.
+///
+/// AO telemetry (kind 24200) is ephemeral and cannot be stored as durable
+/// execution state. AM metrics (kind 44200) and AE memory (kind 30174) may
+/// be cited by event id. The citation does not copy their content or change
+/// their kinds.
+///
+/// # Errors
+///
+/// Returns a refusal when a reference has the wrong role or durability.
+pub fn validate_block_refs(data: &Map<String, Value>) -> Result<(), ContractError> {
+    let Some(value) = data.get("block_refs") else {
+        return Ok(());
+    };
+    let items = value.as_array().ok_or_else(|| malformed("block_refs"))?;
+    for item in items {
+        let object = as_map(item, "block_refs")?;
+        reject(object, &["kind", "id", "role", "durable"], "block_refs")?;
+        let kind = require(object, "kind", "block_refs")?
+            .as_u64()
+            .ok_or_else(|| malformed("block_refs.kind"))?;
+        let id = text(require(object, "id", "block_refs")?, "block_refs.id")?;
+        if !is_hex(id) {
+            return Err(malformed("block_refs.id"));
+        }
+        let role = text(require(object, "role", "block_refs")?, "block_refs.role")?;
+        let durable = require(object, "durable", "block_refs")?
+            .as_bool()
+            .ok_or_else(|| malformed("block_refs.durable"))?;
+        let allowed = matches!(
+            (kind, role, durable),
+            (24_200, "telemetry", false) | (44_200, "metric", true) | (30_174, "memory", true)
+        );
+        if !allowed {
+            return Err(ContractError::new(
+                RefusalCode::UnsupportedFeature,
+                "block_refs",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn malformed(detail: impl Into<String>) -> ContractError {
     ContractError::new(RefusalCode::Malformed, detail)
 }
@@ -1004,6 +1048,29 @@ mod tests {
             tags.push(Tag::new(vec!["d".into(), mailbox.into()]));
         }
         author.sign(20, kind, tags, "ciphertext".into())
+    }
+
+    #[test]
+    fn block_refs_cite_metrics_and_memory_and_refuse_durable_telemetry() {
+        let (author, _) = signer(0x11);
+        let mut record = created(author.pubkey());
+        record["data"]["block_refs"] = json!([
+            {"kind": 44200, "id": "ab".repeat(32), "role": "metric", "durable": true},
+            {"kind": 30174, "id": "cd".repeat(32), "role": "memory", "durable": true},
+            {"kind": 24200, "id": "ef".repeat(32), "role": "telemetry", "durable": false}
+        ]);
+        assert_eq!(
+            ingest(&mut Journal::default(), record_of(record), author.pubkey()).unwrap(),
+            Ingest::Applied
+        );
+        let mut durable = created(author.pubkey());
+        durable["data"]["block_refs"] = json!([
+            {"kind": 24200, "id": "ef".repeat(32), "role": "telemetry", "durable": true}
+        ]);
+        assert_eq!(
+            parse_envelope(&envelope(durable)).unwrap_err().code,
+            RefusalCode::UnsupportedFeature
+        );
     }
 
     #[test]

@@ -10,16 +10,20 @@
 
 #![forbid(unsafe_code)]
 
+pub mod block_lane;
 pub mod cap;
+pub mod channel_window;
 pub mod contracts;
 pub mod decision;
 pub mod domain;
 pub mod execution;
 pub mod ext;
+pub mod git_sign;
 pub mod lane;
 pub mod negentropy;
 pub mod nip19;
 pub mod nip44;
 pub mod prg;
 pub mod profile;
+pub mod push_lease;
 pub mod run;

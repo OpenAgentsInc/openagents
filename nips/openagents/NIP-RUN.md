@@ -115,6 +115,11 @@ One controller serializes a run's authoritative journal. Workers and reviewers
 return signed results/receipts that it references; they do not concurrently
 append independent authoritative branches. Local trajectory output and worker
 telemetry may have different writers and are linked rather than merged by time.
+A record may cite Block events in `data.block_refs` without copying their
+content or changing their kinds. Kind 24200 agent telemetry is ephemeral, so
+a citation sets `durable` to false and is not execution state. Kind 44200
+turn metrics and kind 30174 engrams may be cited as durable references by
+event id. A durable citation of kind 24200 is refused.
 
 Handoff requires the old controller to stop new dispatch, obtain a fencing
 acknowledgment from every effect dispatcher that can still act, then append

@@ -411,6 +411,8 @@ pub struct Nip11Document<'a> {
     pub limitation: Nip11Limitation,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nip29: Option<Nip29Capabilities>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub push: Option<Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -454,7 +456,10 @@ pub fn nip11_json_with_icon(
         supported_extensions.extend(["nip-aa", "nip-ae", "nip-am", "nip-ao", "nip-ap", "nip-er"]);
     }
     if config.relay_url.is_some() && config.relay_signer.is_some() {
-        supported_extensions.extend(["nip-dv", "nip-ia"]);
+        supported_extensions.extend(["nip-cw", "nip-dv", "nip-ia"]);
+    }
+    if config.push.is_some() {
+        supported_extensions.push("nip-pl");
     }
     if config.relay_url.is_some() && config.management_pubkey.is_some() {
         supported_extensions.push("nip-wp");
@@ -493,6 +498,10 @@ pub fn nip11_json_with_icon(
             .relay_signer
             .is_some()
             .then_some(Nip29Capabilities { subgroups: false }),
+        push: config
+            .push
+            .as_ref()
+            .map(|executor| nostr::push_lease::descriptor_document(&executor.descriptor())),
     };
     serde_json::to_string(&document).expect("serializing NIP-11 cannot fail")
 }
@@ -697,6 +706,13 @@ mod tests {
                 .unwrap()
                 .contains(&json!("nip-dv"))
         );
+        assert!(
+            with_signer["supported_extensions"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("nip-cw"))
+        );
+        assert!(with_signer.get("push").is_none());
         config.relay_signer = None;
         config.relay_url = None;
         let disabled = serde_json::from_str::<Value>(&nip11_json(&config, &policy)).unwrap();

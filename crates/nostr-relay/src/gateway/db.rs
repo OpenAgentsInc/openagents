@@ -139,6 +139,16 @@ enum DbRequest {
         limit: usize,
         response: oneshot::Sender<Result<CatchUpResult, StoreError>>,
     },
+    ChannelWindowServed {
+        channel: String,
+        reader: String,
+        response: oneshot::Sender<Result<bool, StoreError>>,
+    },
+    PushLeases {
+        now: u64,
+        limit: i64,
+        response: oneshot::Sender<Result<Vec<Event>, StoreError>>,
+    },
 }
 
 #[derive(Debug)]
@@ -442,6 +452,30 @@ impl DbPool {
         result.await.map_err(|_| StoreError::ConnectionClosed)?
     }
 
+    pub async fn channel_window_served(
+        &self,
+        channel: String,
+        reader: String,
+    ) -> Result<bool, StoreError> {
+        let (response, result) = oneshot::channel();
+        self.send(DbRequest::ChannelWindowServed {
+            channel,
+            reader,
+            response,
+        })?;
+        result.await.map_err(|_| StoreError::ConnectionClosed)?
+    }
+
+    pub async fn push_leases(&self, now: u64, limit: i64) -> Result<Vec<Event>, StoreError> {
+        let (response, result) = oneshot::channel();
+        self.send(DbRequest::PushLeases {
+            now,
+            limit,
+            response,
+        })?;
+        result.await.map_err(|_| StoreError::ConnectionClosed)?
+    }
+
     pub async fn catch_up(
         &self,
         after: i64,
@@ -702,6 +736,26 @@ async fn handle_request(
             response,
         } => {
             let result = catch_up(store, after, through, now, limit).await;
+            let fatal = result.as_ref().is_err_and(is_fatal);
+            let _ = response.send(result);
+            fatal
+        }
+        DbRequest::ChannelWindowServed {
+            channel,
+            reader,
+            response,
+        } => {
+            let result = store.channel_window_served(&channel, &reader).await;
+            let fatal = result.as_ref().is_err_and(is_fatal);
+            let _ = response.send(result);
+            fatal
+        }
+        DbRequest::PushLeases {
+            now,
+            limit,
+            response,
+        } => {
+            let result = store.push_leases(now, limit).await;
             let fatal = result.as_ref().is_err_and(is_fatal);
             let _ = response.send(result);
             fatal

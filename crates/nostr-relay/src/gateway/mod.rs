@@ -6,6 +6,8 @@ mod db;
 mod error;
 mod management;
 mod media;
+mod push;
+mod query;
 mod rate;
 mod server;
 mod socket;

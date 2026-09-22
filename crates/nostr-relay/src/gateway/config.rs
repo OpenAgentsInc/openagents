@@ -1,8 +1,44 @@
 use std::{env, net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
 
+use secp256k1::SecretKey;
+
 use crate::domain::RelaySigner;
+use nostr::push_lease::{LeaseLimits, PushDescriptor};
 
 use super::GatewayError;
+
+/// Executor key and gateway for NIP-PL. Absent means leases are refused.
+#[derive(Clone)]
+pub struct PushExecutor {
+    /// Decrypts lease content. Not advertised.
+    pub secret: SecretKey,
+    /// Advertised encryption pubkey.
+    pub pubkey: String,
+    /// Canonical origin copied into lease plaintext.
+    pub origin: String,
+    /// `http://` next hop that receives the fixed reconnect body.
+    pub gateway: String,
+    /// Application profile id.
+    pub app_profile: String,
+    /// Conforming transport. This build sends the APNs constant.
+    pub transport: String,
+}
+
+impl PushExecutor {
+    /// Descriptor advertised beside `nip-pl`.
+    #[must_use]
+    pub fn descriptor(&self) -> PushDescriptor {
+        PushDescriptor {
+            origin: self.origin.clone(),
+            key_id: "current".to_owned(),
+            pubkey: self.pubkey.clone(),
+            app_profile: self.app_profile.clone(),
+            transport: self.transport.clone(),
+            push_kinds: vec![1, 7, 9, 1_059],
+            limits: LeaseLimits::default(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayLimits {
@@ -93,6 +129,7 @@ pub struct GatewayConfig {
     /// When set, NIP-11 advertises the OpenAgents profile roles the
     /// admission tests cover. Unset, those names stay out of the document.
     pub openagents_profiles: bool,
+    pub push: Option<PushExecutor>,
     pub log_level: String,
 }
 
@@ -116,6 +153,7 @@ impl GatewayConfig {
             identity: RelayIdentity::default(),
             advertised_nips: None,
             openagents_profiles: false,
+            push: None,
             log_level: "info".to_owned(),
         }
     }
@@ -214,6 +252,37 @@ impl GatewayConfig {
             config.identity.pubkey = Some(signer.pubkey().to_owned());
         }
         config.log_level = env::var("NOSTR_RELAY_LOG_LEVEL").unwrap_or_else(|_| "info".to_owned());
+        config.push = match optional_string("NOSTR_RELAY_PUSH_SECRET")? {
+            None => None,
+            Some(secret) => {
+                let gateway = optional_string("NOSTR_RELAY_PUSH_GATEWAY")?.ok_or_else(|| {
+                    GatewayError::Config(
+                        "NOSTR_RELAY_PUSH_GATEWAY is required with NOSTR_RELAY_PUSH_SECRET"
+                            .to_owned(),
+                    )
+                })?;
+                let origin = config.relay_url.clone().ok_or_else(|| {
+                    GatewayError::Config(
+                        "NOSTR_RELAY_URL is required with NOSTR_RELAY_PUSH_SECRET".to_owned(),
+                    )
+                })?;
+                let app_profile = optional_string("NOSTR_RELAY_PUSH_APP_PROFILE")?
+                    .unwrap_or_else(|| "com.openagents.relay/ios".to_owned());
+                let signer = RelaySigner::from_secret_hex(&secret)
+                    .map_err(|error| GatewayError::Config(error.to_string()))?;
+                let key = SecretKey::from_byte_array(decode_secret(&secret)?).map_err(|_| {
+                    GatewayError::Config("NOSTR_RELAY_PUSH_SECRET is not a secret key".to_owned())
+                })?;
+                Some(PushExecutor {
+                    secret: key,
+                    pubkey: signer.pubkey().to_owned(),
+                    origin,
+                    gateway,
+                    app_profile,
+                    transport: "apns".to_owned(),
+                })
+            }
+        };
         config.validate()?;
         Ok(config)
     }
@@ -425,6 +494,19 @@ impl GatewayConfig {
                 }
             }
         }
+        if let Some(push) = &self.push {
+            if !push.gateway.starts_with("http://")
+                || push.gateway.len() > 2_048
+                || push.gateway.contains([' ', '\n', '\r'])
+                || push.app_profile.is_empty()
+            {
+                return Err(config(
+                    "NOSTR_RELAY_PUSH_GATEWAY must be an http:// URL and the app profile must be set",
+                ));
+            }
+            nostr::push_lease::validate_descriptor(&push.descriptor())
+                .map_err(|reason| config(format!("push descriptor: {reason}")))?;
+        }
         if !matches!(self.log_level.as_str(), "error" | "warn" | "info" | "debug") {
             return Err(config(
                 "NOSTR_RELAY_LOG_LEVEL must be error, warn, info, or debug",
@@ -471,6 +553,24 @@ impl GatewayConfig {
             .unwrap_or(http_url.len());
         Ok(format!("{}{}", &http_url[..authority_end], path))
     }
+}
+
+fn decode_secret(value: &str) -> Result<[u8; 32], GatewayError> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err(config(
+            "NOSTR_RELAY_PUSH_SECRET must be 64 lowercase hex characters",
+        ));
+    }
+    let mut out = [0_u8; 32];
+    for (index, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
+            .map_err(|_| config("NOSTR_RELAY_PUSH_SECRET must be 64 lowercase hex characters"))?;
+    }
+    Ok(out)
 }
 
 fn database_config_from_env() -> Result<String, GatewayError> {

@@ -584,7 +584,7 @@ impl Hub {
     }
 }
 
-fn event_visible_to_reader(event: &Event, readers: &HashSet<String>) -> bool {
+pub(crate) fn event_visible_to_reader(event: &Event, readers: &HashSet<String>) -> bool {
     match event.kind {
         1_059 => {
             let recipients = event.tag_values("p").collect::<Vec<_>>();

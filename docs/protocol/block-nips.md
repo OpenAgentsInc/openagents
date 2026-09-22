@@ -1,9 +1,8 @@
 # Block NIP Server Contract
 
 nostr-relay adopts all 15 specifications pinned under `nips/block/` at Buzz
-commit `027a74a61c8643a1d1086d3e8307fad89d7735f7`. This page states the relay
-behavior; it does not claim that client-only or unconfigured optional
-execution profiles are available.
+commit `8342dfcc5890b81a269a8ec3db73a8a56f76ce79`. This page states the relay
+behavior. A role is advertised only when the process is configured to serve it.
 
 ## Main agent identity and turns
 
@@ -59,32 +58,37 @@ execution profiles are available.
 
 ## Relay semantics and current deployment boundaries
 
-- **NIP-CW:** the WebSocket profile uses the specification's safe degradation:
-  `top_level`, `include_summaries`, `include_aux`, and `before_id` are parsed
-  and discarded, then the standard NIP-01 filter is served. Clients cannot
-  publish relay-only 39005/39006 overlays. nostr-relay does not expose the
-  optional HTTP `/query` profile and therefore does not advertise NIP-CW.
+- **NIP-CW:** `POST /query` serves a window when `top_level` is true. The
+  page is top-level rows in `(created_at DESC, id ASC)` order, with one
+  relay-signed kind 39006 bounds event. A closed group the reader is not in
+  returns an empty array and no bounds event. WebSocket `REQ` still ignores
+  the extension fields. The relay advertises `nip-cw` when `NOSTR_RELAY_URL`
+  and `NOSTR_RELAY_SECRET_KEY` are set, because overlays are signed by that
+  key. Clients cannot publish kinds 39005 or 39006.
 - **NIP-RS:** kind 30078 uses ordinary NIP-01 addressable replacement. The
   existing Postgres high-water boundary plus buffered live handoff provides
   the required full-state EOSE barrier across processes; no bespoke mutable
   read-state table is introduced. NIP-RS is advertised.
-- **NIP-GS:** the pinned spec signs Git objects and explicitly defines no Nostr
-  event kind or relay behavior. The fixture records this no-handler server
-  classification; it is not advertised by the relay.
-- **NIP-PL:** kind 30350 reaches a strict authenticated-author, signature,
-  public-tag, expiry, encrypted-envelope, and read-ACL handler. nostr-relay has no
-  executor descriptor/key or APNs, FCM, or UnifiedPush transport. The handler
-  therefore returns `restricted: push executor is not configured or
-  advertised` before storage. NIP-PL is not advertised; accepting such a
-  lease without decrypting and atomically materializing executable state would
-  violate the specification.
+- **NIP-GS:** the pinned spec signs Git objects and defines no event kind.
+  `nostr::git_sign` signs and verifies the armored envelope, including an
+  optional owner attestation bound into the hash. The relay does not
+  advertise `nip-gs`.
+- **NIP-PL:** kind 30350 is accepted only when `NOSTR_RELAY_PUSH_SECRET`,
+  `NOSTR_RELAY_PUSH_GATEWAY`, and `NOSTR_RELAY_URL` are set. The executor
+  decrypts the lease, checks origin, generation, and filter narrowing, and
+  stores the event. A later match posts the fixed APNs reconnect constant to
+  the configured `http://` gateway. The body does not contain the event.
+  Without that configuration the relay still answers `restricted: push
+  executor is not configured or advertised` and does not advertise `nip-pl`.
+  FCM and UnifiedPush stay refused because the pinned text does not register
+  their constants.
 
-These are honest facts about the current deployed configuration, not a scope
-ceiling. Under the protocol-totality roadmap, nostr-relay will implement the
-optional NIP-CW query surface and a complete NIP-PL executor path inside the
-one binary and one Postgres boundary. Until the implementation, fixtures,
-configuration, and actual transport acceptance proof exist, the current
-fail-closed behavior and non-advertisement remain mandatory.
+`POST /query` and the push executor run inside the one relay binary. NIP-11
+lists `nip-cw` only with a relay signing key and `nip-pl` only with an
+executor key and gateway. NIP-GS remains a client. A RUN journal may cite an
+AO kind 24200 event only as non-durable telemetry, and may cite AM kind 44200
+and AE kind 30174 events by id. Those citations do not change the upstream
+kinds.
 
 NIP-11 always advertises `nip-mp`, `nip-oa`, and `nip-rs`. With NIP-42
 configured it also advertises `nip-aa`, `nip-ae`, `nip-am`, `nip-ao`, `nip-ap`,

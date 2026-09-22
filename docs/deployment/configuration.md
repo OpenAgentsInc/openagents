@@ -68,6 +68,9 @@ Platform + Managed Postgres unsupported for the current binary.
 | `NOSTR_RELAY_EXPIRATION_SWEEP_SECONDS` | no | `60` | Interval for physical NIP-40 cleanup (1–86,400). Queries exclude expired events independently of the sweep. |
 | `NOSTR_RELAY_SECRET_KEY` | for NIP-29 | — | Relay's 32-byte secret as 64 lowercase hexadecimal characters. Enables relay-managed groups and signed group history/metadata. The derived public key becomes the NIP-11 relay pubkey; if `NOSTR_RELAY_PUBKEY` is also set, it must match. This is a relay key, never a participant or wallet key, and belongs only in the protected runtime environment. |
 | `NOSTR_RELAY_MANAGEMENT_PUBKEY` | for NIP-86 | — | Exact 32-byte owner public key as 64 lowercase hexadecimal characters. Enables the NIP-98-authenticated management endpoint. `NOSTR_RELAY_URL` is required so HTTP authorization can bind the public URL. |
+| `NOSTR_RELAY_PUSH_SECRET` | for NIP-PL | — | Executor secret as 64 lowercase hexadecimal characters. With `NOSTR_RELAY_PUSH_GATEWAY` and `NOSTR_RELAY_URL`, the relay decrypts kind 30350 leases and advertises `nip-pl`. |
+| `NOSTR_RELAY_PUSH_GATEWAY` | with the push secret | — | `http://` URL that receives the fixed APNs reconnect body. The body does not contain event content. |
+| `NOSTR_RELAY_PUSH_APP_PROFILE` | no | `com.openagents.relay/ios` | Application profile id copied into accepted leases. |
 
 ### Media
 
@@ -92,13 +95,12 @@ contract and deliberate NIP-29 subset are in
 `docs/protocol/nip-expansion.md`.
 
 The Block extension handlers need no additional service or database. NIP-AO
-uses the dedicated observer rates below. NIP-IA and NIP-DV require
-`NOSTR_RELAY_SECRET_KEY` because their derived state is relay-signed;
-NIP-WP requires `NOSTR_RELAY_MANAGEMENT_PUBKEY`. The current release does not
-configure or advertise a NIP-PL push executor; its handler fails closed. This
-is a deployment-state statement, not a scope decision: the full-lane roadmap
-requires an in-binary executor and its configuration after fixtures and a
-manual platform-transport acceptance proof. See `docs/protocol/block-nips.md`.
+uses the dedicated observer rates below. NIP-IA, NIP-DV, and NIP-CW require
+`NOSTR_RELAY_SECRET_KEY` because their derived state is relay-signed. NIP-CW
+also requires `NOSTR_RELAY_URL` and serves `POST /query`. NIP-WP requires
+`NOSTR_RELAY_MANAGEMENT_PUBKEY`. NIP-PL stays unadvertised until
+`NOSTR_RELAY_PUSH_SECRET` and `NOSTR_RELAY_PUSH_GATEWAY` are set. See
+`docs/protocol/block-nips.md`.
 
 TLS terminates at the reverse proxy. The binary itself never speaks TLS and
 has no certificate configuration.
