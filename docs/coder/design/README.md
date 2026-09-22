@@ -21,6 +21,7 @@ discovery, and package distribution.
 | --- | --- |
 | [2026-09-21-project-roadmap-snapshot](2026-09-21-project-roadmap-snapshot.md) | Decision Router and Coder project snapshot |
 | [coder-as-decision-router-consumer](coder-as-decision-router-consumer.md) | Coder as a Decision Router consumer |
+| [coder-terminal-v05-algorithm-and-goldens](coder-terminal-v05-algorithm-and-goldens.md) | Proposed v0.5 algorithm, Terminal-Bench panel, golden evidence, and NIP mapping |
 | [decision-function-inventory](decision-function-inventory.md) | Coder decision-function inventory |
 | [rebuild-plan](rebuild-plan.md) | Coder agent and terminal rebuild plan |
 | [relay-backend-plan](relay-backend-plan.md) | Relay backend plan: coder on `relay.openagents.com` |

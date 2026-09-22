@@ -21,6 +21,8 @@ links to the proposed delivery roadmap.
 
 The [Terminal-Bench task comparison](measurements/2026-09-22-terminal-bench-chat-fit.md)
 locates the CoderBench golden and ranks upstream tasks against recent work.
+The [v0.5 algorithm and golden-trace proposal](design/coder-terminal-v05-algorithm-and-goldens.md)
+connects those tasks to task state, evidence, execution, and the OpenAgents NIPs.
 
 [Decision model documentation](../decision-models/README.md) covers the
 models, API, and measurements that inform Coder's decisions.
