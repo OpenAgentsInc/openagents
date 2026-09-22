@@ -1,0 +1,61 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (cb6968b9faa6)",
+    "sha256": "dbfe9879ce2cb932b9fb775dca81691acf363839e930a121b0f9e5f12449577c"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": [
+        "google/gemini-3.8-flash"
+      ]
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T18:33:28.495Z",
+  "updated_at": "2026-09-22T18:34:42.089Z",
+  "outcome": "finished",
+  "steps": 16,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 375135,
+      "sha256": "9ab9f107ccedb22f7bcefcb70f42931ea81978e4c28e32af5bc8eaeb7ffdebb0"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 831,
+      "sha256": "6028eb8c4a32a34b06a7bbb3e7b3fb2531909798bdfa19bf131ade3f16811870"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 25324,
+      "sha256": "0d295b57fdaef0f0116fc57c589d0a756577da9b6b2b74c749a8eab7b5fca342"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4943,
+      "sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Merge missing commit into master",
+    "summary": "Recovered the unreferenced commit c499730 (\"Move to Stanford\") from git reflog, resolved the merge conflict in _includes/about.md, and merged the changes into master."
+  }
+}
