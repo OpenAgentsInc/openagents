@@ -248,9 +248,11 @@ timing. A failed run's cost is still listed where it ranks, with its reward.
   verifier produced no reward, so the attempt is unverifiable, not a zero.
 - **Cost** is in US dollars. The sources differ by arm, so the **Cost
   source** column names each one:
-  - *CLI list price*: Claude Code's own `total_cost_usd`. These runs
-    authenticated with a subscription, so it is a list-price figure, not a
-    bill.
+  - *CLI list price*: Claude Code's own `total_cost_usd`, which it marks
+    `costBasis: "list"`: the run's tokens priced at Anthropic's published API
+    rates. These runs signed in with a Claude subscription, so nothing was
+    billed per token; the figure is what the same tokens cost at API list
+    price. See [Claude pricing](#claude-pricing).
   - *Harbor estimate*: Harbor's price estimate from Codex's token counts.
     Codex ran on a ChatGPT subscription, so this is not a bill either.
   - *Door-reported + Jev list price*: Coder One's generation cost as
@@ -341,6 +343,47 @@ log; its trajectory spans 46.1 seconds.
 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.2035 | CLI list price | — | 166.4† | 8 | 7 | 211,630 / 187,603 / 13,567 | [trace](../../bench/terminal-bench/traces/panel--claude-code--headless-terminal/) |
 | Codex 0.153.3 | gpt-6-astra | 0.0 | $0.4597 | Harbor estimate | — | 172.7† | 7 | 6 | 112,356 / 100,608 / 4,833 | [trace](../../bench/terminal-bench/traces/panel--codex--headless-terminal/) |
 | Devin 3000.11.1 | swe-2-high | No result | — | — | — | — | — | — | — | No trajectory retained |
+
+### Claude pricing
+
+Claude Code prices every run itself from its token counts at Anthropic's
+API list prices ([Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing),
+retrieved 2026-09-22). The rates for the models these trials use, per
+million tokens:
+
+| Model | Input | 5-minute cache write | 1-hour cache write | Cache read | Output |
+| --- | --- | --- | --- | --- | --- |
+| Opus 5.5 | $4.00 | $5.00 | $8.00 | $0.20 | $20.00 |
+| Sonnet 5 | $2.00 | $2.50 | $4.00 | $0.20 | $10.00 |
+| Haiku 4.5 | $1.00 | $1.25 | $2.00 | $0.10 | $5.00 |
+| Fable 5.1 | $10.00 | $12.50 | $20.00 | $0.25 | $50.00 |
+| Sonnet 4.5 | $3.00 | $3.75 | $6.00 | $0.30 | $15.00 |
+
+Cache writes cost 1.25× the input rate for a 5-minute cache and 2× for a
+1-hour cache. A cache read costs 0.1× the input rate, except 0.05× on Opus
+5.5 and 0.025× on Fable 5.1. Thinking tokens bill as output.
+
+Cost = input × input rate + 5-minute writes × its rate + 1-hour writes × its
+rate + cache reads × the read rate + output × the output rate. Claude Code
+caches for one hour. For example, Opus 5.5 on `headless-terminal`:
+
+```text
+       10 input          × $4.00/M  = $0.00004
+    7,707 1-hour writes  × $8.00/M  = $0.06166
+   79,040 cache reads    × $0.20/M  = $0.01581
+    3,860 output         × $20.00/M = $0.07720
+                                    = $0.15470
+```
+
+That equals Claude Code's reported `total_cost_usd` exactly. The same formula
+reproduces the reported cost of all 12 Claude Code on Opus 5.5 trials to
+within rounding.
+
+Because these runs used a subscription, the costs are comparable list-price
+figures, not charges. The same holds for Codex (a ChatGPT subscription, with
+GPT-6 priced by hand below) and for Coder One's generation on the
+openagents.com `free` lane. Jev is the exception: its key is pay-as-you-go
+at the published $0.042 per million input tokens.
 
 ### GPT-6 pricing
 
