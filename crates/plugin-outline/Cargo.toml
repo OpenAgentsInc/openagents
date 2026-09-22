@@ -1,0 +1,21 @@
+[package]
+name = "plugin-outline"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Diagnostic outline guest for the packet ABI."
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = []
+snapshot = []
+
+[dependencies]
+plugin-pdk = { path = "../plugin-pdk" }
+serde_json = "1"
+
+[lints]
+workspace = true

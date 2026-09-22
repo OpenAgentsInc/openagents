@@ -24,6 +24,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 nostr = { version = "0.1.0", path = "../nostr" }
+plugin = { path = "../plugin" }
 
 [dev-dependencies]
 coderbench = { path = "../coderbench" }
