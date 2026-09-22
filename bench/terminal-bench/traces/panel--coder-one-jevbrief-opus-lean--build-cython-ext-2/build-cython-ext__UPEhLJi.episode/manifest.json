@@ -1,0 +1,118 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "f9df763bd17665806e4539b5b9bddef5bac210588ceb5c6c921e4b6614b42d83",
+        "chars": 2257,
+        "bytes": 2257,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 16,
+      "api_calls": 16,
+      "total_cost_usd": 0.3735628,
+      "milliseconds": 97978,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 182274,
+        "kept_bytes": 182274,
+        "truncated": false,
+        "sha256": "d2af900ae62df77e4beedae0486cf4f4a74e99200cb7ba5a891090d8c8d9f21c"
+      },
+      "close": {
+        "done": 0.75,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (dfe91a8e4d02)",
+    "sha256": "e90edb03a9d3c9902af9e8fa8ef165b3302aed0a86f27dc2f9668416cfd298a7"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:31:17.420Z",
+  "updated_at": "2026-09-22T20:32:55.914Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 22650,
+      "sha256": "2fcb7a6c79efe9e754b1034e21fecfeebc03fd40ed09eed2ed1bff15246703b8"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 2083,
+      "sha256": "b633d80f58196f3582be67d30e7fb6fd74d9da41951d4ff494ec4045d080e442"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1896,
+      "sha256": "9284abd4e3f7f4df335488a8ae125d5a924759d207f3f833bd6521b4bf50e84c"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2257,
+      "sha256": "f9df763bd17665806e4539b5b9bddef5bac210588ceb5c6c921e4b6614b42d83"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 182274,
+      "sha256": "d2af900ae62df77e4beedae0486cf4f4a74e99200cb7ba5a891090d8c8d9f21c"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "pyknotid is a Python package for computational topology and knot theory.",
+    "summary": "pyknotid 0.5.3 is now built from source and installed into the global Python (3.13, NumPy 2.3.0). The README snippet runs without errors and gives an Alexander polynomial at −1 of 7, which is correct for this knot. `chelpers`, `ccomplexity` and `cinvariants` import and run from the installed copy.\n\n**Setup**\n- Cloned the 0.5.3 tag to `/app/pyknotid` and left the package structure unchanged.\n- Installed the build tools (Cython 3.3, setuptools) and the missing dependencies (networkx, peewee, sympy, appdirs, requests, tqdm, pytest). vispy came in with the pyknotid install.\n\n**What I fixed**\n1. **Removed NumPy type names.** NumPy 2 no longer has `np.int`, `np.float`, `np.bool`, `np.complex` or `np.long`. I replaced them with Python's built-in `int`/`float`/`bool`/`complex` in 11 files, including `invariants.py`, `spacecurves/spacecurve.py`, `knot.py`, `openknot.py` and `periodiccell.py`.\n2. **Cython extension.** In `pyknotid/spacecurves/ccomplexity.pyx`, `np.zeros(4, dtype=np.int)` became `dtype=np.int64` in three places. This matches the `long [:]` memoryview it fills.\n3. **Python 3.13.** `from fractions import gcd` in `pyknotid/make/torus.py` became `from math import gcd`, because Python removed `fractions.gcd`.\n\n**Build and install**\n- `pip install --no-build-isolation .` compiles the extensions against the installed NumPy 2.3.0. That covers the three you named plus `simplify.coctree`.\n- I also built them in place (`setup.py build_ext --inplace`), so the tests use the compiled code when run from `/app/pyknotid`. As a result, the generated `.c` and `.so` files now sit next to the `.pyx` sources.\n\n**How I checked it**\n- `pytest tests` (leaving out `test_random_curves.py` and `test_catalogue.py`): 18 passed.\n- From a neutral directory, the extensions load from `site-packages` rather than the source tree.\n- Calculations that use the extensions give sensible results: Vassiliev v2 = 2 and v3 = 3 (v3 runs through `cinvariants`), and the torus knot's Alexander value works.\n- The higher-order writhe gives the same value (7.5783…) with and without Cython. `second_order_writhes` also runs, but I didn't compare it against the pure-Python version.",
+    "delegate_status": "answered"
+  }
+}

@@ -40,11 +40,52 @@ Every arm below ran on the same task pins on the x86_64 Linux host, with Harbor'
 | Coder One → Opus 5.5 (explore 2) | 1.0 · $0.1023 · 26.0 s | 1.0 · $0.4681 · 138.3 s | 1.0 · $0.1564 · 50.2 s | 1.0 · $0.1246 · 50.6 s | 4/4 | $0.8514 | 265.1 s |
 | Coder One → GPT-6 Luna (explore 8) | 1.0 · $0.0227 · 63.6 s | 1.0 · $0.0477 · 221.7 s | 1.0 · $0.0202 · 95.5 s | 1.0 · $0.0420 · 127.0 s | 4/4 | $0.1326 | 507.8 s |
 | **Jev-brief → Opus 5.5** (survey only, explore 0) | 1.0 · $0.1077 · 20.5 s | 1.0 · $0.2724 · 87.1 s | 1.0 · $0.1323 · 35.6 s | 1.0 · $0.0851 · 12.6 s | 4/4 | $0.5974 | 155.8 s |
+| **Lean Jev-brief → Opus 5.5** (six Claude Code tools) | 1.0 · $0.0701 · 15.5 s | 1.0 · $0.2856 · 98.1 s | 1.0 · $0.1176 · 45.3 s | 1.0 · $0.0576 · 13.3 s | 4/4 | $0.5309 | 172.2 s |
 | **Jev-brief → GPT-6 Luna** (survey only, explore 0) | 0.0 · $0.0066 · 76.7 s | 1.0 · $0.0199 · 209.6 s | 1.0 · $0.0036 · 73.6 s | 1.0 · $0.0052 · 36.6 s | 3/4 | $0.0353 | 396.5 s |
+
+### Repeated runs: Coder One's best configuration against Opus 5.5
+
+Three trials per task for each arm. **Lean Jev-brief → Opus 5.5** runs no
+Gemini explorer: a parallel Jev survey (under four seconds) builds a
+briefing, and Claude Code on Opus 5.5 finishes with six tools (Bash, Read,
+Edit, Write, Glob, Grep), which roughly halves its fixed prompt on every
+call.
+
+| Arm | Task | Passed | Cost, mean (min–max) | Agent time, mean (min–max) |
+| --- | --- | --- | --- | --- |
+| Claude Code 2.1.280 / Opus 5.5 | `fix-git` | 3/3 | $0.1216 ($0.0819–$0.1420) | 23.5 s (22.8–23.9) |
+| Claude Code 2.1.280 / Opus 5.5 | `build-cython-ext` | 3/3 | $0.3481 ($0.3011–$0.4173) | 111.8 s (100.1–120.5) |
+| Claude Code 2.1.280 / Opus 5.5 | `headless-terminal` | 3/3 | $0.1456 ($0.1283–$0.1547) | 49.1 s (44.8–51.9) |
+| Claude Code 2.1.280 / Opus 5.5 | `fix-code-vulnerability` | 3/3 | $0.0400 ($0.0253–$0.0693) | 11.4 s (11.0–12.2) |
+| Jev-brief → Opus 5.5 | `fix-git` | 3/3 | $0.0781 ($0.0614–$0.1077) | 18.8 s (16.2–20.5) |
+| Jev-brief → Opus 5.5 | `build-cython-ext` | 3/3 | $0.2824 ($0.2712–$0.3038) | 96.3 s (87.1–105.0) |
+| Jev-brief → Opus 5.5 | `headless-terminal` | 3/3 | $0.1272 ($0.1091–$0.1404) | 45.1 s (35.6–50.3) |
+| Jev-brief → Opus 5.5 | `fix-code-vulnerability` | 3/3 | $0.0661 ($0.0291–$0.0851) | 12.1 s (11.8–12.6) |
+| **Lean Jev-brief → Opus 5.5** | `fix-git` | 3/3 | $0.0578 ($0.0502–$0.0701) | 16.2 s (15.4–17.8) |
+| **Lean Jev-brief → Opus 5.5** | `build-cython-ext` | 3/3 | $0.2834 ($0.1911–$0.3736) | 93.2 s (82.7–98.8) |
+| **Lean Jev-brief → Opus 5.5** | `headless-terminal` | 3/3 | $0.1113 ($0.1048–$0.1176) | 42.6 s (38.7–45.3) |
+| **Lean Jev-brief → Opus 5.5** | `fix-code-vulnerability` | 3/3 | $0.0362 ($0.0248–$0.0576) | 12.2 s (11.5–13.3) |
+
+| Arm | Passed | Sum of per-task mean cost | Sum of per-task mean agent time |
+| --- | --- | --- | --- |
+| Claude Code 2.1.280 / Opus 5.5 | 12/12 | $0.6554 | 195.9 s |
+| Jev-brief → Opus 5.5 | 12/12 | $0.5539 | 172.2 s |
+| **Lean Jev-brief → Opus 5.5** | 12/12 | $0.4887 | 164.3 s |
+
+Across 12 trials each, the lean arm passed every task for 25% less than
+Opus 5.5 alone ($0.4887 against $0.6554, summing the per-task means) and in
+16% less agent time (164.3 against 195.9 seconds). Its mean cost is lower on
+all four tasks; its mean time is lower on three, and 0.8 seconds higher on
+`fix-code-vulnerability`. The ranges overlap on most tasks, so treat the
+per-task differences as a development result rather than a significance
+claim; the totals are consistent in direction across tasks.
 
 **What the four tasks show:**
 
-- **Jev-brief → Opus 5.5 is the best Coder One configuration so far.** It
+- **Lean Jev-brief → Opus 5.5 is now the best configuration:** 12 of 12
+  over three repetitions, 25% cheaper and 16% faster than Opus 5.5 alone.
+  See the repeated-runs table above.
+- **Jev-brief → Opus 5.5 (full Claude Code) was the first to beat Opus.** It
   passed all four tasks for $0.5974 and 155.8 seconds of agent time in
   total, against $0.7833 and 195.7 seconds for Opus 5.5 alone: 24% cheaper
   and 20% faster. It skips the Gemini explorer: a parallel Jev survey ranks
@@ -65,8 +106,9 @@ Every arm below ran on the same task pins on the x86_64 Linux host, with Harbor'
 
 These are single trials, and the gaps between some arms are within the
 run-to-run spread we have seen (Coder One alone took 237 to 338 seconds on
-`build-cython-ext` across three runs). Repetitions of Jev-brief → Opus and
-Opus alone are running to test the headline result.
+`build-cython-ext` across three runs). Three repetitions of the Opus arms
+confirmed the direction of the headline result, with smaller margins
+(15% cheaper and 12% faster for Jev-brief; 25% and 16% for the lean arm).
 
 ## Cheapest first
 
@@ -84,20 +126,27 @@ timing. A failed run's cost is still listed where it ranks, with its reward.
 | 1 | Codex 0.155.1 | GPT-6 Luna | 1.0 | $0.0052‡ | 65.3 s |
 | 2 | **Jev-brief → GPT-6 Luna** | Jev survey, then GPT-6 Luna | 0.0 | $0.0066 | 76.7 s |
 | 3 | **Coder One → GPT-6 Luna** (explore 8) | Gemini + Jev, then GPT-6 Luna | 1.0 | $0.0227 | 63.6 s |
-| 4 | **Coder One**, no Jev | Gemini 3.8 Flash | 1.0 | $0.0557 | 71.9 s |
-| 5 | **Coder One** | Gemini 3.8 Flash + Jev | 1.0 | $0.0604 | 73.8 s |
-| 6 | **Coder One deep** (Jev survey) | Gemini 3.8 Flash + Jev | 1.0 | $0.0625 | 75.5 s |
-| 7 | **Coder One v2** (cache-stable prompt) | Gemini 3.8 Flash + Jev | 1.0 | $0.0668 | 77.0 s |
-| 8 | **Coder One → Opus 5.5** (explore 2) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1023 | 26.0 s |
-| 9 | **Coder One → Opus 5.5** (explore 8) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1055 | 47.4 s |
-| 10 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.1056‡ | 64.8 s |
-| 11 | **Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 | 1.0 | $0.1077 | 20.5 s |
-| 12 | **Coder One → Opus 5.5** (`auto`) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1408 | 70.3 s |
-| 13 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.1420 | 23.8 s |
-| 14 | Claude Code 2.1.278 | Sonnet 4.5 | 1.0 | $0.1463 | 42.6 s† |
-| 15 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $0.2370‡ | 47.8 s |
-| 16 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $0.2607 | 53.3 s |
-| 17 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.3630 | 30.5 s† |
+| 4 | **Lean Jev-brief → Opus 5.5** (repetition 3) | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.0502 | 15.4 s |
+| 5 | **Lean Jev-brief → Opus 5.5** (repetition 2) | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.0530 | 17.8 s |
+| 6 | **Coder One**, no Jev | Gemini 3.8 Flash | 1.0 | $0.0557 | 71.9 s |
+| 7 | **Coder One** | Gemini 3.8 Flash + Jev | 1.0 | $0.0604 | 73.8 s |
+| 8 | **Jev-brief → Opus 5.5** (repetition 2) | Jev survey, then Opus 5.5 | 1.0 | $0.0614 | 16.2 s |
+| 9 | **Coder One deep** (Jev survey) | Gemini 3.8 Flash + Jev | 1.0 | $0.0625 | 75.5 s |
+| 10 | **Jev-brief → Opus 5.5** (repetition 3) | Jev survey, then Opus 5.5 | 1.0 | $0.0653 | 19.6 s |
+| 11 | **Coder One v2** (cache-stable prompt) | Gemini 3.8 Flash + Jev | 1.0 | $0.0668 | 77.0 s |
+| 12 | **Lean Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.0701 | 15.5 s |
+| 13 | Claude Code 2.1.280 (repetition 3) | Opus 5.5 | 1.0 | $0.0819 | 22.8 s |
+| 14 | **Coder One → Opus 5.5** (explore 2) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1023 | 26.0 s |
+| 15 | **Coder One → Opus 5.5** (explore 8) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1055 | 47.4 s |
+| 16 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.1056‡ | 64.8 s |
+| 17 | **Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 | 1.0 | $0.1077 | 20.5 s |
+| 18 | **Coder One → Opus 5.5** (`auto`) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1408 | 70.3 s |
+| 19 | Claude Code 2.1.280 (repetition 2) | Opus 5.5 | 1.0 | $0.1408 | 23.9 s |
+| 20 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.1420 | 23.8 s |
+| 21 | Claude Code 2.1.278 | Sonnet 4.5 | 1.0 | $0.1463 | 42.6 s† |
+| 22 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $0.2370‡ | 47.8 s |
+| 23 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $0.2607 | 53.3 s |
+| 24 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.3630 | 30.5 s† |
 | — | Devin 3000.11.1 | swe-2-high | 1.0 | — | — |
 | — | Devin 3000.11.1 | claude-sonnet-5-high | 0.0 (provider refusal) | — | — |
 
@@ -109,19 +158,26 @@ timing. A failed run's cost is still listed where it ranks, with its reward.
 | 2 | **Jev-brief → GPT-6 Luna** | Jev survey, then GPT-6 Luna | 1.0 | $0.0199 | 209.6 s |
 | 3 | **Coder One → GPT-6 Luna** (explore 8) | Gemini + Jev, then GPT-6 Luna | 1.0 | $0.0477 | 221.7 s |
 | 4 | **Coder One v2** (cache-stable prompt) | Gemini 3.8 Flash + Jev | 1.0 | $0.1597§ | 237.2 s |
-| 5 | **Coder One**, no Jev | Gemini 3.8 Flash | 1.0 | $0.2069 | 245.5 s |
-| 6 | **Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 | 1.0 | $0.2724 | 87.1 s |
-| 7 | **Coder One deep** (Jev survey) | Gemini 3.8 Flash + Jev | 1.0 | $0.3155 | 292.3 s |
-| 8 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.3195‡ | 357.7 s |
-| 9 | **Coder One** | Gemini 3.8 Flash + Jev | 1.0 | $0.3748 | 338.4 s |
-| 10 | **Coder One → Opus 5.5** (explore 8) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.3905 | 128.9 s |
-| 11 | **Coder One → Opus 5.5** (`auto`) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.4145 | 153.5 s |
-| 12 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.4173 | 114.9 s |
-| 13 | **Coder One → Opus 5.5** (explore 2) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.4681 | 138.3 s |
-| 14 | Claude Code 2.1.278 | Sonnet 4.5 | 0.0 | $0.9172 | 263.7 s† |
-| 15 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $1.2447‡ | 223.6 s |
-| 16 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $1.4277 | 222.2 s† |
-| 17 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.4420 | 201.8 s† |
+| 5 | **Lean Jev-brief → Opus 5.5** (repetition 3) | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.1911 | 82.7 s |
+| 6 | **Coder One**, no Jev | Gemini 3.8 Flash | 1.0 | $0.2069 | 245.5 s |
+| 7 | **Jev-brief → Opus 5.5** (repetition 3) | Jev survey, then Opus 5.5 | 1.0 | $0.2712 | 96.9 s |
+| 8 | **Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 | 1.0 | $0.2724 | 87.1 s |
+| 9 | **Lean Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.2856 | 98.1 s |
+| 10 | Claude Code 2.1.280 (repetition 2) | Opus 5.5 | 1.0 | $0.3011 | 100.1 s |
+| 11 | **Jev-brief → Opus 5.5** (repetition 2) | Jev survey, then Opus 5.5 | 1.0 | $0.3038 | 105.0 s |
+| 12 | **Coder One deep** (Jev survey) | Gemini 3.8 Flash + Jev | 1.0 | $0.3155 | 292.3 s |
+| 13 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.3195‡ | 357.7 s |
+| 14 | Claude Code 2.1.280 (repetition 3) | Opus 5.5 | 1.0 | $0.3261 | 120.5 s |
+| 15 | **Lean Jev-brief → Opus 5.5** (repetition 2) | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.3736 | 98.8 s |
+| 16 | **Coder One** | Gemini 3.8 Flash + Jev | 1.0 | $0.3748 | 338.4 s |
+| 17 | **Coder One → Opus 5.5** (explore 8) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.3905 | 128.9 s |
+| 18 | **Coder One → Opus 5.5** (`auto`) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.4145 | 153.5 s |
+| 19 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.4173 | 114.9 s |
+| 20 | **Coder One → Opus 5.5** (explore 2) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.4681 | 138.3 s |
+| 21 | Claude Code 2.1.278 | Sonnet 4.5 | 0.0 | $0.9172 | 263.7 s† |
+| 22 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $1.2447‡ | 223.6 s |
+| 23 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $1.4277 | 222.2 s† |
+| 24 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.4420 | 201.8 s† |
 | — | Devin 3000.11.1 | swe-2-high | 1.0 | — | — |
 
 ### `headless-terminal`, cheapest first
@@ -131,17 +187,24 @@ timing. A failed run's cost is still listed where it ranks, with its reward.
 | 1 | Codex 0.155.1 | GPT-6 Luna | 1.0 | $0.0032‡ | 67.7 s |
 | 2 | **Jev-brief → GPT-6 Luna** | Jev survey, then GPT-6 Luna | 1.0 | $0.0036 | 73.6 s |
 | 3 | **Coder One → GPT-6 Luna** (explore 8) | Gemini + Jev, then GPT-6 Luna | 1.0 | $0.0202 | 95.5 s |
-| 4 | **Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 | 1.0 | $0.1323 | 35.6 s |
-| 5 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.1547 | 44.8 s |
-| 6 | **Coder One → Opus 5.5** (explore 2) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1564 | 50.2 s |
-| 7 | **Coder One → Opus 5.5** (explore 8) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1610 | 68.4 s |
-| 8 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.2093‡ | 216.2 s |
-| 9 | **Coder One**, no Jev | Gemini 3.8 Flash | 1.0 | $0.2950 | 361.8 s |
-| 10 | **Coder One** | Gemini 3.8 Flash + Jev | 1.0 | $0.3149 | 598.1 s |
-| 11 | **Coder One deep** (Jev survey) | Gemini 3.8 Flash + Jev | 1.0 | $0.3247 | 471.7 s |
-| 12 | Codex 0.153.3 | GPT-6 Astra | 0.0 | $0.4597 | 172.7 s† |
-| 13 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $0.4843‡ | 185.6 s |
-| 14 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.2035 | 166.4 s† |
+| 4 | **Lean Jev-brief → Opus 5.5** (repetition 2) | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.1048 | 38.7 s |
+| 5 | **Jev-brief → Opus 5.5** (repetition 2) | Jev survey, then Opus 5.5 | 1.0 | $0.1091 | 49.3 s |
+| 6 | **Lean Jev-brief → Opus 5.5** (repetition 3) | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.1115 | 43.9 s |
+| 7 | **Lean Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.1176 | 45.3 s |
+| 8 | Claude Code 2.1.280 (repetition 3) | Opus 5.5 | 1.0 | $0.1283 | 50.7 s |
+| 9 | **Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 | 1.0 | $0.1323 | 35.6 s |
+| 10 | **Jev-brief → Opus 5.5** (repetition 3) | Jev survey, then Opus 5.5 | 1.0 | $0.1404 | 50.3 s |
+| 11 | Claude Code 2.1.280 (repetition 2) | Opus 5.5 | 1.0 | $0.1539 | 51.9 s |
+| 12 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.1547 | 44.8 s |
+| 13 | **Coder One → Opus 5.5** (explore 2) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1564 | 50.2 s |
+| 14 | **Coder One → Opus 5.5** (explore 8) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1610 | 68.4 s |
+| 15 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.2093‡ | 216.2 s |
+| 16 | **Coder One**, no Jev | Gemini 3.8 Flash | 1.0 | $0.2950 | 361.8 s |
+| 17 | **Coder One** | Gemini 3.8 Flash + Jev | 1.0 | $0.3149 | 598.1 s |
+| 18 | **Coder One deep** (Jev survey) | Gemini 3.8 Flash + Jev | 1.0 | $0.3247 | 471.7 s |
+| 19 | Codex 0.153.3 | GPT-6 Astra | 0.0 | $0.4597 | 172.7 s† |
+| 20 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $0.4843‡ | 185.6 s |
+| 21 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $1.2035 | 166.4 s† |
 | — | Devin 3000.11.1 | swe-2-high | No result | — | — |
 
 ### `fix-code-vulnerability`, cheapest first
@@ -150,18 +213,25 @@ timing. A failed run's cost is still listed where it ranks, with its reward.
 | --- | --- | --- | --- | --- | --- |
 | 1 | **Jev-brief → GPT-6 Luna** | Jev survey, then GPT-6 Luna | 1.0 | $0.0052 | 36.6 s |
 | 2 | Codex 0.155.1 | GPT-6 Luna | 1.0 | $0.0079‡ | 49.7 s |
-| 3 | **Coder One → GPT-6 Luna** (explore 8) | Gemini + Jev, then GPT-6 Luna | 1.0 | $0.0420 | 127.0 s |
-| 4 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.0693 | 12.2 s |
-| 5 | **Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 | 1.0 | $0.0851 | 12.6 s |
-| 6 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.0877‡ | 51.6 s |
-| 7 | **Coder One → Opus 5.5** (explore 8) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1136 | 73.4 s |
-| 8 | **Coder One → Opus 5.5** (explore 2) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1246 | 50.6 s |
-| 9 | **Coder One deep** (Jev survey) | Gemini 3.8 Flash + Jev | 0.0 | $0.2281§ | 419.7 s |
-| 10 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.2333 | 24.7 s† |
-| 11 | **Coder One** | Gemini 3.8 Flash + Jev | timeout | $0.2511 | 900.0 s |
-| 12 | **Coder One**, no Jev | Gemini 3.8 Flash | 1.0 | $0.4119§ | 797.8 s |
-| 13 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $0.5094 | 44.2 s† |
-| 14 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $0.5293‡ | 67.0 s |
+| 3 | **Lean Jev-brief → Opus 5.5** (repetition 2) | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.0248 | 11.9 s |
+| 4 | Claude Code 2.1.280 (repetition 2) | Opus 5.5 | 1.0 | $0.0253 | 11.0 s |
+| 5 | Claude Code 2.1.280 (repetition 3) | Opus 5.5 | 1.0 | $0.0255 | 11.1 s |
+| 6 | **Lean Jev-brief → Opus 5.5** (repetition 3) | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.0261 | 11.5 s |
+| 7 | **Jev-brief → Opus 5.5** (repetition 3) | Jev survey, then Opus 5.5 | 1.0 | $0.0291 | 11.8 s |
+| 8 | **Coder One → GPT-6 Luna** (explore 8) | Gemini + Jev, then GPT-6 Luna | 1.0 | $0.0420 | 127.0 s |
+| 9 | **Lean Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 (six tools) | 1.0 | $0.0576 | 13.3 s |
+| 10 | Claude Code 2.1.280 | Opus 5.5 | 1.0 | $0.0693 | 12.2 s |
+| 11 | **Jev-brief → Opus 5.5** (repetition 2) | Jev survey, then Opus 5.5 | 1.0 | $0.0840 | 11.8 s |
+| 12 | **Jev-brief → Opus 5.5** | Jev survey, then Opus 5.5 | 1.0 | $0.0851 | 12.6 s |
+| 13 | Codex 0.155.1 | GPT-6 Sol | 1.0 | $0.0877‡ | 51.6 s |
+| 14 | **Coder One → Opus 5.5** (explore 8) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1136 | 73.4 s |
+| 15 | **Coder One → Opus 5.5** (explore 2) | Gemini + Jev, then Opus 5.5 | 1.0 | $0.1246 | 50.6 s |
+| 16 | **Coder One deep** (Jev survey) | Gemini 3.8 Flash + Jev | 0.0 | $0.2281§ | 419.7 s |
+| 17 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.2333 | 24.7 s† |
+| 18 | **Coder One** | Gemini 3.8 Flash + Jev | timeout | $0.2511 | 900.0 s |
+| 19 | **Coder One**, no Jev | Gemini 3.8 Flash | 1.0 | $0.4119§ | 797.8 s |
+| 20 | Codex 0.153.3 | GPT-6 Astra | 1.0 | $0.5094 | 44.2 s† |
+| 21 | Codex 0.155.1 | GPT-6 Astra | 1.0 | $0.5293‡ | 67.0 s |
 | — | Devin 3000.11.1 | swe-2-high | 1.0 | — | — |
 
 ### `cancel-async-tasks`, cheapest first
@@ -485,6 +555,7 @@ deep on the new tasks, explore 2, Luna delegate), and `d6626285b583`
 | **Luna delegate**, explore 8 | Codex on GPT-6 Luna finishes | 4 of 4 for $0.1326; 80% to 90% of that was the Gemini explorer. |
 | **Jev-brief → Opus 5.5** | No explorer: Jev's survey builds the briefing, Opus finishes | **4 of 4, $0.5974, 155.8 s**: 24% cheaper and 20% faster than Opus 5.5 alone. |
 | **Jev-brief → Luna** | Same, with GPT-6 Luna | 3 of 4, $0.0353, 396.5 s. Failed `fix-git`; no better than Luna alone. |
+| **Lean Jev-brief → Opus 5.5** | Jev-brief with Claude Code limited to six tools (`CODER_ONE_DELEGATE_TOOLS`) | **12 of 12 over three repetitions, $0.4887 and 164.3 s** (sums of per-task means): 25% cheaper and 16% faster than Opus 5.5 alone. The first Opus call's input fell from about 16,400–20,100 tokens to 6,900–9,800. |
 
 **Why Jev-brief → Opus beat Opus alone.** The clearest gain is on
 `build-cython-ext`, where Opus needed 11 turns from the briefing against 17

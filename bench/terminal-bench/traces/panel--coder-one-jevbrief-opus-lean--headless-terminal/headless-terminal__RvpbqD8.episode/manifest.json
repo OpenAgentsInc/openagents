@@ -1,0 +1,119 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "2f1e02f8686c51907da1d3d70a63ca1444c4bc2bf22a5fb6975070d9cae35329",
+        "chars": 1867,
+        "bytes": 1867,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 6,
+      "api_calls": 6,
+      "total_cost_usd": 0.1175724,
+      "milliseconds": 44221,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 35980,
+        "kept_bytes": 35980,
+        "truncated": false,
+        "sha256": "2f274da70d18c7bbe2667ff0a12e8f15581c899f95fd054b2c98a09a5171bc21"
+      },
+      "close": {
+        "done": 0.63,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (dfe91a8e4d02)",
+    "sha256": "e90edb03a9d3c9902af9e8fa8ef165b3302aed0a86f27dc2f9668416cfd298a7"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:25:49.760Z",
+  "updated_at": "2026-09-22T20:26:34.864Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 22768,
+      "sha256": "d89da84bc31a07a4660fc945290c949927d052bbbb4b4605bf39183d7f023824"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1912,
+      "sha256": "0b59f299722ffd787e19963af70b26759c4c3d62285f1a8a20492cbb5e103261"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1631,
+      "sha256": "ec9f2985e7753b5cd66994ab7e1d633d4514f6ed31add0475a526f9978cfe733"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 1867,
+      "sha256": "2f1e02f8686c51907da1d3d70a63ca1444c4bc2bf22a5fb6975070d9cae35329"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 35980,
+      "sha256": "2f274da70d18c7bbe2667ff0a12e8f15581c899f95fd054b2c98a09a5171bc21"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "I wrote `HeadlessTerminal(BaseTerminal)` in `/app/headless_terminal.py`, and it works as asked: `from headless_terminal import HeadlessTerminal` imports correctly and every requirement passed a live test.\n\n**How it works:**\n- It starts `/bin/bash -i` in a pseudo-terminal using `pexpect`. The `-i` flag makes it an interactive shell, so it reads `~/.bashrc`.\n- `send_keystrokes(keystrokes, wait_sec=0.0)` sends the characters exactly as given, then waits `wait_sec` seconds. Enter is `\\n`, and control keys work directly: `\\x03` is Ctrl-C, `\\x04` is Ctrl-D, `\\x1b` is Escape.\n- A background thread keeps reading the terminal's output so that programs producing lots of output or taking over the whole screen don't stall. The output is also fed into a virtual screen (`pyte`).\n- I added some extras beyond the required method: `get_output()`, `get_screen()`, `clear_output()`, `is_alive()`, `close()`, and `with`-statement support.\n- The shell starts in whatever directory the Python process is running from (like opening a new terminal there), unless you pass `cwd=`.\n\n**Dependencies:** `pexpect` and `pyte`, installed into the system Python with pip.\n\n**Test results:**\n- **Startup file:** I temporarily added a variable to `~/.bashrc` and confirmed the shell could see it. I removed the line afterwards.\n- **Ctrl-C:** it stopped a running `sleep 100`, and the next command still ran.\n- **Interactive programs:** typing into the Python prompt wrote a file, and `exit()` worked.\n- **Ctrl-D:** it ended input to `cat`, and the file contained `hello`.\n- **Starting directory:** `pwd` returned `/app` when run from `/app`.\n\nThe screen output showed all of this as expected.\n\nThe tests left some files in `/tmp` (`rc.txt`, `after.txt`, `py.txt`, `cat.txt`, `pwd.txt`), which you can delete.",
+    "delegate_status": "answered"
+  }
+}

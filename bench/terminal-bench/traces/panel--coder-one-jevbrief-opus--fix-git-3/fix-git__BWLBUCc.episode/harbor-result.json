@@ -1,0 +1,34 @@
+{
+  "task_name": "terminal-bench/fix-git",
+  "trial_name": "fix-git__BWLBUCc",
+  "started_at": "2026-09-22T20:22:51.988973Z",
+  "finished_at": "2026-09-22T20:27:25.651637Z",
+  "environment_setup": {
+    "started_at": "2026-09-22T20:22:52.038964Z",
+    "finished_at": "2026-09-22T20:22:53.658144Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-22T20:22:53.658183Z",
+    "finished_at": "2026-09-22T20:26:49.363813Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-22T20:26:49.363917Z",
+    "finished_at": "2026-09-22T20:27:08.993946Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-22T20:27:09.205387Z",
+    "finished_at": "2026-09-22T20:27:14.740193Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "exception_info": null,
+  "agent_result": {
+    "n_input_tokens": 111955,
+    "n_cache_tokens": 96396,
+    "n_output_tokens": 1136,
+    "cost_usd": null
+  }
+}

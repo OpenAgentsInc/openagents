@@ -1,0 +1,123 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "db9f0033f3cee049dd3b8e5ec8e8832c4fbfcb8a2678c2cf5029ef99c662eb5b",
+        "chars": 801,
+        "bytes": 801,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 6,
+      "api_calls": 6,
+      "total_cost_usd": 0.05248420000000001,
+      "milliseconds": 16396,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 35999,
+        "kept_bytes": 35999,
+        "truncated": false,
+        "sha256": "cd9ce8a9f4b1d4002c3aa129ccb5fde1f58da5833b653392ee3a334bc68eb1d2"
+      },
+      "close": {
+        "done": 0.86,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (dfe91a8e4d02)",
+    "sha256": "e90edb03a9d3c9902af9e8fa8ef165b3302aed0a86f27dc2f9668416cfd298a7"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:32:35.611Z",
+  "updated_at": "2026-09-22T20:32:53.072Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 108243,
+      "sha256": "ea1f45317a9c8c67bc17503ea14e82c3be3cf269d2b34dde7322ad47fbc9c0a3"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1928,
+      "sha256": "9971e88775845f63fd972a12a786dc504f2be5fcd08542bd2dd81a60bceae850"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 485,
+      "sha256": "47bb074d02f1aa302b8916cc2fe8f2524fbd681604fc42c8582f158fba61f86b"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4943,
+      "sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 801,
+      "sha256": "db9f0033f3cee049dd3b8e5ec8e8832c4fbfcb8a2678c2cf5029ef99c662eb5b"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 35999,
+      "sha256": "cd9ce8a9f4b1d4002c3aa129ccb5fde1f58da5833b653392ee3a334bc68eb1d2"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "I found your changes and merged them into master.\n\n**What happened:** You had checked out `HEAD~1` (commit `c4e38a1`), which puts git in \"detached HEAD\" mode, meaning you weren't on any branch. You committed \"Move to Stanford\" (`c499730`) there, and when you switched back to master nothing pointed to that commit anymore. I found it in `git reflog`.\n\n**What I did:** I merged `c499730` into master as merge commit `a872a66`.\n- `_layouts/default.html` merged cleanly.\n- `_includes/about.md` conflicted with master's \"off the job market woo\" commit, since both edited the same lines. I kept your Stanford version (\"I am a Postdoctoral Researcher at Stanford CS.\" plus the \"Previously…\" paragraph). It replaces master's UW PhD text, and both versions had already dropped the \"looking for a job\" line.\n\n**How I checked:** The working tree is clean, there are no conflict markers left, the log shows the merge, and the files on master now exactly match your Stanford commit.\n\nI haven't pushed anything to the remote.",
+    "delegate_status": "answered"
+  }
+}

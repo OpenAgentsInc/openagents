@@ -1,0 +1,119 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "2f1e02f8686c51907da1d3d70a63ca1444c4bc2bf22a5fb6975070d9cae35329",
+        "chars": 1867,
+        "bytes": 1867,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 6,
+      "api_calls": 6,
+      "total_cost_usd": 0.108997,
+      "milliseconds": 48562,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 37783,
+        "kept_bytes": 37783,
+        "truncated": false,
+        "sha256": "1bd4da649e7b6749bf542a02325d45263c164bd157b173aee26f7a40a40dadec"
+      },
+      "close": {
+        "done": 0.58,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (d6626285b583)",
+    "sha256": "e2a92884eba12a7b9ff8a6dfa5e18304c12241f37ea842dc3d419562e783a4a7"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T20:21:26.299Z",
+  "updated_at": "2026-09-22T20:22:15.490Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 21561,
+      "sha256": "10dc48f132c4e224c145c67147981339b5c3f4172584ec9b00bb1051c1547cdb"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1907,
+      "sha256": "a3010561e83ce23454d2018d0d2a3979b607ec8f2699097d05bdf2059171daf9"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1631,
+      "sha256": "ec9f2985e7753b5cd66994ab7e1d633d4514f6ed31add0475a526f9978cfe733"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 1867,
+      "sha256": "2f1e02f8686c51907da1d3d70a63ca1444c4bc2bf22a5fb6975070d9cae35329"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 37783,
+      "sha256": "1bd4da649e7b6749bf542a02325d45263c164bd157b173aee26f7a40a40dadec"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "I wrote `HeadlessTerminal(BaseTerminal)` in `/app/headless_terminal.py`, and a test script confirmed each requirement works.\n\n**How it works:**\n- It starts `/bin/bash -i` in a pseudo-terminal using `pexpect`, which I installed into the system Python. The `-i` flag makes bash interactive, so it reads `~/.bashrc` on startup.\n- `send_keystrokes` writes the keys to the terminal exactly as given, so `\"\\n\"` acts as Enter and `\"\\x03\"` (Ctrl-C), `\"\\x04\"` (Ctrl-D) and `\"\\x1b\"` (Escape) act like real key presses. It then waits `wait_sec` seconds.\n- A background thread keeps reading the terminal's output so programs don't stall when the output buffer fills up.\n- I added a few extras beyond the required interface: `get_output()`, `clear_output()`, `is_alive()`, `close()`, and support for `with` blocks.\n\n**What the test did:**\n- It added a temporary line to `~/.bashrc` setting a variable, and `echo $FOO_TEST` in the terminal printed it, so the startup file is read. I removed the line afterwards.\n- It ran `sleep 100`, sent Ctrl-C, and the next command ran normally.\n- It opened the Python prompt, wrote a file from inside it, and exited with Ctrl-D.\n- It typed text into `vim` and saved with `Esc :wq`; the file contained \"hello\".\n\nvim wasn't installed at first, so I installed it with apt to test an interactive editor; that's a change to the environment beyond the new file.",
+    "delegate_status": "answered"
+  }
+}
