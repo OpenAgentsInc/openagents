@@ -128,19 +128,11 @@ One file shapes the whole episode:
 7. Closing: guild balances spoken in chat, ledger and trace sealed,
    bridges and the server shut down.
 
-## Watching and recording
+## Watching
 
 Join the server from a 1.21.11 client: Multiplayer → Direct Connect →
 `127.0.0.1`. Admins land in creative automatically; `force-gamemode`
 resets to survival only at join.
-
-Screen-record the world for evidence:
-
-```sh
-ffmpeg -y -f avfoundation -framerate 30 -capture_cursor 1 -i "4:none" \
-  -pix_fmt yuv420p -c:v libx264 -preset veryfast \
-  ~/Desktop/voyager-arena-$(date -u +%Y%m%dT%H%M%SZ).mov
-```
 
 ## Debugging
 

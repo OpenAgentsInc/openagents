@@ -376,7 +376,7 @@
     "kill_xp": 10
   },
   "episode": {
-    "max_actions": 900,
-    "max_seconds": 900
+    "max_actions": 2700,
+    "max_seconds": 2700
   }
 }
