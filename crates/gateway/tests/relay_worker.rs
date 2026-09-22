@@ -904,6 +904,101 @@ async fn anonymous_cannot_name_dedicated_door() {
     assert_eq!(rig.forwards.load(Ordering::SeqCst), 0);
 }
 
+/// A payload whose `v` names a schema the worker does not serve is
+/// refused `unsupported_version` — a terminal status, no spend.
+#[tokio::test]
+async fn unsupported_version_refused() {
+    let rig = rig(None, StatusCode::OK, answer(), 0, true, true, 4).await;
+    let mut socket = authenticated_socket(&rig.relay_url, CALLER_BYTE).await;
+    let worker_key: XOnlyPublicKey = rig.worker_pub.parse().unwrap();
+    let payload = json!({
+        "v": "openagents.systemone.v99",
+        "type": "systemone",
+        "request": "req-wrong-version",
+        "attempt": 1,
+        "model": "acme-kev",
+        "state": "A caller's private text.",
+        "questions": {"q1": {"type": "noul", "instructions": "i", "criteria": "c"}},
+    });
+    let event = seal(CALLER_BYTE, unix_now(), &worker_key)
+        .event(
+            decision::REQUEST_KIND,
+            vec![Tag::new(vec!["p".into(), rig.worker_pub.clone()])],
+            &payload,
+        )
+        .unwrap();
+    send(
+        &mut socket,
+        json!(["REQ", "answers", {"kinds": [decision::RESULT_KIND, decision::FEEDBACK_KIND], "#e": [event.id]}]),
+    )
+    .await;
+    send(&mut socket, json!(["EVENT", event])).await;
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        let frame = tokio::time::timeout(remaining, read_json(&mut socket))
+            .await
+            .expect("the version refusal never arrived");
+        if frame[0] != "EVENT" {
+            continue;
+        }
+        let Ok(answer_event) = serde_json::from_value::<Event>(frame[2].clone()) else {
+            continue;
+        };
+        // The envelope cannot validate under v99, so the refusal binds
+        // by `e`/`p` tags and the payload's own request/attempt — bind
+        // it with a v1-shaped pending built from the same pair.
+        let body = body("req-wrong-version", 1, "acme-kev");
+        let pending = Pending {
+            attempt_id: &event.id,
+            worker: &rig.worker_pub,
+            customer: &xonly(CALLER_BYTE).to_string(),
+            request: &body.request,
+            attempt: body.attempt,
+            request_digest: body.digest(),
+        };
+        if let Ok(decision::Answer::Status(status)) =
+            decision::bind_answer(&answer_event, &pending, &secret(CALLER_BYTE))
+        {
+            assert_eq!(status.status, decision::Status::Error);
+            assert_eq!(
+                status.refusal.map(|refusal| refusal.code),
+                Some("unsupported_version".to_string())
+            );
+            break;
+        }
+    }
+    assert_eq!(rig.forwards.load(Ordering::SeqCst), 0);
+}
+
+/// A request addressed to a pubkey no worker serves is never answered —
+/// the caller's own contact deadline is what bounds the wait.
+#[tokio::test]
+async fn absent_worker_silence() {
+    let (relay_url, _) = relay().await;
+    let mut socket = authenticated_socket(&relay_url, CALLER_BYTE).await;
+    let ghost = xonly(0xde).to_string();
+    let body = body("req-ghost", 1, "acme-kev");
+    let event = request_event(CALLER_BYTE, &ghost, &body, unix_now());
+    send(
+        &mut socket,
+        json!(["REQ", "answers", {"kinds": [decision::RESULT_KIND, decision::FEEDBACK_KIND], "#e": [event.id]}]),
+    )
+    .await;
+    send(&mut socket, json!(["EVENT", event])).await;
+    let heard = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let frame = read_json(&mut socket).await;
+            if frame[0] == "EVENT" {
+                return true;
+            }
+        }
+    })
+    .await;
+    assert!(heard.is_err(), "a ghost worker answered");
+}
+
 /// A request outside the freshness window is refused `stale` — a
 /// terminal status, no ledger entry, no spend.
 #[tokio::test]
