@@ -22,6 +22,7 @@ Dated comparisons, question baselines, and retained state-budget evidence.
 | [2026-09-20-score-contract](2026-09-20-score-contract.md) | Score positions, selected answers, and calibration |
 | [2026-09-20-state-budget-choice](2026-09-20-state-budget-choice.md) | Choice adapter state-budget sweep |
 | [2026-09-20-state-budget](2026-09-20-state-budget.md) | A state budget for the smallest door |
+| [2026-09-24-tenant-training-demo](2026-09-24-tenant-training-demo.md) | The tenant-training contract, rehearsed end to end |
 
 Additional evidence remains in [data](../data/), the
 [Lev domain-gap bundle](../2026-09-20-lev-domain-gap/), and the

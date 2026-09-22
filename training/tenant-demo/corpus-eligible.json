@@ -1,0 +1,238 @@
+{
+  "v": "openagents.tenant_training.corpus.v1",
+  "workspace": "ws_demo_atlas",
+  "name": "atlas-ledger-intents-v1",
+  "created": "2026-09-24T00:00:00Z",
+  "label_rules": "Each ledger entry takes exactly one intent label: chargeback when a card dispute is opened, refund when a merchant-initiated return posts, fee_adjustment when a platform fee is corrected, payout when funds move to the operator's account.",
+  "retention": {
+    "days": 90,
+    "access": "owner",
+    "artifacts": "digests-only"
+  },
+  "digest": "",
+  "items": [
+    {
+      "id": "t-001",
+      "group": "session-a1",
+      "partition": "training",
+      "state": {"entry": "Stripe dispute opened on ch_3Px9 — cardholder claims unrecognized charge", "amount": 4200},
+      "label": "chargeback",
+      "label_source": "author",
+      "label_rule": "a card dispute opened by the issuer is a chargeback",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "t-002",
+      "group": "session-a2",
+      "partition": "training",
+      "state": {"entry": "merchant-initiated return of ord_88 posted to customer balance", "amount": 1999},
+      "label": "refund",
+      "label_source": "author",
+      "label_rule": "a merchant-initiated return is a refund",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "t-003",
+      "group": "session-a3",
+      "partition": "training",
+      "state": {"entry": "platform fee on inv_201 reduced from 3.9% to 2.9% after contract renewal", "amount": -340},
+      "label": "fee_adjustment",
+      "label_source": "author",
+      "label_rule": "a platform fee correction is a fee adjustment",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "t-004",
+      "group": "session-a4",
+      "partition": "training",
+      "state": {"entry": "weekly settlement transferred to operating account ending 4471", "amount": 81100},
+      "label": "payout",
+      "label_source": "author",
+      "label_rule": "funds moving to the operator account are a payout",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "t-005",
+      "group": "session-a5",
+      "partition": "training",
+      "state": {"entry": "issuer dispute on ch_7Qm2 escalated to pre-arbitration", "amount": 15750},
+      "label": "chargeback",
+      "label_source": "author",
+      "label_rule": "an issuer dispute at any stage is a chargeback",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "t-006",
+      "group": "session-a6",
+      "partition": "training",
+      "state": {"entry": "partial return on ord_104 issued for damaged item", "amount": 650},
+      "label": "refund",
+      "label_source": "author",
+      "label_rule": "a partial merchant return is a refund",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "t-007",
+      "group": "session-a7",
+      "partition": "training",
+      "state": {"entry": "annual volume rebate applied against accrued platform fees", "amount": -12000},
+      "label": "fee_adjustment",
+      "label_source": "author",
+      "label_rule": "a fee credit or rebate is a fee adjustment",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "t-008",
+      "group": "session-a8",
+      "partition": "training",
+      "state": {"entry": "instant payout requested to debit card ending 9902", "amount": 5000},
+      "label": "payout",
+      "label_source": "author",
+      "label_rule": "an instant transfer out is a payout",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "c-001",
+      "group": "session-b1",
+      "partition": "calibration",
+      "state": {"entry": "dispute network fee assessed on won chargeback ch_1Aa", "amount": -1500},
+      "label": "fee_adjustment",
+      "label_source": "author",
+      "label_rule": "a fee assessed by the network is a fee adjustment, not the dispute itself",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "c-002",
+      "group": "session-b2",
+      "partition": "calibration",
+      "state": {"entry": "return authorization for ord_77 converted to refund on receipt", "amount": 3200},
+      "label": "refund",
+      "label_source": "author",
+      "label_rule": "a completed return is a refund",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "c-003",
+      "group": "session-b3",
+      "partition": "calibration",
+      "state": {"entry": "chargeback ch_9Zz filed with reason code 10.4 fraud", "amount": 8800},
+      "label": "chargeback",
+      "label_source": "author",
+      "label_rule": "a filed dispute is a chargeback",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "c-004",
+      "group": "session-b4",
+      "partition": "calibration",
+      "state": {"entry": "reserve release transferred to operating account", "amount": 22000},
+      "label": "payout",
+      "label_source": "author",
+      "label_rule": "a reserve release to the operator is a payout",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "d-001",
+      "group": "session-c1",
+      "partition": "development",
+      "state": {"entry": "Visa dispute on ch_4Bx opened, reason 13.1 merchandise not received", "amount": 6400},
+      "label": "chargeback",
+      "label_source": "author",
+      "label_rule": "an opened dispute is a chargeback",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "d-002",
+      "group": "session-c2",
+      "partition": "development",
+      "state": {"entry": "customer credited after duplicate billing on inv_330", "amount": 1500},
+      "label": "refund",
+      "label_source": "author",
+      "label_rule": "a credit for a billing error is a refund",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"},
+      "annotations": {"ambiguous": true}
+    },
+    {
+      "id": "d-003",
+      "group": "session-c3",
+      "partition": "development",
+      "state": {"entry": "currency conversion markup waived on settlement", "amount": -240},
+      "label": "fee_adjustment",
+      "label_source": "author",
+      "label_rule": "a waived fee is a fee adjustment",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "d-004",
+      "group": "session-c4",
+      "partition": "development",
+      "state": {"entry": "monthly payout to platform operating account executed", "amount": 41000},
+      "label": "payout",
+      "label_source": "author",
+      "label_rule": "a scheduled transfer out is a payout",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"},
+      "annotations": {"rule_derivable": true}
+    },
+    {
+      "id": "d-005",
+      "group": "session-c5",
+      "partition": "development",
+      "state": {"entry": "second dispute opened on previously refunded ord_51", "amount": 2900},
+      "label": "chargeback",
+      "label_source": "author",
+      "label_rule": "a dispute on a refunded order is still a chargeback",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "d-006",
+      "group": "session-c6",
+      "partition": "development",
+      "state": {"entry": "goodwill credit applied after service outage", "amount": 900},
+      "label": "refund",
+      "label_source": "author",
+      "label_rule": "a goodwill credit is a refund",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"},
+      "annotations": {"label_uncertain": true}
+    },
+    {
+      "id": "l-001",
+      "group": "session-d1",
+      "partition": "locked",
+      "state": {"entry": "Amex dispute on ch_2Kk, reason C02 credit not processed", "amount": 7300},
+      "label": "chargeback",
+      "label_source": "author",
+      "label_rule": "a credit-not-processed dispute is a chargeback",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "l-002",
+      "group": "session-d2",
+      "partition": "locked",
+      "state": {"entry": "full return on ord_140 for unfulfilled preorder", "amount": 5400},
+      "label": "refund",
+      "label_source": "author",
+      "label_rule": "a return for unfulfilled goods is a refund",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "l-003",
+      "group": "session-d3",
+      "partition": "locked",
+      "state": {"entry": "interchange-plus pricing trued up for Q3 volume", "amount": -4100},
+      "label": "fee_adjustment",
+      "label_source": "author",
+      "label_rule": "a pricing true-up is a fee adjustment",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "l-004",
+      "group": "session-d4",
+      "partition": "locked",
+      "state": {"entry": "manual payout cut to settle negative balance", "amount": 12500},
+      "label": "payout",
+      "label_source": "author",
+      "label_rule": "a manual settlement transfer is a payout",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    }
+  ]
+}

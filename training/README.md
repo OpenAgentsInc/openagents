@@ -31,3 +31,11 @@ Everything the adapter harness produces is consumed by Rust, and the
 contracts between them are tested: `check_parity.py` proves the Python
 renderer matches `crates/lev/src/schema.rs` character for character, and
 `crates/lev/src/adapter.rs` reads the package the toolkit writes.
+
+`tenant-demo` is Python and shell for the same weaker reason as
+`baseline`: a rehearsal, not a shipped path. `make_artifacts.py` emits
+deterministic placeholder artifacts — valid safetensors derived from a
+seed — so the `tenancy::training` contract (corpus check, headroom,
+recipe freeze, trials ledger, candidate seal, retention delete) can be
+run end to end without paid compute. The contract it exercises is Rust;
+nothing here trains a model.

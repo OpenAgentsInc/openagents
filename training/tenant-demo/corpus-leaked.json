@@ -1,0 +1,32 @@
+{
+  "v": "openagents.tenant_training.corpus.v1",
+  "workspace": "ws_demo_atlas",
+  "name": "atlas-ledger-leaked",
+  "created": "2026-09-24T00:00:00Z",
+  "retention": {
+    "days": 90,
+    "access": "owner",
+    "artifacts": "digests-only"
+  },
+  "digest": "",
+  "items": [
+    {
+      "id": "t-001",
+      "group": "session-a1",
+      "partition": "training",
+      "state": {"entry": "Stripe dispute opened on ch_3Px9 — cardholder claims unrecognized charge", "amount": 4200},
+      "label": "chargeback",
+      "label_source": "author",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    },
+    {
+      "id": "d-001",
+      "group": "session-z9",
+      "partition": "development",
+      "state": {"entry": "Stripe dispute opened on ch_3Px9 — cardholder claims unrecognized charge", "amount": 4200},
+      "label": "chargeback",
+      "label_source": "author",
+      "provenance": {"source": "atlas ledger export 2026-08", "license": "tenant-owned", "permission": "grant-2026-09-training"}
+    }
+  ]
+}

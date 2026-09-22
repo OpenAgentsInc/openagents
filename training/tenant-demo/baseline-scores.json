@@ -1,0 +1,13 @@
+{
+  "v": "openagents.tenant_training.scores.v1",
+  "door": "sha256:baseline-jev-hosted-1",
+  "measured": "2026-09-24T00:10:00Z",
+  "rows": [
+    {"item_id": "d-001", "predicted": "payout", "correct": false},
+    {"item_id": "d-002", "predicted": "fee_adjustment", "correct": false},
+    {"item_id": "d-003", "predicted": "refund", "correct": false},
+    {"item_id": "d-004", "predicted": "payout", "correct": true},
+    {"item_id": "d-005", "predicted": "refund", "correct": false},
+    {"item_id": "d-006", "predicted": "refund", "correct": true}
+  ]
+}

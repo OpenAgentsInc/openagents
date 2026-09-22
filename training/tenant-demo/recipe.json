@@ -1,0 +1,42 @@
+{
+  "v": "openagents.tenant_training.recipe.v1",
+  "name": "atlas-ledger-lora-v1",
+  "created": "2026-09-24T00:20:00Z",
+  "base_model": {
+    "id": "kev-3b-base",
+    "signature": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+  },
+  "adapter": {
+    "kind": "lora",
+    "rank": 8,
+    "alpha": 16,
+    "targets": ["q_proj", "v_proj"],
+    "epochs": 3,
+    "learning_rate": "2e-4"
+  },
+  "head": {
+    "kind": "pointer",
+    "dp": 256
+  },
+  "seeds": [11, 12],
+  "trials_max": 4,
+  "budget": {
+    "max_train_items": 8,
+    "max_steps": 400,
+    "max_seconds": 3600
+  },
+  "metric": {
+    "statistic": "accuracy",
+    "baseline": 0.5,
+    "min_margin": 0.2
+  },
+  "reject_rules": [
+    "a trial that reads any item outside the training partition is rejected",
+    "a trial that fails to produce all three artifacts is rejected"
+  ],
+  "transfer_controls": {
+    "serving": "candidate-only",
+    "publish": "digests-only",
+    "tenant_data": "never-republished"
+  }
+}

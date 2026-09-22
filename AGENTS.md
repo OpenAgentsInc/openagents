@@ -99,7 +99,15 @@ uses, and marks which are implemented and which are only specified.
   reasoning review stages, deduplication and supersession, withdrawal
   and moderation, and a persisted audit trail — the `skills-moderate`
   binary is the operator's takedown, reinstate, admit, and evidence
-  path over it.
+  path over it. `tenancy::training` is the tenant-training book: a
+  four-partition corpus (training beside the Gym suite's three) with
+  per-item provenance, group boundaries, and cross-partition leakage
+  refusals, a headroom assessment that causes every baseline failure
+  before a recipe may freeze, frozen seed/budget/metric recipes, an
+  append-only trials ledger, sealed candidates whose signature is the
+  `artifact_signature` an admission record binds, and retention
+  tombstones — the `tenant-train` binary is the operator's path over
+  it, and sealing serves nothing.
 - `crates/receipts` — versioned receipts a decision call leaves behind.
   `receipts::execution` is the shared HTTP/relay shape: request and attempt
   identity, tenant and registry references, requested and served artifact

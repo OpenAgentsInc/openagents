@@ -109,6 +109,12 @@ static DOCUMENTS: &[Document] = &[
         false
     ),
     document!(
+        "tenant-training",
+        "Tenant corpora, recipes, trials, and sealed candidates",
+        "decision-models/service/tenant-training.md",
+        false
+    ),
+    document!(
         "clients",
         "Client packages and the integration matrix",
         "decision-models/guides/clients.md",

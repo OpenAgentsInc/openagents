@@ -109,6 +109,7 @@
     {"path": "docs/decision-models/api/classification-http.md", "content": "The classify route's contract, bounds, and verification record."},
     {"path": "docs/decision-models/schemas/classify-request-v1.json", "content": "The classify request JSON Schema (openagents.classify.v1)."},
     {"path": "docs/decision-models/schemas/classify-response-v1.json", "content": "The classify response JSON Schema."},
-    {"path": "docs/decision-models/examples/README.md", "content": "Runnable curl and oak examples."}
+    {"path": "docs/decision-models/examples/README.md", "content": "Runnable curl and oak examples."},
+    {"path": "docs/decision-models/service/tenant-training.md", "content": "Tenant corpora, recipes, trials, sealed candidates, and retention — the operator-side training contract."}
   ]
 }
