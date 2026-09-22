@@ -35,6 +35,7 @@ mod goal;
 mod handler;
 mod hex;
 mod highlight;
+mod imeta;
 mod label;
 mod listing;
 mod live;
@@ -47,6 +48,7 @@ mod nsite;
 mod nutzap;
 mod ots;
 mod peer_order;
+mod picture;
 mod podcast;
 mod poll;
 mod pow;
@@ -68,6 +70,7 @@ mod thread;
 mod timestamp;
 mod torrent;
 mod vending;
+mod video;
 mod voice;
 mod wallet;
 mod wallet_connect;
@@ -159,6 +162,7 @@ pub use handler::{
 pub use highlight::{
     Attribution, Highlight, HighlightRole, HighlightSource, clean_source_url, open_highlight,
 };
+pub use imeta::{Imeta, has_duplicate_urls, imeta_for, open_imetas, parse_imeta};
 pub use label::{Label, LabelTarget, Labeling, open_labeling};
 pub use listing::{Listing, ListingImage, ListingStatus, Price, open_listing};
 pub use live::{
@@ -192,6 +196,7 @@ pub use nutzap::{
 };
 pub use ots::{BitcoinAttestation, open_attestation};
 pub use peer_order::{MakerRating, OrderSide, PeerOrder, PeerOrderStatus, open_peer_order};
+pub use picture::{AnnotatedUser, PICTURE_MEDIA_TYPES, Picture, annotated_user, open_picture};
 pub use podcast::{
     AuthoredPodcasts, PodcastAudio, PodcastCredit, PodcastEpisode, PodcastRole, PodcastShow,
     confirmed_hosts, open_authored_podcasts, open_podcast_episode, open_podcast_show,
@@ -239,6 +244,7 @@ pub use vending::{
     JobFeedback, JobInput, JobInputKind, JobParam, JobRequest, JobResult, JobStatus,
     job_result_kind, open_job_feedback, open_job_request, open_job_result,
 };
+pub use video::{ADDRESSABLE_VIDEO_KINDS, VIDEO_KINDS, Video, is_stream_type, open_video};
 pub use voice::{VoiceMessage, open_voice_message, open_voice_reply};
 pub use wallet::{
     CashuProof, CashuToken, CashuWallet, HistoryDirection, MintQuote, SpendHistory, TokenRef,

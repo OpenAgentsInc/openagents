@@ -886,6 +886,31 @@ NIP-11 list. Acceptance is
 `domain::external_id::tests::every_i_tag_classifies_and_pairs_with_its_k`
 and `domain::external_id::tests::malformed_identifiers_and_missing_kinds_are_refused`.
 
+NIP-92 is `configured-and-proven`. `parse_imeta` enforces the tag's
+MUSTs — a `url` and at least one other `key value` field — and
+`open_imetas` applies them at admission wherever `imeta` appears.
+`imeta_for` matches a tag to the content URL it describes and
+`has_duplicate_urls` flags the one-per-URL SHOULD. NIP-92 is a draft,
+so the tag stays off the NIP-11 list. Acceptance is
+`domain::imeta::tests::an_imeta_tag_carries_a_url_and_at_least_one_field`
+and `domain::imeta::tests::malformed_imetas_are_refused`.
+
+NIP-68 is `configured-and-proven`. `open_picture` reads a kind `20`
+post: the `title`, the content description, and at least one `imeta`
+whose MIME type is one of the six accepted image types.
+`annotated_user` parses the `pubkey:posX:posY` field. Admission
+requires the title and an accepted image. NIP-68 is a draft, so the
+kind stays off the NIP-11 list. Acceptance is
+`domain::picture::tests::a_picture_post_carries_its_images_in_imeta_tags`.
+
+NIP-71 is `configured-and-proven`. `open_video` reads kinds `21`,
+`22`, `34235`, and `34236`: the `title`, a `d` identifier on the
+addressable kinds, and at least one `imeta` stream — `video/*`,
+`audio/*`, or HLS — with numeric `duration` and `bitrate` and an
+integer `waveform`. Admission enforces each requirement. NIP-71 is a
+draft, so the kinds stay off the NIP-11 list. Acceptance is
+`domain::video::tests::a_video_event_carries_streams_and_its_address`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event

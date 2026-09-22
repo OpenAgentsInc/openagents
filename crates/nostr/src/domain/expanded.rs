@@ -436,6 +436,13 @@ pub fn reorder_children(
 
 pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> {
     super::extras::lowercase_hashtags(event)?;
+    super::imeta::open_imetas(event)?;
+    if event.kind == 20 {
+        super::picture::open_picture(event)?;
+    }
+    if matches!(event.kind, 21 | 22 | 34_235 | 34_236) {
+        super::video::open_video(event)?;
+    }
     if event.kind == 3 {
         super::follow::parse_follow_list(&event.tags)?;
     }
