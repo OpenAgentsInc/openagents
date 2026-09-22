@@ -30,7 +30,7 @@ pub struct Usage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     /// Input tokens served from the provider's cache, when reported.
-    pub cached_tokens: u64,
+    pub cached_tokens: Option<u64>,
     /// The door's reported cost in millionths of a dollar, when reported.
     pub cost_microusd: Option<u64>,
 }
@@ -60,6 +60,9 @@ pub struct Door {
     instructions: String,
     on_delta: Box<dyn FnMut(&str)>,
     recorder: Recorder,
+    /// Sent as `prompt_cache_key` so a provider routes one run's requests
+    /// to the same cache.
+    cache_key: Option<String>,
     /// Every generation's accounting so far.
     pub tally: Tally,
 }
@@ -88,12 +91,20 @@ impl Door {
             instructions: instructions.to_string(),
             on_delta,
             recorder,
+            cache_key: None,
             tally: Tally::default(),
         })
     }
 
+    /// Sends `key` as every request's `prompt_cache_key`.
+    #[must_use]
+    pub fn caching_under(mut self, key: &str) -> Self {
+        self.cache_key = Some(key.to_string());
+        self
+    }
+
     async fn attempt(&mut self, prompt: &str) -> Result<(String, Usage, String), Attempt> {
-        let body = json!({
+        let mut body = json!({
             "model": self.lane,
             "instructions": self.instructions,
             "input": prompt,
@@ -102,6 +113,9 @@ impl Door {
             "parallel_tool_calls": false,
             "stream": true,
         });
+        if let Some(key) = &self.cache_key {
+            body["prompt_cache_key"] = json!(key);
+        }
         let mut response = self
             .http
             .post(&self.url)
@@ -226,9 +240,12 @@ impl Generate for Door {
                     self.account(usage, &model);
                     let milliseconds = elapsed_ms(started);
                     println!(
-                        "\n  gen ▸ {:.1}s, {} in / {} out tokens, {}",
+                        "\n  gen ▸ {:.1}s, {} in ({} cached) / {} out tokens, {}",
                         milliseconds as f64 / 1000.0,
                         usage.input_tokens,
+                        usage
+                            .cached_tokens
+                            .map_or("?".to_string(), |c| c.to_string()),
                         usage.output_tokens,
                         if model.is_empty() { &self.lane } else { &model }
                     );
@@ -245,6 +262,9 @@ impl Generate for Door {
                     });
                     if let Some(cost) = usage.cost_microusd {
                         step = step.noting("cost_microusd", json!(cost));
+                    }
+                    if let Some(cached) = usage.cached_tokens {
+                        step = step.noting("cached_tokens", json!(cached));
                     }
                     self.recorder.push(step);
                     return Ok(reply);
@@ -276,7 +296,9 @@ impl Door {
         tally.calls += 1;
         tally.usage.input_tokens += usage.input_tokens;
         tally.usage.output_tokens += usage.output_tokens;
-        tally.usage.cached_tokens += usage.cached_tokens;
+        if let Some(cached) = usage.cached_tokens {
+            tally.usage.cached_tokens = Some(tally.usage.cached_tokens.unwrap_or(0) + cached);
+        }
         match usage.cost_microusd {
             Some(cost) => {
                 tally.usage.cost_microusd = Some(tally.usage.cost_microusd.unwrap_or(0) + cost);
@@ -355,9 +377,7 @@ impl Events {
                 self.usage = Some(Usage {
                     input_tokens: usage["input_tokens"].as_u64().unwrap_or(0),
                     output_tokens: usage["output_tokens"].as_u64().unwrap_or(0),
-                    cached_tokens: usage["input_tokens_details"]["cached_tokens"]
-                        .as_u64()
-                        .unwrap_or(0),
+                    cached_tokens: usage["input_tokens_details"]["cached_tokens"].as_u64(),
                     cost_microusd: usage["cost_microusd"].as_u64(),
                 });
                 self.model = event["response"]["model"]
@@ -436,7 +456,7 @@ mod tests {
             Some(Usage {
                 input_tokens: 12,
                 output_tokens: 3,
-                cached_tokens: 0,
+                cached_tokens: None,
                 cost_microusd: None,
             })
         );

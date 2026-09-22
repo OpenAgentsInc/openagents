@@ -540,6 +540,44 @@
         }
       },
       "note": "Coder One in delegate mode `auto` (issue #9532): the loop works on its own and escalates to Claude Code on claude-opus-5-5 only when it stalls: the 8-step explore bound without finishing, three consecutive Jev `error` outcomes, or an unchanged checkout after six steps. Every threshold is an unmeasured development value."
+    },
+    "coder-one-deep": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOne",
+      "version": null,
+      "model": "free",
+      "kwargs": {},
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation cost is the door's provider-reported cost_microusd per call; Jev cost is a price estimate at the published input-token rate. Both are kept apart in evaluation/usage.json; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CODER_ONE_DEEP"
+      ],
+      "auth_modes": {
+        "door-key": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "note": "OPENAGENTS_API_KEY is an openagents.com API key or session bearer for generation; TYPESAFE_API_KEY reaches Jev directly at api.typesafe.ai. Both travel by name only.",
+          "env_overrides": {
+            "CODER_ONE_DEEP": "on"
+          }
+        }
+      },
+      "note": "Coder One in deep Jev mode: a parallel Jev survey of up to 100 files before the first step puts the most relevant files' contents in the prompt's cached prefix, each step also asks Jev whether the task is done and checked, and repeated commands are flagged."
     }
   }
 }

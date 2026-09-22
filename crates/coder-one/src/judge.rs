@@ -28,7 +28,7 @@ use crate::agent::{Judge, Judgments};
 use crate::credentials::{JEV_BASE_URL, JEV_MODEL};
 use crate::delegate::{Evidence, Span};
 use crate::record::Recorder;
-use crate::state::{Issue, State, Turn};
+use crate::state::{Issue, State, Surveyed, Turn};
 
 /// The most candidate files one request judges.
 const MAX_CANDIDATES: usize = 20;
@@ -66,7 +66,32 @@ pub struct JevJudge {
     /// What the judgments found so far, kept structured for a delegate's
     /// briefing and the escalation policy.
     pub evidence: Evidence,
+    /// Deep mode: a parallel survey before the first step, a readiness
+    /// question each step, and hints about repeated commands.
+    deep: bool,
 }
+
+/// The most files the survey judges, in batches of [`SURVEY_BATCH`].
+const SURVEY_FILES: usize = 100;
+const SURVEY_BATCH: usize = 20;
+/// The most files, and characters, the survey puts in the prompt.
+const SURVEY_KEEP: usize = 6;
+const SURVEY_FILE_CHARS: usize = 8_000;
+const SURVEY_TOTAL_CHARS: usize = 24_000;
+/// Files the survey always offers when present: where a repository says
+/// how it builds and tests.
+const MANIFESTS: &[&str] = &[
+    "README.md",
+    "README",
+    "setup.py",
+    "setup.cfg",
+    "pyproject.toml",
+    "Cargo.toml",
+    "package.json",
+    "Makefile",
+    "requirements.txt",
+    "go.mod",
+];
 
 impl JevJudge {
     pub fn new(
@@ -92,7 +117,211 @@ impl JevJudge {
             input_tokens: 0,
             failed: 0,
             evidence,
+            deep: false,
         }
+    }
+
+    /// Turns on deep mode.
+    #[must_use]
+    pub fn deep(mut self, deep: bool) -> Self {
+        self.deep = deep;
+        self
+    }
+
+    /// The survey: before the first step, Jev judges up to
+    /// [`SURVEY_FILES`] candidate files in parallel requests, and the most
+    /// relevant files' contents go into `state.survey`, where every prompt
+    /// carries them in its stable prefix. The generator can then start
+    /// from the code instead of spending steps finding it.
+    pub async fn survey(&mut self, state: &mut State) {
+        let Some(client) = self.client.clone().filter(|_| self.deep) else {
+            return;
+        };
+        let started = Instant::now();
+        let pool = self.survey_pool(&state.issue);
+        if pool.is_empty() {
+            println!("  survey ▸ no candidate files");
+            return;
+        }
+        let batches: Vec<Vec<Candidate>> = pool
+            .chunks(SURVEY_BATCH)
+            .map(<[Candidate]>::to_vec)
+            .collect();
+        let issue = json!({
+            "title": state.issue.title,
+            "body": clip(&state.issue.body, 8_000),
+        });
+        let requests = batches.iter().map(|batch| {
+            let mut questions = Questions::new();
+            for i in 0..batch.len() {
+                questions = questions
+                    .with(
+                        format!("rel_{i}"),
+                        Noul::new(format!(
+                            "Would reading or editing the file `files[{i}]` help resolve the task described in `issue`?"
+                        )),
+                    )
+                    .with(
+                        format!("edit_{i}"),
+                        Noul::new(format!(
+                            "Will resolving the task described in `issue` most likely require changing the file `files[{i}]`?"
+                        )),
+                    );
+            }
+            let jev_state = json!({
+                "issue": issue,
+                "files": batch.iter().map(|c| json!({"path": c.path, "excerpt": c.excerpt})).collect::<Vec<_>>(),
+            });
+            let request = SystemOneRequest::new(Entry::from(jev_state), questions);
+            let body = request
+                .body(JEV_MODEL)
+                .map(serde_json::Value::Object)
+                .unwrap_or_else(|_| json!({}));
+            let client = client.clone();
+            async move {
+                let started = Instant::now();
+                let result = client.system_one(request).await;
+                (body, result, started.elapsed())
+            }
+        });
+        let results = futures_util::future::join_all(requests).await;
+
+        let mut scored: Vec<(f64, f64, &Candidate)> = Vec::new();
+        for ((body, result, elapsed), batch) in results.into_iter().zip(&batches) {
+            let milliseconds = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
+            let mut decision = Decision {
+                id: format!("jev-survey-{}", self.calls + self.failed + 1),
+                name: "jev_survey".to_string(),
+                door: JEV_BASE_URL.to_string(),
+                model: JEV_MODEL.to_string(),
+                request: body,
+                answers: serde_json::Value::Null,
+                route: None,
+                error: None,
+                attempts: Vec::new(),
+                review: None,
+                milliseconds,
+            };
+            match result {
+                Ok(response) => {
+                    self.calls += 1;
+                    self.input_tokens += response.usage.input_tokens.unwrap_or(0);
+                    decision.model = response.model.clone();
+                    decision.answers =
+                        serde_json::from_str::<serde_json::Value>(&response.raw().text())
+                            .ok()
+                            .and_then(|body| body.get("answers").cloned())
+                            .unwrap_or(serde_json::Value::Null);
+                    for (i, candidate) in batch.iter().enumerate() {
+                        let rel = response.noul(&format!("rel_{i}")).map_or(0.0, |a| a.noul);
+                        let edit = response.noul(&format!("edit_{i}")).map_or(0.0, |a| a.noul);
+                        scored.push((rel, edit, candidate));
+                    }
+                    self.recorder
+                        .push(Step::called(decision.call()).taking(milliseconds).noting(
+                            "jev_usage",
+                            json!({
+                                "input_tokens": response.usage.input_tokens,
+                                "output_tokens": response.usage.output_tokens,
+                            }),
+                        ));
+                }
+                Err(error) => {
+                    self.failed += 1;
+                    decision.error = Some(error.to_string());
+                    self.recorder
+                        .push(Step::called(decision.call()).taking(milliseconds));
+                }
+            }
+        }
+
+        // Rank by relevance, and let a likely edit break ties.
+        scored.sort_by(|a, b| (b.0 + 0.1 * b.1).total_cmp(&(a.0 + 0.1 * a.1)));
+        let mut total = 0;
+        for (rel, edit, candidate) in scored
+            .iter()
+            .filter(|(rel, ..)| *rel >= YES)
+            .take(SURVEY_KEEP)
+        {
+            let Ok(text) = std::fs::read_to_string(self.workdir.join(&candidate.path)) else {
+                continue;
+            };
+            let room = SURVEY_FILE_CHARS.min(SURVEY_TOTAL_CHARS.saturating_sub(total));
+            if room < 500 {
+                break;
+            }
+            let content = if text.chars().count() > room {
+                format!(
+                    "{}\n…[cut at {room} of {} characters; read the rest if needed]",
+                    clip(&text, room),
+                    text.chars().count()
+                )
+            } else {
+                text
+            };
+            total += content.chars().count();
+            state.survey.push(Surveyed {
+                path: candidate.path.clone(),
+                relevance: *rel,
+                edit: *edit,
+                content,
+            });
+        }
+        println!(
+            "  survey ▸ {} files judged in {} parallel Jev requests, {} ms; {} put in the prompt ({} chars)",
+            scored.len(),
+            batches.len(),
+            started.elapsed().as_millis(),
+            state.survey.len(),
+            total
+        );
+        for file in &state.survey {
+            println!(
+                "  survey ▸ {} relevance {:.2} edit {:.2}",
+                file.path, file.relevance, file.edit
+            );
+        }
+    }
+
+    /// The files the survey judges: those the issue names, then by
+    /// keyword hits, then build manifests, then short paths, at most
+    /// [`SURVEY_FILES`].
+    fn survey_pool(&self, issue: &Issue) -> Vec<Candidate> {
+        let (tracked, hits) = self.search();
+        let mut order: Vec<String> = self.candidates(issue).into_iter().map(|c| c.path).collect();
+        let mut ranked: Vec<(&String, &usize)> = hits.iter().collect();
+        ranked.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        let mut rest: Vec<&String> = tracked.iter().collect();
+        rest.sort_by_key(|path| (path.matches('/').count(), path.len()));
+        let manifests = tracked.iter().filter(|path| {
+            let name = path.rsplit('/').next().unwrap_or(path);
+            path.matches('/').count() <= 1 && MANIFESTS.contains(&name)
+        });
+        for path in ranked
+            .into_iter()
+            .map(|(path, _)| path)
+            .chain(manifests)
+            .chain(rest)
+        {
+            if order.len() >= SURVEY_FILES {
+                break;
+            }
+            if !order.contains(path) {
+                order.push(path.clone());
+            }
+        }
+        order.truncate(SURVEY_FILES);
+        order
+            .into_iter()
+            .map(|path| {
+                let excerpt = self.excerpt(&path);
+                Candidate {
+                    path,
+                    hits: 0,
+                    excerpt,
+                }
+            })
+            .collect()
     }
 
     /// Every searchable file and how many of its lines hold a keyword,
@@ -311,6 +540,14 @@ impl JevJudge {
                     ]),
                 ),
             );
+            if self.deep {
+                questions = questions.with(
+                    "ready",
+                    Noul::new(
+                        "Do the commands and outputs in `history` and `last` show that the task in `issue` is complete and its result has been checked?",
+                    ),
+                );
+            }
             for j in 0..self.criteria.len() {
                 questions = questions.with(
                     format!("criterion_{j}"),
@@ -453,6 +690,15 @@ impl JevJudge {
                 chunks[k]
             ));
         }
+        if let Ok(ready) = response.noul("ready") {
+            println!("  jev ▸ done and checked: p={:.2}", ready.noul);
+            if ready.noul >= 0.8 {
+                hints.push(format!(
+                    "The evidence suggests the task is complete and checked (Jev p={:.2}). If nothing is left to verify, call finished now.",
+                    ready.noul
+                ));
+            }
+        }
         for (j, criterion) in self.criteria.iter().enumerate() {
             match response.noul(&format!("criterion_{j}")) {
                 Ok(answer) => {
@@ -488,7 +734,23 @@ const STALL_STEPS: usize = 5;
 
 impl Judge for JevJudge {
     async fn judge(&mut self, state: &State) -> Judgments {
-        let judgments = self.judge_step(state).await;
+        let mut judgments = self.judge_step(state).await;
+        if self.deep
+            && let Judgments::Answered(hints) = &mut judgments
+        {
+            let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+            for turn in &state.history {
+                if let Turn::Shell { command, .. } = turn {
+                    *counts.entry(command.as_str()).or_default() += 1;
+                }
+            }
+            for (command, count) in counts.into_iter().filter(|(_, count)| *count >= 2) {
+                hints.push(format!(
+                    "You have run `{}` {count} times; its latest output is in the history. Do not run it again unless something changed.",
+                    clip(command, 120)
+                ));
+            }
+        }
         let steps = state.history.len();
         let clean = git(&self.workdir, &["status", "--porcelain"])
             .trim()

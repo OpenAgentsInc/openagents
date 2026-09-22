@@ -182,70 +182,103 @@ command, or `finished` with a title and summary once the task is done and checke
 /// How many of the most recent turns show their output at length.
 const RECENT_TURNS: usize = 3;
 
-/// The generator's input: the state, the user's prompt, and the
-/// judgments, with the action contract last so it is nearest the reply.
+/// The generator's input, ordered so that it grows at the end.
+///
+/// Providers cache a prompt's longest previously seen prefix, so
+/// everything that stays the same from one step to the next comes first:
+/// the task, the environment, the issue, the survey, and the compact
+/// record of earlier steps, which only ever gains lines at its end. What
+/// changes every step comes last: the recent steps at full length, the
+/// judgments, the budget, and the action contract, nearest the reply.
 /// Recent turns keep up to 6,000 characters of output; older turns keep
-/// a short tail, so the prompt stays bounded as the run grows.
+/// a 300-character tail, so the prompt stays bounded as the run grows.
 pub fn render_prompt(
     state: &State,
     prompt: &str,
     judgments: &Judgments,
     (step, max_steps): (usize, usize),
 ) -> String {
-    let judgments = match judgments {
-        Judgments::Answered(hints) => json!({ "hints": hints }),
-        Judgments::Unavailable(reason) => json!({ "unavailable": reason }),
-        Judgments::Stop(reason) => json!({ "unavailable": reason.to_string() }),
+    let pretty = |value: &serde_json::Value| {
+        serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
     };
+    let mut out = String::new();
+    out.push_str(&format!("# Task\n\n{prompt}\n\n"));
+    out.push_str(&format!(
+        "# state.environment\n\n{}\n\n",
+        pretty(&json!(state.environment))
+    ));
+    out.push_str(&format!(
+        "# state.issue\n\n{}\n\n",
+        pretty(&json!(state.issue))
+    ));
+    if !state.survey.is_empty() {
+        out.push_str(
+            "# state.survey\n\nFiles a fast classifier judged relevant before the first step, \
+             with their contents as they were then. Re-read a file only after you change it.\n\n",
+        );
+        for file in &state.survey {
+            out.push_str(&format!(
+                "## {} (relevance {:.2}, likely edit {:.2})\n\n```\n{}\n```\n\n",
+                file.path, file.relevance, file.edit, file.content
+            ));
+        }
+    }
+
     let recent = state.history.len().saturating_sub(RECENT_TURNS);
-    let history: Vec<_> = state
-        .history
-        .iter()
-        .enumerate()
-        .map(|(index, turn)| match turn {
-            Turn::Shell {
-                command,
-                reason,
-                observation,
-            } => {
-                let output = if index >= recent {
-                    head_and_tail(&observation.output, 1_500, 4_500)
-                } else {
-                    head_and_tail(&observation.output, 0, 300)
-                };
-                json!({
-                    "step": index + 1,
-                    "command": command,
-                    "reason": reason,
-                    "exit": observation.exit,
-                    "output": output,
-                })
+    out.push_str("# state.history: earlier steps, oldest first\n\n");
+    for (index, turn) in state.history.iter().enumerate().take(recent) {
+        out.push_str(&turn_json(index, turn, 0, 300).to_string());
+        out.push('\n');
+    }
+    out.push_str("\n# state.history: recent steps, full output\n\n");
+    for (index, turn) in state.history.iter().enumerate().skip(recent) {
+        out.push_str(&pretty(&turn_json(index, turn, 1_500, 4_500)));
+        out.push('\n');
+    }
+
+    out.push_str("\n# judgments\n\n");
+    match judgments {
+        Judgments::Answered(hints) if hints.is_empty() => out.push_str("None this step.\n"),
+        Judgments::Answered(hints) => {
+            for hint in hints {
+                out.push_str(&format!("- {hint}\n"));
             }
-            Turn::Malformed { reply, error } => json!({
-                "step": index + 1,
-                "malformed_reply": head_and_tail(reply, 300, 0),
-                "error": error,
-            }),
-        })
-        .collect();
-    let input = json!({
-        "task": prompt,
-        "budget": {
-            "step": step,
-            "max_steps": max_steps,
-            "steps_left_after_this": max_steps - step,
-        },
-        "state": {
-            "environment": state.environment,
-            "issue": state.issue,
-            "history": history,
-        },
-        "judgments": judgments,
-    });
-    format!(
-        "{}\n\n{ACTION_CONTRACT}",
-        serde_json::to_string_pretty(&input).unwrap_or_else(|_| input.to_string())
-    )
+        }
+        Judgments::Unavailable(reason) => {
+            out.push_str(&format!("Unavailable this step: {reason}\n"));
+        }
+        Judgments::Stop(reason) => {
+            out.push_str(&format!("Unavailable this step: {reason}\n"));
+        }
+    }
+    out.push_str(&format!(
+        "\n# budget\n\nThis is step {step} of {max_steps}; {} steps remain after it.\n\n{ACTION_CONTRACT}",
+        max_steps - step
+    ));
+    out
+}
+
+/// One turn as the prompt records it, keeping `head` and `tail`
+/// characters of its output.
+fn turn_json(index: usize, turn: &Turn, head: usize, tail: usize) -> serde_json::Value {
+    match turn {
+        Turn::Shell {
+            command,
+            reason,
+            observation,
+        } => json!({
+            "step": index + 1,
+            "command": command,
+            "reason": reason,
+            "exit": observation.exit,
+            "output": head_and_tail(&observation.output, head, tail),
+        }),
+        Turn::Malformed { reply, error } => json!({
+            "step": index + 1,
+            "malformed_reply": head_and_tail(reply, 300, 0),
+            "error": error,
+        }),
+    }
 }
 
 /// The first `head` and last `tail` characters of `text`, with a marker

@@ -3,7 +3,7 @@
 //! ```text
 //! coder-one doctor
 //! coder-one <issue-url> [--lane free|flash|pro] [--max-steps N]
-//!                       [--timeout SECONDS] [--no-jev] [--open-pr]
+//!                       [--timeout SECONDS] [--no-jev] [--deep] [--open-pr]
 //!                       [--delegate off|always|auto] [--explore-steps N]
 //!                       [--delegate-model MODEL] [--delegate-timeout SECONDS]
 //! coder-one --version
@@ -43,7 +43,7 @@ use serde::Deserialize;
 
 const USAGE: &str = "usage: coder-one doctor
        coder-one <github-issue-url> [--lane free|flash|pro] [--max-steps N]
-                 [--timeout SECONDS] [--no-jev] [--open-pr]
+                 [--timeout SECONDS] [--no-jev] [--deep] [--open-pr]
                  [--delegate off|always|auto] [--explore-steps N]
                  [--delegate-model MODEL] [--delegate-timeout SECONDS]
        coder-one --version
@@ -120,6 +120,7 @@ struct Options {
     max_steps: usize,
     timeout: Duration,
     jev: bool,
+    deep: bool,
     open_pr: bool,
     delegate: Mode,
     explore_steps: usize,
@@ -134,6 +135,7 @@ impl Options {
             max_steps: 30,
             timeout: Duration::from_secs(120),
             jev: true,
+            deep: false,
             open_pr: false,
             delegate: Mode::Off,
             explore_steps: Policy::default().explore_steps,
@@ -161,6 +163,7 @@ impl Options {
                     options.timeout = Duration::from_secs(seconds);
                 }
                 "--no-jev" => options.jev = false,
+                "--deep" => options.deep = true,
                 "--open-pr" => options.open_pr = true,
                 "--delegate" => options.delegate = Mode::parse(&value("--delegate")?)?,
                 "--explore-steps" => {
@@ -297,7 +300,9 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
         atif::document::Source::User,
         &format!("{}\n\n{}", state.issue.title, state.issue.body),
     ));
-    let mut judge = JevJudge::new(jev, workdir.clone(), &state.issue, recorder.clone());
+    let mut judge = JevJudge::new(jev, workdir.clone(), &state.issue, recorder.clone())
+        .deep(options.deep && options.jev);
+    judge.survey(&mut state).await;
     let mut door = Door::new(
         credentials::GENERATION_BASE_URL,
         bearer.secret,
@@ -308,7 +313,8 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             let _ = std::io::stdout().flush();
         }),
         recorder.clone(),
-    )?;
+    )?
+    .caching_under(&branch);
     let mut shell = Checkout {
         workdir: workdir.clone(),
         deadline: options.timeout,

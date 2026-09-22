@@ -24,6 +24,7 @@
 //! | `CODER_ONE_BRIEFING_CAP` | The briefing's length cap in characters; 12,000 when unset. |
 //! | `CODER_ONE_CLAUDE_BIN` | The `claude` binary; the first on `PATH` when unset. |
 //! | `CLAUDE_CODE_OAUTH_TOKEN` | The delegate's subscription token; or `ANTHROPIC_API_KEY`. |
+//! | `CODER_ONE_DEEP` | `on` runs deep Jev mode: a parallel survey before the first step, a readiness question each step, and repeated-command hints. |
 //!
 //! The bundle is rewritten at the start of every step, so a deadline that
 //! kills the process still leaves the evidence up to the last step.
@@ -69,6 +70,7 @@ struct Settings {
     lane: String,
     jev_key: Option<Secret>,
     jev: bool,
+    deep: bool,
     max_steps: usize,
     command_timeout: Duration,
     delegate: Mode,
@@ -111,6 +113,7 @@ impl Settings {
                 .ok()
                 .map(|found| found.secret),
             jev,
+            deep: jev && matches!(env("CODER_ONE_DEEP").as_deref(), Some("on" | "1" | "true")),
             max_steps: usize::try_from(number("CODER_ONE_MAX_STEPS", 50)?).unwrap_or(50),
             command_timeout: Duration::from_secs(number("CODER_ONE_COMMAND_TIMEOUT", 300)?),
             delegate: Mode::parse(env("CODER_ONE_DELEGATE").as_deref().unwrap_or("off"))?,
@@ -315,7 +318,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     );
     println!("{} · {CONTRACT}", version());
     println!(
-        "workdir {} · lane {} · jev {} · {} steps · {}s per command · delegate {}",
+        "workdir {} · lane {} · jev {}{} · {} steps · {}s per command · delegate {}",
         workdir.display(),
         settings.lane,
         if settings.jev {
@@ -323,12 +326,15 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         } else {
             "off"
         },
+        if settings.deep { " (deep)" } else { "" },
         settings.max_steps,
         settings.command_timeout.as_secs(),
         settings.delegate.word()
     );
 
-    let judge = JevJudge::new(jev_client, workdir.clone(), &state.issue, recorder.clone());
+    let mut judge = JevJudge::new(jev_client, workdir.clone(), &state.issue, recorder.clone())
+        .deep(settings.deep);
+    judge.survey(&mut state).await;
     let mut judge = Snapshots {
         inner: judge,
         bundle: &bundle,
@@ -345,7 +351,8 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             let _ = std::io::stdout().flush();
         }),
         recorder.clone(),
-    )?;
+    )?
+    .caching_under(&bundle.session.id);
     let mut shell = Checkout {
         workdir: workdir.clone(),
         deadline: settings.command_timeout,
@@ -554,6 +561,8 @@ impl Bundle {
                     json!({ "enabled": false })
                 },
             },
+            "jev_mode": if !settings.jev { "off" } else if settings.deep { "deep" } else { "step" },
+            "prompt_layout": "cache-stable-prefix",
             "bounds": {
                 "max_steps": settings.max_steps,
                 "command_timeout_sec": settings.command_timeout.as_secs(),
@@ -758,6 +767,16 @@ pub fn usage(steps: &[Step], delegating: bool) -> Value {
         .sum();
     let jev_cost = jev_input.map(|tokens| tokens as f64 * JEV_USD_PER_MILLION_INPUT / 1_000_000.0);
 
+    let cached: Vec<Option<u64>> = generations
+        .iter()
+        .map(|step| step.extensions.get("cached_tokens").and_then(Value::as_u64))
+        .collect();
+    let gen_cached = if !cached.is_empty() && cached.iter().all(Option::is_some) {
+        json!(cached.iter().flatten().sum::<u64>())
+    } else {
+        Value::Null
+    };
+
     let delegate = delegate_usage(steps);
     let delegations = delegate.calls.len();
     let delegate_failed = delegate
@@ -785,6 +804,7 @@ pub fn usage(steps: &[Step], delegating: bool) -> Value {
     let mut components = json!({
         "generation": {
             "input_tokens": gen_input,
+            "cached_input_tokens": gen_cached,
             "output_tokens": gen_output,
             "cost_usd": gen_cost_known,
             "cost_provenance": if priced { "provider_reported" } else { "unknown" },
@@ -810,13 +830,13 @@ pub fn usage(steps: &[Step], delegating: bool) -> Value {
                 Some(delegated) => json!(gen_input + jev_input.unwrap_or(0) + delegated),
                 None => Value::Null,
             },
-            "cache": if delegations > 0 { json!(delegate.cache_read) } else { Value::Null },
+            "cache": if delegations > 0 { json!(delegate.cache_read) } else { gen_cached.clone() },
             "output": match (delegations, delegate.output) {
                 (0, _) => json!(gen_output),
                 (_, Some(delegated)) => json!(gen_output + delegated),
                 _ => Value::Null,
             },
-            "note": "input sums generation, Jev, and delegate input tokens, the delegate's cache reads and writes included; cache is the delegate's cache reads, since generation does not report its own",
+            "note": "input sums generation, Jev, and delegate input tokens, the delegate's cache reads and writes included; cache is the delegate's cache reads when a delegation ran, and generation's reported cached input otherwise",
         },
         "cost": {
             "amount_usd": total,

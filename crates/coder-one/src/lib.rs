@@ -31,4 +31,4 @@ pub mod state;
 
 pub use action::Action;
 pub use agent::{Bounds, Ended, Generate, Judge, Judgments, Shell, run};
-pub use state::{Environment, Issue, Observation, State, Turn};
+pub use state::{Environment, Issue, Observation, State, Surveyed, Turn};

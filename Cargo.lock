@@ -564,6 +564,7 @@ name = "coder-one"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "futures-util",
  "indexmap",
  "jev",
  "reqwest",

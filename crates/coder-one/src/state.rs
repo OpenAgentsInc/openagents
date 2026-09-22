@@ -9,6 +9,10 @@ use serde::Serialize;
 pub struct State {
     pub environment: Environment,
     pub issue: Issue,
+    /// Files the survey judged relevant before the first step, with their
+    /// contents then. Empty unless a survey ran.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub survey: Vec<Surveyed>,
     pub history: Vec<Turn>,
 }
 
@@ -18,9 +22,22 @@ impl State {
         Self {
             environment,
             issue,
+            survey: Vec::new(),
             history: Vec::new(),
         }
     }
+}
+
+/// One file the survey put in front of the generator.
+#[derive(Debug, Clone, Serialize)]
+pub struct Surveyed {
+    pub path: String,
+    /// Jev's probability that reading or editing the file helps.
+    pub relevance: f64,
+    /// Jev's probability that resolving the task edits the file.
+    pub edit: f64,
+    /// The file's contents, capped, with a marker when cut.
+    pub content: String,
 }
 
 /// Where the agent works.
