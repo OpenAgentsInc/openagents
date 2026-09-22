@@ -22,7 +22,13 @@ use crate::record::Recorder;
 const REQUEST_DEADLINE: Duration = Duration::from_secs(300);
 
 /// How many times a rate-limited or failed request is retried.
-const RETRIES: u32 = 3;
+const RETRIES: u32 = 6;
+
+/// The longest wait before one retry. Backoff doubles from five seconds
+/// up to this, unless the door names its own wait in `Retry-After`. The
+/// `free` lane allows 20 generations a minute for one account, so a
+/// rate-limited run must be able to wait out a whole minute.
+const MAX_WAIT: Duration = Duration::from_secs(65);
 
 /// What the door reported for one generation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -60,6 +66,8 @@ pub struct Door {
     instructions: String,
     on_delta: Box<dyn FnMut(&str)>,
     recorder: Recorder,
+    /// The wait the door asked for on its last 429, from `Retry-After`.
+    retry_after: Option<Duration>,
     /// Sent as `prompt_cache_key` so a provider routes one run's requests
     /// to the same cache.
     cache_key: Option<String>,
@@ -91,6 +99,7 @@ impl Door {
             instructions: instructions.to_string(),
             on_delta,
             recorder,
+            retry_after: None,
             cache_key: None,
             tally: Tally::default(),
         })
@@ -125,6 +134,14 @@ impl Door {
             .await
             .map_err(|error| Attempt::Retry(format!("request failed: {error}")))?;
         let status = response.status();
+        if status.as_u16() == 429 {
+            self.retry_after = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.trim().parse::<u64>().ok())
+                .map(Duration::from_secs);
+        }
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
             let message = format!("{status}: {}", excerpt(&text, 300));
@@ -231,7 +248,8 @@ impl Generate for Door {
         for attempt in 0..=RETRIES {
             if attempt > 0 {
                 self.tally.retries += 1;
-                let wait = Duration::from_secs(5 * u64::from(attempt));
+                let backoff = Duration::from_secs(5 << (attempt - 1).min(4));
+                let wait = self.retry_after.take().unwrap_or(backoff).min(MAX_WAIT);
                 println!("\n  gen ▸ retry {attempt} in {}s: {last}", wait.as_secs());
                 tokio::time::sleep(wait).await;
             }
