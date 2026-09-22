@@ -490,6 +490,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 10_013 {
         super::draft::validate_private_relays(event)?;
     }
+    if event.kind == 10_011 {
+        super::profile_link::open_profile_links(event)?;
+    }
     if event.kind == 1_059 {
         crate::nip17::validate_gift_wrap(event)?;
     }

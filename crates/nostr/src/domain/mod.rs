@@ -19,6 +19,7 @@ mod hex;
 mod label;
 mod market;
 mod ots;
+mod profile_link;
 mod replacement;
 mod timestamp;
 mod torrent;
@@ -64,6 +65,9 @@ pub use market::{
     open_stall, product_shipping_extra, shipping_cost, shipping_zone, validate_marketplace,
 };
 pub use ots::{BitcoinAttestation, open_attestation};
+pub use profile_link::{
+    IdentityClaim, ProfileLinks, author_npub, expected_statement, open_profile_links, proof_url,
+};
 pub use replacement::{
     EventClass, ReplacementAddress, ReplacementDecision, compare_replacement,
     compare_replacement_order,

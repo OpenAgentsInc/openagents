@@ -126,6 +126,19 @@ expiration is 90 days. This module does not require authentication on a
 private-storage relay. Acceptance is
 `domain::draft::tests::a_draft_wrap_round_trips_and_a_blank_content_deletes_it`.
 
+NIP-39 is `configured-and-proven`. Kind `10011` is a replaceable
+list of `i` tags. Each tag has `platform:identity` and a proof. The
+identity is stored in lowercase. Platform names use `a-z`, digits, and
+`._-/`. GitHub, Twitter, Mastodon, and Telegram check the identity and
+proof shapes. `proof_url` and `expected_statement` name the public page
+and the sentence that page should contain, including the author's `npub`.
+Extra values after the proof are kept. Admission rejects a list with no
+`i` tag, a missing proof, or a known platform whose identity does not
+match. A newer list from the same author replaces the older one. Kind
+`10011` is not added to the NIP-11 list. The relay does not fetch the
+proof. Acceptance is
+`domain::profile_link::tests::a_profile_link_list_names_each_platform_and_replaces`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
