@@ -5677,6 +5677,44 @@ mod tests {
             crate::reattach::observe_atif("step:narrow", &reference),
             crate::reattach::Observation::Gone
         );
+
+        // Rulings compose it the same way: the record folded as a
+        // crash left it rules `SettleOnEvidence` — the answer already
+        // written — not a replay.
+        let crashed = crate::runstate::Run {
+            schema: runstate::SCHEMA.to_string(),
+            run: "run-crashed".to_string(),
+            base: String::new(),
+            program: String::new(),
+            questions: Vec::new(),
+            sources: Vec::new(),
+            state: State::Dispatched,
+            outcome: None,
+            result: Some(reference.clone()),
+            worktree: None,
+            owner: None,
+            unix: 0,
+            steps: vec![crate::runstate::Step {
+                schema: runstate::SCHEMA.to_string(),
+                step: "select".to_string(),
+                state: State::Dispatched,
+                worktree: None,
+                result: Some(reference.clone()),
+                unix: 0,
+            }],
+            tasks: Vec::new(),
+        };
+        let rulings = runtime.rulings(&crashed, &Grant::all(), crate::reattach::observe_atif);
+        let step = rulings
+            .reattach
+            .iter()
+            .find(|(subject, _)| subject == "step:select")
+            .map(|(_, ruling)| ruling)
+            .expect("a ruling for the dispatched step");
+        assert!(matches!(
+            step,
+            crate::reattach::Reattachment::SettleOnEvidence { reference: r } if r == &reference
+        ));
     }
 
     /// A coordinator's next run recovers what a crash left: the
