@@ -279,6 +279,141 @@
       },
       "cost_provenance": "provider_reported",
       "note": "Claude Code on Opus 5.5, the headline comparison arm for Coder One. Pinned to 2.1.280 because the API refuses Opus 5.5 to Claude Code 2.1.278 (claude_code_version_too_old); otherwise the same settings as claude-code."
+    },
+    "codex-gpt-6-astra": {
+      "role": "external-baseline",
+      "harbor_name": "codex",
+      "version": "0.155.1",
+      "model": "gpt-6-astra",
+      "kwargs": {
+        "version": "0.155.1",
+        "reasoning_effort": "high"
+      },
+      "env_forward": [
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "api-key": {
+          "requires_any": [
+            "OPENAI_API_KEY"
+          ],
+          "exclude_env": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "note": "Direct API billing. Codex reports token usage; cost is a Harbor pricing estimate unless the provider reports otherwise."
+        },
+        "auth-json": {
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "model": "gpt-6-astra",
+          "note": "Subscription billing through the host's auth.json. The live catalog for a ChatGPT account on Codex 0.155.1 serves gpt-6-astra; this arm pins it."
+        }
+      },
+      "cost_provenance": "price_estimate",
+      "cost_note": "The adapter estimates cost from token usage and a pricing registry; that is a price estimate, not a provider-reported amount.",
+      "note": "Codex CLI 0.155.1 on gpt-6-astra. Harbor installs the CLI inside the task environment at the pinned version; the host login does not authenticate the container, the forwarded auth.json does."
+    },
+    "codex-gpt-6-sol": {
+      "role": "external-baseline",
+      "harbor_name": "codex",
+      "version": "0.155.1",
+      "model": "gpt-6-sol",
+      "kwargs": {
+        "version": "0.155.1",
+        "reasoning_effort": "high"
+      },
+      "env_forward": [
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "api-key": {
+          "requires_any": [
+            "OPENAI_API_KEY"
+          ],
+          "exclude_env": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "note": "Direct API billing. Codex reports token usage; cost is a Harbor pricing estimate unless the provider reports otherwise."
+        },
+        "auth-json": {
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "model": "gpt-6-sol",
+          "note": "Subscription billing through the host's auth.json. The live catalog for a ChatGPT account on Codex 0.155.1 serves gpt-6-sol; this arm pins it."
+        }
+      },
+      "cost_provenance": "price_estimate",
+      "cost_note": "The adapter estimates cost from token usage and a pricing registry; that is a price estimate, not a provider-reported amount.",
+      "note": "Codex CLI 0.155.1 on gpt-6-sol. Harbor installs the CLI inside the task environment at the pinned version; the host login does not authenticate the container, the forwarded auth.json does."
+    },
+    "codex-gpt-6-luna": {
+      "role": "external-baseline",
+      "harbor_name": "codex",
+      "version": "0.155.1",
+      "model": "gpt-6-luna",
+      "kwargs": {
+        "version": "0.155.1",
+        "reasoning_effort": "high"
+      },
+      "env_forward": [
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "api-key": {
+          "requires_any": [
+            "OPENAI_API_KEY"
+          ],
+          "exclude_env": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "note": "Direct API billing. Codex reports token usage; cost is a Harbor pricing estimate unless the provider reports otherwise."
+        },
+        "auth-json": {
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "model": "gpt-6-luna",
+          "note": "Subscription billing through the host's auth.json. The live catalog for a ChatGPT account on Codex 0.155.1 serves gpt-6-luna; this arm pins it."
+        }
+      },
+      "cost_provenance": "price_estimate",
+      "cost_note": "The adapter estimates cost from token usage and a pricing registry; that is a price estimate, not a provider-reported amount.",
+      "note": "Codex CLI 0.155.1 on gpt-6-luna. Harbor installs the CLI inside the task environment at the pinned version; the host login does not authenticate the container, the forwarded auth.json does."
     }
   }
 }
