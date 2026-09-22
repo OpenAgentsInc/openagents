@@ -14,9 +14,12 @@ use reqwest::{Method, StatusCode};
 use serde_json::{Map, Value};
 
 use crate::Result;
+use crate::account::Account;
 use crate::answers::{RawResponse, SystemOneResponse};
+use crate::classify::Classify;
 use crate::config::{ApiKey, Config};
 use crate::error::{ApiError, Error, REQUEST_ID_HEADER};
+use crate::jobs::Jobs;
 use crate::models::{ListOptions, Models};
 use crate::questions::{Entry, Questions};
 use crate::retry::{RETRY_COUNT_HEADER, RetryPolicy};
@@ -237,6 +240,28 @@ impl Client {
         Models::new(self)
     }
 
+    /// `POST /v1/classify` — an ordered batch under one selection
+    /// policy, with review and fallback as policy sub-documents.
+    #[must_use]
+    pub fn classify(&self) -> Classify<'_> {
+        Classify::new(self)
+    }
+
+    /// `/v1/jobs` — durable classification jobs: submit, status, cancel,
+    /// results, and delete.
+    #[must_use]
+    pub fn jobs(&self) -> Jobs<'_> {
+        Jobs::new(self)
+    }
+
+    /// The caller's account surface — the session the bearer names, the
+    /// account and its workspaces, the monetary balance, and workspace
+    /// usage, each routed only where the deployment mounts it.
+    #[must_use]
+    pub fn account(&self) -> Account<'_> {
+        Account::new(self)
+    }
+
     /// Ask questions about one state and read the answers.
     ///
     /// The policy's `budget`, when set, is a monotonic deadline for the whole
@@ -311,11 +336,27 @@ impl Client {
         self.send_read(&prepared).await
     }
 
+    /// One call of any of the service's routes, read into bytes: the
+    /// shared retry, timeout, budget, and header path every module here
+    /// uses.
+    pub(crate) async fn request_read(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Vec<u8>>,
+        headers: &HeaderMap,
+        timeout: Option<Duration>,
+        retry: Option<RetryPolicy>,
+    ) -> Result<RawResponse> {
+        let prepared = self.prepare(method, path, body, headers, timeout, retry)?;
+        self.send_read(&prepared).await
+    }
+
     /// Everything one call sends, before its first attempt.
     fn prepare(
         &self,
         method: Method,
-        path: &'static str,
+        path: &str,
         body: Option<Vec<u8>>,
         headers: &HeaderMap,
         timeout: Option<Duration>,
@@ -490,6 +531,12 @@ impl Client {
         let mut headers = prepared.headers.clone();
         if attempt > 0 {
             headers.insert(RETRY_COUNT_HEADER, HeaderValue::from(attempt));
+        }
+        // An explicit idempotency key pairs every attempt under one
+        // request id — the service's (request, attempt) settle needs the
+        // attempt number beside it, one-based.
+        if headers.contains_key("idempotency-key") {
+            headers.insert("x-attempt", HeaderValue::from(attempt + 1));
         }
         tracing::debug!(
             target: "jev",
@@ -715,5 +762,98 @@ impl BlockingClient {
     /// Returns the same errors as [`crate::Models::list`].
     pub fn list_models(&self, options: ListOptions) -> Result<Vec<crate::ModelCard>> {
         self.runtime.block_on(self.client.models().list(options))
+    }
+
+    /// Run one `openagents.classify.v1` envelope and read the report.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Classify::run`].
+    pub fn classify(&self, request: crate::ClassifyRequest) -> Result<crate::ClassifyReport> {
+        self.runtime.block_on(self.client.classify().run(request))
+    }
+
+    /// Submit one durable classification job and read its queued status.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Jobs::submit`].
+    pub fn submit_job(&self, request: crate::JobSubmit) -> Result<crate::JobStatus> {
+        self.runtime.block_on(self.client.jobs().submit(request))
+    }
+
+    /// Read one job's status document.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Jobs::status`].
+    pub fn job_status(&self, id: &str) -> Result<crate::JobStatus> {
+        self.runtime.block_on(self.client.jobs().status(id))
+    }
+
+    /// Mark a live job cancelled.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Jobs::cancel`].
+    pub fn cancel_job(&self, id: &str) -> Result<crate::JobStatus> {
+        self.runtime.block_on(self.client.jobs().cancel(id))
+    }
+
+    /// Export one page of a terminal job's items.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Jobs::results`].
+    pub fn job_results(&self, id: &str, query: &crate::ResultsQuery) -> Result<crate::ResultsPage> {
+        self.runtime.block_on(self.client.jobs().results(id, query))
+    }
+
+    /// Remove a terminal job's record.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Jobs::remove`].
+    pub fn delete_job(&self, id: &str) -> Result<bool> {
+        self.runtime.block_on(self.client.jobs().remove(id))
+    }
+
+    /// `GET /v1/session` — the session the bearer token names.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Account::session`].
+    pub fn session(&self) -> Result<crate::SessionView> {
+        self.runtime.block_on(self.client.account().session())
+    }
+
+    /// `GET /v1/account` — the account and every workspace it belongs to.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Account::details`].
+    pub fn account_details(&self) -> Result<crate::AccountDetails> {
+        self.runtime.block_on(self.client.account().details())
+    }
+
+    /// `GET /v1/balance` — the named workspace's monetary position.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Account::balance`].
+    pub fn balance(&self, workspace: &str) -> Result<crate::BalanceView> {
+        self.runtime
+            .block_on(self.client.account().balance(workspace))
+    }
+
+    /// `GET /v1/workspaces/{workspace}/usage` — the workspace's usage
+    /// position.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`crate::Account::usage`].
+    pub fn usage(&self, workspace: &str, query: &crate::UsageQuery) -> Result<crate::UsageView> {
+        self.runtime
+            .block_on(self.client.account().usage(workspace, query))
     }
 }

@@ -280,3 +280,13 @@ output ever carries the key.
   `NoulAnswer`.
 - Streaming, batching of unrelated states, and multilabel answers. The API
   offers none of these.
+
+## Service surface
+
+The crate grew past System One when the gateway's caller routes landed:
+`classify` runs `openagents.classify.v1` envelopes, `jobs` drives the
+durable-job lifecycle, `account` reads session, account, balance, and
+usage, and `CallOptions` carries a call's own retry, timeout, headers,
+and idempotency key through the same transport `system_one` uses. The
+integration matrix in [`../guides/clients.md`](../guides/clients.md) is
+the current map; this document remains the System One design record.

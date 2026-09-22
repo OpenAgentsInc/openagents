@@ -681,6 +681,37 @@ async fn a_retried_status_runs_again_and_says_which_attempt_it_is() -> Outcome {
 }
 
 #[tokio::test]
+async fn a_retried_request_pairs_its_idempotency_key_with_the_attempt() -> Outcome {
+    let (base, seen) = serve(vec![
+        Reply::new(503, &json!({"error": "busy"}).to_string()),
+        Reply::new(200, RECORDED_RESPONSE),
+    ])
+    .await?;
+    let mut headers = HeaderMap::new();
+    headers.insert("idempotency-key", HeaderValue::from_static("req_pair_1"));
+    client(&base, eager(2))?
+        .system_one(asking().headers(headers))
+        .await?;
+    let seen = seen.lock().await;
+    assert_eq!(seen.len(), 2);
+    for (index, request) in seen.iter().enumerate() {
+        assert_eq!(request.header("idempotency-key"), Some("req_pair_1"));
+        assert_eq!(
+            request.header("x-attempt"),
+            Some(["1", "2"][index]),
+            "the service's (request, attempt) pair is one-based"
+        );
+    }
+
+    // No key, no pair — a caller that does not name one gets the
+    // service's minted request id per attempt instead.
+    let (base, seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE)]).await?;
+    client(&base, once())?.system_one(asking()).await?;
+    assert!(seen.lock().await[0].header("x-attempt").is_none());
+    Ok(())
+}
+
+#[tokio::test]
 async fn the_retries_run_out_and_the_last_failure_is_returned() -> Outcome {
     let body = json!({"error": "busy"}).to_string();
     let (base, seen) = serve(vec![

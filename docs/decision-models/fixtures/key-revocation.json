@@ -1,0 +1,25 @@
+{
+ "name": "key-revocation",
+ "description": "A revoked key is a typed authentication failure on every route, never a 200 with stale data and never a transport error. A conforming client surfaces the code and stops — revocation is not retryable.",
+ "request": {
+  "method": "GET",
+  "path": "/v1/models",
+  "headers": {"authorization": "Bearer oak_redacted"}
+ },
+ "response": {
+  "status": 401,
+  "headers": {"content-type": "application/json", "x-request-id": "req_fixture_revoked_1"},
+  "body": {
+   "error": {
+    "code": "unauthenticated",
+    "message": "the credential is revoked or unknown"
+   }
+  }
+ },
+ "expect": {
+  "kind": "api-error",
+  "status": 401,
+  "error_code": "unauthenticated",
+  "retryable": false
+ }
+}

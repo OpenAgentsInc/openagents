@@ -24,5 +24,6 @@ Admission, execution, review, membership, and accounting contracts.
 | [privacy](privacy.md) | Retention, access, subprocessors, and encryption boundaries |
 | [recipes](recipes.md) | The versioned decision recipe library |
 | [review-policies](review-policies.md) | Review and fallback policies for classification |
+| [sdk-language-decision](sdk-language-decision.md) | The Python/Go SDK language-boundary decision |
 | [usage-dashboard](usage-dashboard.md) | Usage, activity, and the dashboard |
 | [workspace-membership](workspace-membership.md) | Workspace membership |

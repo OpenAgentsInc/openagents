@@ -1,0 +1,44 @@
+{
+ "name": "jobs-idempotency-conflict",
+ "description": "Changed content under a settled Idempotency-Key is a 409, not a second run: the service settles by (request, attempt), so a retried submission must keep its key and a changed body under the same key is the conflict, surfaced as a typed error rather than a silent dedupe or a duplicate job.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/jobs",
+  "headers": {
+   "content-type": "application/json",
+   "authorization": "Bearer oak_redacted",
+   "idempotency-key": "job-submit-0001"
+  },
+  "body": {
+   "classify": {
+    "v": "openagents.classify.v1",
+    "model": "shared-kev",
+    "capacity": "shared",
+    "mode": "single-label",
+    "labels": [{"id": "billing"}],
+    "policy": {
+     "v": "openagents.classify-policy.v1",
+     "name": "route",
+     "select": {"single_label": {"order": "argmax"}}
+    },
+    "inputs": [{"id": "t1", "content": "Changed since the first submission."}]
+   }
+  }
+ },
+ "response": {
+  "status": 409,
+  "headers": {"content-type": "application/json", "x-request-id": "req_fixture_conflict_1"},
+  "body": {
+   "error": {
+    "code": "idempotency_conflict",
+    "message": "the idempotency key already named a different submission"
+   }
+  }
+ },
+ "expect": {
+  "kind": "api-error",
+  "status": 409,
+  "error_code": "idempotency_conflict",
+  "retryable": false
+ }
+}

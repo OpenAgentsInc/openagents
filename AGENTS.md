@@ -134,7 +134,10 @@ uses, and marks which are implemented and which are only specified.
   agent-skills index, the MCP server card shape, and the plugin
   manifests under `plugins/`. Nothing in it authenticates or answers a
   decision call.
-- `crates/jev` — the Rust SDK for TypeSafe's System One API.
+- `crates/jev` — the Rust SDK for TypeSafe's System One API and the
+  gateway's caller routes: `classify`, the durable-job lifecycle, and
+  the account reads, all through the one transport's retry and error
+  contract. `docs/decision-models/guides/clients.md` is the matrix.
 - `crates/oak` — the caller's CLI for the decision API: `oak ask` sends a
   state and a questions file through `POST /v1/systemone`, `--input
   lines|ndjson` runs a bounded batch with ordered NDJSON output, and

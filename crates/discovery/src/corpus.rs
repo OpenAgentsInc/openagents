@@ -109,6 +109,24 @@ static DOCUMENTS: &[Document] = &[
         false
     ),
     document!(
+        "clients",
+        "Client packages and the integration matrix",
+        "decision-models/guides/clients.md",
+        false
+    ),
+    document!(
+        "sdk-language-decision",
+        "SDK language boundary decision",
+        "decision-models/service/sdk-language-decision.md",
+        false
+    ),
+    document!(
+        "contract-fixtures",
+        "Client contract fixtures",
+        "decision-models/fixtures/README.md",
+        false
+    ),
+    document!(
         "mcp-documentation",
         "MCP documentation tools",
         "decision-models/guides/mcp-documentation.md",
@@ -154,6 +172,48 @@ static DOCUMENTS: &[Document] = &[
         "classification-binary",
         "Binary example",
         "decision-models/fixtures/classify-v1/binary.json",
+        true
+    ),
+    document!(
+        "example-python",
+        "Python caller example",
+        "decision-models/examples/ask.py",
+        true
+    ),
+    document!(
+        "example-go",
+        "Go caller example",
+        "decision-models/examples/ask.go",
+        true
+    ),
+    document!(
+        "example-javascript",
+        "JavaScript caller example",
+        "decision-models/examples/ask.js",
+        true
+    ),
+    document!(
+        "fixture-partial-failure",
+        "Partial-failure contract fixture",
+        "decision-models/fixtures/classify-partial-failure.json",
+        true
+    ),
+    document!(
+        "fixture-null-confidence",
+        "Null-confidence contract fixture",
+        "decision-models/fixtures/classify-review-null-confidence.json",
+        true
+    ),
+    document!(
+        "fixture-idempotency-conflict",
+        "Idempotency-conflict contract fixture",
+        "decision-models/fixtures/jobs-idempotency-conflict.json",
+        true
+    ),
+    document!(
+        "fixture-key-revocation",
+        "Key-revocation contract fixture",
+        "decision-models/fixtures/key-revocation.json",
         true
     ),
     document!("agents", "Agent entry document", "agents/agents.md", false),

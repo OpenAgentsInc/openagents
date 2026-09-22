@@ -69,11 +69,14 @@
 //!
 //! ```
 //! use jev::{
-//!     Answer, ApiError, ApiErrorKind, ApiKey, Choice, ChoiceAnswer, Client, Config, Entry, Error,
-//!     ListOptions, ModelCard, Models, Noul, NoulAnswer, NoulCriteria, Question, Questions,
-//!     RawResponse, ResponseBody, Result, RetryPolicy, RetryPredicate, Score, ScoreAnswer,
-//!     SystemOneRequest, SystemOneResponse, Usage, defaults, env, parse_retry_after,
-//!     parse_retry_after_at,
+//!     Account, AccountDetails, AccountInfo, Answer, ApiError, ApiErrorKind, ApiKey, BalanceView,
+//!     CallOptions, Choice, ChoiceAnswer, Classify, ClassifyItem, ClassifyOutcomes, ClassifyReport,
+//!     ClassifyRequest, ClassifyTiming, ClassifyUnit, ClassifyUsage, Client, Config, Entry, Error,
+//!     JobCounts, JobStatus, JobSubmit, Jobs, ListOptions, ModelCard, Models, Noul, NoulAnswer,
+//!     NoulCriteria, Position, Question, Questions, RawResponse, ResponseBody, Result, ResultsPage,
+//!     ResultsQuery, RetryPolicy, RetryPredicate, Score, ScoreAnswer, SessionBudget, SessionInfo,
+//!     SessionView, SystemOneRequest, SystemOneResponse, Usage, UsageCost, UsageQuery, UsageTotals,
+//!     UsageUnits, UsageView, WorkspaceRef, defaults, env, parse_retry_after, parse_retry_after_at,
 //! };
 //!
 //! // Constants.
@@ -90,6 +93,9 @@
 //! let _ = Client::retry;
 //! let _ = Client::default_headers;
 //! let _ = Client::models;
+//! let _ = Client::classify;
+//! let _ = Client::jobs;
+//! let _ = Client::account;
 //! let _ = Client::system_one;
 //! let _ = Client::system_one_raw;
 //! let _ = Config::new;
@@ -108,6 +114,41 @@
 //! let _ = ListOptions::retry;
 //! let _ = ListOptions::timeout;
 //! let _ = ListOptions::headers;
+//!
+//! // The wider service surface.
+//! let _ = CallOptions::new;
+//! let _ = CallOptions::retry;
+//! let _ = CallOptions::timeout;
+//! let _ = CallOptions::headers;
+//! let _ = CallOptions::idempotency_key;
+//! let _ = CallOptions::workspace;
+//! let _ = Classify::run;
+//! let _ = Classify::run_raw;
+//! let _ = ClassifyRequest::new;
+//! let _ = ClassifyRequest::options;
+//! let _ = Jobs::submit;
+//! let _ = Jobs::status;
+//! let _ = Jobs::status_with;
+//! let _ = Jobs::cancel;
+//! let _ = Jobs::results;
+//! let _ = Jobs::remove;
+//! let _ = JobSubmit::new;
+//! let _ = JobSubmit::notify;
+//! let _ = JobSubmit::options;
+//! let _ = ResultsQuery::new;
+//! let _ = ResultsQuery::new().cursor("c").limit(10).options(CallOptions::new());
+//! let _ = Account::session;
+//! let _ = Account::details;
+//! let _ = Account::balance;
+//! let _ = Account::usage;
+//! let _ = UsageQuery::new;
+//! let _ = UsageQuery::new()
+//!     .window("a", "b")
+//!     .model("m")
+//!     .outcome("answered")
+//!     .limit(10)
+//!     .cursor("c")
+//!     .options(CallOptions::new());
 //!
 //! // Questions.
 //! let _ = Entry::json::<&str>;
@@ -196,25 +237,39 @@
 //! };
 //! ```
 
+mod account;
 mod answers;
+mod classify;
 mod client;
 mod config;
 mod error;
+mod jobs;
 mod models;
+mod options;
 mod questions;
 mod retry;
 mod transport;
 
+pub use account::{
+    Account, AccountDetails, AccountInfo, BalanceView, Position, SessionBudget, SessionInfo,
+    SessionView, UsageCost, UsageQuery, UsageTotals, UsageUnits, UsageView, WorkspaceRef,
+};
 pub use answers::{
     Answer, ChoiceAnswer, MASS_TOLERANCE, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse,
     Usage,
+};
+pub use classify::{
+    Classify, ClassifyItem, ClassifyOutcomes, ClassifyReport, ClassifyRequest, ClassifyTiming,
+    ClassifyUnit, ClassifyUsage,
 };
 #[cfg(feature = "blocking")]
 pub use client::BlockingClient;
 pub use client::{Client, SystemOneRequest};
 pub use config::{ApiKey, Config};
 pub use error::{ApiError, ApiErrorKind, Error, ResponseBody};
+pub use jobs::{JobCounts, JobStatus, JobSubmit, Jobs, ResultsPage, ResultsQuery};
 pub use models::{ListOptions, ModelCard, Models};
+pub use options::CallOptions;
 pub use questions::{Choice, Entry, Noul, NoulCriteria, Question, Questions, Score};
 pub use retry::{RetryPolicy, RetryPredicate, parse_retry_after, parse_retry_after_at};
 

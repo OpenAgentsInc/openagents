@@ -25,6 +25,24 @@ curl -s "$OPENAGENTS_BASE_URL/v1/systemone" \
        '{model: "shared-kev", state: $state, questions: '"$(cat questions.json)"'}')"
 ```
 
+## Language examples
+
+Each script sends the same `POST /v1/systemone` request the curl line
+above sends — same headers, same idempotency pair — and prints the typed
+answers. They are documentation, not SDKs: the supported client is Rust
+(`crates/jev`), and every other language reaches the same contract over
+HTTP directly.
+
+```bash
+python3 ask.py "I was charged twice on the March invoice."
+go run ask.go "I was charged twice on the March invoice."
+node ask.js "I was charged twice on the March invoice."
+```
+
+Exit codes match `oak`'s shape: 0 answered, 2 missing configuration, 3
+typed refusal, 4 unavailable. The typed error body
+(`{"error": {"code", "message"}}`) goes to standard error.
+
 ## oak
 
 ```bash

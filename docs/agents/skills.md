@@ -30,7 +30,7 @@ and its `unimplemented` list names what does not exist.
 | Raw HTTP | The routes in [openapi.yaml](openapi.yaml): JSON in, typed answers or typed refusals out. `POST /v1/jobs` persists a classification batch as a durable job; `GET /v1/docs` reads the bundled documentation without a credential. | Supported |
 | `oak-mcp` | An MCP stdio server: `list_models`, `classify`, the classification facades (`classify_texts`, `classify_dimensions`, `classify_multi_label`, `count_labels`, `review_uncertain`), `decide`, and the bundled documentation tools `list_docs`, `read_doc`, `search_docs`, `get_examples`. | Supported |
 | `oak-mcp-http` | The same twelve tools over Streamable HTTP — `POST /mcp` with `Mcp-Session-Id` sessions, `GET /mcp/card` for the server card. A caller `Authorization: Bearer` on a request forwards to the decision API for that call only; a request without one falls back to the operator credential. Build with `cargo build -p oak --release --features mcp-http`. | Supported |
-| `crates/jev` | The Rust SDK `oak` builds on, for the native `POST /v1/systemone` contract — including TypeSafe's hosted door with a `ts-` key. | Supported |
+| `crates/jev` | The Rust SDK `oak` builds on: `systemone`, `classify`, the durable-job lifecycle, and the account routes behind one transport — including TypeSafe's hosted door with a `ts-` key. | Supported |
 
 `oak-mcp` reads newline-delimited JSON-RPC on standard input and
 output; credentials, the endpoint, and the workspace come from operator
@@ -110,6 +110,8 @@ for the tool semantics and bounds.
 - [MCP server guide](../decision-models/guides/mcp-server.md) — the Streamable HTTP transport and client configurations.
 - [Caller guide](../decision-models/guides/caller.md) — the end-to-end caller contract.
 - [Gateway service document](../decision-models/service/gateway.md) — the implemented admission path.
+- [Client packages](../decision-models/guides/clients.md) — the integration matrix, versioning, and the install path.
+- [Contract fixtures](../decision-models/fixtures/README.md) — the recorded exchanges every client replays.
 - [Caller examples](../decision-models/examples/README.md) — runnable `curl` and `oak` invocations.
 
 ---

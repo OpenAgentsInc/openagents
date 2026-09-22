@@ -345,17 +345,25 @@ state or a bounded batch, `models` for the caller's doors), and
 Labels, dimensions, multi-label output, and capacity/review selection wait
 for the classification and review routes that carry them.
 
-Extend the Rust client and provide runnable curl, Python, Go, and JavaScript
-HTTP examples. Supported Python and Go SDK distributions are part of the
-target product, with a tracked architecture decision: use a Rust-owned
-core/binding or obtain an explicit product-language policy exception before
-adding another implementation language. Examples alone do not satisfy SDK
-delivery. Do not introduce a TypeScript product implementation.
+The client surface is landed: `crates/jev` covers `systemone`,
+`classify`, the durable-job lifecycle, and the account routes behind one
+transport and one retry discipline — see the integration matrix in
+[clients.md](../guides/clients.md). Runnable curl, Python, Go, and
+JavaScript examples live in [examples/](../examples/), and the shared
+contract fixtures in [fixtures/](../fixtures/) replay through both `jev`
+and `oak`. The SDK language boundary is decided in
+[sdk-language-decision.md](../service/sdk-language-decision.md): thin
+native Python and Go packages under a recorded policy exception, parity
+enforced by the shared fixtures, with a Rust-owned core as the
+documented fallback. Examples alone do not satisfy SDK delivery — the
+Python and Go distributions remain unbuilt, and release readiness keeps
+saying so. Do not introduce a TypeScript product implementation.
 
-Publish package support/version matrices, installation and update guidance,
+Package support, versioning, installation and update guidance,
 checksummed CLI binaries, release provenance, typed errors, timeout and
-cancellation behavior, and shared conformance fixtures. Actual package
-publication follows the manual release process. Owner: [#9489](https://github.com/OpenAgentsInc/openagents/issues/9489).
+cancellation behavior all live in [clients.md](../guides/clients.md);
+`./scripts/package-oak.sh` produces the checksummed artifacts. Actual
+package publication follows the manual release process. Owner: [#9489](https://github.com/OpenAgentsInc/openagents/issues/9489).
 
 ## Machine-readable discovery
 

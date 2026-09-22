@@ -8,3 +8,6 @@
 /training/**/__pycache__/
 /training/**/*.py[co]
 mc-bridge/target/
+
+# Local release packaging output
+/dist/

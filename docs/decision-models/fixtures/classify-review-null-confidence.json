@@ -1,0 +1,143 @@
+{
+ "name": "classify-review-null-confidence",
+ "description": "A review record whose reviewer's raw answer carries a null confidence. The review document is the door's own record — a conforming client decodes the report and keeps the record whole rather than rejecting the run for a field it does not own.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/classify",
+  "headers": {"content-type": "application/json"},
+  "body": {
+   "v": "openagents.classify.v1",
+   "model": "shared-kev",
+   "capacity": "shared",
+   "mode": "single-label",
+   "labels": [
+    {"id": "billing", "description": "Charges, invoices, and refunds"},
+    {"id": "technical", "description": "Bugs and outages"}
+   ],
+   "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "route-with-review",
+    "select": {"single_label": {"order": "argmax", "top_n": null, "uncertain_below": 0.6}},
+    "review": {
+     "v": "openagents.classify-review.v1",
+     "reviewer": "shared-jev",
+     "trigger": "uncertain",
+     "on_failure": "keep-original",
+     "max_items": 10,
+     "max_attempts": 1,
+     "latency_ms": 5000
+    }
+   },
+   "inputs": [{"id": "t1", "content": "Refund or outage — the message is ambiguous."}]
+  }
+ },
+ "response": {
+  "status": 200,
+  "headers": {"content-type": "application/json", "x-request-id": "req_fixture_review_1"},
+  "body": {
+   "v": "openagents.classify.v1",
+   "model": "shared-kev",
+   "capacity": "shared",
+   "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "route-with-review",
+    "select": {"single_label": {"order": "argmax", "top_n": null, "uncertain_below": 0.6}},
+    "review": {
+     "v": "openagents.classify-review.v1",
+     "reviewer": "shared-jev",
+     "trigger": "uncertain",
+     "on_failure": "keep-original",
+     "max_items": 10,
+     "max_attempts": 1,
+     "latency_ms": 5000
+    }
+   },
+   "served": {"model": "kev-1.4.2", "artifact": "sha256:example"},
+   "outcome": "answered",
+   "outcomes": {"answered": 1, "refused": 0, "unavailable": 0, "unattempted": 0},
+   "results": [
+    {
+     "input": "t1",
+     "outcome": "answered",
+     "units": [
+      {
+       "mode": "single-label",
+       "outcome": "answered",
+       "selected": "billing",
+       "raw": {
+        "type": "choice",
+        "choice": "billing",
+        "confidence": 0.55,
+        "probabilities": {"billing": 0.55, "technical": 0.45}
+       },
+       "uncertain": true,
+       "no_match": false,
+       "review": {
+        "reason": "uncertain",
+        "outcome": "answered",
+        "selected": "billing",
+        "attempt_id": "att_review_1",
+        "latency_ms": 38,
+        "usage": {"input_tokens": 122, "output_tokens": 9},
+        "model": "shared-jev",
+        "raw": {
+         "type": "choice",
+         "choice": "billing",
+         "confidence": null,
+         "probabilities": {"billing": 0.62, "technical": 0.38}
+        },
+        "changed": false,
+        "uncertain": false
+       },
+       "final_source": "reviewer"
+      }
+     ],
+     "latency_ms": 81,
+     "model": "kev-1.4.2",
+     "usage": {"input_tokens": 240, "output_tokens": 18},
+     "review_status": "reviewed",
+     "attempts": [
+      {
+       "role": "primary",
+       "door": "shared-kev",
+       "model": "kev-1.4.2",
+       "outcome": "answered",
+       "attempt_id": "att_primary_1",
+       "latency_ms": 41,
+       "receipt": null
+      },
+      {
+       "role": "review",
+       "door": "shared-jev",
+       "model": "jev-1.13.0",
+       "outcome": "answered",
+       "attempt_id": "att_review_1",
+       "latency_ms": 38,
+       "receipt": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+       "served": {"model": "jev-1.13.0"}
+      }
+     ]
+    }
+   ],
+   "selections": [],
+   "aggregates": [],
+   "usage": {
+    "forwards": 2,
+    "input_tokens_complete": true,
+    "output_tokens_complete": true,
+    "input_tokens": 240,
+    "output_tokens": 18,
+    "review": {"forwards": 1, "input_tokens": 122, "output_tokens": 9}
+   },
+   "timing": {"latency_ms": 83},
+   "review": {"triggered": 1, "answered": 1, "failed": 0, "budget_items": 10}
+  }
+ },
+ "expect": {
+  "kind": "classify-report",
+  "outcome": "answered",
+  "review_record_kept": true,
+  "reviewer_confidence": null,
+  "final_source": "reviewer"
+ }
+}

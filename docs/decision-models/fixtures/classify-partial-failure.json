@@ -1,0 +1,114 @@
+{
+ "name": "classify-partial-failure",
+ "description": "Per-item partial failure: a completed classify report whose inputs landed in three outcomes. A conforming client decodes the report as success, counts each outcome, and reads the refused and unavailable items' causes — partial work is named, never dropped and never an exception.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/classify",
+  "headers": {"content-type": "application/json"},
+  "body": {
+   "v": "openagents.classify.v1",
+   "model": "shared-kev",
+   "capacity": "shared",
+   "mode": "single-label",
+   "labels": [
+    {"id": "billing", "description": "Charges, invoices, and refunds"},
+    {"id": "technical", "description": "Bugs and outages"}
+   ],
+   "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "route",
+    "select": {"single_label": {"order": "argmax", "top_n": null, "uncertain_below": 0.6}}
+   },
+   "inputs": [
+    {"id": "t1", "content": "I was charged twice on the March invoice."},
+    {"id": "t2", "content": "The export button spins forever."},
+    {"id": "t3", "content": "Quarterly revenue question."}
+   ]
+  }
+ },
+ "response": {
+  "status": 200,
+  "headers": {"content-type": "application/json", "x-request-id": "req_fixture_classify_1"},
+  "body": {
+   "v": "openagents.classify.v1",
+   "model": "shared-kev",
+   "capacity": "shared",
+   "policy": {
+    "v": "openagents.classify-policy.v1",
+    "name": "route",
+    "select": {"single_label": {"order": "argmax", "top_n": null, "uncertain_below": 0.6}}
+   },
+   "served": {"model": "kev-1.4.2", "artifact": "sha256:example"},
+   "outcome": "mixed",
+   "outcomes": {"answered": 1, "refused": 1, "unavailable": 1, "unattempted": 0},
+   "results": [
+    {
+     "input": "t1",
+     "outcome": "answered",
+     "units": [
+      {
+       "mode": "single-label",
+       "outcome": "answered",
+       "selected": "billing",
+       "raw": {
+        "type": "choice",
+        "choice": "billing",
+        "confidence": 0.91,
+        "probabilities": {"billing": 0.91, "technical": 0.09}
+       },
+       "uncertain": false,
+       "no_match": false,
+       "final_source": "primary"
+      }
+     ],
+     "latency_ms": 41,
+     "model": "kev-1.4.2",
+     "usage": {"input_tokens": 118, "output_tokens": 9},
+     "review_status": "not-reviewed"
+    },
+    {
+     "input": "t2",
+     "outcome": "refused",
+     "units": [
+      {
+       "mode": "single-label",
+       "outcome": "refused",
+       "cause": "quota_exhausted",
+       "selected": null
+      }
+     ],
+     "cause": "quota_exhausted",
+     "latency_ms": 12,
+     "model": "kev-1.4.2",
+     "review_status": "not-reviewed"
+    },
+    {
+     "input": "t3",
+     "outcome": "unavailable",
+     "units": [
+      {
+       "mode": "single-label",
+       "outcome": "unavailable",
+       "cause": "door_unavailable",
+       "selected": null
+      }
+     ],
+     "cause": "door_unavailable",
+     "latency_ms": 5,
+     "review_status": "not-reviewed"
+    }
+   ],
+   "selections": [],
+   "aggregates": [],
+   "usage": {"forwards": 3, "input_tokens_complete": false, "output_tokens_complete": false},
+   "timing": {"latency_ms": 58}
+  }
+ },
+ "expect": {
+  "kind": "classify-report",
+  "outcome": "mixed",
+  "outcomes": {"answered": 1, "refused": 1, "unavailable": 1, "unattempted": 0},
+  "results_in_order": ["t1", "t2", "t3"],
+  "causes": {"t2": "quota_exhausted", "t3": "door_unavailable"}
+ }
+}

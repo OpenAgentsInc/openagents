@@ -34,6 +34,7 @@ declarative Claude- and Codex-compatible plugin packages.
 - [roadmap.md](roadmap.md): Remaining design and implementation work for general agents.
 - [Caller guide](../decision-models/guides/caller.md): The end-to-end guide to calling the decision API.
 - [Classification callers](../decision-models/guides/classification-callers.md): The `oak classify` and `oak-mcp` caller contract.
+- [Client packages](../decision-models/guides/clients.md): The integration matrix, package versioning, and the install path.
 - [MCP server guide](../decision-models/guides/mcp-server.md): The Streamable HTTP transport — sessions, protocol versions, per-request bearer forwarding.
 - [Gateway service document](../decision-models/service/gateway.md): The implemented admission path, bounds, and refusal codes.
 - [Durable jobs](../decision-models/service/durable-jobs.md): The job submission, status, cancellation, export, and webhook contract.
