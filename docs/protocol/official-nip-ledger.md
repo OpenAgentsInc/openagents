@@ -589,6 +589,24 @@ the scores or decrypt the provider list during admission. Acceptance
 is
 `domain::assertion::tests::a_trusted_rank_replaces_and_a_provider_list_keeps_a_private_source`.
 
+NIP-5A is `configured-and-proven`. Kind `15128` is one replaceable
+root site per pubkey and has no `d` tag. Kind `35128` is an
+addressable named site. Its `d` tag is 1 to 13 lowercase letters,
+digits, or hyphens and does not end in a hyphen. Each `path` tag maps
+an absolute file to a SHA-256. `site_aggregate` hashes the sorted
+`<hash> <path>` lines. An `x` tag marked `aggregate` must equal that
+digest. Kind `5128` is a regular snapshot: it copies the paths, repeats
+the aggregate, and names the site in one `a` tag. A copied site names
+its parent in `a` and the lineage origin in `A`. `resolve_site_path`
+maps a directory request to `index.html` and a missing file to
+`404.html` when that path is published. A newer root site replaces the
+older one. A newer named site with the same `d` tag replaces the older
+one. A snapshot does not replace. NIP-5A is a draft, so these kinds
+are not added to the NIP-11 list. The relay does not serve HTTP or
+fetch Blossom blobs. Kind `5128` sits in the NIP-90 numeric range, and
+admission reads it as a snapshot. Acceptance is
+`domain::nsite::tests::a_root_site_replaces_and_a_snapshot_keeps_the_aggregate`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

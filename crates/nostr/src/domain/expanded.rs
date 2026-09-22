@@ -515,6 +515,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if matches!(event.kind, 30_382..=30_385) {
         super::assertion::open_trusted_assertion(event)?;
     }
+    if event.kind == 15_128 || event.kind == 35_128 {
+        super::nsite::open_site(event)?;
+    }
+    if event.kind == 5_128 {
+        super::nsite::open_site_snapshot(event)?;
+    }
     if event.kind == 7_375 {
         super::wallet::open_token_event(event)?;
     }
@@ -742,7 +748,7 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 1_018 {
         super::poll::open_poll_response(event)?;
     }
-    if (5_000..6_000).contains(&event.kind) {
+    if (5_000..6_000).contains(&event.kind) && event.kind != 5_128 {
         super::vending::open_job_request(event)?;
     }
     if (6_000..7_000).contains(&event.kind) {
