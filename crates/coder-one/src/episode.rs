@@ -17,6 +17,7 @@
 //! | `CODER_ONE_JEV` | `off` runs the search-hit baseline without Jev. |
 //! | `CODER_ONE_MAX_STEPS` | The step limit; 50 when unset. |
 //! | `CODER_ONE_COMMAND_TIMEOUT` | Seconds each command may run; 300 when unset. |
+//! | `CODER_ONE_DEEP` | `on` runs deep Jev mode: a parallel survey before the first step, a readiness question each step, and repeated-command hints. |
 //!
 //! The bundle is rewritten at the start of every step, so a deadline that
 //! kills the process still leaves the evidence up to the last step.
@@ -61,6 +62,7 @@ struct Settings {
     lane: String,
     jev_key: Option<Secret>,
     jev: bool,
+    deep: bool,
     max_steps: usize,
     command_timeout: Duration,
 }
@@ -96,6 +98,7 @@ impl Settings {
                 .ok()
                 .map(|found| found.secret),
             jev,
+            deep: jev && matches!(env("CODER_ONE_DEEP").as_deref(), Some("on" | "1" | "true")),
             max_steps: usize::try_from(number("CODER_ONE_MAX_STEPS", 50)?).unwrap_or(50),
             command_timeout: Duration::from_secs(number("CODER_ONE_COMMAND_TIMEOUT", 300)?),
         })
@@ -216,7 +219,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     );
     println!("{} · {CONTRACT}", version());
     println!(
-        "workdir {} · lane {} · jev {} · {} steps · {}s per command",
+        "workdir {} · lane {} · jev {}{} · {} steps · {}s per command",
         workdir.display(),
         settings.lane,
         if settings.jev {
@@ -224,11 +227,14 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         } else {
             "off"
         },
+        if settings.deep { " (deep)" } else { "" },
         settings.max_steps,
         settings.command_timeout.as_secs()
     );
 
-    let judge = JevJudge::new(jev_client, workdir.clone(), &state.issue, recorder.clone());
+    let mut judge = JevJudge::new(jev_client, workdir.clone(), &state.issue, recorder.clone())
+        .deep(settings.deep);
+    judge.survey(&mut state).await;
     let mut judge = Snapshots {
         inner: judge,
         bundle: &bundle,
@@ -245,7 +251,8 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             let _ = std::io::stdout().flush();
         }),
         recorder.clone(),
-    )?;
+    )?
+    .caching_under(&bundle.session.id);
     let mut shell = Checkout {
         workdir: workdir.clone(),
         deadline: settings.command_timeout,
@@ -354,6 +361,8 @@ impl Bundle {
                     json!({ "enabled": false })
                 },
             },
+            "jev_mode": if !settings.jev { "off" } else if settings.deep { "deep" } else { "step" },
+            "prompt_layout": "cache-stable-prefix",
             "bounds": {
                 "max_steps": settings.max_steps,
                 "command_timeout_sec": settings.command_timeout.as_secs(),
@@ -516,10 +525,20 @@ fn usage(steps: &[Step]) -> Value {
         .sum();
     let jev_cost = jev_input.map(|tokens| tokens as f64 * JEV_USD_PER_MILLION_INPUT / 1_000_000.0);
 
+    let cached: Vec<Option<u64>> = generations
+        .iter()
+        .map(|step| step.extensions.get("cached_tokens").and_then(Value::as_u64))
+        .collect();
+    let gen_cached = if !cached.is_empty() && cached.iter().all(Option::is_some) {
+        json!(cached.iter().flatten().sum::<u64>())
+    } else {
+        Value::Null
+    };
+
     json!({
         "tokens": {
             "input": gen_input + jev_input.unwrap_or(0),
-            "cache": Value::Null,
+            "cache": gen_cached,
             "output": gen_output,
         },
         "cost": {
@@ -536,6 +555,7 @@ fn usage(steps: &[Step]) -> Value {
         "components": {
             "generation": {
                 "input_tokens": gen_input,
+                "cached_input_tokens": gen_cached,
                 "output_tokens": gen_output,
                 "cost_usd": if priced { json!(gen_cost) } else { Value::Null },
                 "cost_provenance": if priced { "provider_reported" } else { "unknown" },

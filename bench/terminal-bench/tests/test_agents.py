@@ -22,6 +22,7 @@ def test_known_arms(agents):
         "coder-v05",
         "coder-one",
         "coder-one-no-jev",
+        "coder-one-deep",
         "oracle",
         "nop",
     }
