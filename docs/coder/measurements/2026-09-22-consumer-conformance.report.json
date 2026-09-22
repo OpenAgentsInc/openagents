@@ -1,0 +1,43 @@
+{
+  "case": "burn-down over the pinned five-item work list (one write collision, one blocked item)",
+  "decision_workflow": {
+    "steps": [
+      "select",
+      "independence",
+      "admit",
+      "fan_out",
+      "accept"
+    ],
+    "delegations": 3,
+    "answered": 3,
+    "correct": 3,
+    "graded": 3,
+    "tally": "3 passed, 0 failed, 0 unverifiable",
+    "decision_dispatches": 2,
+    "decision_tokens": 256,
+    "unmetered": 0,
+    "wall_ms": 703,
+    "retained_worktrees": 1
+  },
+  "deterministic_baseline": {
+    "steps": [
+      "select",
+      "admit",
+      "fan_out"
+    ],
+    "delegations": 3,
+    "answered": 3,
+    "correct": 3,
+    "graded": 3,
+    "tally": "3 passed, 0 failed, 0 unverifiable",
+    "decision_dispatches": 0,
+    "decision_tokens": 0,
+    "wall_ms": 309,
+    "retained_worktrees": 1
+  },
+  "error_direction": {
+    "missed_program": "a `none` answer costs one ordinary turn, recoverable by rephrasing",
+    "spurious_program": "a selection is a proposal — the grant refuses what it does not name before any step",
+    "semantic_independence": "cannot waive a mechanical collision; it can only admit what mechanics already allows"
+  }
+}

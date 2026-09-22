@@ -6,6 +6,7 @@ Recorded measurements and task-selection studies, with supporting evidence.
 
 | Document | Topic |
 | --- | --- |
+| [2026-09-22-consumer-conformance](2026-09-22-consumer-conformance.md) | The consumer conformance suite and the deterministic baseline |
 | [2026-09-22-terminal-bench-chat-fit](2026-09-22-terminal-bench-chat-fit.md) | Terminal-Bench tasks ranked against recent local chat requests |
 | [2026-09-20-observed-fanout](2026-09-20-observed-fanout.md) | The observed six-Devin episode |
 | [2026-09-21-independence-v2-eval](2026-09-21-independence-v2-eval.md) | Independence v1 against v2 on twelve task lists |
