@@ -272,9 +272,8 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
         // narrowing of what the composition has left: `spend` is the
         // child's ceiling in USD micros and `minutes` its own deadline.
         Kind::Program => &["depth", "steps", "calls", "spend", "minutes", "tokens"],
-        // WebAssembly is specified and not built. A host that met one and
-        // ran the rest would be running a different program.
-        Kind::Module => &[],
+        // Fuel, memory, and the read and output ceilings the packet host enforces.
+        Kind::Module => &["fuel", "memory_bytes", "output_bytes", "read_bytes"],
         // An invoke names a host operation. It carries no command, and
         // this host admits none until one is configured.
         Kind::Invoke => &[],
@@ -1070,7 +1069,124 @@ impl Runtime {
                 "boundary_unavailable",
                 "this host has no available filesystem boundary for delegation",
             )),
+            Kind::Module => self.admit_module(step),
             _ => Ok(()),
+        }
+    }
+
+    /// A module step needs guest bytes and a profile this host can run.
+    fn admit_module(&self, step: &Step) -> Result<(), Refused> {
+        let Some(module) = step.module.as_ref().and_then(Value::as_object) else {
+            return Err(Refused::at(
+                &step.name,
+                "content_unavailable",
+                "module step names no guest bytes",
+            ));
+        };
+        if module.get("bytes_base64").and_then(Value::as_str).is_none() {
+            return Err(Refused::at(
+                &step.name,
+                "content_unavailable",
+                "module step names no guest bytes",
+            ));
+        }
+        match module
+            .get("profile")
+            .and_then(Value::as_str)
+            .unwrap_or("pure")
+        {
+            "pure" | "snapshot-read" => Ok(()),
+            _ => Err(Refused::at(
+                &step.name,
+                "unsupported_feature",
+                "module profile",
+            )),
+        }
+    }
+
+    /// Run one packet guest. The terminal and the headless path both reach
+    /// this through [`Runtime::run`].
+    fn run_module(&self, step: &Step) -> Result<String, Refused> {
+        let module = step
+            .module
+            .as_ref()
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                Refused::at(
+                    &step.name,
+                    "content_unavailable",
+                    "module step names no guest bytes",
+                )
+            })?;
+        let encoded = module
+            .get("bytes_base64")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                Refused::at(
+                    &step.name,
+                    "content_unavailable",
+                    "module step names no guest bytes",
+                )
+            })?;
+        let wasm = plugin::decode_base64(encoded)
+            .map_err(|_| Refused::at(&step.name, "malformed", "module bytes are not base64"))?;
+        let profile = match module
+            .get("profile")
+            .and_then(Value::as_str)
+            .unwrap_or("pure")
+        {
+            "snapshot-read" => plugin::Profile::SnapshotRead,
+            _ => plugin::Profile::Pure,
+        };
+        let operation = module
+            .get("operation")
+            .and_then(Value::as_str)
+            .unwrap_or("echo");
+        let input = module.get("input").cloned().unwrap_or(Value::Null);
+        let defaults = plugin::Limits::default();
+        let limits = plugin::Limits {
+            fuel: step
+                .bounds
+                .get("fuel")
+                .and_then(Value::as_u64)
+                .unwrap_or(50_000_000),
+            memory_bytes: step
+                .bounds
+                .get("memory_bytes")
+                .and_then(Value::as_u64)
+                .and_then(|bytes| usize::try_from(bytes).ok())
+                .unwrap_or(defaults.memory_bytes),
+            ..defaults
+        };
+        let handles = std::collections::BTreeMap::new();
+        match plugin::invoke(plugin::Call {
+            wasm: &wasm,
+            profile,
+            invocation: &step.name,
+            operation,
+            input: &input,
+            snapshot: &plugin::Snapshot::default(),
+            handles: &handles,
+            limits,
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            required: true,
+        }) {
+            Ok(value) => Ok(json!({
+                "status": value.status,
+                "value": value.value,
+                "verification": value.verification
+            })
+            .to_string()),
+            Err(plugin::HostError::Refused(status)) => {
+                Err(Refused::at(&step.name, "refused", status))
+            }
+            Err(plugin::HostError::Limit(detail)) => {
+                Err(Refused::at(&step.name, "limit_exceeded", detail))
+            }
+            Err(plugin::HostError::Cancelled) => {
+                Err(Refused::at(&step.name, "cancelled", "cancelled"))
+            }
+            Err(error) => Err(Refused::at(&step.name, "malformed", error.to_string())),
         }
     }
 
@@ -1657,8 +1773,15 @@ impl Runtime {
                     union
                 })
                 .unwrap_or_else(Effects::none),
-            // Refused at admission and never reaches a grant.
-            Kind::Module => Effects::none(),
+            Kind::Module => Effects {
+                reads: step
+                    .module
+                    .as_ref()
+                    .and_then(|module| module.get("profile"))
+                    .and_then(Value::as_str)
+                    == Some("snapshot-read"),
+                ..Effects::none()
+            },
             Kind::Invoke => Effects::none(),
         };
         if step.kind == Kind::Delegate {
@@ -2118,12 +2241,7 @@ impl Runtime {
                     "not_admitted",
                     "invoke names a host operation and this host has not admitted one",
                 )),
-                // Admission refused these before the first step ran.
-                Kind::Module => Err(Refused::at(
-                    &name,
-                    "step_kind_unavailable",
-                    format!("this host does not run a {} step", step.kind.word()),
-                )),
+                Kind::Module => self.run_module(step),
             };
             // The deadline reaches inside the step, not only to its
             // boundary: an expiry while the step dispatched ends it.
@@ -7054,8 +7172,43 @@ mod tests {
 
         let run = runtime.run(&parent, &inputs, &Grant::all(), None).await;
         let stopped = run.stopped.as_ref().expect("the run refused");
-        assert_eq!(stopped.code, "step_kind_unavailable");
-        assert!(stopped.reason.contains("module"), "{stopped}");
+        assert_eq!(stopped.code, "content_unavailable");
+        assert!(stopped.reason.contains("guest bytes"), "{stopped}");
+    }
+
+    /// A module step runs the packet guest. The terminal and `-p` both call
+    /// [`Runtime::run`], so this is the path either surface takes.
+    #[tokio::test]
+    async fn a_module_step_runs_the_packet_guest() {
+        let wasm = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../plugin/fixtures/pure.wasm"
+        ))
+        .expect("pure guest fixture");
+        let program: Program = serde_json::from_value(json!({
+            "v": 1,
+            "slug": "echo-guest",
+            "steps": [{
+                "name": "echo",
+                "kind": "module",
+                "module": {
+                    "profile": "pure",
+                    "operation": "echo",
+                    "input": {"topic": "notes"},
+                    "bytes_base64": plugin::encode_base64(&wasm)
+                },
+                "bounds": {}
+            }]
+        }))
+        .unwrap();
+        let runtime = empty_runtime();
+        let inputs = Inputs::read("echo the notes", "stub-local");
+        runtime.admit(&program).expect("the pure guest is admitted");
+        let run = runtime.run(&program, &inputs, &Grant::all(), None).await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        let output: Value = serde_json::from_str(&run.steps[0].output).unwrap();
+        assert_eq!(output["value"]["topic"], json!("notes"));
+        assert_eq!(output["verification"], json!("not_run"));
     }
 
     /// The caller's budget spends across the composition: a step count

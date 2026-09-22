@@ -667,7 +667,7 @@ async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
     let reason = Program::load(&exotic).expect_err("an unknown kind is refused");
     assert!(reason.contains("teleport"), "{reason}");
 
-    // A kind this version recognizes and does not run is refused at
+    // A module step whose guest bytes are not pinned is refused at
     // admission, before the step in front of it runs.
     let composed = root.join("composed.json");
     std::fs::write(
@@ -678,9 +678,9 @@ async fn a_step_kind_this_host_does_not_run_refuses_the_program() {
     let program = Program::load(&composed).expect("composition parses");
     let refused = runtime
         .admit(&program)
-        .expect_err("this host runs no module step");
+        .expect_err("a module step without guest bytes is not admitted");
     assert_eq!(refused.step, "two");
-    assert_eq!(refused.code, "step_kind_unavailable");
+    assert_eq!(refused.code, "content_unavailable");
 
     let run = runtime.run(&program, &inputs(), &Grant::all(), None).await;
     assert!(
