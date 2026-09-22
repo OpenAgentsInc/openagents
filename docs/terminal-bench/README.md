@@ -134,7 +134,9 @@ directions to run the checks the task names, exercise every changed code
 path, and search a bulk find-and-replace for misses and doubles. Its Opus
 arm also sets `CLAUDE_CODE_PROMPT_CACHE_TTL=5m`, so Claude Code writes the
 five-minute cache instead of the subscription token's one-hour cache; the
-retained streams show only `ephemeral_5m_input_tokens` writes.
+retained streams show only `ephemeral_5m_input_tokens` writes. A third arm,
+`coder-one-jevprobe2-opus-lean-low-5m`, runs v2's directions on the v2
+artifact with the five-minute cache, to separate the two changes.
 
 Three trials per task per arm, on the four panel tasks:
 
@@ -148,6 +150,10 @@ Three trials per task per arm, on the four panel tasks:
 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | `build-cython-ext` | 3/3 | $0.1409 ($0.0970–$0.1851) | 111.9 s (82.0–137.3) | 8.7 |
 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | `headless-terminal` | 3/3 | $0.0544 ($0.0522–$0.0577) | 23.7 s (21.9–25.5) | 2.0 |
 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | `fix-code-vulnerability` | 3/3 | $0.0462 ($0.0457–$0.0468) | 12.1 s (11.4–12.5) | 3.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | `fix-git` | 3/3 | $0.0418 ($0.0405–$0.0427) | 14.7 s (13.5–15.8) | 4.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | `build-cython-ext` | 3/3 | $0.1047 ($0.0895–$0.1128) | 87.7 s (83.2–92.6) | 6.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | `headless-terminal` | 3/3 | $0.0513 ($0.0499–$0.0534) | 20.3 s (19.8–21.2) | 2.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | `fix-code-vulnerability` | 3/3 | $0.0454 ($0.0451–$0.0456) | 11.1 s (10.7–11.5) | 3.0 |
 | Jev-probe → Luna‡ | `fix-git` | 3/3 | $0.0032 ($0.0028–$0.0036) | 36.0 s (30.1–44.1) | 8.0 |
 | Jev-probe → Luna‡ | `build-cython-ext` | 3/3 | $0.0119 ($0.0088–$0.0158) | 185.8 s (180.0–194.0) | 25.7 |
 | Jev-probe → Luna‡ | `headless-terminal` | 3/3 | $0.0032 ($0.0024–$0.0043) | 65.2 s (51.9–83.9) | 7.7 |
@@ -174,6 +180,7 @@ Three trials per task per arm, on the four panel tasks:
 | **Jev-probe v3 → Luna**‡ | 11/12 | $0.0198 | 275.2 s |
 | **Jev-probe v2 → Luna**‡ | 9/12 | $0.0214 | 265.3 s |
 | Jev-probe → Luna‡ | 12/12 | $0.0219 | 318.1 s |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | 12/12 | $0.2433 | 133.8 s |
 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | 12/12 | $0.2853 | 162.4 s |
 | Jev-probe → lean Opus 5.5, low effort | 12/12 | $0.3075 | 125.1 s |
 | **Jev-probe v2 → lean Opus 5.5, low effort** | 12/12 | $0.3249 | 120.7 s |
@@ -200,6 +207,10 @@ both direct baselines, three trials each:
 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | `git-leak-recovery` | 3/3 | $0.0276 ($0.0274–$0.0279) | 10.3 s (9.5–11.0) | 3.0 |
 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | `log-summary-date-ranges` | 3/3 | $0.0710 ($0.0678–$0.0727) | 19.8 s (15.8–26.7) | 3.7 |
 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | `sqlite-db-truncate` | 3/3 | $0.0532 ($0.0494–$0.0552) | 19.5 s (18.2–20.3) | 4.3 |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | `cancel-async-tasks` | 3/3 | $0.0453 ($0.0443–$0.0467) | 16.6 s (15.9–17.8) | 2.3 |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | `git-leak-recovery` | 3/3 | $0.0277 ($0.0274–$0.0283) | 10.6 s (9.8–11.5) | 3.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | `log-summary-date-ranges` | 3/3 | $0.0672 ($0.0651–$0.0699) | 14.3 s (12.9–15.9) | 3.0 |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | `sqlite-db-truncate` | 3/3 | $0.0447 ($0.0300–$0.0557) | 16.2 s (10.8–20.1) | 3.3 |
 | Jev-probe → Luna‡ | `cancel-async-tasks` | 0/3 | $0.0012 ($0.0009–$0.0017) | 24.1 s (19.8–28.5) | 3.3 |
 | Jev-probe → Luna‡ | `git-leak-recovery` | 3/3 | $0.0019 ($0.0017–$0.0020) | 27.8 s (24.8–31.3) | 6.7 |
 | Jev-probe → Luna‡ | `log-summary-date-ranges` | 0/3 | $0.0027 ($0.0024–$0.0032) | 24.6 s (23.6–25.4) | 3.0 |
@@ -223,6 +234,7 @@ both direct baselines, three trials each:
 | **Jev-probe v2 → Luna**‡ | 8/12 | $0.0093 | 144.9 s |
 | Codex 0.155.1 / GPT-6 Luna‡ | 9/12 | $0.0095 | 190.4 s |
 | Jev-probe → Luna‡ | 6/12 | $0.0100 | 120.1 s |
+| **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | 12/12 | $0.1849 | 57.8 s |
 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | 12/12 | $0.2008 | 67.4 s |
 | **Jev-probe v2 → lean Opus 5.5, low effort** | 12/12 | $0.2273 | 57.2 s |
 | Jev-probe → lean Opus 5.5, low effort | 12/12 | $0.2482 | 65.1 s |
@@ -271,6 +283,13 @@ One trial per task of the other delegates, on the panel tasks. Each cell is
   27% on the short tasks. The new check directions made it slower,
   though: `build-cython-ext` took 111.9 seconds against 74.4, with 8.7
   turns against 6.3.
+- **Jev-probe v2 → lean Opus with the five-minute cache is the best Opus
+  configuration**: 24 of 24, $0.2433 and 133.8 seconds on the panel,
+  $0.1849 and 57.8 seconds on the new tasks. Against Opus 5.5 alone that
+  is 63% cheaper and 32% faster on the panel, and 57% cheaper and 48%
+  faster on the new tasks. Against v2 on the one-hour cache it costs 25%
+  and 19% less; its panel time is 13 seconds higher, all of it on
+  `build-cython-ext`, within that task's spread.
 - **No arm beats both winners yet.** The Luna arms are the cheap ones
   and the Opus arms the fast ones; no configuration is both below $0.0219
   and below 125.1 seconds on the panel.
@@ -419,10 +438,11 @@ Arm means over three trials each, from the Jev-probe runs above.
 | 2 | **Jev-probe v3 → Luna**‡ | 2/3 | $0.0015 | 35.9 s |
 | 3 | **Jev-probe v2 → Luna**‡ | 1/3 | $0.0016 | 37.1 s |
 | 4 | Codex 0.155.1 / GPT-6 Luna‡ | 1/3 | $0.0016 | 37.9 s |
-| 5 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0487 | 15.2 s |
-| 6 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0489 | 17.7 s |
-| 7 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0613 | 20.9 s |
-| 8 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.1833 | 51.5 s |
+| 5 | **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0453 | 16.6 s |
+| 6 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0487 | 15.2 s |
+| 7 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0489 | 17.7 s |
+| 8 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0613 | 20.9 s |
+| 9 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.1833 | 51.5 s |
 
 #### `git-leak-recovery`, arm means, cheapest first
 
@@ -433,9 +453,10 @@ Arm means over three trials each, from the Jev-probe runs above.
 | 3 | Jev-probe → Luna‡ | 3/3 | $0.0019 | 27.8 s |
 | 4 | Codex 0.155.1 / GPT-6 Luna‡ | 2/3 | $0.0028 | 58.4 s |
 | 5 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0276 | 10.3 s |
-| 6 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0348 | 10.0 s |
-| 7 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0370 | 11.6 s |
-| 8 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.0749 | 19.5 s |
+| 6 | **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0277 | 10.6 s |
+| 7 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0348 | 10.0 s |
+| 8 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0370 | 11.6 s |
+| 9 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.0749 | 19.5 s |
 
 #### `log-summary-date-ranges`, arm means, cheapest first
 
@@ -445,10 +466,11 @@ Arm means over three trials each, from the Jev-probe runs above.
 | 2 | **Jev-probe v3 → Luna**‡ | 0/3 | $0.0019 | 25.4 s |
 | 3 | **Jev-probe v2 → Luna**‡ | 1/3 | $0.0022 | 27.8 s |
 | 4 | Jev-probe → Luna‡ | 0/3 | $0.0027 | 24.6 s |
-| 5 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0710 | 19.8 s |
-| 6 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0882 | 13.6 s |
-| 7 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0916 | 14.8 s |
-| 8 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.0945 | 19.4 s |
+| 5 | **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0672 | 14.3 s |
+| 6 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0710 | 19.8 s |
+| 7 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0882 | 13.6 s |
+| 8 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0916 | 14.8 s |
+| 9 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.0945 | 19.4 s |
 
 #### `sqlite-db-truncate`, arm means, cheapest first
 
@@ -458,10 +480,11 @@ Arm means over three trials each, from the Jev-probe runs above.
 | 2 | **Jev-probe v3 → Luna**‡ | 3/3 | $0.0039 | 57.2 s |
 | 3 | **Jev-probe v2 → Luna**‡ | 3/3 | $0.0039 | 57.0 s |
 | 4 | Jev-probe → Luna‡ | 3/3 | $0.0042 | 43.5 s |
-| 5 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0532 | 19.5 s |
-| 6 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0556 | 18.4 s |
-| 7 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0583 | 17.8 s |
-| 8 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.0781 | 20.1 s |
+| 5 | **Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0447 | 16.2 s |
+| 6 | **Jev-probe v3 → lean Opus 5.5, low effort, 5-minute cache** | 3/3 | $0.0532 | 19.5 s |
+| 7 | **Jev-probe v2 → lean Opus 5.5, low effort** | 3/3 | $0.0556 | 18.4 s |
+| 8 | Jev-probe → lean Opus 5.5, low effort | 3/3 | $0.0583 | 17.8 s |
+| 9 | Claude Code 2.1.280 / Opus 5.5 | 3/3 | $0.0781 | 20.1 s |
 
 ## How to read the columns
 
@@ -857,6 +880,12 @@ Cutting time means fewer model turns, which the delegate arms deliver.
 5. Commit and push.
 
 ## Data problems
+
+- Twelve `coder-one-jevprobe2-opus-lean-low-5m` attempts and four
+  `coder-one-jevprobe3-*` attempts ended in `AgentSetupTimeoutError` with
+  eight trials installing Claude Code at once. The runner retried each once;
+  the three that timed out twice were rerun three at a time. None are
+  results; the attempts are under `failed/`.
 
 - Three `extended` trials on 2026-09-22 (`claude-code-opus` on
   `cancel-async-tasks` and `sqlite-db-truncate`, and

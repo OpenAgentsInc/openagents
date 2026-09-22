@@ -1,0 +1,121 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "dba49fb5a200c9cd4353c04ce662fb557d2a96160b962a66cbcd55d78df34c2a",
+        "chars": 1997,
+        "bytes": 1997,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 2,
+      "api_calls": 2,
+      "total_cost_usd": 0.044267,
+      "milliseconds": 14738,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 13477,
+        "kept_bytes": 13477,
+        "truncated": false,
+        "sha256": "c65027d95f77d2cedd1f6081c216adfc84dc4a8894ba377578eceb426e69a5d5"
+      },
+      "close": {
+        "done": 0.51,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:41:16.303Z",
+  "updated_at": "2026-09-22T23:41:32.182Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 21917,
+      "sha256": "d7366bec49658d73a46669660b7f19db6938f7c06b4e8dd951f5896f7decc9bb"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1864,
+      "sha256": "cec751d36a4cfac32cff9fda4bc06a2dcfcca60ab67b6e6db890de890684f21a"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1504,
+      "sha256": "1686cf8c64ae4a5db1aacf750522d484fc56919e1a1736237f0755f9ca73ffa2"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 1997,
+      "sha256": "dba49fb5a200c9cd4353c04ce662fb557d2a96160b962a66cbcd55d78df34c2a"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 13477,
+      "sha256": "c65027d95f77d2cedd1f6081c216adfc84dc4a8894ba377578eceb426e69a5d5"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_con…",
+    "summary": "I wrote `run_tasks` in `/app/run.py`, and it passed a quick test script I wrote and ran.\n\n**How it works:** it starts `min(max_concurrent, len(tasks))` worker coroutines. Each worker keeps taking the next task from a shared list and running it, so no more than `max_concurrent` tasks run at the same time. It uses only the standard library, so nothing was installed. A `max_concurrent` below 1 raises a `ValueError`.\n\n**Keyboard interrupt:** when you press Ctrl+C under `asyncio.run`, the call is cancelled. The function then cancels the tasks that are running and waits for all of them to finish before passing the cancellation on. That means each task's `finally`/cleanup code runs. Tasks that hadn't started yet are simply never started.\n\n**What I checked:**\n- **Limit and ordering:** 10 tasks of 0.2 seconds each with a limit of 3 never had more than 3 running at once. All 10 finished and cleaned up, taking about 0.8 seconds, which matches running them in batches.\n- **Cancellation:** cancelling partway through ran the cleanup of all 3 tasks that were in progress, and the cancellation then passed through as expected.\n\nI tested cancellation by cancelling the call from code, not by pressing Ctrl+C in a terminal. With `asyncio.run` that is what Ctrl+C turns into, but I didn't test a real keypress.",
+    "delegate_status": "answered"
+  }
+}

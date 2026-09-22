@@ -1,0 +1,122 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "cb081b9ba7815f483911cf082bb120949daced2bcee86abbc90fe6fe951a752c",
+        "chars": 2738,
+        "bytes": 2738,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 2,
+      "api_calls": 2,
+      "total_cost_usd": 0.0497954,
+      "milliseconds": 19301,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 19367,
+        "kept_bytes": 19367,
+        "truncated": false,
+        "sha256": "1801a8c970873505cad9d8a412ac6a994a0d35ef5ad1afca77ec68da904353db"
+      },
+      "close": {
+        "done": 0.37,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:27:04.602Z",
+  "updated_at": "2026-09-22T23:27:25.636Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 26981,
+      "sha256": "c820fbd5696cf66a2f991bb7926369d490a3e115b05f5813ce4b1f7448a970d4"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1874,
+      "sha256": "d90b3cc585155f030b0ad6907238b983f793749a1ceeef2e8e68696fd0adf82c"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2344,
+      "sha256": "47c49ed0463fca26502ad6c882d872c7de6bcded5a494c756cd26792c8f7dd56"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2738,
+      "sha256": "cb081b9ba7815f483911cf082bb120949daced2bcee86abbc90fe6fe951a752c"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 19367,
+      "sha256": "1801a8c970873505cad9d8a412ac6a994a0d35ef5ad1afca77ec68da904353db"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "I've written `HeadlessTerminal` in `/app/headless_terminal.py`, and a quick check shows it working: typed commands run, Python's interactive prompt works, and Ctrl-C (`\"\\x03\"`) interrupts a running command.\n\nIt uses only Python's standard library, so there was nothing to install. Creating one starts `/bin/bash -i` in a pseudo-terminal in the home directory, so bash reads `~/.bashrc` on startup.\n\n- **`send_keystrokes(keys, wait_sec)`** sends the characters exactly as given, including control keys like `\"\\x03\"` and `\"\\n\"` for Enter. It then keeps reading output for `wait_sec` seconds.\n- **`read_output()`** returns everything the terminal has printed so far, including raw colour and cursor codes.\n- **`close()`** kills the shell.\n\n**How I checked it:** I ran one script that did each of the following:\n- **Startup file:** I temporarily added an `export` to `~/.bashrc` and echoed the variable. I didn't look at that echo's output, so this check isn't confirmed. The line has since been removed from `~/.bashrc`.\n- **Ctrl-C:** I started `sleep 30` and sent `\"\\x03\"`. The next command ran normally afterwards.\n- **Interactive program:** I opened `python3`, typed `print(6*7)`, and got `42`. I then typed `exit()`.\n- **Back in bash:** I ran `echo done > /tmp/x`, and the file contained `done`.",
+    "delegate_status": "answered"
+  }
+}

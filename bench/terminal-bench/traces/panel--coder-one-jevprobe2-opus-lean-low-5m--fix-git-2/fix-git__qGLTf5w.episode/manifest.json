@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "ddd895e7fdbf3ea097e0eff154acf754f2ce318fc621bf441edc323d8098f553",
+        "chars": 3893,
+        "bytes": 3893,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git log --oneline --graph --all -n 40",
+          "file $ git reflog -n 40",
+          "file $ git branch -a -vv",
+          "file $ git status",
+          "file $ pwd && ls -la"
+        ],
+        "omitted": []
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 4,
+      "api_calls": 4,
+      "total_cost_usd": 0.042251800000000006,
+      "milliseconds": 11875,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 25576,
+        "kept_bytes": 25576,
+        "truncated": false,
+        "sha256": "4a04912ad63555b39d2e71d6cd55b221793d09a574496a9fb0000436433e3779"
+      },
+      "close": {
+        "done": 0.86,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:31:30.205Z",
+  "updated_at": "2026-09-22T23:31:44.922Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app/personal-site",
+  "git_base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 77462,
+      "sha256": "c4814c89087fc2642ca05d2f565081659c2ec9a97e07507bee2e4d5eee9b0a40"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1901,
+      "sha256": "55a10078ef455626797ad26adb3230dc8bd7def5eb9b5b27d8be671683f90530"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 3604,
+      "sha256": "cac165a60025086f4ed14601aa7991b6dcb7fb9fc1054cce57b8604027d8c949"
+    },
+    "diff": {
+      "path": "artifacts/diff.patch",
+      "bytes": 4943,
+      "sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3893,
+      "sha256": "ddd895e7fdbf3ea097e0eff154acf754f2ce318fc621bf441edc323d8098f553"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 25576,
+      "sha256": "4a04912ad63555b39d2e71d6cd55b221793d09a574496a9fb0000436433e3779"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those chan…",
+    "summary": "I found your changes and merged them into master.\n\n**What happened:** You had checked out `HEAD~1`, which left you on a \"detached HEAD\" (not on any branch). You then made the commit `c499730` \"Move to Stanford\" there. When you switched back to master, that commit wasn't on any branch, so it seemed to disappear. It still showed up in `git reflog`.\n\n**What I did:** I merged `c499730` into master, which created merge commit `0bc5ddb`.\n- `_layouts/default.html` merged without any problems.\n- `_includes/about.md` had a conflict. Master's newer commit had changed a line that your commit also rewrote. I kept your version, since the old text described you as a PhD candidate. The file now begins \"I am a Postdoctoral Researcher at Stanford CS.\" and keeps the \"Previously…\" paragraph.\n\n**Checks:** The git graph shows the merge on master. No conflict markers are left in `_includes` or `_layouts`. The working tree is clean. I didn't build the site.\n\nNothing has been pushed yet.",
+    "delegate_status": "answered"
+  }
+}

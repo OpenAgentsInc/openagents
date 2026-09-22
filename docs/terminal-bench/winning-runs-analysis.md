@@ -254,3 +254,32 @@ directions, and Opus with v2's directions plus the five-minute cache. The
 second hasn't been run yet. Neither closes the gap between the two
 winners: the cheapest time on the panel is still an Opus arm, and the
 cheapest cost a Luna arm.
+
+## Probe v2 on the five-minute cache
+
+`coder-one-jevprobe2-opus-lean-low-5m` runs v2's directions with
+`CLAUDE_CODE_PROMPT_CACHE_TTL=5m`, three trials per task on all eight
+tasks.
+
+| Configuration | Panel: passed, cost, time | Extended: passed, cost, time |
+| --- | --- | --- |
+| Opus 5.5 direct | 12/12, $0.6554, 195.9 s | 12/12, $0.4309, 110.5 s |
+| Jev-probe → lean Opus, low effort | 12/12, $0.3075, 125.1 s | 12/12, $0.2482, 65.1 s |
+| v2 → lean Opus, low effort | 12/12, $0.3249, 120.7 s | 12/12, $0.2273, 57.2 s |
+| **v2 → lean Opus, low effort, five-minute cache** | 12/12, **$0.2433**, 133.8 s | 12/12, **$0.1849**, 57.8 s |
+
+The five-minute cache cut the Opus arm's cost 25% on the panel and 19% on
+the new tasks, with no change in turns, and no trial failed. It's the best
+Opus configuration: 63% cheaper and 32% faster than Opus 5.5 alone on the
+panel. Its panel time is 13 seconds above v2 on the one-hour cache, all on
+`build-cython-ext` (87.7 against 74.4 seconds, same six turns), which is
+within that task's run-to-run spread.
+
+**Where this leaves the goal.** The two fronts are now v3 → Luna ($0.0198,
+275.2 seconds, 11 of 12) and v2 → lean Opus on the five-minute cache
+($0.2433, 133.8 seconds, 12 of 12). Opus can't reach Luna's cost: even
+with the shorter cache its floor is about $0.03 a task. Luna can't reach
+Opus's time on `build-cython-ext`, where it still takes 19 turns and about
+160 seconds. Beating both at once needs a Luna that finishes build-heavy
+tasks in a handful of turns, or a route that sends only those tasks to
+Opus; the second would cost about $0.10 more on the panel.

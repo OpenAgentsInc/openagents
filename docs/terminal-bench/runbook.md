@@ -128,6 +128,22 @@ an arm's profile sets:
 | `CODER_ONE_JEV=off` | `coder-one-no-jev` | The ablation: no Jev calls. |
 | `CODER_ONE_DELEGATE=always` or `auto` | the delegate arms | Delegate mode; see the delegate runbook. |
 | `CODER_ONE_EXPLORE_STEPS=0` with `CODER_ONE_DEEP=on` | `coder-one-jevbrief-opus`, `coder-one-jevbrief-luna` | Jev-brief: no Gemini explorer; the Jev survey's files go straight into the delegate's briefing. |
+| `CODER_ONE_PROBES=on` with `CODER_ONE_DEEP=on` and explore 0 | the `coder-one-jevprobe-*` arms | Jev-probe: read-only probes run in parallel, Jev keeps the relevant outputs, and they join the survey in the briefing. |
+| `CODER_ONE_PROBE_V2=on` or `v3` | the `jevprobe2` and `jevprobe3` arms | Probe v2: a Jev-gated setup pack, git probes in named repositories, whole edit targets, a 40-file survey, and batch-mode directions. `v3` swaps the single final check for directions to test every changed code path. |
+| `CODER_ONE_DELEGATE_TOOLS`, `CODER_ONE_DELEGATE_EFFORT` | the lean and low-effort arms | Claude Code's `--tools` list and `--effort`, or Codex's `model_reasoning_effort`. |
+| `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` | `coder-one-jevprobe2-opus-lean-low-5m`, `coder-one-jevprobe3-opus-lean-low` | Read by Claude Code itself: the five-minute prompt cache instead of the one hour a subscription token gets. Writes cost 1.25 times the input rate instead of 2 times. |
+
+## Don't install too many agents at once
+
+Harbor gives an agent 360 seconds to install. Each Claude Code arm
+downloads the CLI in its container, and with eight to sixteen trials
+installing at once, some installs pass the limit and the trial ends in
+`AgentSetupTimeoutError` before any inference. On 2026-09-22 this happened
+to 3 of 16 trials at sixteen at a time, and to 12 of 24 attempts when eight
+Claude Code arms started together. Run at most eight trials at a time, no
+more than about four of them Claude Code arms, and retry a setup timeout
+once after moving its job directory to `failed/`. A setup timeout is never a
+result.
 
 ## Name jobs so results don't collide
 

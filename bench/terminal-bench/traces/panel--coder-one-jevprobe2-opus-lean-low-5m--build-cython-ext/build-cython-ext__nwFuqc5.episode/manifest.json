@@ -1,0 +1,128 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "executor_path": "/root/.local/share/claude/versions/2.1.280",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "9ebd46ffad3c60bd8ddd4cc39cdea3d4471d2c1f8ec3b009c32437bd72d01698",
+        "chars": 10018,
+        "bytes": 10020,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "explorer conclusion",
+          "file $ git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git /app/pyknotid   (setup the host already ran: exit 0)",
+          "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+          "file $ pwd && ls -la",
+          "file $ find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' -o -name tests -o -name '*.test.*' \\) -not -path '*/.git/*' | head -40",
+          "file $ git -C /app/pyknotid status",
+          "file $ ls -la /app/pyknotid",
+          "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+          "file pyknotid/setup.py"
+        ],
+        "omitted": [
+          "file pyknotid/pyknotid/spacecurves/periodic.py (4070 characters)"
+        ]
+      },
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 6,
+      "api_calls": 6,
+      "total_cost_usd": 0.1113962,
+      "milliseconds": 86163,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 40561,
+        "kept_bytes": 40561,
+        "truncated": false,
+        "sha256": "bc15e94e53f4371e532b6407a359af775e04888bea08f891a6a60d296bb99c25"
+      },
+      "close": {
+        "done": 0.67,
+        "criteria": [],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (03401dad7483)",
+    "sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline": "owned by the harness's exec timeout"
+  },
+  "started_at": "2026-09-22T23:25:15.006Z",
+  "updated_at": "2026-09-22T23:26:47.382Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 94058,
+      "sha256": "311ee622358dca397f898ae78ff035f3831bd18ed75e208cfddaacb25eb5eed8"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 1919,
+      "sha256": "9cce445e349d380e1b92264db5851d3334c0b795ac8d0a3d2ed46cd1193e16a0"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 19085,
+      "sha256": "4a71d10961a0cc3ac8ebb6dd29d4a74114c9d95a7caa49bb29b21690f9551b21"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 10020,
+      "sha256": "9ebd46ffad3c60bd8ddd4cc39cdea3d4471d2c1f8ec3b009c32437bd72d01698"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 40561,
+      "sha256": "bc15e94e53f4371e532b6407a359af775e04888bea08f891a6a60d296bb99c25"
+    }
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "pyknotid is a Python package for computational topology and knot theory.",
+    "summary": "pyknotid 0.5.3 now builds from source in `/app/pyknotid` and is installed into the global Python 3.13 environment, working with your NumPy 2.3.0. The README snippet runs without errors and gives an Alexander polynomial value of 7 (6.999999999999998) for the three-twist knot. All 18 tests pass, leaving out `test_random_curves.py` and `test_catalogue.py` as you said. The compiled `chelpers`, `ccomplexity` and `cinvariants` extensions import and are the ones being used.\n\nWhat I changed:\n- **Removed NumPy type names:** NumPy 2 dropped `np.float`, `np.int`, `np.bool`, `np.complex` and `np.object`. I replaced them with Python's built-in `float`, `int`, `bool`, `complex` and `object` in all `.py` and `.pyx` files, including `ccomplexity.pyx`. NumPy's own guidance says this doesn't change behaviour.\n- **`setup.py`:**\n  - It imported `Extension` from `distutils`, which Python 3.12+ no longer includes, so it now comes from `setuptools`.\n  - Each extension is now given `numpy.get_include()`. The original computed that path but never passed it to the extensions.\n- **`gcd` import:** `from fractions import gcd` no longer works in Python 3.13, so it is now `from math import gcd`.\n\nTo build it, I installed `cython`, `setuptools` and `pytest` globally, then ran `pip install --no-build-isolation .` so it compiles against the NumPy you already have. That install also pulled in pyknotid's own dependencies (networkx, sympy, vispy, peewee, requests, tqdm, appdirs and a few others). I ran the snippet from `/tmp` so it used the installed package, not the source folder.\n\nThe package structure is unchanged. The four source edits are uncommitted in the `/app/pyknotid` clone.",
+    "delegate_status": "answered"
+  }
+}
