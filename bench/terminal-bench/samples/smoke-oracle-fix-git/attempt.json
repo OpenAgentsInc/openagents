@@ -1,0 +1,83 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "29ba80c3-60e9-4b1f-964f-3eac60713d49",
+    "job": "smoke--oracle",
+    "trial": "fix-git__7TEC9XV",
+    "arm": "oracle",
+    "profile": "smoke",
+    "auth_mode": null,
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "<upstream>/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "oracle",
+    "requested_model": null,
+    "observed_name": "oracle",
+    "observed_version": "1.0.0",
+    "observed_model": null,
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T14:44:29.531008Z",
+    "finished_at": "2026-09-22T14:45:03.384001Z",
+    "environment_setup_ms": 11205,
+    "agent_setup_ms": 0,
+    "agent_execution_ms": 495,
+    "verifier_ms": 19986,
+    "total_ms": 33852
+  },
+  "usage": {
+    "input_tokens": null,
+    "cache_tokens": null,
+    "output_tokens": null,
+    "input_includes_cache": true,
+    "coverage": "unknown"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": "unknown",
+    "model_invocations": "unknown",
+    "typed_decisions": "unknown",
+    "tool_calls": "unknown",
+    "shell_commands": "unknown",
+    "retries": "unknown",
+    "subagent_steps": "unknown",
+    "note": "no trajectory.json retained"
+  },
+  "evidence": {
+    "trial_result": "<jobs-dir>/smoke--oracle/fix-git__7TEC9XV/result.json",
+    "manifest": "<jobs-dir>/smoke--oracle/tbench/manifests/fix-git__7TEC9XV.json"
+  },
+  "completeness": {
+    "trace": "unknown",
+    "usage": "unknown",
+    "cost": "unknown",
+    "artifacts": "unknown"
+  }
+}

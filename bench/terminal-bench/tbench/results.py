@@ -167,6 +167,7 @@ def attempt_record(
     profile_id: str,
     auth_mode: str | None,
     declared_cost_provenance: str,
+    pin: dict[str, str] | None = None,
     counts: dict[str, Any] | None = None,
     evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -174,6 +175,9 @@ def attempt_record(
 
     ``declared_cost_provenance`` is the arm profile's claim about what its
     cost field means; ``unknown`` overrides it whenever no number exists.
+    ``pin`` is the panel's declared upstream identity: a local-checkout
+    task reports no git fields of its own, so the pin carries the revision
+    the run was locked to alongside the observed checksum.
     """
     config = trial_result.get("config") or {}
     agent_cfg = config.get("agent") or {}
@@ -241,6 +245,7 @@ def attempt_record(
             "git_commit_id": task_id.get("git_commit_id"),
             "checksum": trial_result.get("task_checksum"),
             "source": trial_result.get("source"),
+            "pin": pin or {},
         },
         "agent": {
             "selector": agent_cfg.get("name") or agent_cfg.get("import_path"),
@@ -380,7 +385,21 @@ def episode_manifest(
             "trajectory": entry(trajectory, "trajectory"),
             "native_traces": native,
             "verifier_reward": entry(
-                verifier_dir / "reward.json", "verifier-reward"
+                next(
+                    (
+                        p
+                        for p in (
+                            verifier_dir / "reward.json",
+                            verifier_dir / "reward.txt",
+                        )
+                        if p.exists()
+                    ),
+                    None,
+                ),
+                "verifier-reward",
+            ),
+            "verifier_report": entry(
+                verifier_dir / "ctrf.json", "verifier-report"
             ),
             "artifacts": artifacts,
         },

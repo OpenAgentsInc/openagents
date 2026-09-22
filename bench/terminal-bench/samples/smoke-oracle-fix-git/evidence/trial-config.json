@@ -1,0 +1,8 @@
+{
+    "task": {
+        "path": "<upstream>/terminal-bench/archive/fix-git"
+    },
+    "trial_name": "fix-git__7TEC9XV",
+    "trials_dir": "<jobs-dir>/smoke--oracle",
+    "job_id": "7c7824b8-90be-44b3-9a5f-ca8029d8e606"
+}

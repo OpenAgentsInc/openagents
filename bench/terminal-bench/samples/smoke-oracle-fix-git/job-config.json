@@ -1,0 +1,37 @@
+{
+  "jobs_dir": "<jobs-dir>",
+  "n_attempts": 1,
+  "n_concurrent_trials": 1,
+  "timeout_multiplier": 1.0,
+  "install_only": false,
+  "retry": {
+    "max_retries": 0
+  },
+  "environment": {
+    "type": "docker",
+    "delete": true,
+    "force_build": false,
+    "cpu_enforcement_policy": "auto",
+    "memory_enforcement_policy": "auto"
+  },
+  "verifier": {
+    "disable": false
+  },
+  "agents": [
+    {
+      "kwargs": {},
+      "env": {},
+      "extra_allowed_hosts": [],
+      "name": "oracle"
+    }
+  ],
+  "tasks": [
+    {
+      "path": "<upstream>/terminal-bench/archive/fix-git"
+    },
+    {
+      "path": "<upstream>/terminal-bench/archive/build-cython-ext"
+    }
+  ],
+  "job_name": "smoke--oracle"
+}

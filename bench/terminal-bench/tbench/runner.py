@@ -27,6 +27,7 @@ from .results import (
     attempt_record,
     episode_manifest,
     load_trial_results,
+    sha256_file,
 )
 
 
@@ -162,11 +163,25 @@ def collect(job_dir: Path, request: RunRequest) -> list[Path]:
     trial_paths.attempts_dir.mkdir(parents=True, exist_ok=True)
     trial_paths.manifests_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
-    task_notes = {
-        task.id: list(task.notes) for task in request.tasks
+    pin = {
+        "git_url": request.panel.git_url,
+        "git_commit_id": request.panel.git_commit_id,
     }
     for trial_dir, trial_result in load_trial_results(job_dir):
-        task_name = trial_result.get("task_name") or ""
+        task_path = str(
+            (trial_result.get("task_id") or {}).get("path") or ""
+        )
+        task_notes = next(
+            (
+                list(task.notes)
+                for task in request.tasks
+                if task_path.endswith(task.path)
+                or (trial_result.get("task_name") or "").endswith(task.id)
+            ),
+            [],
+        )
+        attempt_path = trial_paths.attempts_dir / f"{trial_dir.name}.json"
+        manifest_path = trial_paths.manifests_dir / f"{trial_dir.name}.json"
         record = attempt_record(
             trial_result,
             job_name=job_dir.name,
@@ -175,21 +190,26 @@ def collect(job_dir: Path, request: RunRequest) -> list[Path]:
             profile_id=request.profile.id,
             auth_mode=request.auth_mode,
             declared_cost_provenance=request.agent.cost_provenance,
+            pin=pin,
             counts=counts_for_trial(trial_dir),
+            evidence={
+                "trial_result": str(trial_dir / "result.json"),
+                "manifest": str(manifest_path),
+            },
         )
+        attempt_path.write_text(json.dumps(record, indent=2) + "\n")
         manifest = episode_manifest(
             record,
             trial_dir=trial_dir,
             arm=request.agent.id,
-            task_notes=task_notes.get(task_name, []),
+            task_notes=task_notes,
         )
-        attempt_path = (
-            trial_paths.attempts_dir / f"{trial_dir.name}.json"
-        )
-        attempt_path.write_text(json.dumps(record, indent=2) + "\n")
-        manifest_path = (
-            trial_paths.manifests_dir / f"{trial_dir.name}.json"
-        )
+        manifest["evidence"]["attempt_record"] = {
+            "kind": "attempt-record",
+            "resolved": True,
+            "path": str(attempt_path),
+            "sha256": sha256_file(attempt_path),
+        }
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
         written.extend([attempt_path, manifest_path])
     return written

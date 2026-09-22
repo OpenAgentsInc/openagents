@@ -68,7 +68,8 @@ def compare(
         pins.setdefault(task, {}).update(
             {
                 "path": record["task"].get("path"),
-                "git_commit_id": record["task"].get("git_commit_id"),
+                "git_commit_id": record["task"].get("git_commit_id")
+                or (record["task"].get("pin") or {}).get("git_commit_id"),
                 "checksum": record["task"].get("checksum"),
             }
         )
@@ -79,6 +80,7 @@ def compare(
     for task, pin in pins.items():
         commits = {
             r["task"].get("git_commit_id")
+            or (r["task"].get("pin") or {}).get("git_commit_id")
             for arm in by_task_arm[task].values()
             for r in arm
         }

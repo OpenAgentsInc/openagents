@@ -1,0 +1,7 @@
+Switched to a new branch 'recovery-branch'
+Switched to branch 'master'
+Auto-merging _includes/about.md
+Merge made by the 'ort' strategy.
+ _includes/about.md    |  4 ++--
+ _layouts/default.html | 32 +++++++++++++++++---------------
+ 2 files changed, 19 insertions(+), 17 deletions(-)
