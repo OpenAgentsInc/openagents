@@ -509,6 +509,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 4_550 {
         super::community::open_community_approval(event)?;
     }
+    if event.kind == 10_040 {
+        super::assertion::open_trusted_providers(event)?;
+    }
+    if matches!(event.kind, 30_382..=30_385) {
+        super::assertion::open_trusted_assertion(event)?;
+    }
     if event.kind == 7_375 {
         super::wallet::open_token_event(event)?;
     }

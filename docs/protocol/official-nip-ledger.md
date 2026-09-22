@@ -574,6 +574,21 @@ unrecommended, so these kinds are not added to the NIP-11 list. The
 relay does not fetch posts or rank approvals. Acceptance is
 `domain::community::tests::a_community_lists_moderators_and_a_moderator_approves_a_post`.
 
+NIP-85 is `configured-and-proven`. Kinds `30382`, `30383`,
+`30384`, and `30385` are addressable trusted assertions. The `d` tag
+is a pubkey, an event id, an address, or a NIP-73 identifier. `rank`
+is an integer from 0 to 100. The other declared counts are
+non-negative integers. A kind `30385` assertion also carries the
+NIP-73 `k` tag. Kind `10040` lists provider keys and relays. Its
+content is empty or a NIP-44 ciphertext of more provider rows.
+`parse_provider_list` reads that JSON after decryption. A newer
+assertion with the same `d` tag replaces the older one. A newer
+provider list replaces the older one. NIP-85 is a draft, so these
+kinds are not added to the NIP-11 list. The relay does not compute
+the scores or decrypt the provider list during admission. Acceptance
+is
+`domain::assertion::tests::a_trusted_rank_replaces_and_a_provider_list_keeps_a_private_source`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

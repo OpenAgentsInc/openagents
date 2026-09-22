@@ -7,6 +7,7 @@
 mod agent;
 mod app_data;
 mod article;
+mod assertion;
 mod badge;
 mod block;
 mod bookmark;
@@ -59,6 +60,10 @@ pub use agent::{
 };
 pub use app_data::{AppData, AppTag, open_app_data};
 pub use article::{Article, is_article_reply, open_article};
+pub use assertion::{
+    Metric, MetricValue, ProviderSource, TrustedAssertion, TrustedProviders,
+    open_trusted_assertion, open_trusted_providers, parse_provider_list,
+};
 pub use badge::{
     AwardRecipient, BadgeAward, BadgeDefinition, BadgeImage, BadgeSet, ProfileBadge, ProfileBadges,
     open_badge_award, open_badge_definition, open_badge_set, open_profile_badges,
