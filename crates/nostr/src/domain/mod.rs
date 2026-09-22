@@ -34,6 +34,7 @@ mod label;
 mod listing;
 mod live;
 mod market;
+mod mls;
 mod monitor;
 mod note;
 mod nsite;
@@ -151,6 +152,11 @@ pub use market::{
     PaymentRequest, Product, ShippingZone, Stall, auction_end, bid_confirmation_matches,
     open_auction, open_bid, open_bid_confirmation, open_checkout, open_marketplace, open_product,
     open_stall, product_shipping_extra, shipping_cost, shipping_zone, validate_marketplace,
+};
+pub use mls::{
+    KeyPackage, KeyPackageRelays, Welcome, commit_wins, exporter_conversation_key,
+    inner_event_hides_the_group, open_group_message, open_key_package, open_key_package_relays,
+    open_welcome,
 };
 pub use monitor::{
     MonitorAnnouncement, MonitorTimeout, RelayDiscovery, RelayNetwork, RelayRequirement,

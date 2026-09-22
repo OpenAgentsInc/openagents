@@ -868,6 +868,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "EE.md",
+        domain: "kind 443 is a KeyPackage with mls_protocol_version 1.0 and a ciphersuite id; kind 10051 lists its relays; kind 444 is an unsigned Welcome rumor; kind 445 is an ephemeral-signed group message naming a 32-byte h group id",
+        client: "open_key_package, open_key_package_relays, open_welcome, open_group_message, exporter_conversation_key, commit_wins, and inner_event_hides_the_group",
+        server: "admission of kinds 443, 445, and 10051; kind 444 stays unsigned inside a gift wrap",
+        paths: "crates/nostr/src/domain/mls.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; NIP-EE is marked unrecommended, superseded by the Marmot protocol, so these kinds are not added to the NIP-11 list",
+        fixture: "a KeyPackage with ciphersuite 0x0001, a Welcome rumor naming its event id, and a kind 445 whose content is a NIP-44 payload under the exporter-derived conversation key",
+        acceptance: "domain::mls::tests::a_key_package_a_welcome_and_a_group_message_follow_the_pinned_envelopes",
+        limitations: "MLS group state is out of scope — no MLSMessage is parsed and a relay cannot decrypt kind 445; a fresh ephemeral key per event is a client rule the relay cannot observe; competing Commit order is (created_at, id), which commit_wins implements",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

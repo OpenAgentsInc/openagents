@@ -566,6 +566,15 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 1_040 {
         super::ots::open_attestation(event)?;
     }
+    if event.kind == 443 {
+        super::mls::open_key_package(event)?;
+    }
+    if event.kind == 445 {
+        super::mls::open_group_message(event)?;
+    }
+    if event.kind == 10_051 {
+        super::mls::open_key_package_relays(event)?;
+    }
     if event.kind == 4 {
         crate::nip04::direct_message(event)?;
     }

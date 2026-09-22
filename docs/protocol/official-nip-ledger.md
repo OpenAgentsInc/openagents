@@ -717,6 +717,25 @@ kind `10063` stays off the NIP-11 list. The separate NIP-96 server list is
 kind `10096`. Acceptance is
 `domain::blossom::tests::a_server_list_recovers_media_by_its_sha256`.
 
+NIP-EE is `configured-and-proven`. `open_key_package` reads a kind `443`
+event: one `mls_protocol_version` of `1.0`, one `0x`-hex `ciphersuite`,
+optional `extensions` ids, and the hex `KeyPackageBundle` content.
+`open_key_package_relays` reads a kind `10051` list of `relay` URIs.
+`open_welcome` reads the unsigned kind `444` rumor — one `e` tag naming
+the KeyPackage event id and a `relays` tag. `open_group_message` checks
+kind `445`: one `h` tag naming the 32-byte Nostr group id and a NIP-44
+payload as content. `exporter_conversation_key` derives the group key the
+pinned text describes — the `exporter_secret` as sender secret and its
+own public key as receiver — and a test round-trips a payload under it.
+`commit_wins` applies the `Commit` with the lowest `created_at`, then the
+lowest id. `inner_event_hides_the_group` refuses an application rumor
+carrying `h`. The crate does not parse an `MLSMessage`, and a relay
+cannot decrypt kind `445`. NIP-EE is marked unrecommended — superseded
+by the Marmot protocol — so these kinds stay off the NIP-11 list.
+Acceptance is
+`domain::mls::tests::a_key_package_a_welcome_and_a_group_message_follow_the_pinned_envelopes`
+and `domain::mls::tests::the_earliest_commit_wins_then_the_lowest_id`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event
