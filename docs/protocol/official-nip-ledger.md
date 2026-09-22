@@ -644,6 +644,23 @@ document, or measure round-trip time. Percent-encoded relay URLs are
 refused. Acceptance is
 `domain::monitor::tests::a_relay_observation_replaces_and_a_monitor_lists_its_checks`.
 
+NIP-69 is `configured-and-proven`. Kind `38383` is an addressable
+peer-to-peer order. `d` is the order id. `k` is `buy` or `sell`. `f`
+is a three-letter currency code. `s` is `pending`, `canceled`,
+`in-progress`, `success`, or `expired`. `amt` is the bitcoin amount in
+satoshis. `0` means the taker learns the amount later. `fa` is one
+fiat amount, or a minimum and a maximum. `pm` lists payment methods,
+either as separate tag values or as a comma-separated value. `z` is
+`order`. A rating is a JSON object with review and scale fields. The
+pending deadline is `expires_at`, and `expiration` is the NIP-40 time
+after which a relay can delete the event. A newer order with the same
+`d` tag replaces the older one. NIP-69 is a draft, so this kind is not
+added to the NIP-11 list. The relay does not fetch a bitcoin price,
+visit the source URL, or settle the trade. A three-letter currency
+code is not looked up in ISO 4217. An amount of `0` stays `0`.
+Acceptance is
+`domain::peer_order::tests::a_pending_sell_replaces_when_it_succeeds`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The

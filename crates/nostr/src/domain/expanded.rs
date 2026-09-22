@@ -533,6 +533,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 10_166 {
         super::monitor::open_monitor_announcement(event)?;
     }
+    if event.kind == 38_383 {
+        super::peer_order::open_peer_order(event)?;
+    }
     if event.kind == 7_375 {
         super::wallet::open_token_event(event)?;
     }
