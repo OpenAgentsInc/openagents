@@ -946,6 +946,19 @@ pub static PROVEN: &[Evidence] = &[
         owner: "nostr",
         status: "configured-and-proven",
     },
+    Evidence {
+        file: "24.md",
+        domain: "kind 0 may carry display_name, website, banner, bot, and birthday; the deprecated displayName and username spellings are ignored, as is the deprecated kind 3 relay read/write object; a t tag is a hashtag whose value MUST be lowercase",
+        client: "open_profile_extras reads the typed fields and never maps the deprecated spellings; lowercase_hashtags enforces the tag bound",
+        server: "admission refuses a non-lowercase or empty t value on any kind and a malformed extra field on kind 0",
+        paths: "crates/nostr/src/domain/extras.rs; crates/nostr/src/domain/expanded.rs",
+        configuration: "no setting; NIP-24 is a draft and the fields are not added to the NIP-11 list",
+        fixture: "a profile carrying every extra field beside the deprecated spellings, and a note with an uppercase hashtag",
+        acceptance: "domain::extras::tests::extra_profile_fields_parse_and_deprecated_ones_are_ignored",
+        limitations: "r, i, and title tag meanings are descriptive and carried, not parsed; the lowercase t bound is enforced because the pinned text makes it a MUST",
+        owner: "nostr",
+        status: "configured-and-proven",
+    },
 ];
 
 /// Every official file this module accounts for.

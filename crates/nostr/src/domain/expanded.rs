@@ -435,8 +435,12 @@ pub fn reorder_children(
 }
 
 pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> {
+    super::extras::lowercase_hashtags(event)?;
     if event.kind == 3 {
         super::follow::parse_follow_list(&event.tags)?;
+    }
+    if event.kind == 0 {
+        super::extras::open_profile_extras(event)?;
     }
     if event.kind == 1 {
         super::note::open_note(event)?;

@@ -797,6 +797,18 @@ Acceptance is
 `domain::reaction::tests::a_reaction_names_its_target_as_the_last_e_tag`
 and `domain::reaction::tests::an_external_reaction_carries_i_and_k_tags`.
 
+NIP-24 is `configured-and-proven`. `open_profile_extras` reads the
+kind `0` extras — `display_name`, `website`, `banner`, `bot`, and
+`birthday` — and ignores the deprecated `displayName` and `username`
+spellings entirely rather than folding them into the new names. The
+deprecated kind `3` relay read/write object is likewise ignored; the
+follow parser already reads `p` tags only. `lowercase_hashtags`
+enforces the `t`-tag MUST — admission refuses an uppercase or empty
+hashtag on any kind. NIP-24 is a draft, so the fields stay off the
+NIP-11 list. Acceptance is
+`domain::extras::tests::extra_profile_fields_parse_and_deprecated_ones_are_ignored`
+and `domain::extras::tests::hashtags_are_lowercase`.
+
 Event-shaped files other than the rows above are still a `Shape`: the kind
 and one tag that occur in the pinned text. That check is partial. It signs
 an event with that kind and tag, accepts it, and refuses the same event
