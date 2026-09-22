@@ -475,6 +475,12 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     {
         super::label::open_labeling(event)?;
     }
+    if event.kind == 2_003 {
+        super::torrent::open_torrent(event)?;
+    }
+    if event.kind == 2_004 {
+        super::torrent::open_torrent_comment(event)?;
+    }
     if event.kind == 1_059 {
         crate::nip17::validate_gift_wrap(event)?;
     }

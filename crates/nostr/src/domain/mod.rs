@@ -20,6 +20,7 @@ mod market;
 mod ots;
 mod replacement;
 mod timestamp;
+mod torrent;
 
 pub use agent::{
     AGENT_OBSERVER_KIND, AGENT_TURN_METRIC_KIND, AgentObserverDirection, AgentObserverRoute,
@@ -62,3 +63,6 @@ pub use replacement::{
     compare_replacement_order,
 };
 pub use timestamp::TimestampPolicy;
+pub use torrent::{
+    CatalogId, Torrent, TorrentComment, TorrentFile, magnet_uri, open_torrent, open_torrent_comment,
+};

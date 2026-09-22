@@ -100,6 +100,19 @@ the NIP-11 list. The relay does not rewrite the labeled target. A
 correction is a new event plus a NIP-09 deletion. Acceptance is
 `domain::label::tests::a_label_attaches_a_namespace_to_its_targets`.
 
+NIP-35 is `configured-and-proven`. Kind `2003` is a torrent index:
+one v1 info hash in `x` (40 hex characters or 32 base32 characters), at
+least one `file` path and size, and optional `tracker`, `title`, `t`, and
+`i` catalog tags. `magnet_uri` builds `magnet:?xt=urn:btih:` and adds each
+tracker as `tr`. Catalog ids are `tcat`, `newznab`, `imdb`, `tmdb`,
+`ttvdb`, `mal`, and `anilist`. Kind `2004` is a comment. It uses NIP-10
+`root` and `reply` markers, and still accepts the deprecated positional
+`e` tags. Admission rejects a torrent without a hash and a file, and a
+comment that names no event. Both kinds are regular stored events and are
+not added to the NIP-11 list. The info hash is not checked against torrent
+bytes, and trackers are not contacted. Acceptance is
+`domain::torrent::tests::a_torrent_builds_a_magnet_and_a_comment_names_it`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
