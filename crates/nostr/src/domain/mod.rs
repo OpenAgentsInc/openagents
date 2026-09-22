@@ -46,6 +46,7 @@ mod torrent;
 mod vending;
 mod voice;
 mod wallet;
+mod wallet_connect;
 mod zap;
 
 pub use agent::{
@@ -164,6 +165,13 @@ pub use wallet::{
     open_spend_history, open_token, open_token_deletion, open_token_event, open_wallet,
     open_wallet_secrets, read_wallet_content, roll_over_token, seal_wallet_content,
     token_plaintext,
+};
+pub use wallet_connect::{
+    WalletCommand, WalletConnection, WalletEncryption, WalletError, WalletInfo, WalletReply,
+    WalletRequest, WalletResponse, encryption_supported, format_connection, negotiated_encryption,
+    open_wallet_info, open_wallet_request, open_wallet_response, parse_connection,
+    read_wallet_command, read_wallet_message, read_wallet_reply, request_is_current,
+    seal_wallet_message,
 };
 pub use zap::{
     ZapReceipt, ZapRequest, ZapShare, bolt11_amount_msat, decode_lnurl, open_zap_receipt,

@@ -465,6 +465,15 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 17_375 {
         super::wallet::open_wallet(event)?;
     }
+    if event.kind == 13_194 {
+        super::wallet_connect::open_wallet_info(event)?;
+    }
+    if event.kind == 23_194 {
+        super::wallet_connect::open_wallet_request(event)?;
+    }
+    if event.kind == 23_195 {
+        super::wallet_connect::open_wallet_response(event)?;
+    }
     if event.kind == 7_375 {
         super::wallet::open_token_event(event)?;
     }

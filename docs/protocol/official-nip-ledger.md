@@ -515,6 +515,20 @@ not added to the NIP-11 list. The relay does not decrypt the content,
 talk to a mint, or check a proof signature. Acceptance is
 `domain::wallet::tests::a_wallet_replaces_and_a_spent_proof_rolls_into_a_new_token`.
 
+NIP-47 is `configured-and-proven`. `parse_connection` reads a
+`nostr+walletconnect://` URI: the wallet pubkey, one or more relays,
+the client secret, and an optional `lud16`. Kind `13194` lists the
+methods and the encryption schemes. `nip44_v2` wins when it is
+offered. A missing encryption tag means NIP-04. Kind `23194` is the
+client request. Kind `23195` is the wallet response and names the
+request id. A `pay_invoice` command keeps the bolt11 invoice, and the
+optional amount must match the invoice. The response carries the
+payment preimage or a typed error. A newer info event replaces the
+older one. Request and response events are ephemeral. NIP-47 is a
+draft, so these kinds are not added to the NIP-11 list. The relay
+does not pay the invoice. Acceptance is
+`domain::wallet_connect::tests::a_pay_invoice_round_trips_and_an_info_event_replaces`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
