@@ -30,6 +30,7 @@ mod relay_list;
 mod remote_sign;
 mod replacement;
 mod report;
+mod snippet;
 mod timestamp;
 mod torrent;
 
@@ -107,6 +108,7 @@ pub use replacement::{
     compare_replacement_order,
 };
 pub use report::{REPORT_TYPES, Report, ReportTarget, open_report};
+pub use snippet::{Snippet, SnippetLicense, SnippetRepo, open_snippet};
 pub use timestamp::TimestampPolicy;
 pub use torrent::{
     CatalogId, Torrent, TorrentComment, TorrentFile, magnet_uri, open_torrent, open_torrent_comment,

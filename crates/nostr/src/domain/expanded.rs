@@ -585,6 +585,9 @@ pub(crate) fn validate_expanded_event(event: &Event) -> Result<(), DomainError> 
     if event.kind == 39_701 {
         super::bookmark::open_bookmark(event)?;
     }
+    if event.kind == 1_337 {
+        super::snippet::open_snippet(event)?;
+    }
     if event.tags.iter().any(|tag| tag.name() == Some("client")) {
         super::handler::open_client_tag(event)?;
     }

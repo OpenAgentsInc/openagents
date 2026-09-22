@@ -289,6 +289,20 @@ with `K` and `k` equal to `39701`. A kind `1` note is not a reply. Kind
 page. Acceptance is
 `domain::bookmark::tests::a_bookmark_drops_the_https_scheme_and_a_comment_replies`.
 
+NIP-C0 is `configured-and-proven`. Kind `1337` stores a code
+snippet in `content`. `l` is the programming language and must be
+lowercase, such as `javascript` or `rust`. That same `l` tag is also a
+NIP-32 self-label in the `ugc` namespace. `name` is a filename,
+`extension` has no leading dot, and `description` and `runtime` are
+optional. `license` is an SPDX identifier, may repeat, and may include
+an `http://` or `https://` URL of the license text. `dep` names a
+dependency. `repo` is an HTTP URL or a kind `30617` repository address
+with an optional `wss://` relay hint. Kind `1337` is a regular event, so
+a newer snippet does not replace an older one. It is not added to the
+NIP-11 list. The relay does not run the snippet or fetch the repository.
+SPDX identifiers are not checked against the SPDX list. Acceptance is
+`domain::snippet::tests::a_snippet_keeps_its_source_and_does_not_replace`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
