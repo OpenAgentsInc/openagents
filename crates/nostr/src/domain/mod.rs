@@ -8,6 +8,7 @@ mod agent;
 mod article;
 mod badge;
 mod block;
+mod bookmark;
 mod comment;
 mod deletion;
 mod draft;
@@ -51,6 +52,7 @@ pub use block::{
     THREAD_SUMMARY_KIND, WINDOW_BOUNDS_KIND, WORKSPACE_PROFILE_KIND, dm_visibility_channel,
     parse_identity_archive_request, validate_block_ingest, workspace_icon,
 };
+pub use bookmark::{Bookmark, bookmark_identifier, is_bookmark_reply, open_bookmark};
 pub use comment::{Comment, CommentScope, is_top_level, open_comment};
 pub use deletion::{DeletionRequest, DeletionTombstone};
 pub use draft::{

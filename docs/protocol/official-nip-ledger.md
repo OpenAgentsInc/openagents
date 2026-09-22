@@ -275,6 +275,20 @@ Neither kind is added to the NIP-11 list. The relay does not fetch
 images. Acceptance is
 `domain::listing::tests::a_listing_keeps_its_price_and_a_draft_does_not_replace_it`.
 
+NIP-B0 is `configured-and-proven`. Kind `39701` is an addressable
+web bookmark. The `d` tag is the URI. `bookmark_identifier` omits the
+characters before the hostname when the scheme is `https`, so
+`https://alice.blog/post` is stored as `alice.blog/post`. An `http` URI
+keeps its scheme. Userinfo on an `https` URI is omitted with the scheme.
+The content is a description and may be empty. `title`, `published_at`,
+and `t` are optional. Admission rejects a `d` tag that still begins with
+`https://`. A newer bookmark with the same `d` tag replaces the older
+one. Clients query that tag directly. A reply is a kind `1111` comment
+with `K` and `k` equal to `39701`. A kind `1` note is not a reply. Kind
+`39701` is not added to the NIP-11 list. The relay does not fetch the
+page. Acceptance is
+`domain::bookmark::tests::a_bookmark_drops_the_https_scheme_and_a_comment_replies`.
+
 NIP-09 is `configured-and-proven`. `DeletionRequest::from_event` reads a
 kind `5` event. An `e` tag must be a 32-byte lowercase hex id. An `a` tag
 must name a replacement address whose pubkey is the request author. The
