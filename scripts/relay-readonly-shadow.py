@@ -214,7 +214,7 @@ def read_query(url: str, query: dict, timeout: float) -> dict:
             message = client.read()
             if is_auth_challenge(message):
                 continue
-            if message == ["EOSE", subscription]:
+            if isinstance(message, list) and message[:2] == ["EOSE", subscription]:
                 digest = hashlib.sha256(
                     b"\n".join(events[event_id] for event_id in sorted(events))
                 ).hexdigest()

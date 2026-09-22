@@ -470,13 +470,13 @@ async fn policy_and_fts(database_url: &str, store: &mut Store) {
         ))
     );
 
-    let blocked_kind = signed_event(7, 901, 42, Vec::new(), "blocked kind");
+    let blocked_kind = signed_event(7, 901, 7_777, Vec::new(), "blocked kind");
     let statement = admin
         .prepare("INSERT INTO relay_blocked_kind (kind, reason) VALUES ($1, $2)")
         .await
         .unwrap();
     admin
-        .execute(&statement, &[&42_i32, &"fixture kind block"])
+        .execute(&statement, &[&7_777_i32, &"fixture kind block"])
         .await
         .unwrap();
     assert_eq!(
@@ -486,7 +486,7 @@ async fn policy_and_fts(database_url: &str, store: &mut Store) {
         ))
     );
 
-    let kind_not_allowed = signed_event(7, 902, 7, Vec::new(), "kind allowlist");
+    let kind_not_allowed = signed_event(7, 902, 7_778, Vec::new(), "kind allowlist");
     let statement = admin
         .prepare("INSERT INTO relay_allowed_kind (kind, reason) VALUES ($1, $2)")
         .await
@@ -753,7 +753,7 @@ async fn least_privilege_runtime(database_url: &str) {
 
     let runtime_url = format!("{database_url} user=nostr_relay_runtime_m2_test");
     let mut runtime = Store::connect_verified(&runtime_url).await.unwrap();
-    let event = signed_event(6, 50, 7, Vec::new(), "least privilege write");
+    let event = signed_event(6, 50, 1, Vec::new(), "least privilege write");
     assert!(matches!(
         runtime.admit(&event, NOW).await.unwrap(),
         AdmissionOutcome::Stored { .. }

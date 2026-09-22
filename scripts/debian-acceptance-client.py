@@ -97,7 +97,7 @@ def main() -> None:
         message = read_text(connection, stream)
         if message[0] == "EVENT" and message[1] == "acceptance":
             saw_event = message[2]["id"] == event["id"]
-        if message == ["EOSE", "acceptance"]:
+        if message[:2] == ["EOSE", "acceptance"]:
             break
     if not saw_event:
         raise RuntimeError("accepted event was absent from the historical query")

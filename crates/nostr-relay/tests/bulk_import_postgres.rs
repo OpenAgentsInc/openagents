@@ -84,8 +84,8 @@ async fn signed_event_jsonl_import_is_ordered_and_idempotent() {
     let mut store = Store::connect(&database_url).await.expect("store connects");
     let baseline = store.latest_ingest_seq().await.expect("baseline reads");
     let regular = signed_event(60, 20_000, 1, Vec::new(), "regular");
-    let replaceable_old = signed_event(61, 20_000, 0, Vec::new(), "old");
-    let replaceable_new = signed_event(61, 20_001, 0, Vec::new(), "new");
+    let replaceable_old = signed_event(61, 20_000, 0, Vec::new(), "{}");
+    let replaceable_new = signed_event(61, 20_001, 0, Vec::new(), "{}");
     let deletion = signed_event(
         60,
         20_002,
