@@ -14,6 +14,8 @@ local Harbor jobs and the evidence linked below without running inference.
 - Operating notes for this host, credentials, rate limits, and pricing:
   [the Terminal-Bench runbook](runbook.md).
 - Coder One's delegate arms: [the delegate runbook](coder-one-delegate-runbook.md).
+- Why the two winning configurations were cheap and fast, and the upgrade
+  plan: [the winning-runs analysis](winning-runs-analysis.md).
 - Tasks: the upstream Terminal-Bench repository at `3b5caaa4863d`.
 - Evidence: each row links its retained trajectory under
   [`bench/terminal-bench/traces/`](../../bench/terminal-bench/traces/).
