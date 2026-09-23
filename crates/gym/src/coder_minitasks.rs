@@ -84,11 +84,20 @@ pub fn read_run(dir: &Path) -> Result<Run, String> {
             .and_then(Value::as_str)
             .unwrap_or("episode.atif.jsonl"),
     );
-    let coverage = manifest
-        .pointer("/files/checks")
-        .and_then(Value::as_str)
-        .and_then(|relative| std::fs::read_to_string(dir.join(relative)).ok())
-        .and_then(|text| serde_json::from_str(&text).ok());
+    let read = |pointer: &str| -> Option<Value> {
+        manifest
+            .pointer(pointer)
+            .and_then(Value::as_str)
+            .and_then(|relative| std::fs::read_to_string(dir.join(relative)).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+    };
+    // `verify.support`'s requirement states show beside the scenarios.
+    let coverage = read("/files/checks").map(|mut report: Value| {
+        if let Some(support) = read("/files/support") {
+            report["support"] = support;
+        }
+        report
+    });
     Ok(Run {
         dir: dir.to_path_buf(),
         id: text(&manifest, "/id"),

@@ -10,6 +10,7 @@
 //!   artifacts/                  the briefing and the executor's native stream
 //!   verification/grade.json     the mini-task grader's verdict
 //!   verification/checks.json    verify.checks' coverage, when checks ran
+//!   verification/support.json   verify.support's requirement states, with Jev
 //! ```
 //!
 //! The episode runs the same explore-then-delegate path a Terminal-Bench
@@ -429,11 +430,39 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         (ExecutorChoice::Scripted { .. }, None) => unreachable!("a scripted choice has a script"),
     };
 
-    let checks = if options.checks {
-        Some(crate::checks::check_workspace(&task, &work, &dir, &recorder).await)
+    let checked = if options.checks {
+        Some(
+            crate::checks::check_workspace_as(
+                &task,
+                &work,
+                &dir,
+                &recorder,
+                crate::checks::COVERAGE_FILE,
+            )
+            .await,
+        )
     } else {
         None
     };
+    // `verify.support` needs Jev: without a client it would leave every
+    // requirement unresolved, so it doesn't run.
+    let support = match (&checked, &options.jev) {
+        (Some((input, report)), Some(client)) => {
+            let judged = crate::support::judge(
+                input,
+                report,
+                &crate::component::jev::JevMode::Live(client.clone()),
+                &recorder,
+                crate::support::Params::default(),
+                None,
+            )
+            .await;
+            crate::support::save(&judged, &dir)?;
+            Some(judged)
+        }
+        _ => None,
+    };
+    let checks = checked.as_ref().map(|(_, report)| report);
 
     let grading = recorder.enter(
         Start::new(
@@ -501,14 +530,16 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         "outcome": outcome,
         "grade": grade,
         "reward": grade.reward(),
-        "checks": checks.as_ref().map(crate::checks::Report::summary),
+        "checks": checks.map(crate::checks::Report::summary),
+        "support": support.as_ref().map(crate::support::Report::summary),
         "started_at": atif::document::iso(at),
         "milliseconds": milliseconds,
         "version": crate::episode::version(),
         "files": {
             "invocation_log": crate::episode::INVOCATION_LOG,
             "grade": "verification/grade.json",
-            "checks": checks.as_ref().map(|_| crate::checks::COVERAGE_FILE),
+            "checks": checks.map(|_| crate::checks::COVERAGE_FILE),
+            "support": support.as_ref().map(|_| crate::support::FILE),
             "workdir": "work",
             "artifacts": "artifacts",
         },

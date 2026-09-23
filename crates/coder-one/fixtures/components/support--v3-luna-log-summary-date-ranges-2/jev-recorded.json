@@ -1,0 +1,59 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "266c966904b1368d1c2af13006af2d49ef8b1b40d05569a7007913e0a8c19170": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.07
+        }
+      },
+      "input_tokens": 1727,
+      "output_tokens": 38,
+      "milliseconds": 199,
+      "source": "live component run of verify.support#jev-support-3"
+    },
+    "cbae862c78d1c63bbf9d5ae98f58feca6eebfa3a67b485480b93383ea8009208": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.33
+        }
+      },
+      "input_tokens": 2313,
+      "output_tokens": 38,
+      "milliseconds": 320,
+      "source": "live component run of verify.support#jev-support-2"
+    },
+    "de014e60829f29621339415d2751f335e7d94f4f17ab8899bd2c03feb66db75c": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.26
+        }
+      },
+      "input_tokens": 2163,
+      "output_tokens": 38,
+      "milliseconds": 159,
+      "source": "live component run of verify.support#jev-support-1"
+    }
+  }
+}

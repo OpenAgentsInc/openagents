@@ -13,6 +13,7 @@
 //! coder-one component list|run|suite|extract …
 //! coder-one minitask list|run …
 //! coder-one checks synthetic|run|recover …
+//! coder-one support evaluate|run|fixtures …
 //! coder-one capabilities [--demonstrate] [--json]
 //! ```
 //!
@@ -63,7 +64,8 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one capabilities [--demonstrate] [--json]  (coder-one capabilities help)
        coder-one prompt list|show|capture           (coder-one prompt help)
        coder-one checks synthetic|run|recover       (coder-one checks help)
-       coder-one study run|list                     (coder-one study help)";
+       coder-one study run|list                     (coder-one study help)
+       coder-one support evaluate|run|fixtures      (coder-one support help)";
 
 const PROMPT: &str = "Solve this issue.";
 
@@ -98,6 +100,7 @@ async fn main() -> ExitCode {
             };
         }
         Some("checks") => return checks_command(&args[1..]).await,
+        Some("support") => return support_command(&args[1..]).await,
         Some("doctor") if args.len() == 1 => doctor(),
         Some(url) if url.starts_with("https://github.com/") && url.contains("/issues/") => {
             match Options::parse(&args[1..]) {
@@ -198,6 +201,24 @@ async fn study_command(args: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match coder_one::study::cli::command(args).await {
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Err(message) => {
+            eprintln!("coder-one: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `coder-one support …`: `verify.support` on its own.
+async fn support_command(args: &[String]) -> ExitCode {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h") | None
+    ) {
+        println!("{}", coder_one::support::cli::USAGE);
+        return ExitCode::SUCCESS;
+    }
+    match coder_one::support::cli::command(args).await {
         Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
         Err(message) => {
             eprintln!("coder-one: {message}");

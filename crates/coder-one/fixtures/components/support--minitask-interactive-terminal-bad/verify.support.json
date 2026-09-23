@@ -1,0 +1,210 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.support",
+  "source": {
+    "kind": "synthetic",
+    "task": "interactive-terminal",
+    "script": "bad",
+    "note": "a scripted mini-task episode with verify.checks; the grader's verdict is the outcome"
+  },
+  "input": {
+    "task": {
+      "title": "mini-task interactive-terminal",
+      "instruction": "Implement the provided `BaseTerminal` interface in base_terminal.py. It provides a simple python interface to send keys to a headless terminal.\n\nMake sure it supports the following functionality.\n\n- Mimics a terminal, where the process starts as an interactive bash shell and commands are typically executed by typing characters and hitting Enter.\n- Supports interactive programs.\n- Has support for modifier keys like `\"\\x03\"` for control C, etc.\n\nCall your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called headless_terminal.py so that it can be imported as `from headless_terminal import HeadlessTerminal`."
+    },
+    "candidate": {
+      "label": "mini-task interactive-terminal",
+      "origin": "workspace",
+      "digest": "c7c1292fcd367cd2f1f250ff6b4ad1dd5486e3a9b788250b07249d5d41b1ecdf"
+    },
+    "evidence": [
+      {
+        "requirement": {
+          "id": "R4",
+          "text": "- Supports interactive programs.",
+          "kind": "constraint"
+        },
+        "artifact": [
+          {
+            "path": "headless_terminal.py",
+            "text": "import subprocess\n\nfrom base_terminal import BaseTerminal\n\n\nclass HeadlessTerminal(BaseTerminal):\n    \"\"\"Runs each typed line with bash -c.\"\"\"\n\n    def __init__(self):\n        self.buffer = \"\"\n        self.output = \"\"\n\n    def send_keystrokes(self, keystrokes, wait_sec=0.0):\n        for ch in keystrokes:\n            if ch == \"\\x03\":\n                self.buffer = \"\"\n            elif ch in \"\\r\\n\":\n                line, self.buffer = self.buffer, \"\"\n                if line.strip():\n                    done = subprocess.run(\n                        [\"bash\", \"-c\", line],\n                        capture_output=True,\n                        text=True,\n                        stdin=subprocess.DEVNULL,\n                    )\n                    self.output += done.stdout + done.stderr\n            else:\n                self.buffer += ch\n\n    def close(self):\n        pass\n",
+            "chars": 873,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "interactive.program",
+            "verdict": "failed",
+            "expected": "A program started through the interface gets a terminal in raw mode, reads the staged keys up to Enter, and writes them reversed to a scratch file.",
+            "observed": [
+              {
+                "step": "construct",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo ready > <scratch><scratch>/interactive.program/result.txt.canary\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "canary",
+                "seen": true
+              },
+              {
+                "step": "send",
+                "keys": "python3 <scratch><scratch>/interactive.program/interact.py <scratch><scratch>/interactive.program/result.txt\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "ready",
+                "seen": false
+              },
+              {
+                "step": "send",
+                "keys": "q7Zk2x",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "content": null
+              }
+            ],
+            "limits": [
+              "One raw-mode program and one token; full-screen programs that query the terminal are untested."
+            ]
+          }
+        ],
+        "scenario_state": "contradicted",
+        "observations_clipped": false
+      },
+      {
+        "requirement": {
+          "id": "R5",
+          "text": "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+          "kind": "constraint"
+        },
+        "artifact": [
+          {
+            "path": "headless_terminal.py",
+            "text": "import subprocess\n\nfrom base_terminal import BaseTerminal\n\n\nclass HeadlessTerminal(BaseTerminal):\n    \"\"\"Runs each typed line with bash -c.\"\"\"\n\n    def __init__(self):\n        self.buffer = \"\"\n        self.output = \"\"\n\n    def send_keystrokes(self, keystrokes, wait_sec=0.0):\n        for ch in keystrokes:\n            if ch == \"\\x03\":\n                self.buffer = \"\"\n            elif ch in \"\\r\\n\":\n                line, self.buffer = self.buffer, \"\"\n                if line.strip():\n                    done = subprocess.run(\n                        [\"bash\", \"-c\", line],\n                        capture_output=True,\n                        text=True,\n                        stdin=subprocess.DEVNULL,\n                    )\n                    self.output += done.stdout + done.stderr\n            else:\n                self.buffer += ch\n\n    def close(self):\n        pass\n",
+            "chars": 873,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "interactive.interrupt",
+            "verdict": "failed",
+            "expected": "After control C interrupts a foreground command, the shell runs the next command typed.",
+            "observed": [
+              {
+                "step": "construct",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo ready > <scratch><scratch>/interactive.interrupt/result.txt.canary\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "canary",
+                "seen": true
+              },
+              {
+                "step": "send",
+                "keys": "sleep 30\n",
+                "status": "blocked",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "round": 0,
+                "delay": 0.05,
+                "content": null
+              }
+            ],
+            "limits": [
+              "One control key, sent 0.05, 0.3, 1 s after the command; other modifiers and delays are untested."
+            ]
+          }
+        ],
+        "scenario_state": "contradicted",
+        "observations_clipped": false
+      },
+      {
+        "requirement": {
+          "id": "R1",
+          "text": "Implement the provided `BaseTerminal` interface in base_terminal.py.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "headless_terminal.py",
+            "text": "import subprocess\n\nfrom base_terminal import BaseTerminal\n\n\nclass HeadlessTerminal(BaseTerminal):\n    \"\"\"Runs each typed line with bash -c.\"\"\"\n\n    def __init__(self):\n        self.buffer = \"\"\n        self.output = \"\"\n\n    def send_keystrokes(self, keystrokes, wait_sec=0.0):\n        for ch in keystrokes:\n            if ch == \"\\x03\":\n                self.buffer = \"\"\n            elif ch in \"\\r\\n\":\n                line, self.buffer = self.buffer, \"\"\n                if line.strip():\n                    done = subprocess.run(\n                        [\"bash\", \"-c\", line],\n                        capture_output=True,\n                        text=True,\n                        stdin=subprocess.DEVNULL,\n                    )\n                    self.output += done.stdout + done.stderr\n            else:\n                self.buffer += ch\n\n    def close(self):\n        pass\n",
+            "chars": 873,
+            "clipped": false
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    ],
+    "skipped": [
+      {
+        "id": "R2",
+        "why": "over the budget of 3 requirements per run"
+      },
+      {
+        "id": "R6",
+        "why": "over the budget of 3 requirements per run"
+      },
+      {
+        "id": "R3",
+        "why": "a constraint or context no scenario observed"
+      }
+    ],
+    "labels": [
+      {
+        "requirement": "R4",
+        "met": false,
+        "basis": "the known-bad script runs each line with bash -c, and the grader's interactive program failed"
+      }
+    ],
+    "outcome": {
+      "met": false,
+      "basis": "the mini-task grader said failed"
+    },
+    "baseline": {
+      "done": null,
+      "request": {
+        "report": "HeadlessTerminal runs each command line and handles control C.",
+        "changes": "The working directory is not a Git work tree, so its changes are not listed.",
+        "criteria": [
+          "Implement the provided `BaseTerminal` interface in base_terminal.py.",
+          "Make sure it supports the following functionality.",
+          "- Mimics a terminal, where the process starts as an interactive bash shell and commands are typically executed by typing characters and hitting Enter.",
+          "- Supports interactive programs.",
+          "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+          "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called headless_terminal.py so that it can be imported as `from headless_terminal import HeadlessTerminal`."
+        ]
+      },
+      "source": "the closing check the episode asks, over the script's last claim and the workspace's changes"
+    },
+    "split": "development"
+  },
+  "retained": null
+}

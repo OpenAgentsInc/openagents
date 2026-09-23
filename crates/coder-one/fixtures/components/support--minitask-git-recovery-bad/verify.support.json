@@ -1,0 +1,66 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.support",
+  "source": {
+    "kind": "synthetic",
+    "task": "git-recovery",
+    "script": "bad",
+    "note": "a scripted mini-task episode with verify.checks; the grader's verdict is the outcome"
+  },
+  "input": {
+    "task": {
+      "title": "mini-task git-recovery",
+      "instruction": "I committed feature.txt on master and then ran a hard reset that lost the commit. Recover the lost commit so that master contains feature.txt with its original content, and leave the working tree clean."
+    },
+    "candidate": {
+      "label": "mini-task git-recovery",
+      "origin": "workspace",
+      "digest": "48d56343665a7d7fbdf369ffee412283d57988ac565bb1e9b65f06277261e0c3"
+    },
+    "evidence": [
+      {
+        "requirement": {
+          "id": "R1",
+          "text": "Recover the lost commit so that master contains feature.txt with its original content, and leave the working tree clean.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "feature.txt",
+            "text": "The feature this repository exists for\n",
+            "chars": 39,
+            "clipped": false
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    ],
+    "skipped": [],
+    "labels": [
+      {
+        "requirement": "R1",
+        "met": false,
+        "basis": "the known-bad script retypes the file instead of recovering the commit, and the grader failed"
+      }
+    ],
+    "outcome": {
+      "met": false,
+      "basis": "the mini-task grader said failed"
+    },
+    "baseline": {
+      "done": null,
+      "request": {
+        "report": "Recreated feature.txt on master.",
+        "changes": "git status --short:\n?? feature.txt\n\ngit diff HEAD:\n",
+        "criteria": [
+          "Recover the lost commit so that master contains feature.txt with its original content, and leave the working tree clean."
+        ]
+      },
+      "source": "the closing check the episode asks, over the script's last claim and the workspace's changes"
+    },
+    "split": "development"
+  },
+  "retained": null
+}

@@ -23,6 +23,24 @@ the Gym's router reads: bench/terminal-bench/profiles/task-features.json.
 Runs record their invocations under ~/.openagents/coder-one/components unless
 --out names another directory or --no-record is given.";
 
+/// A live Jev client from `TYPESAFE_API_KEY` or `~/.openagents/jev.json`.
+///
+/// # Errors
+///
+/// Returns a message when there is no key.
+pub fn live_client() -> Result<::jev::Client, String> {
+    let dir = crate::credentials::openagents_dir().unwrap_or_else(|| PathBuf::from("/nonexistent"));
+    let env = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    };
+    let key = crate::credentials::jev_key(env, &dir)
+        .map_err(|error| format!("--jev live needs a Jev key: {error}"))?;
+    crate::credentials::jev_client(&key.secret)
+}
+
 struct Flags {
     positional: Vec<String>,
     fixture: Option<PathBuf>,
@@ -78,19 +96,7 @@ impl Flags {
     }
 
     fn choice(&self) -> Result<JevChoice, String> {
-        JevChoice::parse(&self.jev, || {
-            let dir = crate::credentials::openagents_dir()
-                .unwrap_or_else(|| PathBuf::from("/nonexistent"));
-            let env = |name: &str| {
-                std::env::var(name)
-                    .ok()
-                    .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty())
-            };
-            let key = crate::credentials::jev_key(env, &dir)
-                .map_err(|error| format!("--jev live needs a Jev key: {error}"))?;
-            crate::credentials::jev_client(&key.secret)
-        })
+        JevChoice::parse(&self.jev, live_client)
     }
 
     fn out(&self) -> Option<PathBuf> {

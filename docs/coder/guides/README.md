@@ -10,6 +10,7 @@ Configure Coder, run work, and verify retained artifacts.
 | [coder-one-checks](coder-one-checks.md) | Check claimed behavior with admitted scenarios |
 | [coder-one-components](coder-one-components.md) | Run a Coder One component alone on fixtures |
 | [coder-one-minitasks](coder-one-minitasks.md) | Run Coder One on a mini-task with the scripted executor or a real one |
+| [coder-one-support](coder-one-support.md) | Judge requirement support with paired Jev questions |
 | [decision-profiles](decision-profiles.md) | Configure Coder's decision client |
 | [devin-delegation-runbook](devin-delegation-runbook.md) | Delegate work to Devin with Coder |
 | [headless](headless.md) | Headless mode |

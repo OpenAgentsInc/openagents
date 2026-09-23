@@ -737,14 +737,10 @@ pub fn sample_records(dir: &Path) -> Vec<String> {
         .collect()
 }
 
-/// Checks a mini-task's workspace after its episode, writes the report to
-/// `<dir>/verification/checks.json`, and returns it.
-pub async fn check_workspace(
-    task: &crate::minitask::MiniTask,
-    workdir: &Path,
-    dir: &Path,
-    recorder: &Recorder,
-) -> Report {
+/// The check input for a mini-task's workspace: the candidate is what the
+/// workspace holds, less what the task provided and its log inputs.
+#[must_use]
+pub fn workspace_input(task: &crate::minitask::MiniTask, workdir: &Path) -> Input {
     let mut candidate = workspace_candidate(&format!("mini-task {}", task.id), workdir);
     let mut observed = Observed::default();
     // What the task provided is input, not candidate.
@@ -766,7 +762,7 @@ pub async fn check_workspace(
             candidate.files.remove(&path);
         }
     }
-    let input = Input {
+    Input {
         task: TaskText {
             title: format!("mini-task {}", task.id),
             instruction: task.instruction.to_string(),
@@ -775,12 +771,37 @@ pub async fn check_workspace(
         candidate,
         observed,
         budget: Budget::default(),
-    };
+    }
+}
+
+/// Checks a mini-task's workspace after its episode, writes the report to
+/// `<dir>/verification/checks.json`, and returns it.
+pub async fn check_workspace(
+    task: &crate::minitask::MiniTask,
+    workdir: &Path,
+    dir: &Path,
+    recorder: &Recorder,
+) -> Report {
+    check_workspace_as(task, workdir, dir, recorder, COVERAGE_FILE)
+        .await
+        .1
+}
+
+/// Checks a mini-task's workspace and writes the report to `<dir>/<file>`;
+/// returns the input and the report.
+pub async fn check_workspace_as(
+    task: &crate::minitask::MiniTask,
+    workdir: &Path,
+    dir: &Path,
+    recorder: &Recorder,
+    file: &str,
+) -> (Input, Report) {
+    let input = workspace_input(task, workdir);
     let report = check(&input, recorder, &dir.join("checks-scratch")).await;
     if let Ok(text) = serde_json::to_string_pretty(&report) {
-        let _ = crate::record::write_atomic(&dir.join(COVERAGE_FILE), text.as_bytes());
+        let _ = crate::record::write_atomic(&dir.join(file), text.as_bytes());
     }
-    report
+    (input, report)
 }
 
 /// The absolute executable paths a candidate's text names, such as

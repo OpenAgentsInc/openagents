@@ -43,8 +43,10 @@ steps: the briefing packer builds the briefing, the executor runs it, and
 the closing check asks Jev when you pass `--jev live`. Before the grader,
 `verify.checks` observes the workspace and writes its report to
 `verification/checks.json`; pass `--no-checks` to skip it. The
-[checks guide](coder-one-checks.md) covers the scenarios. The grader runs
-last. The exit code is 0 when the grader passed.
+[checks guide](coder-one-checks.md) covers the scenarios. With `--jev
+live`, `verify.support` then judges the checked requirements and writes
+`verification/support.json`, as the
+[support guide](coder-one-support.md) describes. The grader runs last. The exit code is 0 when the grader passed.
 
 Each task has two scripts. `good` writes a correct solution, and `bad`
 writes the known-bad one for its family: a whole-line severity search, a
@@ -216,6 +218,7 @@ minitask-<task>-<executor>-<ms>/
   artifacts/                the briefing and the executor's native stream
   verification/grade.json   the grader's verdict
   verification/checks.json  verify.checks' requirement coverage
+  verification/support.json verify.support's requirement states, with --jev live
 ```
 
 ```sh

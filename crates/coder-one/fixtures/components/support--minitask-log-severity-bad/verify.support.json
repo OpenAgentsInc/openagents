@@ -1,0 +1,293 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.support",
+  "source": {
+    "kind": "synthetic",
+    "task": "log-severity",
+    "script": "bad",
+    "note": "a scripted mini-task episode with verify.checks; the grader's verdict is the outcome"
+  },
+  "input": {
+    "task": {
+      "title": "mini-task log-severity",
+      "instruction": "The directory logs/ holds log files named YYYY-MM-DD_<source>.log, each holding the logs of that date. Each log line contains an event with a severity level. Count how many times each severity appears in the following date ranges:\nToday (the current date)\nLast 7 days (including today)\nTotal (all log files combined, regardless of date)\n\nThe severity levels to count are exactly: ERROR, WARNING, and INFO.\nWrite a CSV file summary.csv with the following structure (including the header):\nperiod,severity,count\ntoday,ERROR,<count>\ntoday,WARNING,<count>\ntoday,INFO,<count>\nlast_7_days,ERROR,<count>\nlast_7_days,WARNING,<count>\nlast_7_days,INFO,<count>\ntotal,ERROR,<count>\ntotal,WARNING,<count>\ntotal,INFO,<count>\n\nThe current date is 2025-08-12. Use this as the reference date for all calculations.\nKeep the program that writes the summary as summarize.py, runnable as `python3 summarize.py LOG_DIR OUTPUT_CSV`."
+    },
+    "candidate": {
+      "label": "mini-task log-severity",
+      "origin": "workspace",
+      "digest": "aa655a59a5f7965df1635e277924f3a906c5a1166dba5f614034a796b98954b4"
+    },
+    "evidence": [
+      {
+        "requirement": {
+          "id": "R5",
+          "text": "The severity levels to count are exactly: ERROR, WARNING, and INFO.",
+          "kind": "constraint"
+        },
+        "artifact": [
+          {
+            "path": "summarize.py",
+            "text": "import re\nimport sys\nfrom collections import Counter\nfrom datetime import date\nfrom pathlib import Path\n\nLEVELS = (\"ERROR\", \"WARNING\", \"INFO\")\nREFERENCE = date(2025, 8, 12)\n\n\ndef main(logs, out):\n    counts = {period: Counter() for period in (\"today\", \"last_7_days\", \"total\")}\n    for path in sorted(Path(logs).glob(\"*.log\")):\n        age = (REFERENCE - date.fromisoformat(path.name[:10])).days\n        for line in path.read_text().splitlines():\n            for level in LEVELS:\n                if re.search(rf\"\\b{level}\\b\", line):\n                    counts[\"total\"][level] += 1\n                    if age == 0:\n                        counts[\"today\"][level] += 1\n                    if 0 <= age < 7:\n                        counts[\"last_7_days\"][level] += 1\n    rows = [\"period,severity,count\"]\n    for period in (\"today\", \"last_7_days\", \"total\"):\n        rows += [f\"{period},{level},{counts[period][level]}\" for level in LEVELS]\n    Path(out).write_text(\"\\n\".join(rows) + \"\\n\")\n\n\nif __name__ == \"__main__\":\n    main(sys.argv[1] if len(sys.argv) > 1 else \"logs\", sys.argv[2] if len(sys.argv) > 2 else \"summary.csv\")\n",
+            "chars": 1118,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "data.message-severity",
+            "verdict": "failed",
+            "expected": "Changing only records' messages, so each carries another value's word, leaves every count unchanged.",
+            "observed": [
+              {
+                "rows_compared": 9,
+                "rows_changed": 9
+              },
+              {
+                "row": "today,ERROR",
+                "base": 2,
+                "variant": 5
+              },
+              {
+                "row": "today,WARNING",
+                "base": 2,
+                "variant": 6
+              },
+              {
+                "row": "today,INFO",
+                "base": 2,
+                "variant": 3
+              },
+              {
+                "row": "last_7_days,ERROR",
+                "base": 4,
+                "variant": 10
+              },
+              {
+                "row": "last_7_days,WARNING",
+                "base": 4,
+                "variant": 12
+              },
+              {
+                "row": "last_7_days,INFO",
+                "base": 4,
+                "variant": 6
+              },
+              {
+                "row": "total,ERROR",
+                "base": 4,
+                "variant": 10
+              },
+              {
+                "row": "total,WARNING",
+                "base": 4,
+                "variant": 12
+              },
+              {
+                "row": "total,INFO",
+                "base": 4,
+                "variant": 6
+              }
+            ],
+            "limits": [
+              "One record format, from the observed sample \"2025-07-20 12:00:00 [INFO] Deploy finished with no WARNING\".",
+              "Each changed message carries one other value's word; other message shapes are untested."
+            ]
+          }
+        ],
+        "scenario_state": "contradicted",
+        "observations_clipped": false
+      },
+      {
+        "requirement": {
+          "id": "R1",
+          "text": "Count how many times each severity appears in the following date ranges:",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "summarize.py",
+            "text": "import re\nimport sys\nfrom collections import Counter\nfrom datetime import date\nfrom pathlib import Path\n\nLEVELS = (\"ERROR\", \"WARNING\", \"INFO\")\nREFERENCE = date(2025, 8, 12)\n\n\ndef main(logs, out):\n    counts = {period: Counter() for period in (\"today\", \"last_7_days\", \"total\")}\n    for path in sorted(Path(logs).glob(\"*.log\")):\n        age = (REFERENCE - date.fromisoformat(path.name[:10])).days\n        for line in path.read_text().splitlines():\n            for level in LEVELS:\n                if re.search(rf\"\\b{level}\\b\", line):\n                    counts[\"total\"][level] += 1\n                    if age == 0:\n                        counts[\"today\"][level] += 1\n                    if 0 <= age < 7:\n                        counts[\"last_7_days\"][level] += 1\n    rows = [\"period,severity,count\"]\n    for period in (\"today\", \"last_7_days\", \"total\"):\n        rows += [f\"{period},{level},{counts[period][level]}\" for level in LEVELS]\n    Path(out).write_text(\"\\n\".join(rows) + \"\\n\")\n\n\nif __name__ == \"__main__\":\n    main(sys.argv[1] if len(sys.argv) > 1 else \"logs\", sys.argv[2] if len(sys.argv) > 2 else \"summary.csv\")\n",
+            "chars": 1118,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "data.message-severity",
+            "verdict": "passed",
+            "expected": "Changing only records' messages, so each carries another value's word, leaves every count unchanged.",
+            "observed": [
+              {
+                "rows_compared": 9,
+                "rows_changed": 9
+              },
+              {
+                "row": "today,ERROR",
+                "base": 2,
+                "variant": 5
+              },
+              {
+                "row": "today,WARNING",
+                "base": 2,
+                "variant": 6
+              },
+              {
+                "row": "today,INFO",
+                "base": 2,
+                "variant": 3
+              },
+              {
+                "row": "last_7_days,ERROR",
+                "base": 4,
+                "variant": 10
+              },
+              {
+                "row": "last_7_days,WARNING",
+                "base": 4,
+                "variant": 12
+              },
+              {
+                "row": "last_7_days,INFO",
+                "base": 4,
+                "variant": 6
+              },
+              {
+                "row": "total,ERROR",
+                "base": 4,
+                "variant": 10
+              },
+              {
+                "row": "total,WARNING",
+                "base": 4,
+                "variant": 12
+              },
+              {
+                "row": "total,INFO",
+                "base": 4,
+                "variant": 6
+              }
+            ],
+            "limits": [
+              "One record format, from the observed sample \"2025-07-20 12:00:00 [INFO] Deploy finished with no WARNING\".",
+              "Each changed message carries one other value's word; other message shapes are untested."
+            ]
+          },
+          {
+            "scenario": "data.date-boundaries",
+            "verdict": "passed",
+            "expected": "Each period counts exactly the records of the files its date rule includes, on both sides of each boundary.",
+            "observed": [
+              {
+                "rows_compared": 9,
+                "rows_wrong": 0,
+                "files": 5
+              }
+            ],
+            "limits": [
+              "Dates after the reference date are not generated: the instruction doesn't say which periods hold them."
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      },
+      {
+        "requirement": {
+          "id": "R8",
+          "text": "Use this as the reference date for all calculations.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "summarize.py",
+            "text": "import re\nimport sys\nfrom collections import Counter\nfrom datetime import date\nfrom pathlib import Path\n\nLEVELS = (\"ERROR\", \"WARNING\", \"INFO\")\nREFERENCE = date(2025, 8, 12)\n\n\ndef main(logs, out):\n    counts = {period: Counter() for period in (\"today\", \"last_7_days\", \"total\")}\n    for path in sorted(Path(logs).glob(\"*.log\")):\n        age = (REFERENCE - date.fromisoformat(path.name[:10])).days\n        for line in path.read_text().splitlines():\n            for level in LEVELS:\n                if re.search(rf\"\\b{level}\\b\", line):\n                    counts[\"total\"][level] += 1\n                    if age == 0:\n                        counts[\"today\"][level] += 1\n                    if 0 <= age < 7:\n                        counts[\"last_7_days\"][level] += 1\n    rows = [\"period,severity,count\"]\n    for period in (\"today\", \"last_7_days\", \"total\"):\n        rows += [f\"{period},{level},{counts[period][level]}\" for level in LEVELS]\n    Path(out).write_text(\"\\n\".join(rows) + \"\\n\")\n\n\nif __name__ == \"__main__\":\n    main(sys.argv[1] if len(sys.argv) > 1 else \"logs\", sys.argv[2] if len(sys.argv) > 2 else \"summary.csv\")\n",
+            "chars": 1118,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "data.date-boundaries",
+            "verdict": "passed",
+            "expected": "Each period counts exactly the records of the files its date rule includes, on both sides of each boundary.",
+            "observed": [
+              {
+                "rows_compared": 9,
+                "rows_wrong": 0,
+                "files": 5
+              }
+            ],
+            "limits": [
+              "Dates after the reference date are not generated: the instruction doesn't say which periods hold them."
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      }
+    ],
+    "skipped": [
+      {
+        "id": "R2",
+        "why": "over the budget of 3 requirements per run"
+      },
+      {
+        "id": "R3",
+        "why": "over the budget of 3 requirements per run"
+      },
+      {
+        "id": "R7",
+        "why": "over the budget of 3 requirements per run"
+      },
+      {
+        "id": "R9",
+        "why": "over the budget of 3 requirements per run"
+      },
+      {
+        "id": "R4",
+        "why": "a constraint or context no scenario observed"
+      },
+      {
+        "id": "R6",
+        "why": "a constraint or context no scenario observed"
+      }
+    ],
+    "labels": [
+      {
+        "requirement": "R5",
+        "met": false,
+        "basis": "the known-bad script counts severity words anywhere in the line, and the grader failed"
+      },
+      {
+        "requirement": "R1",
+        "met": false,
+        "basis": "the known-bad script counts severity words anywhere in the line, and the grader failed"
+      }
+    ],
+    "outcome": {
+      "met": false,
+      "basis": "the mini-task grader said failed"
+    },
+    "baseline": {
+      "done": null,
+      "request": {
+        "report": "Wrote summarize.py and summary.csv; the CSV has the header and 9 integer rows.",
+        "changes": "The working directory is not a Git work tree, so its changes are not listed.",
+        "criteria": [
+          "Count how many times each severity appears in the following date ranges:",
+          "Today (the current date)",
+          "Last 7 days (including today)",
+          "Total (all log files combined, regardless of date)",
+          "The severity levels to count are exactly: ERROR, WARNING, and INFO.",
+          "Write a CSV file summary.csv with the following structure (including the header):",
+          "period,severity,count today,ERROR,<count> today,WARNING,<count> today,INFO,<count> last_7_days,ERROR,<count> last_7_days,WARNING,<count> last_7_days,INFO,<count> total,ERROR,<count> total,WARNING,<count> total,INFO,<count>",
+          "Use this as the reference date for all calculations.",
+          "Keep the program that writes the summary as summarize.py, runnable as `python3 summarize.py LOG_DIR OUTPUT_CSV`."
+        ]
+      },
+      "source": "the closing check the episode asks, over the script's last claim and the workspace's changes"
+    },
+    "split": "development"
+  },
+  "retained": null
+}

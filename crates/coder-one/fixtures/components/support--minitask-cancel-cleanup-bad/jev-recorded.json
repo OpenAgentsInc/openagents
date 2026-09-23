@@ -1,0 +1,85 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "41d465aebdb29195e4343ac8b1ddeb104173c71cfbfb8bc4cfdb3a17d7ce2133": {
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "answers": {
+        "done": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "criterion_0": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "criterion_1": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "criterion_2": {
+          "type": "noul",
+          "noul": 0.44
+        }
+      },
+      "input_tokens": 700,
+      "output_tokens": 80,
+      "milliseconds": 200,
+      "source": "live component run of verify.support#jev_close-1"
+    },
+    "445825e446de9d73a77c40fd676a9602f6c36f886d69521a090a54f72ec061bf": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "input_tokens": 870,
+      "output_tokens": 38,
+      "milliseconds": 360,
+      "source": "live component run of verify.support#jev-support-3"
+    },
+    "51904777be87f9076f3e6f5bb079677ff55f646cb9cefab6d22b0b3d63dda9b8": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.1
+        }
+      },
+      "input_tokens": 2113,
+      "output_tokens": 38,
+      "milliseconds": 165,
+      "source": "live component run of verify.support#jev-support-2"
+    },
+    "8777fa9e4ef07485a2a116f9c4cf7849e0a2462c92d22841c9df1de24a381008": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.62
+        }
+      },
+      "input_tokens": 2069,
+      "output_tokens": 38,
+      "milliseconds": 359,
+      "source": "live component run of verify.support#jev-support-1"
+    }
+  }
+}

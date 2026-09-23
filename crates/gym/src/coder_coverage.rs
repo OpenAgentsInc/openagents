@@ -80,7 +80,62 @@ pub fn summary(report: &Value) -> Value {
         "contradicted": states.get("contradicted").copied().unwrap_or(0),
         "unverifiable": states.get("unverifiable").copied().unwrap_or(0),
         "packets": array(report, "packets").len(),
+        "support": support_counts(report),
     })
+}
+
+/// `verify.support`'s states by word, when it ran.
+fn support_counts(report: &Value) -> Value {
+    let Some(states) = report.pointer("/support/states").and_then(Value::as_array) else {
+        return Value::Null;
+    };
+    let counts = counts(states, "state");
+    json!({
+        "judged": states.len(),
+        "supported": counts.get("supported").copied().unwrap_or(0),
+        "contradicted": counts.get("contradicted").copied().unwrap_or(0),
+        "unresolved": counts.get("unresolved").copied().unwrap_or(0),
+    })
+}
+
+/// A list row's support counts, or nothing when `verify.support` didn't
+/// run.
+fn support_suffix(counts: &Value) -> String {
+    if counts.is_null() {
+        return String::new();
+    }
+    format!(
+        " · support {} supported, {} contradicted, {} unresolved",
+        counts["supported"], counts["contradicted"], counts["unresolved"]
+    )
+}
+
+/// The support state of requirement `id`, when `verify.support` judged it.
+fn support_state<'a>(report: &'a Value, id: &str) -> Option<&'a Value> {
+    report
+        .pointer("/support/states")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|s| s["id"] == id)
+}
+
+fn probability(value: Option<&Value>) -> String {
+    value
+        .and_then(Value::as_f64)
+        .map_or("—".to_owned(), |p| format!("{p:.2}"))
+}
+
+fn support_line(state: &Value) -> String {
+    format!(
+        "         support {} · contradicts {} → {} ({}) · candidate {}",
+        probability(state.pointer("/judgment/supports")),
+        probability(state.pointer("/judgment/contradicts")),
+        state["state"].as_str().unwrap_or_default(),
+        short(state["why"].as_str().unwrap_or_default(), 70),
+        state["candidate"]
+            .as_str()
+            .map_or(String::new(), |c| c.chars().take(12).collect()),
+    )
 }
 
 fn short(text: &str, width: usize) -> String {
@@ -113,20 +168,40 @@ pub fn lines(report: &Value) -> Vec<String> {
         s["failed"],
         s["unavailable"],
     )];
+    if let Some(counts) = support_counts(report).as_object() {
+        lines.push(format!(
+            "verify.support · {} judged: {} supported, {} contradicted, {} unresolved · cutoffs supports ≥ {}, contradicts ≥ {}",
+            counts["judged"],
+            counts["supported"],
+            counts["contradicted"],
+            counts["unresolved"],
+            report
+                .pointer("/support/params/supports")
+                .unwrap_or(&Value::Null),
+            report
+                .pointer("/support/params/contradicts")
+                .unwrap_or(&Value::Null),
+        ));
+    }
     for covered in array(report, "coverage") {
         let scenarios = covered
             .get("scenarios")
             .and_then(Value::as_array)
             .map_or(&[][..], Vec::as_slice);
-        if scenarios.is_empty() {
+        let id = covered["id"].as_str().unwrap_or_default();
+        let support = support_state(report, id);
+        if scenarios.is_empty() && support.is_none() {
             continue;
         }
         lines.push(format!(
             "  {:<4} {:<13} {}",
-            covered["id"].as_str().unwrap_or_default(),
+            id,
             covered["state"].as_str().unwrap_or_default(),
             short(covered["text"].as_str().unwrap_or_default(), 100)
         ));
+        if let Some(state) = support {
+            lines.push(support_line(state));
+        }
         for scenario in scenarios {
             let limits = scenario["coverage"].as_array().map_or(0, Vec::len);
             lines.push(format!(
@@ -143,6 +218,7 @@ pub fn lines(report: &Value) -> Vec<String> {
             c.get("scenarios")
                 .and_then(Value::as_array)
                 .is_none_or(Vec::is_empty)
+                && support_state(report, c["id"].as_str().unwrap_or_default()).is_none()
         })
         .count();
     if unobserved > 0 {
@@ -203,10 +279,20 @@ pub fn load_dir(dir: &Path) -> BTreeMap<(String, String), Attempt> {
                 .to_string_lossy()
                 .into_owned();
             let trial_name = trial.file_name().to_string_lossy().into_owned();
+            // `verify.support`'s states, written beside the check.
+            let support = std::fs::read_to_string(trial.path().join("support.json"))
+                .ok()
+                .and_then(|text| serde_json::from_str::<Value>(&text).ok());
             let report = value
                 .get("report")
                 .filter(|r| r["schema"] == SCHEMA)
-                .cloned();
+                .cloned()
+                .map(|mut report| {
+                    if let Some(support) = support {
+                        report["support"] = support;
+                    }
+                    report
+                });
             out.insert(
                 (job_name.clone(), trial_name.clone()),
                 Attempt {
@@ -245,8 +331,11 @@ impl Attempt {
                         s["passed"], s["failed"], s["unavailable"]
                     ),
                     format!(
-                        "{} observed · {} contradicted · {} unverifiable",
-                        s["observed"], s["contradicted"], s["unverifiable"]
+                        "{} observed · {} contradicted · {} unverifiable{}",
+                        s["observed"],
+                        s["contradicted"],
+                        s["unverifiable"],
+                        support_suffix(&s["support"])
                     ),
                 )
             },
@@ -278,9 +367,12 @@ gym coder coverage [--dir PATH] [--minitasks-dir PATH] [--attempt JOB/TRIAL | --
 Lists requirement coverage from Coder One's verify.checks, per attempt: the
 recovered Terminal-Bench attempts `coder-one checks recover` wrote under
 ~/.openagents/coder-one/checks, and mini-task runs that ran checks. Each row
-shows the verifier reward, scenario verdicts, and requirement states.
---attempt or --run shows one report: each requirement's scenarios, verdicts,
-and coverage limits, and the diagnostic packets.";
+shows the verifier reward, scenario verdicts, and requirement states, and, where
+verify.support judged them, how many requirements it supports, contradicts, or
+leaves unresolved. --attempt or --run shows one report: each requirement's
+scenarios, verdicts, and coverage limits beside Jev's supports and contradicts
+judgments and the state they establish, then the diagnostic packets. Write
+recovered attempts' support states with `coder-one support evaluate --write-checks`.";
 
 /// `gym coder coverage …`.
 ///
@@ -419,12 +511,13 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
             let s = r.coverage.as_ref().map(summary).unwrap_or(Value::Null);
             writeln!(
                 out,
-                "{:<70} {:>6}  {} passed · {} failed · {} unavailable",
+                "{:<70} {:>6}  {} passed · {} failed · {} unavailable{}",
                 short(&format!("mini-task {} / {}", r.task, r.id), 70),
                 r.reward.map_or("—".to_owned(), |x| format!("{x:.1}")),
                 s["passed"],
                 s["failed"],
-                s["unavailable"]
+                s["unavailable"],
+                support_suffix(&s["support"])
             )
             .map_err(|e| e.to_string())?;
         }
@@ -511,6 +604,50 @@ pub(crate) mod tests {
         .unwrap();
         let value: Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(value["attempt"]["summary"]["failed"], json!(1));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn support_states_show_beside_the_scenarios() {
+        let dir = std::env::temp_dir().join(format!("gym-coverage-support-{}", std::process::id()));
+        let trial = dir.join("job-a").join("trial-1");
+        std::fs::create_dir_all(&trial).unwrap();
+        std::fs::write(
+            trial.join("checks.json"),
+            json!({ "attempt": { "job": "job-a", "trial": "trial-1", "reward": 0.0 }, "report": report() }).to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            trial.join("support.json"),
+            json!({
+                "schema": "openagents.coder-one.support.v1",
+                "params": { "supports": 0.5, "contradicts": 0.3 },
+                "candidate": "abcdef0123456789",
+                "states": [
+                    { "id": "R1", "state": "contradicted", "why": "the evidence contradicts it", "candidate": "abcdef0123456789",
+                      "judgment": { "supports": 0.21, "contradicts": 0.88 } },
+                    { "id": "R2", "state": "unresolved", "why": "insufficient evidence", "candidate": "abcdef0123456789",
+                      "judgment": { "supports": 0.1, "contradicts": 0.1 } },
+                ],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let attempts = load_dir(&dir);
+        let report = attempts.values().next().unwrap().report.clone().unwrap();
+        let text = lines(&report).join("\n");
+        assert!(
+            text.contains("2 judged: 0 supported, 1 contradicted, 1 unresolved"),
+            "{text}"
+        );
+        assert!(
+            text.contains("support 0.21 · contradicts 0.88 → contradicted"),
+            "{text}"
+        );
+        // R2 has no scenario, but its support state still shows.
+        assert!(text.contains("R2   unobserved"), "{text}");
+        assert!(!text.contains("no admitted scenario observes"), "{text}");
+        assert_eq!(summary(&report)["support"]["contradicted"], json!(1));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

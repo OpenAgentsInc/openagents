@@ -25,6 +25,7 @@ pub mod jev;
 pub mod pack;
 pub mod replay;
 pub mod scripted;
+pub mod support;
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -138,6 +139,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(scripted::ScriptedAdapter),
         Box::new(SystemSelect),
         Box::new(checks::Checks),
+        Box::new(support::Support),
         Box::new(Close),
         Box::new(scripted::MiniTaskRun),
     ]
@@ -954,7 +956,7 @@ impl JevChoice {
         }
     }
 
-    fn mode(&self, dir: &Path) -> Result<JevMode, String> {
+    pub(crate) fn mode(&self, dir: &Path) -> Result<JevMode, String> {
         Ok(match self {
             JevChoice::Live(client) => JevMode::Live(client.clone()),
             JevChoice::Recorded => JevMode::Recorded(Recorded::load(&dir.join(RECORDED_FILE))?),
@@ -1035,9 +1037,18 @@ pub async fn run_fixture(
     // Tally the Jev requests this run made, from their own records.
     let mut jev = Map::new();
     let mut costs = Vec::new();
-    for child in crate::record::invocations(&recorder.steps())
+    // Every descendant counts: a component may ask under an invocation of
+    // its own, as `verify.support` does.
+    let all = crate::record::invocations(&recorder.steps());
+    let mut mine = std::collections::BTreeSet::from([invocation.clone()]);
+    for child in &all {
+        if child.parent.as_ref().is_some_and(|p| mine.contains(p)) {
+            mine.insert(child.id.clone());
+        }
+    }
+    for child in all
         .into_iter()
-        .filter(|child| child.parent.as_deref() == Some(invocation.as_str()))
+        .filter(|child| child.parent.as_ref().is_some_and(|p| mine.contains(p)))
     {
         let Some(end) = &child.ended else { continue };
         // Only a Jev request records how it was answered; a component's

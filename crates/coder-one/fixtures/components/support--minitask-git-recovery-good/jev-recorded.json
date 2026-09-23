@@ -1,0 +1,41 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "4733735d2ca3f2b21a6f4219b97aed917cffc44dc73afbf9ab447412cb4c0458": {
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "answers": {
+        "done": {
+          "type": "noul",
+          "noul": 0.75
+        },
+        "criterion_0": {
+          "type": "noul",
+          "noul": 0.72
+        }
+      },
+      "input_tokens": 467,
+      "output_tokens": 40,
+      "milliseconds": 252,
+      "source": "live component run of verify.support#jev_close-1"
+    },
+    "8266c066b51a223b398a840397c6e2f8a0738e382c25202ba8fdd4ea95d275b9": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.16
+        }
+      },
+      "input_tokens": 681,
+      "output_tokens": 38,
+      "milliseconds": 152,
+      "source": "live component run of verify.support#jev-support-1"
+    }
+  }
+}

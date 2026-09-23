@@ -1,0 +1,97 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "377fc3731f1ce0138c68ca7a64e7c44745554d5333db4db7af21eefff8f33775": {
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "answers": {
+        "done": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "criterion_0": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "criterion_1": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "criterion_2": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "criterion_3": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "criterion_4": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "criterion_5": {
+          "type": "noul",
+          "noul": 0.18
+        }
+      },
+      "input_tokens": 856,
+      "output_tokens": 140,
+      "milliseconds": 188,
+      "source": "live component run of verify.support#jev_close-1"
+    },
+    "8f301a7bb6987085065e2695c090bcddf0c71b59211d2c2cf346798dfb075c0a": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.44
+        }
+      },
+      "input_tokens": 940,
+      "output_tokens": 38,
+      "milliseconds": 171,
+      "source": "live component run of verify.support#jev-support-3"
+    },
+    "b03a84f7604b797e9b5e543c03ec0771595bb9c51c0deda8b14c5ff8e53575e2": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.92
+        }
+      },
+      "input_tokens": 1259,
+      "output_tokens": 38,
+      "milliseconds": 186,
+      "source": "live component run of verify.support#jev-support-1"
+    },
+    "df62ee70a09f131d923e9605a512c2b12e69263642130668b7bae3cf210095fb": {
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "answers": {
+        "supports": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "contradicts": {
+          "type": "noul",
+          "noul": 0.76
+        }
+      },
+      "input_tokens": 1187,
+      "output_tokens": 38,
+      "milliseconds": 205,
+      "source": "live component run of verify.support#jev-support-2"
+    }
+  }
+}

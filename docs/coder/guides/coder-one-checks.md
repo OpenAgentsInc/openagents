@@ -120,4 +120,7 @@ reward, scenario verdicts, and requirement states. `--attempt` or `--run`
 shows one report: each requirement with its scenarios, verdicts, and
 coverage limits, then the diagnostic packets. In `gym-terminal`, the
 attempt view shows the same coverage below an attempt's counts, and the
-mini-task view shows it for each run.
+mini-task view shows it for each run. Where `verify.support` judged the
+requirements, each one also shows both Jev judgments and the state they
+establish; see
+[Judge requirement support with paired Jev questions](coder-one-support.md).

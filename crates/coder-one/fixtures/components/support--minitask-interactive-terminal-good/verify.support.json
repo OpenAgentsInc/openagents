@@ -1,0 +1,280 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.support",
+  "source": {
+    "kind": "synthetic",
+    "task": "interactive-terminal",
+    "script": "good",
+    "note": "a scripted mini-task episode with verify.checks; the grader's verdict is the outcome"
+  },
+  "input": {
+    "task": {
+      "title": "mini-task interactive-terminal",
+      "instruction": "Implement the provided `BaseTerminal` interface in base_terminal.py. It provides a simple python interface to send keys to a headless terminal.\n\nMake sure it supports the following functionality.\n\n- Mimics a terminal, where the process starts as an interactive bash shell and commands are typically executed by typing characters and hitting Enter.\n- Supports interactive programs.\n- Has support for modifier keys like `\"\\x03\"` for control C, etc.\n\nCall your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called headless_terminal.py so that it can be imported as `from headless_terminal import HeadlessTerminal`."
+    },
+    "candidate": {
+      "label": "mini-task interactive-terminal",
+      "origin": "workspace",
+      "digest": "da9048362b31cdb2e3f6ab9083df36d41e2239805a33c2e85b7602dd6b305f38"
+    },
+    "evidence": [
+      {
+        "requirement": {
+          "id": "R4",
+          "text": "- Supports interactive programs.",
+          "kind": "constraint"
+        },
+        "artifact": [
+          {
+            "path": "headless_terminal.py",
+            "text": "import os\nimport pty\nimport select\nimport signal\nimport time\n\nfrom base_terminal import BaseTerminal\n\n\nclass HeadlessTerminal(BaseTerminal):\n    \"\"\"An interactive Bash shell on a pseudo-terminal.\"\"\"\n\n    def __init__(self):\n        pid, fd = pty.fork()\n        if pid == 0:\n            os.execvp(\"bash\", [\"bash\", \"-i\"])\n        self.pid = pid\n        self.fd = fd\n        self.output = \"\"\n        self._drain(0.3)\n\n    def _drain(self, seconds):\n        end = time.monotonic() + seconds\n        while True:\n            left = max(end - time.monotonic(), 0)\n            ready, _, _ = select.select([self.fd], [], [], left)\n            if not ready:\n                return\n            try:\n                data = os.read(self.fd, 65536)\n            except OSError:\n                return\n            if not data:\n                return\n            self.output += data.decode(errors=\"replace\")\n\n    def send_keystrokes(self, keystrokes, wait_sec=0.0):\n        os.write(self.fd, keystrokes.encode())\n        self._drain(max(wait_sec, 0.05))\n\n    def close(self):\n        try:\n            os.kill(self.pid, signal.SIGKILL)\n            os.waitpid(self.pid, 0)\n        except OSError:\n            pass\n",
+            "chars": 1195,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "interactive.program",
+            "verdict": "passed",
+            "expected": "A program started through the interface gets a terminal in raw mode, reads the staged keys up to Enter, and writes them reversed to a scratch file.",
+            "observed": [
+              {
+                "step": "construct",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo ready > <scratch><scratch>/interactive.program/result.txt.canary\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "canary",
+                "seen": true
+              },
+              {
+                "step": "send",
+                "keys": "python3 <scratch><scratch>/interactive.program/interact.py <scratch><scratch>/interactive.program/result.txt\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "ready",
+                "seen": true
+              },
+              {
+                "step": "send",
+                "keys": "q7Zk2x",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "content": "x2kZ7q"
+              }
+            ],
+            "limits": [
+              "One raw-mode program and one token; full-screen programs that query the terminal are untested."
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      },
+      {
+        "requirement": {
+          "id": "R5",
+          "text": "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+          "kind": "constraint"
+        },
+        "artifact": [
+          {
+            "path": "headless_terminal.py",
+            "text": "import os\nimport pty\nimport select\nimport signal\nimport time\n\nfrom base_terminal import BaseTerminal\n\n\nclass HeadlessTerminal(BaseTerminal):\n    \"\"\"An interactive Bash shell on a pseudo-terminal.\"\"\"\n\n    def __init__(self):\n        pid, fd = pty.fork()\n        if pid == 0:\n            os.execvp(\"bash\", [\"bash\", \"-i\"])\n        self.pid = pid\n        self.fd = fd\n        self.output = \"\"\n        self._drain(0.3)\n\n    def _drain(self, seconds):\n        end = time.monotonic() + seconds\n        while True:\n            left = max(end - time.monotonic(), 0)\n            ready, _, _ = select.select([self.fd], [], [], left)\n            if not ready:\n                return\n            try:\n                data = os.read(self.fd, 65536)\n            except OSError:\n                return\n            if not data:\n                return\n            self.output += data.decode(errors=\"replace\")\n\n    def send_keystrokes(self, keystrokes, wait_sec=0.0):\n        os.write(self.fd, keystrokes.encode())\n        self._drain(max(wait_sec, 0.05))\n\n    def close(self):\n        try:\n            os.kill(self.pid, signal.SIGKILL)\n            os.waitpid(self.pid, 0)\n        except OSError:\n            pass\n",
+            "chars": 1195,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "interactive.interrupt",
+            "verdict": "passed",
+            "expected": "After control C interrupts a foreground command, the shell runs the next command typed.",
+            "observed": [
+              {
+                "step": "construct",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo ready > <scratch><scratch>/interactive.interrupt/result.txt.canary\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "canary",
+                "seen": true
+              },
+              {
+                "step": "send",
+                "keys": "sleep 30\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "\u0003",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo still-usable-4821 > <scratch><scratch>/interactive.interrupt/result.txt.0\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "round": 0,
+                "delay": 0.05,
+                "content": "still-usable-4821\n"
+              },
+              {
+                "step": "send",
+                "keys": "sleep 30\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "\u0003",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo still-usable-4821 > <scratch><scratch>/interactive.interrupt/result.txt.1\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "round": 1,
+                "delay": 0.3,
+                "content": "still-usable-4821\n"
+              },
+              {
+                "step": "send",
+                "keys": "sleep 30\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "\u0003",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo still-usable-4821 > <scratch><scratch>/interactive.interrupt/result.txt.2\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "round": 2,
+                "delay": 1.0,
+                "content": "still-usable-4821\n"
+              }
+            ],
+            "limits": [
+              "One control key, sent 0.05, 0.3, 1 s after the command; other modifiers and delays are untested."
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      },
+      {
+        "requirement": {
+          "id": "R1",
+          "text": "Implement the provided `BaseTerminal` interface in base_terminal.py.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "headless_terminal.py",
+            "text": "import os\nimport pty\nimport select\nimport signal\nimport time\n\nfrom base_terminal import BaseTerminal\n\n\nclass HeadlessTerminal(BaseTerminal):\n    \"\"\"An interactive Bash shell on a pseudo-terminal.\"\"\"\n\n    def __init__(self):\n        pid, fd = pty.fork()\n        if pid == 0:\n            os.execvp(\"bash\", [\"bash\", \"-i\"])\n        self.pid = pid\n        self.fd = fd\n        self.output = \"\"\n        self._drain(0.3)\n\n    def _drain(self, seconds):\n        end = time.monotonic() + seconds\n        while True:\n            left = max(end - time.monotonic(), 0)\n            ready, _, _ = select.select([self.fd], [], [], left)\n            if not ready:\n                return\n            try:\n                data = os.read(self.fd, 65536)\n            except OSError:\n                return\n            if not data:\n                return\n            self.output += data.decode(errors=\"replace\")\n\n    def send_keystrokes(self, keystrokes, wait_sec=0.0):\n        os.write(self.fd, keystrokes.encode())\n        self._drain(max(wait_sec, 0.05))\n\n    def close(self):\n        try:\n            os.kill(self.pid, signal.SIGKILL)\n            os.waitpid(self.pid, 0)\n        except OSError:\n            pass\n",
+            "chars": 1195,
+            "clipped": false
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    ],
+    "skipped": [
+      {
+        "id": "R2",
+        "why": "over the budget of 3 requirements per run"
+      },
+      {
+        "id": "R6",
+        "why": "over the budget of 3 requirements per run"
+      },
+      {
+        "id": "R3",
+        "why": "a constraint or context no scenario observed"
+      }
+    ],
+    "labels": [
+      {
+        "requirement": "R4",
+        "met": true,
+        "basis": "the mini-task grader said passed"
+      },
+      {
+        "requirement": "R5",
+        "met": true,
+        "basis": "the mini-task grader said passed"
+      },
+      {
+        "requirement": "R1",
+        "met": true,
+        "basis": "the mini-task grader said passed"
+      }
+    ],
+    "outcome": {
+      "met": true,
+      "basis": "the mini-task grader said passed"
+    },
+    "baseline": {
+      "done": null,
+      "request": {
+        "report": "HeadlessTerminal runs an interactive bash on a pseudo-terminal.",
+        "changes": "The working directory is not a Git work tree, so its changes are not listed.",
+        "criteria": [
+          "Implement the provided `BaseTerminal` interface in base_terminal.py.",
+          "Make sure it supports the following functionality.",
+          "- Mimics a terminal, where the process starts as an interactive bash shell and commands are typically executed by typing characters and hitting Enter.",
+          "- Supports interactive programs.",
+          "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+          "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called headless_terminal.py so that it can be imported as `from headless_terminal import HeadlessTerminal`."
+        ]
+      },
+      "source": "the closing check the episode asks, over the script's last claim and the workspace's changes"
+    },
+    "split": "development"
+  },
+  "retained": null
+}

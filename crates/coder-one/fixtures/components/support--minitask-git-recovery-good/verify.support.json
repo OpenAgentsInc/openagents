@@ -1,0 +1,66 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.support",
+  "source": {
+    "kind": "synthetic",
+    "task": "git-recovery",
+    "script": "good",
+    "note": "a scripted mini-task episode with verify.checks; the grader's verdict is the outcome"
+  },
+  "input": {
+    "task": {
+      "title": "mini-task git-recovery",
+      "instruction": "I committed feature.txt on master and then ran a hard reset that lost the commit. Recover the lost commit so that master contains feature.txt with its original content, and leave the working tree clean."
+    },
+    "candidate": {
+      "label": "mini-task git-recovery",
+      "origin": "workspace",
+      "digest": "c041497b8de938c8e3a5479d7f0b1da22adc15fb012fde26d11b911c0baa092f"
+    },
+    "evidence": [
+      {
+        "requirement": {
+          "id": "R1",
+          "text": "Recover the lost commit so that master contains feature.txt with its original content, and leave the working tree clean.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "feature.txt",
+            "text": "The feature this repository exists for.\n",
+            "chars": 40,
+            "clipped": false
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    ],
+    "skipped": [],
+    "labels": [
+      {
+        "requirement": "R1",
+        "met": true,
+        "basis": "the mini-task grader said passed"
+      }
+    ],
+    "outcome": {
+      "met": true,
+      "basis": "the mini-task grader said passed"
+    },
+    "baseline": {
+      "done": null,
+      "request": {
+        "report": "Restored the lost commit from the reflog.",
+        "changes": "git status --short:\n\ngit diff HEAD:\n",
+        "criteria": [
+          "Recover the lost commit so that master contains feature.txt with its original content, and leave the working tree clean."
+        ]
+      },
+      "source": "the closing check the episode asks, over the script's last claim and the workspace's changes"
+    },
+    "split": "development"
+  },
+  "retained": null
+}

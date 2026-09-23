@@ -1,0 +1,440 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.support",
+  "source": {
+    "kind": "synthetic",
+    "task": "cancel-cleanup",
+    "script": "good",
+    "note": "a scripted mini-task episode with verify.checks; the grader's verdict is the outcome"
+  },
+  "input": {
+    "task": {
+      "title": "mini-task cancel-cleanup",
+      "instruction": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_concurrent: int) -> None` where each task is an async job to be run and `max_concurrent` is the max number of tasks that can be run concurrently. Put the function in a file called run.py so that it can be imported using `from run import run_tasks`.\n\nSometimes I cancel runs via keyboard interrupt but I want the tasks' cleanup code to still run."
+    },
+    "candidate": {
+      "label": "mini-task cancel-cleanup",
+      "origin": "workspace",
+      "digest": "74b9d2a32306c37eb0fadcad9fac9ff0038c8e04b42339874ff56e3050da640d"
+    },
+    "evidence": [
+      {
+        "requirement": {
+          "id": "R1",
+          "text": "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_concurrent: int) -> None` where each task is an async job to be run and `max_concurrent` is the max number of tasks that can be run concurrently.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "run.py",
+            "text": "import asyncio\nfrom collections.abc import Awaitable, Callable\n\n\nasync def run_tasks(\n    tasks: list[Callable[[], Awaitable[None]]], max_concurrent: int\n) -> None:\n    if max_concurrent < 1:\n        raise ValueError(\"max_concurrent must be at least 1\")\n    pending = iter(tasks)\n\n    async def worker() -> None:\n        for task in pending:\n            await task()\n\n    workers = [asyncio.create_task(worker()) for _ in range(min(max_concurrent, len(tasks)))]\n    try:\n        await asyncio.gather(*workers)\n    except BaseException:\n        for worker_task in workers:\n            worker_task.cancel()\n        await asyncio.gather(*workers, return_exceptions=True)\n        raise\n",
+            "chars": 682,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "cancel.signal.below",
+            "verdict": "passed",
+            "expected": "With 2 tasks and a limit of 3, once 2 tasks have started, an interrupt leaves every started task's cleanup finished before the call returns, never more than 3 run at once, and the process exits.",
+            "observed": [
+              {
+                "tasks": 2,
+                "limit": 3,
+                "ready": true,
+                "interrupted": true,
+                "started": 2,
+                "peak_running": 2,
+                "cleaned_up": 2,
+                "cleanup_missing": [],
+                "cleanup_after_return": [],
+                "returned": true,
+                "exited": true,
+                "killed": false,
+                "sequence": [
+                  "begin",
+                  "start 0",
+                  "start 1",
+                  "cleanup_begin 0",
+                  "cleanup_begin 1",
+                  "cleanup_end 0",
+                  "cleanup_end 1",
+                  "returned",
+                  "keyboard_interrupt",
+                  "exited"
+                ]
+              }
+            ],
+            "limits": [
+              "Tasks still queued when the interrupt came aren't checked: the instruction doesn't say whether they may start.",
+              "Each task runs 1.5 s unless cancelled, so a runner that lets started tasks finish instead of cancelling them also passes.",
+              "One interrupt; a second one during cleanup isn't sent."
+            ]
+          },
+          {
+            "scenario": "cancel.signal.at",
+            "verdict": "passed",
+            "expected": "With 3 tasks and a limit of 3, once 3 tasks have started, an interrupt leaves every started task's cleanup finished before the call returns, never more than 3 run at once, and the process exits.",
+            "observed": [
+              {
+                "tasks": 3,
+                "limit": 3,
+                "ready": true,
+                "interrupted": true,
+                "started": 3,
+                "peak_running": 3,
+                "cleaned_up": 3,
+                "cleanup_missing": [],
+                "cleanup_after_return": [],
+                "returned": true,
+                "exited": true,
+                "killed": false,
+                "sequence": [
+                  "begin",
+                  "start 0",
+                  "start 1",
+                  "start 2",
+                  "cleanup_begin 0",
+                  "cleanup_begin 1",
+                  "cleanup_begin 2",
+                  "cleanup_end 0",
+                  "cleanup_end 1",
+                  "cleanup_end 2",
+                  "returned",
+                  "keyboard_interrupt",
+                  "exited"
+                ]
+              }
+            ],
+            "limits": [
+              "Tasks still queued when the interrupt came aren't checked: the instruction doesn't say whether they may start.",
+              "Each task runs 1.5 s unless cancelled, so a runner that lets started tasks finish instead of cancelling them also passes.",
+              "One interrupt; a second one during cleanup isn't sent."
+            ]
+          },
+          {
+            "scenario": "cancel.signal.above",
+            "verdict": "passed",
+            "expected": "With 5 tasks and a limit of 3, once 3 tasks have started, an interrupt leaves every started task's cleanup finished before the call returns, never more than 3 run at once, and the process exits.",
+            "observed": [
+              {
+                "tasks": 5,
+                "limit": 3,
+                "ready": true,
+                "interrupted": true,
+                "started": 3,
+                "peak_running": 3,
+                "cleaned_up": 3,
+                "cleanup_missing": [],
+                "cleanup_after_return": [],
+                "returned": true,
+                "exited": true,
+                "killed": false,
+                "sequence": [
+                  "begin",
+                  "start 0",
+                  "start 1",
+                  "start 2",
+                  "cleanup_begin 0",
+                  "cleanup_begin 1",
+                  "cleanup_begin 2",
+                  "cleanup_end 0",
+                  "cleanup_end 1",
+                  "cleanup_end 2",
+                  "returned",
+                  "keyboard_interrupt",
+                  "exited"
+                ]
+              }
+            ],
+            "limits": [
+              "Tasks still queued when the interrupt came aren't checked: the instruction doesn't say whether they may start.",
+              "Each task runs 1.5 s unless cancelled, so a runner that lets started tasks finish instead of cancelling them also passes.",
+              "One interrupt; a second one during cleanup isn't sent."
+            ]
+          },
+          {
+            "scenario": "cancel.internal.above",
+            "verdict": "passed",
+            "expected": "With 5 tasks and a limit of 3, once 3 tasks have started, an interrupt leaves every started task's cleanup finished before the call returns, never more than 3 run at once, and the process exits.",
+            "observed": [
+              {
+                "tasks": 5,
+                "limit": 3,
+                "ready": true,
+                "interrupted": true,
+                "started": 3,
+                "peak_running": 3,
+                "cleaned_up": 3,
+                "cleanup_missing": [],
+                "cleanup_after_return": [],
+                "returned": true,
+                "exited": true,
+                "killed": false,
+                "sequence": [
+                  "begin",
+                  "start 0",
+                  "start 1",
+                  "start 2",
+                  "interrupt",
+                  "cleanup_begin 0",
+                  "cleanup_begin 1",
+                  "cleanup_begin 2",
+                  "cleanup_end 0",
+                  "cleanup_end 1",
+                  "cleanup_end 2",
+                  "returned",
+                  "cancelled",
+                  "exited"
+                ]
+              }
+            ],
+            "limits": [
+              "Tasks still queued when the interrupt came aren't checked: the instruction doesn't say whether they may start.",
+              "Each task runs 1.5 s unless cancelled, so a runner that lets started tasks finish instead of cancelling them also passes.",
+              "One interrupt; a second one during cleanup isn't sent."
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      },
+      {
+        "requirement": {
+          "id": "R3",
+          "text": "Sometimes I cancel runs via keyboard interrupt but I want the tasks' cleanup code to still run.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "run.py",
+            "text": "import asyncio\nfrom collections.abc import Awaitable, Callable\n\n\nasync def run_tasks(\n    tasks: list[Callable[[], Awaitable[None]]], max_concurrent: int\n) -> None:\n    if max_concurrent < 1:\n        raise ValueError(\"max_concurrent must be at least 1\")\n    pending = iter(tasks)\n\n    async def worker() -> None:\n        for task in pending:\n            await task()\n\n    workers = [asyncio.create_task(worker()) for _ in range(min(max_concurrent, len(tasks)))]\n    try:\n        await asyncio.gather(*workers)\n    except BaseException:\n        for worker_task in workers:\n            worker_task.cancel()\n        await asyncio.gather(*workers, return_exceptions=True)\n        raise\n",
+            "chars": 682,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "cancel.signal.below",
+            "verdict": "passed",
+            "expected": "With 2 tasks and a limit of 3, once 2 tasks have started, an interrupt leaves every started task's cleanup finished before the call returns, never more than 3 run at once, and the process exits.",
+            "observed": [
+              {
+                "tasks": 2,
+                "limit": 3,
+                "ready": true,
+                "interrupted": true,
+                "started": 2,
+                "peak_running": 2,
+                "cleaned_up": 2,
+                "cleanup_missing": [],
+                "cleanup_after_return": [],
+                "returned": true,
+                "exited": true,
+                "killed": false,
+                "sequence": [
+                  "begin",
+                  "start 0",
+                  "start 1",
+                  "cleanup_begin 0",
+                  "cleanup_begin 1",
+                  "cleanup_end 0",
+                  "cleanup_end 1",
+                  "returned",
+                  "keyboard_interrupt",
+                  "exited"
+                ]
+              }
+            ],
+            "limits": [
+              "Tasks still queued when the interrupt came aren't checked: the instruction doesn't say whether they may start.",
+              "Each task runs 1.5 s unless cancelled, so a runner that lets started tasks finish instead of cancelling them also passes.",
+              "One interrupt; a second one during cleanup isn't sent."
+            ]
+          },
+          {
+            "scenario": "cancel.signal.at",
+            "verdict": "passed",
+            "expected": "With 3 tasks and a limit of 3, once 3 tasks have started, an interrupt leaves every started task's cleanup finished before the call returns, never more than 3 run at once, and the process exits.",
+            "observed": [
+              {
+                "tasks": 3,
+                "limit": 3,
+                "ready": true,
+                "interrupted": true,
+                "started": 3,
+                "peak_running": 3,
+                "cleaned_up": 3,
+                "cleanup_missing": [],
+                "cleanup_after_return": [],
+                "returned": true,
+                "exited": true,
+                "killed": false,
+                "sequence": [
+                  "begin",
+                  "start 0",
+                  "start 1",
+                  "start 2",
+                  "cleanup_begin 0",
+                  "cleanup_begin 1",
+                  "cleanup_begin 2",
+                  "cleanup_end 0",
+                  "cleanup_end 1",
+                  "cleanup_end 2",
+                  "returned",
+                  "keyboard_interrupt",
+                  "exited"
+                ]
+              }
+            ],
+            "limits": [
+              "Tasks still queued when the interrupt came aren't checked: the instruction doesn't say whether they may start.",
+              "Each task runs 1.5 s unless cancelled, so a runner that lets started tasks finish instead of cancelling them also passes.",
+              "One interrupt; a second one during cleanup isn't sent."
+            ]
+          },
+          {
+            "scenario": "cancel.signal.above",
+            "verdict": "passed",
+            "expected": "With 5 tasks and a limit of 3, once 3 tasks have started, an interrupt leaves every started task's cleanup finished before the call returns, never more than 3 run at once, and the process exits.",
+            "observed": [
+              {
+                "tasks": 5,
+                "limit": 3,
+                "ready": true,
+                "interrupted": true,
+                "started": 3,
+                "peak_running": 3,
+                "cleaned_up": 3,
+                "cleanup_missing": [],
+                "cleanup_after_return": [],
+                "returned": true,
+                "exited": true,
+                "killed": false,
+                "sequence": [
+                  "begin",
+                  "start 0",
+                  "start 1",
+                  "start 2",
+                  "cleanup_begin 0",
+                  "cleanup_begin 1",
+                  "cleanup_begin 2",
+                  "cleanup_end 0",
+                  "cleanup_end 1",
+                  "cleanup_end 2",
+                  "returned",
+                  "keyboard_interrupt",
+                  "exited"
+                ]
+              }
+            ],
+            "limits": [
+              "Tasks still queued when the interrupt came aren't checked: the instruction doesn't say whether they may start.",
+              "Each task runs 1.5 s unless cancelled, so a runner that lets started tasks finish instead of cancelling them also passes.",
+              "One interrupt; a second one during cleanup isn't sent."
+            ]
+          },
+          {
+            "scenario": "cancel.internal.above",
+            "verdict": "passed",
+            "expected": "With 5 tasks and a limit of 3, once 3 tasks have started, an interrupt leaves every started task's cleanup finished before the call returns, never more than 3 run at once, and the process exits.",
+            "observed": [
+              {
+                "tasks": 5,
+                "limit": 3,
+                "ready": true,
+                "interrupted": true,
+                "started": 3,
+                "peak_running": 3,
+                "cleaned_up": 3,
+                "cleanup_missing": [],
+                "cleanup_after_return": [],
+                "returned": true,
+                "exited": true,
+                "killed": false,
+                "sequence": [
+                  "begin",
+                  "start 0",
+                  "start 1",
+                  "start 2",
+                  "interrupt",
+                  "cleanup_begin 0",
+                  "cleanup_begin 1",
+                  "cleanup_begin 2",
+                  "cleanup_end 0",
+                  "cleanup_end 1",
+                  "cleanup_end 2",
+                  "returned",
+                  "cancelled",
+                  "exited"
+                ]
+              }
+            ],
+            "limits": [
+              "Tasks still queued when the interrupt came aren't checked: the instruction doesn't say whether they may start.",
+              "Each task runs 1.5 s unless cancelled, so a runner that lets started tasks finish instead of cancelling them also passes.",
+              "One interrupt; a second one during cleanup isn't sent."
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      },
+      {
+        "requirement": {
+          "id": "R2",
+          "text": "Put the function in a file called run.py so that it can be imported using `from run import run_tasks`.",
+          "kind": "deliverable"
+        },
+        "artifact": [
+          {
+            "path": "run.py",
+            "text": "import asyncio\nfrom collections.abc import Awaitable, Callable\n\n\nasync def run_tasks(\n    tasks: list[Callable[[], Awaitable[None]]], max_concurrent: int\n) -> None:\n    if max_concurrent < 1:\n        raise ValueError(\"max_concurrent must be at least 1\")\n    pending = iter(tasks)\n\n    async def worker() -> None:\n        for task in pending:\n            await task()\n\n    workers = [asyncio.create_task(worker()) for _ in range(min(max_concurrent, len(tasks)))]\n    try:\n        await asyncio.gather(*workers)\n    except BaseException:\n        for worker_task in workers:\n            worker_task.cancel()\n        await asyncio.gather(*workers, return_exceptions=True)\n        raise\n",
+            "chars": 682,
+            "clipped": false
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    ],
+    "skipped": [],
+    "labels": [
+      {
+        "requirement": "R1",
+        "met": true,
+        "basis": "the mini-task grader said passed"
+      },
+      {
+        "requirement": "R3",
+        "met": true,
+        "basis": "the mini-task grader said passed"
+      },
+      {
+        "requirement": "R2",
+        "met": true,
+        "basis": "the mini-task grader said passed"
+      }
+    ],
+    "outcome": {
+      "met": true,
+      "basis": "the mini-task grader said passed"
+    },
+    "baseline": {
+      "done": null,
+      "request": {
+        "report": "run_tasks cancels and awaits started tasks, so their cleanup runs.",
+        "changes": "The working directory is not a Git work tree, so its changes are not listed.",
+        "criteria": [
+          "Create a Python function called `async run_tasks(tasks: list[Callable[[], Awaitable[None]]], max_concurrent: int) -> None` where each task is an async job to be run and `max_concurrent` is the max number of tasks that can be run concurrently.",
+          "Put the function in a file called run.py so that it can be imported using `from run import run_tasks`.",
+          "Sometimes I cancel runs via keyboard interrupt but I want the tasks' cleanup code to still run."
+        ]
+      },
+      "source": "the closing check the episode asks, over the script's last claim and the workspace's changes"
+    },
+    "split": "development"
+  },
+  "retained": null
+}
