@@ -948,6 +948,17 @@ impl Answer {
             })).collect::<Vec<_>>(),
             "categories": Category::ALL.iter().map(|c| (c.name().to_owned(), json!(round2(self.category(*c))))).collect::<Map<String, Value>>(),
             "judgments": self.nouls,
+            "every_judgment": JUDGMENTS.iter().filter_map(|j| {
+                let p = *self.nouls.get(j.id)?;
+                Some(json!({
+                    "id": j.id,
+                    "tag": j.tag,
+                    "category": j.category.name(),
+                    "probability": p,
+                    "reason": p >= REASON_AT,
+                }))
+            }).collect::<Vec<_>>(),
+            "reason_at": REASON_AT,
             "questions": self.questions,
             "key": self.key,
         })

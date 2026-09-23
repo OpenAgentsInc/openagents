@@ -82,6 +82,7 @@ pub mod questions;
 pub mod regress;
 pub mod row;
 pub mod runs;
+pub mod runs_group;
 pub mod runs_learning;
 pub mod runs_story;
 pub mod runs_transcript;

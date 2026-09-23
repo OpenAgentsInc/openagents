@@ -1194,7 +1194,8 @@ pub fn detail_json(detail: &Detail, now: i64) -> Value {
         "summary": summary(detail, now).iter().map(|p| json!({"heading": p.heading, "text": p.text})).collect::<Vec<_>>(),
         "summary_source": "deterministic: built from the run's records by fixed rules",
         "failures": detail.failures.iter().map(|f| json!({"test": f.name, "why": f.why})).collect::<Vec<_>>(),
-        "transcript": detail.transcript.blocks.iter().map(|block| json!({
+        "transcript": detail.transcript.blocks.iter().enumerate().map(|(index, block)| json!({
+            "step": index + 1,
             "at": clock(block.at, start),
             "headline": block.headline(),
             "body": block.body(true),

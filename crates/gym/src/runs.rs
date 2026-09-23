@@ -1193,6 +1193,10 @@ pub struct Filter {
     /// An outcome's word: `passed`, `failed`, `running`, or `not graded`.
     pub outcome: Option<&'static str>,
     pub search: String,
+    /// Judgments a run must meet, each at or above its threshold, in the
+    /// answers `gym runs rank` keeps. [`Filter::admits`] doesn't read them;
+    /// [`Filter::judged`] does.
+    pub reasons: Vec<crate::runs_group::Reason>,
 }
 
 impl Filter {
@@ -1202,6 +1206,13 @@ impl Filter {
         self.agent.is_none_or(|agent| run.agent == agent)
             && self.outcome.is_none_or(|word| run.outcome.word() == word)
             && run.matches(&self.search)
+    }
+
+    /// Whether Jev's `answer` for a run meets every `--reason`. With no
+    /// reasons, every run does, judged or not.
+    #[must_use]
+    pub fn judged(&self, answer: Option<&crate::runs_learning::Answer>) -> bool {
+        self.reasons.iter().all(|reason| reason.holds(answer))
     }
 
     /// What the filter is doing, in words, or `None` when it shows all.
@@ -1216,6 +1227,9 @@ impl Filter {
         }
         if !self.search.trim().is_empty() {
             parts.push(format!("\"{}\"", self.search.trim()));
+        }
+        for reason in &self.reasons {
+            parts.push(reason.describe());
         }
         (!parts.is_empty()).then(|| parts.join(" · "))
     }
@@ -1287,7 +1301,8 @@ gym runs: Terminal-Bench runs in plain words.
 
 Usage:
   gym runs [--order newest|learning] [--agent NAME] [--outcome WORD] [--search TEXT]
-           [--limit N] [--json]
+           [--reason ID[=P]]... [--limit N] [--json]
+  gym runs group --by reason|task|agent|policy|outcome [filters] [--members N] [--json]
   gym runs show RUN [--transcript] [--expand] [--json | --evidence]
   gym runs rank [--limit N] [--recorded FILE] [--record FILE] [--no-jev] [--json]
 
@@ -1296,6 +1311,16 @@ only one job has. --agent takes coder-one, claude-code, codex, or reference;
 --outcome takes passed, failed, running, or not-graded. --jobs-dir PATH and
 --traces-dir PATH read other directories; --no-jobs and --no-traces skip one,
 and --no-tasks skips reading the task definitions.
+
+--reason ID[=P] keeps the runs whose Jev judgment ID is at or above P, 0.5
+when P is left out; repeat it to require several. The IDs are the question
+set's: near_miss, output_slip, unearned_success, looped, harness_fault, and
+the rest `gym runs show RUN --json` lists. A run Jev hasn't judged never
+meets a reason. `group --by` counts the runs the filters keep per reason,
+task, agent, policy (the agent with its variant or model), or outcome, lists
+each group's members, and gives each judgment's mean probability over them.
+A run is in every reason group whose judgment it meets, at 0.5 or at the
+threshold a --reason names. Code computes the groups; nothing asks Jev.
 
 --order learning lists the runs Jev judged most worth learning from first,
 with the reasons, from the answers `gym runs rank` keeps. `gym runs rank`
@@ -1328,6 +1353,9 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     let mut evidence = false;
     let mut learning_dir = crate::runs_learning::default_dir();
     let mut reference = true;
+    let mut group_by: Option<crate::runs_group::By> = None;
+    let mut grouping = false;
+    let mut members = 8usize;
     let mut index = 0;
     let value = |index: usize| args.get(index + 1).cloned().ok_or_else(|| USAGE.to_owned());
     while index < args.len() {
@@ -1337,6 +1365,23 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
                 index += 1;
             }
             "rank" if index == 0 => rank = true,
+            "group" if index == 0 => grouping = true,
+            "--by" => {
+                group_by = Some(crate::runs_group::By::parse(&value(index)?)?);
+                index += 1;
+            }
+            "--members" => {
+                members = value(index)?
+                    .parse()
+                    .map_err(|_| format!("--members needs a number\n\n{USAGE}"))?;
+                index += 1;
+            }
+            "--reason" => {
+                filter
+                    .reasons
+                    .push(crate::runs_group::Reason::parse(&value(index)?)?);
+                index += 1;
+            }
             "--json" => json_out = true,
             "--order" => {
                 learning_order = match value(index)?.as_str() {
@@ -1418,6 +1463,9 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             other => return Err(format!("unknown argument {other}\n\n{USAGE}")),
         }
         index += 1;
+    }
+    if grouping && group_by.is_none() {
+        return Err(format!("group needs --by\n\n{USAGE}"));
     }
     let catalog = Catalog::load(sources);
     let now = now_ms();
@@ -1560,8 +1608,29 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     let admitted: Vec<&Run> = catalog
         .runs
         .iter()
-        .filter(|run| filter.admits(run))
+        .filter(|run| filter.admits(run) && filter.judged(answers.get(&run.id()).copied()))
         .collect();
+    if let Some(by) = group_by {
+        let groups = crate::runs_group::group(&admitted, &answers, &rarity, by, &filter.reasons);
+        if json_out {
+            let mut value =
+                crate::runs_group::groups_json(&groups, by, &answers, &rarity, admitted.len());
+            value["filter"] = json!(filter.describe());
+            write(
+                out,
+                &serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?,
+            )?;
+            return Ok(0);
+        }
+        for line in crate::runs_group::groups_text(&groups, by, &answers, &rarity, members) {
+            write(out, &line)?;
+        }
+        if let Some(filter) = filter.describe() {
+            write(out, "")?;
+            write(out, &format!("Showing: {filter}"))?;
+        }
+        return Ok(0);
+    }
     let ordered = if learning_order {
         crate::runs_learning::order(admitted, &answers, &rarity)
     } else {
@@ -1582,6 +1651,7 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             "ranked": answers.len(),
             "unranked": unranked,
             "shown": runs.len(),
+            "filter": filter.describe(),
             "runs": runs.iter().map(|run| {
                 let mut value = run_json(run, now);
                 value["learning"] = answers
@@ -1928,6 +1998,117 @@ mod tests {
             text.contains("Worth learning from\n  Learning value"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn reasons_filter_and_groups_read_the_recorded_answers() {
+        let (dir, _) = fixture_sources();
+        let store = tempfile::tempdir().unwrap();
+        let recorded = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/runs-learning/recorded.json")
+            .display()
+            .to_string();
+        let base = [
+            "--jobs-dir".to_owned(),
+            dir.path().join("jobs").display().to_string(),
+            "--traces-dir".to_owned(),
+            dir.path().join("traces").display().to_string(),
+            "--no-tasks".to_owned(),
+            "--no-reference".to_owned(),
+            "--learning-dir".to_owned(),
+            store.path().display().to_string(),
+        ];
+        let run = |extra: &[&str]| {
+            let mut args: Vec<String> = extra.iter().map(|s| (*s).to_owned()).collect();
+            args.extend(base.iter().cloned());
+            let mut out = Vec::new();
+            let code = command(&args, &mut out).unwrap();
+            (code, String::from_utf8(out).unwrap())
+        };
+        let json = |extra: &[&str]| -> Value { serde_json::from_str(&run(extra).1).unwrap() };
+        let ids = |value: &Value| -> Vec<String> {
+            let mut ids: Vec<String> = value["runs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|run| run["task"].as_str().unwrap().to_owned())
+                .collect();
+            ids.sort();
+            ids
+        };
+        assert_eq!(run(&["rank", "--recorded", &recorded]).0, 0);
+
+        // Two runs claimed a success Jev judges unearned.
+        let value = json(&["--reason", "unearned_success", "--json"]);
+        assert_eq!(
+            ids(&value),
+            vec!["cancel-async-tasks", "wal-recovery-ordering"],
+            "{value}"
+        );
+        assert_eq!(value["filter"], "unearned_success ≥ 0.50");
+        // A higher threshold keeps one, and reasons combine.
+        let value = json(&["--reason", "unearned_success=0.97", "--json"]);
+        assert_eq!(ids(&value), vec!["wal-recovery-ordering"], "{value}");
+        let value = json(&[
+            "--reason",
+            "unearned_success",
+            "--reason",
+            "near_miss",
+            "--json",
+        ]);
+        assert_eq!(ids(&value), vec!["wal-recovery-ordering"], "{value}");
+        let value = json(&["--reason", "looped", "--outcome", "failed", "--json"]);
+        assert!(ids(&value).is_empty(), "{value}");
+
+        // Groups by reason: a run is in every reason it meets.
+        let value = json(&["group", "--by", "reason", "--json"]);
+        assert_eq!(value["by"], "reason");
+        let groups = value["groups"].as_array().unwrap();
+        let unearned = groups
+            .iter()
+            .find(|g| g["key"] == "unearned_success")
+            .expect("an unearned-success group");
+        assert_eq!(unearned["count"], 2, "{unearned}");
+        assert_eq!(unearned["tag"], "claimed unearned success");
+        assert_eq!(unearned["mean_probability"][0]["id"], "unearned_success");
+        assert!(
+            unearned["members"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|m| m["probability"].as_f64().unwrap() >= 0.5)
+        );
+        let counts: Vec<u64> = groups
+            .iter()
+            .map(|g| g["count"].as_u64().unwrap())
+            .collect();
+        assert!(counts.windows(2).all(|w| w[0] >= w[1]), "{counts:?}");
+        // The same answers group the same way every time.
+        assert_eq!(value, json(&["group", "--by", "reason", "--json"]));
+
+        // By outcome, every run is in exactly one group.
+        let value = json(&["group", "--by", "outcome", "--json"]);
+        let total: u64 = value["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|g| g["count"].as_u64().unwrap())
+            .sum();
+        assert_eq!(total, 5, "{value}");
+        let (_, text) = run(&["group", "--by", "policy", "--reason", "unearned_success"]);
+        assert!(text.contains("grouped by policy"), "{text}");
+        assert!(text.contains("Showing: unearned_success ≥ 0.50"), "{text}");
+
+        // One run's JSON has every judgment's probability, not only the
+        // reasons, and numbered transcript steps.
+        let value = json(&["show", "wal-recovery-ordering", "--json"]);
+        let every = value["learning"]["every_judgment"].as_array().unwrap();
+        assert_eq!(every.len(), crate::runs_learning::JUDGMENTS.len());
+        assert!(every.iter().any(|j| j["reason"] == false), "{value}");
+        assert_eq!(value["transcript"][0]["step"], 1);
+
+        assert!(command(&["group".to_owned()], &mut Vec::new()).is_err());
+        assert!(command(&["--reason".to_owned(), "nope".to_owned()], &mut Vec::new()).is_err());
     }
 
     #[test]

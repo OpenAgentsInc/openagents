@@ -133,6 +133,41 @@ million input tokens: ranking all 588 finished runs retained on
 answers elsewhere, `--no-reference` leaves the leaderboard out, and
 `--no-tasks` skips reading task definitions.
 
+## Filter and group runs by judgment
+
+The stored answers also answer questions across runs. `--reason ID[=P]`
+keeps the runs whose judgment `ID` is at or above `P`, or 0.5 when you
+leave `P` out. Repeat it to require several judgments. `gym runs group
+--by` counts the runs the filters keep per reason, task, agent, policy, or
+outcome. It lists each group's members, strongest first, with each
+judgment's mean probability over them. Code computes the groups from the
+stored answers, so neither command asks Jev anything.
+
+```sh
+gym runs --reason unearned_success --json            # every run Jev judged claimed success it didn't earn
+gym runs --reason near_miss=0.8 --agent coder-one    # strong near misses by Coder One
+gym runs --reason unearned_success --reason near_miss
+gym runs group --by reason                           # how many runs give each reason
+gym runs group --by policy --reason output_slip --json
+gym runs show wal-recovery-ordering --json           # learning.every_judgment has all 18
+```
+
+The judgment IDs are the question set's: `near_miss`, `output_slip`,
+`missed_check`, `ignored_task`, `looped`, `stopped_early`,
+`unearned_success`, `needless_repair`, `wasted_rounds`, `wasted_money`,
+`harness_fault`, `h_briefing`, `h_checks`, `h_effort`, `h_routing`,
+`h_jev`, `h_controller`, and `surprise`. A run Jev hasn't judged never meets
+a reason. A run is in every reason group whose judgment it meets, at 0.5 or
+at the threshold a `--reason` names, so reason groups overlap. A policy is
+the agent with its variant or model, such as `Coder One · tunable-v6` or
+`Claude Code · Opus 5.5`. `--members N` sets how many members the text
+lists per group; `--json` lists them all.
+
+`gym runs show RUN --json` carries every judgment's probability in
+`learning.every_judgment`, with its tag, category, and whether it's a
+reason, not only the reasons above the threshold. Each transcript step
+carries its `step` number, which is what a citation of a step names.
+
 ## Read a Terminal-Bench 4.0 suite
 
 Attempts of the `tb4` profile ran Terminal-Bench 4.0 at tag `v4.0.0`. Some
