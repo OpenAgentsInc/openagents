@@ -521,3 +521,23 @@ def test_outcome_exit_codes_are_graded_not_errors():
 
     assert OUTCOME_EXIT_CODES == {3: "step_limit", 4: "generation_failed", 5: "delegate_failed"}
     assert 1 not in OUTCOME_EXIT_CODES
+
+
+def test_the_instruction_is_uploaded_readable_by_any_task_user(tmp_path):
+    import os
+    import stat
+
+    path, digest = _binary(tmp_path)
+    agent = CoderOne(logs_dir=tmp_path, artifact_path=path, artifact_sha256=digest)
+    modes = []
+
+    class Env:
+        async def upload_file(self, source, target):
+            modes.append(stat.S_IMODE(os.stat(source).st_mode))
+
+        async def exec(self, command, **_):
+            raise RuntimeError("stop after the upload")
+
+    with pytest.raises(Exception):
+        asyncio.run(agent.run("do the task", Env(), None))
+    assert modes and modes[0] & 0o044 == 0o044

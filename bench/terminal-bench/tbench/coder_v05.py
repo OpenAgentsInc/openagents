@@ -277,12 +277,20 @@ class CoderV05(BaseInstalledAgent):
         ) as handle:
             handle.write(rendered)
             local_instruction = handle.name
+        # A temporary file is created 0600 and the upload keeps its mode, so
+        # a task image that runs as a non-root user couldn't read it and the
+        # episode died before starting (risk-scorer-replay, 2026-09-23).
+        os.chmod(local_instruction, 0o644)
         try:
             await environment.upload_file(
                 local_instruction, str(INSTRUCTION_PATH)
             )
         finally:
             os.unlink(local_instruction)
+        with contextlib.suppress(Exception):
+            await environment.exec(
+                command=f"chmod a+r {shlex.quote(str(INSTRUCTION_PATH))}"
+            )
 
         command = " ".join(
             [
