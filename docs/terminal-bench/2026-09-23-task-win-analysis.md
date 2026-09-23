@@ -1,5 +1,41 @@
 # What the TB4 winning and failing traces actually show
 
+**Coder's strongest efficiency result: the same four tasks passed with
+49% lower recorded cost and 53% less agent time than plain Claude Code
+using the same Opus 5.5 model.** Coder's preparation, checks, and repair
+costs are included in those totals.
+
+| Configuration | Successful tasks | Executor effort | Total recorded cost | Total agent time |
+| --- | ---: | --- | ---: | ---: |
+| Plain Claude Code + Opus 5.5 | 4/4 | High | $12.23 | 96.0 minutes |
+| Coder v2 + Opus 5.5 | 4/4 | Medium | $6.30 | 45.0 minutes |
+
+The four tasks are `batched-eval-parity`, `nextjs-performance`,
+`photonic-waveguide-routing`, and `react-lead-form`. Both configurations
+use Claude Code 2.1.280. Agent time is summed across the four trials and
+excludes environment setup and grading. Cost is the recorded value of
+model usage, not an observed incremental subscription bill. The
+[per-task comparison](#same-model-comparisons-and-cost) and
+[audit record](2026-09-23-task-win-analysis.json) retain the exact numbers,
+trial identities, and configuration evidence.
+
+**The significance is more completed work per dollar and minute from an
+existing model.** In these runs, Coder's complete configuration achieved
+the same accepted outcomes with about half the cost and time. That is
+useful product behavior even though Opus performs the underlying coding
+and analysis.
+
+The confirmed effort difference matters: this comparison combines Coder's
+preparation and orchestration with medium effort, against plain Claude
+Code at high effort. It does not isolate how much each component saves.
+These are four selected pairs with one attempt per configuration, not a
+full-suite savings estimate. The supported claim is that **Coder has a
+configuration that completed these tasks faster and cheaper**. Establishing
+that adding Coder improves an otherwise identical configuration requires
+matching effort, tools, and budgets and repeating the comparison.
+
+## What the winning traces establish
+
 The ten highlighted Coder One wins are real verifier passes. The traces
 also change the explanation substantially: **Opus 5.5 produced every
 selected winning solution.** Coder supplied preparation, execution policy,
@@ -690,11 +726,18 @@ that statement described an older snapshot and is not a current audit.
 
 For the four tasks both systems pass, recorded costs sum to $6.2962 for
 Coder and $12.2348 for plain Opus, a 48.5% reduction in this selected
-four-pair sample. Each pair also favors Coder in agent time. These are
-one-attempt comparisons, selected around the highlighted wins, with
-potential differences in effort, prompt, tools, and runtime conditions.
-They justify measuring an efficiency advantage; they do not establish a
-stable savings rate or that Jev alone produced it.
+four-pair sample. Agent time sums to 2,698.8 s versus 5,758.4 s, a 53.1%
+reduction. Each individual pair also favors Coder in agent time.
+
+The retained Coder compositions show medium executor effort; the four
+baseline trial configurations on `coderos` explicitly set
+`reasoning_effort: high`. Both use Opus 5.5 and Claude Code 2.1.280. The
+audit record includes the baseline configuration excerpts and source
+digests. These are one-attempt comparisons selected around the highlighted
+wins, with differences in effort, prompt, tools, and potentially runtime
+conditions. They demonstrate an efficiency advantage for the complete
+configuration in this sample, without establishing a stable savings rate
+or isolating Jev's contribution.
 
 Do not compare native turn counts across agent families as if they were
 reasoning steps. Claude's turns and Codex's outer turn count use different

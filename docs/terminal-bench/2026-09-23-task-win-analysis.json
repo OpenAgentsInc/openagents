@@ -6179,5 +6179,91 @@
     "manifest_digest_mismatches": 0,
     "largest_evidence_file_bytes": 17808581,
     "scope": "Documentation and retained evidence; no Rust behavior changed and no benchmark trials rerun."
+  },
+  "efficiency_comparison": {
+    "reviewed_at": "2026-09-23T13:15:22.203615+00:00",
+    "task_count": 4,
+    "tasks": [
+      "batched-eval-parity",
+      "nextjs-performance",
+      "photonic-waveguide-routing",
+      "react-lead-form"
+    ],
+    "selection": "The four selected same-model local pairs in this audit where both configurations passed, one attempt each.",
+    "model": "claude-opus-5-5",
+    "claude_code_version": "2.1.280",
+    "coder_executor_effort": "medium",
+    "baseline_executor_effort": "high",
+    "coder_total_cost_usd": 6.296229323999999,
+    "baseline_total_cost_usd": 12.234785200000003,
+    "cost_reduction_fraction": 0.48538292899494495,
+    "coder_total_agent_seconds": 2698.803388,
+    "baseline_total_agent_seconds": 5758.376604,
+    "agent_time_reduction_fraction": 0.5313256541565374,
+    "scope": "Whole-configuration comparison. Coder totals include its preparation, checks, and repair. Agent time excludes setup and verifier. Usage cost is not an observed incremental subscription bill.",
+    "causal_limit": "Different effort settings prevent isolation of the marginal benefit of adding Coder to an otherwise identical executor configuration.",
+    "configuration_evidence": {
+      "retrieved_at": "2026-09-23T13:14:32.982058+00:00",
+      "host": "coderos",
+      "selection": "The four same-model task pairs in this audit where both systems passed.",
+      "baseline_configurations": [
+        {
+          "job": "tb4--claude-code-opus--batched-eval-parity",
+          "trial": "batched-eval-parity__P7sa6z7",
+          "source": "<jobs-dir>/tb4--claude-code-opus--batched-eval-parity/batched-eval-parity__P7sa6z7/config.json",
+          "config_sha256": "ad6b63c6f79582249c522ddc631e650177c340d9ec4c6148bdb5398f19dbdd3a",
+          "agent": {
+            "name": "claude-code",
+            "model_name": "claude-opus-5-5"
+          },
+          "kwargs": {
+            "version": "2.1.280",
+            "reasoning_effort": "high"
+          }
+        },
+        {
+          "job": "tb4--claude-code-opus--nextjs-performance",
+          "trial": "nextjs-performance__8omVUmf",
+          "source": "<jobs-dir>/tb4--claude-code-opus--nextjs-performance/nextjs-performance__8omVUmf/config.json",
+          "config_sha256": "27d5c90582bd7ec2b546796413db09d3f6ad19169c7f2b8b142aa113002890b0",
+          "agent": {
+            "name": "claude-code",
+            "model_name": "claude-opus-5-5"
+          },
+          "kwargs": {
+            "version": "2.1.280",
+            "reasoning_effort": "high"
+          }
+        },
+        {
+          "job": "tb4--claude-code-opus--photonic-waveguide-routing",
+          "trial": "photonic-waveguide-routing__Uejqz9r",
+          "source": "<jobs-dir>/tb4--claude-code-opus--photonic-waveguide-routing/photonic-waveguide-routing__Uejqz9r/config.json",
+          "config_sha256": "0960b666f0a991b9bc2aee836f42df54f53703087fbcacdee378b80287771e64",
+          "agent": {
+            "name": "claude-code",
+            "model_name": "claude-opus-5-5"
+          },
+          "kwargs": {
+            "version": "2.1.280",
+            "reasoning_effort": "high"
+          }
+        },
+        {
+          "job": "tb4--claude-code-opus--react-lead-form",
+          "trial": "react-lead-form__2dVk4B7",
+          "source": "<jobs-dir>/tb4--claude-code-opus--react-lead-form/react-lead-form__2dVk4B7/config.json",
+          "config_sha256": "ced2b72caaaeee5e6982921acb07eeed9d84d520023d33b5bd0fdbc587b8d327",
+          "agent": {
+            "name": "claude-code",
+            "model_name": "claude-opus-5-5"
+          },
+          "kwargs": {
+            "version": "2.1.280",
+            "reasoning_effort": "high"
+          }
+        }
+      ]
+    }
   }
 }
