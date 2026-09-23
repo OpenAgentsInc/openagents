@@ -72,6 +72,9 @@ copy of the episode log or the native output.
 | `/` | Search by task, what it asks, agent, or batch. |
 | `a`, `o`, `c` | Filter by agent, filter by outcome, or clear the filters. |
 | `l` | Switch between newest first and most worth learning from first. |
+| `x` | Mark the run, or the selected transcript step, as bad. |
+| `v` | Mark the run fine: you read it and nothing is wrong. |
+| `u` | Remove the mark on the run or the selected step. |
 | `Esc` | Go back. |
 | `q` | Leave. |
 
@@ -92,6 +95,34 @@ running trials wait until they finish. With no key, or with
 `gym-terminal --terminal-bench --no-jev`, the pane asks nothing: runs
 already judged still show in the learning order, and with none judged the
 list stays newest first and the top rail says why.
+
+### Mark runs
+
+When a run, or one step of it, shows the agent doing something wrong, mark
+it. In the list or a summary, `x` marks the run; in a transcript, `x` marks
+the selected step. A composer opens over the pane: type a one-line note,
+move through the 18 `runs-learning-v1` judgments with the arrow keys, and
+press `Tab` to tag the one under the cursor, so the mark can say "this is
+`unearned_success`." `Enter` saves and `Esc` cancels. Pressing `x` on a
+marked run or step opens the composer with its note and tags, and saving
+replaces the mark.
+
+`v` marks the whole run fine: you read it and nothing is wrong. `u` removes
+the mark on the run, or on the selected step in a transcript. The top rail
+says what the last key did.
+
+A marked run shows a flag before its task in the list, `⚑` for bad and `⚐`
+for fine, and the preview under the list says who marked it, when, and
+why. A run's summary has a **Marks** section, and a marked step shows its
+mark under the step in the transcript.
+
+The pane writes to the same append-only store as `gym runs mark`,
+`~/.openagents/gym/marks/marks.jsonl`, so marks survive a restart, the pane
+shows marks made from the command line on its next refresh, and
+`gym runs agreement` measures Jev against them. Each mark carries `$USER` as
+its author. See
+[Mark bad runs and steps](terminal-bench-cli.md#mark-bad-runs-and-steps) and
+[Measure Jev against the marks](terminal-bench-cli.md#measure-jev-against-the-marks).
 
 The expert views below stay behind their keys; `Esc` in any of them returns
 to the Runs pane. `gym runs` prints the same list and summaries as text; see

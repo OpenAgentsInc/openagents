@@ -174,7 +174,8 @@ When you read a run and see the agent do something wrong, mark it. A mark
 says that a run, or one step of its transcript, is bad. It can carry a
 one-line note and the judgment IDs that name what went wrong, so the mark
 can say "this is `unearned_success`." When you read a run and find nothing
-wrong, clear it.
+wrong, clear it. The Runs pane does the same with `x`, `v`, and `u`; see
+[Mark runs](terminal-bench-tui.md#mark-runs).
 
 ```sh
 gym runs mark wal-recovery-ordering --tag unearned_success --note "said the tests passed; two failed"

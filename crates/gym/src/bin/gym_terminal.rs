@@ -85,6 +85,13 @@ Terminal-Bench opens on the Runs pane: recent runs in plain words.
   l              Switch between newest first and most worth learning from
                  first. Jev judges each finished run once; the choice is
                  remembered in ~/.openagents/gym/runs-pane.json.
+  x              Mark the run, or the selected transcript step, as bad:
+                 type a note, move with the arrows, and press tab to tag
+                 a judgment; enter saves, esc cancels.
+  v              Mark the run fine: you read it and nothing is wrong.
+  u              Remove the mark on the run or the selected step. Marks
+                 are kept in ~/.openagents/gym/marks/marks.jsonl, the
+                 store `gym runs mark` writes.
   esc            Go back.
   q              Leave.
 
@@ -207,12 +214,17 @@ fn terminal_bench_tui_runs(catalog: gym::runs::Catalog, jev: bool) -> gym::runs_
         Judge::Off("--no-jev turns Jev off".to_owned())
     };
     let prefs = default_dir().and_then(|dir| dir.parent().map(|gym| gym.join("runs-pane.json")));
-    gym::runs_tui::Pane::new(catalog).with_learning(
-        Store::open(default_dir()),
-        judge,
-        gym::terminal_bench_reference::Reference::checked(),
-        prefs,
-    )
+    gym::runs_tui::Pane::new(catalog)
+        .with_learning(
+            Store::open(default_dir()),
+            judge,
+            gym::terminal_bench_reference::Reference::checked(),
+            prefs,
+        )
+        .with_marks(
+            gym::runs_marks::Marks::open(gym::runs_marks::default_dir()),
+            gym::runs_marks::default_author(),
+        )
 }
 
 /// A terminal key as the Runs pane reads it.
@@ -228,6 +240,7 @@ fn runs_key(code: KeyCode) -> Option<gym::runs_tui::Key> {
         KeyCode::Enter => Key::Enter,
         KeyCode::Esc => Key::Back,
         KeyCode::Backspace => Key::Backspace,
+        KeyCode::Tab => Key::Tab,
         KeyCode::Char(c) => Key::Char(c),
         _ => return None,
     })

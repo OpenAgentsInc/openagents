@@ -35,6 +35,9 @@ use crate::runs_transcript::{Block, Kind, first_line};
 use crate::terminal_bench_reference::Reference;
 use crate::tui::ladder_from_environment;
 
+#[path = "runs_tui_marks.rs"]
+mod marking;
+
 /// A key the pane understands, whatever terminal it came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
@@ -48,6 +51,8 @@ pub enum Key {
     /// Escape: go back, or cancel a search.
     Back,
     Backspace,
+    /// Tab: in the mark composer, tags the judgment under the cursor.
+    Tab,
     Char(char),
 }
 
@@ -78,6 +83,8 @@ struct Entry {
     /// The time the margin shows, or empty when it repeats the last one.
     time: String,
     ladder: Ladder,
+    /// A person's mark on the step, in words.
+    mark: Option<String>,
 }
 
 /// Where a boxed block's frame goes.
@@ -220,6 +227,8 @@ pub struct Pane {
     now: i64,
     read_at: i64,
     tick: u64,
+    /// A person's marks, and the composer `x` opens.
+    marking: marking::Marking,
 }
 
 impl Pane {
@@ -241,6 +250,7 @@ impl Pane {
             now,
             read_at: now,
             tick: 0,
+            marking: marking::Marking::in_memory(),
         }
     }
 
@@ -439,6 +449,7 @@ impl Pane {
         let kept = self.selected_run().map(Run::id);
         let before = self.shape();
         self.catalog.refresh(now);
+        self.reload_marks();
         self.now = now;
         self.read_at = now;
         self.tick = self.tick.wrapping_add(1);
@@ -541,6 +552,9 @@ impl Pane {
 
     /// Handles one key.
     pub fn key(&mut self, key: Key) -> Reply {
+        if self.typing.is_none() && self.mark_key(key) {
+            return Reply::Handled;
+        }
         if let Some(draft) = &mut self.typing {
             match key {
                 Key::Char(c) => draft.push(c),
@@ -714,6 +728,7 @@ impl Pane {
             None => self.render_list(area, buf),
             Some(open) => self.render_run(open, area, buf),
         }
+        self.render_composer(area, buf);
     }
 
     fn style(&self, intensity: Intensity) -> Style {
@@ -816,7 +831,11 @@ impl Pane {
             ),
             None => format!("Runs, {order_words}"),
         };
-        let hint = self.order_hint();
+        let hint = self
+            .marking
+            .notice
+            .clone()
+            .unwrap_or_else(|| self.order_hint());
         let search;
         let bottom = match &self.typing {
             Some(draft) => {
@@ -824,8 +843,8 @@ impl Pane {
                 (search.as_str(), search.as_str())
             }
             None => (
-                "↑↓ move · enter open · t transcript · / search · a agent · o outcome · l order · c clear · 1-9 expert views · q quit",
-                "↑↓ enter t / a o l c q",
+                "↑↓ move · enter open · t transcript · / search · a agent · o outcome · l order · c clear · x mark · u unmark · 1-9 views · q quit",
+                "↑↓ enter t / a o l c x v u q",
             ),
         };
         let inner = self.framed(area, buf, (&title, &hint), bottom);
@@ -908,6 +927,9 @@ impl Pane {
             if run.outcome == Outcome::Running {
                 columns[1] = columns[1].replacen('●', &frame_for(self.tick).to_string(), 1);
             }
+            if let Some(flag) = self.mark_flag(&run.id()) {
+                columns[2] = format!("{flag} {}", columns[2]);
+            }
             if order == Order::Learning {
                 // The learning value replaces the start, and the reasons
                 // replace what the task asks.
@@ -970,6 +992,9 @@ impl Pane {
                 ),
             };
             lines.push((status, Intensity::Half));
+            for line in self.mark_lines(&run.id()) {
+                lines.push((line, Intensity::Full));
+            }
             if let Some(answer) = answer {
                 let reasons: Vec<String> = answer
                     .reasons(&self.learning.rarity)
@@ -1028,16 +1053,17 @@ impl Pane {
             Tab::Summary => (
                 "Summary",
                 "t shows the transcript",
-                "↑↓ scroll · t transcript · d details · esc back · q quit",
-                "↑↓ t d esc q",
+                "↑↓ scroll · t transcript · d details · x mark bad · v mark fine · u unmark · esc back · q quit",
+                "↑↓ t d x v u esc q",
             ),
             Tab::Transcript => (
                 "Transcript",
                 "t shows the summary",
-                "↑↓ move · enter open or close · e open all · t summary · esc back · q quit",
-                "↑↓ enter e t esc q",
+                "↑↓ move · enter open or close · e open all · t summary · x mark step bad · u unmark · esc back · q quit",
+                "↑↓ enter e t x u esc q",
             ),
         };
+        let hint = self.marking.notice.as_deref().unwrap_or(hint);
         let inner = self.framed(area, buf, (title, hint), (keys, short));
         match open.tab {
             Tab::Summary => self.render_summary(open, inner, buf),
@@ -1090,6 +1116,20 @@ impl Pane {
                 },
                 Intensity::Half,
             )),
+        }
+        lines.push((String::new(), Intensity::Half));
+        let marks = self.mark_lines(&open.id);
+        lines.push(("Marks".to_owned(), Intensity::Full));
+        if marks.is_empty() {
+            lines.push((
+                "Nobody has marked this run. Press x to mark it bad, or v to clear it.".to_owned(),
+                Intensity::Half,
+            ));
+        }
+        for mark in marks {
+            for wrapped in runs_story::wrap(&mark, width) {
+                lines.push((wrapped, Intensity::ThreeQuarters));
+            }
         }
         lines.push((String::new(), Intensity::Half));
         lines.push((
@@ -1280,6 +1320,7 @@ impl Pane {
                 expanded: open.is_expanded(index),
                 time: shown,
                 ladder: self.ladder,
+                mark: self.step_mark(&open.id, index),
             });
         }
         rows
@@ -1549,6 +1590,9 @@ fn block_rows(entry: &Entry, width: usize) -> Vec<Row> {
     if out.rows.is_empty() {
         out.push(Vec::new());
     }
+    if let Some(mark) = &entry.mark {
+        out.wrapped("", mark, Intensity::Full);
+    }
     // A quiet line after the task and each report.
     if matches!(block.kind, Kind::Report(_) | Kind::Task(_)) {
         out.rows.push(Row {
@@ -1767,11 +1811,11 @@ fn marked(base: Style, ladder: Ladder, marks: &Marks) -> Style {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use coder_terminal::Colors;
 
-    fn pane() -> (tempfile::TempDir, Pane) {
+    pub(super) fn pane() -> (tempfile::TempDir, Pane) {
         let (dir, sources) = crate::runs::fixture_sources();
         let catalog = Catalog::load(sources);
         let pane = Pane::new(catalog)
@@ -1828,7 +1872,7 @@ mod tests {
         let (_dir, pane) = pane();
         let text = pane.to_text(80, 20);
         assert!(text.contains("coq-block-bound"), "{text}");
-        assert!(text.contains("↑↓ enter t / a o l c q"), "{text}");
+        assert!(text.contains("↑↓ enter t / a o l c x v u q"), "{text}");
     }
 
     /// A pane that ranks with the recorded answers, keeping its store and
