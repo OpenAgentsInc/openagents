@@ -318,6 +318,7 @@ fn an_approved_policy_runs_its_mini_stage_on_the_cited_tasks_mini_tasks() {
         min_free_disk_gb: None,
         plan_only: true,
         artifact: None,
+        without_claude: false,
     };
     let refused = block_on(cli::run(dir, proposal, Some(&live))).unwrap_err();
     assert!(refused.contains("regressed"), "{refused}");
@@ -386,11 +387,19 @@ fn the_live_stage_runs_the_cited_tasks_against_the_base_policys_arm() {
         min_free_disk_gb: Some(15.0),
         plan_only: false,
         artifact: Some((PathBuf::from("/a/coder-one"), "ab12".to_string())),
+        without_claude: false,
     };
+    let base = "coder-one-tunable-luna-v2".to_string();
     let args = stage::experiment_args(
         "prop-1-1",
-        "coder-one-tunable-luna-v2",
-        Path::new("/p/policy.json"),
+        &[
+            (base.clone(), base.clone(), None),
+            (
+                "prop-1-1".to_string(),
+                base.clone(),
+                Some(PathBuf::from("/p/policy.json")),
+            ),
+        ],
         &live,
     );
     let line = args.join(" ");
@@ -406,4 +415,27 @@ fn the_live_stage_runs_the_cited_tasks_against_the_base_policys_arm() {
          --tasks log-summary-date-ranges,fix-git --attempts 3 --quota-usd 40 \
          --min-free-disk-gb 15 --detach"
     );
+}
+
+#[test]
+fn without_claude_removes_the_handoff_and_refuses_what_else_names_claude() {
+    let base: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("policies/tunable-luna-v2.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let stripped = stage::without_claude(&base).unwrap();
+    assert!(stripped.pointer("/policy/control/handoff").is_none());
+    assert!(!stripped["policy"].to_string().contains("claude-code"));
+    assert_eq!(stripped["name"], "coder-one-tunable-luna-v2-codex");
+    let opus: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("policies/tunable-opus.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(stage::without_claude(&opus).is_err());
 }

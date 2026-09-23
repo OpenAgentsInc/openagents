@@ -630,7 +630,8 @@ def _experiment_credentials(
             raise RunError(message)
         warnings.append(message)
 
-    if any("anthropic" in p for p in providers.values()):
+    claude = any("anthropic" in p for p in providers.values())
+    if claude or any(_subscription(agent, providers[arm]) for arm, agent in arm_agents.items()):
         status = credentials.setup_token_status()
         if status["usable"]:
             os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = credentials.read_setup_token()
@@ -647,6 +648,10 @@ def _experiment_credentials(
                     "a login refresh can revoke running trials' token. To avoid "
                     "that, " + credentials.SETUP_TOKEN_HINT
                 )
+        elif not claude:
+            # A Codex-only arm signs in through the subscription mode, which
+            # names the Claude token too; without one it runs on what it has.
+            warnings.append(f"{status['problem']}; the Codex-only arms run without it")
         else:
             refuse(
                 f"{status['problem']}. Claude trials in an experiment use the "
@@ -656,18 +661,34 @@ def _experiment_credentials(
     # The Coder One arms' door and Jev keys, from the host's usual files.
     credentials.fill_host_credentials(os.environ)
     for arm, agent in arm_agents.items():
-        mode = (
-            "subscription-oauth"
-            if source
-            and "subscription-oauth" in agent.auth_modes
-            and "anthropic" in providers[arm]
-            else None
-        )
+        mode = "subscription-oauth" if source and _subscription(agent, providers[arm]) else None
         try:
             _check_credentials(agent, mode)
         except RunRefused as exc:
             refuse(f"arm {arm}: {exc}")
     return source, warnings
+
+
+def _subscription(agent, providers: frozenset[str]) -> bool:
+    """Whether an arm signs in through the subscription mode: it has one and
+    draws on Claude, or on Codex, whose ChatGPT sign-in only that mode forwards."""
+    return "subscription-oauth" in agent.auth_modes and bool(
+        providers & {"anthropic", "openai"}
+    )
+
+
+def _with_arm_policy(agent, flags: list[str]):
+    """The profile as one arm runs it: an arm's ``policy=`` kwarg replaces
+    the profile's, so its providers are the ones its own manifest draws on."""
+    import dataclasses
+
+    policy = None
+    for flag, value in zip(flags, flags[1:]):
+        if flag == "--agent-kwarg" and value.startswith("policy="):
+            policy = value.partition("=")[2]
+    if policy is None:
+        return agent
+    return dataclasses.replace(agent, kwargs={**dict(agent.kwargs or {}), "policy": policy})
 
 
 def _experiment_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
@@ -693,7 +714,10 @@ def _experiment_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
     if not (checkout / ".git").exists() and not dry_run:
         raise RunError(f"no task checkout at {checkout}; run `tbench tasks checkout` first")
     arm_agents = {arm: agents[spec.profile_of(arm)] for arm in spec.arms}
-    providers = {arm: usage_limit.arm_providers(agent) for arm, agent in arm_agents.items()}
+    providers = {
+        arm: usage_limit.arm_providers(_with_arm_policy(agent, spec.arm_args.get(arm, [])))
+        for arm, agent in arm_agents.items()
+    }
     source, warnings = _experiment_credentials(
         arm_agents, providers, allow_login=args.allow_login_token, strict=not dry_run
     )
@@ -702,7 +726,7 @@ def _experiment_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
     arm_args = {arm: list(flags) for arm, flags in spec.arm_args.items()}
     if source is not None:
         for arm, agent in arm_agents.items():
-            if "anthropic" in providers[arm] and "subscription-oauth" in agent.auth_modes:
+            if _subscription(agent, providers[arm]):
                 arm_args.setdefault(arm, []).extend(["--auth-mode", "subscription-oauth"])
     directory = experiment.experiment_dir(spec.id)
     if not dry_run:

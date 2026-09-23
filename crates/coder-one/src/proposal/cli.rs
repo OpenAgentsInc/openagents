@@ -14,7 +14,7 @@ use crate::policy::Manifest;
 pub const USAGE: &str = "\
 usage: coder-one proposal run ID [--live --quota-usd USD [--task TASK]...
                                   --artifact PATH [--profile ID] [--base-arm AGENT]
-                                  [--min-free-disk-gb N] [--plan]]
+                                  [--min-free-disk-gb N] [--without-claude] [--plan]]
                                  [--dir DIR] [--repo DIR] [--json]
        coder-one proposal issue ID [--dir DIR]
 
@@ -33,8 +33,10 @@ job profile is the one the source runs' job names start with, such as
 panel, when they share one; otherwise tb4, and --profile names another.
 --quota-usd is required and budgets the Claude quota. --artifact names the
 Coder One build both arms run, such as ./scripts/build-coder-one-linux.sh
-prints. --plan prints the schedule and checks credentials without starting
-a trial.
+prints. --without-claude runs both arms with their Claude Code handoff
+removed, as experiment ID-codex, so no trial waits for a host-wide Claude
+slot. --plan prints the schedule and checks credentials without starting a
+trial.
 
 issue prints a questions or code proposal's drafted issue, for a person to
 file. Proposals are read from ~/.openagents/coder-one/proposals unless --dir
@@ -62,6 +64,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut disk = None;
     let mut plan_only = false;
     let mut artifact = None;
+    let mut no_claude = false;
     let mut json_out = false;
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
@@ -92,6 +95,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 );
             }
             "--plan" => plan_only = true,
+            "--without-claude" => no_claude = true,
             "--artifact" => artifact = Some(PathBuf::from(value("--artifact")?)),
             "--json" => json_out = true,
             "--help" | "-h" | "help" => {
@@ -160,6 +164,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                     base_arm,
                     min_free_disk_gb: disk,
                     plan_only,
+                    without_claude: no_claude,
                     artifact: match artifact {
                         Some(path) => {
                             let sha = stage::sha256_file(&path)?;
@@ -269,6 +274,7 @@ pub async fn run(
         && previous["live"]["plan_only"] != true
     {
         result["live"] = previous["live"].clone();
+        result["superseded"] = previous["superseded"].clone();
     }
     let write = |result: &Value| {
         crate::record::write_atomic(
@@ -286,7 +292,9 @@ pub async fn run(
                 result["mini"]["findings"]
             ));
         }
-        if !result["live"].is_null() && !live.plan_only {
+        let same = !result["live"].is_null()
+            && (result["live"]["variant"]["without_claude"] == true) == live.without_claude;
+        if same && !live.plan_only {
             return Err(format!(
                 "the live stage already started as experiment {}; `gym terminal-bench experiment \
                  report {}` reads it, and `uv run tbench experiment run --id {}` resumes it",
@@ -295,7 +303,22 @@ pub async fn run(
                 result["live"]["experiment"]
             ));
         }
-        result["live"] = stage::live(proposal, dir, live).await?;
+        let started = stage::live(proposal, dir, live).await?;
+        if live.plan_only {
+            // A plan is shown, never recorded over a stage that started.
+            result["live"] = started;
+            return Ok(result);
+        }
+        if !result["live"].is_null() && !live.plan_only {
+            // The other variant's experiment stays on record; stop it with
+            // `uv run tbench experiment stop --id ID` if it shouldn't run.
+            let mut superseded = result["superseded"].as_array().cloned().unwrap_or_default();
+            superseded.push(result["live"].take());
+            result["superseded"] = json!(superseded);
+        }
+        if !live.plan_only || result["live"].is_null() {
+            result["live"] = started;
+        }
         result["updated_at"] = json!(atif::document::iso(atif::now_ms()));
         write(&result)?;
     }

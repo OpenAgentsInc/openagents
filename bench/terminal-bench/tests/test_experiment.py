@@ -1,6 +1,7 @@
 """Targeted experiments: interleaving, credentials, losses, and the quota budget."""
 
 import json
+from pathlib import Path
 import os
 
 import pytest
@@ -137,6 +138,24 @@ def test_an_arm_can_run_a_profile_under_its_own_name(tmp_path):
     trial = type("T", (), {"arm": "prop-1", "task": type("K", (), {"id": "t"})(), "job": "j"})()
     command = launcher.command(trial, "run")
     assert command[command.index("--agent") + 1] == "base"
+
+
+def test_an_arm_policy_kwarg_decides_its_providers(tmp_path):
+    from tbench import cli, usage_limit
+    from tbench.agents import load_agents
+
+    agent = load_agents()["coder-one-tunable-luna-v2"]
+    assert usage_limit.arm_providers(agent) == frozenset({"anthropic", "openai"})
+    repo = Path(__file__).resolve().parents[3]
+    manifest = json.loads(
+        (repo / "crates/coder-one/policies/tunable-luna-v2.json").read_text()
+    )
+    del manifest["policy"]["control"]["handoff"]
+    path = tmp_path / "codex-only.json"
+    path.write_text(json.dumps(manifest))
+    arm = cli._with_arm_policy(agent, ["--agent-kwarg", f"policy={path}"])
+    assert usage_limit.arm_providers(arm) == frozenset({"openai"})
+    assert cli._with_arm_policy(agent, []) is agent
 
 
 def test_trials_start_in_the_interleaved_order_and_record_claude_quota(tmp_path):

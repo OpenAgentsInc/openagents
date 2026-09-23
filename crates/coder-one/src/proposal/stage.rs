@@ -318,6 +318,49 @@ pub struct Live {
     pub plan_only: bool,
     /// The Coder One build both arms run, and its SHA-256.
     pub artifact: Option<(PathBuf, String)>,
+    /// Measure both arms with their Claude tiers removed, so no trial
+    /// waits for a host-wide Claude slot.
+    pub without_claude: bool,
+}
+
+/// One arm of a live stage: its name, the agent profile it runs, and the
+/// manifest that replaces the profile's, if one does.
+pub type Arm = (String, String, Option<PathBuf>);
+
+/// `manifest` with every Claude Code tier removed: a `control.handoff` to
+/// Claude Code goes, and anything else that names Claude Code is refused.
+///
+/// # Errors
+///
+/// Returns a message when a Claude tier remains or the result doesn't
+/// validate.
+pub fn without_claude(manifest: &Value) -> Result<Value, String> {
+    let mut value = manifest.clone();
+    if value
+        .pointer("/policy/control/handoff/to/agent")
+        .and_then(Value::as_str)
+        == Some("claude-code")
+        && let Some(control) = value
+            .pointer_mut("/policy/control")
+            .and_then(Value::as_object_mut)
+    {
+        control.remove("handoff");
+    }
+    if crate::policy::canonical(&value["policy"]).contains("\"claude-code\"") {
+        return Err(
+            "the manifest names Claude Code outside control.handoff, so it can't run without a \
+             Claude slot"
+                .to_string(),
+        );
+    }
+    let manifest = Manifest::parse(&value.to_string())?;
+    manifest
+        .validate()
+        .map_err(|error| format!("without Claude, the manifest doesn't validate: {error}"))?;
+    if let Some(name) = value["name"].as_str() {
+        value["name"] = json!(format!("{name}-codex"));
+    }
+    Ok(value)
 }
 
 /// A file's SHA-256, as the adapter pins an artifact.
@@ -395,25 +438,33 @@ pub fn base_arm(repo: &Path, base: &str) -> Result<String, String> {
 
 /// The `tbench experiment` arguments for a live stage.
 #[must_use]
-pub fn experiment_args(proposal_id: &str, base: &str, policy: &Path, live: &Live) -> Vec<String> {
+pub fn experiment_args(experiment: &str, arms: &[Arm], live: &Live) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
         "tbench".to_string(),
         "experiment".to_string(),
         if live.plan_only { "plan" } else { "run" }.to_string(),
         "--id".to_string(),
-        proposal_id.to_string(),
+        experiment.to_string(),
         "--profile".to_string(),
         live.profile.clone(),
-        "--arm".to_string(),
-        base.to_string(),
-        "--arm".to_string(),
-        format!("{proposal_id}={base}"),
-        "--arm-kwarg".to_string(),
-        format!("{proposal_id}:policy={}", policy.display()),
     ];
+    for (name, profile, _) in arms {
+        args.push("--arm".to_string());
+        args.push(if name == profile {
+            name.clone()
+        } else {
+            format!("{name}={profile}")
+        });
+    }
+    for (name, _, policy) in arms {
+        if let Some(policy) = policy {
+            args.push("--arm-kwarg".to_string());
+            args.push(format!("{name}:policy={}", policy.display()));
+        }
+    }
     if let Some((path, sha)) = &live.artifact {
-        for arm in [base.to_string(), proposal_id.to_string()] {
+        for (arm, _, _) in arms {
             args.extend([
                 "--arm-kwarg".to_string(),
                 format!("{arm}:artifact_path={}", path.display()),
@@ -462,7 +513,58 @@ pub async fn live(proposal: &Value, dir: &Path, live: &Live) -> Result<Value, St
     };
     let id = proposal["id"].as_str().unwrap_or_default();
     let policy = dir.join(super::POLICY_FILE);
-    let args = experiment_args(id, &arm, &policy, live);
+    let (experiment, arms, variant) = if live.without_claude {
+        let read = |path: &Path| -> Result<Value, String> {
+            serde_json::from_str(
+                &std::fs::read_to_string(path)
+                    .map_err(|error| format!("cannot read {}: {error}", path.display()))?,
+            )
+            .map_err(|error| format!("{} isn't JSON: {error}", path.display()))
+        };
+        let base_file = proposal["materialized"]["base_file"]
+            .as_str()
+            .ok_or("the proposal has no base manifest")?;
+        let mut written = Vec::new();
+        for (from, to) in [
+            (PathBuf::from(base_file), "base-codex.json"),
+            (policy.clone(), "policy-codex.json"),
+        ] {
+            let stripped = without_claude(&read(&from)?)?;
+            let path = dir.join(to);
+            crate::record::write_atomic(
+                &path,
+                serde_json::to_string_pretty(&stripped)
+                    .unwrap_or_default()
+                    .as_bytes(),
+            )?;
+            let digest = Manifest::parse(&stripped.to_string())?.digest();
+            written.push((path, digest));
+        }
+        let base_name = format!("{id}-base");
+        (
+            format!("{id}-codex"),
+            vec![
+                (base_name, arm.clone(), Some(written[0].0.clone())),
+                (id.to_string(), arm.clone(), Some(written[1].0.clone())),
+            ],
+            json!({
+                "without_claude": true,
+                "note": "both arms run with their Claude Code handoff removed, so no trial waits for a Claude slot",
+                "base_digest": written[0].1,
+                "digest": written[1].1,
+            }),
+        )
+    } else {
+        (
+            id.to_string(),
+            vec![
+                (arm.clone(), arm.clone(), None),
+                (id.to_string(), arm.clone(), Some(policy.clone())),
+            ],
+            Value::Null,
+        )
+    };
+    let args = experiment_args(&experiment, &arms, live);
     if live.artifact.is_none() && !live.plan_only {
         return Err(
             "the live stage needs --artifact: the Coder One build both arms run, such as \
@@ -489,10 +591,12 @@ pub async fn live(proposal: &Value, dir: &Path, live: &Live) -> Result<Value, St
         ));
     }
     Ok(json!({
-        "experiment": id,
+        "experiment": experiment,
         "profile": live.profile,
-        "arms": [arm, id],
-        "baseline": arm,
+        "arms": arms.iter().map(|(name, _, _)| name.clone()).collect::<Vec<_>>(),
+        "baseline": arms[0].0,
+        "agent_profile": arm,
+        "variant": variant,
         "tasks": live.tasks,
         "attempts": LIVE_ATTEMPTS,
         "quota_usd": live.quota_usd,
@@ -501,6 +605,6 @@ pub async fn live(proposal: &Value, dir: &Path, live: &Live) -> Result<Value, St
         "command": format!("uv {}", args.join(" ")),
         "started_at": atif::document::iso(atif::now_ms()),
         "output": crate::ask::clip(&output, 8_000),
-        "report": format!("gym terminal-bench experiment report {id}"),
+        "report": format!("gym terminal-bench experiment report {experiment}"),
     }))
 }
