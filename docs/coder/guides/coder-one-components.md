@@ -124,6 +124,13 @@ the `coder-one-pack-luna` arm runs it. An episode with the coverage packer
 writes `artifacts/briefing-pack.json`: the pack record, the Jev coverage
 judgments, the requirement map, and the inputs.
 
+`brief.pack` sets the coverage packer's `slice` (each owed item's first
+slice, and the fill's step), `item_max` (the most one item delivers), and
+`instruction_share` (the most of the cap the task text takes). A manifest
+without it keeps the packer's defaults and its digest. Each of the three
+has a canary, so a study can search it; the data-file parameters stay the
+packer's defaults because no canary reaches a data file.
+
 Replay the packer over every retained briefing:
 
 ```sh
@@ -213,12 +220,66 @@ task, extracted from `bench/terminal-bench/traces` and scanned for
 credentials. A test extracts all 24 and reruns the packer and the probe keep
 question on them with recorded Jev.
 
+## Run a study
+
+A study proposes candidate manifests, screens them cheapest first, and
+records every candidate, its spend, and whether the winner beats the
+baseline on held-out evidence. The records follow
+[NIP-OPT](../../../nips/openagents/NIP-OPT.md)'s shapes. The one study
+this build defines tunes `evidence.pack`:
+
+```sh
+coder-one study run evidence.pack                 # tier 0: replay only
+coder-one study run evidence.pack --through mini  # and tier 1: mini-tasks
+coder-one study run evidence.pack --through mini --retain
+coder-one study list
+gym coder study                                   # the latest study
+gym coder study evidence-pack --all --json
+```
+
+- **Cases**: every retained briefing, read back and restored as the
+  replay reads it. Three of the eight tasks, chosen by the SHA-256 of the
+  seed and the task name, are held out; each development task's briefings
+  alternate between the search and the selection partitions.
+- **Objective**: J = ½·Jev-selected items delivered + ½·labeled
+  requirements covered by delivered evidence − duplicate listing bytes /
+  12,000 − 0.1·briefing characters / 12,000, with tasks weighted equally.
+  The labels are the `task.requirements` fixtures' hand-authored ones.
+- **Operators**: `swap` (the first packer in place of the coverage
+  packer), `grid` (every combination of the budget, slice, span, and
+  task-text reserve values), and `climb` (coordinate ascent from the
+  baseline) run by default. `random`, `reflect` (text edits a person or a
+  model wrote, read from `--reflection FILE`, never called GEPA), and
+  `router-refit` (refused until the manifest has a route slot) run when
+  `--operators` names them. A proposal becomes a complete manifest,
+  validated like any other, and only fields with canaries may change.
+- **Tiers**: every candidate replays on the search partition; the best
+  third moves to selection, and the best third of those is promoted. With
+  `--through mini`, each promoted candidate runs every mini-task's
+  known-good script under its briefing policy. The scripted executor
+  doesn't read the briefing, so this tier catches only a candidate that
+  breaks the episode or overruns its cap. The selection is written to
+  `selection.json` before the held-out briefings are read.
+- **Confirmation**: the selected candidate and the baseline pack the
+  held-out briefings once. The winner beats the baseline only when the
+  mean paired difference in J is at least 0.01 and the 2.5th percentile of
+  a task-clustered bootstrap is above zero.
+
+The Terminal-Bench tiers (`screen`, `measure`, and `confirm`) are defined
+and runnable, but only with `--allow-terminal-bench`, `--artifact`, and
+`--artifact-sha256`; without them, the result lists the harness commands
+each tier would run. A study records under
+`~/.openagents/coder-one/studies/<id>/`, and `--retain` copies all but
+`trials.jsonl` to `bench/terminal-bench/studies/`.
+[The first study](../../terminal-bench/2026-09-22-pack-study.md) has the
+results.
+
 ## See the runs in the Gym
 
 ```sh
 gym coder components
 gym coder components --component evidence.pack --json
-gym-terminal --terminal-bench        # 7 components, 8 requirements, b briefing
+gym-terminal --terminal-bench        # 7 components, 8 requirements, b briefing, s study
 ```
 
 The episode timeline (`gym terminal-bench attempt JOB TRIAL --timeline`)

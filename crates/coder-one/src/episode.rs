@@ -513,6 +513,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             directions: policy.policy.brief.directions.text(),
             cap: policy.policy.brief.cap,
             packer: policy.policy.brief.packer,
+            pack: policy.policy.brief.pack_params(),
             isolation: "none",
             base: bundle.base.as_deref(),
         };

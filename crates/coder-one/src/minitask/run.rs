@@ -75,6 +75,9 @@ pub struct Options {
     pub controls: Controls,
     /// Whether `verify.checks` observes the workspace before the grader.
     pub checks: bool,
+    /// The briefing policy under test; `None` runs the built-in one. A
+    /// study screens a candidate's briefing policy this way.
+    pub brief: Option<crate::policy::BriefPolicy>,
 }
 
 /// What a run left.
@@ -305,8 +308,11 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         commands: 0,
         episode: crate::deadline::Deadline::unbounded(),
     };
-    let manifest_policy = crate::policy::Manifest::builtin();
-    let directions = manifest_policy.policy.brief.directions.text();
+    let brief = options
+        .brief
+        .clone()
+        .unwrap_or_else(|| crate::policy::Manifest::builtin().policy.brief);
+    let directions = brief.directions.text();
     let plan = Plan {
         mode: Mode::Always,
         policy: Policy {
@@ -317,8 +323,9 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         prompt: "Complete this task.",
         instruction: task.instruction,
         directions,
-        cap: delegate::BRIEFING_CAP,
-        packer: manifest_policy.policy.brief.packer,
+        cap: brief.cap,
+        packer: brief.packer,
+        pack: brief.pack_params(),
         isolation: if script.is_some() {
             "a scratch directory"
         } else {
@@ -488,6 +495,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             "instruction_digest": atif::digest(&json!(task.instruction)),
         },
         "executor": executor_record,
+        "brief": brief,
         "session": session_record,
         "delegation": delegated.as_ref().map(delegate::Delegated::record),
         "outcome": outcome,
@@ -553,6 +561,7 @@ mod tests {
             deadline: Duration::from_secs(60),
             controls: Controls::default(),
             checks: false,
+            brief: None,
         }
     }
 

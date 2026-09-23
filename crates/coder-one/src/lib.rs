@@ -46,6 +46,7 @@ pub mod session;
 pub mod shell;
 pub mod state;
 pub mod stream;
+pub mod study;
 pub mod system;
 pub mod tail;
 

@@ -2069,6 +2069,8 @@ pub struct Plan<'a> {
     pub cap: usize,
     /// How the briefing is packed.
     pub packer: crate::policy::Packer,
+    /// The coverage packer's parameters; its `cap` gives way to `cap`.
+    pub pack: crate::pack::Params,
     pub isolation: &'a str,
     /// The Git commit the closing check diffs against, when known.
     pub base: Option<&'a str>,
@@ -2183,7 +2185,7 @@ where
     let coverage_packer = plan.packer != crate::policy::Packer::Sections;
     let params = crate::pack::Params {
         cap: plan.cap,
-        ..crate::pack::Params::default()
+        ..plan.pack
     };
     let pack = recorder.enter(
         Start::new(
@@ -3116,6 +3118,7 @@ pub(crate) mod tests {
             directions: "Go.",
             cap: BRIEFING_CAP,
             packer: crate::policy::Packer::Sections,
+            pack: crate::pack::Params::default(),
             isolation: "none",
             base: None,
         };

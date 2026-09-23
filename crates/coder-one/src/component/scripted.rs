@@ -236,6 +236,7 @@ impl Component for MiniTaskRun {
                 deadline: Duration::from_secs(60),
                 controls: Controls::default(),
                 checks: input.checks,
+                brief: None,
             })
             .await;
             let _ = std::fs::remove_dir_all(&out);

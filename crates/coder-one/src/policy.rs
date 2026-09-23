@@ -68,6 +68,9 @@ pub const SEARCHABLE: &[&str] = &[
     "policy.brief.cap",
     "policy.brief.directions",
     "policy.brief.packer",
+    "policy.brief.pack.slice",
+    "policy.brief.pack.item_max",
+    "policy.brief.pack.instruction_share",
     "policy.executor.agent",
     "policy.executor.model",
     "policy.executor.effort",
@@ -209,6 +212,54 @@ pub struct BriefPolicy {
     /// first packer, so earlier manifests keep their digests.
     #[serde(default, skip_serializing_if = "Packer::is_sections")]
     pub packer: Packer,
+    /// The coverage packer's slice, span, and task-text reserve. Left out
+    /// of a manifest that keeps the packer's defaults, so earlier
+    /// manifests keep their digests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<PackPolicy>,
+}
+
+impl BriefPolicy {
+    /// The coverage packer's parameters under this policy: the cap, plus
+    /// `pack` when set, over the packer's defaults.
+    #[must_use]
+    pub fn pack_params(&self) -> crate::pack::Params {
+        let mut params = crate::pack::Params {
+            cap: self.cap,
+            ..crate::pack::Params::default()
+        };
+        if let Some(pack) = self.pack {
+            params.slice = pack.slice;
+            params.item_max = pack.item_max;
+            params.instruction_share = pack.instruction_share;
+        }
+        params
+    }
+}
+
+/// The coverage packer's searchable parameters. The data-file parameters
+/// (`data_head_lines` and `representatives`) stay the packer's defaults:
+/// no canary reaches a data file, so a study can't vary them.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PackPolicy {
+    /// The first slice each owed item gets, and the fill's step.
+    pub slice: usize,
+    /// The most characters any one item delivers.
+    pub item_max: usize,
+    /// The most of the cap the task text may take before it's trimmed.
+    pub instruction_share: f64,
+}
+
+impl Default for PackPolicy {
+    fn default() -> Self {
+        let params = crate::pack::Params::default();
+        PackPolicy {
+            slice: params.slice,
+            item_max: params.item_max,
+            instruction_share: params.instruction_share,
+        }
+    }
 }
 
 /// How the briefing is packed.
@@ -446,6 +497,7 @@ impl Manifest {
                     cap: delegate::BRIEFING_CAP,
                     directions: Directions::Plain,
                     packer: Packer::Sections,
+                    pack: None,
                 },
                 executor: ExecutorPolicy {
                     agent: AgentName::ClaudeCode,
@@ -528,6 +580,26 @@ impl Manifest {
         }
         if policy.brief.packer == Packer::CoverageJev && policy.jev.mode == JevMode::Off {
             problems.push("brief.packer = coverage-jev needs Jev".to_string());
+        }
+        if let Some(pack) = policy.brief.pack {
+            if policy.brief.packer == Packer::Sections {
+                problems.push("brief.pack applies only to the coverage packers".to_string());
+            }
+            if !(200..=policy.brief.cap).contains(&pack.slice) {
+                problems.push(format!(
+                    "brief.pack.slice must be 200 to brief.cap, not {}",
+                    pack.slice
+                ));
+            }
+            if pack.item_max < pack.slice {
+                problems.push("brief.pack.item_max must be at least brief.pack.slice".to_string());
+            }
+            if !(0.1..=0.9).contains(&pack.instruction_share) {
+                problems.push(format!(
+                    "brief.pack.instruction_share must be 0.1 to 0.9, not {}",
+                    pack.instruction_share
+                ));
+            }
         }
         let executor = &policy.executor;
         if executor.model.trim().is_empty() {
@@ -1549,6 +1621,9 @@ mod tests {
         "policy.brief.cap",
         "policy.brief.directions",
         "policy.brief.packer",
+        "policy.brief.pack.slice",
+        "policy.brief.pack.item_max",
+        "policy.brief.pack.instruction_share",
         "policy.executor.agent",
         "policy.executor.model",
         "policy.executor.effort",
@@ -1594,11 +1669,17 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
         switches: (bool, bool, bool, bool, usize),
     }
 
-    struct Counting(usize);
+    /// Counts generations; with its flag set, each one runs a distinct
+    /// long command until the explore bound stops it.
+    struct Counting(usize, bool);
 
     impl Generate for Counting {
         async fn generate(&mut self, _prompt: &str) -> Result<String, String> {
             self.0 += 1;
+            if self.1 {
+                let command = format!("cat report-{:02}.txt # {}", self.0, "x".repeat(170));
+                return Ok(json!({ "action": "shell", "command": command }).to_string());
+            }
             Ok(
                 r#"{"action":"finished","title":"Explored","summary":"Nothing to run."}"#
                     .to_string(),
@@ -1606,13 +1687,14 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
         }
     }
 
-    struct NoShell;
+    /// A shell whose every command prints the same output.
+    struct Echo(String);
 
-    impl Shell for NoShell {
+    impl Shell for Echo {
         async fn run(&mut self, _command: &str) -> Observation {
             Observation {
                 exit: Some(0),
-                output: String::new(),
+                output: self.0.clone(),
                 truncated: false,
             }
         }
@@ -1633,6 +1715,17 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
     /// Runs one delegated episode under `manifest` with the scripted
     /// executor, and reports what the executor saw.
     async fn observe(manifest: &Manifest, extra_env: &[(&str, &str)]) -> Seen {
+        observe_with(manifest, extra_env, None).await
+    }
+
+    /// Runs one delegated episode as [`observe`] does; with `output`, the
+    /// explorer first runs one command whose output is `output`, so the
+    /// briefing carries evidence for the packer to slice.
+    async fn observe_with(
+        manifest: &Manifest,
+        extra_env: &[(&str, &str)],
+        output: Option<&str>,
+    ) -> Seen {
         use std::os::unix::fs::PermissionsExt;
         let dir = scratch();
         let fake = dir.join("fake-agent");
@@ -1689,16 +1782,18 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
             directions: manifest.policy.brief.directions.text(),
             cap: manifest.policy.brief.cap,
             packer: manifest.policy.brief.packer,
+            pack: manifest.policy.brief.pack_params(),
             isolation: "none",
             base: None,
         };
-        let mut generator = Counting(0);
+        let mut generator = Counting(0, output.is_some());
+        let mut shell = Echo(output.unwrap_or("").to_string());
         let (_, delegated) = crate::delegate::explore_then_delegate(
             &mut state,
             &plan,
             &mut judge,
             &mut generator,
-            &mut NoShell,
+            &mut shell,
             &mut executor,
             &recorder,
             &mut |_| {},
@@ -1923,6 +2018,123 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
             coverage
                 .stdin
                 .contains("## Requirements from the task's own words")
+        );
+    }
+
+    /// A manifest with the coverage packer, one explore step, and `pack`.
+    fn packed(cap: usize, pack: PackPolicy) -> Manifest {
+        with(|m| {
+            m.policy.brief.packer = Packer::Coverage;
+            m.policy.brief.cap = cap;
+            m.policy.brief.pack = Some(pack);
+            m.policy.control.explore_steps = 12;
+            m.policy.control.unchanged_steps = 100;
+            m.policy.control.error_streak = 100;
+        })
+    }
+
+    /// Numbered report lines: 1,500 characters, the most of a command's
+    /// output the explorer keeps.
+    fn report() -> String {
+        (1..=100)
+            .map(|n| format!("line {n:03} of the report."))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// The characters of the report the briefing delivered.
+    fn report_shown(stdin: &str) -> usize {
+        stdin
+            .lines()
+            .filter(|line| line.starts_with("line ") && line.ends_with("of the report."))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn canary_policy_brief_pack_item_max() {
+        let output = report();
+        let whole = observe_with(&packed(12_000, PackPolicy::default()), &[], Some(&output)).await;
+        let small = PackPolicy {
+            slice: 200,
+            item_max: 300,
+            ..PackPolicy::default()
+        };
+        let capped = observe_with(&packed(12_000, small), &[], Some(&output)).await;
+        assert!(report_shown(&whole.stdin) > 50, "{}", whole.stdin);
+        assert!(report_shown(&capped.stdin) < 20, "{}", capped.stdin);
+    }
+
+    #[tokio::test]
+    async fn canary_policy_brief_pack_slice() {
+        // Twelve long commands and the report compete for a tight cap.
+        // The fill grants a slice at a time in rank order, so a large
+        // slice lets the command list take the room first, and a small one
+        // splits it.
+        let output = report();
+        let tight = |slice: usize| PackPolicy {
+            slice,
+            item_max: 8_000,
+            instruction_share: 0.2,
+        };
+        let small = observe_with(&packed(4_000, tight(200)), &[], Some(&output)).await;
+        let large = observe_with(&packed(4_000, tight(1_400)), &[], Some(&output)).await;
+        assert_ne!(
+            report_shown(&small.stdin),
+            report_shown(&large.stdin),
+            "{}\n---\n{}",
+            small.stdin,
+            large.stdin
+        );
+    }
+
+    #[tokio::test]
+    async fn canary_policy_brief_pack_instruction_share() {
+        let share = |instruction_share: f64| PackPolicy {
+            instruction_share,
+            ..PackPolicy::default()
+        };
+        let narrow = observe_with(&packed(3_000, share(0.2)), &[], None).await;
+        let wide = observe_with(&packed(3_000, share(0.8)), &[], None).await;
+        let context = |stdin: &str| stdin.matches("context").count();
+        assert!(
+            context(&wide.stdin) > context(&narrow.stdin) + 50,
+            "{} vs {}",
+            context(&wide.stdin),
+            context(&narrow.stdin)
+        );
+    }
+
+    #[test]
+    fn brief_pack_is_refused_outside_its_bounds_and_leaves_digests_alone() {
+        let base = opus();
+        assert!(base.policy.brief.pack.is_none());
+        let mut sections = base.clone();
+        sections.policy.brief.pack = Some(PackPolicy::default());
+        let error = sections.validate().unwrap_err();
+        assert!(error.contains("only to the coverage packers"), "{error}");
+        let mut wide = base.clone();
+        wide.policy.brief.packer = Packer::Coverage;
+        wide.policy.brief.pack = Some(PackPolicy {
+            slice: 100,
+            item_max: 50,
+            instruction_share: 0.95,
+        });
+        let error = wide.validate().unwrap_err();
+        assert!(error.contains("slice must be 200"), "{error}");
+        assert!(error.contains("item_max must be at least"), "{error}");
+        assert!(
+            error.contains("instruction_share must be 0.1 to 0.9"),
+            "{error}"
+        );
+        // A manifest without `pack` serializes without it.
+        let value = serde_json::to_value(&base).unwrap();
+        assert!(value["policy"]["brief"].get("pack").is_none());
+        assert_eq!(
+            base.policy.brief.pack_params(),
+            crate::pack::Params {
+                cap: base.policy.brief.cap,
+                ..crate::pack::Params::default()
+            }
         );
     }
 

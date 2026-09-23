@@ -66,6 +66,7 @@ pub mod coder_policy;
 pub mod coder_prompt;
 pub mod coder_requirements;
 pub mod coder_router;
+pub mod coder_study;
 pub mod commitment;
 pub mod coverage;
 pub mod eval;

@@ -25,10 +25,11 @@ pub enum View {
     Matrix,
     Router,
     Live,
+    Study,
 }
 
 impl View {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
@@ -43,6 +44,7 @@ impl View {
         Self::Matrix,
         Self::Router,
         Self::Live,
+        Self::Study,
     ];
     pub fn title(self) -> &'static str {
         match self {
@@ -60,6 +62,7 @@ impl View {
             Self::Matrix => "outcome matrix",
             Self::Router => "router",
             Self::Live => "live",
+            Self::Study => "study",
         }
     }
     fn index(self) -> usize {
@@ -78,10 +81,13 @@ impl View {
             Self::Matrix => 11,
             Self::Router => 12,
             Self::Live => 13,
+            Self::Study => 14,
         }
     }
     /// The view a key opens: `1` to `9` open the first nine, `0` the
-    /// tenth, `b` the briefings, `m` the outcome matrix, `r` the router, and `f` the live view, which follows attempts in progress.
+    /// tenth, `b` the briefings, `m` the outcome matrix, `r` the router,
+    /// `f` the live view, which follows attempts in progress, and `s` the
+    /// latest study.
     pub fn from_digit(digit: char) -> Option<Self> {
         let index = match digit {
             '1'..='9' => digit as usize - '1' as usize,
@@ -90,6 +96,7 @@ impl View {
             'm' => 11,
             'r' => 12,
             'f' => 13,
+            's' => 14,
             _ => return None,
         };
         Self::ALL.get(index).copied()
@@ -126,6 +133,8 @@ pub struct App {
     router: crate::coder_router::Evaluation,
     /// verify.checks reports for attempts, by job and trial.
     coverage: BTreeMap<(String, String), crate::coder_coverage::Attempt>,
+    /// Hill-climbing studies over policy manifests, and unreadable ones.
+    studies: (Vec<crate::coder_study::Study>, Vec<String>),
 }
 
 impl App {
@@ -170,6 +179,7 @@ impl App {
             minitasks: (Vec::new(), Vec::new()),
             briefing: None,
             coverage: BTreeMap::new(),
+            studies: (Vec::new(), Vec::new()),
         }
     }
 
@@ -187,6 +197,17 @@ impl App {
         coverage: BTreeMap<(String, String), crate::coder_coverage::Attempt>,
     ) -> Self {
         self.coverage = coverage;
+        self
+    }
+
+    /// Adds the Study view's studies.
+    #[must_use]
+    pub fn with_studies(
+        mut self,
+        studies: Vec<crate::coder_study::Study>,
+        errors: Vec<String>,
+    ) -> Self {
+        self.studies = (studies, errors);
         self
     }
 
@@ -303,6 +324,7 @@ impl App {
             View::Matrix => self.matrix.lines().len(),
             View::Router => self.router.lines().len(),
             View::Live => self.live().len(),
+            View::Study => self.study().len(),
         }
     }
     pub fn inspect(&mut self) {
@@ -340,7 +362,8 @@ impl App {
             | View::Briefing
             | View::Matrix
             | View::Router
-            | View::Live => {}
+            | View::Live
+            | View::Study => {}
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -411,7 +434,7 @@ impl App {
                 self.ladder.style(Intensity::Half),
             )),
         );
-        let keys = "1-9,0,b,m,r view  tab/h/l switch  j/k move  enter inspect  q quit";
+        let keys = "1-9,0,b,m,r,f,s view  tab/h/l switch  j/k move  enter inspect  q quit";
         rail(
             box_area,
             buf,
@@ -470,7 +493,8 @@ impl App {
             | View::Briefing
             | View::Matrix
             | View::Router
-            | View::Live => Some(self.cursor()),
+            | View::Live
+            | View::Study => Some(self.cursor()),
             View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 2 + self.cursor()),
         }
     }
@@ -495,7 +519,12 @@ impl App {
             View::Matrix => self.matrix.lines(),
             View::Router => self.router.lines(),
             View::Live => self.live(),
+            View::Study => self.study(),
         }
+    }
+
+    fn study(&self) -> Vec<String> {
+        crate::coder_study::view_lines(&self.studies.0, &self.studies.1)
     }
 
     fn overview(&self) -> Vec<String> {
@@ -1164,6 +1193,24 @@ mod tests {
         let text = app.lines().join("\n");
         assert!(text.contains("fitted without it"), "{text}");
         assert!(text.contains("fixed opus"), "{text}");
+    }
+
+    #[test]
+    fn the_study_view_shows_the_retained_study() {
+        let retained = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../bench/terminal-bench/studies");
+        let (studies, errors) = crate::coder_study::load(&[(retained, "retained")]);
+        let mut app = App::new(Records::default()).with_studies(studies, errors);
+        app.open(View::from_digit('s').unwrap());
+        assert_eq!(app.view(), View::Study);
+        let text = app.lines().join("\n");
+        assert!(text.contains("study evidence-pack-"), "{text}");
+        assert!(text.contains("candidates by tier"), "{text}");
+        assert!(text.contains("held out:"), "{text}");
+        let empty = App::new(Records::default());
+        let mut empty = empty;
+        empty.open(View::Study);
+        assert!(empty.lines().join("\n").contains("No study recorded"));
     }
 
     #[test]

@@ -65,7 +65,7 @@ fn read_json(path: &Path) -> Option<Value> {
 }
 
 /// Every episode directory under `traces` that holds a manifest.
-fn episodes(traces: &Path) -> Vec<PathBuf> {
+pub(crate) fn episodes(traces: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut pending = vec![(traces.to_path_buf(), 0)];
     while let Some((dir, depth)) = pending.pop() {

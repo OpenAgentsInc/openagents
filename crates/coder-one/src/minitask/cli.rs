@@ -162,6 +162,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 deadline: Duration::from_secs(deadline),
                 controls,
                 checks,
+                brief: None,
             })
             .await?;
             if json_output {

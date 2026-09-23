@@ -53,7 +53,10 @@ gym coder router [--json]  task features, router picks, and leave-one-task-out
                            regret against fixed and hand-written baselines
 gym coder coverage [--attempt JOB/TRIAL | --run ID] [--json]
                            verify.checks requirement coverage per attempt and
-                           mini-task run; see gym coder coverage --help";
+                           mini-task run; see gym coder coverage --help
+gym coder study [ID] [--all] [--json]
+                           hill-climbing studies: candidates by tier, development
+                           and held-out results, frontiers, promotions, and spend";
 
 const SCHEMA: &str = "openagents.gym.coder-policy.v1";
 
@@ -158,6 +161,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("router") {
         return gym::coder_router::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("study") {
+        return gym::coder_study::command(&args[1..], out);
     }
     let (Some("policy"), Some(command)) = (
         args.first().map(String::as_str),

@@ -62,7 +62,8 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one minitask list|run                  (coder-one minitask help)
        coder-one capabilities [--demonstrate] [--json]  (coder-one capabilities help)
        coder-one prompt list|show|capture           (coder-one prompt help)
-       coder-one checks synthetic|run|recover       (coder-one checks help)";
+       coder-one checks synthetic|run|recover       (coder-one checks help)
+       coder-one study run|list                     (coder-one study help)";
 
 const PROMPT: &str = "Solve this issue.";
 
@@ -86,6 +87,7 @@ async fn main() -> ExitCode {
                 }
             };
         }
+        Some("study") => return study_command(&args[1..]).await,
         Some("prompt") => {
             return match coder_one::prompt::command(&args[1..]) {
                 Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
@@ -178,6 +180,24 @@ async fn checks_command(args: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match coder_one::checks::cli::command(args).await {
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Err(message) => {
+            eprintln!("coder-one: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `coder-one study …`: 0 when the study finished, whatever it found.
+async fn study_command(args: &[String]) -> ExitCode {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h") | None
+    ) {
+        println!("{}", coder_one::study::cli::USAGE);
+        return ExitCode::SUCCESS;
+    }
+    match coder_one::study::cli::command(args).await {
         Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
         Err(message) => {
             eprintln!("coder-one: {message}");
@@ -492,6 +512,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             directions: ISSUE_DIRECTIONS,
             cap: delegate::BRIEFING_CAP,
             packer: coder_one::policy::Packer::Sections,
+            pack: coder_one::pack::Params::default(),
             isolation: "none",
             base: base.as_deref(),
         };

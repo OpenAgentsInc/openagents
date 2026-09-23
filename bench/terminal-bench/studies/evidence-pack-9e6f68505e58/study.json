@@ -1,0 +1,221 @@
+{
+  "schema": "openagents.coder-one.study.v1",
+  "nip_opt": "openagents.optimization-study.v1",
+  "component": "evidence.pack",
+  "owner": "local",
+  "signature": "evidence.pack: the briefing within its cap, packed from the episode's evidence, every omission named",
+  "baseline": {
+    "digest": "a15087bf50eb3d57ae8242906ca260fc09dbae96718e9c693c5a2dbf20a6d47c",
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "evidence.pack study baseline",
+      "note": "pack-luna.json with the coverage packer at its hand-authored defaults",
+      "search": [
+        "policy.brief.cap",
+        "policy.brief.pack.slice",
+        "policy.brief.pack.item_max",
+        "policy.brief.pack.instruction_share",
+        "policy.brief.packer"
+      ],
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked",
+          "packer": "coverage"
+        },
+        "executor": {
+          "agent": "codex",
+          "version": "0.155.1",
+          "model": "gpt-6-luna",
+          "effort": null,
+          "tools": null,
+          "prompt_cache_ttl": null,
+          "deadline_sec": 600
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": null,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    }
+  },
+  "space": {
+    "slots": [
+      {
+        "id": "policy.brief.cap",
+        "surface": "parameters",
+        "values": [
+          8000,
+          10000,
+          12000,
+          16000
+        ],
+        "step": 1000.0,
+        "min": 4000.0,
+        "max": 20000.0
+      },
+      {
+        "id": "policy.brief.pack.slice",
+        "surface": "parameters",
+        "values": [
+          400,
+          800,
+          1200,
+          2000
+        ],
+        "step": 200.0,
+        "min": 200.0,
+        "max": 4000.0
+      },
+      {
+        "id": "policy.brief.pack.item_max",
+        "surface": "parameters",
+        "values": [
+          2000,
+          4000,
+          8000,
+          12000
+        ],
+        "step": 1000.0,
+        "min": 2000.0,
+        "max": 16000.0
+      },
+      {
+        "id": "policy.brief.pack.instruction_share",
+        "surface": "parameters",
+        "values": [
+          0.3,
+          0.5,
+          0.7
+        ],
+        "step": 0.1,
+        "min": 0.1,
+        "max": 0.9
+      }
+    ],
+    "swap": {
+      "id": "policy.brief.packer",
+      "surface": "composition",
+      "values": [
+        "sections"
+      ]
+    },
+    "validator": "coder_one::policy::Manifest::validate, slots limited to coder_one::policy::SEARCHABLE"
+  },
+  "data": {
+    "suite": "retained Terminal-Bench briefings under bench/terminal-bench/traces, labels from crates/coder-one/fixtures/components/labeled--*",
+    "leakage_unit": "task",
+    "seed": 9557,
+    "development_tasks": [
+      "build-cython-ext",
+      "fix-code-vulnerability",
+      "headless-terminal",
+      "log-summary-date-ranges",
+      "sqlite-db-truncate"
+    ],
+    "held_out_tasks": [
+      "cancel-async-tasks",
+      "fix-git",
+      "git-leak-recovery"
+    ],
+    "search": 79,
+    "selection": 74,
+    "confirmation": 80,
+    "excluded": 0,
+    "exposure": "The labels were written from the public instructions of all eight tasks before this study; the held-out tasks are held out from the search, not from label authoring."
+  },
+  "objective": "J = 0.5 * selected_delivered_rate + 0.5 * label_coverage - 1.0 * duplicate_bytes / 12000 - 0.1 * chars / 12000, per retained briefing; a set's J is the mean over its tasks of each task's mean J",
+  "acceptance": "The selected candidate beats the baseline when, on the held-out tasks' briefings, the mean paired difference in J is at least 0.01 and the 2.5th percentile of a task-clustered bootstrap (2,000 resamples) is above zero",
+  "optimizer": {
+    "operators": [
+      "swap",
+      "grid",
+      "climb"
+    ],
+    "halving": {
+      "eta": 3
+    },
+    "climb_moves": 12,
+    "random_draws": 24,
+    "seed": 9557,
+    "nondeterminism": "none in the scores; pack wall time is measured and recorded but never ranked"
+  },
+  "tiers": [
+    {
+      "tier": "replay",
+      "number": 0,
+      "runs": "the component alone on retained evidence and fixtures, with recorded or no Jev",
+      "cost": "free: local compute only",
+      "gate": null,
+      "enabled": true
+    },
+    {
+      "tier": "mini",
+      "number": 1,
+      "runs": "mini-task episodes with the scripted executor, graded",
+      "cost": "free: local compute only, seconds per task",
+      "gate": "--through mini",
+      "enabled": true
+    },
+    {
+      "tier": "screen",
+      "number": 2,
+      "runs": "one Terminal-Bench trial per development task",
+      "cost": "about $0.01–0.10 per trial with Luna, plus about 5 minutes",
+      "gate": "--allow-terminal-bench",
+      "enabled": false
+    },
+    {
+      "tier": "measure",
+      "number": 3,
+      "runs": "three Terminal-Bench trials per development task",
+      "cost": "about $0.09 per task with Luna, about $1.30 with Opus",
+      "gate": "--allow-terminal-bench",
+      "enabled": false
+    },
+    {
+      "tier": "confirm",
+      "number": 4,
+      "runs": "the selected candidate on held-out Terminal-Bench tasks",
+      "cost": "the measure tier's scale, on held-out tasks",
+      "gate": "--allow-terminal-bench",
+      "enabled": false
+    }
+  ],
+  "confirmation": {
+    "max_candidates": 1,
+    "max_attempts": 1,
+    "policy": "The selected candidate beats the baseline when, on the held-out tasks' briefings, the mean paired difference in J is at least 0.01 and the 2.5th percentile of a task-clustered bootstrap (2,000 resamples) is above zero"
+  },
+  "bounds": {
+    "spend_usd": 0.0,
+    "note": "tiers 0 and 1 make no model or Jev call"
+  },
+  "study": "evidence-pack-9e6f68505e58",
+  "digest": "9e6f68505e583b956585057becb1fce96fa82e4af18ded1cd238e388d4cda03e"
+}

@@ -141,6 +141,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         jobs: jobs.clone(),
         ..gym::coder_live::Sources::default()
     };
+    let (studies, study_errors) = gym::coder_study::load(&gym::coder_study::default_dirs());
     let mut app = terminal_bench_tui::App::new(records)
         .with_components(components)
         .with_requirements(requirements)
@@ -152,7 +153,8 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
                 .map(gym::coder_coverage::load_dir)
                 .unwrap_or_default(),
         )
-        .with_live(live);
+        .with_live(live)
+        .with_studies(studies, study_errors);
     if print_only {
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {
