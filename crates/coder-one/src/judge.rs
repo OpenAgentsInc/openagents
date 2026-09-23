@@ -19,18 +19,22 @@ use std::process::Command;
 use std::time::Instant;
 
 use indexmap::IndexMap;
-use jev::{Choice, Entry, Noul, Questions, SystemOneRequest};
+use jev::{Choice, Entry, Noul, Questions, RetryPolicy, SystemOneRequest};
 use serde_json::json;
 
 use atif::document::{Decision, Step};
 
 use crate::agent::{Judge, Judgments};
+use crate::component::jev::{
+    DEADLINE_SKIP, JEV_CALL_BUDGET, charge_answered, charge_failed, charge_skipped,
+};
 use crate::component::{
     self,
     evidence::{self, Probe, SURVEY_BATCH, YES, issue_state},
     jev::{Ask, Asked, JevMode},
 };
 use crate::credentials::{JEV_BASE_URL, JEV_MODEL};
+use crate::deadline::Deadline;
 use crate::delegate::{Evidence, Span};
 use crate::record::{Cost, Finish, Outcome, Recorder, Start};
 use crate::state::{Issue, State, Surveyed, Turn};
@@ -79,6 +83,10 @@ pub struct JevJudge {
     v2: bool,
     /// The most files the deep survey judges.
     survey_files: usize,
+    /// The episode deadline every request and command is bounded by.
+    deadline: Deadline,
+    /// Requests the deadline skipped before they were sent.
+    pub skipped: u32,
 }
 
 /// The most characters of one probe's output a briefing keeps.
@@ -137,7 +145,17 @@ impl JevJudge {
             probes: false,
             v2: false,
             survey_files: SURVEY_FILES,
+            deadline: Deadline::unbounded(),
+            skipped: 0,
         }
+    }
+
+    /// Bounds every Jev request, setup command, and probe by the episode
+    /// `deadline`.
+    #[must_use]
+    pub fn within(mut self, deadline: Deadline) -> Self {
+        self.deadline = deadline;
+        self
     }
 
     /// Sets how many files the deep survey judges, at most
@@ -216,6 +234,13 @@ impl JevJudge {
                 println!("  setup ▸ `{command}`: {destination} already exists");
                 continue;
             }
+            let Some(limit) = self
+                .deadline
+                .grant("setup", std::time::Duration::from_secs(240))
+            else {
+                println!("  setup ▸ skipped `{command}`: the episode deadline left no time");
+                continue;
+            };
             let mut prepared = std::process::Command::new("bash");
             prepared
                 .arg("-c")
@@ -237,10 +262,7 @@ impl JevJudge {
             );
             let started = Instant::now();
             let ended = supervise::Job::from_command(prepared)
-                .bounded(
-                    supervise::Limits::within(std::time::Duration::from_secs(240))
-                        .keeping(16 * 1024),
-                )
+                .bounded(supervise::Limits::within(limit).keeping(16 * 1024))
                 .run()
                 .await;
             let mut output = ended.stdout.marked();
@@ -292,7 +314,7 @@ impl JevJudge {
         jev_state: serde_json::Value,
         questions: Questions,
     ) -> Asked {
-        let id = format!("{name}-{}", self.calls + self.failed + 1);
+        let id = format!("{name}-{}", self.calls + self.failed + self.skipped + 1);
         let asked = component::jev::ask(
             &JevMode::Live(client.clone()),
             &self.recorder,
@@ -303,6 +325,7 @@ impl JevJudge {
                 state: jev_state,
                 questions,
                 parent: None,
+                deadline: Some(self.deadline.clone()),
             },
         )
         .await;
@@ -316,6 +339,8 @@ impl JevJudge {
             self.input_tokens += asked.input_tokens.unwrap_or(0);
         } else if asked.how == "failed" {
             self.failed += 1;
+        } else if asked.how == "skipped" {
+            self.skipped += 1;
         }
     }
     /// Turns on probe mode.
@@ -387,6 +412,13 @@ impl JevJudge {
                 .reading(&json!(battery))
                 .with_effects(),
         );
+        let Some(limit) = self
+            .deadline
+            .grant("probes", std::time::Duration::from_secs(10))
+        else {
+            println!("  probe ▸ skipped: the episode deadline left no time");
+            return;
+        };
         let runs = battery.iter().map(|command| {
             let mut prepared = std::process::Command::new("bash");
             prepared
@@ -401,10 +433,7 @@ impl JevJudge {
                 }
             }
             supervise::Job::from_command(prepared)
-                .bounded(
-                    supervise::Limits::within(std::time::Duration::from_secs(10))
-                        .keeping(16 * 1024),
-                )
+                .bounded(supervise::Limits::within(limit).keeping(16 * 1024))
                 .run()
         });
         let ended = futures_util::future::join_all(runs).await;
@@ -519,8 +548,9 @@ impl JevJudge {
         );
         let batches: Vec<&[evidence::Candidate]> = candidates.chunks(SURVEY_BATCH).collect();
         let mode = JevMode::Live(client.clone());
-        let first = self.calls + self.failed + 1;
+        let first = self.calls + self.failed + self.skipped + 1;
         let recorder = self.recorder.clone();
+        let deadline = self.deadline.clone();
         let requests = batches.iter().zip(first..).map(|(batch, number)| {
             let (jev_state, questions) = evidence::survey_request(&issue, batch);
             component::jev::ask(
@@ -533,6 +563,7 @@ impl JevJudge {
                     state: jev_state,
                     questions,
                     parent: Some(invocation.clone()),
+                    deadline: Some(deadline.clone()),
                 },
             )
         });
@@ -912,11 +943,35 @@ impl JevJudge {
             .body(JEV_MODEL)
             .map(serde_json::Value::Object)
             .unwrap_or_else(|_| json!({}));
+        let id = format!("jev-{}", self.calls + self.failed + self.skipped + 1);
+        let Some(budget) = self.deadline.grant("jev_step", JEV_CALL_BUDGET) else {
+            self.skipped += 1;
+            let decision = Decision {
+                id,
+                name: "jev_step".to_string(),
+                door: JEV_BASE_URL.to_string(),
+                model: JEV_MODEL.to_string(),
+                request: body,
+                answers: serde_json::Value::Null,
+                route: None,
+                error: Some(DEADLINE_SKIP.to_string()),
+                attempts: Vec::new(),
+                review: None,
+                milliseconds: 0,
+            };
+            self.recorder
+                .push(Step::called(decision.call()).noting("jev_usage", charge_skipped()));
+            return Err(DEADLINE_SKIP.to_string());
+        };
+        let request = request.retry(RetryPolicy {
+            budget: Some(budget),
+            ..RetryPolicy::default()
+        });
         let started = Instant::now();
         let result = client.system_one(request).await;
         let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let mut decision = Decision {
-            id: format!("jev-{}", self.calls + self.failed + 1),
+            id,
             name: "jev_step".to_string(),
             door: JEV_BASE_URL.to_string(),
             model: JEV_MODEL.to_string(),
@@ -933,8 +988,11 @@ impl JevJudge {
             Err(error) => {
                 self.failed += 1;
                 decision.error = Some(error.to_string());
-                self.recorder
-                    .push(Step::called(decision.call()).taking(milliseconds));
+                self.recorder.push(
+                    Step::called(decision.call())
+                        .taking(milliseconds)
+                        .noting("jev_usage", charge_failed(&error)),
+                );
                 return Err(error.to_string());
             }
         };
@@ -1049,13 +1107,7 @@ impl JevJudge {
             Step::called(decision.call())
                 .taking(milliseconds)
                 .noting("hints", json!(hints))
-                .noting(
-                    "jev_usage",
-                    json!({
-                        "input_tokens": response.usage.input_tokens,
-                        "output_tokens": response.usage.output_tokens,
-                    }),
-                ),
+                .noting("jev_usage", charge_answered(&response)),
         );
         Ok(hints)
     }

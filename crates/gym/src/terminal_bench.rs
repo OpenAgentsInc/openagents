@@ -84,6 +84,11 @@ pub struct Attempt {
     /// The Coder One policy manifest the episode resolved, when its
     /// manifest records one.
     pub policy: Option<crate::coder_policy::PolicyRecord>,
+    /// Coder One's per-call ledger from `evaluation/usage.json`: each
+    /// call's charge (`priced`, `zero`, or `unknown`), cost, and provenance.
+    pub ledger: Vec<Value>,
+    /// The episode deadline's record from the episode manifest.
+    pub deadline: Option<Value>,
 }
 
 impl Attempt {
@@ -701,6 +706,8 @@ fn empty_attempt(source: &str, job: &str, trial: &str) -> Attempt {
         evidence: Vec::new(),
         notes: Vec::new(),
         policy: None,
+        ledger: Vec::new(),
+        deadline: None,
     }
 }
 
@@ -822,6 +829,7 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
             attempt.policy = value
                 .get("policy")
                 .and_then(crate::coder_policy::PolicyRecord::from_episode);
+            attempt.deadline = value.get("deadline").cloned();
             if let Some(policy) = &attempt.policy {
                 attempt.notes.push(format!(
                     "Policy {} {} ({}, {} overrides)",
@@ -1053,6 +1061,9 @@ fn attach_usage(attempt: &mut Attempt, path: &Path, records: &mut Records) {
                 for (name, count) in calls {
                     attempt.counts.push((name.clone(), count.as_u64()));
                 }
+            }
+            if let Some(ledger) = value.get("ledger").and_then(Value::as_array) {
+                attempt.ledger.clone_from(ledger);
             }
         }
         Err(error) => records.errors.push(error),
@@ -1627,6 +1638,50 @@ mod tests {
         assert_eq!(attempt.display_status(), "unverifiable");
         attempt.reward = Some(0.0);
         assert_eq!(attempt.display_status(), "task failure");
+    }
+
+    #[test]
+    fn a_coder_one_episode_brings_its_policy_ledger_and_deadline() {
+        let temp = tempfile::tempdir().unwrap();
+        let episode = temp.path();
+        std::fs::create_dir_all(episode.join("evaluation")).unwrap();
+        let manifest = serde_json::json!({
+            "contract": "openagents.coder.episode.v1",
+            "artifact": { "version": "coder-one 0.1.0 (test)" },
+            "policy": {
+                "digest": "ab".repeat(32),
+                "name": "coder-one-jevprobe3-luna",
+                "source": "inline",
+                "overrides": [{"source": "CODER_ONE_DELEGATE_EFFORT", "field": "policy.executor.effort", "value": "high"}],
+                "manifest": { "schema": "openagents.coder-one.policy.v1", "policy": {}, "protected": {} },
+            },
+            "deadline": { "kind": "hard", "total_ms": 1_740_000, "reserve_ms": 30_000, "elapsed_ms": 600_000, "cuts": [] },
+            "files": {},
+        });
+        let usage = serde_json::json!({
+            "cost": { "amount_usd": null, "provenance": "unknown" },
+            "components": {},
+            "calls": {},
+            "ledger": [
+                {"component": "jev", "id": "jev-1", "charge": "unknown", "cost_usd": null, "provenance": "unknown"},
+                {"component": "delegate", "id": "delegate-1", "charge": "priced", "cost_usd": 0.1, "provenance": "price_estimate"},
+            ],
+        });
+        let manifest_path = episode.join("manifest.json");
+        let usage_path = episode.join("evaluation/usage.json");
+        std::fs::write(&manifest_path, manifest.to_string()).unwrap();
+        std::fs::write(&usage_path, usage.to_string()).unwrap();
+        let mut records = Records::default();
+        let mut attempt = test_attempt();
+        attach_episode(&mut attempt, &manifest_path, episode, &mut records);
+        attach_usage(&mut attempt, &usage_path, &mut records);
+        assert!(records.errors.is_empty(), "{:?}", records.errors);
+        let policy = attempt.policy.as_ref().unwrap();
+        assert_eq!(policy.short(), "abababababab");
+        assert_eq!(policy.overrides.len(), 1);
+        assert_eq!(attempt.ledger.len(), 2);
+        assert_eq!(attempt.deadline.as_ref().unwrap()["kind"], "hard");
+        assert_eq!(crate::coder_calls::charges(&attempt.ledger), (1, 0, 1));
     }
 
     #[test]

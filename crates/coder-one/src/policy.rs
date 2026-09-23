@@ -599,6 +599,9 @@ impl Manifest {
             effort: executor.effort.clone(),
             tools: executor.tools.clone(),
             prompt_cache_ttl: executor.prompt_cache_ttl.clone(),
+            episode: crate::deadline::Deadline::unbounded(),
+            gate: None,
+            granted: None,
             runs: 0,
         }
     }

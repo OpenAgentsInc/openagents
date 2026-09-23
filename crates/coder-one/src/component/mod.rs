@@ -177,6 +177,8 @@ async fn ask_one(
             state,
             questions,
             parent: None,
+            // An isolated run has no episode deadline.
+            deadline: None,
         },
     )
     .await

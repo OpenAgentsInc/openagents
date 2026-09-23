@@ -357,6 +357,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
         deadline: options.timeout,
         recorder: recorder.clone(),
         commands: 0,
+        episode: coder_one::deadline::Deadline::unbounded(),
     };
 
     let delegate_model = options
@@ -405,6 +406,9 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             prompt_cache_ttl: env("CLAUDE_CODE_PROMPT_CACHE_TTL")
                 .map(|ttl| ttl.trim().to_string())
                 .filter(|ttl| !ttl.is_empty()),
+            episode: coder_one::deadline::Deadline::unbounded(),
+            gate: None,
+            granted: None,
             runs: 0,
         };
         let instruction = format!("{}\n\n{}", state.issue.title, state.issue.body);

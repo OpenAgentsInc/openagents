@@ -296,3 +296,17 @@ def test_the_reference_arms_point_at_their_manifests():
     assert agents["coder-one-jevprobe2-opus-lean-low-5m"].kwargs == {
         "policy": OPUS_POLICY
     }
+
+
+def test_an_exec_timeout_becomes_the_episodes_own_deadline_inside_it(tmp_path):
+    path, digest = _binary(tmp_path)
+    agent = CoderOne(
+        logs_dir=tmp_path,
+        artifact_path=path,
+        artifact_sha256=digest,
+        episode_timeout_sec=1800,
+    )
+    assert agent._episode_env()["CODER_ONE_EPISODE_DEADLINE"] == "1740"
+    unbounded = CoderOne(logs_dir=tmp_path, artifact_path=path, artifact_sha256=digest)
+    assert "CODER_ONE_EPISODE_DEADLINE" not in unbounded._episode_env()
+    assert "CODER_ONE_SPEND_SOFT_USD" in CoderOne.EPISODE_ENV

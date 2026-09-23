@@ -35,6 +35,8 @@
 //! | `CODER_ONE_POLICY` | A policy manifest: a path, or the JSON itself. The switches above then override it. |
 //! | `CODER_ONE_EXECUTOR_VERSION` | The delegate CLI version the harness installed; the doctor refuses another. |
 //! | `CLAUDE_CODE_PROMPT_CACHE_TTL` | The Claude Code delegate's prompt-cache TTL, `5m` or `1h`. |
+//! | `CODER_ONE_EPISODE_DEADLINE` | Seconds for the whole episode, one monotonic deadline. Every dispatch, Jev request, retry, wait, setup command, probe, and command is granted at most what is left after the reserve. No deadline when unset. |
+//! | `CODER_ONE_SPEND_SOFT_USD` | A soft spend bound in dollars, checked before each dispatch starts. A running dispatch can pass it. |
 //!
 //! `coder_one::policy` resolves all of these once, before anything runs,
 //! into the policy manifest the episode reads its configuration from. The
@@ -53,6 +55,7 @@ use sha2::{Digest, Sha256};
 
 use crate::agent::{EPISODE_INSTRUCTIONS, Judge, Judgments};
 use crate::credentials::{self, Secret};
+use crate::deadline::Deadline;
 use crate::delegate::{self, Agent, Credential, Delegated, Explorer, Mode, Plan};
 use crate::generate::Door;
 use crate::judge::JevJudge;
@@ -312,6 +315,12 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     }
     let settings = Settings::from_env(args.model.as_deref())?;
     let policy = settings.policy().clone();
+    // One monotonic deadline for the whole episode, from here on.
+    let ceilings = &policy.protected.ceilings;
+    let deadline = Deadline::new(
+        ceilings.episode_deadline_sec.map(Duration::from_secs),
+        Duration::from_secs(ceilings.reserve_sec),
+    );
     let bearer = settings
         .bearer
         .clone()
@@ -328,7 +337,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     let instruction = std::fs::read_to_string(&args.instruction_file)
         .map_err(|error| format!("cannot read {}: {error}", args.instruction_file.display()))?;
     let workdir = std::env::current_dir().map_err(|error| error.to_string())?;
-    let mut bundle = Bundle::create(&args.output_dir, &settings, &workdir)?;
+    let mut bundle = Bundle::create(&args.output_dir, &settings, &workdir, deadline.clone())?;
 
     // Recording starts before setup: every step and invocation is synced to
     // the log as it happens, and the bundle is derived from it.
@@ -399,7 +408,9 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         settings.resolution.source
     );
 
-    let mut judge = policy.judge(jev_client, workdir.clone(), &state.issue, recorder.clone());
+    let mut judge = policy
+        .judge(jev_client, workdir.clone(), &state.issue, recorder.clone())
+        .within(deadline.clone());
     judge.survey(&mut state).await;
     let mut judge = Snapshots {
         inner: judge,
@@ -418,12 +429,14 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         }),
         recorder.clone(),
     )?
-    .caching_under(&bundle.session.id);
+    .caching_under(&bundle.session.id)
+    .within(deadline.clone());
     let mut shell = Checkout {
         workdir: workdir.clone(),
         deadline: Duration::from_secs(control.command_timeout_sec),
         recorder: recorder.clone(),
         commands: 0,
+        episode: deadline.clone(),
     };
 
     let (ended, delegated) = if policy.mode() == Mode::Off {
@@ -467,6 +480,22 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             // unless told it is in a sandbox.
             env: vec![("IS_SANDBOX".to_string(), "1".to_string())],
         });
+        executor.episode = deadline.clone();
+        if let Some(soft) = policy.protected.ceilings.spend_soft_usd {
+            // The soft bound is checked before a dispatch starts. A running
+            // dispatch can pass it: no adapter reserves a known maximum.
+            let spent = recorder.clone();
+            executor.gate = Some(Box::new(move || {
+                let known = usage(&spent.steps(), true)["cost"]["lower_bound_usd"]
+                    .as_f64()
+                    .unwrap_or(0.0);
+                (known >= soft).then(|| {
+                    format!(
+                        "the soft spend bound of ${soft:.4} is reached: ${known:.4} is known spent"
+                    )
+                })
+            }));
+        }
         let plan = Plan {
             mode: policy.mode(),
             policy: policy.escalation(),
@@ -592,10 +621,17 @@ struct Bundle {
     /// atomically, and the manifest, written last, names the generation
     /// and every file's digest.
     generation: std::cell::Cell<u64>,
+    /// The episode deadline, recorded with every write.
+    deadline: Deadline,
 }
 
 impl Bundle {
-    fn create(dir: &Path, settings: &Settings, workdir: &Path) -> Result<Self, String> {
+    fn create(
+        dir: &Path,
+        settings: &Settings,
+        workdir: &Path,
+        deadline: Deadline,
+    ) -> Result<Self, String> {
         for sub in ["artifacts", "verification", "evaluation"] {
             std::fs::create_dir_all(dir.join(sub))
                 .map_err(|error| format!("cannot create {}: {error}", dir.join(sub).display()))?;
@@ -663,7 +699,14 @@ impl Bundle {
             "bounds": {
                 "max_steps": policy.policy.control.max_steps,
                 "command_timeout_sec": policy.policy.control.command_timeout_sec,
-                "episode_deadline": "owned by the harness's exec timeout",
+                "episode_deadline_sec": policy.protected.ceilings.episode_deadline_sec,
+                "reserve_sec": policy.protected.ceilings.reserve_sec,
+            },
+            "spend": {
+                "soft_usd": policy.protected.ceilings.spend_soft_usd,
+                "hard_usd": Value::Null,
+                "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+                "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
             },
         });
         Ok(Bundle {
@@ -675,6 +718,7 @@ impl Bundle {
             session,
             log: None,
             generation: std::cell::Cell::new(0),
+            deadline,
         })
     }
 
@@ -785,6 +829,13 @@ impl Bundle {
         manifest["git_base"] = json!(self.base);
         manifest["doors"]["generation"]["models_served"] = trajectory_models(steps);
         manifest["files"] = Value::Object(files);
+        manifest["deadline"] = self.deadline.record();
+        manifest["spend"]["known_usd"] = usage["cost"]["lower_bound_usd"].clone();
+        manifest["spend"]["unknown_calls"] = usage["cost"]["unknown_calls"].clone();
+        if let Some(soft) = manifest["spend"]["soft_usd"].as_f64() {
+            manifest["spend"]["exceeded"] =
+                json!(usage["cost"]["lower_bound_usd"].as_f64().unwrap_or(0.0) >= soft);
+        }
         manifest["verification"] = json!({
             "note": "Coder One runs no independent verification of its own; the task's verifier is the grader.",
         });
@@ -850,31 +901,31 @@ impl Bundle {
 /// The usage record, derived from the trajectory so both say the same
 /// thing. Unreported values are null, never zero. `delegating` adds the
 /// delegate component, which a run with delegation off leaves out.
+///
+/// Every call is one of three charges: `priced`, with a cost; `zero`, a
+/// known zero, such as a request never sent or refused before any work;
+/// or `unknown`, a call that may have done billed work nobody reported,
+/// such as a timed-out request or a session cut off by its deadline. A
+/// component's cost is known only when none of its calls is unknown;
+/// `cost_lower_bound_usd` sums what is known either way. `ledger` lists
+/// every call with its charge and provenance.
 pub fn usage(steps: &[Step], delegating: bool) -> Value {
     let generations: Vec<&Step> = steps
         .iter()
         .filter(|step| step.source == Source::Agent && step.call.is_none() && step.tokens.is_some())
         .collect();
-    let failed_generations = steps
+    let failed_generation_steps: Vec<&Step> = steps
         .iter()
         .filter(|step| {
             step.source == Source::System && step.message.starts_with("generation failed")
         })
-        .count();
+        .collect();
+    let failed_generations = failed_generation_steps.len();
     let retries: u64 = generations
         .iter()
         .filter_map(|step| step.extensions.get("attempts").and_then(Value::as_u64))
         .map(|attempts| attempts.saturating_sub(1))
         .sum();
-    let decisions: Vec<&atif::document::Call> = steps
-        .iter()
-        .filter_map(|step| step.call.as_ref())
-        .filter(|call| call.is_decision())
-        .collect();
-    let decisions_failed = decisions
-        .iter()
-        .filter(|call| call.outcome == atif::document::Outcome::Failed)
-        .count();
 
     let gen_input: u64 = generations
         .iter()
@@ -890,18 +941,20 @@ pub fn usage(steps: &[Step], delegating: bool) -> Value {
         .iter()
         .map(|step| step.extensions.get("cost_microusd").and_then(Value::as_u64))
         .collect();
+    // A failed generation that may have done billed work leaves the cost
+    // unknown; one refused before any work is a known zero.
+    let gen_failed_unknown = failed_generation_steps
+        .iter()
+        .filter(|step| step.extensions.get("charge").and_then(Value::as_str) != Some("zero"))
+        .count();
     // No generation at all is a known cost of zero, as in a Jev-brief
     // episode that delegates before the explorer runs; one unreported call
     // leaves the generation cost unknown.
-    let priced = costs.iter().all(Option::is_some);
-    let gen_cost = costs.iter().flatten().sum::<u64>() as f64 / 1_000_000.0;
+    let priced = costs.iter().all(Option::is_some) && gen_failed_unknown == 0;
+    let gen_cost_known_part = costs.iter().flatten().sum::<u64>() as f64 / 1_000_000.0;
 
-    let jev_input: Option<u64> = steps
-        .iter()
-        .filter_map(|step| step.extensions.get("jev_usage"))
-        .map(|usage| usage.get("input_tokens").and_then(Value::as_u64))
-        .sum();
-    let jev_cost = jev_input.map(|tokens| tokens as f64 * JEV_USD_PER_MILLION_INPUT / 1_000_000.0);
+    let jev = jev_usage(steps);
+    let jev_cost = (jev.unknown == 0).then_some(jev.priced_usd);
 
     let cached: Vec<Option<u64>> = generations
         .iter()
@@ -914,23 +967,28 @@ pub fn usage(steps: &[Step], delegating: bool) -> Value {
     };
 
     let delegate = delegate_usage(steps);
-    let delegations = delegate.calls.len();
+    let delegations = delegate.dispatches.len();
     let delegate_failed = delegate
-        .calls
+        .dispatches
         .iter()
-        .filter(|call| call.outcome != atif::document::Outcome::Completed)
+        .filter(|dispatch| dispatch.outcome != atif::document::Outcome::Completed)
         .count();
 
-    let gen_cost_known = priced.then_some(gen_cost);
+    let gen_cost_known = priced.then_some(gen_cost_known_part);
     let delegate_cost_known = if delegations == 0 {
         Some(0.0)
     } else {
-        delegate.cost_usd
+        delegate.cost_usd()
     };
     let total = match (gen_cost_known, jev_cost, delegate_cost_known) {
         (Some(generation), Some(jev), Some(delegated)) => json!(generation + jev + delegated),
         _ => Value::Null,
     };
+    let lower_bound = gen_cost_known_part + jev.priced_usd + delegate.lower_bound_usd();
+    let unknown_calls = gen_failed_unknown
+        + costs.iter().filter(|cost| cost.is_none()).count()
+        + jev.unknown
+        + delegate.unknown();
     let delegate_input = if delegations == 0 {
         Some(0)
     } else {
@@ -943,27 +1001,87 @@ pub fn usage(steps: &[Step], delegating: bool) -> Value {
             "cached_input_tokens": gen_cached,
             "output_tokens": gen_output,
             "cost_usd": gen_cost_known,
+            "cost_lower_bound_usd": gen_cost_known_part,
             "cost_provenance": if priced { "provider_reported" } else { "unknown" },
             "unpriced_calls": costs.iter().filter(|cost| cost.is_none()).count(),
+            "failed_calls_unknown_charge": gen_failed_unknown,
         },
-        "jev": {
-            "model": credentials::JEV_MODEL,
-            "requests": decisions.len(),
-            "input_tokens": jev_input,
-            "output_tokens_billed": false,
-            "cost_usd": jev_cost,
-            "cost_provenance": if jev_cost.is_some() { "price_estimate" } else { "unknown" },
-            "rate": "$0.042 per million input tokens, retrieved 2026-09-22",
-        },
+        "jev": jev.record(),
     });
     if delegating || delegations > 0 {
         components["delegate"] = delegate.record();
     }
 
+    let mut ledger: Vec<Value> = Vec::new();
+    let mut generation_number = 0;
+    for step in steps {
+        if step.source == Source::Agent && step.call.is_none() && step.tokens.is_some() {
+            generation_number += 1;
+            let cost = step
+                .extensions
+                .get("cost_microusd")
+                .and_then(Value::as_u64)
+                .map(|micro| micro as f64 / 1_000_000.0);
+            ledger.push(json!({
+                "component": "generation",
+                "id": format!("generation-{generation_number}"),
+                "name": "generate",
+                "model": step.model,
+                "charge": if cost.is_some() { "priced" } else { "unknown" },
+                "cost_usd": cost,
+                "provenance": if cost.is_some() { "provider_reported" } else { "unknown" },
+                "basis": if cost.is_some() { "the door reported cost_microusd" } else { "the door reported no cost" },
+                "milliseconds": step.milliseconds,
+                "input_tokens": step.tokens.map(|t| t.0),
+                "output_tokens": step.tokens.map(|t| t.1),
+            }));
+        } else if step.source == Source::System && step.message.starts_with("generation failed") {
+            generation_number += 1;
+            let zero = step.extensions.get("charge").and_then(Value::as_str) == Some("zero");
+            ledger.push(json!({
+                "component": "generation",
+                "id": format!("generation-{generation_number}"),
+                "name": "generate",
+                "model": Value::Null,
+                "charge": if zero { "zero" } else { "unknown" },
+                "cost_usd": if zero { json!(0.0) } else { Value::Null },
+                "provenance": if zero { "none" } else { "unknown" },
+                "basis": if zero { "refused or never sent: no billed work" } else { "the request failed; the door may have billed it" },
+                "milliseconds": step.milliseconds,
+            }));
+        } else if let Some(call) = step.call.as_ref().filter(|call| call.is_decision()) {
+            let charge = JevCharge::of(step, call);
+            ledger.push(json!({
+                "component": "jev",
+                "id": call.id,
+                "name": call.name,
+                "model": credentials::JEV_MODEL,
+                "outcome": call.outcome,
+                "charge": charge.charge,
+                "cost_usd": match charge.charge {
+                    "priced" => json!(charge.usd()),
+                    "zero" => json!(0.0),
+                    _ => Value::Null,
+                },
+                "provenance": match charge.charge {
+                    "priced" => "price_estimate",
+                    "zero" => "none",
+                    _ => "unknown",
+                },
+                "basis": charge.basis,
+                "milliseconds": call.milliseconds,
+                "input_tokens": charge.input_tokens,
+            }));
+        } else if let Some(dispatch) = step.call.as_ref().and_then(|call| Dispatch::of(step, call))
+        {
+            ledger.push(dispatch.record());
+        }
+    }
+
     json!({
         "tokens": {
             "input": match delegate_input {
-                Some(delegated) => json!(gen_input + jev_input.unwrap_or(0) + delegated),
+                Some(delegated) => json!(gen_input + jev.input_tokens + delegated),
                 None => Value::Null,
             },
             "cache": if delegations > 0 { json!(delegate.cache_read) } else { gen_cached.clone() },
@@ -976,32 +1094,276 @@ pub fn usage(steps: &[Step], delegating: bool) -> Value {
         },
         "cost": {
             "amount_usd": total,
+            "lower_bound_usd": lower_bound,
+            "unknown_calls": unknown_calls,
             "provenance": if total.is_null() { "unknown" } else { "mixed" },
-            "covers": "generation (provider_reported), jev (price_estimate), and delegate (cli_list_price or cli_reported for Claude Code, price_estimate for Codex); each is under components",
+            "covers": "generation (provider_reported), jev (price_estimate), and delegate (cli_list_price or cli_reported for Claude Code, price_estimate for Codex); each is under components, and ledger lists every call",
         },
         "calls": {
             "generation": generations.len(),
-            "decisions": decisions.len(),
+            "decisions": jev.requests,
+            "decisions_skipped": jev.skipped,
             "delegates": delegations,
-            "failed": failed_generations + decisions_failed + delegate_failed,
+            "failed": failed_generations + jev.failed + delegate_failed,
             "retries": retries,
         },
         "components": components,
+        "ledger": ledger,
     })
 }
 
-/// The delegate component, summed over every `delegate` call.
+/// What one Jev call cost.
+struct JevCharge {
+    charge: &'static str,
+    basis: String,
+    input_tokens: Option<u64>,
+}
+
+impl JevCharge {
+    /// Reads the call's `jev_usage`. A record written before charges
+    /// were recorded is priced when it carries input tokens; a failed call
+    /// with no usage at all is unknown, never zero.
+    fn of(step: &Step, call: &atif::document::Call) -> Self {
+        let usage = step.extensions.get("jev_usage");
+        let input_tokens = usage
+            .and_then(|usage| usage.get("input_tokens"))
+            .and_then(Value::as_u64);
+        let basis = usage
+            .and_then(|usage| usage.get("basis"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let charge = match usage
+            .and_then(|usage| usage.get("charge"))
+            .and_then(Value::as_str)
+        {
+            Some("priced") if input_tokens.is_some() => "priced",
+            Some("zero") => "zero",
+            Some(_) => "unknown",
+            None if input_tokens.is_some() => "priced",
+            None => "unknown",
+        };
+        let basis = basis.unwrap_or_else(|| {
+            match (charge, call.outcome) {
+                ("priced", _) => "the response reported its input tokens",
+                (_, atif::document::Outcome::Failed) => "the request failed and recorded no usage",
+                _ => "the call recorded no usage",
+            }
+            .to_string()
+        });
+        Self {
+            charge,
+            basis,
+            input_tokens,
+        }
+    }
+
+    fn usd(&self) -> f64 {
+        self.input_tokens.unwrap_or(0) as f64 * JEV_USD_PER_MILLION_INPUT / 1_000_000.0
+    }
+
+    fn skipped(&self) -> bool {
+        self.charge == "zero" && self.basis.starts_with("not sent")
+    }
+}
+
+/// The Jev component, summed over every decision call.
+#[derive(Default)]
+struct JevUsage {
+    requests: usize,
+    priced: usize,
+    zero: usize,
+    unknown: usize,
+    skipped: usize,
+    failed: usize,
+    input_tokens: u64,
+    priced_usd: f64,
+}
+
+fn jev_usage(steps: &[Step]) -> JevUsage {
+    let mut usage = JevUsage::default();
+    for step in steps {
+        let Some(call) = step.call.as_ref().filter(|call| call.is_decision()) else {
+            continue;
+        };
+        let charge = JevCharge::of(step, call);
+        usage.requests += 1;
+        match charge.charge {
+            "priced" => {
+                usage.priced += 1;
+                usage.input_tokens += charge.input_tokens.unwrap_or(0);
+                usage.priced_usd += charge.usd();
+            }
+            "zero" => usage.zero += 1,
+            _ => usage.unknown += 1,
+        }
+        if charge.skipped() {
+            usage.skipped += 1;
+        } else if call.outcome == atif::document::Outcome::Failed {
+            usage.failed += 1;
+        }
+    }
+    usage
+}
+
+impl JevUsage {
+    fn record(&self) -> Value {
+        let known = self.unknown == 0;
+        json!({
+            "model": credentials::JEV_MODEL,
+            "requests": self.requests,
+            "priced": self.priced,
+            "known_zero": self.zero,
+            "unknown": self.unknown,
+            "skipped": self.skipped,
+            "input_tokens": known.then_some(self.input_tokens),
+            "input_tokens_priced": self.input_tokens,
+            "output_tokens_billed": false,
+            "cost_usd": known.then_some(self.priced_usd),
+            "cost_lower_bound_usd": self.priced_usd,
+            "cost_provenance": if known { "price_estimate" } else { "unknown" },
+            "rate": "$0.042 per million input tokens, retrieved 2026-09-22",
+        })
+    }
+}
+
+/// One delegate dispatch, with its own identity and charge.
+struct Dispatch<'a> {
+    call: &'a atif::document::Call,
+    step: &'a Step,
+    outcome: atif::document::Outcome,
+    charge: &'static str,
+    cost_usd: Option<f64>,
+    lower_bound_usd: f64,
+    provenance: String,
+}
+
+impl<'a> Dispatch<'a> {
+    fn of(step: &'a Step, call: &'a atif::document::Call) -> Option<Self> {
+        if call.name != "delegate"
+            || call.extra.get("schema").and_then(Value::as_str) != Some(delegate::CALL_SCHEMA)
+        {
+            return None;
+        }
+        let reported = call.extra.get("total_cost_usd").and_then(Value::as_f64);
+        // A record written before charges were recorded is priced when it
+        // carries a cost.
+        let charge = match call.extra.get("charge").and_then(Value::as_str) {
+            Some("priced") if reported.is_some() => "priced",
+            Some("zero") => "zero",
+            Some(_) => "unknown",
+            None if reported.is_some() => "priced",
+            None => "unknown",
+        };
+        let partial = call
+            .extra
+            .get("cost_lower_bound_usd")
+            .and_then(Value::as_f64);
+        Some(Self {
+            call,
+            step,
+            outcome: call.outcome,
+            charge,
+            cost_usd: match charge {
+                "priced" => reported,
+                "zero" => Some(0.0),
+                _ => None,
+            },
+            lower_bound_usd: reported.or(partial).unwrap_or(0.0),
+            provenance: match charge {
+                "priced" => call
+                    .extra
+                    .get("cost_provenance")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string(),
+                "zero" => "none".to_string(),
+                _ => "unknown".to_string(),
+            },
+        })
+    }
+
+    fn extra(&self, key: &str) -> Value {
+        self.call.extra.get(key).cloned().unwrap_or(Value::Null)
+    }
+
+    fn usage(&self, key: &str) -> Option<u64> {
+        self.call.extra.get("usage")?.get(key)?.as_u64()
+    }
+
+    /// Native turns, model calls, and completed items. A record written
+    /// before units were separated counted Codex's completed items as
+    /// turns; it reads as completed items there.
+    fn units(&self) -> (Option<u64>, Option<u64>, Option<u64>) {
+        if let Some(units) = self.call.extra.get("units") {
+            let read = |key: &str| units.get(key).and_then(Value::as_u64);
+            return (
+                read("native_turns"),
+                read("model_calls"),
+                read("completed_items"),
+            );
+        }
+        let turns = self.extra("num_turns").as_u64();
+        let calls = self.extra("api_calls").as_u64();
+        if self.extra("capability").as_str() == Some("codex") {
+            (self.usage("codex_turns"), None, turns)
+        } else {
+            (turns, calls, None)
+        }
+    }
+
+    fn record(&self) -> Value {
+        let (turns, calls, items) = self.units();
+        json!({
+            "component": "delegate",
+            "id": self.call.id,
+            "name": "delegate",
+            "agent": self.extra("capability"),
+            "model": self.step.model.clone().map_or_else(|| self.extra("model"), Value::String),
+            "model_requested": self.extra("model"),
+            "credential": self.extra("credential"),
+            "status": self.extra("status"),
+            "outcome": self.outcome,
+            "charge": self.charge,
+            "cost_usd": self.cost_usd,
+            "cost_lower_bound_usd": self.lower_bound_usd,
+            "provenance": self.provenance,
+            "basis": self.extra("charge_basis"),
+            "milliseconds": self.call.milliseconds,
+            "units": {
+                "native_turns": turns,
+                "model_calls": calls,
+                "completed_items": items,
+            },
+            "deadline": self.extra("deadline"),
+        })
+    }
+}
+
+/// The delegate component, summed over every dispatch.
 #[derive(Default)]
 struct DelegateUsage<'a> {
-    calls: Vec<&'a atif::document::Call>,
-    turns: Option<u64>,
-    api_calls: Option<u64>,
+    dispatches: Vec<Dispatch<'a>>,
     input: Option<u64>,
     cache_read: Option<u64>,
     cache_creation: Option<u64>,
     output: Option<u64>,
-    cost_usd: Option<f64>,
     per_call: Vec<u64>,
+}
+
+/// One value when every dispatch agrees, `mixed` when they differ, and
+/// `null` with none.
+fn agreed(values: &[Value]) -> Value {
+    let mut distinct: Vec<&Value> = Vec::new();
+    for value in values {
+        if !distinct.contains(&value) {
+            distinct.push(value);
+        }
+    }
+    match distinct.as_slice() {
+        [] => Value::Null,
+        [one] => (*one).clone(),
+        _ => json!("mixed"),
+    }
 }
 
 impl DelegateUsage<'_> {
@@ -1009,28 +1371,86 @@ impl DelegateUsage<'_> {
         Some(self.input? + self.cache_read? + self.cache_creation?)
     }
 
+    fn unknown(&self) -> usize {
+        self.dispatches
+            .iter()
+            .filter(|dispatch| dispatch.charge == "unknown")
+            .count()
+    }
+
+    /// The summed cost, known only when no dispatch's charge is unknown.
+    fn cost_usd(&self) -> Option<f64> {
+        self.dispatches
+            .iter()
+            .map(|dispatch| dispatch.cost_usd)
+            .sum()
+    }
+
+    fn lower_bound_usd(&self) -> f64 {
+        self.dispatches
+            .iter()
+            .map(|dispatch| dispatch.lower_bound_usd)
+            .sum()
+    }
+
+    fn units(&self) -> (Option<u64>, Option<u64>, Option<u64>) {
+        let units: Vec<_> = self.dispatches.iter().map(Dispatch::units).collect();
+        (
+            units.iter().map(|u| u.0).sum(),
+            units.iter().map(|u| u.1).sum(),
+            units.iter().map(|u| u.2).sum(),
+        )
+    }
+
     fn record(&self) -> Value {
-        let extra = |key: &str| -> Value {
-            self.calls
-                .first()
-                .and_then(|call| call.extra.get(key))
-                .cloned()
-                .unwrap_or(Value::Null)
+        let each = |key: &str| -> Vec<Value> {
+            self.dispatches
+                .iter()
+                .map(|dispatch| dispatch.extra(key))
+                .collect()
         };
-        let provenance = if self.cost_usd.is_some() && !self.calls.is_empty() {
-            extra("cost_provenance")
-        } else if self.calls.is_empty() {
+        let priced: Vec<Value> = self
+            .dispatches
+            .iter()
+            .filter(|dispatch| dispatch.charge == "priced")
+            .map(|dispatch| json!(dispatch.provenance))
+            .collect();
+        let provenance = if self.dispatches.is_empty() {
+            json!("none")
+        } else if self.unknown() > 0 {
+            json!("unknown")
+        } else if priced.is_empty() {
             json!("none")
         } else {
-            json!("unknown")
+            agreed(&priced)
         };
+        let cost_note: Vec<Value> = each("cost_note");
+        let (turns, calls, items) = self.units();
+        let models: Vec<Value> = self
+            .dispatches
+            .iter()
+            .map(|dispatch| {
+                dispatch
+                    .step
+                    .model
+                    .clone()
+                    .map_or_else(|| dispatch.extra("model"), Value::String)
+            })
+            .collect();
         json!({
-            "agent": extra("capability"),
-            "model": extra("model"),
-            "credential": extra("credential"),
-            "delegations": self.calls.len(),
-            "turns": self.turns,
-            "api_calls": self.api_calls,
+            "agent": agreed(&each("capability")),
+            "model": agreed(&each("model")),
+            "credential": agreed(&each("credential")),
+            "agents": each("capability"),
+            "models": models,
+            "delegations": self.dispatches.len(),
+            "turns": turns,
+            "api_calls": calls,
+            "units": {
+                "native_turns": turns,
+                "model_calls": calls,
+                "completed_items": items,
+            },
             "input_tokens": self.input,
             "cache_read_input_tokens": self.cache_read,
             "cache_creation_input_tokens": self.cache_creation,
@@ -1038,46 +1458,42 @@ impl DelegateUsage<'_> {
             "output_tokens": self.output,
             "input_tokens_per_call": self.per_call,
             "max_input_tokens_per_call": self.per_call.iter().max(),
-            "cost_usd": if self.calls.is_empty() { json!(0.0) } else { json!(self.cost_usd) },
+            "cost_usd": if self.dispatches.is_empty() { json!(0.0) } else { json!(self.cost_usd()) },
+            "cost_lower_bound_usd": self.lower_bound_usd(),
             "cost_provenance": provenance,
-            "cost_note": extra("cost_note"),
+            "unknown_dispatches": self.unknown(),
+            "cost_note": agreed(&cost_note),
+            "dispatches": self.dispatches.iter().map(Dispatch::record).collect::<Vec<_>>(),
         })
     }
 }
 
 fn delegate_usage(steps: &[Step]) -> DelegateUsage<'_> {
-    let calls: Vec<&atif::document::Call> = steps
+    let dispatches: Vec<Dispatch<'_>> = steps
         .iter()
-        .filter_map(|step| step.call.as_ref())
-        .filter(|call| {
-            call.name == "delegate"
-                && call.extra.get("schema").and_then(Value::as_str) == Some(delegate::CALL_SCHEMA)
-        })
+        .filter_map(|step| step.call.as_ref().and_then(|call| Dispatch::of(step, call)))
         .collect();
-    let sum = |read: &dyn Fn(&atif::document::Call) -> Option<u64>| -> Option<u64> {
-        calls.iter().map(|call| read(call)).sum()
-    };
-    let usage = |key: &'static str| {
-        move |call: &atif::document::Call| call.extra.get("usage")?.get(key)?.as_u64()
+    let sum = |read: &dyn Fn(&Dispatch<'_>) -> Option<u64>| -> Option<u64> {
+        dispatches.iter().map(read).sum()
     };
     DelegateUsage {
-        turns: sum(&|call| call.extra.get("num_turns")?.as_u64()),
-        api_calls: sum(&|call| call.extra.get("api_calls")?.as_u64()),
-        input: sum(&usage("input_tokens")),
-        cache_read: sum(&usage("cache_read_input_tokens")),
-        cache_creation: sum(&usage("cache_creation_input_tokens")),
-        output: sum(&usage("output_tokens")),
-        cost_usd: calls
+        input: sum(&|d| d.usage("input_tokens")),
+        cache_read: sum(&|d| d.usage("cache_read_input_tokens")),
+        cache_creation: sum(&|d| d.usage("cache_creation_input_tokens")),
+        output: sum(&|d| d.usage("output_tokens")),
+        per_call: dispatches
             .iter()
-            .map(|call| call.extra.get("total_cost_usd")?.as_f64())
-            .sum(),
-        per_call: calls
-            .iter()
-            .filter_map(|call| call.extra.get("input_tokens_per_call")?.as_array().cloned())
+            .filter_map(|d| {
+                d.call
+                    .extra
+                    .get("input_tokens_per_call")?
+                    .as_array()
+                    .cloned()
+            })
             .flatten()
             .filter_map(|value| value.as_u64())
             .collect(),
-        calls,
+        dispatches,
     }
 }
 
@@ -1231,5 +1647,496 @@ mod tests {
         assert_eq!(parse_version("2.1.280 (Claude Code)"), Some((2, 1, 280)));
         assert!(parse_version("2.1.278 (Claude Code)").unwrap() < CLAUDE_MIN);
         assert_eq!(parse_version("claude"), None);
+    }
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use std::time::{Duration, Instant};
+
+    use atif::document::{Decision, Step};
+    use serde_json::{Map, Value, json};
+
+    use super::usage;
+    use crate::credentials;
+    use crate::deadline::Deadline;
+    use crate::delegate::{
+        self, Agent, Briefing, BriefingInputs, Cli, Credential, Delegation, Executor, Mode, Reason,
+        Report, Status, Summary,
+    };
+    use crate::record::Recorder;
+
+    /// A Jev call as the judge records it, with `charge` from the judge's
+    /// own classifier.
+    fn jev(id: &str, outcome: Result<u64, jev::Error>) -> Step {
+        let mut decision = Decision {
+            id: id.to_string(),
+            name: "jev_survey".to_string(),
+            door: credentials::JEV_BASE_URL.to_string(),
+            model: credentials::JEV_MODEL.to_string(),
+            request: json!({ "state": {}, "questions": {} }),
+            answers: json!({}),
+            route: None,
+            error: None,
+            attempts: Vec::new(),
+            review: None,
+            milliseconds: 40,
+        };
+        match outcome {
+            Ok(tokens) => Step::called(decision.call()).noting(
+                "jev_usage",
+                json!({ "charge": "priced", "input_tokens": tokens, "output_tokens": 0 }),
+            ),
+            Err(error) => {
+                decision.error = Some(error.to_string());
+                Step::called(decision.call())
+                    .noting("jev_usage", crate::component::jev::charge_failed(&error))
+            }
+        }
+    }
+
+    /// An executor with a chosen identity, answering from a script.
+    struct Named {
+        agent: &'static str,
+        model: &'static str,
+        provenance: &'static str,
+        credential: &'static str,
+        report: Option<Report>,
+    }
+
+    impl Executor for Named {
+        fn agent(&self) -> &str {
+            self.agent
+        }
+        fn cost_provenance(&self) -> &'static str {
+            self.provenance
+        }
+        fn model(&self) -> &str {
+            self.model
+        }
+        fn deadline(&self) -> Duration {
+            Duration::from_secs(600)
+        }
+        fn describe(&self) -> Map<String, Value> {
+            let mut extra = Map::new();
+            extra.insert("credential".to_string(), json!(self.credential));
+            extra
+        }
+        async fn execute(&mut self, _briefing: &Briefing) -> Report {
+            self.report.take().expect("one report")
+        }
+    }
+
+    fn briefing() -> Briefing {
+        Briefing::build(
+            &BriefingInputs {
+                instruction: "Fix the parser.".to_string(),
+                requirements: vec![],
+                files: vec![],
+                spans: vec![],
+                commands: vec![],
+                last_output: None,
+                conclusion: String::new(),
+                directions: "Go.".to_string(),
+            },
+            2_000,
+        )
+    }
+
+    const CODEX_TURN: &str = r#"{"type":"thread.started","thread_id":"t-1"}
+{"type":"item.completed","item":{"id":"i1","type":"command_execution","command":"ls","exit_code":0}}
+{"type":"item.completed","item":{"id":"i2","type":"agent_message","text":"Handed over."}}
+{"type":"turn.completed","usage":{"input_tokens":1000000,"cached_input_tokens":0,"output_tokens":0}}
+"#;
+
+    const CLAUDE_RESULT: &str = r#"{"type":"system","subtype":"init","model":"claude-opus-5-5","claude_code_version":"2.1.280"}
+{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":10,"output_tokens":5}}}
+{"type":"result","subtype":"success","is_error":false,"num_turns":2,"result":"Fixed.","total_cost_usd":0.5,"usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":5}}
+"#;
+
+    fn dispatch(executor: &Named, report: &Report, number: u32) -> Step {
+        delegate::record(
+            executor,
+            &briefing(),
+            &Delegation {
+                mode: Mode::Always,
+                reason: &Reason::Always,
+                isolation: "none",
+            },
+            report,
+            number,
+        )
+    }
+
+    fn luna(status: Status) -> (Named, Report) {
+        let report = Report {
+            status,
+            summary: Summary::parse_codex(CODEX_TURN, "gpt-6-luna"),
+            milliseconds: 4_000,
+            stderr: String::new(),
+            stream: Some(json!({ "path": "artifacts/delegate-1.stream.jsonl" })),
+        };
+        let executor = Named {
+            agent: "codex",
+            model: "gpt-6-luna",
+            provenance: "price_estimate",
+            credential: "codex_auth_json",
+            report: None,
+        };
+        (executor, report)
+    }
+
+    fn opus() -> (Named, Report) {
+        let report = Report {
+            status: Status::Answered,
+            summary: Summary::parse(CLAUDE_RESULT),
+            milliseconds: 9_000,
+            stderr: String::new(),
+            stream: Some(json!({ "path": "artifacts/delegate-2.stream.jsonl" })),
+        };
+        let executor = Named {
+            agent: "claude-code",
+            model: "claude-opus-5-5",
+            provenance: "cli_list_price",
+            credential: "subscription_oauth",
+            report: None,
+        };
+        (executor, report)
+    }
+
+    #[test]
+    fn a_failed_jev_call_a_luna_dispatch_and_an_opus_dispatch_each_account_correctly() {
+        let (luna_executor, luna_report) = luna(Status::Answered);
+        let (opus_executor, opus_report) = opus();
+        let steps = [
+            jev("jev-survey-1", Ok(1_000_000)),
+            jev(
+                "jev-survey-2",
+                Err(jev::Error::Timeout {
+                    timeout: Duration::from_secs(10),
+                }),
+            ),
+            jev(
+                "jev-survey-3",
+                Err(jev::Error::Config("no key".to_string())),
+            ),
+            dispatch(&luna_executor, &luna_report, 1),
+            dispatch(&opus_executor, &opus_report, 2),
+        ];
+        let usage = usage(&steps, true);
+
+        // Jev: one priced, one unknown, one known zero. The unknown keeps
+        // the component's cost unknown; the lower bound is what is known.
+        let jev = &usage["components"]["jev"];
+        assert_eq!(jev["requests"], 3);
+        assert_eq!(jev["priced"], 1);
+        assert_eq!(jev["unknown"], 1);
+        assert_eq!(jev["known_zero"], 1);
+        assert_eq!(jev["cost_usd"], Value::Null);
+        assert_eq!(jev["cost_provenance"], "unknown");
+        assert!((jev["cost_lower_bound_usd"].as_f64().unwrap() - 0.042).abs() < 1e-12);
+
+        // The delegate: two identities, summed with mixed provenance.
+        let delegate = &usage["components"]["delegate"];
+        assert_eq!(delegate["delegations"], 2);
+        assert_eq!(delegate["agent"], "mixed");
+        assert_eq!(delegate["model"], "mixed");
+        assert_eq!(delegate["credential"], "mixed");
+        assert_eq!(delegate["agents"], json!(["codex", "claude-code"]));
+        assert_eq!(delegate["cost_provenance"], "mixed");
+        // $0.10 for a million Luna input tokens plus Opus's own $0.50.
+        let cost = delegate["cost_usd"].as_f64().unwrap();
+        assert!((cost - 0.6).abs() < 1e-9, "{cost}");
+        let dispatches = delegate["dispatches"].as_array().unwrap();
+        assert_eq!(dispatches[0]["model"], "gpt-6-luna");
+        assert_eq!(dispatches[0]["provenance"], "price_estimate");
+        assert_eq!(dispatches[0]["units"]["completed_items"], 2);
+        assert_eq!(dispatches[0]["units"]["native_turns"], 1);
+        assert_eq!(dispatches[0]["units"]["model_calls"], Value::Null);
+        assert_eq!(dispatches[1]["model"], "claude-opus-5-5");
+        assert_eq!(dispatches[1]["provenance"], "cli_list_price");
+        assert_eq!(dispatches[1]["units"]["model_calls"], 1);
+        // Units that one executor does not report stay unknown in the sum.
+        assert_eq!(delegate["units"]["native_turns"], 3);
+        assert_eq!(delegate["units"]["model_calls"], Value::Null);
+
+        // The total stays unknown because one Jev call's charge is.
+        assert_eq!(usage["cost"]["amount_usd"], Value::Null);
+        assert_eq!(usage["cost"]["unknown_calls"], 1);
+        let lower = usage["cost"]["lower_bound_usd"].as_f64().unwrap();
+        assert!((lower - 0.642).abs() < 1e-9, "{lower}");
+
+        // The ledger has one row per call, each with its own charge.
+        let ledger = usage["ledger"].as_array().unwrap();
+        let charges: Vec<(&str, &str)> = ledger
+            .iter()
+            .map(|row| {
+                (
+                    row["component"].as_str().unwrap(),
+                    row["charge"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            charges,
+            [
+                ("jev", "priced"),
+                ("jev", "unknown"),
+                ("jev", "zero"),
+                ("delegate", "priced"),
+                ("delegate", "priced"),
+            ]
+        );
+        assert_eq!(ledger[1]["cost_usd"], Value::Null);
+        assert_eq!(ledger[2]["cost_usd"], 0.0);
+    }
+
+    #[test]
+    fn a_jev_refusal_is_a_known_zero_and_leaves_the_total_known() {
+        let (opus_executor, opus_report) = opus();
+        let api = jev::ApiError {
+            status: 429,
+            headers: Default::default(),
+            body: None,
+            request_id: None,
+            endpoint: "POST /v1/systemone".to_string(),
+            kind: jev::ApiErrorKind::Other,
+        };
+        let steps = [
+            jev("jev-1", Ok(1_000_000)),
+            jev("jev-2", Err(jev::Error::Api(Box::new(api)))),
+            dispatch(&opus_executor, &opus_report, 1),
+        ];
+        let usage = usage(&steps, true);
+        assert_eq!(usage["components"]["jev"]["known_zero"], 1);
+        let total = usage["cost"]["amount_usd"].as_f64().unwrap();
+        assert!((total - 0.542).abs() < 1e-9, "{total}");
+        assert_eq!(usage["components"]["delegate"]["agent"], "claude-code");
+        assert_eq!(
+            usage["components"]["delegate"]["cost_provenance"],
+            "cli_list_price"
+        );
+    }
+
+    #[test]
+    fn a_cancelled_session_is_unknown_with_a_lower_bound_never_zero() {
+        let (executor, report) = luna(Status::TimedOut);
+        let step = dispatch(&executor, &report, 1);
+        let call = step.call.as_ref().unwrap();
+        assert_eq!(call.extra["charge"], "unknown");
+        assert_eq!(call.extra["total_cost_usd"], Value::Null);
+        assert_eq!(call.extra["cost_lower_bound_usd"], 0.1);
+        let usage = usage(&[step], true);
+        let delegate = &usage["components"]["delegate"];
+        assert_eq!(delegate["cost_usd"], Value::Null);
+        assert_eq!(delegate["cost_provenance"], "unknown");
+        assert_eq!(delegate["cost_lower_bound_usd"], 0.1);
+        assert_eq!(usage["cost"]["amount_usd"], Value::Null);
+    }
+
+    #[test]
+    fn older_records_keep_their_meaning() {
+        // A failed Jev call recorded before charges had no usage at all:
+        // unknown, not dropped.
+        let mut decision = Decision {
+            id: "jev-1".to_string(),
+            name: "jev_step".to_string(),
+            door: credentials::JEV_BASE_URL.to_string(),
+            model: credentials::JEV_MODEL.to_string(),
+            request: json!({}),
+            answers: json!({}),
+            route: None,
+            error: None,
+            attempts: Vec::new(),
+            review: None,
+            milliseconds: 5,
+        };
+        decision.error = Some("timed out".to_string());
+        let failed = Step::called(decision.call());
+        let usage = usage(&[failed], false);
+        assert_eq!(usage["components"]["jev"]["unknown"], 1);
+        assert_eq!(usage["cost"]["amount_usd"], Value::Null);
+    }
+
+    fn fake_binary(sleep: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let dir =
+            std::env::temp_dir().join(format!("coder-one-deadline-{}-{sleep}", std::process::id()));
+        std::fs::create_dir_all(dir.join("artifacts")).unwrap();
+        let fake = dir.join("fake-claude");
+        std::fs::write(
+            &fake,
+            format!(
+                "#!/bin/sh\ncat > /dev/null\nsleep {sleep}\necho '{{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turns\":1,\"result\":\"done\",\"total_cost_usd\":0.1}}'\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        fake
+    }
+
+    fn cli(binary: std::path::PathBuf, episode: Deadline) -> Cli {
+        let dir = binary.parent().unwrap().to_path_buf();
+        Cli {
+            agent: Agent::ClaudeCode,
+            binary: Some(binary),
+            model: "claude-opus-5-5".to_string(),
+            deadline: Duration::from_secs(600),
+            workdir: dir.clone(),
+            artifacts: dir.join("artifacts"),
+            artifacts_label: "artifacts".to_string(),
+            env: Vec::new(),
+            credential: Credential::OauthToken,
+            effort: None,
+            tools: None,
+            prompt_cache_ttl: None,
+            episode,
+            gate: None,
+            granted: None,
+            runs: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_dispatch_cannot_outlive_the_episode_deadline_and_the_record_says_so() {
+        // Two seconds left in the episode, none kept back; the executor
+        // would run for ten.
+        let deadline = Deadline::new(Some(Duration::from_secs(2)), Duration::ZERO);
+        let mut executor = cli(fake_binary("10"), deadline.clone());
+        let started = Instant::now();
+        let recorder = Recorder::default();
+        let report = delegate::delegate(
+            &mut executor,
+            &briefing(),
+            &Delegation {
+                mode: Mode::Always,
+                reason: &Reason::Always,
+                isolation: "none",
+            },
+            &recorder,
+            0,
+        )
+        .await;
+        assert!(started.elapsed() < Duration::from_secs(6));
+        assert_eq!(report.status, Status::TimedOut);
+        let steps = recorder.steps();
+        let call = steps[1].call.as_ref().unwrap();
+        assert_eq!(call.extra["deadline"]["requested_sec"], 600);
+        assert_eq!(call.extra["deadline"]["cut"], true);
+        assert_eq!(call.extra["charge"], "unknown");
+        let cuts = deadline.cuts();
+        assert_eq!(cuts.len(), 1);
+        assert_eq!(cuts[0].what, "delegate-1");
+        assert!(!cuts[0].skipped());
+        assert_eq!(deadline.record()["cuts"][0]["what"], "delegate-1");
+    }
+
+    #[tokio::test]
+    async fn a_dispatch_with_no_time_left_never_starts_and_costs_a_known_zero() {
+        let deadline = Deadline::starting(
+            Instant::now() - Duration::from_secs(100),
+            Some(Duration::from_secs(60)),
+            Duration::from_secs(10),
+        );
+        let mut executor = cli(fake_binary("0"), deadline.clone());
+        let report = executor.execute(&briefing()).await;
+        assert!(matches!(report.status, Status::Harness(_)));
+        assert_eq!(delegate::charge(&report).0, "zero");
+        assert!(deadline.cuts()[0].skipped());
+
+        // The soft spend gate stops a dispatch the same way.
+        let mut executor = cli(fake_binary("0"), Deadline::unbounded());
+        executor.gate = Some(Box::new(|| {
+            Some("the soft spend bound is reached".to_string())
+        }));
+        let report = executor.execute(&briefing()).await;
+        assert_eq!(
+            report.status.to_string(),
+            "harness: the soft spend bound is reached"
+        );
+        assert_eq!(delegate::charge(&report).0, "zero");
+    }
+
+    #[tokio::test]
+    async fn a_jev_request_with_no_time_left_is_never_sent_and_is_recorded() {
+        let deadline = Deadline::starting(
+            Instant::now() - Duration::from_secs(100),
+            Some(Duration::from_secs(60)),
+            Duration::from_secs(10),
+        );
+        let client = jev::Client::new(
+            jev::Config::new()
+                .api_key("unused")
+                .base_url("http://127.0.0.1:9")
+                .default_model(credentials::JEV_MODEL),
+        )
+        .unwrap();
+        let recorder = Recorder::default();
+        let issue = crate::state::Issue {
+            url: String::new(),
+            title: "Task".to_string(),
+            body: "- [ ] Do it".to_string(),
+            labels: vec![],
+        };
+        let state = crate::state::State::new(
+            crate::state::Environment {
+                repository: String::new(),
+                workdir: std::env::temp_dir().to_string_lossy().into_owned(),
+                os: "linux".to_string(),
+            },
+            issue.clone(),
+        );
+        let mut judge = crate::judge::JevJudge::new(
+            Some(client),
+            std::env::temp_dir(),
+            &issue,
+            recorder.clone(),
+        )
+        .within(deadline);
+        let close = judge.close(&state, "done", "").await;
+        assert!(close.unavailable.unwrap().contains("deadline"));
+        assert_eq!(judge.skipped, 1);
+        let usage = usage(&recorder.steps(), false);
+        assert_eq!(usage["components"]["jev"]["skipped"], 1);
+        assert_eq!(usage["components"]["jev"]["known_zero"], 1);
+        assert_eq!(usage["calls"]["decisions_skipped"], 1);
+        assert_eq!(usage["calls"]["failed"], 0);
+        assert_eq!(usage["ledger"][0]["charge"], "zero");
+    }
+
+    #[test]
+    fn failed_jev_calls_classify_by_what_the_door_could_have_done() {
+        let charge = |error: jev::Error| {
+            crate::component::jev::charge_failed(&error)["charge"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(charge(jev::Error::Config("x".into())), "zero");
+        assert_eq!(
+            charge(jev::Error::Timeout {
+                timeout: Duration::from_secs(1)
+            }),
+            "unknown"
+        );
+        assert_eq!(
+            charge(jev::Error::Connection {
+                message: "reset".into(),
+                source: None
+            }),
+            "unknown"
+        );
+        let api = |status| {
+            jev::Error::Api(Box::new(jev::ApiError {
+                status,
+                headers: Default::default(),
+                body: None,
+                request_id: None,
+                endpoint: String::new(),
+                kind: jev::ApiErrorKind::Other,
+            }))
+        };
+        assert_eq!(charge(api(401)), "zero");
+        assert_eq!(charge(api(503)), "unknown");
     }
 }

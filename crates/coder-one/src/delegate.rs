@@ -823,8 +823,12 @@ pub struct Summary {
     pub version: Option<String>,
     /// Where the CLI took its credential from, as `init` names it.
     pub api_key_source: Option<String>,
-    /// Model API calls: distinct assistant message ids.
+    /// Model API calls: distinct assistant message ids. Codex reports
+    /// none, so it stays `None` there.
     pub api_calls: Option<u64>,
+    /// Codex's completed items: commands, file changes, tool calls,
+    /// searches, and messages. Not a count of model calls.
+    pub completed_items: Option<u64>,
     /// Input tokens per API call, uncached plus cache reads and writes.
     pub input_per_call: Vec<u64>,
     /// Where `total_cost_usd` came from when the executor did not report
@@ -906,9 +910,11 @@ impl Summary {
     /// part and `output_tokens` counting reasoning. The summary's `usage`
     /// is normalized to the keys Claude Code uses, uncached input apart
     /// from cache reads, so one record reads both; the raw sums stay under
-    /// `model_usage`. Codex reports no per-call count, so `num_turns`
-    /// counts the agent's completed items: commands, file changes, tool
-    /// calls, searches, and messages.
+    /// `model_usage`. `num_turns` counts Codex's own turns
+    /// (`turn.completed`), and `completed_items` counts the agent's
+    /// completed items: commands, file changes, tool calls, searches, and
+    /// messages. Codex reports no per-call count, so `api_calls` stays
+    /// unknown.
     #[must_use]
     pub fn parse_codex(stream: &str, model: &str) -> Self {
         let mut summary = Summary {
@@ -998,7 +1004,8 @@ impl Summary {
             .to_string(),
         );
         if turns > 0 {
-            summary.num_turns = Some(items);
+            summary.num_turns = Some(turns);
+            summary.completed_items = Some(items);
             let get = |key: &str| raw.get(key).copied().unwrap_or(0);
             let cached = get("cached_input_tokens");
             let uncached = get("input_tokens").saturating_sub(cached);
@@ -1286,6 +1293,13 @@ pub struct Cli {
     /// for the child. `None` removes any inherited value, so the child runs
     /// the CLI's default.
     pub prompt_cache_ttl: Option<String>,
+    /// The episode deadline each dispatch's own deadline is bounded by.
+    pub episode: crate::deadline::Deadline,
+    /// A check before each dispatch; a reason stops it before it starts.
+    /// The episode's soft spend bound uses it.
+    pub gate: Option<Box<dyn Fn() -> Option<String>>>,
+    /// The deadline the last dispatch was granted.
+    pub granted: Option<Duration>,
     /// Delegations run so far.
     pub runs: u32,
 }
@@ -1388,6 +1402,14 @@ impl Executor for Cli {
         extra.insert("effort".to_string(), json!(self.effort));
         extra.insert("tools".to_string(), json!(self.tools));
         extra.insert("prompt_cache_ttl".to_string(), json!(self.prompt_cache_ttl));
+        extra.insert(
+            "deadline".to_string(),
+            json!({
+                "requested_sec": self.deadline.as_secs(),
+                "granted_ms": self.granted.map(|granted| u64::try_from(granted.as_millis()).unwrap_or(u64::MAX)),
+                "cut": self.granted.is_some_and(|granted| granted < self.deadline),
+            }),
+        );
         extra
     }
 
@@ -1410,6 +1432,17 @@ impl Executor for Cli {
                 self.agent.binary_variable()
             ));
         };
+        self.granted = None;
+        if let Some(why) = self.gate.as_ref().and_then(|gate| gate()) {
+            return harness(why);
+        }
+        let Some(deadline) = self
+            .episode
+            .grant(&format!("delegate-{}", self.runs), self.deadline)
+        else {
+            return harness("the episode deadline left no time to dispatch".to_string());
+        };
+        self.granted = Some(deadline);
         if let Err(error) = std::fs::write(&briefing_path, &briefing.text) {
             return harness(format!("cannot write {}: {error}", briefing_path.display()));
         }
@@ -1418,12 +1451,12 @@ impl Executor for Cli {
             "  delegate ▸ {} ({}) · deadline {}s · briefing {} characters",
             self.agent(),
             self.model,
-            self.deadline.as_secs(),
+            deadline.as_secs(),
             briefing.chars()
         );
         println!("  delegate ▸ stream → {}", stream_path.display());
         let ended = supervise::Job::from_command(command)
-            .bounded(supervise::Limits::within(self.deadline).keeping(64 * 1024))
+            .bounded(supervise::Limits::within(deadline).keeping(64 * 1024))
             .run()
             .await;
         let milliseconds = u64::try_from(ended.elapsed.as_millis()).unwrap_or(u64::MAX);
@@ -1564,6 +1597,14 @@ pub fn record<E: Executor>(
     extra.insert("num_turns".to_string(), json!(summary.num_turns));
     extra.insert("api_calls".to_string(), json!(summary.api_calls));
     extra.insert(
+        "units".to_string(),
+        json!({
+            "native_turns": summary.num_turns,
+            "model_calls": summary.api_calls,
+            "completed_items": summary.completed_items,
+        }),
+    );
+    extra.insert(
         "input_tokens_per_call".to_string(),
         json!(summary.input_per_call),
     );
@@ -1577,7 +1618,18 @@ pub fn record<E: Executor>(
         "model_usage".to_string(),
         summary.model_usage.clone().unwrap_or(Value::Null),
     );
-    extra.insert("total_cost_usd".to_string(), json!(summary.total_cost_usd));
+    let (charge, basis) = charge(report);
+    let cost = (charge == "priced")
+        .then_some(summary.total_cost_usd)
+        .flatten();
+    extra.insert("total_cost_usd".to_string(), json!(cost));
+    extra.insert("charge".to_string(), json!(charge));
+    extra.insert("charge_basis".to_string(), json!(basis));
+    if charge == "unknown"
+        && let Some(partial) = summary.total_cost_usd
+    {
+        extra.insert("cost_lower_bound_usd".to_string(), json!(partial));
+    }
     let provenance = summary
         .cost_provenance
         .unwrap_or_else(|| executor.cost_provenance());
@@ -1589,10 +1641,10 @@ pub fn record<E: Executor>(
     );
     extra.insert(
         "cost_provenance".to_string(),
-        json!(if summary.total_cost_usd.is_some() {
-            provenance
-        } else {
-            "unknown"
+        json!(match charge {
+            "priced" => provenance,
+            "zero" => "none",
+            _ => "unknown",
         }),
     );
     extra.insert("duration_ms".to_string(), json!(summary.duration_ms));
@@ -1644,6 +1696,36 @@ pub fn record<E: Executor>(
         step.spent(Usage { prompt, completion });
     }
     step
+}
+
+/// What a dispatch cost, as `priced`, `zero`, or `unknown`, and why.
+///
+/// A session that ran to a reported result is priced when the stream
+/// carries a cost. One that never started, or that the executor refused,
+/// did no billed work. One cut off by its deadline, or that ended without
+/// a result, may have made model calls whose charge was never reported:
+/// its cost is unknown, and any partial figure is only a lower bound.
+#[must_use]
+pub fn charge(report: &Report) -> (&'static str, &'static str) {
+    let reported = report.summary.total_cost_usd.is_some();
+    match &report.status {
+        Status::Harness(_) if report.stream.is_none() => ("zero", "the executor never started"),
+        Status::TimedOut => (
+            "unknown",
+            "the deadline cut the session off before it reported its final usage",
+        ),
+        Status::Harness(_) => (
+            "unknown",
+            "the session ended without reporting its final usage",
+        ),
+        Status::Refused(_) if !reported => ("zero", "the executor refused before any billed work"),
+        _ if report.summary.subtype.as_deref() == Some("turn.failed") => (
+            "unknown",
+            "a Codex turn failed before it reported its usage",
+        ),
+        _ if reported => ("priced", "the session reported its usage"),
+        _ => ("unknown", "the session reported no cost"),
+    }
 }
 
 /// What changed in the working directory, for the closing check: Git's
@@ -1724,7 +1806,11 @@ impl Delegated {
             "status_detail": self.report.status.to_string(),
             "num_turns": self.report.summary.num_turns,
             "api_calls": self.report.summary.api_calls,
-            "total_cost_usd": self.report.summary.total_cost_usd,
+            "completed_items": self.report.summary.completed_items,
+            "charge": charge(&self.report).0,
+            "total_cost_usd": (charge(&self.report).0 == "priced")
+                .then_some(self.report.summary.total_cost_usd)
+                .flatten(),
             "milliseconds": self.report.milliseconds,
             "stream": self.report.stream,
             "close": {
@@ -2435,7 +2521,13 @@ pub(crate) mod tests {
             assert_eq!(call.outcome, status.outcome());
             assert_eq!(call.extra["status"], status.word());
             assert_eq!(call.extra["total_cost_usd"], Value::Null);
-            assert_eq!(call.extra["cost_provenance"], "unknown");
+            // A refusal did no billed work; the rest may have.
+            let (charge, provenance) = match status {
+                Status::Refused(_) => ("zero", "none"),
+                _ => ("unknown", "unknown"),
+            };
+            assert_eq!(call.extra["charge"], charge, "{status}");
+            assert_eq!(call.extra["cost_provenance"], provenance, "{status}");
             assert_eq!(call.extra["escalation"]["code"], "explore_step_bound");
             assert!(steps[1].tokens.is_none());
             let ended = ending(&Ended::StepLimit { steps: 8 }, &done, 8, "Parser panics");
@@ -2465,8 +2557,10 @@ pub(crate) mod tests {
         assert_eq!(summary.is_error, Some(false));
         assert_eq!(summary.result.as_deref(), Some("Fixed slugify."));
         assert_eq!(summary.session_id.as_deref(), Some("t-1"));
-        // A command, a file change, and a message; reasoning is not a turn.
-        assert_eq!(summary.num_turns, Some(3));
+        // One Codex turn; a command, a file change, and a message are its
+        // completed items, and reasoning is not one.
+        assert_eq!(summary.num_turns, Some(1));
+        assert_eq!(summary.completed_items, Some(3));
         assert_eq!(summary.api_calls, None);
         assert_eq!(summary.tokens("input_tokens"), Some(3_360));
         assert_eq!(summary.tokens("cache_read_input_tokens"), Some(24_064));
@@ -2621,7 +2715,11 @@ pub(crate) mod tests {
         let call = step.call.as_ref().unwrap();
         assert_eq!(call.extra["cost_provenance"], "price_estimate");
         assert_eq!(call.extra["cost_note"], CODEX_COST_NOTE);
-        assert_eq!(call.extra["num_turns"], 3);
+        assert_eq!(call.extra["charge"], "priced");
+        assert_eq!(call.extra["num_turns"], 1);
+        assert_eq!(call.extra["units"]["completed_items"], 3);
+        assert_eq!(call.extra["units"]["native_turns"], 1);
+        assert_eq!(call.extra["units"]["model_calls"], Value::Null);
         assert_eq!(step.tokens, Some((27_424, 400)));
     }
 

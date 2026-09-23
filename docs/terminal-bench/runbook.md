@@ -159,6 +159,27 @@ gym coder policy list
 gym coder policy diff coder-one-jevprobe3-luna coder-one-jevprobe2-opus-lean-low-5m
 ```
 
+### Read cost by call and the episode deadline
+
+`evaluation/usage.json` has a `ledger` that lists every generation, Jev
+request, and delegate dispatch with its charge: `priced`, with a cost and
+its provenance; `zero`, a known zero, such as a request the deadline
+skipped or a 4xx refusal; or `unknown`, such as a timed-out Jev request or
+a session its deadline cut off. A component's cost is known only when
+none of its calls is unknown, and `cost.lower_bound_usd` sums what is
+known either way. Each dispatch keeps its own agent, model, credential,
+provenance, and units: native turns, model calls, and completed items,
+which Codex reports instead of model calls.
+
+When the adapter has an exec timeout (`episode_timeout_sec`), it sets
+`CODER_ONE_EPISODE_DEADLINE` 60 seconds inside it. The episode then gives
+each dispatch, Jev request, retry, wait, setup command, probe, and command
+at most what is left after the policy's reserve, and the manifest's
+`deadline` records every cut. A dollar bound stays soft
+(`CODER_ONE_SPEND_SOFT_USD`): no executor adapter reserves a known maximum
+charge, so the policy refuses a hard one. `gym terminal-bench attempt`
+and the Gym's attempt view show the ledger and the deadline's use.
+
 ## Install agents from prebuilt layers
 
 Before 2026-09-23, each trial installed its delegate CLI over the network:

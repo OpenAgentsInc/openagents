@@ -94,6 +94,12 @@ pub struct EpisodeUse {
     pub outcomes: BTreeMap<String, usize>,
     /// Invocation counts by timeline source: log, trajectory, or derived.
     pub sources: BTreeMap<String, usize>,
+    /// Leaf invocations by cost provenance, such as `price_estimate`,
+    /// `none` for a known zero, or `unknown`.
+    pub provenances: BTreeMap<String, usize>,
+    /// Leaf invocations whose cost is unknown: work that may have been
+    /// billed and was never reported. Never counted as zero.
+    pub unknown_cost: usize,
 }
 
 impl EpisodeUse {
@@ -119,6 +125,59 @@ pub struct Report {
     pub rows: Vec<Row>,
     pub runs_dir: Option<PathBuf>,
     pub errors: Vec<String>,
+    /// How the attempts used their episode deadlines.
+    pub deadlines: Deadlines,
+}
+
+/// Episode deadline use across attempts, from each manifest's `deadline`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Deadlines {
+    /// Attempts that recorded a deadline, bounded or not.
+    pub recorded: usize,
+    /// Attempts with a hard deadline.
+    pub bounded: usize,
+    /// Each bounded attempt's elapsed share of its deadline.
+    pub used_fractions: Vec<f64>,
+    /// Cuts by what asked: shortened, then skipped.
+    pub cuts: BTreeMap<String, (usize, usize)>,
+}
+
+impl Deadlines {
+    fn of(records: &Records) -> Self {
+        let mut deadlines = Deadlines::default();
+        for deadline in records.attempts.iter().filter_map(|a| a.deadline.as_ref()) {
+            deadlines.recorded += 1;
+            if deadline["kind"].as_str() == Some("hard") {
+                deadlines.bounded += 1;
+                if let (Some(elapsed), Some(total)) = (
+                    deadline["elapsed_ms"].as_u64(),
+                    deadline["total_ms"].as_u64().filter(|total| *total > 0),
+                ) {
+                    deadlines.used_fractions.push(elapsed as f64 / total as f64);
+                }
+            }
+            for cut in deadline["cuts"].as_array().into_iter().flatten() {
+                // Name a cut by its kind, not its number: `delegate-1` and
+                // `delegate-2` are both dispatches.
+                let what = cut["what"].as_str().unwrap_or("?");
+                let what = what
+                    .trim_end_matches(|c: char| c.is_ascii_digit())
+                    .trim_end_matches('-');
+                let slot = deadlines.cuts.entry(what.to_owned()).or_default();
+                if cut["skipped"].as_bool() == Some(true) {
+                    slot.1 += 1;
+                } else {
+                    slot.0 += 1;
+                }
+            }
+        }
+        deadlines
+    }
+
+    fn mean_used(&self) -> Option<f64> {
+        (!self.used_fractions.is_empty())
+            .then(|| self.used_fractions.iter().sum::<f64>() / self.used_fractions.len() as f64)
+    }
 }
 
 /// Where component runs record themselves by default.
@@ -245,6 +304,17 @@ pub fn episode_use(records: &Records) -> (BTreeMap<String, EpisodeUse>, Vec<Stri
                 .iter()
                 .any(|other| other.parent.as_deref() == Some(&entry.id));
             if leaf {
+                let provenance = entry.cost_provenance.clone().unwrap_or_else(|| {
+                    if entry.cost_usd.is_some() {
+                        "reported".to_owned()
+                    } else {
+                        "none".to_owned()
+                    }
+                });
+                *usage.provenances.entry(provenance).or_default() += 1;
+                if entry.cost_usd.is_none() && entry.cost_provenance.is_some() {
+                    usage.unknown_cost += 1;
+                }
                 usage.cost_usd = match (
                     usage.cost_usd,
                     entry.cost_usd,
@@ -305,6 +375,7 @@ pub fn report(runs_dir: Option<&Path>, records: &Records) -> Report {
         rows,
         runs_dir: runs_dir.map(Path::to_path_buf),
         errors,
+        deadlines: Deadlines::of(records),
     }
 }
 
@@ -406,8 +477,20 @@ impl Report {
                     "cost_usd": if row.episodes.invocations == 0 { Value::Null } else { json!(row.episodes.cost_usd) },
                     "outcomes": row.episodes.outcomes,
                     "sources": row.episodes.sources,
+                    "cost_provenances": row.episodes.provenances,
+                    "unknown_cost_invocations": row.episodes.unknown_cost,
                 },
             })).collect::<Vec<_>>(),
+            "deadlines": {
+                "attempts_recorded": self.deadlines.recorded,
+                "attempts_bounded": self.deadlines.bounded,
+                "mean_used_fraction": self.deadlines.mean_used(),
+                "cuts": self.deadlines.cuts.iter().map(|(what, (cut, skipped))| json!({
+                    "what": what,
+                    "shortened": cut,
+                    "skipped": skipped,
+                })).collect::<Vec<_>>(),
+            },
             "read_errors": self.errors,
         })
     }
@@ -508,6 +591,40 @@ impl Report {
                         .join(", ")
                 )
             });
+            if !episodes.provenances.is_empty() {
+                lines.push(format!(
+                    "    cost by provenance: {} · {} unknown",
+                    episodes
+                        .provenances
+                        .iter()
+                        .map(|(provenance, n)| format!("{provenance} {n}"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    episodes.unknown_cost
+                ));
+            }
+        }
+        if component.is_none() {
+            let deadlines = &self.deadlines;
+            lines.push(String::new());
+            lines.push(if deadlines.bounded == 0 {
+                format!(
+                    "Episode deadlines: none of {} recorded attempts had one; the harness timeout was the only limit",
+                    deadlines.recorded
+                )
+            } else {
+                format!(
+                    "Episode deadlines: {} of {} recorded attempts bounded · {} of the deadline used on average",
+                    deadlines.bounded,
+                    deadlines.recorded,
+                    deadlines
+                        .mean_used()
+                        .map_or("—".to_owned(), |used| format!("{:.0}%", used * 100.0))
+                )
+            });
+            for (what, (cut, skipped)) in &deadlines.cuts {
+                lines.push(format!("  cut {what}: {cut} shortened, {skipped} skipped"));
+            }
         }
         lines.extend(
             self.errors
@@ -712,5 +829,37 @@ mod tests {
         assert!(text.contains("reproduces_retained 1/1"), "{text}");
         assert!(text.contains("episodes:"), "{text}");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn deadline_use_and_cuts_are_summed_across_attempts() {
+        let mut bounded = crate::terminal_bench::test_attempt();
+        bounded.deadline = Some(json!({
+            "kind": "hard", "total_ms": 1_000_000, "elapsed_ms": 800_000,
+            "cuts": [
+                {"what": "delegate-1", "skipped": false},
+                {"what": "jev_close", "skipped": true},
+            ],
+        }));
+        let mut open = crate::terminal_bench::test_attempt();
+        open.deadline = Some(json!({ "kind": "none", "elapsed_ms": 5_000, "cuts": [] }));
+        let records = Records {
+            attempts: vec![bounded, open],
+            ..Records::default()
+        };
+        let report = report(None, &records);
+        assert_eq!(report.deadlines.recorded, 2);
+        assert_eq!(report.deadlines.bounded, 1);
+        assert_eq!(report.deadlines.cuts["delegate"], (1, 0));
+        assert_eq!(report.deadlines.cuts["jev_close"], (0, 1));
+        let value = report.to_json(None);
+        assert_eq!(value["deadlines"]["mean_used_fraction"], 0.8);
+        let text = report.lines(None).join("\n");
+        assert!(text.contains("1 of 2 recorded attempts bounded"), "{text}");
+        assert!(text.contains("80% of the deadline used"), "{text}");
+        assert!(
+            text.contains("cut delegate: 1 shortened, 0 skipped"),
+            "{text}"
+        );
     }
 }

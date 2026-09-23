@@ -339,6 +339,8 @@ fn attempt_value(attempt: &Attempt) -> Value {
         "evidence_health": attempt.evidence_health(),
         "evidence": attempt.evidence.iter().map(evidence_value).collect::<Vec<_>>(),
         "notes": attempt.notes,
+        "ledger": attempt.ledger,
+        "deadline": attempt.deadline,
         "policy": attempt.policy.as_ref().map(|policy| json!({
             "digest": policy.digest,
             "name": policy.name,
@@ -704,6 +706,11 @@ fn render_text(
             }
             for count in value["counts"].as_array().into_iter().flatten() {
                 writeln!(out, "  {}: {}", show(&count["name"]), show(&count["value"]))?;
+            }
+            let ledger = value["ledger"].as_array().cloned().unwrap_or_default();
+            let deadline = value.get("deadline").filter(|deadline| !deadline.is_null());
+            for line in gym::coder_calls::lines(&ledger, deadline) {
+                writeln!(out, "{line}")?;
             }
             writeln!(
                 out,

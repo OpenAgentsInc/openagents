@@ -114,13 +114,19 @@ pub fn bearer(env: impl Fn(&str) -> Option<String>, dir: &Path) -> Result<Found,
     })
 }
 
-/// A Jev client on the pinned model, authenticated with `key`.
+/// A Jev client on the pinned model, authenticated with `key`. Every call
+/// has a whole-call budget, retries and waits included; the judge narrows
+/// it per request to what the episode deadline leaves.
 pub fn jev_client(key: &Secret) -> Result<jev::Client, String> {
     jev::Client::new(
         jev::Config::new()
             .api_key(key.expose())
             .base_url(JEV_BASE_URL)
-            .default_model(JEV_MODEL),
+            .default_model(JEV_MODEL)
+            .retry(jev::RetryPolicy {
+                budget: Some(crate::component::jev::JEV_CALL_BUDGET),
+                ..jev::RetryPolicy::default()
+            }),
     )
     .map_err(|error| format!("cannot build the Jev client: {error}"))
 }

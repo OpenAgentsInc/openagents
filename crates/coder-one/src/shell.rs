@@ -24,11 +24,25 @@ pub struct Checkout {
     pub recorder: Recorder,
     /// Commands run so far.
     pub commands: u32,
+    /// The episode deadline each command's own deadline is bounded by.
+    pub episode: crate::deadline::Deadline,
 }
 
 impl Shell for Checkout {
     async fn run(&mut self, command: &str) -> Observation {
         println!("  $ {command}");
+        let Some(limit) = self
+            .episode
+            .grant(&format!("shell-{}", self.commands + 1), self.deadline)
+        else {
+            let output = "[not run: the episode deadline left no time]".to_string();
+            println!("  └ {output}");
+            return Observation {
+                exit: None,
+                output,
+                truncated: false,
+            };
+        };
         let mut prepared = std::process::Command::new("bash");
         prepared
             .arg("-c")
@@ -47,7 +61,7 @@ impl Shell for Checkout {
             }
         }
         let ended = supervise::Job::from_command(prepared)
-            .bounded(supervise::Limits::within(self.deadline).keeping(STREAM_CAP))
+            .bounded(supervise::Limits::within(limit).keeping(STREAM_CAP))
             .run()
             .await;
 
@@ -61,7 +75,7 @@ impl Shell for Checkout {
         if let supervise::Ending::TimedOut = ended.ending {
             output.push_str(&format!(
                 "\n[killed: the {}s command deadline passed]",
-                self.deadline.as_secs()
+                limit.as_secs()
             ));
         }
         if let supervise::Ending::Failed(why) = &ended.ending {

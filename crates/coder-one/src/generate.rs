@@ -73,6 +73,8 @@ pub struct Door {
     cache_key: Option<String>,
     /// Every generation's accounting so far.
     pub tally: Tally,
+    /// The episode deadline each request and wait is bounded by.
+    episode: crate::deadline::Deadline,
 }
 
 impl Door {
@@ -102,7 +104,15 @@ impl Door {
             retry_after: None,
             cache_key: None,
             tally: Tally::default(),
+            episode: crate::deadline::Deadline::unbounded(),
         })
+    }
+
+    /// Bounds every request and every wait by the episode `deadline`.
+    #[must_use]
+    pub fn within(mut self, deadline: crate::deadline::Deadline) -> Self {
+        self.episode = deadline;
+        self
     }
 
     /// Sends `key` as every request's `prompt_cache_key`.
@@ -112,7 +122,11 @@ impl Door {
         self
     }
 
-    async fn attempt(&mut self, prompt: &str) -> Result<(String, Usage, String), Attempt> {
+    async fn attempt(
+        &mut self,
+        prompt: &str,
+        limit: Duration,
+    ) -> Result<(String, Usage, String), Attempt> {
         let mut body = json!({
             "model": self.lane,
             "instructions": self.instructions,
@@ -128,6 +142,7 @@ impl Door {
         let mut response = self
             .http
             .post(&self.url)
+            .timeout(limit)
             .bearer_auth(self.bearer.expose())
             .json(&body)
             .send()
@@ -245,15 +260,26 @@ impl Generate for Door {
         let started = Instant::now();
         print!("  gen ▸ ");
         let mut last = String::new();
+        // A request refused with a 4xx other than 429, or never sent, did
+        // no billed work; any other failure may have.
+        let mut charge = "unknown";
         for attempt in 0..=RETRIES {
             if attempt > 0 {
                 self.tally.retries += 1;
                 let backoff = Duration::from_secs(5 << (attempt - 1).min(4));
                 let wait = self.retry_after.take().unwrap_or(backoff).min(MAX_WAIT);
+                let wait = self.episode.allowance().map_or(wait, |left| wait.min(left));
                 println!("\n  gen ▸ retry {attempt} in {}s: {last}", wait.as_secs());
                 tokio::time::sleep(wait).await;
             }
-            match self.attempt(prompt).await {
+            let Some(limit) = self.episode.grant("generation", REQUEST_DEADLINE) else {
+                if attempt == 0 {
+                    charge = "zero";
+                }
+                last = "the episode deadline left no time".to_string();
+                break;
+            };
+            match self.attempt(prompt, limit).await {
                 Ok((reply, usage, model)) => {
                     self.account(usage, &model);
                     let milliseconds = elapsed_ms(started);
@@ -289,6 +315,9 @@ impl Generate for Door {
                 }
                 Err(Attempt::Fatal(why)) => {
                     self.tally.failed += 1;
+                    if attempt == 0 && why.starts_with('4') {
+                        charge = "zero";
+                    }
                     last = why;
                     break;
                 }
@@ -302,7 +331,8 @@ impl Generate for Door {
         self.recorder.push(
             Step::said(Source::System, &format!("generation failed: {last}"))
                 .taking(elapsed_ms(started))
-                .noting("lane", json!(self.lane)),
+                .noting("lane", json!(self.lane))
+                .noting("charge", json!(charge)),
         );
         Err(last)
     }

@@ -604,6 +604,7 @@ impl App {
                 amount.map_or(DASH.to_owned(), |v| format!("${v:.4}"))
             ));
         }
+        lines.extend(crate::coder_calls::lines(&a.ledger, a.deadline.as_ref()));
         lines.push(format!(
             "Counts: {}",
             a.counts

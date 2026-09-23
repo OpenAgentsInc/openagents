@@ -126,6 +126,70 @@ pub fn key(state: &Value, questions: &Value) -> String {
 /// tokens, retrieved 2026-09-22. The same rate `episode::usage` applies.
 pub const USD_PER_MILLION_INPUT: f64 = 0.042;
 
+/// One Jev request's whole-call budget, its retries and the waits between
+/// them included, unless the episode deadline leaves less. The SDK's
+/// defaults, a 10-second attempt and two retries, fit inside it.
+pub const JEV_CALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Why a request the deadline refused has no answer.
+pub const DEADLINE_SKIP: &str = "skipped: the episode deadline left no time";
+
+/// What an answered request cost: priced when the response reports its
+/// input tokens, which Jev bills; unknown when it does not.
+#[must_use]
+pub fn charge_answered(response: &jev::SystemOneResponse) -> Value {
+    let priced = response.usage.input_tokens.is_some();
+    json!({
+        "charge": if priced { "priced" } else { "unknown" },
+        "basis": if priced {
+            "the response reported its input tokens"
+        } else {
+            "the response reported no input tokens"
+        },
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    })
+}
+
+/// What a failed request cost. A request refused before it was sent, or
+/// answered with a 4xx refusal, served no answer: a known zero. A timeout,
+/// a lost connection, a 5xx, or an answer the SDK could not read may have
+/// been billed: unknown, never zero.
+#[must_use]
+pub fn charge_failed(error: &jev::Error) -> Value {
+    let (charge, basis) = match error {
+        jev::Error::Config(_) | jev::Error::Question { .. } => {
+            ("zero", "refused by the SDK before it was sent".to_string())
+        }
+        jev::Error::Api(api) if (400..500).contains(&api.status) => (
+            "zero",
+            format!("refused with status {}: no answer was served", api.status),
+        ),
+        jev::Error::Api(api) => (
+            "unknown",
+            format!("status {}: the door may have done billed work", api.status),
+        ),
+        jev::Error::Connection { .. } | jev::Error::Timeout { .. } => (
+            "unknown",
+            "no response arrived: the door may have done billed work".to_string(),
+        ),
+        _ => (
+            "unknown",
+            "answered, but the answer did not read: its usage is unknown".to_string(),
+        ),
+    };
+    json!({ "charge": charge, "basis": basis })
+}
+
+/// The charge a request with no time left records: never sent, so zero.
+#[must_use]
+pub fn charge_skipped() -> Value {
+    json!({
+        "charge": "zero",
+        "basis": "not sent: the episode deadline left no time",
+    })
+}
+
 /// One request to make.
 pub struct Ask<'a> {
     /// The component that asks, such as `evidence.probes`.
@@ -138,6 +202,9 @@ pub struct Ask<'a> {
     pub questions: Questions,
     /// The parent invocation; the innermost open one when `None`.
     pub parent: Option<String>,
+    /// The episode deadline the request is bounded by; `None` grants the
+    /// full [`JEV_CALL_BUDGET`].
+    pub deadline: Option<crate::deadline::Deadline>,
 }
 
 /// What a request produced.
@@ -147,8 +214,12 @@ pub struct Asked {
     pub answers: Option<Value>,
     /// Why there are no answers, when there are none.
     pub error: Option<String>,
-    /// `live`, `recorded`, `miss`, `off`, or `failed`.
+    /// `live`, `recorded`, `miss`, `off`, `failed`, or `skipped`, when
+    /// the episode deadline left no time to send it.
     pub how: &'static str,
+    /// The charge the request recorded: `priced`, `zero`, or `unknown`;
+    /// `None` when it made no live request.
+    pub charge: Option<&'static str>,
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     /// The recorded-answer key of this request.
@@ -218,6 +289,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
             answers: None,
             error: Some("Jev is off".to_string()),
             how: "off",
+            charge: None,
             input_tokens: None,
             output_tokens: None,
             key,
@@ -239,6 +311,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                     answers: Some(entry.answers.clone()),
                     error: None,
                     how: "recorded",
+                    charge: None,
                     input_tokens: entry.input_tokens,
                     output_tokens: entry.output_tokens,
                     key,
@@ -248,12 +321,45 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                 answers: None,
                 error: Some("no recorded answer for this state and question set".to_string()),
                 how: "miss",
+                charge: None,
                 input_tokens: None,
                 output_tokens: None,
                 key,
             },
         },
+        JevMode::Live(_)
+            if ask
+                .deadline
+                .as_ref()
+                .is_some_and(|deadline| deadline.grant(ask.name, JEV_CALL_BUDGET).is_none()) =>
+        {
+            decision.error = Some(DEADLINE_SKIP.to_string());
+            recorder.push(credit(
+                Step::called(decision.call()).noting("jev_usage", charge_skipped()),
+            ));
+            println!("  {} ▸ {DEADLINE_SKIP}", ask.name);
+            Asked {
+                answers: None,
+                error: Some(DEADLINE_SKIP.to_string()),
+                how: "skipped",
+                charge: Some("zero"),
+                input_tokens: None,
+                output_tokens: None,
+                key,
+            }
+        }
         JevMode::Live(client) => {
+            // The grant above passed; this one reads what is left now.
+            let budget = ask.deadline.as_ref().map_or(JEV_CALL_BUDGET, |deadline| {
+                deadline
+                    .allowance()
+                    .map_or(JEV_CALL_BUDGET, |left| left.min(JEV_CALL_BUDGET))
+                    .max(crate::deadline::MINIMUM_GRANT)
+            });
+            let request = request.retry(jev::RetryPolicy {
+                budget: Some(budget),
+                ..jev::RetryPolicy::default()
+            });
             let started = Instant::now();
             let result = client.system_one(request).await;
             let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -265,21 +371,21 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                         .ok()
                         .and_then(|body| body.get("answers").cloned())
                         .unwrap_or(Value::Null);
+                    let charge = charge_answered(&response);
                     recorder.push(credit(
                         Step::called(decision.clone().call())
                             .taking(milliseconds)
-                            .noting(
-                                "jev_usage",
-                                json!({
-                                    "input_tokens": response.usage.input_tokens,
-                                    "output_tokens": response.usage.output_tokens,
-                                }),
-                            ),
+                            .noting("jev_usage", charge.clone()),
                     ));
                     Asked {
                         answers: Some(decision.answers),
                         error: None,
                         how: "live",
+                        charge: Some(if charge["charge"] == "priced" {
+                            "priced"
+                        } else {
+                            "unknown"
+                        }),
                         input_tokens: response.usage.input_tokens,
                         output_tokens: response.usage.output_tokens,
                         key,
@@ -287,11 +393,21 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                 }
                 Err(error) => {
                     decision.error = Some(error.to_string());
-                    recorder.push(credit(Step::called(decision.call()).taking(milliseconds)));
+                    let charge = charge_failed(&error);
+                    recorder.push(credit(
+                        Step::called(decision.call())
+                            .taking(milliseconds)
+                            .noting("jev_usage", charge.clone()),
+                    ));
                     Asked {
                         answers: None,
                         error: Some(error.to_string()),
                         how: "failed",
+                        charge: Some(if charge["charge"] == "zero" {
+                            "zero"
+                        } else {
+                            "unknown"
+                        }),
                         input_tokens: None,
                         output_tokens: None,
                         key,
@@ -311,12 +427,13 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
             usd: Some(0.0),
             provenance: "recorded_replay".to_string(),
         },
-        "off" | "miss" => Cost::none(),
+        "off" | "miss" | "skipped" => Cost::none(),
+        _ if asked.charge == Some("zero") => Cost::none(),
         _ => Cost::unknown(),
     };
     let outcome = match asked.how {
         "live" | "recorded" => Outcome::Completed,
-        "off" => Outcome::Skipped,
+        "off" | "skipped" => Outcome::Skipped,
         _ => Outcome::Failed,
     };
     recorder.end(
@@ -413,6 +530,7 @@ mod tests {
             state: state.clone(),
             questions: questions(wording),
             parent: None,
+            deadline: None,
         }
     }
 

@@ -93,7 +93,14 @@ class CoderOne(CoderV05):
         "CODER_ONE_COMMAND_TIMEOUT",
         "CODER_ONE_DEEP",
         "CODER_ONE_PROBES",
+        "CODER_ONE_EPISODE_DEADLINE",
+        "CODER_ONE_SPEND_SOFT_USD",
     )
+
+    # Seconds between the episode's own deadline and the harness's exec
+    # timeout, so the episode records what it cut short before the harness
+    # kills it.
+    DEADLINE_MARGIN_SEC: ClassVar[int] = 60
 
     @staticmethod
     def name() -> str:
@@ -108,6 +115,11 @@ class CoderOne(CoderV05):
         env = super()._episode_env()
         if self._policy is not None:
             env["CODER_ONE_POLICY"] = json.dumps(self._policy, separators=(",", ":"))
+        # With an exec timeout, the episode runs one deadline inside it.
+        if self._episode_timeout_sec and "CODER_ONE_EPISODE_DEADLINE" not in env:
+            env["CODER_ONE_EPISODE_DEADLINE"] = str(
+                max(self._episode_timeout_sec - self.DEADLINE_MARGIN_SEC, 60)
+            )
         return env
 
 
