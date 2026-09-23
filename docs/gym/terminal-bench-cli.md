@@ -58,6 +58,32 @@ from `bench/terminal-bench/samples/`. Use `--jobs-dir`, `--traces-dir`, or
 `--no-samples` to omit one. Nested resilience samples and resumed trials
 are included. Read errors stay visible in text and JSON output.
 
+## Read a Terminal-Bench 4.0 suite
+
+Attempts of the `tb4` profile ran Terminal-Bench 4.0 at tag `v4.0.0`. Some
+of its task names repeat the panel's tasks at another commit, so read them
+under their profile:
+
+```sh
+gym terminal-bench overview --profile tb4
+gym terminal-bench compare --profile tb4 --task terminal-bench/cad-model
+gym coder matrix --profile tb4 --reference-rows 5
+```
+
+`--profile` keeps only that profile's attempts. The overview lists each
+profile's arms with their passes over graded trials, and for `tb4` every
+row of the public leaderboard. A `tb4` comparison group carries
+`reference`: each leaderboard row's successes, trials, cost, and mean agent
+time on that task, best rank first. Text shows the top six; `--json` has
+all of them. `gym coder matrix --profile tb4` lists all 66 tasks, marks the
+ones no arm has run, and prints leaderboard rows (`▷`) under each task's
+cells; its JSON adds `reference` with every row per task. Without
+`--profile`, the matrix leaves `tb4` attempts out. `--no-reference` drops
+the leaderboard from the overview and comparison. The leaderboard comes
+from `bench/terminal-bench/reference/tb4-leaderboard.json`; the
+[runbook](../terminal-bench/runbook.md#run-the-terminal-bench-40-suite)
+says how to refresh it.
+
 ## Compare Coder One components
 
 `gym coder components` lists each Coder One component with its isolated

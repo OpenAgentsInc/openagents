@@ -1,6 +1,7 @@
 //! Terminal-Bench evidence commands and the pinned harness entry point.
 
 use gym::terminal_bench::{Attempt, ComparisonGroup, Evidence, Records};
+use gym::terminal_bench_reference::{self as reference, Reference};
 use serde_json::{Value, json};
 use std::env;
 use std::io::{self, Write};
@@ -11,8 +12,10 @@ const HELP: &str = "\
 gym terminal-bench  inspect local runs or call the pinned Harbor harness
 
 Evidence commands (read-only; add --json for structured output):
-  overview                 list sources, statuses, coverage, and task/arm groups
-  compare [--task ID] [--arm ID]  compare groups and their member attempts
+  overview                 list sources, statuses, coverage, profiles, and groups;
+                           a tb4 profile lists the TB4 leaderboard's rows
+  compare [--task ID] [--arm ID]  compare groups and their member attempts;
+                           a tb4 group shows the leaderboard's result per task
   attempt JOB TRIAL        inspect one attempt and its measurements
   attempt JOB TRIAL --timeline  list every component invocation in order,
                            with its parent, duration, cost, and spend so far
@@ -26,6 +29,8 @@ Source options for evidence commands:
   --traces-dir PATH        retained checkout traces
   --samples-dir PATH       checked and nested resilience samples
   --no-jobs | --no-traces | --no-samples  omit one source
+  --profile ID             only attempts of this job profile (overview, compare)
+  --no-reference           omit the TB4 leaderboard reference rows
   --json                   print versioned JSON instead of text
 
 Harness commands (forward remaining flags to the pinned tbench package):
@@ -48,6 +53,9 @@ docs/coder/terminal-bench.md and docs/gym/terminal-bench-cli.md.";
 
 const SCHEMA: &str = "openagents.gym.terminal-bench-cli.v1";
 
+/// Leaderboard rows a text comparison prints per task, best rank first.
+const REFERENCE_ROWS: usize = 6;
+
 #[derive(Default)]
 struct SourceOptions {
     jobs: Option<PathBuf>,
@@ -58,6 +66,8 @@ struct SourceOptions {
     timeline: bool,
     task: Option<String>,
     arm: Option<String>,
+    profile: Option<String>,
+    no_reference: bool,
     positional: Vec<String>,
 }
 
@@ -86,7 +96,9 @@ impl SourceOptions {
                 "--no-jobs" => options.jobs = None,
                 "--no-traces" => options.traces = None,
                 "--no-samples" => options.samples = None,
-                "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--task" | "--arm" => {
+                "--no-reference" => options.no_reference = true,
+                "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--task" | "--arm"
+                | "--profile" => {
                     let value = args
                         .get(index + 1)
                         .filter(|value| !value.starts_with("--"))
@@ -96,6 +108,7 @@ impl SourceOptions {
                         "--traces-dir" => options.traces = Some(value.into()),
                         "--samples-dir" => options.samples = Some(value.into()),
                         "--task" => options.task = Some(value.clone()),
+                        "--profile" => options.profile = Some(value.clone()),
                         _ => options.arm = Some(value.clone()),
                     }
                     index += 1;
@@ -118,15 +131,33 @@ impl SourceOptions {
         if command != "compare" && (options.task.is_some() || options.arm.is_some()) {
             return Err("--task and --arm apply only to compare".to_owned());
         }
+        if !matches!(command, "overview" | "compare") && options.profile.is_some() {
+            return Err("--profile applies only to overview and compare".to_owned());
+        }
         Ok(options)
     }
 
     fn load(&self) -> Records {
-        Records::load(
+        let mut records = Records::load(
             self.jobs.as_deref(),
             self.traces.as_deref(),
             self.samples.as_deref(),
-        )
+        );
+        if let Some(profile) = &self.profile {
+            records
+                .attempts
+                .retain(|attempt| &attempt.profile == profile);
+        }
+        records
+    }
+
+    /// The TB4 leaderboard reference, unless the caller turned it off.
+    fn reference(&self) -> Option<Reference> {
+        if self.no_reference {
+            None
+        } else {
+            Reference::checked()
+        }
     }
 }
 
@@ -205,9 +236,15 @@ fn execute(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Resul
         }
         return Ok(0);
     }
+    let board = options.reference();
     let value = match command.as_str() {
-        "overview" => overview(&records),
-        "compare" => comparisons(&records, options.task.as_deref(), options.arm.as_deref()),
+        "overview" => overview(&records, board.as_ref()),
+        "compare" => comparisons(
+            &records,
+            options.task.as_deref(),
+            options.arm.as_deref(),
+            board.as_ref(),
+        ),
         "attempt" => attempt_value(find_attempt(&records, &options.positional)?),
         "evidence" if options.missing => missing_evidence(&records),
         "evidence" => {
@@ -350,7 +387,54 @@ fn attempt_value(attempt: &Attempt) -> Value {
     })
 }
 
-fn overview(records: &Records) -> Value {
+/// Each profile's attempts, graded trials, and passes per arm, so a suite
+/// such as tb4 reads as one block rather than scattered task groups.
+fn profiles(records: &Records, board: Option<&Reference>) -> Value {
+    let mut by_profile = std::collections::BTreeMap::<&str, Vec<&Attempt>>::new();
+    for attempt in &records.attempts {
+        by_profile
+            .entry(attempt.profile.as_str())
+            .or_default()
+            .push(attempt);
+    }
+    by_profile
+        .into_iter()
+        .map(|(profile, attempts)| {
+            let mut arms = std::collections::BTreeMap::<&str, Vec<&Attempt>>::new();
+            for attempt in &attempts {
+                arms.entry(attempt.arm.as_str()).or_default().push(attempt);
+            }
+            let tasks: std::collections::BTreeSet<&str> =
+                attempts.iter().map(|a| a.task.as_str()).collect();
+            let mut value = json!({
+                "profile": profile,
+                "attempts": attempts.len(),
+                "tasks": tasks.len(),
+                "arms": arms.iter().map(|(arm, members)| {
+                    let graded: Vec<_> = members.iter().filter(|a| a.reward.is_some()).collect();
+                    let tasks: std::collections::BTreeSet<&str> = members.iter().map(|a| a.task.as_str()).collect();
+                    json!({
+                        "arm": arm,
+                        "attempts": members.len(),
+                        "tasks": tasks.len(),
+                        "graded": graded.len(),
+                        "passes": graded.iter().filter(|a| a.reward.is_some_and(|r| r >= 1.0)).count(),
+                        "setup_failures": members.iter().filter(|a| a.is_setup_failure()).count(),
+                        "cost_usd": members.iter().map(|a| a.cost_usd).sum::<Option<f64>>(),
+                    })
+                }).collect::<Vec<_>>(),
+            });
+            if profile == reference::PROFILE
+                && let Some(board) = board
+            {
+                value["reference"] = board.summary_json();
+            }
+            value
+        })
+        .collect()
+}
+
+fn overview(records: &Records, board: Option<&Reference>) -> Value {
     let mut coverage = std::collections::BTreeMap::<&str, usize>::new();
     for attempt in &records.attempts {
         *coverage.entry(&attempt.usage_coverage).or_default() += 1;
@@ -377,11 +461,17 @@ fn overview(records: &Records) -> Value {
         "latest_started_at": records.attempts.iter().filter_map(|attempt| attempt.started_at.as_ref()).max(),
         "report_label": records.report_label,
         "report_warnings": records.report_warnings,
+        "profiles": profiles(records, board),
         "groups": groups,
     })
 }
 
-fn comparisons(records: &Records, task: Option<&str>, arm: Option<&str>) -> Value {
+fn comparisons(
+    records: &Records,
+    task: Option<&str>,
+    arm: Option<&str>,
+    board: Option<&Reference>,
+) -> Value {
     let groups = ComparisonGroup::from_records(records)
         .into_iter()
         .filter(|group| task.is_none_or(|task| group.task == task))
@@ -397,11 +487,17 @@ fn comparisons(records: &Records, task: Option<&str>, arm: Option<&str>) -> Valu
                 let (low, high) = wilson_95(successes, fresh.len());
                 Some(json!({"method":"wilson_95","low":low,"high":high,"successes":successes,"denominator":fresh.len()}))
             } else { None };
+            let short = group.task.rsplit('/').next().unwrap_or(&group.task);
+            let leaderboard = board
+                .filter(|_| group.profile == reference::PROFILE)
+                .map(|board| board.task_json(short));
             json!({
                 "task": group.task,
                 "arm": group.arm,
                 "policy": group.policy,
                 "arms": group.arms,
+                "profile": group.profile,
+                "reference": leaderboard,
                 "pin": group.pin,
                 "attempts_total": members.len(),
                 "graded_denominator": graded.len(),
@@ -542,6 +638,60 @@ fn render_text(
                 "Report: {}",
                 records.report_label.as_deref().unwrap_or("not loaded")
             )?;
+            for profile in value["profiles"].as_array().into_iter().flatten() {
+                writeln!(
+                    out,
+                    "Profile {}: {} attempts over {} tasks",
+                    profile["profile"].as_str().unwrap_or("?"),
+                    profile["attempts"],
+                    profile["tasks"]
+                )?;
+                for arm in profile["arms"].as_array().into_iter().flatten() {
+                    writeln!(
+                        out,
+                        "  {} · {} tasks · {}/{} graded passes · {} setup failures · cost {}",
+                        arm["arm"].as_str().unwrap_or("?"),
+                        arm["tasks"],
+                        arm["passes"],
+                        arm["graded"],
+                        arm["setup_failures"],
+                        arm["cost_usd"]
+                            .as_f64()
+                            .map_or("unknown".to_owned(), |cost| format!("${cost:.2}"))
+                    )?;
+                }
+                if let Some(board) = profile["reference"].as_object() {
+                    writeln!(
+                        out,
+                        "  Leaderboard reference, fetched {}:",
+                        board
+                            .get("fetched_at")
+                            .and_then(Value::as_str)
+                            .unwrap_or("?")
+                    )?;
+                    for entry in board
+                        .get("entries")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                    {
+                        writeln!(
+                            out,
+                            "    #{} {}: {}/{} · {} · ${}",
+                            show(&entry["rank"]),
+                            entry["label"].as_str().unwrap_or("?"),
+                            show(&entry["successes"]),
+                            show(&entry["trials"]),
+                            entry["accuracy"]
+                                .as_f64()
+                                .map_or("?".to_owned(), |a| format!("{a:.1}%")),
+                            entry["total_cost_usd"]
+                                .as_f64()
+                                .map_or("?".to_owned(), |c| format!("{c:.2}"))
+                        )?;
+                    }
+                }
+            }
             for group in value["groups"].as_array().into_iter().flatten() {
                 writeln!(
                     out,
@@ -614,6 +764,29 @@ fn render_text(
                     "  Setup (agent_setup phase): {setup} · {} setup failures beside {} graded",
                     group["setup_failures"], group["graded_denominator"]
                 )?;
+                if let Some(rows) = group["reference"].as_array() {
+                    let cells = rows
+                        .iter()
+                        .take(REFERENCE_ROWS)
+                        .map(|row| {
+                            format!(
+                                "{} {}/{}",
+                                row["label"].as_str().unwrap_or("?"),
+                                show(&row["successes"]),
+                                show(&row["trials"])
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    if !cells.is_empty() {
+                        writeln!(
+                            out,
+                            "  Leaderboard on this task (top {} of {} rows; --json has all): {}",
+                            cells.len(),
+                            rows.len(),
+                            cells.join(" · ")
+                        )?;
+                    }
+                }
                 for attempt in group["attempts"].as_array().into_iter().flatten() {
                     writeln!(
                         out,
@@ -977,6 +1150,72 @@ mod tests {
             text.contains("Time boundary: agent = Harbor's agent_execution phase"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn a_tb4_profile_groups_apart_and_shows_the_leaderboard() {
+        let temp = tempfile::tempdir().unwrap();
+        for (job, profile, reward) in [
+            ("tb4--arm--cad-model", "tb4", 1.0),
+            ("tb4--arm--cad-model-2", "tb4", 0.0),
+            ("panel--arm--cad-model", "panel", 1.0),
+        ] {
+            let dir = temp.path().join(job).join("tbench/attempts");
+            std::fs::create_dir_all(&dir).unwrap();
+            let record = json!({
+                "schema": "openagents.tbench.attempt.v1",
+                "attempt": {"job": job, "trial": "cad-model__x", "arm": "arm", "kind": "fresh", "profile": profile},
+                "task": {"name": "terminal-bench/cad-model"},
+                "outcome": {"reward": reward, "terminal_status": "completed"},
+                "cost": {"amount_usd": 0.5},
+            });
+            std::fs::write(
+                dir.join("cad-model__x.json"),
+                serde_json::to_vec(&record).unwrap(),
+            )
+            .unwrap();
+        }
+        let jobs = temp.path().to_str().unwrap();
+        let base = ["--jobs-dir", jobs, "--no-traces", "--no-samples"];
+        let run = |extra: &[&str]| {
+            let mut args = strings(extra);
+            args.extend(strings(&base));
+            let mut output = Vec::new();
+            assert_eq!(execute(&args, &mut output, &mut Vec::new()).unwrap(), 0);
+            String::from_utf8(output).unwrap()
+        };
+        let value: Value =
+            serde_json::from_str(&run(&["compare", "--profile", "tb4", "--json"])).unwrap();
+        let groups = value["data"]["groups"].as_array().unwrap();
+        // Without a complete identity each job is its own group; every
+        // group is a tb4 one.
+        assert_eq!(groups.len(), 2);
+        assert!(groups.iter().all(|group| group["profile"] == "tb4"));
+        let rows = groups[0]["reference"].as_array().unwrap();
+        assert!(rows.len() >= 13, "{}", rows.len());
+        assert_eq!(rows[0]["trials"], 5);
+        let text = run(&["compare", "--profile", "tb4"]);
+        assert!(
+            text.contains("Leaderboard on this task (top 6 of"),
+            "{text}"
+        );
+        let overview = run(&["overview"]);
+        assert!(overview.contains("Profile panel: 1 attempts"), "{overview}");
+        assert!(
+            overview.contains("Profile tb4: 2 attempts over 1 tasks"),
+            "{overview}"
+        );
+        assert!(
+            overview.contains("arm · 1 tasks · 1/2 graded passes"),
+            "{overview}"
+        );
+        assert!(
+            overview.contains("Leaderboard reference, fetched"),
+            "{overview}"
+        );
+        let bare = run(&["overview", "--profile", "panel", "--no-reference"]);
+        assert!(!bare.contains("Leaderboard"), "{bare}");
+        assert!(!bare.contains("Profile tb4"), "{bare}");
     }
 
     #[test]

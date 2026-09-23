@@ -236,5 +236,1587 @@
     "extended"
    ]
   }
- ]
+ ],
+ "catalogs": {
+  "tb4": {
+   "upstream": {
+    "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+    "git_commit_id": "452bf305c6daa62fc59061d22133a7cbc7c1572e",
+    "ref": "v4.0.0",
+    "checkout_dir": "terminal-bench-v4.0.0",
+    "note": "Terminal-Bench 4.0: the 66 tasks under tasks/ at tag v4.0.0. Same task names as the panel's pin, but 137 files differ, so this catalog pins its own commit and checkout."
+   },
+   "tasks": [
+    {
+     "id": "atrx-vep-crispr",
+     "path": "tasks/atrx-vep-crispr",
+     "set": "tasks",
+     "role": "Science / Biology",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.11-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 7.0
+    },
+    {
+     "id": "batched-eval-parity",
+     "path": "tasks/batched-eval-parity",
+     "set": "tasks",
+     "role": "ML / Evaluation",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 900,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.11-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "verifier_resources": {
+      "cpus": 1,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "expert_hours": 24.0
+    },
+    {
+     "id": "biped-contact-dynamics",
+     "path": "tasks/biped-contact-dynamics",
+     "set": "tasks",
+     "role": "Science / Robotics",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 8192,
+      "storage_mb": 20480,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 2640,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 5.0
+    },
+    {
+     "id": "bun-sourcemap-leak",
+     "path": "tasks/bun-sourcemap-leak",
+     "set": "tasks",
+     "role": "Software / Systems",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "oven/bun:1.2.15-debian",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 1.5
+    },
+    {
+     "id": "cad-model",
+     "path": "tasks/cad-model",
+     "set": "tasks",
+     "role": "Hardware / CAD",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 240,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "cargo-flight-dispatch",
+     "path": "tasks/cargo-flight-dispatch",
+     "set": "tasks",
+     "role": "Operations / Logistics",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1200,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim-bookworm",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.5
+    },
+    {
+     "id": "coq-block-bound",
+     "path": "tasks/coq-block-bound",
+     "set": "tasks",
+     "role": "Science / Math",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 1200,
+     "images": [],
+     "image_arches": [],
+     "base_image": "coqorg/coq:8.18",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 16.0
+    },
+    {
+     "id": "ctr-optimization",
+     "path": "tasks/ctr-optimization",
+     "set": "tasks",
+     "role": "Operations / Marketing",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 180,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.11-slim",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.8
+    },
+    {
+     "id": "cumulative-layout-shift",
+     "path": "tasks/cumulative-layout-shift",
+     "set": "tasks",
+     "role": "Software / Frontend",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 8192,
+      "storage_mb": 20480,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 900,
+     "images": [],
+     "image_arches": [],
+     "base_image": "node:22-bookworm",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 6.0
+    },
+    {
+     "id": "data-anonymization",
+     "path": "tasks/data-anonymization",
+     "set": "tasks",
+     "role": "Software / Data engineering",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 7200,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 24.0
+    },
+    {
+     "id": "distributed-dedup",
+     "path": "tasks/distributed-dedup",
+     "set": "tasks",
+     "role": "Software / Systems",
+     "resources": {
+      "cpus": 8,
+      "memory_mb": 16384,
+      "storage_mb": 15000,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 1800,
+     "images": [],
+     "image_arches": [],
+     "base_image": "eclipse-temurin:17-jdk-jammy",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 10.0
+    },
+    {
+     "id": "embedding-drift-monitor",
+     "path": "tasks/embedding-drift-monitor",
+     "set": "tasks",
+     "role": "ML / Inference",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 5.0
+    },
+    {
+     "id": "fin-saccr-rwa",
+     "path": "tasks/fin-saccr-rwa",
+     "set": "tasks",
+     "role": "Operations / Finance",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.11-slim@sha256:9a7765b36773a37061455b332f18e265e7f58f6fea9c419a550d2a8b0e9db834",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 8.0
+    },
+    {
+     "id": "foodstuff-beta-activity",
+     "path": "tasks/foodstuff-beta-activity",
+     "set": "tasks",
+     "role": "Science / Chemistry",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 120,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 1.5
+    },
+    {
+     "id": "formal-crypto",
+     "path": "tasks/formal-crypto",
+     "set": "tasks",
+     "role": "Security / Cryptography",
+     "resources": {
+      "cpus": 8,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 5400,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 3.0
+    },
+    {
+     "id": "fp8-rmsnorm-gemm",
+     "path": "tasks/fp8-rmsnorm-gemm",
+     "set": "tasks",
+     "role": "ML / Kernels",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 16384,
+      "storage_mb": 30720,
+      "gpus": 1
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 18000,
+     "verifier_timeout_sec": 18000,
+     "images": [],
+     "image_arches": [],
+     "base_image": "docker.io/nvidia/cuda:13.2.1-devel-ubuntu22.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "requires_gpu_runtime": true,
+     "gpu_types": [
+      "H100"
+     ],
+     "expert_hours": 12.0,
+     "gpu_note": "Needs 1 GPU (H100) through an NVIDIA container runtime. The suite skips it, with this reason recorded, when Docker has none; never substitute a CPU runtime."
+    },
+    {
+     "id": "freecad-impeller",
+     "path": "tasks/freecad-impeller",
+     "set": "tasks",
+     "role": "Hardware / CAD",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "mambaorg/micromamba:1.5",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "freecad-platform-drawing",
+     "path": "tasks/freecad-platform-drawing",
+     "set": "tasks",
+     "role": "Hardware / CAD",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "mambaorg/micromamba:1.5",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 1.5
+    },
+    {
+     "id": "freecad-spring-clip",
+     "path": "tasks/freecad-spring-clip",
+     "set": "tasks",
+     "role": "Hardware / CAD",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "mambaorg/micromamba:1.5",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "freight-dispatch-shift",
+     "path": "tasks/freight-dispatch-shift",
+     "set": "tasks",
+     "role": "Operations / Logistics",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1200,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "glycan-ms2-elucidation",
+     "path": "tasks/glycan-ms2-elucidation",
+     "set": "tasks",
+     "role": "Science / Chemistry",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 5.0
+    },
+    {
+     "id": "gsea-proteomics",
+     "path": "tasks/gsea-proteomics",
+     "set": "tasks",
+     "role": "Science / Biology",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 900,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:22.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "heat-pump-warranty",
+     "path": "tasks/heat-pump-warranty",
+     "set": "tasks",
+     "role": "Operations / Claims",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1200,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "hof-topology-interpenetration",
+     "path": "tasks/hof-topology-interpenetration",
+     "set": "tasks",
+     "role": "Science / Chemistry",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 2400,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04@sha256:67efaecc0031a612cf7bb3c863407018dbbef0a971f62032b77aa542ac8ac0d2",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 8.0
+    },
+    {
+     "id": "html-js-filter",
+     "path": "tasks/html-js-filter",
+     "set": "tasks",
+     "role": "Security / AppSec",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 1800,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim-bookworm",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 0.75
+    },
+    {
+     "id": "interleaved-vigenere",
+     "path": "tasks/interleaved-vigenere",
+     "set": "tasks",
+     "role": "Security / Cryptography",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 900,
+     "verifier_timeout_sec": 900,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim-bookworm",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "intrastat-meldung",
+     "path": "tasks/intrastat-meldung",
+     "set": "tasks",
+     "role": "Operations / Compliance",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 20480,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1200,
+     "verifier_timeout_sec": 180,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 3.0
+    },
+    {
+     "id": "jax-speedrun-gpu",
+     "path": "tasks/jax-speedrun-gpu",
+     "set": "tasks",
+     "role": "ML / Training",
+     "resources": {
+      "cpus": 16,
+      "memory_mb": 32768,
+      "storage_mb": 1024000,
+      "gpus": 1
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 7200,
+     "verifier_timeout_sec": 7200,
+     "images": [],
+     "image_arches": [],
+     "base_image": "nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04@sha256:8aef630a54bc5c5146ae5ce68e6af5caa3df0fb690bb91544175c91f307e4356",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "verifier_resources": {
+      "cpus": 16,
+      "memory_mb": 32768,
+      "storage_mb": 1024000,
+      "gpus": 1
+     },
+     "requires_gpu_runtime": true,
+     "gpu_types": [
+      "H100"
+     ],
+     "expert_hours": 10.0,
+     "gpu_note": "Needs 1 GPU (H100) through an NVIDIA container runtime. The suite skips it, with this reason recorded, when Docker has none; never substitute a CPU runtime."
+    },
+    {
+     "id": "ks-solver-cpp",
+     "path": "tasks/ks-solver-cpp",
+     "set": "tasks",
+     "role": "Science / Physics",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 300,
+     "verifier_timeout_sec": 180,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 10.0
+    },
+    {
+     "id": "kv-live-surgery",
+     "path": "tasks/kv-live-surgery",
+     "set": "tasks",
+     "role": "Software / Systems",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "lake-temp-glm",
+     "path": "tasks/lake-temp-glm",
+     "set": "tasks",
+     "role": "Science / Earth",
+     "resources": {
+      "cpus": 8,
+      "memory_mb": 8192,
+      "storage_mb": 20480,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "verifier_resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "expert_hours": 8.0
+    },
+    {
+     "id": "layout-config-recreation",
+     "path": "tasks/layout-config-recreation",
+     "set": "tasks",
+     "role": "Media / Design",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 900,
+     "verifier_timeout_sec": 180,
+     "images": [],
+     "image_arches": [],
+     "base_image": "mcr.microsoft.com/playwright/python:v1.52.0-noble",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "layout-config-recreation2",
+     "path": "tasks/layout-config-recreation2",
+     "set": "tasks",
+     "role": "Media / Design",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 900,
+     "verifier_timeout_sec": 180,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.11-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "verifier_resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "expert_hours": 2.0
+    },
+    {
+     "id": "legacy-utility-triage",
+     "path": "tasks/legacy-utility-triage",
+     "set": "tasks",
+     "role": "Operations / Claims",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 20480,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1200,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 3.5
+    },
+    {
+     "id": "live-database-cutover",
+     "path": "tasks/live-database-cutover",
+     "set": "tasks",
+     "role": "Software / Databases",
+     "resources": {
+      "cpus": 16,
+      "memory_mb": 16384,
+      "storage_mb": 20480,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim-bookworm",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "verifier_resources": {
+      "cpus": 16,
+      "memory_mb": 16384,
+      "storage_mb": 40960,
+      "gpus": 0
+     },
+     "expert_hours": 8.0
+    },
+    {
+     "id": "math-eval-grader",
+     "path": "tasks/math-eval-grader",
+     "set": "tasks",
+     "role": "ML / Evaluation",
+     "resources": {
+      "cpus": 8,
+      "memory_mb": 16384,
+      "storage_mb": 30720,
+      "gpus": 1
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 3600,
+     "verifier_timeout_sec": 900,
+     "images": [],
+     "image_arches": [],
+     "base_image": "pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "requires_gpu_runtime": true,
+     "gpu_types": [
+      "H100"
+     ],
+     "expert_hours": 6.0,
+     "gpu_note": "Needs 1 GPU (H100) through an NVIDIA container runtime. The suite skips it, with this reason recorded, when Docker has none; never substitute a CPU runtime."
+    },
+    {
+     "id": "medical-claims-processing",
+     "path": "tasks/medical-claims-processing",
+     "set": "tasks",
+     "role": "Operations / Claims",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 16384,
+      "storage_mb": 20480,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1200,
+     "verifier_timeout_sec": 120,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "mp-checkpoint-consolidation",
+     "path": "tasks/mp-checkpoint-consolidation",
+     "set": "tasks",
+     "role": "ML / Inference",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 4096,
+      "storage_mb": 5120,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.11-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 6.0
+    },
+    {
+     "id": "music-harmony",
+     "path": "tasks/music-harmony",
+     "set": "tasks",
+     "role": "Media / Music",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 60,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.11-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 1.0
+    },
+    {
+     "id": "mvcc-lsm-compaction",
+     "path": "tasks/mvcc-lsm-compaction",
+     "set": "tasks",
+     "role": "Software / Databases",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 900,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "nextjs-performance",
+     "path": "tasks/nextjs-performance",
+     "set": "tasks",
+     "role": "Software / Frontend",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 15360,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 900,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "node:22-bookworm-slim",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 3.0
+    },
+    {
+     "id": "ontology-kg-querying",
+     "path": "tasks/ontology-kg-querying",
+     "set": "tasks",
+     "role": "Software / Data engineering",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1200,
+     "verifier_timeout_sec": 1500,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 20.0
+    },
+    {
+     "id": "payments-pipeline-fix",
+     "path": "tasks/payments-pipeline-fix",
+     "set": "tasks",
+     "role": "Software / Systems",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim-bookworm",
+     "compose": true,
+     "profiles": [
+      "tb4"
+     ],
+     "verifier_resources": {
+      "cpus": 6,
+      "memory_mb": 12288,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "expert_hours": 2.0
+    },
+    {
+     "id": "photonic-waveguide-routing",
+     "path": "tasks/photonic-waveguide-routing",
+     "set": "tasks",
+     "role": "Software / Algorithms",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim-bookworm",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 0.75
+    },
+    {
+     "id": "pretrain-shard-corruption",
+     "path": "tasks/pretrain-shard-corruption",
+     "set": "tasks",
+     "role": "ML / Training",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 8192,
+      "storage_mb": 4096,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 900,
+     "verifier_timeout_sec": 600,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.11-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "production-planning",
+     "path": "tasks/production-planning",
+     "set": "tasks",
+     "role": "Operations / Supply chain",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 120,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim-bookworm",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "protein-autointerp-disulfide",
+     "path": "tasks/protein-autointerp-disulfide",
+     "set": "tasks",
+     "role": "Science / Biology",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 8192,
+      "storage_mb": 20480,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 900,
+     "verifier_timeout_sec": 180,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "react-lead-form",
+     "path": "tasks/react-lead-form",
+     "set": "tasks",
+     "role": "Software / Frontend",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 900,
+     "images": [],
+     "image_arches": [],
+     "base_image": "node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 5.0
+    },
+    {
+     "id": "retro-console-soc",
+     "path": "tasks/retro-console-soc",
+     "set": "tasks",
+     "role": "Hardware / RTL",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 1200,
+     "images": [],
+     "image_arches": [],
+     "base_image": "fedora:42",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 10.0
+    },
+    {
+     "id": "risk-scorer-replay",
+     "path": "tasks/risk-scorer-replay",
+     "set": "tasks",
+     "role": "ML / Evaluation",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim-bookworm",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "roy-polymorph-cn",
+     "path": "tasks/roy-polymorph-cn",
+     "set": "tasks",
+     "role": "Science / Chemistry",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:22.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 3.0
+    },
+    {
+     "id": "rs-archive-clone",
+     "path": "tasks/rs-archive-clone",
+     "set": "tasks",
+     "role": "Software / Algorithms",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 1200,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 16.0
+    },
+    {
+     "id": "satb-audio-transcription",
+     "path": "tasks/satb-audio-transcription",
+     "set": "tasks",
+     "role": "Media / Music",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 8.0
+    },
+    {
+     "id": "session-window-debug",
+     "path": "tasks/session-window-debug",
+     "set": "tasks",
+     "role": "Software / Systems",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 8.0
+    },
+    {
+     "id": "sglang-qwen-burst",
+     "path": "tasks/sglang-qwen-burst",
+     "set": "tasks",
+     "role": "ML / Inference",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 18000,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 420,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "shadow-relay",
+     "path": "tasks/shadow-relay",
+     "set": "tasks",
+     "role": "Security / Forensics",
+     "resources": {
+      "cpus": 8,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 300,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim-bookworm@sha256:bb73517d48bd32016e15eade0c009b2724ec3a025a9975b5cd9b251d0dcadb33",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 3.0
+    },
+    {
+     "id": "sound-change-cascade",
+     "path": "tasks/sound-change-cascade",
+     "set": "tasks",
+     "role": "Science / Linguistics",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "takens-embedding-lean",
+     "path": "tasks/takens-embedding-lean",
+     "set": "tasks",
+     "role": "Science / Math",
+     "resources": {
+      "cpus": 4,
+      "memory_mb": 16384,
+      "storage_mb": 51200,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 1800,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:22.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 60.0
+    },
+    {
+     "id": "telecom-entity-resolution",
+     "path": "tasks/telecom-entity-resolution",
+     "set": "tasks",
+     "role": "Software / Data engineering",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 1500,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04@sha256:c4a8d5503dfb2a3eb8ab5f807da5bc69a85730fb49b5cfca2330194ebcc41c7b",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 16.0
+    },
+    {
+     "id": "uefi-bootkit",
+     "path": "tasks/uefi-bootkit",
+     "set": "tasks",
+     "role": "Security / Forensics",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 16384,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 900,
+     "verifier_timeout_sec": 700,
+     "images": [],
+     "image_arches": [],
+     "base_image": "debian:12-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "vba-userform-port",
+     "path": "tasks/vba-userform-port",
+     "set": "tasks",
+     "role": "Software / Frontend",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 20480,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1200,
+     "verifier_timeout_sec": 900,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.12-slim",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "vf2-speedup-networkx",
+     "path": "tasks/vf2-speedup-networkx",
+     "set": "tasks",
+     "role": "Software / Algorithms",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 900,
+     "images": [],
+     "image_arches": [],
+     "base_image": "ubuntu:24.04",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    },
+    {
+     "id": "vllm-deepseek-streaming",
+     "path": "tasks/vllm-deepseek-streaming",
+     "set": "tasks",
+     "role": "ML / Inference",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 600,
+     "verifier_timeout_sec": 300,
+     "images": [],
+     "image_arches": [],
+     "base_image": "vllm/vllm-openai-cpu:v0.21.0",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "vpp-loss-divergence",
+     "path": "tasks/vpp-loss-divergence",
+     "set": "tasks",
+     "role": "ML / Training",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 8192,
+      "storage_mb": 15360,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1200,
+     "verifier_timeout_sec": 900,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.11-slim@sha256:9a7765b36773a37061455b332f18e265e7f58f6fea9c419a550d2a8b0e9db834",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 2.0
+    },
+    {
+     "id": "wal-recovery-ordering",
+     "path": "tasks/wal-recovery-ordering",
+     "set": "tasks",
+     "role": "Software / Databases",
+     "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 900,
+     "verifier_timeout_sec": 1800,
+     "images": [],
+     "image_arches": [],
+     "base_image": "python:3.13-slim-bookworm@sha256:bb73517d48bd32016e15eade0c009b2724ec3a025a9975b5cd9b251d0dcadb33",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 6.0
+    },
+    {
+     "id": "wdm-design",
+     "path": "tasks/wdm-design",
+     "set": "tasks",
+     "role": "Science / Physics",
+     "resources": {
+      "cpus": 8,
+      "memory_mb": 16384,
+      "storage_mb": 10240,
+      "gpus": 0
+     },
+     "agent_timeout_sec": 28800,
+     "build_timeout_sec": 1800,
+     "verifier_timeout_sec": 1200,
+     "images": [],
+     "image_arches": [],
+     "base_image": "condaforge/miniforge3:24.9.2-0",
+     "compose": false,
+     "profiles": [
+      "tb4"
+     ],
+     "expert_hours": 4.0
+    }
+   ]
+  }
+ }
 }

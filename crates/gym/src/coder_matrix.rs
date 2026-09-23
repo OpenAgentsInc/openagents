@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Value, json};
 
 use crate::terminal_bench::{Attempt, Records};
+use crate::terminal_bench_reference::{self as reference, Reference};
 
 /// The schema of `gym coder matrix --json`.
 pub const SCHEMA: &str = "openagents.gym.coder-matrix.v1";
@@ -455,6 +456,20 @@ impl Matrix {
     /// the oracle rows and every policy that ran all tasks.
     #[must_use]
     pub fn lines(&self) -> Vec<String> {
+        self.lines_with(None)
+    }
+
+    /// The matrix with a leaderboard's rows under each task: every task the
+    /// reference covers is listed, including the ones no arm ran yet, and
+    /// each shows the best-ranked `rows` rows of the reference.
+    #[must_use]
+    pub fn lines_with(&self, board: Option<(&Reference, usize)>) -> Vec<String> {
+        let mut tasks: Vec<String> = self.tasks.clone();
+        if let Some((board, _)) = board {
+            tasks.extend(board.tasks());
+            tasks.sort();
+            tasks.dedup();
+        }
         let mut lines = vec![
             format!(
                 "Outcome matrix · {} tasks · {} cells · J = cost + ${}/s × agent time + ${} × (1 − pass)",
@@ -468,9 +483,12 @@ impl Matrix {
                 "task / policy", "pass", "Wilson 95%", "mean $", "mean s", "J $"
             ),
         ];
-        for task in &self.tasks {
+        for task in &tasks {
             lines.push(task.clone());
             let mut cells: Vec<&Cell> = self.task(task).collect();
+            if cells.is_empty() {
+                lines.push("    no graded attempts yet".to_owned());
+            }
             cells.sort_by(|a, b| {
                 b.frontier.cmp(&a.frontier).then(
                     a.objective
@@ -492,6 +510,30 @@ impl Matrix {
                     cell.objective.map_or("—".to_owned(), |j| format!("{j:.4}"))
                 ));
             }
+            if let Some((board, rows)) = board {
+                for (entry, result) in board.task(task).into_iter().take(rows) {
+                    lines.push(format!(
+                        "  ▷ {:<44} {:>6} {:>13} {:>10} {:>9}",
+                        clip(
+                            &format!("leaderboard #{} {}", entry.rank.unwrap_or(0), entry.label()),
+                            44
+                        ),
+                        format!("{}/{}", result.successes, result.trials),
+                        {
+                            let (low, high) =
+                                wilson(result.successes as usize, result.trials as usize);
+                            format!("[{low:.2}, {high:.2}]")
+                        },
+                        result.cost_usd.map_or("unknown".to_owned(), |c| format!(
+                            "${:.4}",
+                            c / result.trials.max(1) as f64
+                        )),
+                        result
+                            .mean_agent_sec
+                            .map_or("—".to_owned(), |s| format!("{s:.1}"))
+                    ));
+                }
+            }
         }
         lines.push(String::new());
         lines.push(format!(
@@ -506,6 +548,15 @@ impl Matrix {
             lines.push(portfolio_line(portfolio));
         }
         lines.push("  ◆ on the task's Pareto frontier: no other cell has a pass rate as high, a cost as low, and a time as short.".to_owned());
+        if let Some((board, rows)) = board {
+            lines.push(format!(
+                "  ▷ the public leaderboard's best {rows} rows per task ({}, fetched {}); mean $ is its cost per trial, from Harbor Hub job aggregates.",
+                board.dataset_ref, board.fetched_at
+            ));
+            for entry in &board.entries {
+                lines.push(format!("    {}", entry.summary_line()));
+            }
+        }
         lines
     }
 }
@@ -557,6 +608,12 @@ pub struct Source {
     pub traces: Option<std::path::PathBuf>,
     /// `None` counts every task.
     pub tasks: Option<BTreeSet<String>>,
+    /// Only attempts of this job profile. Without one, every profile but
+    /// `tb4` counts: the Terminal-Bench 4.0 suite shares task names with
+    /// the panel's pin at another commit, so its attempts never pool.
+    pub profile: Option<String>,
+    /// Leaderboard rows per task in the text view of a `tb4` matrix.
+    pub reference_rows: usize,
     pub params: Params,
     pub json: bool,
     /// Arguments the shared parser didn't take.
@@ -566,7 +623,10 @@ pub struct Source {
 /// The shared flags' help.
 pub const SOURCE_HELP: &str = "\
   --tasks development|all|A,B  the tasks that count (default: the eight
-                           development tasks)
+                           development tasks, or every task with --profile)
+  --profile ID             only attempts of this job profile; tb4 adds the
+                           Terminal-Bench 4.0 leaderboard's rows per task
+  --reference-rows N       leaderboard rows per task in text (default 5)
   --usd-per-second X       the objective's price of agent time (default 0.0001)
   --fail-usd X             the objective's price of a failure (default 1.0)
   --min-trials N           trials an oracle pick needs, all passed (default 3)
@@ -590,10 +650,13 @@ impl Source {
                 .map(|home| home.join(".openagents/terminal-bench/jobs")),
             traces: Some(repo.join("traces")),
             tasks: Some(DEVELOPMENT.iter().map(|t| (*t).to_owned()).collect()),
+            profile: None,
+            reference_rows: 5,
             params: Params::default(),
             json: false,
             rest: Vec::new(),
         };
+        let mut tasks_given = false;
         let mut index = 0;
         while index < args.len() {
             let argument = args[index].as_str();
@@ -619,7 +682,18 @@ impl Source {
                     source.traces = Some(value()?.into());
                     index += 1;
                 }
+                "--profile" => {
+                    source.profile = Some(value()?);
+                    index += 1;
+                }
+                "--reference-rows" => {
+                    source.reference_rows = value()?
+                        .parse()
+                        .map_err(|_| "--reference-rows needs a whole number".to_owned())?;
+                    index += 1;
+                }
                 "--tasks" => {
+                    tasks_given = true;
                     let tasks = value()?;
                     source.tasks = match tasks.as_str() {
                         "all" => None,
@@ -648,13 +722,20 @@ impl Source {
             }
             index += 1;
         }
+        if source.profile.is_some() && !tasks_given {
+            source.tasks = None;
+        }
         Ok(source)
     }
 
     /// Loads the attempts and builds the matrix.
     #[must_use]
     pub fn matrix(&self) -> (Matrix, Records) {
-        let records = Records::load(self.jobs.as_deref(), self.traces.as_deref(), None);
+        let mut records = Records::load(self.jobs.as_deref(), self.traces.as_deref(), None);
+        match &self.profile {
+            Some(profile) => records.attempts.retain(|a| &a.profile == profile),
+            None => records.attempts.retain(|a| a.profile != reference::PROFILE),
+        }
         (
             Matrix::from_records(&records, self.params, self.tasks.as_ref()),
             records,
@@ -684,17 +765,35 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         return Err(format!("unknown option {other}"));
     }
     let (matrix, _) = source.matrix();
+    let board = (source.profile.as_deref() == Some(reference::PROFILE))
+        .then(Reference::checked)
+        .flatten();
     // The mini-task patterns are policies too, measured on another task set.
-    let patterns = crate::coder_handoff::load(&crate::coder_handoff::default_path()).ok();
+    let patterns = crate::coder_handoff::load(&crate::coder_handoff::default_path())
+        .ok()
+        .filter(|_| source.profile.is_none());
     if source.json {
         let mut value = matrix.to_json();
-        if let (Some(map), Some(patterns)) = (value.as_object_mut(), &patterns) {
-            map.insert("minitask_patterns".to_owned(), patterns.to_json());
+        if let Some(map) = value.as_object_mut() {
+            map.insert("profile".to_owned(), json!(source.profile));
+            if let Some(patterns) = &patterns {
+                map.insert("minitask_patterns".to_owned(), patterns.to_json());
+            }
+            if let Some(board) = &board {
+                let mut summary = board.summary_json();
+                summary["tasks"] = board
+                    .tasks()
+                    .iter()
+                    .map(|task| (task.clone(), board.task_json(task)))
+                    .collect::<serde_json::Map<_, _>>()
+                    .into();
+                map.insert("reference".to_owned(), summary);
+            }
         }
         serde_json::to_writer_pretty(&mut *out, &value).map_err(|error| error.to_string())?;
         writeln!(out).map_err(|error| error.to_string())?;
     } else {
-        for line in matrix.lines() {
+        for line in matrix.lines_with(board.as_ref().map(|b| (b, source.reference_rows))) {
             writeln!(out, "{line}").map_err(|error| error.to_string())?;
         }
         if let Some(patterns) = &patterns {
@@ -779,6 +878,56 @@ mod tests {
         assert_eq!(frontier, ["luna", "opus"]);
         assert_eq!(matrix.fixed("luna").passes(), (5, 6));
         assert_eq!(matrix.complete_keys(), ["luna", "opus"]);
+    }
+
+    #[test]
+    fn tb4_attempts_stay_under_their_profile_with_the_leaderboard_beside() {
+        let mut panel = attempt("cad-model", "luna", 1.0, 0.01, 60_000);
+        panel.profile = "panel".to_owned();
+        let mut tb4 = attempt("cad-model", "luna", 0.0, 0.02, 90_000);
+        tb4.profile = "tb4".to_owned();
+        let source = |profile: Option<&str>| {
+            let mut records = Records {
+                attempts: vec![panel.clone(), tb4.clone()],
+                ..Records::default()
+            };
+            match profile {
+                Some(p) => records.attempts.retain(|a| a.profile == p),
+                None => records.attempts.retain(|a| a.profile != reference::PROFILE),
+            }
+            Matrix::from_records(&records, Params::default(), None)
+        };
+        assert_eq!(source(None).cells[0].passes, 1);
+        let matrix = source(Some("tb4"));
+        assert_eq!((matrix.cells[0].passes, matrix.cells[0].trials), (0, 1));
+        let board = Reference::from_json(&json!({
+            "schema": crate::terminal_bench_reference::SCHEMA,
+            "dataset_ref": "v4.0.0",
+            "fetched_at": "t",
+            "entries": [{
+                "rank": 1, "agent": "Codex", "model": "GPT-6 Astra", "reasoning_effort": "max",
+                "metrics": {"successes": 5, "n_trials": 10},
+                "tasks": {
+                    "cad-model": {"successes": 5, "trials": 5, "cost_usd": 10.0, "mean_agent_sec": 580.0},
+                    "bun-sourcemap-leak": {"successes": 0, "trials": 5, "cost_usd": null, "mean_agent_sec": null}
+                }
+            }]
+        }))
+        .unwrap();
+        let text = matrix.lines_with(Some((&board, 3))).join("\n");
+        assert!(
+            text.contains("bun-sourcemap-leak\n    no graded attempts yet"),
+            "{text}"
+        );
+        assert!(
+            text.contains("▷ leaderboard #1 Codex / GPT-6 Astra (max)"),
+            "{text}"
+        );
+        assert!(text.contains("5/5"), "{text}");
+        assert!(text.contains("$2.0000"), "{text}");
+        let parsed = Source::parse(&["--profile".to_owned(), "tb4".to_owned()]).unwrap();
+        assert!(parsed.tasks.is_none());
+        assert_eq!(parsed.profile.as_deref(), Some("tb4"));
     }
 
     /// The oracle totals in `docs/optimization/coder-components.md`,

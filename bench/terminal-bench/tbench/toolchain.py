@@ -336,15 +336,51 @@ def layers_for(executor: str, version: str, platform: str) -> list[LayerSpec]:
     raise ToolchainError(f"no toolchain for executor {executor!r}")
 
 
+# Executables a task image may already ship. A task built on `node:20`
+# keeps its own Node: the layer's Node is linked only where the image has
+# none, and anything that needs the pinned Node runs it by absolute path.
+KEEP_IMAGE_LINKS = frozenset({"node", "npm", "npx"})
+
+
+def _node_binary(layers: list[Layer]) -> PurePosixPath | None:
+    for layer in layers:
+        if layer.spec.name == "node":
+            return layer.spec.container_dir / layer.links["node"]
+    return None
+
+
 def link_command(layers: list[Layer]) -> str:
-    """The root command that links every layer's executables."""
+    """The root command that puts every layer's executables on the PATH.
+
+    Node, npm, and npx link into ``/usr/local/bin`` only when the image has
+    none of its own there, so a task's own Node version survives. A layer
+    that runs on Node (Codex) gets a small wrapper that starts the pinned
+    Node by absolute path, so it works whatever Node the image carries.
+    """
     parts = [f"mkdir -p {LINK_DIR}"]
+    node = _node_binary(layers)
     for layer in layers:
         for name, relative in sorted(layer.links.items()):
-            parts.append(
-                f"ln -sf {layer.spec.container_dir / relative} {LINK_DIR / name}"
-            )
+            target = layer.spec.container_dir / relative
+            link = LINK_DIR / name
+            if name in KEEP_IMAGE_LINKS:
+                parts.append(f"{{ [ -e {link} ] || ln -sf {target} {link}; }}")
+            elif "node" in (layer.manifest.get("requires") or []) and node:
+                parts.append(
+                    f"rm -f {link} && printf '#!/bin/sh\\nexec {node} {target} "
+                    f"\"$@\"\\n' > {link} && chmod 755 {link}"
+                )
+            else:
+                parts.append(f"ln -sf {target} {link}")
     return " && ".join(parts)
+
+
+def version_executable(layer: Layer, name: str) -> PurePosixPath:
+    """What the version check runs: the layer's own binary for Node's
+    tools, which may not be the ones on the PATH, else the linked name."""
+    if name in KEEP_IMAGE_LINKS and name in layer.links:
+        return layer.spec.container_dir / layer.links[name]
+    return LINK_DIR / name
 
 
 def setup_record(
@@ -448,7 +484,8 @@ async def place_toolchain(
     for layer in layers:
         command = layer.manifest["version_command"]
         name = command.split()[0]
-        found = await environment.exec(command=f"{LINK_DIR / name} {command.split(' ', 1)[1]}")
+        executable = version_executable(layer, name)
+        found = await environment.exec(command=f"{executable} {command.split(' ', 1)[1]}")
         text = (found.stdout or "").strip()
         expected = layer.manifest["expected_version"]
         if found.return_code != 0 or expected not in text.split():
@@ -465,6 +502,70 @@ async def place_toolchain(
         phases_ms=phases,
         versions=versions,
     )
+
+
+def check_image(
+    image: str,
+    executor: str,
+    version: str,
+    *,
+    docker: str = "docker",
+    timeout: int = 600,
+) -> dict[str, Any]:
+    """Place an executor's layers in ``image`` and run their version checks.
+
+    What a trial's prebuilt install does, without Harbor or a task: probe
+    the image's platform, build or reuse the layers on the host, mount them
+    read-only where a trial copies them, link them, and run each layer's
+    version command. The container has no network. Pulls the image if the
+    host doesn't have it.
+    """
+    import subprocess
+
+    def run(args: list[str]) -> tuple[int, str]:
+        try:
+            done = subprocess.run(
+                [docker, "run", "--rm", "--network", "none", "--user", "root",
+                 "--entrypoint", "sh", *args],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return 127, str(exc)
+        return done.returncode, (done.stdout or "") + (done.stderr or "")
+
+    code, text = run([image, "-c", PLATFORM_PROBE + "; (ldd --version 2>&1 | head -n1) || true"])
+    lines = text.strip().splitlines()
+    if code != 0 or len(lines) < 2:
+        return {"ok": False, "platform": None, "detail": f"probe failed: {text.strip()[-300:]}"}
+    libc_line = lines[2] if len(lines) > 2 else "unknown C library"
+    try:
+        platform = platform_for(lines[0], lines[1].strip() == "musl")
+        layers = [ensure_layer(spec) for spec in layers_for(executor, version, platform)]
+    except ToolchainError as exc:
+        return {"ok": False, "platform": None, "detail": f"{exc}; a trial falls back to the network install"}
+    mounts: list[str] = []
+    for layer in layers:
+        mounts += ["-v", f"{layer.root}:{layer.spec.container_dir}:ro"]
+    checks = []
+    for layer in layers:
+        command = layer.manifest["version_command"]
+        name = command.split()[0]
+        checks.append(f"{version_executable(layer, name)} {command.split(' ', 1)[1]}")
+    script = link_command(layers) + " && " + " && ".join(checks)
+    code, text = run([*mounts, image, "-c", script])
+    words = text.split()
+    missing = [
+        layer.manifest["expected_version"]
+        for layer in layers
+        if layer.manifest["expected_version"] not in words
+    ]
+    ok = code == 0 and not missing
+    detail = libc_line.strip()
+    if not ok:
+        detail += f"; version check failed: {text.strip()[-300:]}"
+    return {"ok": ok, "platform": platform, "detail": detail}
 
 
 def write_setup(logs_dir: Path, record: dict[str, Any]) -> None:

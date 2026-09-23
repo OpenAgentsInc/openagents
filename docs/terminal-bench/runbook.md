@@ -31,9 +31,12 @@ rather than Harbor's phase timings with †.
   ```
 
   `nix-ld` is enabled, so uv-managed Python and manylinux wheels work.
-- The pinned task checkout lives at
-  `~/.openagents/terminal-bench/upstream/terminal-bench` (commit
-  `3b5caaa4863d`). `uv run tbench tasks checkout` creates it.
+- The pinned task checkouts live under
+  `~/.openagents/terminal-bench/upstream/`: `terminal-bench` at commit
+  `3b5caaa4863d` for the `smoke`, `panel`, and `extended` profiles, and
+  `terminal-bench-v4.0.0` at tag `v4.0.0` (commit `452bf305c6da`) for the
+  `tb4` profile. `uv run tbench tasks checkout` creates or pins both;
+  `--catalog tb4` or `--catalog panel` pins one.
 - Jobs land in `~/.openagents/terminal-bench/jobs/<job>/`. Failed setup
   attempts that aren't results are moved to
   `~/.openagents/terminal-bench/failed/` so they don't pool with real
@@ -265,6 +268,144 @@ With the network install, still run at most eight trials at a time, no
 more than about four of them Claude Code arms. Retry a setup timeout once
 after moving its job directory to `failed/`. A setup timeout is never a
 result.
+
+## Run the Terminal-Bench 4.0 suite
+
+The `tb4` profile is Terminal-Bench 4.0: all 66 tasks under `tasks/` at
+tag `v4.0.0`. The panel's pin at `3b5caaa` has the same task names, but
+137 files differ, so `tb4` draws from its own catalog
+(`catalogs.tb4` in `profiles/tasks.json`) and its own checkout. Each task's
+entry records what its `task.toml` declares: CPUs, memory, storage, GPUs,
+the 8-hour agent timeout, the build and verifier timeouts, a separate
+verifier environment's budget, and the base image of the Dockerfile's final
+stage. No task has a prebuilt image; each one builds from its Dockerfile.
+
+| Resources | Tasks |
+| --- | ---: |
+| 2 CPUs | 44 |
+| 4 CPUs | 14 |
+| 8 CPUs | 6 |
+| 16 CPUs | 2 |
+| A GPU (`fp8-rmsnorm-gemm`, `jax-speedrun-gpu`, `math-eval-grader`) | 3 |
+
+List the tasks and their budgets:
+
+```sh
+uv run tbench tasks checkout --catalog tb4
+uv run tbench tasks list --profile tb4
+```
+
+### Schedule a suite
+
+`tbench suite run` runs one arm over a profile's tasks, one Harbor job per
+task and attempt, as many at once as the budgets allow:
+
+```sh
+uv run tbench suite plan --profile tb4 --agent <arm> --attempts 5
+uv run tbench suite run --profile tb4 --agent <arm> --attempts 5 --detach
+uv run tbench suite status --profile tb4 --agent <arm>
+uv run tbench suite stop --profile tb4 --agent <arm>
+```
+
+`plan` starts nothing: it prints what is finished, what is skipped and why,
+and the first wave a run would start. `--tasks a,b` narrows a suite, and
+`--auth-mode` and `--agent-kwarg` pass through to every job.
+
+- **Budgets.** A trial reserves its task's CPUs and memory, the larger of
+  the agent and separate verifier environments. The defaults are
+  `--max-cpus 24 --max-mem-gb 100`, which leave four CPUs and 25 GiB for
+  Docker builds and the host. The scheduler starts the largest pending
+  trials first and backfills smaller ones; a trial that has waited 30
+  minutes stops the backfill so the large tasks get their turn. A task
+  larger than the whole budget runs alone. `--max-concurrent` caps the
+  trial count as well.
+- **GPU.** A GPU task needs Docker to pass a GPU through. The `tb4`
+  profile's environment, `tbench.gpu_docker:CdiDockerEnvironment`, is
+  Harbor's Docker environment with GPU support declared when an NVIDIA
+  Container Device Interface (CDI) spec exists in a directory Docker reads,
+  such as `/var/run/cdi/nvidia-container-toolkit.json`. For a task with
+  `gpus > 0`, it adds `devices: ["nvidia.com/gpu=all"]` to the task's main
+  service. Without a spec, `tbench run` refuses a GPU task and records why
+  under the job's `tbench/refusals/`, and the suite marks the trial
+  `skipped` with the same reason. GPU trials take GPU slots, one by
+  default (`--max-gpus`), because this host has one 16 GB RTX 4080. The
+  tasks declare an H100; `fp8-rmsnorm-gemm` builds for `sm_90a`, which the
+  RTX 4080 (`sm_89`) can't run, so expect that task to fail here whatever
+  the agent does.
+- **Disk.** No trial starts while the Docker volume has less than
+  `--min-free-disk-gb` free (40 by default); the scheduler prunes and waits
+  instead. Harbor removes each trial's built image
+  (`<trial>__env-main`) when the trial ends, so what grows is the base
+  images and Docker's build cache. When a task's trials have all finished
+  and free space is within `--prune-margin-gb` (20) of the floor, the
+  scheduler removes any image a crashed trial of that task left. Below the
+  floor it also drops Docker's unused build cache. Other agents' Cargo
+  target directories count against the same disk.
+- **Images.** A task's later attempts wait until its first attempt has
+  built its image, so they build from Docker's layer cache rather than all
+  from nothing at once.
+- **Names.** Jobs use the runbook's names: `tb4--<arm>--<task>`, then
+  `tb4--<arm>--<task>-2` through `-5`. A name that already holds a finished
+  trial is never run again.
+- **Retries.** A setup timeout (`AgentSetupTimeoutError` or
+  `EnvironmentStartTimeoutError`) is never a result. The scheduler moves
+  the job directory to `failed/<job>-setup-timeout-<unix time>` and runs the
+  trial once more; a second timeout marks it `failed`. A trial whose process
+  exits without a finished result is resumed twice, then marked `failed`.
+- **Restarts.** The scheduler keeps no state the job directories don't. On
+  every start it reads each job directory, adopts any trial whose `tbench`
+  process still runs, and resumes interrupted ones. `suite stop` (or
+  Ctrl-C) stops new starts and interrupts the running trials once, so
+  Harbor cancels them cleanly; the next start resumes them. A second
+  scheduler for the same suite is refused.
+
+Everything a suite writes, apart from the job directories, is under
+`~/.openagents/terminal-bench/suites/<profile>--<arm>/`: `status.json`
+(schema `openagents.tbench.suite-status.v1`: counts, passes, resources in
+use, free disk, every trial's state and reason, prunes, and recent events),
+`scheduler.log`, and one process log per job under `logs/`.
+
+### Compare against the leaderboard
+
+`bench/terminal-bench/reference/tb4-leaderboard.json` holds the public
+Terminal-Bench 4.0 leaderboard, per task: each row's successes over its
+five trials, errors, mean agent time, and cost. `uv run tbench reference`
+refreshes it from the Harbor Hub without credentials. A task's cost comes
+from the source job's per-task aggregate for the row's agent and model; the
+file flags a row whose per-task counts or costs don't add up to its own
+metrics (`per_task.consistent`, `per_task.cost_consistent`).
+
+The Gym groups `tb4` attempts under their profile, so they never pool with
+the panel's tasks of the same name:
+
+```sh
+gym terminal-bench overview --profile tb4
+gym terminal-bench compare --profile tb4 [--task terminal-bench/<task>]
+gym coder matrix --profile tb4 [--reference-rows 5] [--json]
+```
+
+The overview lists each arm's passes over graded trials beside every
+leaderboard row. A comparison shows the leaderboard's result on the
+group's task. The matrix lists all 66 tasks, with the best-ranked
+leaderboard rows under each task's cells, even before any arm has run it.
+
+### Check the prebuilt install against TB4 images
+
+The TB4 tasks start from 26 base images, among them Debian, Ubuntu,
+Fedora, Conda, CUDA, and `node:20` images. Check the prebuilt toolchain
+layers against each one before a Coder One suite:
+
+```sh
+uv run tbench toolchain check --profile tb4 --executor claude-code --version 2.1.280
+uv run tbench toolchain check --profile tb4 --executor codex --version 0.155.1
+```
+
+Each check probes the image's architecture and C library, mounts the layers
+read-only where a trial copies them, links them, and runs each version
+command with no container network. The layers link `node`, `npm`, and
+`npx` only when the image has none of its own, so a task built on `node:20`
+keeps Node 20; Codex runs through a wrapper that starts the pinned Node by
+path, and each version check runs the layer's own binary.
 
 ## Name jobs so results don't collide
 

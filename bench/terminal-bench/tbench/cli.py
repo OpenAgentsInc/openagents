@@ -20,18 +20,18 @@ from .agents import load_agents
 from .compare import SMALL_SAMPLE_LABEL, compare, render_table
 from .doctor import run_doctor
 from .jobconfig import list_job_profiles, load_job_profile
-from .panel import load_panel
+from .panel import catalog_names, load_panel
 from .results import TrialPaths, load_trial_results
 from .retain import MAX_FILE_BYTES, MAX_TRIAL_BYTES, retain_jobs
 from .runner import RunError, RunRequest, collect, materialize, resume, run
 
 
 def _load(profile_id: str | None, agent_id: str | None) -> RunRequest | None:
-    panel = load_panel()
     agents = load_agents()
     if agent_id is None or profile_id is None:
         return None
     profile = load_job_profile(profile_id)
+    panel = load_panel(catalog=profile.catalog)
     agent = agents.get(agent_id)
     if agent is None:
         raise RunError(
@@ -41,7 +41,7 @@ def _load(profile_id: str | None, agent_id: str | None) -> RunRequest | None:
         tasks = panel.select(profile.task_ids)
     except (KeyError, ValueError) as exc:
         raise RunError(str(exc)) from exc
-    checkout = paths.upstream_checkout()
+    checkout = panel.checkout()
     if not (checkout / ".git").exists():
         checkout = None
     return RunRequest(
@@ -72,44 +72,75 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 1
 
 
+def checkout_panel(panel) -> Path:
+    """Clone or pin one panel's upstream checkout at its commit."""
+    checkout = panel.checkout()
+    commit = panel.git_commit_id
+    checkout.parent.mkdir(parents=True, exist_ok=True)
+    if not (checkout / ".git").exists():
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                "--filter=blob:none",
+                "--no-checkout",
+                panel.git_url or UPSTREAM_GIT_URL,
+                str(checkout),
+            ],
+            check=True,
+        )
+    subprocess.run(
+        ["git", "-C", str(checkout), "fetch", "origin", commit],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(checkout), "checkout", "--detach", commit],
+        check=True,
+    )
+    return checkout
+
+
 def cmd_tasks(args: argparse.Namespace) -> int:
     if args.tasks_command == "checkout":
-        checkout = paths.upstream_checkout()
-        commit = load_panel().git_commit_id
-        checkout.parent.mkdir(parents=True, exist_ok=True)
-        if not (checkout / ".git").exists():
-            subprocess.run(
-                [
-                    "git",
-                    "clone",
-                    "--filter=blob:none",
-                    UPSTREAM_GIT_URL,
-                    str(checkout),
-                ],
-                check=True,
+        # Every pinned ref: the panel's own, then each catalog's, each in
+        # its own directory so the panel's pin never moves.
+        names = [None, *catalog_names()]
+        if args.catalog:
+            names = [None if args.catalog == "panel" else args.catalog]
+        for name in names:
+            panel = load_panel(catalog=name)
+            checkout = checkout_panel(panel)
+            print(
+                f"{name or 'panel'}: upstream checkout at {checkout} "
+                f"({panel.git_commit_id[:12]}"
+                + (f", {panel.ref}" if panel.ref else "")
+                + ")"
             )
-        subprocess.run(
-            ["git", "-C", str(checkout), "fetch", "origin", commit],
-            check=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(checkout), "checkout", commit],
-            check=True,
-        )
-        print(f"upstream checkout at {checkout} ({commit[:12]})")
         return 0
 
-    panel = load_panel()
-    ids = set()
+    catalog = None
+    ids: set[str] = set()
     if args.profile:
-        ids = set(load_job_profile(args.profile).task_ids)
+        profile = load_job_profile(args.profile)
+        catalog = profile.catalog
+        ids = set(profile.task_ids)
+    panel = load_panel(catalog=catalog)
     for task in panel.tasks:
         if ids and task.id not in ids:
             continue
-        excluded = " [excluded]" if task.excluded else ""
-        images = ", ".join(task.images) if task.images else "no image pin"
+        flags = []
+        if task.excluded:
+            flags.append("excluded")
+        if task.requires_gpu_runtime:
+            flags.append("needs a GPU")
+        res = task.peak_resources
+        where = task.base_image or (
+            ", ".join(task.images) if task.images else "no image pin"
+        )
         print(
-            f"{task.id:<32} {task.path:<42} {images}{excluded}"
+            f"{task.id:<32} {res.cpus:>2} CPU {res.memory_mb // 1024:>3} GiB "
+            f"{task.agent_timeout_sec:>6}s  {where}"
+            + (f" [{'; '.join(flags)}]" if flags else "")
         )
     return 0
 
@@ -286,6 +317,28 @@ def cmd_toolchain(args: argparse.Namespace) -> int:
         layers_for,
     )
 
+    if args.toolchain_command == "check":
+        from .toolchain import check_image
+
+        profile = load_job_profile(args.profile)
+        panel = load_panel(catalog=profile.catalog)
+        images = args.image or sorted(
+            {
+                task.base_image
+                for task in panel.tasks
+                if task.id in profile.task_ids and task.base_image
+            }
+        )
+        failures = 0
+        for image in images:
+            result = check_image(image, args.executor, args.version)
+            failures += 0 if result["ok"] else 1
+            print(
+                f"{'ok  ' if result['ok'] else 'FAIL'} {image}: "
+                f"{result['platform'] or '?'}, {result['detail']}"
+            )
+        print(f"toolchain check: {len(images) - failures}/{len(images)} images ok")
+        return 1 if failures else 0
     if args.toolchain_command == "list":
         root = cache_root()
         for manifest in sorted(root.glob("*/layer.json")):
@@ -321,6 +374,191 @@ def cmd_materialize(args: argparse.Namespace) -> int:
     return 0
 
 
+def _suite_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
+    from . import suite
+
+    request = _load(args.profile, args.agent)
+    assert request is not None
+    panel = request.panel
+    tasks = list(panel.tasks) if not request.profile.task_ids else [
+        panel.task(task_id) for task_id in request.profile.task_ids
+    ]
+    if args.tasks:
+        wanted = [t.strip() for part in args.tasks for t in part.split(",") if t.strip()]
+        tasks = [panel.task(task_id) for task_id in wanted]
+    excluded = [task for task in tasks if task.excluded]
+    if excluded:
+        raise RunError(
+            "excluded tasks can't run: "
+            + "; ".join(f"{t.id}: {t.excluded_reason_text}" for t in excluded)
+        )
+    checkout = panel.checkout()
+    if not (checkout / ".git").exists() and not dry_run:
+        raise RunError(
+            f"no task checkout at {checkout}; run `tbench tasks checkout` first"
+        )
+    directory = suite.suite_dir(request.profile.id, request.agent.id)
+    extra: list[str] = []
+    if args.auth_mode:
+        extra += ["--auth-mode", args.auth_mode]
+    for pair in args.agent_kwarg or []:
+        extra += ["--agent-kwarg", pair]
+    budget = suite.Budget(
+        max_cpus=args.max_cpus,
+        max_mem_gb=args.max_mem_gb,
+        min_free_disk_gb=args.min_free_disk_gb,
+        prune_margin_gb=args.prune_margin_gb,
+        max_concurrent=args.max_concurrent,
+        max_gpus=args.max_gpus,
+    )
+    launcher = suite.Launcher(
+        profile=request.profile.id,
+        arm=request.agent.id,
+        logs=directory / "logs",
+        extra_args=extra,
+    )
+    host_ = suite.Host.docker(checkout)
+    if dry_run:
+        host_.remove_images = lambda names: []
+        host_.prune_build_cache = lambda: False
+    return suite.Scheduler(
+        profile=request.profile.id,
+        arm=request.agent.id,
+        pin={
+            "git_url": panel.git_url,
+            "git_commit_id": panel.git_commit_id,
+            "ref": panel.ref,
+            "catalog": panel.catalog,
+        },
+        tasks=tasks,
+        attempts=args.attempts,
+        budget=budget,
+        jobs_dir=paths.jobs_dir(),
+        directory=directory,
+        launcher=launcher,
+        host_=host_,
+    )
+
+
+def cmd_suite(args: argparse.Namespace) -> int:
+    """Run, plan, inspect, or stop a whole-suite schedule."""
+    import signal as signals
+
+    from . import suite
+
+    if args.suite_command == "status":
+        status = suite.read_status(args.profile, args.agent)
+        if status is None:
+            print(
+                f"suite: no status for {args.profile} / {args.agent} under "
+                f"{suite.suite_dir(args.profile, args.agent)}",
+                file=sys.stderr,
+            )
+            return 1
+        if args.json:
+            print(json.dumps(status, indent=2))
+        else:
+            for line in suite.status_lines(status):
+                print(line)
+        return 0
+    if args.suite_command == "stop":
+        lock = suite.suite_dir(args.profile, args.agent) / "lock"
+        try:
+            pid = int(lock.read_text().strip())
+        except (OSError, ValueError):
+            print("suite: no scheduler pid recorded", file=sys.stderr)
+            return 1
+        if not suite.pid_alive(pid):
+            print(f"suite: scheduler {pid} isn't running")
+            return 0
+        os.kill(pid, signals.SIGTERM)
+        print(
+            f"suite: asked scheduler {pid} to stop; it interrupts its trials "
+            "and exits once they have cleaned up"
+        )
+        return 0
+    try:
+        scheduler = _suite_scheduler(args, dry_run=args.suite_command == "plan")
+    except (RunError, KeyError, ValueError) as exc:
+        print(f"suite: {exc}", file=sys.stderr)
+        return 1
+    if args.suite_command == "plan":
+        scheduler.launcher.start = lambda trial, verb: 0  # type: ignore[method-assign]
+        scheduler.echo = False
+        scheduler.reconcile()
+        started = scheduler.launch_ready()
+        status = scheduler.status()
+        print(
+            " · ".join(f"{k} {v}" for k, v in sorted(status["counts"].items()))
+            + f" · free disk {status['free_disk_gb']} GiB"
+        )
+        for trial in scheduler.trials:
+            if trial.state == suite.SKIPPED:
+                print(f"skip  {trial.job}: {trial.reason}")
+        for trial in started:
+            print(
+                f"start {trial.job} ({trial.cpus} CPUs, {trial.memory_gb:g} GiB"
+                + (f", {trial.gpus} GPU" if trial.gpus else "")
+                + ")"
+            )
+        print(
+            f"plan: the first wave starts {len(started)} trials; "
+            "nothing was started"
+        )
+        return 0
+    if args.detach:
+        directory = suite.suite_dir(scheduler.profile, scheduler.arm)
+        directory.mkdir(parents=True, exist_ok=True)
+        argv = [a for a in sys.argv[1:] if a != "--detach"]
+        log = (directory / "scheduler.log").open("ab")
+        process = subprocess.Popen(
+            [sys.executable, "-m", "tbench", *argv],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=paths.PACKAGE_DIR,
+        )
+        print(
+            f"suite: scheduler {process.pid} runs in the background; "
+            f"status {directory / 'status.json'}, log {directory / 'scheduler.log'}"
+        )
+        return 0
+    try:
+        with suite.suite_lock(scheduler.directory):
+            for signum in (signals.SIGINT, signals.SIGTERM, signals.SIGHUP):
+                signals.signal(signum, lambda *_: scheduler.stop())
+            status = scheduler.run(interval=args.interval)
+    except suite.SuiteError as exc:
+        print(f"suite: {exc}", file=sys.stderr)
+        return 1
+    for line in suite.status_lines(status):
+        print(line)
+    return 0
+
+
+def cmd_reference(args: argparse.Namespace) -> int:
+    """Fetch the public TB4 leaderboard's per-task results."""
+    from .reference import HarborHubReader, fetch_reference, write_reference
+
+    panel = load_panel(catalog="tb4")
+    document = fetch_reference(
+        HarborHubReader(), task_names=[task.id for task in panel.tasks]
+    )
+    path = write_reference(document, Path(args.out) if args.out else None)
+    for entry in document["entries"]:
+        check = entry["per_task"]
+        print(
+            f"{entry['rank']!s:>3} {entry['agent'] or '?'} / {entry['model'] or '?'}"
+            f" ({entry['reasoning_effort']}): {entry['metrics']['successes']}/"
+            f"{entry['metrics']['n_trials']}, per task "
+            f"{check['successes_counted']}/{check['trials_counted']}"
+            + ("" if check["consistent"] else " [differs from the row's metrics]")
+        )
+    print(f"wrote {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tbench",
@@ -347,8 +585,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     tasks = sub.add_parser("tasks", help="panel inspection and checkout")
     tasks_sub = tasks.add_subparsers(dest="tasks_command")
-    tasks_sub.add_parser(
-        "checkout", help="clone or pin the upstream task checkout"
+    checkout_parser = tasks_sub.add_parser(
+        "checkout",
+        help="clone or pin every upstream task checkout (panel and catalogs)",
+    )
+    checkout_parser.add_argument(
+        "--catalog", help="pin only this one: panel, or a catalog such as tb4"
     )
     tasks_list = tasks_sub.add_parser("list", help="list the task panel")
     tasks_list.add_argument("--profile", help="filter to a job profile")
@@ -446,7 +688,82 @@ def build_parser() -> argparse.ArgumentParser:
         help="linux-x64, linux-arm64, or a -musl variant",
     )
     toolchain_sub.add_parser("list", help="list the cached layers")
+    check = toolchain_sub.add_parser(
+        "check",
+        help="place the layers in each base image of a profile and run them",
+    )
+    check.add_argument("--profile", required=True, help="job profile id")
+    check.add_argument(
+        "--executor", required=True, choices=("codex", "claude-code")
+    )
+    check.add_argument("--version", required=True, help="the pinned CLI version")
+    check.add_argument(
+        "--image", action="append", help="check only these base images"
+    )
     toolchain_parser.set_defaults(func=cmd_toolchain)
+
+    suite_parser = sub.add_parser(
+        "suite",
+        help="run a profile's whole task suite within the host's budgets",
+    )
+    suite_sub = suite_parser.add_subparsers(dest="suite_command", required=True)
+    for name, helptext in (
+        ("run", "schedule every trial; resumable and safe to restart"),
+        ("plan", "show what a run would start first, without starting it"),
+        ("status", "print a suite's status file"),
+        ("stop", "stop a running scheduler; its trials cancel cleanly"),
+    ):
+        p = suite_sub.add_parser(name, help=helptext)
+        p.add_argument("--profile", required=True, help="job profile id")
+        p.add_argument("--agent", required=True, help="agent profile id")
+        if name == "status":
+            p.add_argument("--json", action="store_true", help="print JSON")
+        if name not in ("run", "plan"):
+            continue
+        p.add_argument(
+            "--attempts", type=int, default=1, help="trials per task (default 1)"
+        )
+        p.add_argument(
+            "--tasks",
+            action="append",
+            help="only these task ids, comma-separated or repeated",
+        )
+        p.add_argument("--auth-mode", help="pick one configured auth mode")
+        p.add_argument(
+            "--agent-kwarg", action="append", help="key=value adapter kwargs"
+        )
+        p.add_argument("--max-cpus", type=float, default=24)
+        p.add_argument("--max-mem-gb", type=float, default=100)
+        p.add_argument("--min-free-disk-gb", type=float, default=40)
+        p.add_argument(
+            "--prune-margin-gb",
+            type=float,
+            default=20,
+            help="prune a finished task's images within this much of the floor",
+        )
+        p.add_argument("--max-concurrent", type=int, help="cap on trials at once")
+        p.add_argument(
+            "--max-gpus", type=int, default=1, help="GPU trials at once (default 1)"
+        )
+        p.add_argument(
+            "--interval", type=float, default=15.0, help="seconds between polls"
+        )
+        if name == "run":
+            p.add_argument(
+                "--detach",
+                action="store_true",
+                help="run the scheduler in the background and return",
+            )
+    suite_parser.set_defaults(func=cmd_suite)
+
+    reference_parser = sub.add_parser(
+        "reference",
+        help="fetch the TB4 leaderboard's per-task results from the Harbor Hub",
+    )
+    reference_parser.add_argument(
+        "--out", help="where to write (default reference/tb4-leaderboard.json)"
+    )
+    reference_parser.set_defaults(func=cmd_reference)
 
     cmp_parser = sub.add_parser(
         "compare", help="fold attempts into a comparison report"

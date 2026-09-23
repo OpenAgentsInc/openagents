@@ -35,6 +35,8 @@ class JobProfile:
     retry: dict[str, Any]
     environment: dict[str, Any]
     verifier: dict[str, Any]
+    # The task catalog the profile draws from; ``None`` is the panel's pin.
+    catalog: str | None = None
 
 
 def load_job_profile(
@@ -77,6 +79,7 @@ def load_job_profile(
         retry=retry,
         environment=environment,
         verifier=verifier,
+        catalog=raw.get("catalog"),
     )
 
 

@@ -216,6 +216,9 @@ pub struct ComparisonGroup {
     pub policy: Option<String>,
     /// The arm names of the group's attempts.
     pub arms: Vec<String>,
+    /// The job profile the group's attempts ran under; the pin includes
+    /// it, so a group never mixes profiles.
+    pub profile: String,
     pub attempts: Vec<usize>,
 }
 
@@ -270,6 +273,10 @@ impl ComparisonGroup {
                 arms.sort();
                 arms.dedup();
                 let policy = side.strip_prefix("policy ").map(str::to_owned);
+                let profile = attempts
+                    .first()
+                    .map(|&index| records.attempts[index].profile.clone())
+                    .unwrap_or_default();
                 let arm = match &policy {
                     Some(digest) => format!("policy {}", crate::coder_policy::short(digest)),
                     None => side,
@@ -280,6 +287,7 @@ impl ComparisonGroup {
                     arm,
                     policy,
                     arms,
+                    profile,
                     attempts,
                 }
             })

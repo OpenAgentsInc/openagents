@@ -41,9 +41,13 @@ def jobs_dir() -> Path:
     return state_dir() / "jobs"
 
 
-def upstream_checkout() -> Path:
-    """Where the pinned upstream task repository lives in the cache."""
-    return state_dir() / "upstream" / "terminal-bench"
+def upstream_checkout(name: str | None = None) -> Path:
+    """Where a pinned upstream task repository lives in the cache.
+
+    With no name, the panel's own checkout. A catalog pinned to another
+    ref, such as Terminal-Bench 4.0, names its own directory beside it.
+    """
+    return state_dir() / "upstream" / (name or "terminal-bench")
 
 
 def artifacts_dir() -> Path:

@@ -155,6 +155,24 @@ def _check_artifact(kwargs: dict[str, Any]) -> None:
         )
 
 
+def _check_gpu(tasks: list[Task]) -> None:
+    """Refuse a GPU task when Docker has no NVIDIA runtime.
+
+    Only asks Docker when a selected task needs a GPU, so CPU-only runs
+    never depend on ``docker info``.
+    """
+    from . import host
+
+    needing = [task for task in tasks if task.requires_gpu_runtime]
+    if not needing:
+        return
+    info = host.docker_info()
+    for task in needing:
+        reason = host.gpu_refusal(task.id, info)
+        if reason:
+            raise RunRefused("gpu_runtime", reason)
+
+
 def _job_name(request: RunRequest) -> str:
     return request.job_name or f"{request.profile.id}--{request.agent.id}"
 
@@ -210,6 +228,7 @@ def materialize(
         kwargs = dict(request.agent.kwargs)
         kwargs.update(request.agent_kwargs or {})
         _check_artifact(kwargs)
+        _check_gpu(request.tasks)
     except RunRefused as refused:
         if record_refusal:
             path = write_refusal(job_dir, request, refused)

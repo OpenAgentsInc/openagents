@@ -229,11 +229,19 @@ def test_placement_copies_links_and_verifies_without_network(tmp_path, monkeypat
         "/opt/openagents/toolchain/codex-0.155.1-linux-x64",
     ]
     links = next(c for c in container.commands if "ln -sf" in c)
+    # Codex runs through a wrapper that starts the pinned Node by path.
     assert (
-        "ln -sf /opt/openagents/toolchain/codex-0.155.1-linux-x64/"
-        "lib/node_modules/@openai/codex/bin/codex.js /usr/local/bin/codex" in links
+        "exec /opt/openagents/toolchain/node-22.23.2-linux-x64/bin/node "
+        "/opt/openagents/toolchain/codex-0.155.1-linux-x64/"
+        "lib/node_modules/@openai/codex/bin/codex.js" in links
     )
-    assert "/usr/local/bin/node" in links
+    # The layer's Node links only where the image has no Node of its own.
+    assert "[ -e /usr/local/bin/node ] || ln -sf" in links
+    # Node's version check runs the layer's binary, not whatever is linked.
+    assert (
+        "/opt/openagents/toolchain/node-22.23.2-linux-x64/bin/node --version"
+        in container.commands
+    )
     # Nothing in the container reaches a package manager or the network.
     assert not any(
         word in command
