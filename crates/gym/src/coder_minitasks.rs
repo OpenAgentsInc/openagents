@@ -42,6 +42,8 @@ pub struct Run {
     pub session: Value,
     /// The requirement coverage `verify.checks` wrote, when it ran.
     pub coverage: Option<Value>,
+    /// The `verify.repair` record, when a repair was asked for.
+    pub repair: Option<Value>,
     /// The run's timeline, or why it doesn't read.
     pub timeline: Result<Timeline, String>,
 }
@@ -116,6 +118,7 @@ pub fn read_run(dir: &Path) -> Result<Run, String> {
         milliseconds: manifest.get("milliseconds").and_then(Value::as_u64),
         session: manifest.get("session").cloned().unwrap_or(Value::Null),
         coverage,
+        repair: read("/files/repair"),
         timeline: timeline::read_log(&log),
     })
 }
@@ -162,6 +165,13 @@ impl Run {
             "milliseconds": self.milliseconds,
             "invocations": self.timeline.as_ref().map(|t| t.entries.len()).ok(),
             "coverage": self.coverage.as_ref().map(crate::coder_coverage::summary),
+            "repair": self.repair.as_ref().map(|r| json!({
+                "triggered": r["triggered"],
+                "changed": r["changed"],
+                "skipped": r["skipped"],
+                "brief": r["brief"],
+                "session": r["session"],
+            })),
         });
         if detail {
             value["session"] = self.session.clone();
@@ -170,6 +180,7 @@ impl Run {
                 Err(error) => json!({ "error": error }),
             };
             value["coverage_report"] = self.coverage.clone().unwrap_or(Value::Null);
+            value["repair_record"] = self.repair.clone().unwrap_or(Value::Null);
         }
         value
     }
@@ -229,6 +240,9 @@ impl Run {
         if let Some(coverage) = &self.coverage {
             lines.extend(crate::coder_coverage::lines(coverage));
         }
+        if let Some(repair) = &self.repair {
+            lines.extend(repair_lines(repair));
+        }
         match &self.timeline {
             Ok(timeline) => lines.extend(timeline.lines()),
             Err(error) => lines.push(format!("Episode timeline unreadable: {error}")),
@@ -239,6 +253,54 @@ impl Run {
 
 fn clip(text: &str, width: usize) -> String {
     text.chars().take(width).collect()
+}
+
+/// A `verify.repair` record as text: why it ran or didn't, the brief,
+/// the fresh session, and the recheck.
+#[must_use]
+pub fn repair_lines(repair: &Value) -> Vec<String> {
+    if let Some(why) = repair["skipped"].as_str() {
+        return vec![format!("Repair: none · {why}")];
+    }
+    let brief = &repair["brief"];
+    let session = &repair["session"];
+    let mut lines = vec![
+        format!(
+            "Repair: {} brief · {} characters · requirements {} · scenarios {} · {}",
+            brief["kind"].as_str().unwrap_or("?"),
+            brief["chars"],
+            brief["requirements"],
+            brief["scenarios"],
+            brief["path"].as_str().unwrap_or("no file")
+        ),
+        format!(
+            "  session: {} · {} · {} ({}) · {} · cost {}",
+            if session["fresh"] == json!(true) {
+                "fresh, resumes nothing"
+            } else {
+                "resumed"
+            },
+            session["session_id"].as_str().unwrap_or("?"),
+            session["agent"].as_str().unwrap_or("?"),
+            session["model"].as_str().unwrap_or("?"),
+            session["status"].as_str().unwrap_or("?"),
+            session["cost_usd"]
+                .as_f64()
+                .map_or("unknown".to_owned(), |usd| format!("${usd:.4}")),
+        ),
+    ];
+    let invalidated = repair["invalidated"].as_array().map_or(0, Vec::len);
+    lines.push(match repair["recheck"].get("summary") {
+        Some(summary) => format!(
+            "  candidate changed: {} requirement states invalidated · recheck {} scenarios, {} packets",
+            invalidated, summary["scenarios"], summary["packets"]
+        ),
+        None => format!(
+            "  candidate unchanged: {}",
+            repair["recheck"]["skipped"].as_str().unwrap_or("no recheck")
+        ),
+    });
+    lines
 }
 
 /// The header line above the rows.

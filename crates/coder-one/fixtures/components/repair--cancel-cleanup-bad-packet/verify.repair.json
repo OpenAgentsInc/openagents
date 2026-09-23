@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.repair",
+  "source": {
+    "kind": "synthetic",
+    "note": "a packet from the cancellation scenarios, repaired by the same profile"
+  },
+  "input": {
+    "task": "cancel-cleanup",
+    "variant": "bad",
+    "arm": {
+      "brief": "packet",
+      "profile": "fix-if-packet"
+    },
+    "trigger": "detected",
+    "expect": {
+      "after": "pass",
+      "triggered": true
+    }
+  },
+  "retained": null
+}

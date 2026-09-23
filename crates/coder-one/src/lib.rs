@@ -41,6 +41,7 @@ pub mod probes;
 pub mod profile;
 pub mod prompt;
 pub mod record;
+pub mod repair;
 pub mod requirements;
 pub mod scripted;
 pub mod session;

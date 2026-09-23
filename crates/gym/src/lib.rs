@@ -65,6 +65,7 @@ pub mod coder_minitasks;
 pub mod coder_monitor;
 pub mod coder_policy;
 pub mod coder_prompt;
+pub mod coder_repair;
 pub mod coder_requirements;
 pub mod coder_router;
 pub mod coder_study;

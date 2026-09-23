@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.repair",
+  "source": {
+    "kind": "synthetic",
+    "note": "no scenario observes the git task, so no check contradicts it and no repair runs"
+  },
+  "input": {
+    "task": "git-recovery",
+    "variant": "bad",
+    "arm": {
+      "brief": "packet",
+      "profile": "fix"
+    },
+    "trigger": "detected",
+    "expect": {
+      "after": "fail",
+      "triggered": false
+    }
+  },
+  "retained": null
+}

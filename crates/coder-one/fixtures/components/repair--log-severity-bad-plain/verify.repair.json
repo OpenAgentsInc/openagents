@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.repair",
+  "source": {
+    "kind": "synthetic",
+    "note": "the same profile with no packet claims the work is fine and changes nothing"
+  },
+  "input": {
+    "task": "log-severity",
+    "variant": "bad",
+    "arm": {
+      "brief": "plain",
+      "profile": "fix-if-packet"
+    },
+    "trigger": "detected",
+    "expect": {
+      "after": "fail",
+      "triggered": true
+    }
+  },
+  "retained": null
+}

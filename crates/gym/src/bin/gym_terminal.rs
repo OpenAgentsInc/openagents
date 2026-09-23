@@ -129,7 +129,8 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     }
     let records =
         terminal_bench::Records::load(jobs.as_deref(), traces.as_deref(), samples.as_deref());
-    let components = gym::coder_components::report(runs.as_deref(), &records);
+    let components = gym::coder_components::report(runs.as_deref(), &records)
+        .with_repair(gym::coder_repair::default_dir().as_deref());
     let requirements = gym::coder_requirements::report(runs.as_deref(), &records);
     let (minitask_runs, minitask_errors) = minitasks
         .as_deref()

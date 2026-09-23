@@ -543,6 +543,7 @@ pub fn scripts(task: &MiniTask) -> Vec<(&'static str, Script)> {
         on_resume: Vec::new(),
         rebind: Vec::new(),
         opening: true,
+        briefed: None,
     };
     let solve = |files: Vec<(&str, &str)>, done: &str| {
         let mut events = vec![timed(0, claim("Reading the task and the files it names."))];

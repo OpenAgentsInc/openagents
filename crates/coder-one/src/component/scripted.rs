@@ -238,6 +238,7 @@ impl Component for MiniTaskRun {
                 checks: input.checks,
                 brief: None,
                 monitor: None,
+                repair: None,
             })
             .await;
             let _ = std::fs::remove_dir_all(&out);

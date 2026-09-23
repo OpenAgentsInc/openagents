@@ -18,6 +18,8 @@ pub const USAGE: &str = "usage: coder-one minitask list [--json]
                                  [--jev off|live] [--speed X] [--deadline SECONDS]
                                  [--controls FILE] [--no-checks] [--monitor]
                                  [--out DIR] [--json]
+                                 [--repair PROFILE [--repair-brief packet|plain]
+                                  [--repair-trigger detected|always]]
 
 run sets the task up in a scratch directory, runs one episode with no
 explore steps, and grades it. The scripted executor (the default) plays the
@@ -28,8 +30,15 @@ gpt-6-luna is the Luna arm. --controls names a JSON file of session
 controls (deadline_ms, tick_ms, steer, stop_when, resume) for the scripted
 executor. verify.checks observes the workspace before the grader runs
 unless --no-checks is given. --monitor watches the session with
-control.monitor in shadow mode: its rules, and Jev with --jev live. Runs record under ~/.openagents/coder-one/minitasks unless --out
-names another directory. The exit code is 0 when the grader passed.";
+control.monitor in shadow mode: its rules, and Jev with --jev live.
+--repair runs one verify.repair session after the checks when one
+contradicted a requirement (or on every candidate with --repair-trigger
+always), within what is left of --deadline, from the diagnostic packets
+(or, with --repair-brief plain, from the task alone), then reruns the
+checks. PROFILE is a scripted repair profile (fix, fix-if-packet,
+claim-only, break) or AGENT:MODEL, such as codex:gpt-6-luna. Runs record
+under ~/.openagents/coder-one/minitasks unless --out names another
+directory. The exit code is 0 when the grader passed.";
 
 /// Runs a mini-task command and returns the exit code.
 ///
@@ -52,6 +61,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut json_output = false;
     let mut checks = true;
     let mut monitor = false;
+    let mut repair = None;
+    let mut repair_brief = "packet".to_string();
+    let mut repair_trigger = "detected".to_string();
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -79,6 +91,9 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--json" => json_output = true,
             "--no-checks" => checks = false,
             "--monitor" => monitor = true,
+            "--repair" => repair = Some(value("--repair")?),
+            "--repair-brief" => repair_brief = value("--repair-brief")?,
+            "--repair-trigger" => repair_trigger = value("--repair-trigger")?,
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
             other => positional.push(other.to_string()),
         }
@@ -157,6 +172,25 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             let out = out
                 .or_else(default_runs_dir)
                 .ok_or("no --out and no HOME to record under")?;
+            let repair = match repair {
+                None => None,
+                Some(profile) => Some(super::run::Repair {
+                    profile: crate::repair::Profile::parse(&profile)?,
+                    policy: crate::repair::Policy {
+                        kind: match repair_brief.as_str() {
+                            "packet" => crate::repair::BriefKind::Packet,
+                            "plain" => crate::repair::BriefKind::Plain,
+                            other => {
+                                return Err(format!(
+                                    "--repair-brief takes packet or plain, not {other}"
+                                ));
+                            }
+                        },
+                        trigger: crate::repair::Trigger::parse(&repair_trigger)?,
+                        allowance: Duration::from_secs(deadline),
+                    },
+                }),
+            };
             let ran = run(Options {
                 task,
                 executor: choice,
@@ -168,6 +202,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 checks,
                 brief: None,
                 monitor: monitor.then(crate::monitor::Params::default),
+                repair,
             })
             .await?;
             if json_output {

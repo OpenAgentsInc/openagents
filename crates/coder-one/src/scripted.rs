@@ -81,6 +81,19 @@ pub struct Script {
     /// it off: the replayed stream opens itself.
     #[serde(default = "yes")]
     pub opening: bool,
+    /// Plays other events when the briefing lacks some text, so a script
+    /// can stand in for an executor that acts on what it's told: a repair
+    /// that fixes the fault only when the brief carries the check's
+    /// observations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub briefed: Option<Box<Briefed>>,
+}
+
+/// Events for a briefing that lacks `contains`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Briefed {
+    pub contains: String,
+    pub otherwise: Vec<Timed>,
 }
 
 /// One action at a time, in milliseconds from when its list started.
@@ -200,6 +213,7 @@ impl Script {
             on_resume: Vec::new(),
             rebind: rebind.iter().map(|prefix| (*prefix).to_string()).collect(),
             opening: false,
+            briefed: None,
         }
     }
 
@@ -586,7 +600,12 @@ impl Session for Scripted {
         if self.script.opening {
             self.opening();
         }
-        let events = self.script.events.clone();
+        let events = match &self.script.briefed {
+            Some(briefed) if !briefing.text.contains(&briefed.contains) => {
+                briefed.otherwise.clone()
+            }
+            _ => self.script.events.clone(),
+        };
         self.schedule(0, &events);
         Ok(())
     }

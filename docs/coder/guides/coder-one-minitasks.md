@@ -49,7 +49,10 @@ live`, `verify.support` then judges the checked requirements and writes
 [support guide](coder-one-support.md) describes. Pass `--monitor` to watch
 the session with `control.monitor` in shadow mode; the
 [component guide](coder-one-components.md#watch-a-session-with-controlmonitor)
-covers it. The grader runs last. The exit code is 0 when the grader passed.
+covers it. With `--repair PROFILE`, `verify.repair` then runs one fresh
+session from the checks' diagnostic packets and reruns the checks, as the
+[repair guide](coder-one-repair.md) describes. The grader runs last. The
+exit code is 0 when the grader passed.
 
 Each task has two scripts. `good` writes a correct solution, and `bad`
 writes the known-bad one for its family: a whole-line severity search, a
@@ -222,6 +225,7 @@ minitask-<task>-<executor>-<ms>/
   verification/grade.json   the grader's verdict
   verification/checks.json  verify.checks' requirement coverage
   verification/support.json verify.support's requirement states, with --jev live
+  verification/repair.json  verify.repair's brief, fresh session, and recheck, with --repair
 ```
 
 ```sh

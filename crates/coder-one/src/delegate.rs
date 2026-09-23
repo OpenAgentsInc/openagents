@@ -263,6 +263,9 @@ pub enum Reason {
     Unchanged(usize),
     /// The explorer's generator failed.
     GenerationFailed,
+    /// A check left a requirement contradicted, and one repair session
+    /// runs from its diagnostic packet.
+    Repair,
 }
 
 impl Reason {
@@ -275,6 +278,7 @@ impl Reason {
             Reason::ErrorStreak(_) => "error_streak",
             Reason::Unchanged(_) => "checkout_unchanged",
             Reason::GenerationFailed => "generation_failed",
+            Reason::Repair => "repair",
         }
     }
 }
@@ -294,6 +298,7 @@ impl std::fmt::Display for Reason {
                 write!(f, "the checkout was unchanged after {steps} steps")
             }
             Reason::GenerationFailed => write!(f, "the explorer's generation failed"),
+            Reason::Repair => write!(f, "a check left a requirement contradicted"),
         }
     }
 }

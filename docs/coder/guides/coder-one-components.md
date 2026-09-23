@@ -25,13 +25,16 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | `verify.close` | Whether the delegate's report and the changes show the task done. | One request |
 | `verify.checks` | Which requirements admitted scenarios observe, contradict, or can't verify against the candidate. | None |
 | `verify.support` | Whether the evidence supports each requirement, and separately whether it contradicts it; each requirement's state for the candidate revision. | One request per requirement |
+| `verify.repair` | Whether one fresh session from the diagnostic packet repairs a contradicted requirement, and what the recheck finds. The suite runs one arm on a preserved mini-task candidate. | None |
 | `task.mini` | A whole mini-task episode with the scripted executor, graded. | None |
 
 `exec.scripted` and `task.mini` are covered in
 [Run Coder One on a mini-task](coder-one-minitasks.md), `verify.checks` in
 [Check claimed behavior with admitted scenarios](coder-one-checks.md), and
 `verify.support` in
-[Judge requirement support with paired Jev questions](coder-one-support.md).
+[Judge requirement support with paired Jev questions](coder-one-support.md),
+and `verify.repair` in
+[Repair once from a diagnostic packet](coder-one-repair.md).
 
 Each component is a function from a serializable input to an output and
 named metrics. To add one, implement `coder_one::component::Component`

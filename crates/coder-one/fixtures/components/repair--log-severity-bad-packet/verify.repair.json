@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.repair",
+  "source": {
+    "kind": "synthetic",
+    "note": "the packet names the severity requirement and a profile that acts on packets fixes it"
+  },
+  "input": {
+    "task": "log-severity",
+    "variant": "bad",
+    "arm": {
+      "brief": "packet",
+      "profile": "fix-if-packet"
+    },
+    "trigger": "detected",
+    "expect": {
+      "after": "pass",
+      "triggered": true
+    }
+  },
+  "retained": null
+}

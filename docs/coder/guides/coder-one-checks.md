@@ -100,7 +100,8 @@ trajectory. A task-provided file, such as `base_terminal.py`, comes from a
 `cat` of it in any trial of the task. Harbor didn't retain files the agent
 left in `/app`, so a candidate the stream only names is reported as
 unavailable rather than guessed at. Repair is disabled: the check only
-observes.
+observes. [Repair once from a diagnostic packet](coder-one-repair.md) covers
+what a repair does with a packet.
 
 Results go to `~/.openagents/coder-one/checks/<job>/<trial>/checks.json`,
 beside the rebuilt `input.json`, with a summary of detections and false

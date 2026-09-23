@@ -428,6 +428,7 @@ impl Timeline {
                 "effects": entry.effects,
                 "effect_class": entry.effect_class,
                 "accumulated_usd": entry.accumulated_usd,
+                "repair": (entry.component == "verify.repair").then(|| entry.output.clone()),
             })).collect::<Vec<_>>(),
         })
     }
@@ -515,10 +516,64 @@ impl Timeline {
                 money(entry.accumulated_usd),
                 entry.parent.as_deref().unwrap_or("—"),
             ));
+            if let Some(line) = repair_line(entry) {
+                lines.push(line);
+            }
         }
         lines.extend(events.map(|(_, _, row)| row));
         lines
     }
+}
+
+/// A `verify.repair` invocation's brief and session, under its row: the
+/// brief's kind, size, digest, and the requirements and scenarios it
+/// carries, and whether the session was fresh.
+fn repair_line(entry: &Entry) -> Option<String> {
+    if entry.component != "verify.repair" {
+        return None;
+    }
+    if let Some(skipped) = entry.output.get("skipped").and_then(Value::as_str) {
+        return Some(format!("{}  ↳ no repair: {skipped}", " ".repeat(20)));
+    }
+    let brief = entry.output.get("brief").filter(|b| b.is_object())?;
+    let list = |key: &str| {
+        brief[key]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .filter(|text| !text.is_empty())
+            .unwrap_or_else(|| "—".to_owned())
+    };
+    let session = &entry.output["session"];
+    Some(format!(
+        "{}  ↳ brief: {} · {} characters · sha256 {} · requirements {} · scenarios {} · {} session{}{}",
+        " ".repeat(20),
+        brief["kind"].as_str().unwrap_or("?"),
+        brief["chars"],
+        brief["sha256"]
+            .as_str()
+            .map_or(String::new(), |sha| sha.chars().take(12).collect()),
+        list("requirements"),
+        list("scenarios"),
+        if session["fresh"] == json!(true) {
+            "fresh"
+        } else {
+            "resumed"
+        },
+        session["session_id"]
+            .as_str()
+            .map_or(String::new(), |id| format!(" {id}")),
+        match entry.output.get("changed").and_then(Value::as_bool) {
+            Some(true) => " · candidate changed, checks rerun",
+            Some(false) => " · candidate unchanged",
+            None => "",
+        }
+    ))
 }
 
 fn clip(text: &str, width: usize) -> String {
@@ -1041,6 +1096,50 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join(
             "../../bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW.json",
         )
+    }
+
+    #[test]
+    fn a_repair_shows_its_brief_and_fresh_session_under_its_row() {
+        let entry = |output: Value| Entry {
+            id: "inv-9".to_owned(),
+            parent: Some("inv-1".to_owned()),
+            depth: 1,
+            component: "verify.repair".to_owned(),
+            name: Some("packet brief".to_owned()),
+            implementation: None,
+            offset_ms: 0,
+            duration_ms: Some(10),
+            cost_usd: None,
+            cost_provenance: None,
+            outcome: "completed".to_owned(),
+            effects: true,
+            effect_class: None,
+            accumulated_usd: None,
+            output,
+            output_digest: None,
+            started_at: None,
+        };
+        let line = repair_line(&entry(json!({
+            "brief": { "kind": "packet", "chars": 3027, "sha256": "8b9d3782971c88c0d22e", "requirements": ["R5"], "scenarios": ["data.message-severity"] },
+            "session": { "fresh": true, "session_id": "scripted-b9df" },
+            "changed": true,
+        })))
+        .unwrap();
+        assert!(line.contains("brief: packet · 3027 characters"), "{line}");
+        assert!(
+            line.contains("requirements R5 · scenarios data.message-severity"),
+            "{line}"
+        );
+        assert!(line.contains("fresh session scripted-b9df"), "{line}");
+        assert!(line.contains("checks rerun"), "{line}");
+        let skipped = repair_line(&entry(
+            json!({ "skipped": "no check contradicted a requirement" }),
+        ))
+        .unwrap();
+        assert!(
+            skipped.contains("no repair: no check contradicted"),
+            "{skipped}"
+        );
     }
 
     #[test]

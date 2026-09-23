@@ -313,6 +313,7 @@ pub async fn build(components: &Path, traces: &Path, out: &Path) -> Result<Vec<S
                 checks: true,
                 brief: None,
                 monitor: None,
+                repair: None,
             })
             .await?;
             let work = ran.dir.join("work");

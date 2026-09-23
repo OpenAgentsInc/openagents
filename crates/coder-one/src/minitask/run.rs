@@ -11,6 +11,7 @@
 //!   verification/grade.json     the mini-task grader's verdict
 //!   verification/checks.json    verify.checks' coverage, when checks ran
 //!   verification/support.json   verify.support's requirement states, with Jev
+//!   verification/repair.json    verify.repair's brief, session, and recheck
 //! ```
 //!
 //! The episode runs the same explore-then-delegate path a Terminal-Bench
@@ -82,6 +83,16 @@ pub struct Options {
     /// A `control.monitor` in shadow mode over the executor's session:
     /// the rules, and Jev when `jev` is given.
     pub monitor: Option<crate::monitor::Params>,
+    /// One `verify.repair` session after the checks, within what is left
+    /// of `deadline`; `None` repairs nothing. It needs `checks`.
+    pub repair: Option<Repair>,
+}
+
+/// A mini-task episode's repair: who repairs, and the policy.
+#[derive(Clone, Debug)]
+pub struct Repair {
+    pub profile: crate::repair::Profile,
+    pub policy: crate::repair::Policy,
 }
 
 /// What a run left.
@@ -104,9 +115,85 @@ impl Generate for NoGenerator {
 }
 
 /// The CLI executor inside a filesystem boundary.
-struct Bounded {
-    cli: Cli,
+pub struct Bounded {
+    pub cli: Cli,
     boundary: coder_boundary::Boundary,
+}
+
+/// Claude Code or Codex inside a `coder-boundary` filesystem boundary
+/// that lets it write only `work`, `artifacts`, its own state
+/// directories, and the temporary directory. `runs` counts the sessions
+/// before this one, so a repair's files don't overwrite the first
+/// session's.
+///
+/// # Errors
+///
+/// Returns a message when the boundary can't be enforced here.
+#[allow(clippy::too_many_arguments)]
+pub fn bounded_cli(
+    agent: Agent,
+    model: &str,
+    work: &Path,
+    artifacts: &Path,
+    deadline: Duration,
+    episode: crate::deadline::Deadline,
+    recorder: &Recorder,
+    controls: &Controls,
+    runs: u32,
+) -> Result<Bounded, String> {
+    let env = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    };
+    let (binary, credential) = delegate::resolve(agent, env);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let mut spec = coder_boundary::Boundary::writing(work).writable(artifacts);
+    // The CLI keeps its own session state and temporary files.
+    for state_dir in [
+        home.as_ref().map(|home| home.join(".claude")),
+        home.as_ref().map(|home| home.join(".codex")),
+        home.as_ref().map(|home| home.join(".cache")),
+        Some(std::env::temp_dir()),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|path| path.is_dir())
+    {
+        spec = spec.writable(state_dir);
+    }
+    let boundary = spec
+        .build()
+        .map_err(|error| format!("cannot bound the executor: {error}"))?;
+    Ok(Bounded {
+        cli: Cli {
+            agent,
+            binary,
+            model: model.to_string(),
+            deadline,
+            workdir: work.to_path_buf(),
+            artifacts: artifacts.to_path_buf(),
+            artifacts_label: "artifacts".to_string(),
+            env: Vec::new(),
+            credential,
+            effort: None,
+            tools: None,
+            prompt_cache_ttl: None,
+            system: None,
+            runs,
+            episode,
+            gate: None,
+            granted: None,
+            control: delegate::Control {
+                recorder: Some(recorder.clone()),
+                controls: Some(controls.clone()),
+                last: None,
+                monitor: None,
+            },
+        },
+        boundary,
+    })
 }
 
 impl Executor for Bounded {
@@ -193,6 +280,10 @@ fn millis(started: Instant) -> u64 {
 /// grade, not an error.
 pub async fn run(options: Options) -> Result<Ran, String> {
     let started = Instant::now();
+    // One deadline for the episode: a repair spends what the first
+    // session left of it.
+    let episode_deadline =
+        crate::deadline::Deadline::starting(started, Some(options.deadline), Duration::ZERO);
     let task = options.task;
     let at = atif::now_ms();
     let label = options.executor.label();
@@ -373,59 +464,18 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             )
         }
         (ExecutorChoice::Cli { agent, model }, _) => {
-            let env = |name: &str| {
-                std::env::var(name)
-                    .ok()
-                    .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty())
-            };
-            let (binary, credential) = delegate::resolve(*agent, env);
-            let home = std::env::var_os("HOME").map(PathBuf::from);
-            let mut spec = coder_boundary::Boundary::writing(&work).writable(&artifacts);
-            // The CLI keeps its own session state and temporary files.
-            for state_dir in [
-                home.as_ref().map(|home| home.join(".claude")),
-                home.as_ref().map(|home| home.join(".codex")),
-                home.as_ref().map(|home| home.join(".cache")),
-                Some(std::env::temp_dir()),
-            ]
-            .into_iter()
-            .flatten()
-            .filter(|path| path.is_dir())
-            {
-                spec = spec.writable(state_dir);
-            }
-            let boundary = spec
-                .build()
-                .map_err(|error| format!("cannot bound the executor: {error}"))?;
-            let mut executor = Bounded {
-                cli: Cli {
-                    agent: *agent,
-                    binary,
-                    model: model.clone(),
-                    deadline: options.deadline,
-                    workdir: work.clone(),
-                    artifacts: artifacts.clone(),
-                    artifacts_label: "artifacts".to_string(),
-                    env: Vec::new(),
-                    credential,
-                    effort: None,
-                    tools: None,
-                    prompt_cache_ttl: None,
-                    system: None,
-                    runs: 0,
-                    episode: crate::deadline::Deadline::unbounded(),
-                    gate: None,
-                    granted: None,
-                    control: delegate::Control {
-                        recorder: Some(recorder.clone()),
-                        controls: Some(options.controls.clone()),
-                        last: None,
-                        monitor: monitor.clone(),
-                    },
-                },
-                boundary,
-            };
+            let mut executor = bounded_cli(
+                *agent,
+                model,
+                &work,
+                &artifacts,
+                options.deadline,
+                crate::deadline::Deadline::unbounded(),
+                &recorder,
+                &options.controls,
+                0,
+            )?;
+            executor.cli.control.monitor = monitor.clone();
             let (ended, delegated) = delegate::explore_then_delegate(
                 &mut state,
                 &plan,
@@ -473,6 +523,37 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             crate::support::save(&judged, &dir)?;
             Some(judged)
         }
+        _ => None,
+    };
+    // `verify.repair`: one fresh session from the packets, within what
+    // is left of the episode's deadline, then a recheck.
+    let repaired = match (&options.repair, &checked) {
+        (Some(plan), Some((input, report))) => {
+            let place = crate::repair::Place {
+                task: &task,
+                work: &work,
+                dir: &dir,
+                artifacts: &artifacts,
+                recorder: &recorder,
+                deadline: &episode_deadline,
+                jev: options
+                    .jev
+                    .clone()
+                    .map(crate::component::jev::JevMode::Live),
+                previous_session: session_record["session_id"].as_str().map(str::to_string),
+            };
+            Some(
+                crate::repair::with_profile(
+                    &place,
+                    (input, report),
+                    support.as_ref(),
+                    plan.policy,
+                    &plan.profile,
+                )
+                .await?,
+            )
+        }
+        (Some(_), None) => return Err("a repair needs verify.checks: drop --no-checks".to_string()),
         _ => None,
     };
     let checks = checked.as_ref().map(|(_, report)| report);
@@ -545,6 +626,16 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         "reward": grade.reward(),
         "checks": checks.map(crate::checks::Report::summary),
         "support": support.as_ref().map(crate::support::Report::summary),
+        "repair": repaired.as_ref().map(|r| json!({
+            "profile": options.repair.as_ref().map(|p| p.profile.word()),
+            "triggered": r.record["triggered"],
+            "ran": r.ran,
+            "changed": r.changed,
+            "brief": r.record["brief"],
+            "session": r.record["session"],
+            "recheck": r.record["recheck"],
+            "cost_usd": r.cost_usd,
+        })),
         "started_at": atif::document::iso(at),
         "milliseconds": milliseconds,
         "version": crate::episode::version(),
@@ -553,6 +644,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             "grade": "verification/grade.json",
             "checks": checks.map(|_| crate::checks::COVERAGE_FILE),
             "support": support.as_ref().map(|_| crate::support::FILE),
+            "repair": repaired.as_ref().map(|_| crate::repair::FILE),
             "workdir": "work",
             "artifacts": "artifacts",
         },
@@ -607,6 +699,7 @@ mod tests {
             checks: false,
             brief: None,
             monitor: None,
+            repair: None,
         }
     }
 

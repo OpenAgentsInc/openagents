@@ -24,6 +24,7 @@ pub mod extract;
 pub mod jev;
 pub mod monitor;
 pub mod pack;
+pub mod repair;
 pub mod replay;
 pub mod scripted;
 pub mod support;
@@ -142,6 +143,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(SystemSelect),
         Box::new(checks::Checks),
         Box::new(support::Support),
+        Box::new(repair::Repair),
         Box::new(Close),
         Box::new(scripted::MiniTaskRun),
     ]

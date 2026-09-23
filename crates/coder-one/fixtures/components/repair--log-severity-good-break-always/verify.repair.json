@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.repair",
+  "source": {
+    "kind": "synthetic",
+    "note": "an unneeded repair of a passing candidate by a profile that rewrites it badly damages it"
+  },
+  "input": {
+    "task": "log-severity",
+    "variant": "good",
+    "arm": {
+      "brief": "plain",
+      "profile": "break"
+    },
+    "trigger": "always",
+    "expect": {
+      "after": "fail",
+      "triggered": true
+    }
+  },
+  "retained": null
+}

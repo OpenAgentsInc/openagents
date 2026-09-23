@@ -133,6 +133,8 @@ pub struct Report {
     pub errors: Vec<String>,
     /// How the attempts used their episode deadlines.
     pub deadlines: Deadlines,
+    /// The latest `verify.repair` recovery study, with its path.
+    pub repair: Option<(PathBuf, Value)>,
 }
 
 /// Episode deadline use across attempts, from each manifest's `deadline`.
@@ -382,6 +384,7 @@ pub fn report(runs_dir: Option<&Path>, records: &Records) -> Report {
         runs_dir: runs_dir.map(Path::to_path_buf),
         errors,
         deadlines: Deadlines::of(records),
+        repair: None,
     }
 }
 
@@ -428,6 +431,17 @@ fn stamp(ms: Option<u64>) -> String {
 }
 
 impl Report {
+    /// Adds the latest recovery study under `dir`.
+    #[must_use]
+    pub fn with_repair(mut self, dir: Option<&Path>) -> Self {
+        self.repair = dir.and_then(crate::coder_repair::latest);
+        self
+    }
+
+    fn shows_repair(component: Option<&str>) -> bool {
+        matches!(component, None | Some("verify.repair"))
+    }
+
     fn selected(&self, component: Option<&str>) -> Vec<&Row> {
         self.rows
             .iter()
@@ -498,6 +512,11 @@ impl Report {
                 })).collect::<Vec<_>>(),
             },
             "read_errors": self.errors,
+            "repair_study": self
+                .repair
+                .as_ref()
+                .filter(|_| Self::shows_repair(component))
+                .map(|(path, study)| crate::coder_repair::to_json(path, study)),
         })
     }
 
@@ -610,6 +629,14 @@ impl Report {
                 ));
             }
         }
+        if let Some((path, study)) = self
+            .repair
+            .as_ref()
+            .filter(|_| Self::shows_repair(component))
+        {
+            lines.push(String::new());
+            lines.extend(crate::coder_repair::lines(path, study));
+        }
         if component.is_none() {
             let deadlines = &self.deadlines;
             lines.push(String::new());
@@ -648,10 +675,13 @@ gym coder components  isolated component runs and episode invocations, side by s
   --runs-dir PATH          component run logs (default ~/.openagents/coder-one/components)
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH        retained checkout traces
-  --no-runs | --no-jobs | --no-traces  omit one source
+  --repair-dir PATH        verify.repair recovery studies (default ~/.openagents/coder-one/repair)
+  --no-runs | --no-jobs | --no-traces | --no-repair  omit one source
   --json                   print versioned JSON instead of text
 
-Record isolated runs with `coder-one component suite ID`.";
+Record isolated runs with `coder-one component suite ID`. The latest
+recovery study from `coder-one repair study` shows recovered failures,
+damaged passes, and repair cost per arm.";
 
 /// `gym coder components …`.
 ///
@@ -666,6 +696,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         .map(|home| home.join(".openagents/terminal-bench/jobs"));
     let mut traces = Some(repo.join("traces"));
     let mut component = None;
+    let mut repair = crate::coder_repair::default_dir();
     let mut json_output = false;
     let mut index = 0;
     while index < args.len() {
@@ -679,7 +710,8 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
             "--no-runs" => runs = None,
             "--no-jobs" => jobs = None,
             "--no-traces" => traces = None,
-            "--component" | "--runs-dir" | "--jobs-dir" | "--traces-dir" => {
+            "--no-repair" => repair = None,
+            "--component" | "--runs-dir" | "--jobs-dir" | "--traces-dir" | "--repair-dir" => {
                 let value = args
                     .get(index + 1)
                     .filter(|value| !value.starts_with("--"))
@@ -688,6 +720,7 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
                     "--component" => component = Some(value.clone()),
                     "--runs-dir" => runs = Some(value.into()),
                     "--jobs-dir" => jobs = Some(value.into()),
+                    "--repair-dir" => repair = Some(value.into()),
                     _ => traces = Some(value.into()),
                 }
                 index += 1;
@@ -697,9 +730,10 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         index += 1;
     }
     let records = Records::load(jobs.as_deref(), traces.as_deref(), None);
-    let report = report(runs.as_deref(), &records);
+    let report = report(runs.as_deref(), &records).with_repair(repair.as_deref());
     if let Some(id) = &component
         && !report.rows.iter().any(|row| &row.component == id)
+        && !(id == "verify.repair" && report.repair.is_some())
     {
         return Err(format!("no component {id} in the runs or episodes"));
     }
