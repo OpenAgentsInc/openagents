@@ -138,7 +138,16 @@ impl Place {
 /// A `PATH` of links to every executable on the current `PATH` except the
 /// `hidden` names, under `scratch`.
 fn hiding_path(hidden: &[String], scratch: &Path) -> Result<String, String> {
-    let dir = scratch.join("path");
+    // A `:` in the directory would split it in two on `PATH`.
+    let dir = if scratch.to_string_lossy().contains(':') {
+        std::env::temp_dir().join(format!(
+            "coder-one-path-{}-{}",
+            std::process::id(),
+            atif::now_ms()
+        ))
+    } else {
+        scratch.join("path")
+    };
     std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let path = std::env::var_os("PATH").unwrap_or_default();
     for entry in std::env::split_paths(&path) {
@@ -267,6 +276,28 @@ mod tests {
         );
         assert!(!Place::of(None).is_replay());
         assert!(Place::of(Some("/tmp/r")).is_replay());
+    }
+
+    #[tokio::test]
+    async fn a_hidden_executable_leaves_every_other_one_on_path() {
+        if crate::minitask::process::which("cat").is_none() {
+            return;
+        }
+        let scratch = std::env::temp_dir().join(format!(
+            "coder-one-place-{}:behavior.named-command:1",
+            std::process::id()
+        ));
+        let command = Place::live()
+            .shell(
+                "command -v cat >/dev/null && ! command -v ls",
+                "/",
+                &["ls".to_string()],
+                &scratch,
+            )
+            .unwrap();
+        let ran = crate::minitask::process::run(command, std::time::Duration::from_secs(10)).await;
+        let _ = std::fs::remove_dir_all(&scratch);
+        assert_eq!(ran.code, Some(0), "{}{}", ran.stdout, ran.stderr);
     }
 
     #[test]

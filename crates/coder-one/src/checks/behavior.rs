@@ -570,24 +570,37 @@ fn reference_diff(
         kind: "behavior.reference-diff".to_string(),
         why: why.to_string(),
     };
+    let (reference, clone) = reference_and_clone(&context.task.instruction);
+    reference_scenario(context, workspace, reference, clone).map_err(|why| refuse(&why))
+}
+
+/// The reference binary an instruction names, and the program it asks
+/// for that must behave like it.
+fn reference_and_clone(instruction: &str) -> (Option<String>, Option<String>) {
     let mut reference = None;
     let mut clone = None;
-    for sentence in sentences(&context.task.instruction) {
+    for sentence in sentences(instruction) {
         let lower = sentence.to_lowercase();
         let spans: Vec<String> = code_spans(&sentence)
             .into_iter()
             .filter(|s| s.starts_with('/') && !s.contains(' '))
             .collect();
-        if lower.contains("reference binary") || lower.contains("reference implementation") {
+        let named_at = ["reference binary", "reference implementation"]
+            .iter()
+            .find_map(|phrase| lower.find(phrase));
+        if let Some(at) = named_at {
+            // The reference is the path after the words that name it; the
+            // program to write is a path before them.
+            let position =
+                |span: &String| sentence.find(&format!("`{span}`")).unwrap_or(usize::MAX);
             if reference.is_none() {
                 reference = spans
                     .iter()
-                    .find(|s| s.contains("artifact") || lower.contains("provided reference"))
-                    .cloned()
-                    .or_else(|| spans.last().cloned());
+                    .find(|s| position(s) > at && position(s) != usize::MAX)
+                    .cloned();
             }
-            if clone.is_none() && spans.len() >= 2 {
-                clone = spans.first().cloned();
+            if clone.is_none() {
+                clone = spans.iter().find(|s| position(s) < at).cloned();
             }
         } else if clone.is_none()
             && (lower.starts_with("implement") || lower.starts_with("create"))
@@ -596,17 +609,24 @@ fn reference_diff(
             clone = Some(first.clone());
         }
     }
+    (reference, clone)
+}
+
+fn reference_scenario(
+    context: &Context<'_>,
+    workspace: &generic::Workspace,
+    reference: Option<String>,
+    clone: Option<String>,
+) -> Result<Vec<Scenario>, String> {
     let lower = context.task.instruction.to_lowercase();
     let exact = lower.contains("exactly the same")
         || lower.contains("identical to the reference")
         || lower.contains("output identical");
     let (Some(reference), Some(clone)) = (reference, clone) else {
-        return Err(refuse("the instruction names no reference binary to match"));
+        return Err("the instruction names no reference binary to match".to_string());
     };
     if !exact || reference == clone {
-        return Err(refuse(
-            "the instruction doesn't ask to match the reference exactly",
-        ));
+        return Err("the instruction doesn't ask to match the reference exactly".to_string());
     }
     let requirement = context
         .requirements_saying(&[&["exactly", "same"], &["identical"], &["reference"]])
@@ -614,7 +634,7 @@ fn reference_diff(
         .copied()
         .or_else(|| context.map.requirements.first());
     let Some(requirement) = requirement else {
-        return Err(refuse("no requirement to observe"));
+        return Err("no requirement to observe".to_string());
     };
     Ok(vec![scenario(
         context,
@@ -1371,6 +1391,18 @@ mod tests {
         assert_eq!(
             unit_words("fragment.fragment_start_chrx"),
             ["fragment", "chrx"]
+        );
+    }
+
+    #[test]
+    fn the_reference_is_the_path_the_words_name() {
+        let text = "Implement `/app/archive-clone`, a single-file script that behaves exactly the same as the provided reference binary `/app/artifacts/archive-tool`, by black-box probing.";
+        assert_eq!(
+            reference_and_clone(text),
+            (
+                Some("/app/artifacts/archive-tool".to_string()),
+                Some("/app/archive-clone".to_string())
+            )
         );
     }
 

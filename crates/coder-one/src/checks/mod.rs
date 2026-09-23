@@ -662,7 +662,7 @@ pub async fn check(input: &Input, recorder: &Recorder, scratch: &Path) -> Report
                 .with_effects(),
         );
         let started = Instant::now();
-        let dir = scratch.join(scenario.id.replace('/', "-"));
+        let dir = scratch.join(scenario.id.replace(['/', ':'], "-"));
         let verdict = run_one(&context, scenario, &dir).await;
         let _ = std::fs::remove_dir_all(&dir);
         recorder.end(
