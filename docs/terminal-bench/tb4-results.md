@@ -12,6 +12,15 @@ Coder One. It does not reconcile their IDs or replacements with these
 totals. The counts below are not a corrected capability estimate. See the
 [reconciliation requirements](data-quality.md#current-blocker-tb4-quota-reconciliation).
 
+The later [task-win trace audit](2026-09-23-task-win-analysis.md) retains
+20 selected local trials and seven public comparisons. It confirms the
+ten highlighted wins and additionally finds a failed v2 GSEA run, a
+passing v5 ATRX run, and completed Opus baselines absent from this table.
+On its six selected same-model task pairs, fixed v2 passes five and plain
+Opus 5.5 passes four; choosing v3 for VBA adds another attempt and pass.
+These observations supersede claims that no such traces or v5 grade were
+available. They do not update the historical full-queue totals below.
+
 Terminal-Bench 4.0 contains 66 tasks at upstream tag `v4.0.0`
 (commit `452bf305c6da`). The suite plan starts with 57 tasks that need no
 GPU and at most four CPUs, followed by nine larger or GPU tasks. The last

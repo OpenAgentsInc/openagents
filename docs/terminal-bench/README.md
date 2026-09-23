@@ -1,9 +1,17 @@
 # Terminal-Bench status
 
-Reviewed through `3f0bdc6621` on 2026-09-23. This page summarizes committed
-evidence; it does not report live execution-host progress.
+Updated on 2026-09-23 with the trace audit of `coderos` and public Harbor
+comparisons. This page summarizes retained evidence; it does not report
+the execution host's live queue.
 
 ## Latest status
+
+**The highlighted wins now have retained traces.** The
+[revised task-win analysis](2026-09-23-task-win-analysis.md) audits 20 local
+trials and seven public failures. Opus 5.5 produced all ten selected
+Coder solutions. The traces explain specific numerical, interface, and
+lifecycle differences, but do not establish that Jev's repairs caused
+the wins. They also expose wrong-path checks and missed semantic failures.
 
 **TB4 results need a quota audit.** Incident note `4b6c619770` reports 21 attempts
 that hit Claude's usage limit but were graded anyway. It reports 19 moved
@@ -16,7 +24,7 @@ historical snapshot, not corrected pass rates.
 | Coder One tunable v2 | 16/36 | Pending quota reconciliation. |
 | Coder One tunable v3 | 4/5 | Selected tasks; pending reconciliation. |
 | Coder One tunable v4 | 2/5 | Selected tasks; pending reconciliation. |
-| Coder One tunable v5 | — | Persistence implemented; no graded results in the snapshot. |
+| Coder One tunable v5 | — | One ATRX pass is now retained; full arm totals remain unpublished. Its extra persistence round recorded no file changes. |
 | Coder One tunable v6 | — | Second executor only on failed checks, at most two persistence rounds; no published graded results. |
 | Claude Code / Opus 5.5 | 4/13 | Pending quota reconciliation. |
 
@@ -59,7 +67,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 | Document | Contents |
 | --- | --- |
 | [TB4 results](tb4-results.md) | Full matrix, arm versions, matched comparisons, harness checks, and refresh limits. |
-| [Coder One's task-level wins](2026-09-23-task-win-analysis.md) | Wins against Astra and Opus reference rows, possible causes, full-suite scenarios, and the experiment needed to establish an advantage. |
+| [Coder One's task-level wins](2026-09-23-task-win-analysis.md) | Detailed reconstruction of ten wins, local and public failures, controller gaps, costs, conditional completion scenarios, and an upgrade plan. Includes a complete evidence index. |
 | [TB4 leaderboard](tb4-leaderboard.md) | Retained public reference: 27 rows, five trials per task, source inconsistencies. |
 | [Tunable results, September 23](2026-09-23-tunable-results.md) | Coverage packing, routing, repair, escalation, and monitor experiments. |
 | [Development results, September 22](development-results.md) | Four- and eight-task comparisons, cost rankings, individual trial tables. |

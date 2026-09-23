@@ -13,10 +13,21 @@ replacement attempts are not established by the committed note.
 
 The note reports 19 attempts moved and rerun. It does not explain the
 remaining two or prove which replacements appear in the scoreboard.
-This checkout has no local TB4 jobs or complete retained TB4 run inventory,
-so the snapshot cannot be regenerated from this machine. The extracted
+The subsequent [task-win trace audit](2026-09-23-task-win-analysis.md)
+retains 20 selected TB4 trial bundles from `coderos`, including all ten
+highlighted wins, three failed v2 counterparts, one v5 pass, and six local
+Opus baselines. Their native streams show no terminal usage-limit outcome.
+Seven public comparison bundles are retained separately. This is a partial
+inventory, not a reconciliation of the 21 affected attempts or a complete
+population from which to regenerate the scoreboard. The extracted
 [TB4 replay fixtures](../../crates/coder-one/fixtures/tb4/) cover an earlier
-population and do not close that gap.
+population too.
+
+The audit also finds two interpretation issues: the Intrastat native
+stream has three invalid JSON lines after binary document output, and
+VBA's top-level CTRF reports 4/4 even when only 27/28 behavioral traces
+pass and the reward is zero. The retained original bytes, separate
+behavioral results, and verifier rewards are required to interpret them.
 
 Before publishing corrected results:
 
