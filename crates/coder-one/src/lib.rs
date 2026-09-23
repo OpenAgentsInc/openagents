@@ -45,6 +45,7 @@ pub mod policy;
 pub mod probes;
 pub mod profile;
 pub mod prompt;
+pub mod proposal;
 pub mod record;
 pub mod repair;
 pub mod requirements;

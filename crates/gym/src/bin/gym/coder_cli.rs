@@ -73,6 +73,9 @@ gym coder recall [--failures] [--json]
 gym coder asks [ID|latest] [--json]
                            the questions `coder-one ask` answered: citations
                            checked, claims verified, cost, and time
+gym coder proposals [ID|latest] [--json]
+                           the changes asks proposed: finding, change, decision,
+                           and result; approve|reject ID [--note TEXT] decides
 gym coder study [ID] [--all] [--json]
                            hill-climbing studies: candidates by tier, development
                            and held-out results, frontiers, promotions, and spend";
@@ -153,6 +156,9 @@ pub fn run(args: Vec<String>) -> i32 {
 fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     if args.first().map(String::as_str) == Some("asks") {
         return gym::coder_asks::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("proposals") {
+        return gym::coder_proposals::command(&args[1..], out);
     }
     if args.first().map(String::as_str) == Some("components") {
         return gym::coder_components::command(&args[1..], out);

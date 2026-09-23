@@ -70,7 +70,7 @@ usage: coder-one ask \"QUESTION\" [--scope gym|repo|highlights] [--claim KEY]...
                      [--json | --events] [--run RUN] [--context TEXT]... [--rank]
                      [--model MODEL] [--timeout SECONDS] [--gym PATH] [--repo DIR]
                      [--out DIR] [--no-jev] [--jev-recorded FILE] [--jev-record FILE]
-                     [--answer-file FILE]
+                     [--answer-file FILE] [--proposals DIR | --no-proposals]
 
 Answers a question about Terminal-Bench runs by reading the Gym, with every
 claim's citations checked by code. It only reads: each command runs inside a
@@ -99,7 +99,14 @@ this binary, or gym on PATH), and --repo DIR the repository commands run in
 (default: the current directory). --no-jev replaces Jev's relevance
 judgments with code's order, --jev-recorded FILE replays recorded answers,
 and --jev-record FILE writes the answers used. --answer-file FILE replays an
-executor's answer instead of running one.";
+executor's answer instead of running one.
+
+The answer may carry typed proposals: a policy or check merge patch on a
+checked-in manifest, a question-set change, a new mini-task, or a code change.
+Code validates each and writes it under ~/.openagents/coder-one/proposals
+unless --proposals names another directory (--no-proposals writes none).
+Nothing runs until a person approves one with `gym coder proposals approve
+ID`; then `coder-one proposal run ID` measures it.";
 
 /// Where the question is answered from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,6 +168,11 @@ pub struct Options {
     pub answer_file: Option<PathBuf>,
     /// For a highlights ask, the highlights to draft, by key.
     pub claims: Vec<String>,
+    /// Where the answer's proposals are written; `None` is
+    /// `~/.openagents/coder-one/proposals`.
+    pub proposals: Option<PathBuf>,
+    /// Whether the answer's proposals are validated and written at all.
+    pub record_proposals: bool,
 }
 
 impl Options {
@@ -189,6 +201,8 @@ impl Options {
             jev_record: None,
             answer_file: None,
             claims: Vec::new(),
+            proposals: None,
+            record_proposals: true,
         };
         let mut words: Vec<String> = Vec::new();
         let mut args = args.iter();
@@ -224,6 +238,8 @@ impl Options {
                 "--gym" => options.gym = Some(PathBuf::from(value("--gym")?)),
                 "--repo" => options.repo = Some(PathBuf::from(value("--repo")?)),
                 "--out" => options.out = Some(PathBuf::from(value("--out")?)),
+                "--proposals" => options.proposals = Some(PathBuf::from(value("--proposals")?)),
+                "--no-proposals" => options.record_proposals = false,
                 "--no-jev" => options.jev = JevChoice::Off,
                 "--jev-recorded" => {
                     options.jev = JevChoice::Recorded(PathBuf::from(value("--jev-recorded")?));
@@ -816,6 +832,22 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
         recorded.save(path)?;
     }
 
+    let proposals = if options.record_proposals && options.scope != Scope::Highlights {
+        match &answer {
+            Some(answer) if !crate::proposal::drafts(answer).is_empty() => record_proposals(
+                answer,
+                &options,
+                (&id, &dir, &repo),
+                &facts,
+                &gathered.shown,
+                progress,
+            ),
+            _ => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+
     let record = json!({
         "schema": SCHEMA,
         "id": id,
@@ -827,6 +859,16 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
         "answer": answer.as_ref().map(|a| a["answer"].clone()),
         "proposed_change": answer.as_ref().and_then(|a| a["proposed_change"].as_str()).filter(|s| !s.trim().is_empty()),
         "claims": claims.iter().map(cite::Claim::to_json).collect::<Vec<_>>(),
+        "proposals": proposals.iter().map(|p| json!({
+            "id": p["id"],
+            "kind": p["kind"],
+            "title": p["title"],
+            "valid": p["valid"],
+            "problems": p["problems"],
+            "needs_code": p["needs_code"],
+            "digest": p["digest"],
+            "dir": p["dir"],
+        })).collect::<Vec<_>>(),
         "highlights": gathered.inputs.highlights.iter().map(|h| h["key"].clone()).collect::<Vec<_>>(),
         "drafts": if options.scope == Scope::Highlights {
             json!(claims.iter().map(|c| json!({
@@ -1377,6 +1419,63 @@ async fn gather_repo(
     gathered
 }
 
+/// Validates the answer's proposals against the runs the ask read and
+/// writes each one; a store that can't be written is reported, not fatal.
+fn record_proposals(
+    answer: &Value,
+    options: &Options,
+    (id, dir, repo): (&str, &Path, &Path),
+    facts: &BTreeMap<String, Option<cite::RunFacts>>,
+    shown: &BTreeMap<String, Value>,
+    progress: &Progress,
+) -> Vec<Value> {
+    let mut run_tasks = BTreeMap::new();
+    for (cited, fact) in facts {
+        if let Some(fact) = fact {
+            run_tasks.insert(cited.clone(), fact.task.clone());
+            run_tasks.insert(fact.id.clone(), fact.task.clone());
+        }
+    }
+    for (run, value) in shown {
+        if let Some(fact) = cite::RunFacts::from_show(value) {
+            run_tasks
+                .entry(run.clone())
+                .or_insert_with(|| fact.task.clone());
+            run_tasks.entry(fact.id.clone()).or_insert(fact.task);
+        }
+    }
+    let context = crate::proposal::Context {
+        ask_id: id.to_string(),
+        question: options.question.clone(),
+        ask_dir: dir.display().to_string(),
+        policies: crate::proposal::policies_dir(repo),
+        run_tasks,
+    };
+    let Some(root) = options
+        .proposals
+        .clone()
+        .or_else(crate::proposal::default_dir)
+    else {
+        progress.line("proposals ▸ HOME isn't set, so the proposals aren't recorded");
+        return Vec::new();
+    };
+    match crate::proposal::record_all(answer, &context, &root) {
+        Ok(records) => {
+            progress.line(&format!(
+                "proposals ▸ {} of {} validate; each waits for a person's approval under {}",
+                records.iter().filter(|r| r["valid"] == true).count(),
+                records.len(),
+                root.display()
+            ));
+            records
+        }
+        Err(why) => {
+            progress.line(&format!("proposals ▸ not recorded: {why}"));
+            Vec::new()
+        }
+    }
+}
+
 /// The record as text: the answer, each claim with its citations and a
 /// mark, the check's totals, the cost, and where it's recorded.
 #[must_use]
@@ -1464,6 +1563,36 @@ pub fn text(record: &Value) -> String {
         out.push_str(&format!(
             "Proposed change, for a person to decide on: {change}\n\n"
         ));
+    }
+    let proposals = record["proposals"].as_array().cloned().unwrap_or_default();
+    if !proposals.is_empty() {
+        out.push_str("Proposals (✓ validated, ✗ refused), each waiting for a person's approval:\n");
+        for proposal in &proposals {
+            let valid = proposal["valid"] == true;
+            out.push_str(&format!(
+                "{} {} [{}] {}{}\n",
+                if valid { '✓' } else { '✗' },
+                proposal["id"].as_str().unwrap_or("?"),
+                proposal["kind"].as_str().unwrap_or("?"),
+                proposal["title"].as_str().unwrap_or(""),
+                if proposal["needs_code"] == true {
+                    " (needs code: a drafted issue)"
+                } else {
+                    ""
+                }
+            ));
+            for problem in proposal["problems"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+            {
+                out.push_str(&format!("     refused: {problem}\n"));
+            }
+        }
+        out.push_str(
+            "Approve one with `gym coder proposals approve ID`, then `coder-one proposal run ID`.\n\n",
+        );
     }
     let citations = &record["citations"];
     let cost = &record["cost"];
@@ -1821,6 +1950,66 @@ mod tests {
             .build()
             .unwrap()
             .block_on(run(options, &progress))
+    }
+
+    #[test]
+    fn an_answer_can_carry_proposals_that_code_validates_and_writes() {
+        if coder_boundary::Boundary::readonly().build().is_err() {
+            return;
+        }
+        let fixtures = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let proposals = out.path().join("proposals");
+        let demo = "tb4--coder-one-tunable-v6--demo/demo__1";
+        let proposal = |runs: &[&str], patch: &str| {
+            json!({
+                "kind": "check", "title": "Run the behavior scenarios",
+                "rationale": "The checks passed a false claim.",
+                "source_runs": runs, "expected_tasks": ["demo"],
+                "base": "tunable-luna-v2", "patch": patch,
+                "question_set": "", "minitask": "", "issue": "",
+            })
+        };
+        let answer = json!({
+            "answer": "The demo run claimed success it didn't earn.",
+            "claims": [{"claim": "It said all tests pass.", "runs": [demo], "steps": [], "judgments": [], "files": [], "marks": [], "highlight": ""}],
+            "proposed_change": "",
+            "proposals": [
+                proposal(&[demo], r#"{"policy":{"verify":{"behavior":true}}}"#),
+                proposal(&["tb4--nowhere/x__1"], r#"{"policy":{"verify":{"behavior":true}}}"#),
+            ],
+        });
+        let (record, code) = replay(
+            fixtures.path(),
+            out.path(),
+            &[
+                "why did demo pass?",
+                "--no-jev",
+                "--proposals",
+                &proposals.display().to_string(),
+            ],
+            &answer,
+        )
+        .unwrap();
+        assert_eq!(code, 0, "{record}");
+        let listed = record["proposals"].as_array().unwrap();
+        assert_eq!(listed.len(), 2, "{record}");
+        assert_eq!(listed[0]["valid"], true, "{record}");
+        assert_eq!(listed[1]["valid"], false, "{record}");
+        let id = listed[0]["id"].as_str().unwrap();
+        assert_eq!(
+            id,
+            format!(
+                "prop-{}-1",
+                record["id"].as_str().unwrap().trim_start_matches("ask-")
+            )
+        );
+        let (dir, written) = crate::proposal::load(&proposals, id).unwrap();
+        assert_eq!(written["ask"]["id"], record["id"]);
+        assert!(dir.join(crate::proposal::POLICY_FILE).is_file());
+        let text = text(&record);
+        assert!(text.contains(&format!("✓ {id} [check]")), "{text}");
+        assert!(text.contains("isn't a run the ask read"), "{text}");
     }
 
     #[test]

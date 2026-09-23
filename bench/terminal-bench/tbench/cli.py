@@ -586,14 +586,22 @@ def _experiment_spec(args: argparse.Namespace):
                 f"experiment {args.id} isn't pinned yet; give --profile, --arm "
                 "(twice or more), and --tasks"
             )
+        arms: list[str] = []
+        arm_profiles: dict[str, str] = {}
+        for given in args.arm:
+            name, _, profile = given.partition("=")
+            arms.append(name)
+            if profile:
+                arm_profiles[name] = profile
         spec = experiment.Spec(
             id=args.id,
             profile=args.profile,
-            arms=list(args.arm),
+            arms=arms,
             tasks=tasks,
             attempts=args.attempts,
             arm_args=arm_args,
             quota_usd=args.quota_usd,
+            arm_profiles=arm_profiles,
         )
     spec.validate()
     for name in spec.arm_args:
@@ -667,7 +675,7 @@ def _experiment_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
 
     spec = _experiment_spec(args)
     agents = load_agents()
-    unknown = [arm for arm in spec.arms if arm not in agents]
+    unknown = [spec.profile_of(arm) for arm in spec.arms if spec.profile_of(arm) not in agents]
     if unknown:
         raise RunError(
             f"unknown arms {', '.join(unknown)}; known: {', '.join(sorted(agents))}"
@@ -684,7 +692,7 @@ def _experiment_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
     checkout = panel.checkout()
     if not (checkout / ".git").exists() and not dry_run:
         raise RunError(f"no task checkout at {checkout}; run `tbench tasks checkout` first")
-    arm_agents = {arm: agents[arm] for arm in spec.arms}
+    arm_agents = {arm: agents[spec.profile_of(arm)] for arm in spec.arms}
     providers = {arm: usage_limit.arm_providers(agent) for arm, agent in arm_agents.items()}
     source, warnings = _experiment_credentials(
         arm_agents, providers, allow_login=args.allow_login_token, strict=not dry_run
@@ -714,6 +722,7 @@ def _experiment_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
         arm=spec.arms[0],
         logs=directory / "logs",
         arm_args=arm_args,
+        arm_profiles=spec.arm_profiles,
         # On the long-lived token, a trial never switches to the login.
         login_fallback=source != credentials.SOURCE_SETUP_TOKEN,
     )
@@ -842,7 +851,12 @@ def add_experiment_parser(sub) -> None:
         if name not in ("run", "plan"):
             continue
         p.add_argument("--profile", help="job profile id (pinned on the first run)")
-        p.add_argument("--arm", action="append", help="agent profile id; give two or more")
+        p.add_argument(
+            "--arm",
+            action="append",
+            help="agent profile id, or NAME=PROFILE to run a profile as a separately "
+            "named arm (with --arm-kwarg NAME:key=value); give two or more",
+        )
         p.add_argument(
             "--tasks", action="append", help="task ids, comma-separated or repeated"
         )

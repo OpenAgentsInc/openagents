@@ -7,9 +7,11 @@
 //! child's events as they arrive: each progress line, then the record with
 //! the answer, its claims, and the citation check's marks. The answer is
 //! drawn the way the Coder terminal draws a reply, and the runs its claims
-//! cite are listed under it: `↑↓` chooses one and `Enter` opens it. `Esc`
-//! goes back to the list; `?` and an empty question shows the last answer
-//! again.
+//! cite are listed under it: `↑↓` chooses one and `Enter` opens it. The
+//! proposals the answer carries follow the runs, each with its status:
+//! with the cursor on one, `a` approves it and `x` rejects it, as `gym
+//! coder proposals approve|reject` does. `Esc` goes back to the list; `?`
+//! and an empty question shows the last answer again.
 
 use std::cell::Cell;
 use std::path::PathBuf;
@@ -45,9 +47,14 @@ pub(super) struct Asking {
     pub(super) record: Option<Value>,
     pub(super) ended: Option<(String, String)>,
     events: Option<Receiver<Event>>,
-    /// The cited run the arrows are on.
+    /// The cited run, or after the runs the proposal, the arrows are on.
     pub(super) cursor: usize,
     scroll: Cell<usize>,
+    /// Each proposal's status, read when the record arrives and after a
+    /// decision.
+    pub(super) statuses: Vec<String>,
+    /// What the last decision did.
+    pub(super) notice: Option<String>,
 }
 
 impl Asking {
@@ -82,6 +89,79 @@ impl Asking {
             }
         }
         runs
+    }
+
+    /// The proposals the answer carries: ID and title, and the directory
+    /// that holds them.
+    pub(super) fn proposals(&self) -> Vec<(String, String, Option<PathBuf>)> {
+        let Some(record) = &self.record else {
+            return Vec::new();
+        };
+        record["proposals"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|p| {
+                (
+                    p["id"].as_str().unwrap_or("?").to_owned(),
+                    format!(
+                        "[{}] {}",
+                        p["kind"].as_str().unwrap_or("?"),
+                        p["title"].as_str().unwrap_or("")
+                    ),
+                    p["dir"]
+                        .as_str()
+                        .and_then(|dir| PathBuf::from(dir).parent().map(PathBuf::from)),
+                )
+            })
+            .collect()
+    }
+
+    /// Reads each proposal's status from its directory.
+    fn refresh(&mut self) {
+        self.statuses = self
+            .proposals()
+            .iter()
+            .map(|(id, _, root)| {
+                root.as_ref()
+                    .and_then(|root| {
+                        crate::coder_proposals::load(root)
+                            .into_iter()
+                            .find(|entry| entry.id() == id)
+                    })
+                    .map_or_else(|| "unrecorded".to_owned(), |e| e.status().to_owned())
+            })
+            .collect();
+    }
+
+    /// Approves or rejects the proposal under the cursor.
+    fn decide(&mut self, verdict: &str) {
+        let at = self.cursor.checked_sub(self.cited().len());
+        let proposals = self.proposals();
+        let Some((id, _, root)) = at.and_then(|at| proposals.get(at)) else {
+            self.notice = Some("Move ↓ to a proposal first.".to_owned());
+            return;
+        };
+        let Some(root) = root else {
+            self.notice = Some(format!("{id} wasn't recorded, so it can't be decided."));
+            return;
+        };
+        self.notice = Some(
+            match crate::coder_proposals::decide(
+                root,
+                id,
+                verdict,
+                "",
+                &crate::coder_proposals::who(),
+            ) {
+                Ok(_) if verdict == "approved" => {
+                    format!("{id} approved. Measure it with `coder-one proposal run {id}`.")
+                }
+                Ok(_) => format!("{id} rejected."),
+                Err(why) => why,
+            },
+        );
+        self.refresh();
     }
 }
 
@@ -223,10 +303,14 @@ impl Pane {
             return false;
         };
         let mut changed = false;
+        let mut recorded = false;
         loop {
             match events.try_recv() {
                 Ok(Event::Line(line)) => asking.lines.push(line),
-                Ok(Event::Record(record)) => asking.record = Some(record),
+                Ok(Event::Record(record)) => {
+                    asking.record = Some(record);
+                    recorded = true;
+                }
                 Ok(Event::Ended(ending, stderr)) => {
                     asking.ended = Some((ending, stderr));
                     asking.events = None;
@@ -241,6 +325,9 @@ impl Pane {
                 }
             }
             changed = true;
+        }
+        if recorded {
+            asking.refresh();
         }
         changed
     }
@@ -292,6 +379,8 @@ impl Pane {
                 events: None,
                 cursor: 0,
                 scroll: Cell::new(0),
+                statuses: Vec::new(),
+                notice: None,
             });
             self.asker.showing = true;
             return;
@@ -317,6 +406,8 @@ impl Pane {
             events: Some(spawn(program, args)),
             cursor: 0,
             scroll: Cell::new(0),
+            statuses: Vec::new(),
+            notice: None,
         });
         self.asker.showing = true;
         self.open = None;
@@ -360,12 +451,15 @@ impl Pane {
             return false;
         };
         let cited = asking.cited();
+        let items = cited.len() + asking.proposals().len();
         match key {
             Key::Back => self.asker.showing = false,
             Key::Up | Key::Char('k') => asking.cursor = asking.cursor.saturating_sub(1),
             Key::Down | Key::Char('j') => {
-                asking.cursor = (asking.cursor + 1).min(cited.len().saturating_sub(1));
+                asking.cursor = (asking.cursor + 1).min(items.saturating_sub(1));
             }
+            Key::Char('a') => asking.decide("approved"),
+            Key::Char('x') => asking.decide("rejected"),
             Key::PageUp => asking.scroll.set(asking.scroll.get().saturating_sub(10)),
             Key::PageDown => asking.scroll.set(asking.scroll.get() + 10),
             Key::Enter => {
@@ -519,7 +613,7 @@ impl Pane {
                         false,
                     ));
                     for (index, run) in cited.iter().enumerate() {
-                        let here = index == asking.cursor.min(cited.len() - 1);
+                        let here = index == asking.cursor;
                         let known = self
                             .catalog
                             .runs
@@ -542,6 +636,40 @@ impl Pane {
                             here,
                         ));
                     }
+                }
+                let proposals = asking.proposals();
+                if !proposals.is_empty() {
+                    rows.push((String::new(), Intensity::Half, false));
+                    rows.push((
+                        "Proposals: ↑↓ choose, a approves, x rejects; nothing runs until approved"
+                            .to_owned(),
+                        Intensity::Half,
+                        false,
+                    ));
+                    for (index, (id, title, _)) in proposals.iter().enumerate() {
+                        let here = cited.len() + index == asking.cursor;
+                        if here {
+                            selected_row = Some(rows.len());
+                        }
+                        let status = asking.statuses.get(index).map_or("?", String::as_str);
+                        rows.push((
+                            format!(
+                                "{} {id} · {status} · {}",
+                                if here { '▸' } else { ' ' },
+                                crate::runs::clip_words(title, width.saturating_sub(40).max(20))
+                            ),
+                            if here {
+                                Intensity::Full
+                            } else {
+                                Intensity::ThreeQuarters
+                            },
+                            here,
+                        ));
+                    }
+                }
+                if let Some(notice) = &asking.notice {
+                    rows.push((String::new(), Intensity::Half, false));
+                    push(notice, Intensity::Full, &mut rows);
                 }
             }
             None => {
@@ -593,8 +721,8 @@ impl Pane {
             buf,
             ("Answer", "read from the Gym; citations checked by code"),
             (
-                "↑↓ cited run · enter open · pgup pgdn scroll · ? ask again · esc back · q quit",
-                "↑↓ enter ? esc q",
+                "↑↓ choose · enter open · a approve · x reject · pgup pgdn scroll · ? ask again · esc back · q quit",
+                "↑↓ enter a x ? esc q",
             ),
         );
         let width = usize::from(inner.width);
@@ -795,6 +923,65 @@ mod tests {
         pane.key(Key::Char('?'));
         pane.key(Key::Enter);
         assert!(pane.to_text(120, 40).contains("You ▸"));
+    }
+
+    #[test]
+    fn a_proposal_in_the_answer_is_approved_with_a() {
+        let (_dir, pane) = pane();
+        let scripts = tempfile::tempdir().unwrap();
+        let root = scripts.path().join("proposals");
+        let id = "prop-1790000000000-1";
+        std::fs::create_dir_all(root.join(id)).unwrap();
+        let mut proposal = serde_json::json!({
+            "schema": crate::coder_proposals::PROPOSAL_SCHEMA,
+            "id": id,
+            "ask": {"id": "ask-1790000000000", "question": "why?", "dir": "/a"},
+            "created_at": "2026-09-23T00:00:00Z",
+            "kind": "check",
+            "title": "Run the behavior scenarios",
+            "source_runs": [], "expected_tasks": [],
+            "valid": true, "problems": [],
+        });
+        proposal["digest"] = serde_json::json!(crate::coder_proposals::digest(&proposal));
+        std::fs::write(root.join(id).join("proposal.json"), proposal.to_string()).unwrap();
+        let record = serde_json::json!({
+            "event": "answer",
+            "record": {
+                "executor": "luna", "status": "answered", "answer": "A.", "claims": [],
+                "proposals": [{"id": id, "kind": "check", "title": "Run the behavior scenarios", "valid": true, "dir": root.join(id).display().to_string()}],
+                "citations": {"citations": 0, "valid_citations": 0, "claims": 0, "verified": 0},
+                "cost": {"usd": 0.001}, "milliseconds": 1000,
+            }
+        });
+        let saved = scripts.path().join("record.json");
+        std::fs::write(&saved, format!("{record}\n")).unwrap();
+        let path = scripts.path().join("coder-one");
+        std::fs::write(&path, format!("#!/bin/sh\ncat '{}'\n", saved.display())).unwrap();
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        std::fs::set_permissions(&path, permissions).unwrap();
+        let mut pane = pane.with_coder_one(Some(path));
+        pane.key(Key::Char('?'));
+        type_text(&mut pane, "why?");
+        pane.key(Key::Enter);
+        let started = Instant::now();
+        while pane.asking() && started.elapsed() < Duration::from_secs(10) {
+            pane.poll_ask();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        pane.poll_ask();
+        let text = pane.to_text(140, 40);
+        assert!(text.contains("a approves, x rejects"), "{text}");
+        assert!(text.contains(&format!("{id} · proposed")), "{text}");
+        pane.key(Key::Char('a'));
+        let text = pane.to_text(140, 40);
+        assert!(text.contains(&format!("{id} · approved")), "{text}");
+        assert!(text.contains("coder-one proposal run"), "{text}");
+        let decision: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join(id).join("decision.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(decision["verdict"], "approved");
     }
 
     #[test]

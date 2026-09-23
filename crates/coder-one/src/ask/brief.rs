@@ -29,7 +29,15 @@ claim whose citation doesn't check is shown as unverified.
 - Say what the evidence doesn't settle. Don't count or rank runs you haven't read; \
 the group counts below are exact, so use them for how many.
 - When the findings suggest a change to Coder One, a check, or a briefing, name it in \
-`proposed_change` for a person to decide on. Don't make it.";
+`proposed_change` for a person to decide on. Don't make it.
+- When the findings support a concrete change, also put it in `proposals`, typed, at most \
+4. A person approves each before anything runs, and then it runs on the tasks you name \
+and no others. Name its `source_runs`, runs your claims cite, and its `expected_tasks`, \
+those runs' tasks. Prefer a `policy` or `check` proposal: a JSON merge patch on a manifest \
+in `crates/coder-one/policies/` (read it with `cat` first), which code applies and \
+validates. A `check` changes only `policy.verify`. A change that needs Rust, including a \
+new check scenario or a question-set change, is `code` or `questions`, with the issue \
+body in `issue`. Propose nothing when the evidence doesn't support a change.";
 
 /// How the executor is told to draft highlights.
 pub const HOW_DRAFTS: &str = "\

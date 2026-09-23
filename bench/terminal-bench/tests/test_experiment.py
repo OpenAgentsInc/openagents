@@ -115,6 +115,30 @@ def test_a_spec_needs_two_arms_and_is_pinned_on_the_first_start(tmp_path):
         pin(Spec(id="x", profile="tb4", arms=["a", "b"], tasks=["t"], attempts=1), tmp_path)
 
 
+def test_an_arm_can_run_a_profile_under_its_own_name(tmp_path):
+    from tbench.suite import Launcher
+
+    spec = Spec(
+        id="prop-1", profile="tb4", arms=["base", "prop-1"], tasks=["t"],
+        arm_profiles={"prop-1": "base"},
+    )
+    spec.validate()
+    assert spec.profile_of("prop-1") == "base" and spec.profile_of("base") == "base"
+    pin(spec, tmp_path)
+    assert json.loads((tmp_path / "experiment.json").read_text())["arm_profiles"] == {
+        "prop-1": "base"
+    }
+    with pytest.raises(ExperimentError, match="isn't an arm"):
+        Spec(id="x", profile="tb4", arms=["a", "b"], tasks=["t"],
+             arm_profiles={"c": "a"}).validate()
+    # A spec without aliases pins as it did before them.
+    assert "arm_profiles" not in Spec(id="x", profile="tb4", arms=["a", "b"], tasks=["t"]).pinned()
+    launcher = Launcher(profile="tb4", arm="base", logs=tmp_path, arm_profiles={"prop-1": "base"})
+    trial = type("T", (), {"arm": "prop-1", "task": type("K", (), {"id": "t"})(), "job": "j"})()
+    command = launcher.command(trial, "run")
+    assert command[command.index("--agent") + 1] == "base"
+
+
 def test_trials_start_in_the_interleaved_order_and_record_claude_quota(tmp_path):
     scheduler, launcher = _experiment(tmp_path, tasks=("alpha",), attempts=2)
     scheduler.reconcile()

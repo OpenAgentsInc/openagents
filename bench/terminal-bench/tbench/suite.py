@@ -564,9 +564,12 @@ class Launcher:
         python: str = sys.executable,
         arm_args: Mapping[str, list[str]] | None = None,
         login_fallback: bool = True,
+        arm_profiles: Mapping[str, str] | None = None,
     ) -> None:
         self.profile = profile
         self.arm = arm
+        # An arm named apart from the agent profile it runs.
+        self.arm_profiles = dict(arm_profiles or {})
         # Flags for one arm's trials only, when a schedule has several arms.
         self.arm_args = {name: list(flags) for name, flags in (arm_args or {}).items()}
         self.login_fallback = login_fallback
@@ -585,7 +588,7 @@ class Launcher:
             "--profile",
             self.profile,
             "--agent",
-            arm,
+            self.arm_profiles.get(arm, arm),
             "--task",
             trial.task.id,
             "--job-name",

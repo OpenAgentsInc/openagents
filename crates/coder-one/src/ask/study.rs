@@ -371,6 +371,8 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             jev_record: None,
             answer_file: None,
             claims: Vec::new(),
+            proposals: None,
+            record_proposals: false,
         };
         let row = match super::run(options, &progress).await {
             Ok((record, _)) => score(question, &record),

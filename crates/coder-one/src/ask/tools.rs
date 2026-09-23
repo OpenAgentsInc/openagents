@@ -118,9 +118,30 @@ pub fn tools() -> Value {
                             "additionalProperties": false
                         }
                     },
-                    "proposed_change": { "type": "string", "description": "An optional change the findings suggest, for a person to decide on; empty when there is none." }
+                    "proposed_change": { "type": "string", "description": "An optional change the findings suggest, for a person to decide on; empty when there is none." },
+                    "proposals": {
+                        "type": "array",
+                        "description": "Typed changes the findings support, at most 4, for a person to approve; empty when there are none. Code validates each one, and nothing runs until a person approves it.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "kind": { "type": "string", "enum": ["policy", "check", "questions", "minitask", "code"], "description": "policy: a merge patch on a policy manifest. check: a merge patch confined to policy.verify. questions: a change to Jev's question set, drafted as an issue. minitask: a new mini-task that reproduces the failure. code: anything that needs Rust, drafted as an issue." },
+                                "title": { "type": "string", "description": "The change in one line." },
+                                "rationale": { "type": "string", "description": "Why the findings support it, in two or three sentences." },
+                                "source_runs": { "type": "array", "items": { "type": "string" }, "description": "The runs it comes from, as job/trial; each must be a run your claims cite." },
+                                "expected_tasks": { "type": "array", "items": { "type": "string" }, "description": "The tasks it expects to change: the source runs' tasks." },
+                                "base": { "type": "string", "description": "For policy and check: the manifest file's name without .json in crates/coder-one/policies, such as tunable-luna-v2; empty otherwise." },
+                                "patch": { "type": "string", "description": "For policy and check: a JSON merge patch (RFC 7386) as JSON text, such as {\"policy\":{\"verify\":{\"behavior\":true}}}; only fields under policy; empty otherwise." },
+                                "question_set": { "type": "string", "description": "For questions: the set it changes, builtin-v1; empty otherwise." },
+                                "minitask": { "type": "string", "description": "For minitask: JSON text with id, family, instruction, files (path to content), grader (a shell command; exit 0 passes), good and bad (path to content: a passing candidate and one with the failure); empty otherwise." },
+                                "issue": { "type": "string", "description": "For questions and code: what a person would change, as an issue body; optional otherwise." }
+                            },
+                            "required": ["kind", "title", "rationale", "source_runs", "expected_tasks", "base", "patch", "question_set", "minitask", "issue"],
+                            "additionalProperties": false
+                        }
+                    }
                 },
-                "required": ["answer", "claims", "proposed_change"],
+                "required": ["answer", "claims", "proposed_change", "proposals"],
                 "additionalProperties": false
             }
         }

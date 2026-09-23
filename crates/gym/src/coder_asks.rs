@@ -323,6 +323,24 @@ fn one_lines(ask: &Value) -> Vec<String> {
             lines.push(format!("     unverified: {problem}"));
         }
     }
+    let proposals = ask["proposals"].as_array().cloned().unwrap_or_default();
+    if !proposals.is_empty() {
+        lines.push(String::new());
+        lines.push("Proposals (✓ validated, ✗ refused); see gym coder proposals ID:".to_owned());
+        for proposal in &proposals {
+            lines.push(format!(
+                "{} {} [{}] {}",
+                if proposal["valid"] == true {
+                    '✓'
+                } else {
+                    '✗'
+                },
+                proposal["id"].as_str().unwrap_or("?"),
+                proposal["kind"].as_str().unwrap_or("?"),
+                proposal["title"].as_str().unwrap_or("")
+            ));
+        }
+    }
     let citations = &ask["citations"];
     lines.push(String::new());
     lines.push(format!(

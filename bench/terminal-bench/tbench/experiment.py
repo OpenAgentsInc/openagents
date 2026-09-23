@@ -116,6 +116,13 @@ class Spec:
     arm_args: dict[str, list[str]] = field(default_factory=dict)
     # The quota budget isn't pinned: an operator may raise it to finish.
     quota_usd: float | None = None
+    # An arm named apart from the agent profile it runs, such as a
+    # proposal's policy on its base profile: ``{arm: profile}``.
+    arm_profiles: dict[str, str] = field(default_factory=dict)
+
+    def profile_of(self, arm: str) -> str:
+        """The agent profile an arm runs."""
+        return self.arm_profiles.get(arm, arm)
 
     def validate(self) -> None:
         if not self.id or "--" in self.id or "/" in self.id:
@@ -134,9 +141,16 @@ class Spec:
             raise ExperimentError("--attempts must be at least 1")
         if self.quota_usd is not None and self.quota_usd <= 0:
             raise ExperimentError("--quota-usd must be positive")
+        for arm, profile in self.arm_profiles.items():
+            if arm not in self.arms:
+                raise ExperimentError(f"arm {arm!r} runs {profile!r} but isn't an arm")
+            if not arm or "--" in arm or "/" in arm or not profile:
+                raise ExperimentError(
+                    f"arm {arm!r}={profile!r} needs a name without '--' or '/' and a profile"
+                )
 
     def pinned(self) -> dict[str, Any]:
-        return {
+        pinned = {
             "schema": SPEC_SCHEMA,
             "id": self.id,
             "profile": self.profile,
@@ -145,6 +159,10 @@ class Spec:
             "attempts": self.attempts,
             "arm_args": self.arm_args,
         }
+        # Only when used, so experiments pinned before it still match.
+        if self.arm_profiles:
+            pinned["arm_profiles"] = self.arm_profiles
+        return pinned
 
     @classmethod
     def from_pinned(cls, data: dict[str, Any], quota_usd: float | None) -> Spec:
@@ -156,6 +174,7 @@ class Spec:
             attempts=int(data["attempts"]),
             arm_args={k: list(v) for k, v in (data.get("arm_args") or {}).items()},
             quota_usd=quota_usd,
+            arm_profiles=dict(data.get("arm_profiles") or {}),
         )
 
 
