@@ -531,6 +531,11 @@ pub struct VerifyPolicy {
     /// the result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub second: Option<SecondPolicy>,
+    /// `verify.snapshot`: save the workspace and the check's subject right
+    /// after the first executor, so checks, repair briefs, and the
+    /// verifier can be replayed without a model call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<crate::snapshot::SnapshotPolicy>,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -551,6 +556,7 @@ impl VerifyPolicy {
             self_report: false,
             optional_outputs: false,
             second: None,
+            snapshot: None,
         }
     }
 
@@ -1464,6 +1470,33 @@ where
         println!("  usage limit ▸ the first executor's session was throttled; stopping");
     }
 
+    // verify.snapshot: what the first executor left, with the subject the
+    // first check reads, before any check or repair changes it.
+    let snapshot = verify.snapshot.as_ref().map(|policy| {
+        let mut subject = subject.clone();
+        if let Some(live) = &mut subject.live {
+            live.claimed = claimed(setup.recorder);
+            live.report = Some(first_delegation.report.output());
+        }
+        let outside = output_paths(subject.requirements.as_ref(), setup.workdir);
+        let taken = crate::snapshot::take(setup.dir, setup.workdir, &outside, &subject, policy);
+        println!(
+            "  snapshot ▸ {}",
+            if taken["taken"] == true {
+                format!(
+                    "{} files, {} bytes archived",
+                    taken["files"], taken["archive"]["bytes"]
+                )
+            } else {
+                format!(
+                    "subject only: {}",
+                    taken["reason"].as_str().unwrap_or("not archived")
+                )
+            }
+        );
+        taken
+    });
+
     // verify.checks and verify.support on what the first executor left.
     let mut checks_log = Vec::new();
     let check = |file: &'static str, report: Option<String>| {
@@ -1798,6 +1831,7 @@ where
         "final_tier": first,
         "final_checks": checked.as_ref().map(|(_, report)| report.summary()),
         "verify": verify,
+        "snapshot": snapshot,
         "usage_limited": usage_limited,
     });
     Ok(Composed {

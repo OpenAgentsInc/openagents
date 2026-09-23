@@ -49,6 +49,7 @@ pub mod requirements;
 pub mod scripted;
 pub mod session;
 pub mod shell;
+pub mod snapshot;
 pub mod state;
 pub mod stream;
 pub mod study;

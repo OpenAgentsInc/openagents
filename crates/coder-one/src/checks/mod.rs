@@ -791,7 +791,7 @@ pub fn sample_records(dir: &Path) -> Vec<String> {
 
 /// What a workspace check reads besides the workspace's files: the task,
 /// what the task provided, and, for a live check, the executor's commands.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Subject {
     pub label: String,
     pub task: TaskText,

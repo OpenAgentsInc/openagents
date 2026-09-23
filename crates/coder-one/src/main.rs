@@ -67,6 +67,7 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one capabilities [--demonstrate] [--json]  (coder-one capabilities help)
        coder-one prompt list|show|capture           (coder-one prompt help)
        coder-one checks synthetic|run|recover       (coder-one checks help)
+       coder-one snapshot checks|subject            (coder-one snapshot help)
        coder-one study run|list                     (coder-one study help)
        coder-one support evaluate|run|fixtures      (coder-one support help)
        coder-one repair study|brief                 (coder-one repair help)";
@@ -104,6 +105,7 @@ async fn main() -> ExitCode {
             };
         }
         Some("checks") => return checks_command(&args[1..]).await,
+        Some("snapshot") => return snapshot_command(&args[1..]).await,
         Some("handoff") => return handoff_command(&args[1..]).await,
         Some("support") => return support_command(&args[1..]).await,
         Some("repair") => return repair_command(&args[1..]).await,
@@ -171,6 +173,25 @@ async fn component_command(args: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match coder_one::component::cli::command(args).await {
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Err(message) => {
+            eprintln!("coder-one: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `coder-one snapshot …`: checks and repair briefs replayed on a
+/// workspace, with no model call.
+async fn snapshot_command(args: &[String]) -> ExitCode {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h") | None
+    ) {
+        println!("{}", coder_one::snapshot::USAGE);
+        return ExitCode::SUCCESS;
+    }
+    match coder_one::snapshot::command(args).await {
         Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
         Err(message) => {
             eprintln!("coder-one: {message}");
