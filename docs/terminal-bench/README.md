@@ -308,8 +308,100 @@ the catalog, the scheduler, the GPU environment, and the checks below.
 Tracking issues: [#9558](https://github.com/OpenAgentsInc/openagents/issues/9558)
 and [#9559](https://github.com/OpenAgentsInc/openagents/issues/9559).
 
-**Status: not yet run.** No agent arm has run the suite on this host yet.
-Only the harness checks below have run.
+**Status: running, one attempt per task.** Coder One and the Claude Code
+baseline are working through the 57 tasks that need no GPU and at most 4
+CPUs; the 9 large and GPU tasks follow. Screens of later Coder One
+versions (v3: xhigh effort; v4: behavioral checks, family routing, and a
+GPT-6 Astra second executor; v5: persistence rounds) run on the tasks where
+they should matter. The scoreboard below is regenerated with
+`python3 tools/tb4_scoreboard.py` from `bench/terminal-bench`; a cell is
+passes over graded trials and their cost, and `·` is not yet run. Trials
+that never reached the verifier (disk, revoked token, setup) are not
+results and are listed under [Data problems](#data-problems).
+
+### Scoreboard
+
+<details>
+<summary>Every task, our arms beside the leaderboard</summary>
+
+| Task | Best any row | GPT-6 Astra max | Opus 5 max | coder-one-tunable-v5 | coder-one-tunable-v4 | coder-one-tunable-v3 | coder-one-tunable-v2 | claude-code-opus |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `atrx-vep-crispr` | 100% | 0% | 40% | · | · | · | 0/1 · $1.81 | · |
+| `batched-eval-parity` | 100% | 20% | 20% | · | · | · | 1/1 · $1.02 | 1/1 · $2.36 |
+| `biped-contact-dynamics` | 100% | 20% | 20% | · | · | · | · | · |
+| `bun-sourcemap-leak` | never solved | 0% | 0% | · | · | · | 0/1 · $0.29 | 0/1 · $0.60 |
+| `cad-model` | 100% | 100% | 100% | · | · | 1/1 · $1.04 | 0/1 · $0.29 | · |
+| `cargo-flight-dispatch` | never solved | 0% | 0% | · | · | · | 0/1 · $0.35 | 0/1 · $0.71 |
+| `coq-block-bound` | 100% | 100% | 100% | · | · | · | 1/1 · $1.03 | 1/1 · $1.40 |
+| `ctr-optimization` | 80% | 60% | 20% | · | · | · | · | · |
+| `cumulative-layout-shift` | 100% | 100% | 100% | · | · | · | · | · |
+| `data-anonymization` | never solved | 0% | 0% | · | · | · | · | · |
+| `distributed-dedup` | 100% | 60% | 80% | · | · | · | · | · |
+| `embedding-drift-monitor` | 100% | 100% | 100% | · | · | · | 1/1 · $0.47 | 1/1 · $0.90 |
+| `fin-saccr-rwa` | 100% | 100% | 80% | · | · | · | 1/1 · $0.56 | · |
+| `foodstuff-beta-activity` | never solved | 0% | 0% | · | · | · | 0/1 · $0.17 | · |
+| `formal-crypto` | 100% | 100% | 40% | · | · | · | · | · |
+| `fp8-rmsnorm-gemm` | 100% | 100% | 100% | · | · | · | · | · |
+| `freecad-impeller` | 20% | 0% | 0% | · | · | · | · | · |
+| `freecad-platform-drawing` | 100% | 100% | 100% | · | · | · | · | · |
+| `freecad-spring-clip` | 100% | 40% | 100% | · | · | · | · | · |
+| `freight-dispatch-shift` | never solved | 0% | 0% | · | · | · | · | 0/1 · $3.92 |
+| `glycan-ms2-elucidation` | never solved | 0% | 0% | · | · | · | 0/1 · $0.23 | 0/1 · $0.64 |
+| `gsea-proteomics` | 80% | 0% | 80% | · | · | · | · | · |
+| `heat-pump-warranty` | 100% | 100% | 40% | · | · | · | · | 0/1 · $2.97 |
+| `hof-topology-interpenetration` | 100% | 100% | 100% | · | · | · | 1/1 · $1.19 | · |
+| `html-js-filter` | 100% | 40% | 80% | · | · | 0/1 · $1.97 | · | · |
+| `interleaved-vigenere` | 100% | 100% | 100% | · | · | · | · | · |
+| `intrastat-meldung` | 100% | 20% | 20% | · | · | · | · | · |
+| `jax-speedrun-gpu` | 100% | 60% | 20% | · | · | · | · | · |
+| `ks-solver-cpp` | 100% | 80% | 60% | · | · | · | · | · |
+| `kv-live-surgery` | 100% | 100% | 80% | · | · | · | 1/1 · $3.07 | · |
+| `lake-temp-glm` | 80% | 0% | 40% | · | · | · | · | · |
+| `layout-config-recreation` | 60% | 60% | 0% | · | · | · | · | · |
+| `layout-config-recreation2` | 100% | 100% | 100% | · | · | · | · | · |
+| `legacy-utility-triage` | 100% | 100% | 80% | · | · | · | · | · |
+| `live-database-cutover` | 100% | 20% | 40% | · | · | · | · | · |
+| `math-eval-grader` | 100% | 60% | 60% | · | · | · | · | · |
+| `medical-claims-processing` | 20% | 0% | 0% | · | · | · | · | · |
+| `mp-checkpoint-consolidation` | 100% | 100% | 100% | · | · | · | · | · |
+| `music-harmony` | 60% | 0% | 0% | · | · | · | 0/1 · $0.54 | 0/1 · $1.06 |
+| `mvcc-lsm-compaction` | 100% | 80% | 60% | · | · | · | 0/1 · $0.15 | · |
+| `nextjs-performance` | 100% | 100% | 0% | · | · | · | 1/1 · $0.72 | · |
+| `ontology-kg-querying` | never solved | 0% | 0% | · | · | · | 0/1 · $2.21 | · |
+| `payments-pipeline-fix` | 100% | 100% | 100% | · | · | · | 1/1 · $1.76 | · |
+| `photonic-waveguide-routing` | 100% | 100% | 0% | · | · | · | 1/1 · $3.20 | · |
+| `pretrain-shard-corruption` | 100% | 100% | 80% | · | · | · | · | · |
+| `production-planning` | 100% | 0% | 60% | · | · | · | 0/1 · $1.33 | · |
+| `protein-autointerp-disulfide` | 80% | 0% | 0% | · | · | · | · | · |
+| `react-lead-form` | 100% | 0% | 40% | · | · | · | 1/1 · $1.35 | · |
+| `retro-console-soc` | 100% | 80% | 100% | · | · | · | 1/1 · $3.46 | · |
+| `risk-scorer-replay` | 100% | 100% | 100% | · | · | · | 0/1 · $0.00 | · |
+| `roy-polymorph-cn` | 80% | 0% | 20% | · | · | · | 1/1 · $0.27 | · |
+| `rs-archive-clone` | 100% | 100% | 80% | · | · | · | · | · |
+| `satb-audio-transcription` | 100% | 100% | 100% | · | · | · | · | · |
+| `session-window-debug` | 100% | 60% | 0% | · | · | · | 1/1 · $0.34 | · |
+| `sglang-qwen-burst` | 80% | 0% | 0% | · | · | · | · | · |
+| `shadow-relay` | 100% | 100% | 100% | · | · | · | · | · |
+| `sound-change-cascade` | 100% | 100% | 100% | · | · | · | 1/1 · $1.01 | · |
+| `takens-embedding-lean` | 100% | 100% | 0% | · | · | · | · | · |
+| `telecom-entity-resolution` | 100% | 80% | 100% | · | · | · | · | · |
+| `uefi-bootkit` | 100% | 100% | 80% | · | · | · | · | · |
+| `vba-userform-port` | 60% | 20% | 60% | · | · | · | · | · |
+| `vf2-speedup-networkx` | 100% | 80% | 80% | · | · | · | · | · |
+| `vllm-deepseek-streaming` | 60% | 0% | 0% | · | · | · | · | · |
+| `vpp-loss-divergence` | 100% | 100% | 100% | · | · | · | · | · |
+| `wal-recovery-ordering` | 100% | 100% | 0% | · | · | · | 0/1 · $0.38 | · |
+| `wdm-design` | 100% | 100% | 100% | · | · | · | · | · |
+
+</details>
+
+| Arm | Graded trials | Passed | Pass rate | Cost of graded trials |
+| --- | ---: | ---: | ---: | ---: |
+| coder-one-tunable-v5 | 0 | 0 | — | $0.00 |
+| coder-one-tunable-v4 | 0 | 0 | — | $0.00 |
+| coder-one-tunable-v3 | 2 | 1 | 50% | $3.02 |
+| coder-one-tunable-v2 | 26 | 14 | 54% | $27.21 |
+| claude-code-opus | 9 | 3 | 33% | $14.56 |
 
 [TB4 failure analysis, 2026-09-23](2026-09-23-tb4-failure-analysis.md)
 diagnoses the tunable Coder One arm's first graded failures and ranks the
