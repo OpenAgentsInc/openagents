@@ -410,7 +410,7 @@ Measured on this host on 2026-09-23 (issue #9566):
 | Step | Before | After |
 | --- | --- | --- |
 | Environment setup, per trial | median 44 s, 90th percentile 182 s, up to 572 s over 123 retained TB4 trials | 1.2 to 1.4 s from a kept image; 6.9 to 7.4 s for a rebuild with Docker's build cache warm |
-| Setup of a 3-task, 1-attempt try (environment and agent setup) | about 2 to 9 minutes | 16 s (`try--coder-one-tunable-luna-snapshot--20260923T162706Z`) |
+| Setup of a 3-task, 1-attempt try (environment and agent setup) | not run as one job; per trial as above, plus agent setup of median 4.7 s and 90th percentile 207 s | 16 s (`try--coder-one-tunable-luna-snapshot--20260923T162706Z`) |
 | Rerun a changed check on 10 failing trials | a new trial each: a model session of 10 to 60 minutes | 4.7 s with warm images, no model call; 113 s the first time, while images build |
 | Rerun a repair brief | a new trial | 1.2 to 1.4 s per trial |
 | Rerun the verifier | a new trial | 15 to 17 s per trial from a kept verifier image |
