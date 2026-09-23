@@ -13,6 +13,7 @@
 //! coder-one component list|run|suite|extract …
 //! coder-one minitask list|run …
 //! coder-one checks synthetic|run|recover …
+//! coder-one capabilities [--demonstrate] [--json]
 //! ```
 //!
 //! The `episode` commands implement the Terminal-Bench harness's headless
@@ -59,6 +60,7 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
        coder-one component list|run|suite|extract   (coder-one component help)
        coder-one minitask list|run                  (coder-one minitask help)
+       coder-one capabilities [--demonstrate] [--json]  (coder-one capabilities help)
        coder-one prompt list|show|capture           (coder-one prompt help)
        coder-one checks synthetic|run|recover       (coder-one checks help)";
 
@@ -75,6 +77,15 @@ async fn main() -> ExitCode {
         Some("episode") => return episode_command(&args[1..]).await,
         Some("component") => return component_command(&args[1..]).await,
         Some("minitask") => return minitask_command(&args[1..]).await,
+        Some("capabilities") => {
+            return match coder_one::capabilities::command(&args[1..]).await {
+                Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+                Err(message) => {
+                    eprintln!("coder-one: {message}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Some("prompt") => {
             return match coder_one::prompt::command(&args[1..]) {
                 Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
@@ -463,6 +474,10 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             gate: None,
             granted: None,
             runs: 0,
+            control: delegate::Control {
+                recorder: Some(recorder.clone()),
+                ..delegate::Control::default()
+            },
         };
         let instruction = format!("{}\n\n{}", state.issue.title, state.issue.body);
         let plan = Plan {

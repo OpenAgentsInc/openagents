@@ -65,6 +65,21 @@ impl Server {
     ///
     /// Returns a message when the port can't be bound.
     pub fn start() -> Result<Self, String> {
+        Self::listen(false)
+    }
+
+    /// Listens on an ephemeral loopback port and answers each model call
+    /// with a short scripted turn instead of an error, so a real CLI runs
+    /// whole sessions with no inference: see [`answer`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the port can't be bound.
+    pub fn answering() -> Result<Self, String> {
+        Self::listen(true)
+    }
+
+    fn listen(answering: bool) -> Result<Self, String> {
         let listener = TcpListener::bind("127.0.0.1:0")
             .map_err(|error| format!("cannot listen on loopback: {error}"))?;
         listener
@@ -82,8 +97,14 @@ impl Server {
             std::thread::spawn(move || {
                 while !stop.load(Ordering::SeqCst) {
                     match listener.accept() {
+                        Ok((stream, _)) if answering => {
+                            // An answer can be held back on purpose, so
+                            // each connection gets a thread of its own.
+                            let requests = Arc::clone(&requests);
+                            std::thread::spawn(move || serve(stream, &requests, true));
+                        }
                         Ok((stream, _)) => {
-                            serve(stream, &requests);
+                            serve(stream, &requests, false);
                         }
                         Err(_) => std::thread::sleep(Duration::from_millis(20)),
                     }
@@ -126,7 +147,7 @@ impl Drop for Server {
 /// Reads one HTTP/1.1 request, records it, answers it with an error, and
 /// closes. The request is recorded before the answer, so a client that has
 /// its answer can count on the record.
-fn serve(stream: TcpStream, requests: &Mutex<Vec<Captured>>) -> Option<()> {
+fn serve(stream: TcpStream, requests: &Mutex<Vec<Captured>>, answering: bool) -> Option<()> {
     let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let mut reader = BufReader::new(stream.try_clone().ok()?);
@@ -177,10 +198,21 @@ fn serve(stream: TcpStream, requests: &Mutex<Vec<Captured>>) -> Option<()> {
         body = vec![0; length];
         reader.read_exact(&mut body).ok()?;
     }
+    let reply = answering.then(|| answer(&path, &body));
     if let Ok(mut all) = requests.lock() {
         all.push(Captured { method, path, body });
     }
     let mut stream = stream;
+    if let Some((delay, content_type, reply)) = reply {
+        std::thread::sleep(delay);
+        let _ = write!(
+            stream,
+            "HTTP/1.1 200 OK\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
+            reply.len()
+        );
+        let _ = stream.flush();
+        return Some(());
+    }
     let _ = write!(
         stream,
         "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{ERROR_BODY}",
@@ -188,6 +220,116 @@ fn serve(stream: TcpStream, requests: &Mutex<Vec<Captured>>) -> Option<()> {
     );
     let _ = stream.flush();
     Some(())
+}
+
+/// How long an answer to a message containing `hang` is held back: long
+/// enough that a host stops the session first.
+pub const HANG: Duration = Duration::from_secs(20);
+
+/// The word a scripted answer echoes, from the last user message: `steer`,
+/// `resume`, `hang`, or `briefing`.
+#[must_use]
+pub fn heard(body: &Value) -> &'static str {
+    let last = body
+        .get("messages")
+        .or_else(|| body.get("input"))
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items
+                .iter()
+                .rev()
+                .find(|item| item.get("role").and_then(Value::as_str) == Some("user"))
+        })
+        .map(|item| item.to_string().to_lowercase())
+        .unwrap_or_default();
+    // The last user message can carry the host's context too; the
+    // message's own words come last.
+    ["steer", "resume", "hang"]
+        .into_iter()
+        .filter_map(|word| last.rfind(&format!("please {word}")).map(|at| (at, word)))
+        .max()
+        .map_or("briefing", |(_, word)| word)
+}
+
+/// The scripted answer to one call: how long to wait, the content type,
+/// and the body. A Messages call gets an assistant turn that says `heard
+/// <word>`, streamed when asked; a Responses call gets the same as a
+/// Responses stream; `count_tokens` gets a count; anything else gets an
+/// empty object.
+#[must_use]
+pub fn answer(path: &str, body: &[u8]) -> (Duration, &'static str, String) {
+    let request: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
+    let word = heard(&request);
+    let delay = if word == "hang" { HANG } else { Duration::ZERO };
+    let text = format!("heard {word}");
+    if path.contains("count_tokens") {
+        return (
+            delay,
+            "application/json",
+            json!({ "input_tokens": 10 }).to_string(),
+        );
+    }
+    if path.starts_with("/v1/messages") {
+        let usage = json!({ "input_tokens": 10, "output_tokens": 3 });
+        if request.get("stream").and_then(Value::as_bool) != Some(true) {
+            let message = json!({
+                "id": "msg_capture", "type": "message", "role": "assistant", "model": "capture",
+                "content": [{ "type": "text", "text": text }],
+                "stop_reason": "end_turn", "stop_sequence": null, "usage": usage,
+            });
+            return (delay, "application/json", message.to_string());
+        }
+        let events = [
+            (
+                "message_start",
+                json!({"type":"message_start","message":{"id":"msg_capture","type":"message","role":"assistant","model":"capture","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}),
+            ),
+            (
+                "content_block_start",
+                json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+            ),
+            (
+                "content_block_delta",
+                json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":text}}),
+            ),
+            (
+                "content_block_stop",
+                json!({"type":"content_block_stop","index":0}),
+            ),
+            (
+                "message_delta",
+                json!({"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}),
+            ),
+            ("message_stop", json!({"type":"message_stop"})),
+        ];
+        return (delay, "text/event-stream", sse(&events));
+    }
+    if path.ends_with("/responses") || path.contains("/responses?") {
+        let item = json!({"type":"message","role":"assistant","id":"msg_capture","status":"completed","content":[{"type":"output_text","text":text,"annotations":[]}]});
+        let events = [
+            (
+                "response.created",
+                json!({"type":"response.created","response":{"id":"resp_capture"}}),
+            ),
+            (
+                "response.output_item.done",
+                json!({"type":"response.output_item.done","output_index":0,"item":item}),
+            ),
+            (
+                "response.completed",
+                json!({"type":"response.completed","response":{"id":"resp_capture","usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":3,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":13}}}),
+            ),
+        ];
+        return (delay, "text/event-stream", sse(&events));
+    }
+    (delay, "application/json", "{}".to_string())
+}
+
+fn sse(events: &[(&str, Value)]) -> String {
+    events
+        .iter()
+        .map(|(name, data)| format!("event: {name}\ndata: {data}\n\n"))
+        .collect()
 }
 
 /// What one capture runs.
@@ -283,6 +425,7 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
         gate: None,
         granted: None,
         runs: 1,
+        control: Default::default(),
     };
     let briefing = artifacts.join("delegate-1.briefing.md");
     std::fs::write(&briefing, &plan.briefing).map_err(|error| error.to_string())?;
@@ -426,7 +569,7 @@ fn model_path(agent: Agent, path: &str) -> bool {
 
 /// A shell script that runs Codex with the capture provider set, so the
 /// dispatch's own command runs unchanged.
-fn codex_wrapper(
+pub fn codex_wrapper(
     scratch: &Path,
     codex: &Path,
     url: &str,

@@ -19,7 +19,9 @@
 //! the task to Claude Code with a briefing code builds from the evidence.
 
 pub mod action;
+pub mod adapter;
 pub mod agent;
+pub mod capabilities;
 pub mod capture;
 pub mod checks;
 pub mod collect;
@@ -45,6 +47,7 @@ pub mod shell;
 pub mod state;
 pub mod stream;
 pub mod system;
+pub mod tail;
 
 pub use action::Action;
 pub use agent::{Bounds, Ended, Generate, Judge, Judgments, Shell, run};

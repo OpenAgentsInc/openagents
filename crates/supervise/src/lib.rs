@@ -53,6 +53,12 @@
 //! was cut, and — this matters for a job that failed — what it managed to
 //! print before it did.
 //!
+//! # Watching a job while it runs
+//!
+//! [`Job::start`] is the same contract for a caller that reads standard
+//! output as it arrives, writes to standard input, and stops the job
+//! itself: see [`live`]. An executor session's host is that caller.
+//!
 //! # Features
 //!
 //! The default `job` feature provides asynchronous `Job` execution and
@@ -78,11 +84,16 @@ mod group;
 #[cfg(feature = "job")]
 mod job;
 
+#[cfg(feature = "job")]
+pub mod live;
+
 pub mod blocking;
 
 pub use group::{process_running, running};
 #[cfg(feature = "job")]
 pub use job::Job;
+#[cfg(feature = "job")]
+pub use live::{Delivery, Gap, Input, Live, Stopped};
 
 /// How long a terminated job has to exit on `SIGTERM` before the group is
 /// killed, and how long a drain has to reach the end of a pipe afterwards.

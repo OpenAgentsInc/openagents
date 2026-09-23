@@ -73,6 +73,7 @@ terminate the job.
 | Shell command, per stream | 16 KiB (`shell::OUTPUT_MAX`) |
 | Delegation, per stream | 64 KiB (`delegate::OUTPUT_MAX`) |
 | Capability probe, per stream | 64 KiB (`capability::bounded::OUTPUT_MAX`) |
+| Watched executor session, standard output not yet taken | 8 MiB (`adapter::STREAM_KEEP`); past it, arriving bytes are dropped and reported as a gap |
 
 Each captured stream reports three things: the text that was kept, how many
 bytes there were in all, and whether the cap cut it. A cut stream carries a

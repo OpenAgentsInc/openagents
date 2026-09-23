@@ -32,5 +32,9 @@ required-features = ["job"]
 name = "tree"
 required-features = ["job"]
 
+[[test]]
+name = "live"
+required-features = ["job"]
+
 [lints]
 workspace = true

@@ -644,7 +644,7 @@ impl Session for Scripted {
         })
     }
 
-    fn resume(&mut self, now_ms: u64, _message: &str) -> Result<(), String> {
+    async fn resume(&mut self, now_ms: u64, _message: &str) -> Result<(), String> {
         if matches!(self.state, State::Running | State::Idle) {
             return Err("only a stopped or ended session resumes".to_string());
         }
@@ -662,7 +662,7 @@ impl Session for Scripted {
         Ok(())
     }
 
-    fn steer(&mut self, now_ms: u64, _message: &str) -> Result<(), String> {
+    async fn steer(&mut self, now_ms: u64, _message: &str) -> Result<(), String> {
         if self.state != State::Running {
             return Err("no session is running".to_string());
         }

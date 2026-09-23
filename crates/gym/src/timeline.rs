@@ -14,6 +14,12 @@
 //!
 //! A log without an end record, or an invocation without an end event, is
 //! incomplete, and the timeline says which invocations never ended.
+//!
+//! An executor session's normalized events (`executor_event` steps:
+//! command started and completed, artifact changed, assistant claim, usage
+//! update, session started and ended) appear inline among the
+//! invocations, each with its session, process generation, sequence
+//! number, workspace revision, and native stream line.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -87,12 +93,146 @@ pub struct Entry {
     pub started_at: Option<u64>,
 }
 
+/// One normalized executor event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExecutorEvent {
+    /// Milliseconds since the timeline's first event.
+    pub offset_ms: u64,
+    /// When it was recorded, in milliseconds since the epoch.
+    pub at: u64,
+    pub adapter: Option<String>,
+    pub session_id: Option<String>,
+    pub generation: Option<u64>,
+    /// The controller's sequence number.
+    pub seq: Option<u64>,
+    /// The workspace revision the event was observed at.
+    pub revision: Option<u64>,
+    /// `command_started`, `assistant_claim`, and so on.
+    pub kind: String,
+    /// A short description, such as the command or the claim.
+    pub summary: String,
+    /// The native stream line it came from.
+    pub line: Option<u64>,
+    /// The event as recorded.
+    pub record: Value,
+}
+
+impl ExecutorEvent {
+    /// Reads one `executor_event` extension recorded at `at`.
+    #[must_use]
+    pub fn read(record: &Value, at: u64) -> Option<Self> {
+        let event = record.get("event")?;
+        let kind = event.get("kind").and_then(Value::as_str)?.to_owned();
+        let text = |key: &str| event.get(key).and_then(Value::as_str).unwrap_or_default();
+        let summary = match kind.as_str() {
+            "session_started" => format!("session {}", text("session_id")),
+            "command_started" => text("command").to_owned(),
+            "command_completed" => format!(
+                "exit {} · {}",
+                event
+                    .get("exit_code")
+                    .and_then(Value::as_i64)
+                    .map_or("?".to_owned(), |code| code.to_string()),
+                text("command")
+            ),
+            "artifact_changed" => format!("{} {}", text("change"), text("path")),
+            "assistant_claim" => text("text").to_owned(),
+            "usage_update" => {
+                let usage = &event["usage"];
+                let get = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+                format!(
+                    "in {} · cached {} · out {}",
+                    get("input_tokens"),
+                    get("cache_read_input_tokens") + get("cached_input_tokens"),
+                    get("output_tokens")
+                )
+            }
+            "session_ended" => format!(
+                "{}{}",
+                if event.get("error").and_then(Value::as_bool) == Some(true) {
+                    "error · "
+                } else {
+                    ""
+                },
+                text("result")
+            ),
+            _ => String::new(),
+        };
+        let summary: String = summary
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(120)
+            .collect();
+        let number = |key: &str| record.get(key).and_then(Value::as_u64);
+        Some(ExecutorEvent {
+            offset_ms: 0,
+            at,
+            adapter: record
+                .get("adapter")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            session_id: record
+                .get("session_id")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            generation: number("generation"),
+            seq: number("seq").or_else(|| event.get("seq").and_then(Value::as_u64)),
+            revision: number("revision"),
+            kind,
+            summary,
+            line: event.get("line").and_then(Value::as_u64),
+            record: record.clone(),
+        })
+    }
+
+    /// The event as one text row.
+    #[must_use]
+    pub fn row(&self) -> String {
+        format!(
+            "  {:>7}  {:>7}  ▸ {:<18} {}{}",
+            seconds(Some(self.offset_ms)),
+            self.generation
+                .map_or(String::new(), |generation| format!("g{generation}")),
+            self.kind,
+            self.summary,
+            match (self.seq, self.revision, self.line) {
+                (Some(seq), Some(revision), Some(line)) => {
+                    format!("  [#{seq} rev {revision} line {line}]")
+                }
+                (Some(seq), _, Some(line)) => format!("  [#{seq} line {line}]"),
+                _ => String::new(),
+            }
+        )
+    }
+
+    /// The event as versioned JSON.
+    #[must_use]
+    pub fn to_json(&self) -> Value {
+        json!({
+            "offset_ms": self.offset_ms,
+            "at": self.at,
+            "adapter": self.adapter,
+            "session_id": self.session_id,
+            "generation": self.generation,
+            "seq": self.seq,
+            "revision": self.revision,
+            "kind": self.kind,
+            "summary": self.summary,
+            "line": self.line,
+        })
+    }
+}
+
 /// An episode's timeline.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Timeline {
     pub source: Source,
     pub path: PathBuf,
     pub entries: Vec<Entry>,
+    /// The executor's normalized events, in the order they arrived.
+    pub events: Vec<ExecutorEvent>,
     /// Whether the log ended and every invocation ended.
     pub complete: bool,
     /// Readable-prefix faults in the log, such as a torn last line.
@@ -119,6 +259,7 @@ impl Timeline {
             "faults": self.faults,
             "total_usd": self.total_usd(),
             "notes": self.notes,
+            "executor_events": self.events.iter().map(ExecutorEvent::to_json).collect::<Vec<_>>(),
             "invocations": self.entries.iter().map(|entry| json!({
                 "id": entry.id,
                 "parent": entry.parent,
@@ -153,11 +294,21 @@ impl Timeline {
             money(self.total_usd()),
         )];
         lines.extend(self.notes.iter().map(|note| format!("  {note}")));
+        if !self.events.is_empty() {
+            lines.push(format!(
+                "  {} executor events inline, marked ▸: generation, kind, what, and [#sequence, workspace revision, native line]",
+                self.events.len()
+            ));
+        }
         lines.push(
             "  start     took     component / name                                   outcome     cost        spend      parent"
                 .to_owned(),
         );
+        let mut events = self.events.iter().peekable();
         for entry in &self.entries {
+            while let Some(event) = events.next_if(|event| event.offset_ms < entry.offset_ms) {
+                lines.push(event.row());
+            }
             let label = format!(
                 "{}{}{}{}",
                 "  ".repeat(entry.depth),
@@ -186,6 +337,7 @@ impl Timeline {
                 entry.parent.as_deref().unwrap_or("—"),
             ));
         }
+        lines.extend(events.map(ExecutorEvent::row));
         lines
     }
 }
@@ -230,6 +382,12 @@ pub fn read_log(path: &Path) -> Result<Timeline, String> {
         })
         .collect();
     let mut timeline = build(Source::Log, path, &events);
+    let executor: Vec<ExecutorEvent> = recording
+        .steps
+        .iter()
+        .filter_map(|step| ExecutorEvent::read(step.extensions.get(EXECUTOR_EVENT_KEY)?, step.at))
+        .collect();
+    attach(&mut timeline, executor);
     timeline.faults = recording.faults.len();
     if !recording.ended() {
         timeline.complete = false;
@@ -275,10 +433,41 @@ pub fn read_trajectory(path: &Path) -> Result<Timeline, String> {
             })
         })
         .collect();
-    if events.is_empty() {
-        return Ok(derive(path, steps));
+    let executor: Vec<ExecutorEvent> = steps
+        .iter()
+        .filter_map(|step| {
+            ExecutorEvent::read(
+                step.get("extra")?.get(EXECUTOR_EVENT_KEY)?,
+                step_ms(step).unwrap_or_default(),
+            )
+        })
+        .collect();
+    let mut timeline = if events.is_empty() {
+        derive(path, steps)
+    } else {
+        build(Source::Trajectory, path, &events)
+    };
+    attach(&mut timeline, executor);
+    Ok(timeline)
+}
+
+/// The step extension that holds one normalized executor event.
+pub const EXECUTOR_EVENT_KEY: &str = "executor_event";
+
+/// Places executor events on the timeline's clock, in arrival order.
+fn attach(timeline: &mut Timeline, mut executor: Vec<ExecutorEvent>) {
+    // The timeline's origin is where its entries' offsets count from.
+    let first = timeline
+        .entries
+        .iter()
+        .find_map(|entry| Some(entry.started_at?.saturating_sub(entry.offset_ms)))
+        .or_else(|| executor.iter().map(|event| event.at).min())
+        .unwrap_or(0);
+    for event in &mut executor {
+        event.offset_ms = event.at.saturating_sub(first);
     }
-    Ok(build(Source::Trajectory, path, &events))
+    executor.sort_by_key(|event| (event.at, event.seq));
+    timeline.events = executor;
 }
 
 fn step_ms(step: &Value) -> Option<u64> {
@@ -420,6 +609,7 @@ fn finish(source: Source, path: &Path, mut entries: Vec<Entry>) -> Timeline {
         path: path.to_path_buf(),
         complete: unfinished.is_empty(),
         entries,
+        events: Vec::new(),
         faults: 0,
         notes,
     }
@@ -637,6 +827,87 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join(
             "../../bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW.json",
         )
+    }
+
+    #[test]
+    fn executor_events_appear_inline_between_invocations() {
+        let dir = std::env::temp_dir().join(format!("gym-timeline-events-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("episode.atif.jsonl");
+        let session = atif::Session::opening("e", "none", "mini-task", "/w", "v");
+        let mut log = atif::Log::create_at(&path, &session).unwrap();
+        let step = |at: u64, extensions: Value| -> atif::document::Step {
+            serde_json::from_value(json!({
+                "at": at, "source": "System", "message": "", "extensions": extensions
+            }))
+            .unwrap()
+        };
+        let invocation = |event: &str, id: &str, component: &str, at: u64| {
+            json!({ "invocation": {
+                "schema": INVOCATION_SCHEMA, "event": event, "id": id, "component": component,
+                "at": at, "outcome": "completed", "milliseconds": 100,
+            }})
+        };
+        let executor = |seq: u64, revision: u64, event: Value| {
+            json!({ "executor_event": {
+                "schema": "openagents.coder-one.executor-event.v1", "adapter": "codex",
+                "session_id": "s-1", "generation": 1, "seq": seq, "revision": revision,
+                "at_ms": seq * 10, "event": event,
+            }})
+        };
+        log.append(&step(1_000, invocation("start", "inv-1", "episode", 1_000)))
+            .unwrap();
+        log.append(&step(
+            1_010,
+            invocation("start", "inv-2", "exec.session", 1_010),
+        ))
+        .unwrap();
+        log.append(&step(
+            1_020,
+            executor(
+                1,
+                0,
+                json!({"seq": 1, "line": 3, "kind": "command_started", "command": "pytest -q"}),
+            ),
+        ))
+        .unwrap();
+        log.append(&step(
+            1_030,
+            executor(2, 1, json!({"seq": 2, "line": 5, "kind": "artifact_changed", "path": "run.py", "change": "write"})),
+        ))
+        .unwrap();
+        log.append(&step(
+            1_050,
+            invocation("start", "inv-3", "verify.close", 1_050),
+        ))
+        .unwrap();
+        log.append(&step(
+            1_060,
+            invocation("end", "inv-3", "verify.close", 1_060),
+        ))
+        .unwrap();
+        log.append(&step(
+            1_070,
+            invocation("end", "inv-2", "exec.session", 1_070),
+        ))
+        .unwrap();
+        log.append(&step(1_080, invocation("end", "inv-1", "episode", 1_080)))
+            .unwrap();
+        log.finish(atif::log::ENDED).unwrap();
+        let timeline = read_log(&path).unwrap();
+        assert_eq!(timeline.events.len(), 2);
+        assert_eq!(timeline.events[0].offset_ms, 20);
+        assert_eq!(timeline.events[1].revision, Some(1));
+        let lines = timeline.lines();
+        let at = |needle: &str| lines.iter().position(|line| line.contains(needle)).unwrap();
+        assert!(at("exec.session") < at("▸ command_started"));
+        assert!(at("▸ artifact_changed") < at("verify.close"));
+        assert!(lines[at("▸ command_started")].contains("pytest -q"));
+        assert!(lines[at("▸ artifact_changed")].contains("[#2 rev 1 line 5]"));
+        let value = timeline.to_json();
+        assert_eq!(value["executor_events"][0]["kind"], "command_started");
+        assert_eq!(value["executor_events"][1]["session_id"], "s-1");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

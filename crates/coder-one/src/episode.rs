@@ -486,6 +486,9 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             env: vec![("IS_SANDBOX".to_string(), "1".to_string())],
         });
         executor.episode = deadline.clone();
+        // Each normalized executor event lands in the durable log as it
+        // arrives, which is what a live reader follows.
+        executor.control.recorder = Some(recorder.clone());
         if let Some(soft) = policy.protected.ceilings.spend_soft_usd {
             // The soft bound is checked before a dispatch starts. A running
             // dispatch can pass it: no adapter reserves a known maximum.
@@ -2021,6 +2024,7 @@ mod accounting_tests {
             gate: None,
             granted: None,
             runs: 0,
+            control: Default::default(),
         }
     }
 

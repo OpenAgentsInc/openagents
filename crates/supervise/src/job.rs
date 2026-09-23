@@ -37,8 +37,8 @@ const CHUNK: usize = 8 * 1024;
 /// ```
 #[derive(Debug)]
 pub struct Job {
-    command: std::process::Command,
-    limits: Limits,
+    pub(crate) command: std::process::Command,
+    pub(crate) limits: Limits,
 }
 
 impl Job {

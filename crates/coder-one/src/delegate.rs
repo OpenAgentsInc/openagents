@@ -81,7 +81,7 @@ impl Agent {
     }
 
     /// The binary's name on `PATH`.
-    fn program(self) -> &'static str {
+    pub fn program(self) -> &'static str {
         match self {
             Agent::ClaudeCode => "claude",
             Agent::Codex => "codex",
@@ -131,10 +131,6 @@ pub const CALL_SCHEMA: &str = "openagents.delegate-call.v1";
 /// The longest briefing sent, in characters. An unmeasured development
 /// value.
 pub const BRIEFING_CAP: usize = 12_000;
-
-/// The stream-json bytes retained under `artifacts/`. A longer stream
-/// keeps its first and last halves of this, with a marker line between.
-const STREAM_KEEP: usize = 8 * 1024 * 1024;
 
 /// The prompt the explorer runs under in `always` mode.
 pub const EXPLORE_PROMPT: &str = "Investigate this task without editing any file. \
@@ -841,60 +837,11 @@ impl Summary {
     /// Reads a stream-json transcript, one JSON event per line.
     #[must_use]
     pub fn parse(stream: &str) -> Self {
-        let mut summary = Summary::default();
-        let mut calls: BTreeMap<String, u64> = BTreeMap::new();
-        let mut order: Vec<String> = Vec::new();
+        let mut reader = SummaryReader::claude();
         for line in stream.lines() {
-            let Ok(event) = serde_json::from_str::<Value>(line) else {
-                continue;
-            };
-            let text = |key: &str| event.get(key).and_then(Value::as_str).map(str::to_string);
-            match event.get("type").and_then(Value::as_str) {
-                Some("system") if text("subtype").as_deref() == Some("init") => {
-                    summary.model = text("model");
-                    summary.version = text("claude_code_version");
-                    summary.api_key_source = text("apiKeySource");
-                }
-                Some("assistant") => {
-                    let message = &event["message"];
-                    if let Some(id) = message.get("id").and_then(Value::as_str) {
-                        let usage = &message["usage"];
-                        let tokens = [
-                            "input_tokens",
-                            "cache_read_input_tokens",
-                            "cache_creation_input_tokens",
-                        ]
-                        .iter()
-                        .filter_map(|key| usage.get(key).and_then(Value::as_u64))
-                        .sum::<u64>();
-                        if !calls.contains_key(id) {
-                            order.push(id.to_string());
-                        }
-                        let slot = calls.entry(id.to_string()).or_insert(0);
-                        *slot = (*slot).max(tokens);
-                    }
-                }
-                Some("result") => {
-                    summary.has_result = true;
-                    summary.result = text("result");
-                    summary.is_error = event.get("is_error").and_then(Value::as_bool);
-                    summary.subtype = text("subtype");
-                    summary.num_turns = event.get("num_turns").and_then(Value::as_u64);
-                    summary.total_cost_usd = event.get("total_cost_usd").and_then(Value::as_f64);
-                    summary.duration_ms = event.get("duration_ms").and_then(Value::as_u64);
-                    summary.duration_api_ms = event.get("duration_api_ms").and_then(Value::as_u64);
-                    summary.session_id = text("session_id");
-                    summary.usage = event.get("usage").cloned();
-                    summary.model_usage = event.get("modelUsage").cloned();
-                }
-                _ => {}
-            }
+            reader.line(line);
         }
-        if !order.is_empty() {
-            summary.api_calls = Some(order.len() as u64);
-            summary.input_per_call = order.iter().map(|id| calls[id]).collect();
-        }
-        summary
+        reader.finish()
     }
 
     /// One of the result's `usage` counts.
@@ -917,68 +864,198 @@ impl Summary {
     /// unknown.
     #[must_use]
     pub fn parse_codex(stream: &str, model: &str) -> Self {
-        let mut summary = Summary {
-            model: Some(model.to_string()),
-            ..Summary::default()
-        };
-        let mut raw: BTreeMap<String, u64> = BTreeMap::new();
-        let mut turns = 0u64;
-        let mut items = 0u64;
-        let mut failure: Option<String> = None;
-        let mut failed = false;
+        let mut reader = SummaryReader::codex(model);
         for line in stream.lines() {
-            let Ok(event) = serde_json::from_str::<Value>(line) else {
-                continue;
-            };
-            match event.get("type").and_then(Value::as_str) {
-                Some("thread.started") => {
-                    summary.session_id = event
-                        .get("thread_id")
-                        .and_then(Value::as_str)
-                        .map(str::to_string);
-                }
-                Some("turn.completed") => {
-                    turns += 1;
-                    if let Some(usage) = event.get("usage").and_then(Value::as_object) {
-                        for (key, value) in usage {
-                            if let Some(n) = value.as_u64() {
-                                *raw.entry(key.clone()).or_insert(0) += n;
-                            }
-                        }
-                    }
-                }
-                Some("turn.failed") => {
-                    failed = true;
-                    failure = Some(
-                        event
-                            .pointer("/error/message")
-                            .and_then(Value::as_str)
-                            .unwrap_or("the turn failed")
-                            .to_string(),
-                    );
-                }
-                Some("error") => {
-                    if let Some(message) = event.get("message").and_then(Value::as_str) {
-                        failure.get_or_insert_with(|| message.to_string());
-                    }
-                }
-                Some("item.completed") => {
-                    let item = &event["item"];
-                    match item.get("type").and_then(Value::as_str) {
-                        Some("agent_message") => {
-                            items += 1;
-                            summary.result =
-                                item.get("text").and_then(Value::as_str).map(str::to_string);
-                        }
-                        Some(
-                            "command_execution" | "file_change" | "mcp_tool_call" | "web_search",
-                        ) => items += 1,
-                        _ => {}
-                    }
-                }
-                _ => {}
-            }
+            reader.line(line);
         }
+        reader.finish()
+    }
+}
+
+/// Builds a [`Summary`] one line at a time, so a host reading a running
+/// session's stream never holds the whole stream. [`Summary::parse`] and
+/// [`Summary::parse_codex`] are this reader over a whole stream.
+#[derive(Debug, Clone)]
+pub struct SummaryReader {
+    codex: bool,
+    summary: Summary,
+    calls: BTreeMap<String, u64>,
+    order: Vec<String>,
+    raw: BTreeMap<String, u64>,
+    turns: u64,
+    items: u64,
+    failure: Option<String>,
+    failed: bool,
+}
+
+impl SummaryReader {
+    /// A reader for Claude Code's stream-json.
+    #[must_use]
+    pub fn claude() -> Self {
+        SummaryReader {
+            codex: false,
+            summary: Summary::default(),
+            calls: BTreeMap::new(),
+            order: Vec::new(),
+            raw: BTreeMap::new(),
+            turns: 0,
+            items: 0,
+            failure: None,
+            failed: false,
+        }
+    }
+
+    /// A reader for `codex exec --json` on `model`.
+    #[must_use]
+    pub fn codex(model: &str) -> Self {
+        let mut reader = Self::claude();
+        reader.codex = true;
+        reader.summary.model = Some(model.to_string());
+        reader
+    }
+
+    /// A reader for `agent`'s stream.
+    #[must_use]
+    pub fn of(agent: Agent, model: &str) -> Self {
+        match agent {
+            Agent::ClaudeCode => Self::claude(),
+            Agent::Codex => Self::codex(model),
+        }
+    }
+
+    /// Reads one line of the stream.
+    pub fn line(&mut self, line: &str) {
+        let Ok(event) = serde_json::from_str::<Value>(line) else {
+            return;
+        };
+        if self.codex {
+            self.codex_event(&event);
+        } else {
+            self.claude_event(&event);
+        }
+    }
+
+    fn claude_event(&mut self, event: &Value) {
+        let summary = &mut self.summary;
+        let text = |key: &str| event.get(key).and_then(Value::as_str).map(str::to_string);
+        match event.get("type").and_then(Value::as_str) {
+            Some("system") if text("subtype").as_deref() == Some("init") => {
+                summary.model = text("model");
+                summary.version = text("claude_code_version");
+                summary.api_key_source = text("apiKeySource");
+            }
+            Some("assistant") => {
+                let message = &event["message"];
+                if let Some(id) = message.get("id").and_then(Value::as_str) {
+                    let usage = &message["usage"];
+                    let tokens = [
+                        "input_tokens",
+                        "cache_read_input_tokens",
+                        "cache_creation_input_tokens",
+                    ]
+                    .iter()
+                    .filter_map(|key| usage.get(key).and_then(Value::as_u64))
+                    .sum::<u64>();
+                    if !self.calls.contains_key(id) {
+                        self.order.push(id.to_string());
+                    }
+                    let slot = self.calls.entry(id.to_string()).or_insert(0);
+                    *slot = (*slot).max(tokens);
+                }
+            }
+            Some("result") => {
+                summary.has_result = true;
+                summary.result = text("result");
+                summary.is_error = event.get("is_error").and_then(Value::as_bool);
+                summary.subtype = text("subtype");
+                summary.num_turns = event.get("num_turns").and_then(Value::as_u64);
+                summary.total_cost_usd = event.get("total_cost_usd").and_then(Value::as_f64);
+                summary.duration_ms = event.get("duration_ms").and_then(Value::as_u64);
+                summary.duration_api_ms = event.get("duration_api_ms").and_then(Value::as_u64);
+                summary.session_id = text("session_id");
+                summary.usage = event.get("usage").cloned();
+                summary.model_usage = event.get("modelUsage").cloned();
+            }
+            _ => {}
+        }
+    }
+
+    fn codex_event(&mut self, event: &Value) {
+        match event.get("type").and_then(Value::as_str) {
+            Some("thread.started") => {
+                self.summary.session_id = event
+                    .get("thread_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+            }
+            Some("turn.completed") => {
+                self.turns += 1;
+                if let Some(usage) = event.get("usage").and_then(Value::as_object) {
+                    for (key, value) in usage {
+                        if let Some(n) = value.as_u64() {
+                            *self.raw.entry(key.clone()).or_insert(0) += n;
+                        }
+                    }
+                }
+            }
+            Some("turn.failed") => {
+                self.failed = true;
+                self.failure = Some(
+                    event
+                        .pointer("/error/message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("the turn failed")
+                        .to_string(),
+                );
+            }
+            Some("error") => {
+                if let Some(message) = event.get("message").and_then(Value::as_str) {
+                    self.failure.get_or_insert_with(|| message.to_string());
+                }
+            }
+            Some("item.completed") => {
+                let item = &event["item"];
+                match item.get("type").and_then(Value::as_str) {
+                    Some("agent_message") => {
+                        self.items += 1;
+                        self.summary.result =
+                            item.get("text").and_then(Value::as_str).map(str::to_string);
+                    }
+                    Some("command_execution" | "file_change" | "mcp_tool_call" | "web_search") => {
+                        self.items += 1;
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The summary of every line read.
+    #[must_use]
+    pub fn finish(self) -> Summary {
+        if self.codex {
+            return self.finish_codex();
+        }
+        let mut summary = self.summary;
+        if !self.order.is_empty() {
+            summary.api_calls = Some(self.order.len() as u64);
+            summary.input_per_call = self.order.iter().map(|id| self.calls[id]).collect();
+        }
+        summary
+    }
+
+    fn finish_codex(self) -> Summary {
+        let SummaryReader {
+            mut summary,
+            raw,
+            turns,
+            items,
+            failure,
+            failed,
+            ..
+        } = self;
+        let model = summary.model.clone().unwrap_or_default();
         summary.has_result = turns > 0 && !failed;
         summary.is_error = if failed {
             Some(true)
@@ -1019,8 +1096,8 @@ impl Summary {
                 "reasoning_output_tokens": get("reasoning_output_tokens"),
                 "codex_turns": turns,
             }));
-            summary.model_usage = Some(json!({ model: raw }));
-            summary.total_cost_usd = codex_cost(model, uncached + cache_write, cached, output);
+            summary.model_usage = Some(json!({ model.as_str(): raw }));
+            summary.total_cost_usd = codex_cost(&model, uncached + cache_write, cached, output);
             summary.cost_provenance = Some("price_estimate");
             summary.cost_note = Some(CODEX_COST_NOTE);
         }
@@ -1312,6 +1389,22 @@ pub struct Cli {
     pub granted: Option<Duration>,
     /// Delegations run so far.
     pub runs: u32,
+    /// Session control: where executor events are recorded, the policy's
+    /// rules, and the last session's record.
+    pub control: Control,
+}
+
+/// How [`Cli`] runs its session beyond starting it.
+#[derive(Clone, Default)]
+pub struct Control {
+    /// Where each normalized executor event and control action is
+    /// recorded as it happens; nowhere when `None`.
+    pub recorder: Option<Recorder>,
+    /// The policy's steer, stop, and resume rules. The host deadline is
+    /// always the dispatch's granted deadline.
+    pub controls: Option<crate::session::Controls>,
+    /// The last session's host-loop record.
+    pub last: Option<Value>,
 }
 
 impl Cli {
@@ -1407,9 +1500,15 @@ impl Cli {
             .arg(self.tools.as_deref().unwrap_or_default())
             .arg(self.effort.as_deref().unwrap_or_default());
         let (replace, append) = self.system_args();
+        command.arg(replace).arg(append);
+        self.environ(&mut command);
         command
-            .arg(replace)
-            .arg(append)
+    }
+
+    /// Sets the child's working directory and environment from the
+    /// resolved configuration.
+    fn environ(&self, command: &mut std::process::Command) {
+        command
             .current_dir(&self.workdir)
             // A parent Claude Code session's marker makes the CLI refuse to
             // start; the delegate is its own session.
@@ -1432,8 +1531,103 @@ impl Cli {
         for (name, value) in &self.env {
             command.env(name, value);
         }
+    }
+
+    /// The command a watched session runs: `binary` itself, with no shell,
+    /// reading its input from the host and writing its stream to the host.
+    /// [`crate::adapter`] owns both ends.
+    #[must_use]
+    pub fn live_command(&self, binary: &Path, launch: &Launch) -> std::process::Command {
+        let mut command = std::process::Command::new(binary);
+        command.args(self.live_args(launch));
+        self.environ(&mut command);
         command
     }
+
+    /// The arguments of [`Cli::live_command`].
+    #[must_use]
+    pub fn live_args(&self, launch: &Launch) -> Vec<String> {
+        let (replace, append) = self.system_args();
+        let mut args = Vec::new();
+        match self.agent {
+            Agent::ClaudeCode => {
+                args.extend(
+                    ["-p", "--output-format", "stream-json", "--verbose"].map(str::to_string),
+                );
+                if launch.steerable {
+                    args.extend(["--input-format", "stream-json"].map(str::to_string));
+                }
+                match &launch.session {
+                    SessionArg::New(Some(id)) => {
+                        args.extend(["--session-id".to_string(), id.clone()]);
+                    }
+                    SessionArg::New(None) => {}
+                    SessionArg::Resume(id) => args.extend(["--resume".to_string(), id.clone()]),
+                }
+                args.extend([
+                    "--model".to_string(),
+                    self.model.clone(),
+                    "--permission-mode".to_string(),
+                    "bypassPermissions".to_string(),
+                ]);
+                if let Some(tools) = &self.tools {
+                    args.extend(["--tools".to_string(), tools.clone()]);
+                }
+                if let Some(effort) = &self.effort {
+                    args.extend(["--effort".to_string(), effort.clone()]);
+                }
+                if !replace.is_empty() {
+                    args.extend(["--system-prompt-file".to_string(), replace]);
+                }
+                if !append.is_empty() {
+                    args.extend(["--append-system-prompt-file".to_string(), append]);
+                }
+            }
+            Agent::Codex => {
+                args.push("exec".to_string());
+                if let SessionArg::Resume(id) = &launch.session {
+                    args.extend(["resume".to_string(), id.clone()]);
+                }
+                args.extend([
+                    "--json".to_string(),
+                    "--skip-git-repo-check".to_string(),
+                    "-m".to_string(),
+                    self.model.clone(),
+                ]);
+                if let Some(effort) = &self.effort {
+                    args.extend(["-c".to_string(), format!("model_reasoning_effort={effort}")]);
+                }
+                for setting in [replace, append] {
+                    if !setting.is_empty() {
+                        args.extend(["-c".to_string(), setting]);
+                    }
+                }
+                args.extend([
+                    "--dangerously-bypass-approvals-and-sandbox".to_string(),
+                    "-".to_string(),
+                ]);
+            }
+        }
+        args
+    }
+}
+
+/// Which session a watched process belongs to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SessionArg {
+    /// A new session, with the ID the host chose when the CLI takes one.
+    New(Option<String>),
+    /// A resume of the session with this ID.
+    Resume(String),
+}
+
+/// How [`Cli::live_command`] launches a process.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Launch {
+    pub session: SessionArg,
+    /// Whether the process keeps reading messages after the first:
+    /// Claude Code's `--input-format stream-json`.
+    pub steerable: bool,
 }
 
 impl Executor for Cli {
@@ -1487,6 +1681,14 @@ impl Executor for Cli {
                 crate::system::Variant::record,
             ),
         );
+        let (capabilities, note) = crate::adapter::capabilities(self.agent);
+        extra.insert(
+            "capabilities".to_string(),
+            capabilities.record(self.agent.word(), note),
+        );
+        if let Some(last) = &self.control.last {
+            extra.insert("session".to_string(), last.clone());
+        }
         extra.insert(
             "deadline".to_string(),
             json!({
@@ -1547,10 +1749,6 @@ impl Cli {
         if let Err(why) = self.prepare() {
             return harness(why);
         }
-        let command = match wrap(self.command(&binary, &briefing_path, &stream_path)) {
-            Ok(command) => command,
-            Err(why) => return harness(why),
-        };
         println!(
             "  delegate ▸ {} ({}) · deadline {}s · briefing {} characters",
             self.agent(),
@@ -1559,53 +1757,37 @@ impl Cli {
             briefing.chars()
         );
         println!("  delegate ▸ stream → {}", stream_path.display());
-        let ended = supervise::Job::from_command(command)
-            .bounded(supervise::Limits::within(deadline).keeping(64 * 1024))
-            .run()
-            .await;
-        let milliseconds = u64::try_from(ended.elapsed.as_millis()).unwrap_or(u64::MAX);
-        let raw = std::fs::read(&stream_path).unwrap_or_default();
-        let text = String::from_utf8_lossy(&raw);
-        let summary = match self.agent {
-            Agent::ClaudeCode => Summary::parse(&text),
-            Agent::Codex => Summary::parse_codex(&text, &self.model),
+        // The session runs under the host loop, which reads the stream as
+        // it arrives and records each normalized event. The deadline is
+        // the host's stop, acknowledged once the process group is empty.
+        let controls = crate::session::Controls {
+            deadline_ms: u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX),
+            tick_ms: 50,
+            ..self.control.controls.clone().unwrap_or_default()
         };
-        let stream = retain(
-            &stream_path,
-            &format!("{}/{stream_name}", self.artifacts_label),
-            &raw,
-        );
-        let stderr = ended.stderr.marked();
-        let status = classify(&ended.ending, &summary, &stderr);
-        Report {
-            status,
-            summary,
-            milliseconds,
-            stderr: clip_tail(&stderr, 4_000),
-            stream,
-        }
+        let recorder = self.control.recorder.clone().unwrap_or_default();
+        let name = briefing_name.trim_end_matches(".briefing.md").to_string();
+        let (report, record) = {
+            let mut session = crate::adapter::CliSession::new(self, binary, wrap, &name);
+            // The supervisor's wall is a backstop a little past the host's
+            // own deadline, so the host's stop is the one that acts.
+            session.deadline = deadline + Duration::from_secs(5);
+            session.steerable = controls.steer.is_some();
+            let driven = crate::session::drive(
+                &mut session,
+                briefing,
+                &controls,
+                &recorder,
+                &mut crate::session::virtual_time(),
+            )
+            .await;
+            session.shutdown().await;
+            let record = driven.record();
+            (driven.report, record)
+        };
+        self.control.last = Some(record);
+        report
     }
-}
-
-/// Keeps the stream under the artifacts directory, cut to its first and
-/// last halves of [`STREAM_KEEP`] with a marker line when longer, and
-/// returns its record, which names the file as `recorded`.
-fn retain(path: &Path, recorded: &str, raw: &[u8]) -> Option<Value> {
-    if raw.is_empty() && !path.exists() {
-        return None;
-    }
-    let kept = keep_ends(raw, STREAM_KEEP);
-    let truncated = kept.len() != raw.len();
-    if truncated && std::fs::write(path, &kept).is_err() {
-        return None;
-    }
-    Some(json!({
-        "path": recorded,
-        "bytes": raw.len(),
-        "kept_bytes": kept.len(),
-        "truncated": truncated,
-        "sha256": hex(&Sha256::digest(&kept)),
-    }))
 }
 
 /// `raw` when it fits in `keep` bytes; otherwise its first and last

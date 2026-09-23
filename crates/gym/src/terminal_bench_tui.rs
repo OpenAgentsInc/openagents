@@ -909,7 +909,7 @@ impl App {
     }
 
     fn guide(&self) -> Vec<String> {
-        vec![
+        let mut lines = vec![
             "Runbooks and records".to_owned(),
             "  docs/coder/terminal-bench.md                   Harness: doctor, run, resume, inspect, compare".to_owned(),
             "  docs/terminal-bench/runbook.md                 Host, credentials, rate limits, prices, retention".to_owned(),
@@ -928,7 +928,12 @@ impl App {
             "Reading rule: a verifier reward is separate from agent status; unknown is never zero.".to_owned(),
             "A price estimate or subscription list price is not an observed bill.".to_owned(),
             "One development trial is an observation, not a pass-rate or a win.".to_owned(),
-        ]
+        ];
+        lines.push(String::new());
+        lines.extend(crate::coder_capabilities::runbook_lines(
+            crate::coder_capabilities::default_path().as_deref(),
+        ));
+        lines
     }
 }
 

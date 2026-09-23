@@ -113,12 +113,19 @@ pub struct Event {
     pub seq: u64,
     /// The native stream's line it came from, from 1.
     pub line: usize,
+    /// The byte offset of that line in the native stream, when the reader
+    /// knew it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<u64>,
     #[serde(flatten)]
     pub kind: Kind,
 }
 
 /// The most characters of a command's output a normalized event keeps.
 pub const OUTPUT_CHARS: usize = 2_000;
+
+/// The most characters of an assistant claim a normalized event keeps.
+pub const CLAIM_CHARS: usize = 4_000;
 
 fn clip(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
@@ -146,6 +153,7 @@ pub fn normalize_line(format: Format, text: &str, line: usize, seq: &mut u64) ->
             Event {
                 seq: *seq,
                 line,
+                offset: None,
                 kind,
             }
         })
@@ -210,7 +218,7 @@ fn codex(event: &Value) -> Vec<Kind> {
             })
             .collect(),
         (Some("item.completed"), Some("agent_message")) => vec![Kind::AssistantClaim {
-            text: text_of(item, "text").unwrap_or_default(),
+            text: clip(&text_of(item, "text").unwrap_or_default(), CLAIM_CHARS),
         }],
         (Some("turn.completed"), _) => vec![Kind::UsageUpdate {
             usage: event.get("usage").cloned().unwrap_or(Value::Null),
@@ -242,7 +250,7 @@ fn claude(event: &Value) -> Vec<Kind> {
                 .flatten()
                 .filter_map(|block| match block.get("type").and_then(Value::as_str) {
                     Some("text") => Some(Kind::AssistantClaim {
-                        text: text_of(block, "text").unwrap_or_default(),
+                        text: clip(&text_of(block, "text").unwrap_or_default(), CLAIM_CHARS),
                     }),
                     Some("tool_use") => {
                         let input = &block["input"];
@@ -307,7 +315,7 @@ fn claude(event: &Value) -> Vec<Kind> {
             .collect(),
         Some("result") => vec![Kind::SessionEnded {
             error: event.get("is_error").and_then(Value::as_bool) == Some(true),
-            result: text_of(event, "result"),
+            result: text_of(event, "result").map(|text| clip(&text, CLAIM_CHARS)),
         }],
         _ => Vec::new(),
     }

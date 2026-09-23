@@ -111,10 +111,55 @@ steer, stop with its cleanup acknowledgement, and resume, which names the
 session it continues. An action the adapter hasn't demonstrated is recorded
 as refused, not attempted.
 
-Each adapter has a capability matrix. The scripted executor demonstrates
-all five capabilities. The Claude Code and Codex adapters demonstrate start
-only: the host parses their streams after they end, and the supervisor's
-deadline ends them without a cleanup acknowledgement.
+One controller owns the session's state. Each normalized event is stamped
+with a version: the session ID, the process generation (1 for the start,
+one more for each resume), the controller's sequence number, and the
+workspace revision, which counts the artifact changes observed so far. A
+rule that fires submits a proposal carrying the version it saw, and the
+controller refuses a stale one: a steer made from the first process can't
+reach the resumed one, and a check that saw revision 3 can't accept
+revision 4.
+
+### The capability matrix
+
+Each adapter has a capability matrix, and a policy may use only what its
+adapter demonstrated:
+
+| Adapter | Start | Observe | Stop | Resume | Steer |
+| --- | --- | --- | --- | --- | --- |
+| Scripted | Yes | Yes | Yes | Yes | Yes |
+| Claude Code 2.1.280 | `--session-id`, chosen by the host | stream-json, read as it arrives | Process group ended, acknowledged when empty | `--resume <id>` | `--input-format stream-json` |
+| Codex 0.155.1 | `codex exec --json -` | `--json`, read as it arrives | The same | `codex exec resume <id> -` | Refused |
+
+The CLI adapters live in `coder_one::adapter`. They run the CLI under
+`supervise::Live`, which keeps the supervisor's process-group ownership:
+the host's stop sends `SIGTERM` to the group, then `SIGKILL`, and
+acknowledges the stop only once the group is empty. The stream is read as
+it arrives, one bounded record per line (4 MiB at most), and a record past
+the cap or bytes the host fell behind on become explicit gaps. The stream
+file under `artifacts/` grows as the session runs, up to 8 MiB, and keeps
+its first and last halves past that.
+
+A policy manifest asks for session control in `executor.session`, and
+`Manifest::validate` refuses a rule that needs a capability the adapter
+hasn't demonstrated:
+
+```json
+"session": {
+  "steer": { "when": { "on": "command_failed" }, "message": "Read the failing test first." },
+  "stop_when": { "on": "after", "ms": 900000 },
+  "resume": "Finish the task."
+}
+```
+
+`coder-one capabilities` prints the matrix with the tests behind each cell
+and writes it to `~/.openagents/coder-one/capabilities.json`.
+`--demonstrate` also drives the installed Claude Code and Codex through
+each capability against a local model server that answers every call with
+a scripted turn. The CLI runs with a scratch home, a dummy credential, and
+a cleared environment, so no real credential is read and no inference
+runs. The same demonstration runs as a test when you set
+`CODER_ONE_REAL_CLI=1`.
 
 ## Replay a retained stream
 
@@ -150,6 +195,10 @@ coder-one component suite task.mini       # every task, good and bad scripts
 script fails it, and each episode finishes in under 10 seconds.
 
 ## See runs in the Gym
+
+The episode timeline shows the executor's normalized events inline, marked
+`▸`, between the invocations they happened during. The runbooks view and
+`gym coder capabilities` show the capability matrix.
 
 Runs record under `~/.openagents/coder-one/minitasks/`, or `--out DIR`:
 

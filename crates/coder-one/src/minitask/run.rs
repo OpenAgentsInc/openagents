@@ -397,6 +397,11 @@ pub async fn run(options: Options) -> Result<Ran, String> {
                     episode: crate::deadline::Deadline::unbounded(),
                     gate: None,
                     granted: None,
+                    control: delegate::Control {
+                        recorder: Some(recorder.clone()),
+                        controls: Some(options.controls.clone()),
+                        last: None,
+                    },
                 },
                 boundary,
             };
@@ -411,7 +416,8 @@ pub async fn run(options: Options) -> Result<Ran, String> {
                 &mut checkpoint,
             )
             .await;
-            (ended, delegated, Value::Null)
+            let record = executor.cli.control.last.clone().unwrap_or(Value::Null);
+            (ended, delegated, record)
         }
         (ExecutorChoice::Scripted { .. }, None) => unreachable!("a scripted choice has a script"),
     };

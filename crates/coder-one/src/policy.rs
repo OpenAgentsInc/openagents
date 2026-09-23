@@ -284,6 +284,57 @@ pub struct ExecutorPolicy {
     /// was before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system: Option<crate::system::Policy>,
+    /// Session control beyond start, observe, and the deadline stop
+    /// (`exec.session`): a steer rule, an early stop rule, and a resume
+    /// message. Absent, the session runs to its end or its deadline, and
+    /// the manifest's digest is what it was before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<SessionPolicy>,
+}
+
+/// What a policy asks of a running executor session. Each rule needs a
+/// capability its adapter has demonstrated, which [`Manifest::validate`]
+/// checks against [`crate::adapter::capabilities`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionPolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steer: Option<crate::session::Steer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_when: Option<crate::session::Trigger>,
+    /// After a stop, resume the same session with this message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume: Option<String>,
+}
+
+impl SessionPolicy {
+    /// The capabilities the rules use.
+    #[must_use]
+    pub fn uses(&self) -> Vec<crate::session::Capability> {
+        use crate::session::Capability;
+        let mut uses = vec![Capability::Start, Capability::Observe];
+        if self.steer.is_some() {
+            uses.push(Capability::Steer);
+        }
+        if self.stop_when.is_some() || self.resume.is_some() {
+            uses.push(Capability::Stop);
+        }
+        if self.resume.is_some() {
+            uses.push(Capability::Resume);
+        }
+        uses
+    }
+
+    /// The host loop's controls; the deadline is set per dispatch.
+    #[must_use]
+    pub fn controls(&self) -> crate::session::Controls {
+        crate::session::Controls {
+            steer: self.steer.clone(),
+            stop_when: self.stop_when.clone(),
+            resume: self.resume.clone(),
+            ..crate::session::Controls::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -405,6 +456,7 @@ impl Manifest {
                     prompt_cache_ttl: None,
                     deadline_sec: 600,
                     system: None,
+                    session: None,
                 },
             },
             protected: Protected {
@@ -528,6 +580,24 @@ impl Manifest {
         if let Some(system) = &executor.system {
             problems.extend(system.validate(executor.agent.agent()));
         }
+        if let Some(session) = &executor.session {
+            let (demonstrated, _) = crate::adapter::capabilities(executor.agent.agent());
+            for capability in session.uses() {
+                if !demonstrated.has(capability) {
+                    problems.push(format!(
+                        "executor.session uses {}, which the {} adapter has not demonstrated",
+                        capability.word(),
+                        executor.agent.agent().word()
+                    ));
+                }
+            }
+            if session.resume.is_some() && session.stop_when.is_none() {
+                problems.push(
+                    "executor.session.resume needs a stop_when rule: only a stopped session resumes"
+                        .to_string(),
+                );
+            }
+        }
         let protected = &self.protected;
         for (field, value, expected) in [
             ("isolation", &protected.isolation, ISOLATION),
@@ -650,6 +720,10 @@ impl Manifest {
             gate: None,
             granted: None,
             runs: 0,
+            control: crate::delegate::Control {
+                controls: executor.session.as_ref().map(SessionPolicy::controls),
+                ..crate::delegate::Control::default()
+            },
         }
     }
 }
@@ -1157,6 +1231,54 @@ mod tests {
 
     fn opus() -> Manifest {
         reference("jevprobe2-opus-lean-low-5m.json")
+    }
+
+    #[test]
+    fn a_policy_may_use_only_the_session_capabilities_its_adapter_demonstrated() {
+        use crate::session::{Steer, Trigger};
+        let steer = SessionPolicy {
+            steer: Some(Steer {
+                when: Trigger::CommandFailed,
+                message: "Read the failing test first.".to_string(),
+            }),
+            stop_when: None,
+            resume: None,
+        };
+        // Claude Code has demonstrated steering; the manifest is valid and
+        // its controls reach the executor.
+        let mut claude = opus();
+        claude.policy.executor.session = Some(steer.clone());
+        claude.validate().unwrap();
+        let cli = claude.executor(ExecutorHost {
+            binary: None,
+            credential: crate::delegate::Credential::OauthToken,
+            workdir: std::env::temp_dir(),
+            artifacts: std::env::temp_dir(),
+            artifacts_label: "artifacts".to_string(),
+            env: Vec::new(),
+        });
+        assert_eq!(cli.control.controls.unwrap().steer, steer.steer);
+        // Codex has not, so the same session policy is refused.
+        let mut codex = luna();
+        codex.policy.executor.session = Some(steer);
+        let error = codex.validate().unwrap_err();
+        assert!(
+            error.contains(
+                "executor.session uses steer, which the codex adapter has not demonstrated"
+            ),
+            "{error}"
+        );
+        // Stop and resume are demonstrated by both.
+        codex.policy.executor.session = Some(SessionPolicy {
+            steer: None,
+            stop_when: Some(Trigger::After { ms: 600_000 }),
+            resume: Some("Finish the task.".to_string()),
+        });
+        codex.validate().unwrap();
+        // An absent session policy leaves the digest as it was.
+        let mut plain = opus();
+        plain.policy.executor.session = None;
+        assert_eq!(plain.digest(), opus().digest());
     }
 
     fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
