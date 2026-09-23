@@ -326,7 +326,7 @@ results and are listed under [Data problems](#data-problems).
 
 | Task | Best any row | GPT-6 Astra max | Opus 5 max | coder-one-tunable-v5 | coder-one-tunable-v4 | coder-one-tunable-v3 | coder-one-tunable-v2 | claude-code-opus |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `atrx-vep-crispr` | 100% | 0% | 40% | · | · | · | 0/1 · $1.81 | · |
+| `atrx-vep-crispr` | 100% | 0% | 40% | · | 1/1 · $12.08 | · | 0/1 · $1.81 | · |
 | `batched-eval-parity` | 100% | 20% | 20% | · | · | · | 1/1 · $1.02 | 1/1 · $2.36 |
 | `biped-contact-dynamics` | 100% | 20% | 20% | · | · | · | · | · |
 | `bun-sourcemap-leak` | never solved | 0% | 0% | · | · | · | 0/1 · $0.29 | 0/1 · $0.60 |
@@ -351,7 +351,7 @@ results and are listed under [Data problems](#data-problems).
 | `heat-pump-warranty` | 100% | 100% | 40% | · | · | · | · | 0/1 · $2.97 |
 | `hof-topology-interpenetration` | 100% | 100% | 100% | · | · | · | 1/1 · $1.19 | · |
 | `html-js-filter` | 100% | 40% | 80% | · | · | 0/1 · $1.97 | 0/1 · $0.67 | · |
-| `interleaved-vigenere` | 100% | 100% | 100% | · | · | · | · | · |
+| `interleaved-vigenere` | 100% | 100% | 100% | · | · | 1/1 · $3.46 | · | · |
 | `intrastat-meldung` | 100% | 20% | 20% | · | · | · | 1/1 · $1.38 | · |
 | `jax-speedrun-gpu` | 100% | 60% | 20% | · | · | · | · | · |
 | `ks-solver-cpp` | 100% | 80% | 60% | · | · | · | · | · |
@@ -359,23 +359,23 @@ results and are listed under [Data problems](#data-problems).
 | `lake-temp-glm` | 80% | 0% | 40% | · | · | · | · | · |
 | `layout-config-recreation` | 60% | 60% | 0% | · | · | · | · | · |
 | `layout-config-recreation2` | 100% | 100% | 100% | · | · | · | · | · |
-| `legacy-utility-triage` | 100% | 100% | 80% | · | · | · | · | · |
+| `legacy-utility-triage` | 100% | 100% | 80% | · | · | · | 0/1 · $1.43 | · |
 | `live-database-cutover` | 100% | 20% | 40% | · | · | · | · | · |
 | `math-eval-grader` | 100% | 60% | 60% | · | · | · | · | · |
-| `medical-claims-processing` | 20% | 0% | 0% | · | · | · | · | · |
+| `medical-claims-processing` | 20% | 0% | 0% | · | · | · | 0/1 · $1.88 | · |
 | `mp-checkpoint-consolidation` | 100% | 100% | 100% | · | · | · | · | · |
-| `music-harmony` | 60% | 0% | 0% | · | · | · | 0/1 · $0.54 | 0/1 · $1.06 |
+| `music-harmony` | 60% | 0% | 0% | · | 0/1 · $9.53 | · | 0/1 · $0.54 | 0/1 · $1.06 |
 | `mvcc-lsm-compaction` | 100% | 80% | 60% | · | 1/1 · $2.42 | · | 0/1 · $0.15 | 0/1 · $0.29 |
 | `nextjs-performance` | 100% | 100% | 0% | · | · | · | 1/1 · $0.72 | 1/1 · $2.73 |
 | `ontology-kg-querying` | never solved | 0% | 0% | · | · | · | 0/1 · $2.21 | 0/1 · $4.94 |
 | `payments-pipeline-fix` | 100% | 100% | 100% | · | · | · | 1/1 · $1.76 | · |
 | `photonic-waveguide-routing` | 100% | 100% | 0% | · | · | · | 1/1 · $3.20 | · |
 | `pretrain-shard-corruption` | 100% | 100% | 80% | · | · | · | · | · |
-| `production-planning` | 100% | 0% | 60% | · | · | · | 0/1 · $1.33 | · |
+| `production-planning` | 100% | 0% | 60% | · | 0/1 · $5.57 | · | 0/1 · $1.33 | 0/1 · $2.60 |
 | `protein-autointerp-disulfide` | 80% | 0% | 0% | · | · | · | · | · |
 | `react-lead-form` | 100% | 0% | 40% | · | · | · | 1/1 · $1.35 | · |
 | `retro-console-soc` | 100% | 80% | 100% | · | · | · | 1/1 · $3.46 | · |
-| `risk-scorer-replay` | 100% | 100% | 100% | · | · | · | 0/1 · $0.00 | · |
+| `risk-scorer-replay` | 100% | 100% | 100% | · | 0/1 · $0.00 | · | 0/1 · $0.00 | · |
 | `roy-polymorph-cn` | 80% | 0% | 20% | · | · | · | 1/1 · $0.27 | · |
 | `rs-archive-clone` | 100% | 100% | 80% | · | · | · | · | · |
 | `satb-audio-transcription` | 100% | 100% | 100% | · | · | · | · | · |
@@ -384,10 +384,10 @@ results and are listed under [Data problems](#data-problems).
 | `shadow-relay` | 100% | 100% | 100% | · | · | · | · | · |
 | `sound-change-cascade` | 100% | 100% | 100% | · | · | · | 1/1 · $1.01 | · |
 | `takens-embedding-lean` | 100% | 100% | 0% | · | · | · | · | · |
-| `telecom-entity-resolution` | 100% | 80% | 100% | · | · | · | · | · |
+| `telecom-entity-resolution` | 100% | 80% | 100% | · | · | · | 1/1 · $7.36 | · |
 | `uefi-bootkit` | 100% | 100% | 80% | · | · | · | · | · |
-| `vba-userform-port` | 60% | 20% | 60% | · | · | 1/1 · $8.16 | · | · |
-| `vf2-speedup-networkx` | 100% | 80% | 80% | · | · | · | · | · |
+| `vba-userform-port` | 60% | 20% | 60% | · | · | 1/1 · $8.16 | 0/1 · $2.53 | · |
+| `vf2-speedup-networkx` | 100% | 80% | 80% | · | · | · | 0/1 · $3.47 | · |
 | `vllm-deepseek-streaming` | 60% | 0% | 0% | · | · | · | 0/1 · $3.93 | · |
 | `vpp-loss-divergence` | 100% | 100% | 100% | · | · | · | · | · |
 | `wal-recovery-ordering` | 100% | 100% | 0% | · | · | · | 0/1 · $0.38 | · |
@@ -398,10 +398,29 @@ results and are listed under [Data problems](#data-problems).
 | Arm | Graded trials | Passed | Pass rate | Cost of graded trials |
 | --- | ---: | ---: | ---: | ---: |
 | coder-one-tunable-v5 | 0 | 0 | — | $0.00 |
-| coder-one-tunable-v4 | 1 | 1 | 100% | $2.42 |
-| coder-one-tunable-v3 | 4 | 3 | 75% | $12.09 |
-| coder-one-tunable-v2 | 31 | 15 | 48% | $36.22 |
-| claude-code-opus | 12 | 4 | 33% | $22
+| coder-one-tunable-v4 | 5 | 2 | 40% | $29.60 |
+| coder-one-tunable-v3 | 5 | 4 | 80% | $15.55 |
+| coder-one-tunable-v2 | 36 | 16 | 44% | $52.90 |
+| claude-code-opus | 13 | 4 | 31% | $25.12 |
+
+**Against the leaderboard on the same tasks, so far.** Each comparison
+uses the leaderboard row's per-task pass rate on exactly the tasks our arm
+has graded, so the task mix is the same. Leaderboard costs are the Hub's
+reported totals per trial; ours are list prices on this host.
+
+| Arm | Passed | Expected passes, GPT-6 Astra max | Expected passes, Fable 5.1 max | Mean cost per trial |
+| --- | ---: | ---: | ---: | ---: |
+| Coder One v2, 36 tasks | 16 | 17.8 | 18.2 | $1.47 |
+| Leaderboard GPT-6 Astra max | — | — | — | $9.90 |
+| Leaderboard Fable 5.1 max | — | — | — | $18.92 |
+| Claude Code on Opus 5.5 (this host), 13 tasks | 4 | 5.0 | 6.2 | $1.93 |
+
+Coder One v2 reaches about 90% of the top two rows' accuracy on the same
+tasks at one-seventh to one-thirteenth of their cost per trial. Counting
+the best Coder One version per task (v2 to v4), Coder One has solved 22 of
+the 38 tasks it has tried, against 18.8 and 19.6 expected for the top two
+rows on those tasks; that count favors us, because it takes the best of
+several attempts.
 
 **Where Coder One already beats the top row, per task.** Coder One v2
 passed `batched-eval-parity`, `intrastat-meldung`, `react-lead-form`, and
