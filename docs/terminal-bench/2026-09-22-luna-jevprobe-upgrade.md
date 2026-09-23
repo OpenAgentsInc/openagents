@@ -270,26 +270,66 @@ verifier diagnostics, with digests and explicit missing-file status. Reuse
 Gym's evidence-health reporting. Do not silently present copied manifests
 as proof that all referenced files were retained.
 
-## Proposed v4 behavior
+## Current system: Jev-probe v3 with Luna
 
-The new control path is deliberately small:
+This is the measured `coder-one-jevprobe3-luna` path. Other Coder One
+configurations can explore before delegation or use another delegate; this
+path goes directly from Jev-guided preparation to one Luna delegation.
 
 ```mermaid
-flowchart TD
-    T[Original task and source spans] --> R[Requirement map]
-    R --> P[Bounded probes and representative content]
-    P --> J[Jev judges relevance, coverage, and ambiguity]
-    J --> B[Host packs a bounded evidence briefing]
-    B --> L[Luna implements and supplies local check evidence]
-    L --> H[Host inspects artifacts and runs admitted checks]
-    H --> Q{Requirements resolved?}
-    Q -->|Yes| E[Retain local outcome for protected Harbor grading]
-    Q -->|Concrete gap, repair budget remains| D[Delta brief with failed evidence]
-    D --> L2[One bounded Luna repair]
-    L2 --> H2[Recheck affected artifacts and requirements]
-    H2 --> E
-    Q -->|Unresolved or exhausted| U[Retain unresolved outcome]
+flowchart TB
+    C0["Harbor starts a fresh task environment<br/>Installs pinned agents and Coder One"]
+    C1["Coder One reads the task<br/>Extracts checkbox criteria only"]
+    C2["Jev-guided setup and bounded probes<br/>Then file relevance and edit judgments"]
+    C3["Host packs a 12,000-character briefing<br/>Probe output comes before file content"]
+    C4["One Codex CLI delegation to GPT-6 Luna<br/>Luna edits, runs checks, and reports"]
+    C5["Host gathers Git status and a bounded diff"]
+    C6["Jev judges completion from report and changes<br/>Judgment is recorded; no repair follows"]
+    C7["Coder One retains episode, ATIF, and usage<br/>Delegate status determines episode ending"]
+    C8["Harbor runs the protected verifier<br/>Grades the resulting task state"]
+    C9["Retained results feed comparison reports<br/>Reward, cost, time, steps, and traces"]
+    C0 --> C1 --> C2 --> C3 --> C4 --> C5 --> C6 --> C7 --> C8 --> C9
 ```
+
+All 24 retained v3 Luna trials had empty checkbox criteria. The completion
+judgment does not trigger independent artifact checks or another Luna turn.
+The diagram distinguishes the episode ending from Harbor's task grade:
+neither a successful delegate exit nor Jev's confidence establishes a pass.
+The retained results also have the evidence gaps described above, including
+native streams referenced locally but absent from the committed bundle.
+
+## Proposed v4 behavior
+
+Keep the same Harbor and Codex/Luna integration. Add requirements tied to
+the original task, evidence selected for those requirements, and host checks
+that can justify one bounded repair:
+
+```mermaid
+flowchart TB
+    U0["Harbor starts a fresh task environment<br/>Reuse pinned installation layers where supported"]
+    U1["Host preserves task text and source spans<br/>Jev helps identify binding requirements"]
+    U2["Bounded setup, probes, and representative content<br/>Capture identity, freshness, and omissions"]
+    U3["Jev judges relevance, coverage, and ambiguity<br/>Host packs evidence against requirements"]
+    U4["Codex CLI runs GPT-6 Luna<br/>Implement and report artifacts and local checks"]
+    U5["Host inspects artifacts and runs admitted checks<br/>Jev judges remaining semantic uncertainty"]
+    U6{"Concrete gap and<br/>repair budget remains?"}
+    U7["Host builds a delta brief from failed evidence<br/>Luna gets at most one bounded repair"]
+    U8["Host rechecks affected artifacts and requirements<br/>Invalidate checks of changed artifacts"]
+    U9["Retain supported or unresolved local outcome<br/>Include evidence, traces, and usage for all calls"]
+    U10["Harbor runs the protected verifier<br/>Grade stays outside the agent's feedback loop"]
+    U11["Compare quality, total cost, time, and steps<br/>Report setup overhead and evidence completeness"]
+    U0 --> U1 --> U2 --> U3 --> U4 --> U5 --> U6
+    U6 -->|Yes| U7 --> U8 --> U9
+    U6 -->|No| U9
+    U9 --> U10 --> U11
+```
+
+Both paths reach protected grading, including an unresolved local outcome.
+Local checks guide the repair; hidden verifier results never enter its
+briefing. The repair has no loop back to another repair and remains within
+the episode's remaining budget. The proposed evidence retention includes
+the sanitized native events and artifact references needed to inspect what
+actually happened.
 
 An optional, separately measured configuration may escalate unresolved work
 to lean Opus v2 with the five-minute cache. The first v4 comparison should
