@@ -25,9 +25,14 @@ use serde_json::json;
 use atif::document::{Decision, Step};
 
 use crate::agent::{Judge, Judgments};
+use crate::component::{
+    self,
+    evidence::{self, Probe, SURVEY_BATCH, YES, issue_state},
+    jev::{Ask, Asked, JevMode},
+};
 use crate::credentials::{JEV_BASE_URL, JEV_MODEL};
 use crate::delegate::{Evidence, Span};
-use crate::record::Recorder;
+use crate::record::{Cost, Finish, Outcome, Recorder, Start};
 use crate::state::{Issue, State, Surveyed, Turn};
 
 /// The most candidate files one request judges.
@@ -37,9 +42,6 @@ const CHUNK_OVER: usize = 4_000;
 const CHUNK_LINES: usize = 40;
 const MAX_CHUNKS: usize = 12;
 const MAX_CHUNK_CHARS: usize = 1_500;
-/// A Noul at or above this reads as yes. An unmeasured development value.
-const YES: f64 = 0.5;
-
 /// A file code found that might matter to the issue.
 #[derive(Debug, Clone)]
 pub(crate) struct Candidate {
@@ -79,11 +81,8 @@ pub struct JevJudge {
     survey_files: usize,
 }
 
-/// The most characters of one probe's output Jev reads and a briefing keeps.
+/// The most characters of one probe's output a briefing keeps.
 const PROBE_OUTPUT_CHARS: usize = 6_000;
-/// The most probe outputs, and characters, a briefing carries.
-const PROBE_KEEP: usize = 6;
-const PROBE_TOTAL_CHARS: usize = 14_000;
 
 /// The most files the survey judges, in batches of [`SURVEY_BATCH`].
 pub(crate) const SURVEY_FILES: usize = 100;
@@ -91,9 +90,8 @@ pub(crate) const SURVEY_FILES: usize = 100;
 pub(crate) const SURVEY_FILES_V2: usize = 40;
 /// The most characters of one likely edit target probe v2 hands on.
 const EDIT_TARGET_CHARS: usize = 16_000;
-const SURVEY_BATCH: usize = 20;
-/// The most files, and characters, the survey puts in the prompt.
-const SURVEY_KEEP: usize = 6;
+/// The most characters of one file, and of all files, the survey puts in
+/// the prompt.
 const SURVEY_FILE_CHARS: usize = 8_000;
 const SURVEY_TOTAL_CHARS: usize = 24_000;
 /// Files the survey always offers when present: where a repository says
@@ -181,28 +179,34 @@ impl JevJudge {
         if commands.is_empty() {
             return;
         }
-        let mut questions = Questions::new();
-        for i in 0..commands.len() {
-            questions = questions.with(
-                format!("setup_{i}"),
-                Noul::new(format!(
-                    "Does the task in `issue` require running the command `setup[{i}]` as written before the rest of the work can start?"
-                )),
+        let issue = issue_state(&state.issue.title, &state.issue.body);
+        let (jev_state, questions) = evidence::setup_request(&issue, &commands);
+        let invocation = self.recorder.enter(
+            Start::new("evidence.setup", evidence::setup_implementation())
+                .named("setup gate")
+                .reading(&jev_state)
+                .with_effects(),
+        );
+        let asked = self
+            .ask_jev(client, "evidence.setup", "jev_setup", jev_state, questions)
+            .await;
+        if !asked.answered() {
+            println!(
+                "  jev_setup ▸ Jev unavailable: {}",
+                asked.error.as_deref().unwrap_or("no answers")
             );
-        }
-        let jev_state = json!({
-            "issue": { "title": state.issue.title, "body": clip(&state.issue.body, 8_000) },
-            "setup": commands,
-        });
-        let Some(answers) = self
-            .ask_nouls(client, "jev_setup", jev_state, questions)
-            .await
-        else {
+            self.recorder.end(
+                &invocation,
+                Finish::new(Outcome::Failed).summary(json!({ "error": asked.error })),
+            );
             return;
-        };
-        for (i, command) in commands.iter().enumerate() {
-            let p = answers.get(&format!("setup_{i}")).copied().unwrap_or(0.0);
-            if p < YES {
+        }
+        let gated = evidence::setup_decide(&commands, |id| asked.noul(id));
+        let mut ran = Vec::new();
+        for gate in &gated {
+            let command = &gate.command;
+            let p = gate.p.unwrap_or(0.0);
+            if !gate.approved {
                 println!("  setup ▸ skipped `{command}` p={p:.2}");
                 continue;
             }
@@ -224,6 +228,13 @@ impl JevJudge {
                     prepared.env_remove(&name);
                 }
             }
+            // The intent is on disk before the command can change anything.
+            let run = self.recorder.begin(
+                Start::new("evidence.setup", evidence::setup_implementation())
+                    .named(&format!("run `{}`", clip(command, 80)))
+                    .reading(&json!(command))
+                    .with_effects(),
+            );
             let started = Instant::now();
             let ended = supervise::Job::from_command(prepared)
                 .bounded(
@@ -242,6 +253,18 @@ impl JevJudge {
                 ended.ending,
                 started.elapsed().as_secs_f64()
             );
+            let output = clip_tail(output.trim(), 2_000);
+            self.recorder.end(
+                &run,
+                Finish::new(if ended.ending.success() {
+                    Outcome::Completed
+                } else {
+                    Outcome::Failed
+                })
+                .output(json!({ "ending": ended.ending.to_string(), "output": output }))
+                .cost(Cost::none()),
+            );
+            ran.push(command.clone());
             state.survey.push(Surveyed {
                 path: format!(
                     "$ {command}   (setup the host already ran: {})",
@@ -249,75 +272,52 @@ impl JevJudge {
                 ),
                 relevance: p,
                 edit: 0.0,
-                content: clip_tail(output.trim(), 2_000),
+                content: output,
             });
+            self.recorder.revise();
         }
+        self.recorder.end(
+            &invocation,
+            Finish::new(Outcome::Completed).output(json!({ "gated": gated, "ran": ran })),
+        );
     }
 
-    /// One Jev request of Nouls, recorded like the others; the answers by
-    /// question id, or `None` when Jev could not answer.
-    async fn ask_nouls(
+    /// One Jev request through the shared component call, with the judge's
+    /// counters kept.
+    async fn ask_jev(
         &mut self,
         client: &jev::Client,
+        component: &str,
         name: &str,
         jev_state: serde_json::Value,
         questions: Questions,
-    ) -> Option<BTreeMap<String, f64>> {
-        let request = SystemOneRequest::new(Entry::from(jev_state), questions);
-        let body = request
-            .body(JEV_MODEL)
-            .map(serde_json::Value::Object)
-            .unwrap_or_else(|_| json!({}));
-        let asked = Instant::now();
-        let result = client.system_one(request).await;
-        let milliseconds = u64::try_from(asked.elapsed().as_millis()).unwrap_or(u64::MAX);
-        let mut decision = Decision {
-            id: format!("{name}-{}", self.calls + self.failed + 1),
-            name: name.to_string(),
-            door: JEV_BASE_URL.to_string(),
-            model: JEV_MODEL.to_string(),
-            request: body,
-            answers: serde_json::Value::Null,
-            route: None,
-            error: None,
-            attempts: Vec::new(),
-            review: None,
-            milliseconds,
-        };
-        let response = match result {
-            Ok(response) => response,
-            Err(error) => {
-                self.failed += 1;
-                decision.error = Some(error.to_string());
-                self.recorder
-                    .push(Step::called(decision.call()).taking(milliseconds));
-                println!("  {name} ▸ Jev unavailable: {error}");
-                return None;
-            }
-        };
-        self.calls += 1;
-        self.input_tokens += response.usage.input_tokens.unwrap_or(0);
-        decision.model = response.model.clone();
-        decision.answers = serde_json::from_str::<serde_json::Value>(&response.raw().text())
-            .ok()
-            .and_then(|body| body.get("answers").cloned())
-            .unwrap_or(serde_json::Value::Null);
-        self.recorder
-            .push(Step::called(decision.call()).taking(milliseconds).noting(
-                "jev_usage",
-                json!({
-                    "input_tokens": response.usage.input_tokens,
-                    "output_tokens": response.usage.output_tokens,
-                }),
-            ));
-        Some(
-            response
-                .nouls()
-                .map(|(id, answer)| (id.to_string(), answer.noul))
-                .collect(),
+    ) -> Asked {
+        let id = format!("{name}-{}", self.calls + self.failed + 1);
+        let asked = component::jev::ask(
+            &JevMode::Live(client.clone()),
+            &self.recorder,
+            Ask {
+                component,
+                name,
+                id,
+                state: jev_state,
+                questions,
+                parent: None,
+            },
         )
+        .await;
+        self.count(&asked);
+        asked
     }
 
+    fn count(&mut self, asked: &Asked) {
+        if asked.answered() {
+            self.calls += 1;
+            self.input_tokens += asked.input_tokens.unwrap_or(0);
+        } else if asked.how == "failed" {
+            self.failed += 1;
+        }
+    }
     /// Turns on probe mode.
     #[must_use]
     pub fn probing(mut self, probes: bool) -> Self {
@@ -380,6 +380,13 @@ impl JevJudge {
         }
         battery.extend(named);
 
+        // The intent is on disk before any probe runs.
+        let invocation = self.recorder.enter(
+            Start::new("evidence.probes", evidence::probe_implementation())
+                .named("probe battery")
+                .reading(&json!(battery))
+                .with_effects(),
+        );
         let runs = battery.iter().map(|command| {
             let mut prepared = std::process::Command::new("bash");
             prepared
@@ -401,7 +408,7 @@ impl JevJudge {
                 .run()
         });
         let ended = futures_util::future::join_all(runs).await;
-        let outputs: Vec<(String, String)> = battery
+        let outputs: Vec<Probe> = battery
             .iter()
             .zip(ended)
             .filter_map(|(command, ended)| {
@@ -411,110 +418,64 @@ impl JevJudge {
                     output.push_str(&ended.stderr.marked());
                 }
                 let output = output.trim().to_string();
-                (!output.is_empty()).then(|| (command.clone(), clip(&output, PROBE_OUTPUT_CHARS)))
+                (!output.is_empty()).then(|| Probe {
+                    command: command.clone(),
+                    output: clip(&output, PROBE_OUTPUT_CHARS),
+                })
             })
             .collect();
         if outputs.is_empty() {
+            self.recorder.end(
+                &invocation,
+                Finish::new(Outcome::Skipped).summary(json!({ "probes": 0 })),
+            );
             return;
         }
 
-        let mut questions = Questions::new();
-        for i in 0..outputs.len() {
-            questions = questions.with(
-                format!("probe_{i}"),
-                Noul::new(format!(
-                    "Does the output in `probes[{i}].output` contain information someone needs to complete the task in `issue`, such as where the relevant code or data is, what state it is in, or what went wrong?"
-                )),
+        let issue = issue_state(&state.issue.title, &state.issue.body);
+        let (jev_state, questions) = evidence::probe_request(&issue, &outputs);
+        let asked = self
+            .ask_jev(client, "evidence.probes", "jev_probe", jev_state, questions)
+            .await;
+        if !asked.answered() {
+            println!(
+                "  probe ▸ Jev unavailable: {}",
+                asked.error.as_deref().unwrap_or("no answers")
             );
+            self.recorder.end(
+                &invocation,
+                Finish::new(Outcome::Failed).summary(json!({ "error": asked.error })),
+            );
+            return;
         }
-        let jev_state = json!({
-            "issue": {
-                "title": state.issue.title,
-                "body": clip(&state.issue.body, 8_000),
-            },
-            "probes": outputs.iter().map(|(command, output)| json!({
-                "command": command,
-                "output": clip(output, 3_000),
-            })).collect::<Vec<_>>(),
-        });
-        let request = SystemOneRequest::new(Entry::from(jev_state), questions);
-        let body = request
-            .body(JEV_MODEL)
-            .map(serde_json::Value::Object)
-            .unwrap_or_else(|_| json!({}));
-        let asked = Instant::now();
-        let result = client.system_one(request).await;
-        let milliseconds = u64::try_from(asked.elapsed().as_millis()).unwrap_or(u64::MAX);
-        let mut decision = Decision {
-            id: format!("jev-probe-{}", self.calls + self.failed + 1),
-            name: "jev_probe".to_string(),
-            door: JEV_BASE_URL.to_string(),
-            model: JEV_MODEL.to_string(),
-            request: body,
-            answers: serde_json::Value::Null,
-            route: None,
-            error: None,
-            attempts: Vec::new(),
-            review: None,
-            milliseconds,
-        };
-        let response = match result {
-            Ok(response) => response,
-            Err(error) => {
-                self.failed += 1;
-                decision.error = Some(error.to_string());
-                self.recorder
-                    .push(Step::called(decision.call()).taking(milliseconds));
-                println!("  probe ▸ Jev unavailable: {error}");
-                return;
-            }
-        };
-        self.calls += 1;
-        self.input_tokens += response.usage.input_tokens.unwrap_or(0);
-        decision.model = response.model.clone();
-        decision.answers = serde_json::from_str::<serde_json::Value>(&response.raw().text())
-            .ok()
-            .and_then(|body| body.get("answers").cloned())
-            .unwrap_or(serde_json::Value::Null);
-        self.recorder
-            .push(Step::called(decision.call()).taking(milliseconds).noting(
-                "jev_usage",
-                json!({
-                    "input_tokens": response.usage.input_tokens,
-                    "output_tokens": response.usage.output_tokens,
-                }),
-            ));
-        let mut picked: Vec<(f64, &(String, String))> = outputs
-            .iter()
-            .enumerate()
-            .filter_map(|(i, probe)| {
-                let p = response.noul(&format!("probe_{i}")).ok()?.noul;
-                (p >= YES).then_some((p, probe))
-            })
-            .collect();
-        picked.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let selected = evidence::probe_keep(&outputs, |id| asked.noul(id));
         let mut total = 0;
-        for (p, (command, output)) in picked.into_iter().take(PROBE_KEEP) {
-            if total + output.chars().count() > PROBE_TOTAL_CHARS {
+        for choice in selected.iter().filter(|s| s.decision == "kept") {
+            let Some(probe) = outputs.iter().find(|p| p.command == choice.command) else {
                 continue;
-            }
-            total += output.chars().count();
-            println!("  probe ▸ kept `{command}` p={p:.2}");
+            };
+            let p = choice.p.unwrap_or(0.0);
+            total += choice.chars;
+            println!("  probe ▸ kept `{}` p={p:.2}", probe.command);
             state.survey.push(Surveyed {
-                path: format!("$ {command}"),
+                path: format!("$ {}", probe.command),
                 relevance: p,
                 edit: 0.0,
-                content: output.clone(),
+                content: probe.output.clone(),
             });
         }
+        self.recorder.revise();
         println!(
             "  probe ▸ {} probes run and judged in {} ms; {} chars kept",
             outputs.len(),
             started.elapsed().as_millis(),
             total
         );
+        self.recorder.end(
+            &invocation,
+            Finish::new(Outcome::Completed).output(json!({ "selected": selected })),
+        );
     }
-
     /// Turns on deep mode.
     #[must_use]
     pub fn deep(mut self, deep: bool) -> Self {
@@ -543,112 +504,66 @@ impl JevJudge {
             println!("  survey ▸ no candidate files");
             return;
         }
-        let batches: Vec<Vec<Candidate>> = pool
-            .chunks(SURVEY_BATCH)
-            .map(<[Candidate]>::to_vec)
+        let candidates: Vec<evidence::Candidate> = pool
+            .iter()
+            .map(|c| evidence::Candidate {
+                path: c.path.clone(),
+                excerpt: c.excerpt.clone(),
+            })
             .collect();
-        let issue = json!({
-            "title": state.issue.title,
-            "body": clip(&state.issue.body, 8_000),
-        });
-        let requests = batches.iter().map(|batch| {
-            let mut questions = Questions::new();
-            for i in 0..batch.len() {
-                questions = questions
-                    .with(
-                        format!("rel_{i}"),
-                        Noul::new(format!(
-                            "Would reading or editing the file `files[{i}]` help resolve the task described in `issue`?"
-                        )),
-                    )
-                    .with(
-                        format!("edit_{i}"),
-                        Noul::new(format!(
-                            "Will resolving the task described in `issue` most likely require changing the file `files[{i}]`?"
-                        )),
-                    );
-            }
-            let jev_state = json!({
-                "issue": issue,
-                "files": batch.iter().map(|c| json!({"path": c.path, "excerpt": c.excerpt})).collect::<Vec<_>>(),
-            });
-            let request = SystemOneRequest::new(Entry::from(jev_state), questions);
-            let body = request
-                .body(JEV_MODEL)
-                .map(serde_json::Value::Object)
-                .unwrap_or_else(|_| json!({}));
-            let client = client.clone();
-            async move {
-                let started = Instant::now();
-                let result = client.system_one(request).await;
-                (body, result, started.elapsed())
-            }
+        let issue = issue_state(&state.issue.title, &state.issue.body);
+        let invocation = self.recorder.enter(
+            Start::new("evidence.select", evidence::select_implementation())
+                .named("survey")
+                .reading(&json!({ "issue": issue, "candidates": candidates })),
+        );
+        let batches: Vec<&[evidence::Candidate]> = candidates.chunks(SURVEY_BATCH).collect();
+        let mode = JevMode::Live(client.clone());
+        let first = self.calls + self.failed + 1;
+        let recorder = self.recorder.clone();
+        let requests = batches.iter().zip(first..).map(|(batch, number)| {
+            let (jev_state, questions) = evidence::survey_request(&issue, batch);
+            component::jev::ask(
+                &mode,
+                &recorder,
+                Ask {
+                    component: "evidence.select",
+                    name: "jev_survey",
+                    id: format!("jev-survey-{number}"),
+                    state: jev_state,
+                    questions,
+                    parent: Some(invocation.clone()),
+                },
+            )
         });
         let results = futures_util::future::join_all(requests).await;
 
-        let mut scored: Vec<(f64, f64, &Candidate)> = Vec::new();
-        for ((body, result, elapsed), batch) in results.into_iter().zip(&batches) {
-            let milliseconds = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
-            let mut decision = Decision {
-                id: format!("jev-survey-{}", self.calls + self.failed + 1),
-                name: "jev_survey".to_string(),
-                door: JEV_BASE_URL.to_string(),
-                model: JEV_MODEL.to_string(),
-                request: body,
-                answers: serde_json::Value::Null,
-                route: None,
-                error: None,
-                attempts: Vec::new(),
-                review: None,
-                milliseconds,
-            };
-            match result {
-                Ok(response) => {
-                    self.calls += 1;
-                    self.input_tokens += response.usage.input_tokens.unwrap_or(0);
-                    decision.model = response.model.clone();
-                    decision.answers =
-                        serde_json::from_str::<serde_json::Value>(&response.raw().text())
-                            .ok()
-                            .and_then(|body| body.get("answers").cloned())
-                            .unwrap_or(serde_json::Value::Null);
-                    for (i, candidate) in batch.iter().enumerate() {
-                        let rel = response.noul(&format!("rel_{i}")).map_or(0.0, |a| a.noul);
-                        let edit = response.noul(&format!("edit_{i}")).map_or(0.0, |a| a.noul);
-                        scored.push((rel, edit, candidate));
-                    }
-                    self.recorder
-                        .push(Step::called(decision.call()).taking(milliseconds).noting(
-                            "jev_usage",
-                            json!({
-                                "input_tokens": response.usage.input_tokens,
-                                "output_tokens": response.usage.output_tokens,
-                            }),
-                        ));
-                }
-                Err(error) => {
-                    self.failed += 1;
-                    decision.error = Some(error.to_string());
-                    self.recorder
-                        .push(Step::called(decision.call()).taking(milliseconds));
-                }
+        let mut scored: Vec<(String, Option<f64>, Option<f64>)> = Vec::new();
+        for (asked, batch) in results.iter().zip(&batches) {
+            self.count(asked);
+            if !asked.answered() {
+                continue;
+            }
+            for (i, candidate) in batch.iter().enumerate() {
+                scored.push((
+                    candidate.path.clone(),
+                    Some(asked.noul(&format!("rel_{i}")).unwrap_or(0.0)),
+                    Some(asked.noul(&format!("edit_{i}")).unwrap_or(0.0)),
+                ));
             }
         }
-
-        // Rank by relevance, and let a likely edit break ties.
-        scored.sort_by(|a, b| (b.0 + 0.1 * b.1).total_cmp(&(a.0 + 0.1 * a.1)));
+        let ranked = evidence::survey_rank(scored);
+        let judged = ranked.len();
         let mut total = 0;
-        for (rel, edit, candidate) in scored
-            .iter()
-            .filter(|(rel, ..)| *rel >= YES)
-            .take(SURVEY_KEEP)
-        {
-            let Ok(text) = std::fs::read_to_string(self.workdir.join(&candidate.path)) else {
+        let mut read = Vec::new();
+        for file in ranked.iter().filter(|file| file.selected) {
+            let (rel, edit) = (file.relevance.unwrap_or(0.0), file.edit.unwrap_or(0.0));
+            let Ok(text) = std::fs::read_to_string(self.workdir.join(&file.path)) else {
                 continue;
             };
             // Probe v2 hands likely edit targets on whole, so the delegate
             // edits instead of reading first.
-            let cap = if self.v2 && *edit >= 0.8 {
+            let cap = if self.v2 && edit >= evidence::EDIT_TARGET {
                 EDIT_TARGET_CHARS
             } else {
                 SURVEY_FILE_CHARS
@@ -667,16 +582,18 @@ impl JevJudge {
                 text
             };
             total += content.chars().count();
+            read.push(file.path.clone());
             state.survey.push(Surveyed {
-                path: candidate.path.clone(),
-                relevance: *rel,
-                edit: *edit,
+                path: file.path.clone(),
+                relevance: rel,
+                edit,
                 content,
             });
         }
+        self.recorder.revise();
         println!(
             "  survey ▸ {} files judged in {} parallel Jev requests, {} ms; {} put in the prompt ({} chars)",
-            scored.len(),
+            judged,
             batches.len(),
             started.elapsed().as_millis(),
             state.survey.len(),
@@ -688,8 +605,16 @@ impl JevJudge {
                 file.path, file.relevance, file.edit
             );
         }
+        let outcome = if results.iter().any(Asked::answered) {
+            Outcome::Completed
+        } else {
+            Outcome::Failed
+        };
+        self.recorder.end(
+            &invocation,
+            Finish::new(outcome).output(json!({ "ranked": ranked, "read": read })),
+        );
     }
-
     /// The files the survey judges: those the issue names, then by
     /// keyword hits, then build manifests, then short paths, at most
     /// [`SURVEY_FILES`].
@@ -1233,98 +1158,32 @@ impl JevJudge {
             criteria: criteria.iter().map(|c| (c.clone(), None)).collect(),
             unavailable: Some(why),
         };
-        let Some(client) = self.client.take() else {
+        let Some(client) = self.client.clone() else {
             return unanswered(&self.criteria, "Jev is off".to_string());
         };
-        let jev_state = json!({
-            "issue": {
-                "title": state.issue.title,
-                "body": clip(&state.issue.body, 8_000),
-            },
-            "criteria": self.criteria,
-            "delegate": {
-                "report": clip_tail(delegate, 3_000),
-                "changes": clip(changes, 5_000),
-            },
-        });
-        let mut questions = Questions::new().with(
-            "done",
-            Noul::new(
-                "Do the delegate's report in `delegate.report` and the changes in `delegate.changes` show that the task described in `issue` is complete?",
-            ),
-        );
-        for j in 0..self.criteria.len() {
-            questions = questions.with(
-                format!("criterion_{j}"),
-                Noul::new(format!(
-                    "Do `delegate.report` and `delegate.changes` show that the requirement `criteria[{j}]` from the issue is satisfied?"
-                )),
+        let issue = issue_state(&state.issue.title, &state.issue.body);
+        let (jev_state, questions) =
+            evidence::close_request(&issue, &self.criteria, delegate, changes);
+        let asked = self
+            .ask_jev(&client, "verify.close", "jev_close", jev_state, questions)
+            .await;
+        if !asked.answered() {
+            return unanswered(
+                &self.criteria,
+                asked.error.unwrap_or_else(|| "no answers".to_string()),
             );
         }
-        let request = SystemOneRequest::new(Entry::from(jev_state), questions);
-        let body = request
-            .body(JEV_MODEL)
-            .map(serde_json::Value::Object)
-            .unwrap_or_else(|_| json!({}));
-        let started = Instant::now();
-        let result = client.system_one(request).await;
-        self.client = Some(client);
-        let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        let mut decision = Decision {
-            id: format!("jev-{}", self.calls + self.failed + 1),
-            name: "jev_close".to_string(),
-            door: JEV_BASE_URL.to_string(),
-            model: JEV_MODEL.to_string(),
-            request: body,
-            answers: serde_json::Value::Null,
-            route: None,
-            error: None,
-            attempts: Vec::new(),
-            review: None,
-            milliseconds,
-        };
-        let response = match result {
-            Ok(response) => response,
-            Err(error) => {
-                self.failed += 1;
-                decision.error = Some(error.to_string());
-                self.recorder
-                    .push(Step::called(decision.call()).taking(milliseconds));
-                return unanswered(&self.criteria, error.to_string());
-            }
-        };
-        self.calls += 1;
-        self.input_tokens += response.usage.input_tokens.unwrap_or(0);
-        decision.model = response.model.clone();
-        decision.answers = serde_json::from_str::<serde_json::Value>(&response.raw().text())
-            .ok()
-            .and_then(|body| body.get("answers").cloned())
-            .unwrap_or(serde_json::Value::Null);
         let close = Close {
-            done: response.noul("done").ok().map(|answer| answer.noul),
+            done: asked.noul("done"),
             criteria: self
                 .criteria
                 .iter()
                 .enumerate()
-                .map(|(j, c)| {
-                    let p = response
-                        .noul(&format!("criterion_{j}"))
-                        .ok()
-                        .map(|answer| answer.noul);
-                    (c.clone(), p)
-                })
+                .map(|(j, c)| (c.clone(), asked.noul(&format!("criterion_{j}"))))
                 .collect(),
             unavailable: None,
         };
         self.evidence.criteria.clone_from(&close.criteria);
-        self.recorder
-            .push(Step::called(decision.call()).taking(milliseconds).noting(
-                "jev_usage",
-                json!({
-                    "input_tokens": response.usage.input_tokens,
-                    "output_tokens": response.usage.output_tokens,
-                }),
-            ));
         close
     }
 }

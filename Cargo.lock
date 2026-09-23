@@ -1887,6 +1887,7 @@ dependencies = [
 name = "gym"
 version = "0.1.0"
 dependencies = [
+ "atif",
  "coder-terminal",
  "crossterm",
  "indexmap",

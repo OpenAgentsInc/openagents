@@ -18,6 +18,7 @@ replace it with `cargo run -p gym --bin gym --`.
 | `overview` | Sources, status and usage counts, controls, latest time, report warnings, and each task and arm group. |
 | `compare [--task ID] [--arm ID]` | Rewards, statuses, denominators, timing, usage, cost source, evidence health, and member identities for comparable groups. Setup time is reported by cache state (`cold`, `warm`, `none`, or `unknown`) beside agent and total time, with setup failures counted beside the graded attempts and each time boundary named. |
 | `attempt JOB TRIAL` | One attempt's pins, model, reward, status, timing, usage, component costs, call counts, and notes. |
+| `attempt JOB TRIAL --timeline` | The episode timeline: every component invocation in start order with its component, name, parent, duration, outcome, cost, and the spend accumulated so far. |
 | `evidence JOB TRIAL` | Each retained path and its digest or resolution state. |
 | `evidence --missing` | Every attempt with a missing stream, artifact, or other referenced file, and why each is missing. |
 | `history` | Every attempt, newest first, including failures and unknown outcomes. |
@@ -37,7 +38,18 @@ For example:
 gym terminal-bench compare --task terminal-bench/fix-git --json
 gym terminal-bench attempt smoke--oracle fix-git__7TEC9XV --json
 gym terminal-bench evidence smoke--oracle fix-git__7TEC9XV
+gym terminal-bench attempt panel--coder-one-jevprobe3-luna--build-cython-ext \
+  build-cython-ext__jFQbtoW --timeline
 ```
+
+The timeline reads the attempt's `episode.atif.jsonl` when one was retained,
+then the invocation events in its trajectory. An attempt recorded before
+Coder One wrote invocation events gets a timeline derived from its
+trajectory steps, labeled as derived: each entry ends when its answer
+arrived. A log without an end record, or an invocation with no end event,
+reads as **INCOMPLETE**, and the invocations that never ended are named.
+With `--json`, the view is `timeline` and `data` has schema
+`openagents.gym.coder-timeline.v1`.
 
 The commands read local jobs from `~/.openagents/terminal-bench/jobs/`,
 retained traces from `bench/terminal-bench/traces/`, and checked samples

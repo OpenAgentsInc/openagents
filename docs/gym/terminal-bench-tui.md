@@ -65,7 +65,13 @@ task commit, checksum, architecture and image state when recorded, agent and art
 identity, each timing phase, token coverage, total cost and provenance,
 component costs, call counts, and recorded notes. A completed agent with no
 verifier reward reads as unverifiable. A reward of zero reads as a task
-failure, while a missing reward stays unknown.
+failure, while a missing reward stays unknown. Below the counts, the
+**episode timeline** lists every component invocation in start order:
+setup, probes, each Jev request, the briefing, the executor session, and
+the closing check, each with its duration, outcome, cost, and the spend
+accumulated so far. It reads the attempt's invocation log when one was
+retained and derives the timeline from trajectory steps otherwise, and it
+says which. An interrupted episode's timeline reads as incomplete.
 
 **Evidence** lists every retained file and its path. It checks SHA-256
 against the bytes that exist now when a manifest supplies a digest. Missing,

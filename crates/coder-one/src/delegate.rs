@@ -31,7 +31,7 @@ use sha2::{Digest, Sha256};
 
 use crate::agent::{Ended, Judge, Judgments};
 use crate::judge::{JevJudge, clip, clip_tail, git, walk};
-use crate::record::Recorder;
+use crate::record::{Finish, Implementation, Outcome as RecordOutcome, Recorder, Start};
 use crate::state::{State, Turn};
 
 /// The model the Claude Code delegate runs on unless the operator names
@@ -329,7 +329,7 @@ pub struct FileEvidence {
 }
 
 /// One output span Jev picked.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Span {
     /// The step whose output it came from, counted from one.
     pub step: usize,
@@ -472,7 +472,7 @@ pub fn fingerprint(workdir: &Path) -> Option<String> {
 }
 
 /// Everything the briefing is built from, all of it recorded state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BriefingInputs {
     /// The task's own words: the issue or the task instruction.
     pub instruction: String,
@@ -1766,10 +1766,26 @@ where
     let bounds = crate::agent::Bounds {
         max_steps: plan.policy.explore_steps.min(plan.max_steps),
     };
+    let explore = recorder.enter(
+        Start::new(
+            "exec.explore",
+            Implementation::new(
+                "exec.explore",
+                "coder-one explorer",
+                &json!({ "prompt": prompt, "steps": bounds.max_steps, "policy": plan.policy.record() }),
+            ),
+        )
+        .named(&format!("explorer, {} steps", bounds.max_steps))
+        .with_effects(),
+    );
     let explored = {
         let mut watch = Watch::new(judge, plan.policy, plan.mode == Mode::Auto, &workdir);
         crate::agent::run(state, prompt, bounds, &mut watch, generator, shell).await
     };
+    recorder.end(
+        &explore,
+        Finish::new(RecordOutcome::Completed).summary(json!({ "steps": state.history.len() })),
+    );
     let Some(reason) = plan.policy.decide(plan.mode, &explored) else {
         return (explored, None);
     };
@@ -1782,7 +1798,21 @@ where
         plan.instruction,
         plan.directions,
     );
+    let pack = recorder.enter(
+        Start::new(
+            "evidence.pack",
+            crate::component::pack::implementation(plan.cap),
+        )
+        .named("briefing")
+        .reading(&serde_json::to_value(&inputs).unwrap_or(Value::Null)),
+    );
     let briefing = Briefing::build(&inputs, plan.cap);
+    recorder.end(
+        &pack,
+        Finish::new(RecordOutcome::Completed)
+            .output(briefing.record())
+            .cost(crate::record::Cost::none()),
+    );
     if !briefing.omitted.is_empty() {
         println!(
             "  host ▸ briefing left out {} items for the {}-character cap",
@@ -1790,6 +1820,28 @@ where
             plan.cap
         );
     }
+    // The intent is on disk before the executor starts, so a restarted
+    // controller can tell a session that never started from one whose
+    // result is unknown.
+    let session = recorder.enter(
+        Start::new(
+            "exec.session",
+            Implementation::new(
+                "exec.session",
+                &format!("{} {}", executor.agent(), executor.model()),
+                &json!({
+                    "agent": executor.agent(),
+                    "model": executor.model(),
+                    "deadline_sec": executor.deadline().as_secs(),
+                    "describe": executor.describe(),
+                    "directions": plan.directions,
+                }),
+            ),
+        )
+        .named(&format!("{} ({})", executor.agent(), executor.model()))
+        .reading_digest(briefing.sha256())
+        .with_effects(),
+    );
     checkpoint(state);
     let report = delegate(
         executor,
@@ -1803,6 +1855,31 @@ where
         0,
     )
     .await;
+    let cost = match report.summary.total_cost_usd {
+        Some(usd) => crate::record::Cost {
+            usd: Some(usd),
+            provenance: report
+                .summary
+                .cost_provenance
+                .unwrap_or_else(|| executor.cost_provenance())
+                .to_string(),
+        },
+        None => crate::record::Cost::unknown(),
+    };
+    recorder.end(
+        &session,
+        Finish::new(if report.status == Status::Answered {
+            RecordOutcome::Completed
+        } else {
+            RecordOutcome::Failed
+        })
+        .summary(json!({
+            "status": report.status.word(),
+            "turns": report.summary.num_turns,
+            "milliseconds": report.milliseconds,
+        }))
+        .cost(cost),
+    );
     println!(
         "  delegate ▸ {} in {:.1}s · {} turns · {} · {}",
         report.status,
@@ -1824,11 +1901,31 @@ where
                 200
             ))
     );
+    let verify = recorder.enter(
+        Start::new(
+            "verify.close",
+            crate::component::evidence::close_implementation(),
+        )
+        .named("closing check"),
+    );
     let changed = changes(&workdir, plan.base);
     let close = judge
         .jev_mut()
         .close(state, &report.output(), &changed)
         .await;
+    recorder.end(
+        &verify,
+        Finish::new(if close.unavailable.is_none() {
+            RecordOutcome::Completed
+        } else {
+            RecordOutcome::Skipped
+        })
+        .output(json!({
+            "done": close.done,
+            "criteria": close.criteria,
+            "unavailable": close.unavailable,
+        })),
+    );
     let mut note = match close.done {
         Some(p) => format!("Closing check: Jev reads the task as done with p={p:.2}."),
         None => format!(
@@ -2526,5 +2623,112 @@ pub(crate) mod tests {
         assert_eq!(call.extra["cost_note"], CODEX_COST_NOTE);
         assert_eq!(call.extra["num_turns"], 3);
         assert_eq!(step.tokens, Some((27_424, 400)));
+    }
+
+    /// A generator and shell for runs that never reach them.
+    struct Idle;
+
+    impl crate::agent::Generate for Idle {
+        async fn generate(&mut self, _prompt: &str) -> Result<String, String> {
+            Err("no generation in this test".to_string())
+        }
+    }
+
+    impl crate::agent::Shell for Idle {
+        async fn run(&mut self, _command: &str) -> crate::state::Observation {
+            crate::state::Observation {
+                exit: None,
+                output: String::new(),
+                truncated: false,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_delegated_run_records_each_component_invocation_durably() {
+        let dir = std::env::temp_dir().join(format!("coder-one-delegated-{}", atif::now_ms()));
+        let path = dir.join("episode.atif.jsonl");
+        let session = atif::Session::opening("delegated", "free", "test", "/tmp", "test");
+        let recorder = Recorder::durable(atif::Log::create_at(&path, &session).unwrap());
+        let mut state = state();
+        let mut judge = JevJudge::new(
+            None,
+            PathBuf::from(&state.environment.workdir),
+            &state.issue,
+            recorder.clone(),
+        );
+        let mut executor = FakeExecutor {
+            reports: vec![report(Status::Answered)],
+            sent: vec![],
+        };
+        let plan = Plan {
+            mode: Mode::Always,
+            policy: Policy {
+                explore_steps: 0,
+                ..Policy::default()
+            },
+            max_steps: 5,
+            prompt: "Complete this task.",
+            instruction: "Fix the parser.",
+            directions: "Go.",
+            cap: BRIEFING_CAP,
+            isolation: "none",
+            base: None,
+        };
+        let (ended, delegated) = explore_then_delegate(
+            &mut state,
+            &plan,
+            &mut judge,
+            &mut Idle,
+            &mut Idle,
+            &mut executor,
+            &recorder,
+            &mut |_| {},
+        )
+        .await;
+        assert!(matches!(ended, Ended::Delegated { answered: true, .. }));
+        let delegated = delegated.unwrap();
+        recorder.finish(atif::log::ENDED);
+
+        let read = atif::log::read_whole(&path).unwrap();
+        let invocations = crate::record::invocations(&read.steps);
+        let components: Vec<&str> = invocations.iter().map(|i| i.component.as_str()).collect();
+        assert_eq!(
+            components,
+            [
+                "exec.explore",
+                "evidence.pack",
+                "exec.session",
+                "verify.close"
+            ]
+        );
+        assert!(invocations.iter().all(|i| i.ended.is_some()));
+        let pack = &invocations[1];
+        assert_eq!(
+            pack.ended.as_ref().unwrap()["output"]["summary"]["sha256"],
+            json!(delegated.briefing.sha256())
+        );
+        let session = &invocations[2];
+        assert!(session.effects);
+        assert_eq!(
+            session.input_digest.as_deref(),
+            Some(delegated.briefing.sha256().as_str())
+        );
+        let end = session.ended.as_ref().unwrap();
+        assert_eq!(end["cost"]["usd"], json!(0.25));
+        assert_eq!(end["cost"]["provenance"], "cli_list_price");
+        // The delegate step is credited to the session invocation.
+        let step = read
+            .steps
+            .iter()
+            .find(|step| {
+                step.call
+                    .as_ref()
+                    .is_some_and(|call| call.name == "delegate")
+            })
+            .unwrap();
+        assert_eq!(step.extensions["invocation_id"], json!(session.id));
+        assert_eq!(invocations[3].outcome(), "skipped");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

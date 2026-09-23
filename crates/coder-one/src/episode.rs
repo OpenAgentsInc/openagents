@@ -57,13 +57,17 @@ use crate::delegate::{self, Agent, Credential, Delegated, Explorer, Mode, Plan};
 use crate::generate::Door;
 use crate::judge::JevJudge;
 use crate::policy::{ExecutorHost, Manifest, Resolution};
-use crate::record::Recorder;
+use crate::record::{Finish, Implementation, Outcome as RecordOutcome, Recorder, Start};
 use crate::shell::Checkout;
 use crate::state::{Environment, Issue, State};
 use crate::{Bounds, Ended, run};
 
 /// The contract this binary implements.
 pub const CONTRACT: &str = "openagents.coder.episode.v1";
+
+/// The episode's durable log, relative to the output directory: every
+/// trajectory step and component invocation, synced as it happens.
+pub const INVOCATION_LOG: &str = "episode.atif.jsonl";
 
 /// The version `--version` prints and every record carries: the crate
 /// version and the commit the build script stamped, or `dev`.
@@ -324,9 +328,37 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     let instruction = std::fs::read_to_string(&args.instruction_file)
         .map_err(|error| format!("cannot read {}: {error}", args.instruction_file.display()))?;
     let workdir = std::env::current_dir().map_err(|error| error.to_string())?;
-    let bundle = Bundle::create(&args.output_dir, &settings, &workdir)?;
+    let mut bundle = Bundle::create(&args.output_dir, &settings, &workdir)?;
 
-    let recorder = Recorder::default();
+    // Recording starts before setup: every step and invocation is synced to
+    // the log as it happens, and the bundle is derived from it.
+    let log_path = args.output_dir.join(INVOCATION_LOG);
+    let recorder = match atif::Log::create_at(&log_path, &bundle.session) {
+        Ok(log) => {
+            bundle.log = Some(log_path);
+            Recorder::durable(log)
+        }
+        Err(error) => {
+            eprintln!(
+                "coder-one: cannot create {}: {error}; recording in memory only",
+                log_path.display()
+            );
+            Recorder::default()
+        }
+    };
+    // The episode's implementation is its resolved policy manifest.
+    let episode = recorder.enter(
+        Start::new(
+            "episode",
+            Implementation {
+                name: format!("policy {}", policy.name.as_deref().unwrap_or("unnamed")),
+                digest: settings.resolution.digest(),
+            },
+        )
+        .named(CONTRACT)
+        .reading(&json!({ "instruction": instruction }))
+        .with_effects(),
+    );
     recorder.push(Step::said(Source::System, EPISODE_INSTRUCTIONS));
     recorder.push(Step::said(Source::User, &instruction));
 
@@ -395,6 +427,18 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     };
 
     let (ended, delegated) = if policy.mode() == Mode::Off {
+        let session = recorder.enter(
+            Start::new(
+                "exec.session",
+                Implementation::new(
+                    "exec.session",
+                    "coder-one loop",
+                    &json!({ "lane": control.lane, "max_steps": control.max_steps }),
+                ),
+            )
+            .named("coder-one loop")
+            .with_effects(),
+        );
         let ended = run(
             &mut state,
             "Complete this task.",
@@ -406,6 +450,10 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             &mut shell,
         )
         .await;
+        recorder.end(
+            &session,
+            Finish::new(RecordOutcome::Completed).summary(json!({ "steps": state.history.len() })),
+        );
         (ended, None)
     } else {
         let mut executor = policy.executor(ExecutorHost {
@@ -477,6 +525,18 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         Ended::GenerationFailed { .. } => ("generation_failed", 4),
     };
     println!("\n── {outcome} ──");
+    recorder.end(
+        &episode,
+        Finish::new(if code == 0 {
+            RecordOutcome::Completed
+        } else {
+            RecordOutcome::Failed
+        })
+        .summary(json!({ "outcome": outcome, "exit_code": code })),
+    );
+    // The log closes before the last snapshot, so the manifest digests the
+    // log as it will stay.
+    recorder.finish(atif::log::ENDED);
     bundle.write(
         &state,
         &recorder.steps(),
@@ -526,6 +586,12 @@ struct Bundle {
     /// diff covers what the episode changed.
     base: Option<String>,
     session: Session,
+    /// The durable log the trajectory is derived from, when it opened.
+    log: Option<PathBuf>,
+    /// How many snapshots have been published. Each file is replaced
+    /// atomically, and the manifest, written last, names the generation
+    /// and every file's digest.
+    generation: std::cell::Cell<u64>,
 }
 
 impl Bundle {
@@ -607,6 +673,8 @@ impl Bundle {
             workdir: workdir.to_path_buf(),
             base,
             session,
+            log: None,
+            generation: std::cell::Cell::new(0),
         })
     }
 
@@ -619,6 +687,17 @@ impl Bundle {
         delegated: Option<&Delegated>,
     ) -> Result<(), String> {
         let now = atif::document::now_ms();
+        let generation = self.generation.get() + 1;
+        self.generation.set(generation);
+        // The trajectory is derived from the durable log when there is one,
+        // so the bundle can never say more than the log holds.
+        let recording = self
+            .log
+            .as_deref()
+            .and_then(|path| atif::log::read(path).ok());
+        let steps = recording
+            .as_ref()
+            .map_or(steps, |recording| recording.steps.as_slice());
         let mut session = self.session.clone();
         session.state = if outcome == "running" {
             "interrupted"
@@ -629,6 +708,7 @@ impl Bundle {
         session.seconds = (now - self.started) / 1000;
         let mut trajectory = atif::document::document(&session, steps);
         trajectory["agent"]["name"] = json!("coder-one");
+        trajectory["extra"]["snapshot_generation"] = json!(generation);
 
         let delegating = self.header["delegate"]["mode"].as_str() != Some("off");
         let usage = usage(steps, delegating);
@@ -674,7 +754,29 @@ impl Bundle {
             }
         }
 
+        // The log grows while the episode runs, so only a closed log gets a
+        // digest; before that the manifest names it and its size.
+        if let (Some(path), Some(recording)) = (&self.log, &recording) {
+            let relative = path
+                .strip_prefix(&self.dir)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .into_owned();
+            let bytes = std::fs::read(path).unwrap_or_default();
+            files.insert(
+                "invocation_log".to_string(),
+                json!({
+                    "path": relative,
+                    "bytes": bytes.len(),
+                    "sha256": recording.ended().then(|| hex(&Sha256::digest(&bytes))),
+                    "ended": recording.ended(),
+                    "faults": recording.faults.len(),
+                }),
+            );
+        }
+
         let mut manifest = self.header.clone();
+        manifest["generation"] = json!(generation);
         manifest["started_at"] = json!(atif::document::iso(self.started));
         manifest["updated_at"] = json!(atif::document::iso(now));
         manifest["outcome"] = json!(outcome);
@@ -713,11 +815,11 @@ impl Bundle {
         Ok(())
     }
 
-    /// Writes one file and returns its reference: path, bytes, and sha256.
+    /// Replaces one file atomically and returns its reference: path, bytes,
+    /// and sha256. A reader sees the previous snapshot's file or this one,
+    /// never part of either.
     fn put(&self, relative: &str, bytes: &[u8]) -> Result<Value, String> {
-        let path = self.dir.join(relative);
-        std::fs::write(&path, bytes)
-            .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
+        crate::record::write_atomic(&self.dir.join(relative), bytes)?;
         Ok(json!({
             "path": relative,
             "bytes": bytes.len(),

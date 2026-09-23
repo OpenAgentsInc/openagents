@@ -12,6 +12,9 @@ default = []
 tui = ["dep:ratatui", "dep:crossterm", "dep:coder-terminal"]
 
 [dependencies]
+# Coder One's episode log is an ATIF session log; its recovering reader
+# keeps a valid prefix of a killed episode.
+atif = { path = "../atif" }
 indexmap = { version = "2", features = ["serde"] }
 jev = { path = "../jev" }
 serde = { version = "1", features = ["derive"] }

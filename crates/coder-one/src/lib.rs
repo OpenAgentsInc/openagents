@@ -20,6 +20,7 @@
 
 pub mod action;
 pub mod agent;
+pub mod component;
 pub mod credentials;
 pub mod delegate;
 pub mod episode;

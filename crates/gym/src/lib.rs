@@ -67,6 +67,7 @@ pub mod spread;
 pub mod store;
 pub mod suite;
 pub mod terminal_bench;
+pub mod timeline;
 pub mod views;
 
 #[cfg(feature = "tui")]

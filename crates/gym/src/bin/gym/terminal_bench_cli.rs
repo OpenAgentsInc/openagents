@@ -14,6 +14,8 @@ Evidence commands (read-only; add --json for structured output):
   overview                 list sources, statuses, coverage, and task/arm groups
   compare [--task ID] [--arm ID]  compare groups and their member attempts
   attempt JOB TRIAL        inspect one attempt and its measurements
+  attempt JOB TRIAL --timeline  list every component invocation in order,
+                           with its parent, duration, cost, and spend so far
   evidence JOB TRIAL       inspect one attempt's files and digest states
   evidence --missing       list every attempt's missing streams, artifacts, and files
   history                 list every attempt, newest first
@@ -53,6 +55,7 @@ struct SourceOptions {
     samples: Option<PathBuf>,
     json: bool,
     missing: bool,
+    timeline: bool,
     task: Option<String>,
     arm: Option<String>,
     positional: Vec<String>,
@@ -79,6 +82,7 @@ impl SourceOptions {
             match argument {
                 "--json" => options.json = true,
                 "--missing" if command == "evidence" => options.missing = true,
+                "--timeline" if command == "attempt" => options.timeline = true,
                 "--no-jobs" => options.jobs = None,
                 "--no-traces" => options.traces = None,
                 "--no-samples" => options.samples = None,
@@ -169,6 +173,38 @@ fn execute(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Resul
     }
     let options = SourceOptions::parse(command, rest)?;
     let records = options.load();
+    if options.timeline {
+        let attempt = find_attempt(&records, &options.positional)?;
+        let timeline = gym::timeline::for_attempt(attempt).ok_or_else(|| {
+            format!(
+                "{} / {} retained no trajectory or invocation log",
+                attempt.job, attempt.trial
+            )
+        })??;
+        if options.json {
+            let mut data = timeline.to_json();
+            data["job"] = json!(attempt.job);
+            data["trial"] = json!(attempt.trial);
+            serde_json::to_writer_pretty(
+                &mut *out,
+                &json!({
+                    "schema": SCHEMA,
+                    "view": "timeline",
+                    "data": data,
+                    "read_errors": records.errors,
+                }),
+            )
+            .map_err(|error| error.to_string())?;
+            writeln!(out).map_err(|error| error.to_string())?;
+        } else {
+            writeln!(out, "{} / {}", attempt.job, attempt.trial)
+                .map_err(|error| error.to_string())?;
+            for line in timeline.lines() {
+                writeln!(out, "{line}").map_err(|error| error.to_string())?;
+            }
+        }
+        return Ok(0);
+    }
     let value = match command.as_str() {
         "overview" => overview(&records),
         "compare" => comparisons(&records, options.task.as_deref(), options.arm.as_deref()),
@@ -991,6 +1027,49 @@ mod tests {
         assert!(
             text.contains("smoke--coder-one-x--task / task__abc"),
             "{text}"
+        );
+    }
+
+    #[test]
+    fn a_retained_v3_attempt_renders_its_timeline_as_text_and_json() {
+        let identity = [
+            "panel--coder-one-jevprobe3-luna--build-cython-ext",
+            "build-cython-ext__jFQbtoW",
+        ];
+        let args = strings(&[
+            "attempt",
+            identity[0],
+            identity[1],
+            "--timeline",
+            "--no-jobs",
+            "--no-samples",
+            "--json",
+        ]);
+        let mut output = Vec::new();
+        assert_eq!(execute(&args, &mut output, &mut Vec::new()).unwrap(), 0);
+        let value: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(value["view"], "timeline");
+        assert_eq!(value["data"]["source"], "derived from trajectory steps");
+        let components: Vec<&str> = value["data"]["invocations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| entry["component"].as_str())
+            .collect();
+        assert!(components.contains(&"evidence.setup"));
+        assert!(components.contains(&"exec.session"));
+        let mut text = Vec::new();
+        assert_eq!(execute(&args[..6], &mut text, &mut Vec::new()).unwrap(), 0);
+        let text = String::from_utf8(text).unwrap();
+        assert!(text.contains("Episode timeline"));
+        assert!(text.contains("evidence.probes"));
+        assert!(
+            execute(
+                &strings(&["overview", "--timeline", "--no-jobs"]),
+                &mut Vec::new(),
+                &mut Vec::new()
+            )
+            .is_err()
         );
     }
 

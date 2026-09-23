@@ -79,6 +79,7 @@ failure, not a task failure.
 
 ```
 manifest.json
+episode.atif.jsonl
 trajectory.atif.json
 artifacts/
 verification/
@@ -88,10 +89,28 @@ evaluation/
 - `manifest.json` — the episode manifest: artifact identity and digest,
   the contract id, door and model identities, resource bounds, dispatch
   and attempt records, cancellation or recovery records, and references
-  into the rest of the bundle.
+  into the rest of the bundle. `generation` counts the snapshots
+  published so far.
+- `episode.atif.jsonl` — Coder One's durable episode log, an ATIF session
+  log that syncs each line as it's written. It opens before setup and
+  holds every trajectory step and every component invocation's start and
+  end event (`openagents.coder-one.invocation.v1`): invocation ID, parent,
+  component ID, implementation digest, input digest, evidence revision,
+  output, cost with provenance, and timing. A start is written before the
+  component does anything with effects, so a start with no end is an
+  invocation whose result is unknown. A killed episode leaves a readable
+  prefix with no end record. The manifest lists the log as
+  `invocation_log` and gives its digest only once the log has closed.
 - `trajectory.atif.json` — one ATIF `Trajectory` document
-  (`ATIF-v1.7`), valid against Harbor's Pydantic models. Custom
-  observation metadata lives under `extra`; nothing undeclared.
+  (`ATIF-v1.7`), valid against Harbor's Pydantic models, derived from the
+  episode log. Custom observation metadata lives under `extra`; nothing
+  undeclared. Each invocation event is a system step whose `extra`
+  holds it under `invocation`; other steps name the invocation that made
+  them under `invocation_id`.
+
+Each snapshot replaces every file through a temporary file and a rename,
+so a reader sees a whole file from one snapshot or the next, never part
+of one. The manifest is written last.
 - `artifacts/` — what the episode produced: submitted files, source
   snapshots, selected and omitted context records.
 - `verification/` — the artifact's own verification evidence, separate

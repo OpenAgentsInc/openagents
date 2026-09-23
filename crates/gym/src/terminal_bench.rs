@@ -1326,7 +1326,7 @@ fn elapsed(value: &Value, pointer: &str) -> Option<u64> {
         .and_then(|value| u64::try_from(value).ok())
 }
 
-fn timestamp_ms(text: &str) -> Option<i64> {
+pub(crate) fn timestamp_ms(text: &str) -> Option<i64> {
     let bytes = text.as_bytes();
     if bytes.len() < 20
         || bytes.get(4) != Some(&b'-')

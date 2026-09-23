@@ -413,7 +413,7 @@ impl App {
             uncertainty,
             "Trial                    reward status              setup (cache)     agent/total       cost and source                  tokens in/out        evidence".to_owned(),
         ];
-        for attempt in members {
+        for attempt in &members {
             lines.push(format!(
                 "{:<24} {:>5}  {:<19} {:>7} {:<9} {:>7}/{:<7}  {:<32} {:>7}/{:<7} {}",
                 clip(&attempt.trial, 24),
@@ -601,6 +601,13 @@ impl App {
             a.evidence_health(),
             missing_summary(a)
         ));
+        match crate::timeline::for_attempt(a) {
+            Some(Ok(timeline)) => lines.extend(timeline.lines()),
+            Some(Err(error)) => lines.push(format!("Episode timeline unreadable: {error}")),
+            None => {
+                lines.push("Episode timeline: no trajectory or invocation log retained".to_owned())
+            }
+        }
         lines.extend(a.notes.iter().map(|note| format!("Note: {note}")));
         lines
     }
