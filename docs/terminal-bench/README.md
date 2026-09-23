@@ -19,14 +19,29 @@ and rerun without reconciling their replacements or the remaining two.
 The published scoreboard predates that note. Its totals below are a
 historical snapshot, not corrected pass rates.
 
-| TB4 arm | Last published passes / graded | Status |
-| --- | ---: | --- |
-| Coder One tunable v2 | 16/36 | Pending quota reconciliation. |
-| Coder One tunable v3 | 4/5 | Selected tasks; pending reconciliation. |
-| Coder One tunable v4 | 2/5 | Selected tasks; pending reconciliation. |
-| Coder One tunable v5 | — | One ATRX pass is now retained; full arm totals remain unpublished. Its extra persistence round recorded no file changes. |
-| Coder One tunable v6 | — | Second executor only on failed checks, at most two persistence rounds; no published graded results. |
-| Claude Code / Opus 5.5 | 4/13 | Pending quota reconciliation. |
+| TB4 arm | Passes / graded, usage-limited excluded | Mean cost per graded trial | Status |
+| --- | ---: | ---: | --- |
+| Coder One tunable v2 | 19/45 | $1.42 | First pass nearly complete; requeued trials rerunning. |
+| Coder One tunable v3 | 5/7 | $5.79 | Effort-sensitive tasks only. |
+| Coder One tunable v4 | 3/6 | $5.34 | Tasks v2 failed that some row solved. |
+| Coder One tunable v5 | 1/3 | $8.90 | Includes `cargo-flight-dispatch` at 25/27 tests, a task no row has solved. |
+| Coder One tunable v6 | 0/0 | — | Running on all 66 tasks, GPU tasks included. |
+| Claude Code / Opus 5.5 | 10/27 | $2.28 | Same host and model as Coder One. |
+
+Counts come from `tools/tb4_scoreboard.py`, which leaves out every trial
+whose Claude or Codex session hit a usage or rate limit (#9564), so they
+are reconciled for the incident above.
+
+**Same host, same model, same tasks.** On the 27 TB4 tasks both have
+graded, Coder One v2 passed 12 for $35.56 and Claude Code on Opus 5.5
+passed 10 for $61.69: two more passes for 42% less. Coder One alone passed
+`kv-live-surgery`, `roy-polymorph-cn`, and `session-window-debug`; Claude
+Code alone passed `risk-scorer-replay`. One attempt per task.
+
+**Against the leaderboard on v2's 45 tasks**, matched per task: GPT-6 Astra
+at max expects 23.6 passes at $6.99 a trial, and Fable 5.1 at max 24.0 at
+$13.17. Coder One v2 passed 19 at $1.42: about 80% of the top rows'
+accuracy at a fifth to a ninth of their cost.
 
 See the [full 66-task matrix and corrected comparisons](tb4-results.md)
 and [incident record and reconciliation requirements](data-quality.md).
