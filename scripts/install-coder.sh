@@ -13,6 +13,8 @@
 # the old one, so `coder` is always one build or the other and never
 # missing. The build it replaced is printed and recorded in
 # ~/.openagents/versions/coder.previous; a rollback is that one link again.
+# Every switch is also appended to ~/.openagents/versions/coder.history, so
+# a build two installs back stays recorded.
 #
 # Rollback points the link back at the recorded build and records the one
 # it replaced, so a second rollback undoes the first.
@@ -31,6 +33,7 @@ bin_dir="$home/bin"
 versions="$home/versions"
 link="$bin_dir/coder"
 record="$versions/coder.previous"
+history="$versions/coder.history"
 cargo="${CODER_INSTALL_CARGO:-cargo}"
 target_dir="${CODER_INSTALL_TARGET_DIR:-$HOME/.cache/openagents/target-install-coder}"
 
@@ -41,7 +44,7 @@ die() {
 }
 
 usage() {
-  sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,6p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Where the link points now, or `none`.
@@ -55,13 +58,18 @@ current() {
   fi
 }
 
-# Points the link at $1 by renaming a new link over the old one.
+# Points the link at $1 by renaming a new link over the old one, and
+# appends the switch to the history, so no build the link ever pointed at
+# goes unrecorded.
 switch_to() {
   local target="$1"
+  local was
+  was="$(current)"
   local staged="$bin_dir/.coder.$$"
-  mkdir -p "$bin_dir"
+  mkdir -p "$bin_dir" "$versions"
   ln -sfn "$target" "$staged"
   mv -f "$staged" "$link"
+  printf '%s %s -> %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$was" "$target" >>"$history"
 }
 
 rollback() {
@@ -118,6 +126,7 @@ install() {
   fi
   say "installed: $link -> $installed"
   say "previous:  $was"
+  say "history:   $history"
   if test "$was" != none && test "$was" != "$installed"; then
     say "roll back with: scripts/install-coder.sh --rollback (or ln -sfn '$was' '$link')"
   fi

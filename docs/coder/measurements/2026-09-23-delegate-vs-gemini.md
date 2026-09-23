@@ -118,6 +118,12 @@ on any turn long enough to receive them. Every delegated turn now sets
 `ENABLE_CLAUDEAI_MCP_SERVERS=false`. Coder One's Terminal-Bench adapter
 does not set it yet.
 
+The same two terminal turns on the stored login after the fix, "what does
+crates/gym do? one sentence." and then "and which crate does it get its
+answers from? one sentence.", cost $0.042334 and $0.077377. The second
+resumed the first turn's session, its two model calls carried 16,344 and
+17,481 input tokens, and it answered from the conversation: `jev`.
+
 ## Traces
 
 Each run's ATIF trace is under `~/.openagents/traces/` on the machine

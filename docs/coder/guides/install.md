@@ -61,6 +61,15 @@ Rollback points the link back at the recorded build and records the one it
 replaced, so a second rollback undoes the first. The install output also
 prints the one `ln -sfn` command that does the same thing by hand.
 
+`coder.previous` holds one build. Every switch, install or rollback, is
+also appended to `~/.openagents/versions/coder.history` as
+`<UTC time> <from> -> <to>`, so a build two installs back, such as the one
+installed before this script first ran, stays recorded:
+
+```sh
+ln -sfn ~/.openagents/versions/coder-terminal-f2d85b12 ~/.openagents/bin/coder
+```
+
 ## Which Coder is running
 
 ```console

@@ -73,6 +73,12 @@ fi
 grep -q "is unchanged" "$work/err" || fail "no failure message: $(cat "$work/err")"
 test "$(readlink "$link")" = "$new" || fail "a failed build moved the link"
 
+# Every switch is in the history, the build before the first install
+# included; the failed build added nothing.
+history="$work/home/versions/coder.history"
+test "$(wc -l <"$history")" -eq 3 || fail "expected three switches: $(cat "$history")"
+head -1 "$history" | grep -q " $old -> $new$" || fail "the first switch is not recorded: $(cat "$history")"
+
 # An unknown argument is a usage error.
 if "$script" --bogus 2>/dev/null; then
   fail "an unknown argument was accepted"
