@@ -116,7 +116,10 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let records =
         terminal_bench::Records::load(jobs.as_deref(), traces.as_deref(), samples.as_deref());
     let components = gym::coder_components::report(runs.as_deref(), &records);
-    let mut app = terminal_bench_tui::App::new(records).with_components(components);
+    let requirements = gym::coder_requirements::report(runs.as_deref(), &records);
+    let mut app = terminal_bench_tui::App::new(records)
+        .with_components(components)
+        .with_requirements(requirements);
     if print_only {
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {

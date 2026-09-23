@@ -1,0 +1,219 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "e6362eb85627dc4354eadd493fed9bd958f01353cf7f7862bda7cd55ab915252": {
+      "name": "jev_requirements",
+      "model": "jev-1.13.0",
+      "answers": {
+        "kind_s1": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 1.0,
+          "probabilities": {
+            "deliverable": 0.0,
+            "check": 0.0,
+            "behavior": 0.0,
+            "constraint": 0.0,
+            "context": 1.0
+          }
+        },
+        "kind_s2": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 0.86,
+          "probabilities": {
+            "deliverable": 0.0,
+            "context": 0.89,
+            "behavior": 0.0,
+            "check": 0.0,
+            "constraint": 0.11
+          }
+        },
+        "exhaustive_s2": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "kind_s3": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 0.96,
+          "probabilities": {
+            "deliverable": 0.0,
+            "check": 0.0,
+            "constraint": 0.0,
+            "context": 0.97,
+            "behavior": 0.03
+          }
+        },
+        "kind_s4": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.98,
+          "probabilities": {
+            "deliverable": 0.01,
+            "check": 0.0,
+            "constraint": 0.0,
+            "context": 0.01,
+            "behavior": 0.98
+          }
+        },
+        "kind_s5": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.91,
+          "probabilities": {
+            "deliverable": 0.01,
+            "context": 0.01,
+            "constraint": 0.05,
+            "behavior": 0.93,
+            "check": 0.0
+          }
+        },
+        "kind_s6": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.87,
+          "probabilities": {
+            "deliverable": 0.01,
+            "context": 0.01,
+            "constraint": 0.08,
+            "behavior": 0.9,
+            "check": 0.0
+          }
+        },
+        "kind_s7": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.91,
+          "probabilities": {
+            "deliverable": 0.01,
+            "context": 0.01,
+            "behavior": 0.92,
+            "check": 0.0,
+            "constraint": 0.06
+          }
+        },
+        "kind_s8": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.93,
+          "probabilities": {
+            "deliverable": 0.0,
+            "context": 0.0,
+            "constraint": 0.05,
+            "behavior": 0.95,
+            "check": 0.0
+          }
+        },
+        "kind_s9": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.92,
+          "probabilities": {
+            "deliverable": 0.01,
+            "context": 0.02,
+            "behavior": 0.94,
+            "check": 0.0,
+            "constraint": 0.03
+          }
+        },
+        "kind_s10": {
+          "type": "choice",
+          "choice": "constraint",
+          "confidence": 0.62,
+          "probabilities": {
+            "deliverable": 0.0,
+            "context": 0.0,
+            "constraint": 0.71,
+            "behavior": 0.29,
+            "check": 0.0
+          }
+        },
+        "kind_s11": {
+          "type": "choice",
+          "choice": "deliverable",
+          "confidence": 0.91,
+          "probabilities": {
+            "deliverable": 0.93,
+            "check": 0.0,
+            "behavior": 0.0,
+            "constraint": 0.07,
+            "context": 0.0
+          }
+        },
+        "exhaustive_s11": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "kind_s12": {
+          "type": "choice",
+          "choice": "deliverable",
+          "confidence": 0.46,
+          "probabilities": {
+            "deliverable": 0.57,
+            "check": 0.0,
+            "behavior": 0.02,
+            "constraint": 0.41,
+            "context": 0.0
+          }
+        },
+        "exhaustive_s12": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "kind_s13": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.91,
+          "probabilities": {
+            "deliverable": 0.02,
+            "check": 0.0,
+            "behavior": 0.93,
+            "constraint": 0.05,
+            "context": 0.0
+          }
+        },
+        "kind_s14": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 0.45,
+          "probabilities": {
+            "deliverable": 0.0,
+            "context": 0.56,
+            "constraint": 0.33,
+            "behavior": 0.1,
+            "check": 0.0
+          }
+        },
+        "kind_s15": {
+          "type": "choice",
+          "choice": "constraint",
+          "confidence": 0.35,
+          "probabilities": {
+            "deliverable": 0.0,
+            "context": 0.14,
+            "constraint": 0.48,
+            "behavior": 0.38,
+            "check": 0.0
+          }
+        },
+        "kind_s16": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 0.55,
+          "probabilities": {
+            "deliverable": 0.0,
+            "check": 0.0,
+            "constraint": 0.35,
+            "context": 0.64,
+            "behavior": 0.01
+          }
+        }
+      },
+      "input_tokens": 5047,
+      "output_tokens": 927,
+      "milliseconds": 396,
+      "source": "live component run of task.requirements#jev_requirements-1"
+    }
+  }
+}

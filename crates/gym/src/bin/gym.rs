@@ -235,6 +235,7 @@ gym admit    judge a frozen admission plan against recorded evidence and
              write the decision a registry activates
 gym terminal-bench  inspect evidence or run the pinned Harbor harness
 gym coder policy    list, show, and diff Coder One policy manifests
+gym coder requirements  Coder One requirement maps from suites and episodes
 
   --door name=url     a door to ask; repeatable
   --jev               hosted Jev, from TYPESAFE_API_KEY

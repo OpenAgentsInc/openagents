@@ -23,6 +23,7 @@ pub const SCHEMA: &str = "openagents.gym.coder-components.v1";
 
 /// The components Coder One runs today, in episode order.
 pub const KNOWN: &[&str] = &[
+    "task.requirements",
     "evidence.setup",
     "evidence.probes",
     "evidence.probes.planner",

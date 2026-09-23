@@ -1,0 +1,38 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "task.requirements",
+  "source": {
+    "synthetic": "a mini-task written for this suite"
+  },
+  "input": {
+    "task": {
+      "title": "The file /work/app.log holds one event per line, like `2025-01-02 ERROR disk full`.",
+      "body": "The file /work/app.log holds one event per line, like `2025-01-02 ERROR disk full`.\nCount the lines at each level and write /work/counts.json as {\"ERROR\": n, \"INFO\": n}.\nCount only ERROR and INFO; ignore DEBUG lines.\nRun `python3 check.py` to verify.\n"
+    }
+  },
+  "retained": {
+    "labeled_by": "hand, from the public instruction only (2026-09-22)",
+    "labels": [
+      {
+        "id": "L1",
+        "anchor": "Count the lines at each level",
+        "kind": "behavior"
+      },
+      {
+        "id": "L2",
+        "anchor": "write /work/counts.json",
+        "kind": "deliverable"
+      },
+      {
+        "id": "L3",
+        "anchor": "Count only ERROR and INFO",
+        "kind": "constraint"
+      },
+      {
+        "id": "L4",
+        "anchor": "`python3 check.py`",
+        "kind": "check"
+      }
+    ]
+  }
+}

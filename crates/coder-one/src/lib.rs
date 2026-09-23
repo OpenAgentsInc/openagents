@@ -32,6 +32,7 @@ pub mod ops;
 pub mod policy;
 pub mod probes;
 pub mod record;
+pub mod requirements;
 pub mod shell;
 pub mod state;
 

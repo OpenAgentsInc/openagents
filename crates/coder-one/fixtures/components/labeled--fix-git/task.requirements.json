@@ -1,0 +1,25 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "task.requirements",
+  "source": {
+    "trace": "panel--coder-one-jevprobe3-luna--fix-git",
+    "state": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git/fix-git__c2MR9Lx.episode/artifacts/state.json",
+    "note": "The instruction the retained episode saw; labels are hand-authored and kept apart from any held-out task."
+  },
+  "input": {
+    "task": {
+      "title": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me …",
+      "body": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.\n"
+    }
+  },
+  "retained": {
+    "labeled_by": "hand, from the public instruction only (2026-09-22)",
+    "labels": [
+      {
+        "id": "L1",
+        "anchor": "merge them into master",
+        "kind": "deliverable"
+      }
+    ]
+  }
+}

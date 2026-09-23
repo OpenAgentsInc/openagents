@@ -1,0 +1,35 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "task.requirements",
+  "source": {
+    "trace": "extended--coder-one-jevprobe3-luna--sqlite-db-truncate",
+    "state": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate/sqlite-db-truncate__rgzhtVQ.episode/artifacts/state.json",
+    "note": "The instruction the retained episode saw; labels are hand-authored and kept apart from any held-out task."
+  },
+  "input": {
+    "task": {
+      "title": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as many of the rows as p…",
+      "body": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as many of the rows as possible, and create a JSON file in /app/recover.json. The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]\n"
+    }
+  },
+  "retained": {
+    "labeled_by": "hand, from the public instruction only (2026-09-22)",
+    "labels": [
+      {
+        "id": "L1",
+        "anchor": "Recover as many of the rows as possible",
+        "kind": "behavior"
+      },
+      {
+        "id": "L2",
+        "anchor": "/app/recover.json",
+        "kind": "deliverable"
+      },
+      {
+        "id": "L3",
+        "anchor": "The output should have the format",
+        "kind": "constraint"
+      }
+    ]
+  }
+}

@@ -12,6 +12,7 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 
 | ID | What it decides | Jev |
 | --- | --- | --- |
+| `task.requirements` | The requirement map: each span of the instruction as a deliverable, behavior, constraint, check, or context. | One request per 20 spans |
 | `evidence.setup` | Which setup commands the task names should run first. The isolated run judges only; it never runs a command. | One request |
 | `evidence.probes.planner` | Which typed, read-only operations the host runs before the work. The isolated run plans only; it never runs an operation. | None |
 | `evidence.probes.selector` | Which finished probe outputs the briefing carries. | One request |
@@ -40,6 +41,43 @@ Every run records a suite invocation with one child per fixture in an ATIF
 session log under `~/.openagents/coder-one/components/`. Use `--out DIR` to
 record somewhere else, or `--no-record` to record nothing. The exit code is
 1 when a fixture failed.
+
+## Extract requirements from the task
+
+`task.requirements` cuts the instruction into identified spans: sentences,
+list items, checkbox lines, short lines such as the items of an unmarked
+list, code blocks, and blocks of format rows. The spans cover every
+non-space character of the instruction, and the map's `coverage` says so.
+Code reads each span's exact paths, commands, formats, and constants. Jev
+then reads each span in the context of the whole instruction and says
+whether it states a deliverable, a behavior, a constraint, a check, or
+context, and, for a span that looks like an example, whether the example is
+exhaustive.
+
+A span Jev reads as binding (one minus its context probability at 0.5 or
+more) becomes a requirement. A span between 0.2 and 0.5 stays a requirement
+marked `uncertain`, and a span below 0.2 stays in the map as context. No
+instruction text is dropped. Without Jev, a rule places each span and marks
+the requirements it keeps `unjudged`. Every requirement starts
+`unobserved`.
+
+The episode writes the map to `artifacts/requirements.json`, and the step
+and closing checks ask about its requirements instead of only the
+instruction's checkbox lines.
+
+The labeled fixtures are `labeled--<task>` for the eight development tasks,
+from the instruction each retained episode saw, and two synthetic
+mini-tasks, `synthetic--checkbox-issue` and `synthetic--mini-log`. Each
+label is text that must appear in the span that states it, and a kind. The
+suite reports recall (labels a kept requirement states) and precision (kept
+requirements that state a label), over all kept requirements and over the
+binding ones alone.
+
+```sh
+coder-one component suite task.requirements            # recorded Jev
+coder-one component suite task.requirements --jev off  # the rule alone
+gym coder requirements log-summary                     # spans, kinds, coverage
+```
 
 ## Observe without changing the workspace
 
@@ -119,7 +157,7 @@ question on them with recorded Jev.
 ```sh
 gym coder components
 gym coder components --component evidence.pack --json
-gym-terminal --terminal-bench        # press 7
+gym-terminal --terminal-bench        # press 7 for components, 8 for requirements
 ```
 
 The episode timeline (`gym terminal-bench attempt JOB TRIAL --timeline`)

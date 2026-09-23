@@ -1,0 +1,38 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "task.requirements",
+  "source": {
+    "synthetic": "a mini-task written for this suite"
+  },
+  "input": {
+    "task": {
+      "title": "Add a --dry-run flag to the sync command",
+      "body": "Add a --dry-run flag to the sync command\n\nThe sync command always writes. Add a flag that reports what it would do.\n\n- [ ] Add `--dry-run` to `sync` in src/cli.rs\n- [ ] Print each file that would change, one per line\n- [ ] Exit 0 without writing anything\n- [ ] Add a test in tests/sync.rs\n\nThe flag parser lives in src/args.rs.\n"
+    }
+  },
+  "retained": {
+    "labeled_by": "hand, from the public instruction only (2026-09-22)",
+    "labels": [
+      {
+        "id": "L1",
+        "anchor": "Add `--dry-run` to `sync`",
+        "kind": "deliverable"
+      },
+      {
+        "id": "L2",
+        "anchor": "Print each file that would change",
+        "kind": "behavior"
+      },
+      {
+        "id": "L3",
+        "anchor": "Exit 0 without writing anything",
+        "kind": "constraint"
+      },
+      {
+        "id": "L4",
+        "anchor": "Add a test in tests/sync.rs",
+        "kind": "check"
+      }
+    ]
+  }
+}

@@ -412,6 +412,11 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         .judge(jev_client, workdir.clone(), &state.issue, recorder.clone())
         .within(deadline.clone());
     judge.survey(&mut state).await;
+    bundle.attach(
+        "requirements",
+        "artifacts/requirements.json",
+        judge.requirements.record(),
+    );
     let mut judge = Snapshots {
         inner: judge,
         bundle: &bundle,
@@ -623,6 +628,9 @@ struct Bundle {
     generation: std::cell::Cell<u64>,
     /// The episode deadline, recorded with every write.
     deadline: Deadline,
+    /// Component records every write puts beside the manifest: key, then
+    /// path and value.
+    records: std::cell::RefCell<std::collections::BTreeMap<String, (String, Value)>>,
 }
 
 impl Bundle {
@@ -719,7 +727,16 @@ impl Bundle {
             log: None,
             generation: std::cell::Cell::new(0),
             deadline,
+            records: std::cell::RefCell::default(),
         })
+    }
+
+    /// Attaches a component record that every later write puts at
+    /// `relative` and names in the manifest under `key`.
+    fn attach(&self, key: &str, relative: &str, value: Value) {
+        self.records
+            .borrow_mut()
+            .insert(key.to_string(), (relative.to_string(), value));
     }
 
     fn write(
@@ -779,6 +796,12 @@ impl Bundle {
                 "collection".to_string(),
                 self.put("artifacts/collection.json", text.as_bytes())?,
             );
+        }
+        // Component records the episode attached, such as the requirement
+        // map and the briefing pack.
+        for (key, (relative, value)) in self.records.borrow().iter() {
+            let text = serde_json::to_string_pretty(value).map_err(|error| error.to_string())?;
+            files.insert(key.clone(), self.put(relative, text.as_bytes())?);
         }
         // The delegate writes its briefing and stream itself; the manifest
         // names each one that exists.

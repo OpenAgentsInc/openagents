@@ -27,7 +27,10 @@ an arm, or a manifest file name or path.
 
 gym coder components [--component ID] [--json]
                            each component's isolated fixture runs beside its
-                           episode invocations; see gym coder components --help";
+                           episode invocations; see gym coder components --help
+gym coder requirements [QUERY] [--json]
+                           task.requirements maps: spans, kinds, bindings,
+                           coverage, and recall and precision against labels";
 
 const SCHEMA: &str = "openagents.gym.coder-policy.v1";
 
@@ -105,6 +108,9 @@ pub fn run(args: Vec<String>) -> i32 {
 fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     if args.first().map(String::as_str) == Some("components") {
         return gym::coder_components::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("requirements") {
+        return gym::coder_requirements::command(&args[1..], out);
     }
     let (Some("policy"), Some(command)) = (
         args.first().map(String::as_str),

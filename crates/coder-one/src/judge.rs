@@ -41,6 +41,8 @@ use crate::state::{Issue, State, Surveyed, Turn};
 
 /// The most candidate files one request judges.
 const MAX_CANDIDATES: usize = 20;
+/// The most requirements the step and closing checks ask about.
+const MAX_CRITERIA: usize = 12;
 /// Output longer than this is split into chunks for Jev to pick from.
 const CHUNK_OVER: usize = 4_000;
 const CHUNK_LINES: usize = 40;
@@ -60,6 +62,9 @@ pub struct JevJudge {
     workdir: PathBuf,
     keywords: Vec<String>,
     criteria: Vec<String>,
+    /// The requirement map `criteria` comes from: by rule at first, from
+    /// Jev once the survey has asked.
+    pub requirements: crate::requirements::RequirementMap,
     /// Whether the workdir is a Git work tree. Terminal-Bench task
     /// directories often are not, and search falls back to a file walk.
     is_git: bool,
@@ -125,7 +130,9 @@ impl JevJudge {
         recorder: Recorder,
     ) -> Self {
         let is_git = git(&workdir, &["rev-parse", "--is-inside-work-tree"]).trim() == "true";
-        let criteria = criteria(&issue.body);
+        // The requirement map by rule; the survey asks Jev for a better one.
+        let requirements = crate::requirements::mechanical(&issue.body);
+        let criteria = requirements.criteria(MAX_CRITERIA);
         let evidence = Evidence {
             criteria: criteria.iter().map(|c| (c.clone(), None)).collect(),
             ..Evidence::default()
@@ -135,6 +142,7 @@ impl JevJudge {
             workdir,
             keywords: keywords(issue),
             criteria,
+            requirements,
             is_git,
             recorder,
             calls: 0,
@@ -279,6 +287,68 @@ impl JevJudge {
             Finish::new(Outcome::Completed)
                 .output(json!({ "gated": gated, "ran": ran, "refused": refused })),
         );
+    }
+
+    /// `task.requirements`: Jev reads each span of the instruction, and
+    /// the map it makes replaces the one by rule. When no request is
+    /// answered the rule's map stays.
+    async fn requirements(&mut self, client: &jev::Client, state: &State) {
+        let params = crate::requirements::Params::default();
+        let invocation = self.recorder.enter(
+            Start::new(
+                "task.requirements",
+                crate::requirements::implementation(params, true),
+            )
+            .named("requirement map")
+            .reading(&json!({ "title": state.issue.title, "body": state.issue.body })),
+        );
+        let (map, asked) = crate::requirements::extract_with(
+            &state.issue.title,
+            &state.issue.body,
+            params,
+            &JevMode::Live(client.clone()),
+            &self.recorder,
+            Some(self.deadline.clone()),
+        )
+        .await;
+        for one in &asked {
+            self.count(one);
+        }
+        let answered = asked.iter().any(Asked::answered);
+        println!(
+            "  requirements ▸ {} spans, {} requirements ({} uncertain), {:.0}% of the instruction covered{}",
+            map.coverage.spans,
+            map.requirements.len(),
+            map.requirements
+                .iter()
+                .filter(|r| r.binding == crate::requirements::Binding::Uncertain)
+                .count(),
+            map.coverage.fraction * 100.0,
+            if answered {
+                ""
+            } else {
+                "; Jev did not answer, so the map is by rule"
+            }
+        );
+        if answered {
+            self.criteria = map.criteria(MAX_CRITERIA);
+            self.evidence.criteria = self.criteria.iter().map(|c| (c.clone(), None)).collect();
+            self.requirements = map;
+        }
+        self.recorder.end(
+            &invocation,
+            Finish::new(if answered {
+                Outcome::Completed
+            } else {
+                Outcome::Failed
+            })
+            .output(json!({
+                "method": self.requirements.method,
+                "requirements": self.requirements.requirements.len(),
+                "coverage": self.requirements.coverage,
+            })),
+        );
+        self.recorder.revise();
     }
 
     /// One Jev request through the shared component call, with the judge's
@@ -518,6 +588,7 @@ impl JevJudge {
         let Some(client) = self.client.clone().filter(|_| self.deep) else {
             return;
         };
+        self.requirements(&client, state).await;
         if self.probes && self.v2 {
             self.setup(&client, state).await;
         }
@@ -1328,21 +1399,6 @@ fn keywords(issue: &Issue) -> Vec<String> {
     out
 }
 
-/// Checkbox lines from the issue body, as requirements.
-fn criteria(body: &str) -> Vec<String> {
-    body.lines()
-        .filter_map(|line| {
-            let line = line.trim_start();
-            line.strip_prefix("- [ ]")
-                .or_else(|| line.strip_prefix("- [x]"))
-                .or_else(|| line.strip_prefix("* [ ]"))
-        })
-        .map(|text| clip(text.trim(), 300))
-        .filter(|text| !text.is_empty())
-        .take(10)
-        .collect()
-}
-
 fn chunk(output: &str) -> Vec<String> {
     let lines: Vec<&str> = output.lines().collect();
     let chunks: Vec<String> = lines
@@ -1483,12 +1539,6 @@ mod tests {
             Some("/app/x".to_string())
         );
         assert!(setup_commands("Use `ls` and `python3 run.py`.").is_empty());
-    }
-
-    #[test]
-    fn criteria_are_checkbox_lines() {
-        let found = criteria("Intro\n- [ ] Add a flag\n  - [x] Test it\n- plain item\n");
-        assert_eq!(found, ["Add a flag", "Test it"]);
     }
 
     #[test]

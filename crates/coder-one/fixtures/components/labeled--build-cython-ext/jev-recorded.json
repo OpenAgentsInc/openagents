@@ -1,0 +1,167 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "5395b24d235a5d68c1fe9e16c16f0de30c673a223d52f90de9f7291095ecd377": {
+      "name": "jev_requirements",
+      "model": "jev-1.13.0",
+      "answers": {
+        "kind_s1": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 1.0,
+          "probabilities": {
+            "behavior": 0.0,
+            "deliverable": 0.0,
+            "context": 1.0,
+            "check": 0.0,
+            "constraint": 0.0
+          }
+        },
+        "kind_s2": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 0.82,
+          "probabilities": {
+            "behavior": 0.1,
+            "deliverable": 0.01,
+            "context": 0.86,
+            "check": 0.0,
+            "constraint": 0.03
+          }
+        },
+        "kind_s3": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 0.93,
+          "probabilities": {
+            "behavior": 0.01,
+            "deliverable": 0.01,
+            "context": 0.94,
+            "check": 0.0,
+            "constraint": 0.04
+          }
+        },
+        "kind_s4": {
+          "type": "choice",
+          "choice": "deliverable",
+          "confidence": 0.65,
+          "probabilities": {
+            "behavior": 0.21,
+            "deliverable": 0.72,
+            "context": 0.01,
+            "check": 0.0,
+            "constraint": 0.06
+          }
+        },
+        "kind_s5": {
+          "type": "choice",
+          "choice": "check",
+          "confidence": 0.86,
+          "probabilities": {
+            "behavior": 0.04,
+            "deliverable": 0.0,
+            "context": 0.02,
+            "check": 0.89,
+            "constraint": 0.05
+          }
+        },
+        "kind_s6": {
+          "type": "choice",
+          "choice": "check",
+          "confidence": 1.0,
+          "probabilities": {
+            "behavior": 0.0,
+            "deliverable": 0.0,
+            "context": 0.0,
+            "check": 1.0,
+            "constraint": 0.0
+          }
+        },
+        "exhaustive_s6": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "kind_s7": {
+          "type": "choice",
+          "choice": "constraint",
+          "confidence": 0.82,
+          "probabilities": {
+            "behavior": 0.0,
+            "deliverable": 0.1,
+            "context": 0.02,
+            "check": 0.02,
+            "constraint": 0.86
+          }
+        },
+        "kind_s8": {
+          "type": "choice",
+          "choice": "constraint",
+          "confidence": 0.99,
+          "probabilities": {
+            "behavior": 0.0,
+            "deliverable": 0.0,
+            "context": 0.01,
+            "check": 0.0,
+            "constraint": 0.99
+          }
+        },
+        "exhaustive_s8": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "kind_s9": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 0.52,
+          "probabilities": {
+            "behavior": 0.02,
+            "deliverable": 0.0,
+            "context": 0.63,
+            "check": 0.35,
+            "constraint": 0.0
+          }
+        },
+        "kind_s10": {
+          "type": "choice",
+          "choice": "check",
+          "confidence": 0.82,
+          "probabilities": {
+            "behavior": 0.11,
+            "constraint": 0.03,
+            "context": 0.0,
+            "check": 0.86,
+            "deliverable": 0.0
+          }
+        },
+        "kind_s11": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.91,
+          "probabilities": {
+            "behavior": 0.93,
+            "constraint": 0.03,
+            "context": 0.0,
+            "check": 0.0,
+            "deliverable": 0.04
+          }
+        },
+        "kind_s12": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 0.99,
+          "probabilities": {
+            "behavior": 0.0,
+            "deliverable": 0.0,
+            "context": 1.0,
+            "check": 0.0,
+            "constraint": 0.0
+          }
+        }
+      },
+      "input_tokens": 4107,
+      "output_tokens": 686,
+      "milliseconds": 409,
+      "source": "live component run of task.requirements#jev_requirements-1"
+    }
+  }
+}

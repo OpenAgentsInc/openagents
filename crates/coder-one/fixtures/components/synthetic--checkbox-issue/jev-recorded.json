@@ -1,0 +1,111 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "2fc9ed9e47df430e78e145ebc092b073b2591c983e1aabd3ec48cce740f2cb4a": {
+      "name": "jev_requirements",
+      "model": "jev-1.13.0",
+      "answers": {
+        "kind_s1": {
+          "type": "choice",
+          "choice": "deliverable",
+          "confidence": 0.64,
+          "probabilities": {
+            "deliverable": 0.71,
+            "context": 0.01,
+            "constraint": 0.05,
+            "behavior": 0.23,
+            "check": 0.0
+          }
+        },
+        "kind_s2": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 0.91,
+          "probabilities": {
+            "deliverable": 0.0,
+            "context": 0.93,
+            "constraint": 0.0,
+            "behavior": 0.07,
+            "check": 0.0
+          }
+        },
+        "kind_s3": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.99,
+          "probabilities": {
+            "deliverable": 0.01,
+            "context": 0.0,
+            "constraint": 0.0,
+            "behavior": 0.99,
+            "check": 0.0
+          }
+        },
+        "kind_s4": {
+          "type": "choice",
+          "choice": "deliverable",
+          "confidence": 0.74,
+          "probabilities": {
+            "deliverable": 0.79,
+            "context": 0.0,
+            "constraint": 0.14,
+            "behavior": 0.01,
+            "check": 0.06
+          }
+        },
+        "kind_s5": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.9,
+          "probabilities": {
+            "deliverable": 0.02,
+            "behavior": 0.92,
+            "constraint": 0.05,
+            "context": 0.0,
+            "check": 0.01
+          }
+        },
+        "kind_s6": {
+          "type": "choice",
+          "choice": "behavior",
+          "confidence": 0.89,
+          "probabilities": {
+            "deliverable": 0.0,
+            "context": 0.0,
+            "constraint": 0.07,
+            "behavior": 0.91,
+            "check": 0.02
+          }
+        },
+        "kind_s7": {
+          "type": "choice",
+          "choice": "deliverable",
+          "confidence": 0.43,
+          "probabilities": {
+            "deliverable": 0.54,
+            "context": 0.0,
+            "constraint": 0.01,
+            "behavior": 0.0,
+            "check": 0.45
+          }
+        },
+        "kind_s8": {
+          "type": "choice",
+          "choice": "context",
+          "confidence": 1.0,
+          "probabilities": {
+            "deliverable": 0.0,
+            "context": 1.0,
+            "constraint": 0.0,
+            "behavior": 0.0,
+            "check": 0.0
+          }
+        }
+      },
+      "input_tokens": 2379,
+      "output_tokens": 433,
+      "milliseconds": 522,
+      "source": "live component run of task.requirements#jev_requirements-1"
+    }
+  }
+}

@@ -125,6 +125,7 @@ pub trait Component {
 #[must_use]
 pub fn registry() -> Vec<Box<dyn Component>> {
     vec![
+        Box::new(Requirements),
         Box::new(SetupGate),
         Box::new(Planner),
         Box::new(ProbeKeep),
@@ -194,6 +195,87 @@ fn same_set(a: &[String], b: Option<&Value>) -> Value {
     a.sort_unstable();
     b.sort_unstable();
     json!(a == b)
+}
+
+/// `task.requirements`: the requirement map from the task's own words,
+/// scored against hand labels when the fixture holds them.
+struct Requirements;
+
+#[derive(Deserialize)]
+struct RequirementsInput {
+    task: Task,
+    #[serde(default)]
+    params: Option<crate::requirements::Params>,
+}
+
+impl Component for Requirements {
+    fn id(&self) -> &'static str {
+        "task.requirements"
+    }
+    fn implementation(&self) -> Implementation {
+        crate::requirements::implementation(crate::requirements::Params::default(), true)
+    }
+    fn about(&self) -> &'static str {
+        "Jev reads each span of the task as a deliverable, behavior, constraint, check, or context."
+    }
+    fn run<'a>(
+        &'a self,
+        fixture: &'a Fixture,
+        jev: &'a JevMode,
+        recorder: &'a Recorder,
+    ) -> LocalBoxFuture<'a, Result<Ran, String>> {
+        Box::pin(async move {
+            let input: RequirementsInput = input(fixture)?;
+            let params = input.params.unwrap_or_default();
+            let (map, _) = crate::requirements::extract_with(
+                &input.task.title,
+                &input.task.body,
+                params,
+                jev,
+                recorder,
+                None,
+            )
+            .await;
+            let mut metrics = Map::new();
+            metrics.insert("spans".to_string(), json!(map.coverage.spans));
+            metrics.insert("requirements".to_string(), json!(map.requirements.len()));
+            metrics.insert(
+                "uncertain".to_string(),
+                json!(
+                    map.requirements
+                        .iter()
+                        .filter(|r| r.binding == crate::requirements::Binding::Uncertain)
+                        .count()
+                ),
+            );
+            metrics.insert("coverage".to_string(), json!(map.coverage.fraction));
+            metrics.insert(
+                "unanswered_spans".to_string(),
+                json!(map.coverage.unanswered_spans),
+            );
+            let mut score = Value::Null;
+            if let Some(labels) = fixture.retained.get("labels") {
+                let labels: Vec<crate::requirements::Label> =
+                    serde_json::from_value(labels.clone())
+                        .map_err(|error| format!("the labels don't read: {error}"))?;
+                let scored = crate::requirements::score(&map, &labels);
+                metrics.insert("labels".to_string(), json!(labels.len()));
+                metrics.insert("recall".to_string(), json!(scored.recall));
+                metrics.insert("precision".to_string(), json!(scored.precision));
+                metrics.insert("recall_binding".to_string(), json!(scored.recall_binding));
+                metrics.insert(
+                    "precision_binding".to_string(),
+                    json!(scored.precision_binding),
+                );
+                metrics.insert("kind_agreement".to_string(), json!(scored.kind_agreement));
+                score = json!(scored);
+            }
+            Ok(Ran {
+                output: json!({ "map": map.record(), "score": score }),
+                metrics,
+            })
+        })
+    }
 }
 
 /// `evidence.setup`: which setup commands the task needs run first. The

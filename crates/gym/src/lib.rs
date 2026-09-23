@@ -57,6 +57,7 @@ pub mod calibrate;
 pub mod coder_calls;
 pub mod coder_components;
 pub mod coder_policy;
+pub mod coder_requirements;
 pub mod commitment;
 pub mod coverage;
 pub mod eval;

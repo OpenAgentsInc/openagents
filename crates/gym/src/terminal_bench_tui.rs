@@ -18,10 +18,11 @@ pub enum View {
     History,
     Guide,
     Components,
+    Requirements,
 }
 
 impl View {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
@@ -29,6 +30,7 @@ impl View {
         Self::History,
         Self::Guide,
         Self::Components,
+        Self::Requirements,
     ];
     pub fn title(self) -> &'static str {
         match self {
@@ -39,6 +41,7 @@ impl View {
             Self::History => "history",
             Self::Guide => "runbooks",
             Self::Components => "components",
+            Self::Requirements => "requirements",
         }
     }
     fn index(self) -> usize {
@@ -50,6 +53,7 @@ impl View {
             Self::History => 4,
             Self::Guide => 5,
             Self::Components => 6,
+            Self::Requirements => 7,
         }
     }
     pub fn from_digit(digit: char) -> Option<Self> {
@@ -63,13 +67,15 @@ pub struct App {
     records: Records,
     groups: Vec<ComparisonGroup>,
     view: View,
-    cursor: [usize; 7],
+    cursor: [usize; 8],
     selected_group: usize,
     selected_attempt: usize,
     history_order: Vec<usize>,
     ladder: Ladder,
     /// Coder One's components: isolated runs beside episode invocations.
     components: Option<crate::coder_components::Report>,
+    /// Coder One's requirement maps.
+    requirements: Option<crate::coder_requirements::Report>,
 }
 
 impl App {
@@ -85,13 +91,21 @@ impl App {
             records,
             groups,
             view: View::Overview,
-            cursor: [0; 7],
+            cursor: [0; 8],
             selected_group: 0,
             selected_attempt: 0,
             history_order,
             ladder: ladder_from_environment(),
             components: None,
+            requirements: None,
         }
+    }
+
+    /// Adds the Requirements view's report.
+    #[must_use]
+    pub fn with_requirements(mut self, report: crate::coder_requirements::Report) -> Self {
+        self.requirements = Some(report);
+        self
     }
 
     /// Adds the Components view's report.
@@ -141,6 +155,7 @@ impl App {
             View::Guide => 0,
             // The components report scrolls line by line.
             View::Components => self.components().len(),
+            View::Requirements => self.requirements().len(),
         }
     }
     pub fn inspect(&mut self) {
@@ -170,7 +185,7 @@ impl App {
                 self.view = View::Evidence;
             }
             View::Evidence => {}
-            View::Guide | View::Components => {}
+            View::Guide | View::Components | View::Requirements => {}
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -241,7 +256,7 @@ impl App {
                 self.ladder.style(Intensity::Half),
             )),
         );
-        let keys = "1-7 view  tab/h/l switch  j/k move  enter inspect  q quit";
+        let keys = "1-8 view  tab/h/l switch  j/k move  enter inspect  q quit";
         rail(
             box_area,
             buf,
@@ -294,7 +309,7 @@ impl App {
             View::History => Some(3 + self.cursor()),
             View::Evidence => Some(2 + self.cursor()),
             View::Attempt | View::Guide => None,
-            View::Components => Some(self.cursor()),
+            View::Components | View::Requirements => Some(self.cursor()),
         }
     }
 
@@ -307,6 +322,7 @@ impl App {
             View::History => self.history(),
             View::Guide => self.guide(),
             View::Components => self.components(),
+            View::Requirements => self.requirements(),
         }
     }
 
@@ -706,6 +722,18 @@ impl App {
             || {
                 vec![
                     "No component report loaded. Record isolated runs with `coder-one component suite ID`."
+                        .to_owned(),
+                ]
+            },
+            |report| report.lines(None),
+        )
+    }
+
+    fn requirements(&self) -> Vec<String> {
+        self.requirements.as_ref().map_or_else(
+            || {
+                vec![
+                    "No requirement maps loaded. Run `coder-one component suite task.requirements`."
                         .to_owned(),
                 ]
             },
