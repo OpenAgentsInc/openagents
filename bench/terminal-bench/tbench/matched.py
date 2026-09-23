@@ -83,6 +83,7 @@ class MatchedPlain(CoderOneDelegate):
             await environment.download_file(remote + "/stream.jsonl", self.logs_dir / "claude-code.txt")
             await environment.download_file(remote + "/stderr.txt", self.logs_dir / "stderr.txt")
             home = await environment.exec(command='printf "%s" "$HOME"')
+            (self.logs_dir / "sessions").mkdir(parents=True, exist_ok=True)
             await environment.download_dir(home.stdout.strip() + "/.claude/projects",
                                            self.logs_dir / "sessions/projects")
 

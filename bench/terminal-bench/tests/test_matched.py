@@ -49,8 +49,9 @@ def test_plain_runs_claude_directly_and_retains_no_token(tmp_path, monkeypatch):
         async def download_file(self, source, target):
             Path(target).write_text("")
 
-        async def download_dir(self, *args):
-            pass
+        async def download_dir(self, source, target):
+            # Docker compose cp requires the destination's parent.
+            assert Path(target).parent.is_dir()
 
     asyncio.run(agent.run("Solve the task.", Environment(), None))
     invocation = next(c for c in calls if "stream.jsonl" in c["command"])
