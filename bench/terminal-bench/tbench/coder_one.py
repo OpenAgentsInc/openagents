@@ -397,11 +397,15 @@ class CoderOneDelegate(CoderOne):
         ``CODEX_FORCE_AUTH_JSON`` selects ``~/.codex/auth.json``. The path
         is read; the file's contents never are.
         """
-        explicit = self._get_env("CODEX_AUTH_JSON_PATH") or os.environ.get(
-            "CODEX_AUTH_JSON_PATH"
-        )
-        if explicit:
-            return Path(explicit).expanduser()
+        # A resumed job reads its agent env back from the stored config,
+        # where Harbor masks credential-named values (``/hom****son``). A
+        # masked path names nothing, so it counts as unset.
+        for explicit in (
+            self._get_env("CODEX_AUTH_JSON_PATH"),
+            os.environ.get("CODEX_AUTH_JSON_PATH"),
+        ):
+            if explicit and "*" not in explicit:
+                return Path(explicit).expanduser()
         force = self._get_env("CODEX_FORCE_AUTH_JSON") or os.environ.get(
             "CODEX_FORCE_AUTH_JSON", ""
         )

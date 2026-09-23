@@ -465,3 +465,11 @@ def test_merged_setup_is_cold_when_any_layer_was():
     assert merged["mode"] == "mixed"
     assert merged["cache"] == "cold"
     assert merged["install_ms"] == 3
+
+
+def test_a_masked_codex_path_from_a_resumed_config_counts_as_unset(tmp_path, monkeypatch):
+    agent = _delegate(tmp_path, delegate="always", delegate_agent="codex")
+    monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
+    monkeypatch.setenv("CODEX_FORCE_AUTH_JSON", "1")
+    monkeypatch.setattr(agent, "_get_env", lambda name: "/hom****son" if name == "CODEX_AUTH_JSON_PATH" else None)
+    assert str(agent.codex_auth_path()).endswith(".codex/auth.json")
