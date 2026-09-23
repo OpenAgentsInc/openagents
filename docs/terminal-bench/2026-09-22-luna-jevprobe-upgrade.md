@@ -4,6 +4,12 @@ Status: assessment and implementation proposal, September 22, 2026.
 Reviewed through OpenAgents commit `72ed33efda`. No new inference or
 benchmark trial was run for this assessment.
 
+The [detailed failure analysis](#detailed-analysis-of-the-five-v3-luna-failures)
+was added after pulling `3d85921673`. It preserves the original trial
+population and adds inspection of the pinned upstream tests and an offline
+reconstruction of the log-counting error. That reconstruction is not a new
+agent run or a replay of an original candidate.
+
 **Build Jev-probe v4 around requirement coverage, compact evidence, and one
 bounded repair by Luna.** Keep the zero-Gemini front end and Codex's Luna
 executor. Give Jev narrow questions about the evidence an operation needs
@@ -224,7 +230,7 @@ Today's failures identify useful **development regressions**:
 | Failure | Evidence available today | What a general mechanism should do |
 | --- | --- | --- |
 | V2 Cython aliases | The analysis reports an unchanged `np.int` or a doubled replacement such as `np.int6464`; v3 recovers 3/3 | Bind checks to the changed symbols and affected behavior; check a bulk transformation for omissions and double application. |
-| V3 headless terminal | One failed trial; the analysis reports missing `/app/vim.txt` | Preserve exact deliverables from the task and inspect their current existence/content before declaring local completion. |
+| V3 headless terminal | One failed trial; the analysis reports missing `/app/vim.txt`, which the verifier's editor interaction should create | Test an interactive application's behavior through the terminal interface. The missing file is a symptom of that interaction, not an omitted deliverable in the public instruction. |
 | Log summary | All v3 trials fail; selected log content is omitted; the analysis reports substring severity matching | Supply bounded actual records, distinguish a field from message text, and test a synthetic line with a misleading severity word in its message. |
 | Async cancellation | V3 still fails one of three | Capture task requirements and candidate behavior around pending/running work, exceptions, and cleanup; use targeted behavioral checks instead of a generic completion probability. |
 
@@ -269,6 +275,409 @@ should retain sanitized native events, selected artifact bytes/diffs, and
 verifier diagnostics, with digests and explicit missing-file status. Reuse
 Gym's evidence-health reporting. Do not silently present copied manifests
 as proof that all referenced files were retained.
+
+## Detailed analysis of the five v3 Luna failures
+
+**The strongest evidence points to gaps between the behavior requested, the
+evidence Luna received, and the behavior anyone checked.** All five failed
+trials completed delegation and reached Harbor's verifier. None has a recorded
+harness exception. Three failures share a strong, reproducible log-parsing
+explanation. The terminal failure has a reported behavioral symptom. The exact
+async defect remains unknown because its implementation and test diagnostics
+were not retained here. Calling all five a lack of model intelligence, or all
+five a briefing bug, would go beyond the evidence.
+
+### Evidence boundaries and trial inventory
+
+This analysis distinguishes four kinds of evidence:
+
+- **Observed in a retained trial:** the public task, exact delegate briefing,
+  Jev state and answers, final report, usage, episode outcome, and Harbor reward.
+- **Reported by the earlier run analysis:** substring severity matching and
+  the absent terminal-test file. The original command streams and failing
+  assertion output are not present to independently verify each attribution.
+- **Reconstructed offline:** behavior of the pinned public log generator and
+  candidate counting rules. These establish a failure mechanism, not which
+  exact program a particular Luna trial wrote.
+- **Hypothesized:** implementation defects and interventions whose effects
+  require the original artifacts or a controlled new experiment.
+
+The [assessment JSON](2026-09-22-luna-jevprobe-assessment.json), under
+`failure_analysis`, records these five trials, source digests, evidence
+availability, and the offline reconstruction. Each trial link below leads
+to its retained trajectory, including the briefing and closing judgment.
+
+| Task and trial | Agent time | Recorded cost | Completed delegate items | Jev `done` |
+| --- | ---: | ---: | ---: | ---: |
+| Log summary [`XWSKgz5`](../../bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.json) | 24.65 s | $0.001900 | 3 | 0.52 |
+| Log summary [`ocBe8jz`](../../bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.json) | 24.55 s | $0.001574 | 3 | 0.67 |
+| Log summary [`sEQeiWX`](../../bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.json) | 26.96 s | $0.002119 | 3 | 0.67 |
+| Headless terminal [`tr384w7`](../../bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.json) | 59.24 s | $0.002623 | 5 | 0.53 |
+| Async cancellation [`8MSemsU`](../../bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.json) | 36.86 s | $0.001401 | 4 | 0.65 |
+
+All five have reward `0`, delegate status `answered`, empty `close.criteria`,
+and `git_base: null`. Their closing state says the working directory is not
+a Git work tree and lists no changes. Costs retain the historical accounting
+provenance described above. The Codex adapter's `num_turns` counts completed
+commands, file changes, tool calls, searches, and messages; it is not a count
+of model API calls. Three recorded items do not establish the exact sequence
+of two commands and a final message without the native stream.
+
+The manifests name untruncated native streams of 5,206, 4,903, 5,312, 16,180,
+and 8,802 bytes, respectively, and supply their digests. None of those files
+is in the committed trace bundle. The local jobs directory on this Mac also
+has no corresponding v3 Luna jobs. The retained Harbor sidecars contain the
+binary reward but no per-test results. Consequently, this analysis cannot
+quote the original parser, PTY constructor, cancellation loop, failing
+assertion stack, or every command. Recovering those small streams from the
+Linux runner is the first evidence-recovery step; repeating the experiment
+would produce new evidence, not recover these trials.
+
+The retention procedure copies Harbor's normalized trajectory, while the
+episode manifest names the raw `trajectory.atif.json`. Their byte digests
+differ in all five cases. That difference is not itself evidence of a bad
+trial, but the export cannot satisfy the raw-file digest check. The extracted
+briefings and retained usage files do match their declared digests. Retain
+both trajectory forms and a record of the conversion; the assessment hashes
+the actual committed files separately.
+
+### Log summary: the output looked right while its meaning was wrong
+
+#### What the task required and what Luna reported
+
+The task asks for `/app/summary.csv`, with a fixed header and 15 ordered rows:
+three severity levels for each of five date ranges. Dates come from filenames,
+and the reference date is explicitly `2025-08-12`. The inclusive windows are
+August 6–12 for seven days, July 14–August 12 for thirty days, and August 1–12
+for month to date. The total covers every file. A correct CSV shape is only
+one requirement; every count must represent the event's severity.
+
+The three failed trials' final reports emphasize different checks:
+
+| Trial | Reported work and checks | What that report does not establish |
+| --- | --- | --- |
+| `XWSKgz5` | Created the header and 15 period/severity rows; checked CSV structure and integer counts | That a number counts the severity field rather than a word in the message |
+| `ocBe8jz` | Used filename dates and the specified reference date; checked row order, structure, and numeric counts | That the parsing rule assigns an event to the correct severity |
+| `sEQeiWX` | Created the requested order and checked that date-range counts are consistent | That mutually consistent counts are correct; the same wrong counting rule can produce consistent totals |
+
+These are observations about the reports. The missing streams prevent
+confirming which checks actually ran or whether their assertions were useful.
+The reports do not identify a semantic parser test or an independently
+calculated count. They also do not prove that any date boundary was wrong.
+
+#### What the harness supplied, and what it discarded
+
+The retained preparation sequence is the same in all three trials:
+
+1. The probe stage judges directory listings, a file tree, and the Python
+   package/version output. Jev gives the file tree probabilities of
+   `0.95–0.96`, the log-directory listing `0.88–0.90`, and the working-directory
+   listing `0.81–0.84`. Code keeps those three outputs.
+2. Two survey requests judge 40 log files, using separate relevance and edit
+   questions. The excerpts visible to Jev contain timestamped records with
+   bracketed severity fields. Average relevance is about `0.85`, while every
+   edit judgment is at most `0.05`: useful inputs, not likely edit targets.
+3. Code selects three log-content sections per trial, each about 4,051–4,052
+   characters after formatting. The selection varies across repetitions.
+4. The briefing builder inserts probes before files and accepts whole sections.
+   Every selected log-content section is omitted. Each final briefing is
+   10,812 characters; 8,235 characters, or **76.2%**, are the directory/listing
+   portion under “Files by relevance.” None contains a bracketed log record.
+5. The remaining nominal 1,188 characters cannot fit a selected 4,000-character
+   section. Code makes no smaller representative capture. Luna receives the
+   complete task but no example of the actual record structure.
+6. The closing directions nevertheless call the supplied evidence complete
+   and current, discourage reading it again, and urge few, large steps.
+
+This is a composition failure after semantic selection. Jev recognized useful
+inputs, but that judgment had no effect on what Luna could inspect in the
+briefing. Global relevance also failed to distinguish two overlapping
+inventories from the one small record example needed to choose a parser.
+The original logs remained available to Luna, so omission did not make
+success impossible. Whether the directions suppressed a useful inspection
+is a plausible explanation to test, not an observed decision in its reasoning.
+
+#### The specific counting mistake and its reproduced signature
+
+The [earlier results analysis](README.md#jev-probe-arms-2026-09-22) reports
+probe-arm counts of 414 `ERROR` events where the verifier expects 370.
+The pinned [log generator][v3-log-generator] deliberately includes warning
+messages containing the word `ERROR`. An actual record from the offline
+reconstruction is:
+
+```text
+2025-08-12 23:57:27 [WARNING] Second failed login attempt for user: diana. Next attempt will ERROR. Retrying...
+```
+
+That is one warning event. Searching for `ERROR` anywhere in the line counts
+an error that did not occur. Looking for word boundaries does not fix this:
+`ERROR` is a whole word in the message. The parser must identify the severity
+field in the observed record format.
+
+For this follow-up, the pinned deterministic generator was run offline into
+a temporary directory, changing only its output directory. It generated
+**164 files and 94,547 records**. A parser anchored to the timestamp and
+bracketed severity reproduced all 15 expected rows in the pinned
+[verifier][v3-log-tests]. Searching the entire line reproduced the reported
+414-versus-370 difference:
+
+| Period | Severity-field `ERROR` count | Whole-line `ERROR` matches | Spurious matches |
+| --- | ---: | ---: | ---: |
+| Today | 370 | 414 | 44 |
+| Last 7 days | 2,969 | 3,559 | 590 |
+| Last 30 days | 9,594 | 11,432 | 1,838 |
+| Month to date | 4,682 | 5,594 | 912 |
+| Total | 14,160 | 16,774 | 2,614 |
+
+There are at least two wrong implementations with this error signature.
+Independent substring checks count a warning-with-`ERROR` as both a warning
+and an error. An `ERROR`-first, first-match rule instead transfers it from
+warning to error; today's warning count becomes 419 rather than 463.
+Without the original CSV and parser, the shared error count cannot identify
+which rule each trial used. The full reconstructed counts for both rules are
+in the assessment JSON. They are **not recovered v3 output files**.
+
+The verifier compares rows in order, starting with today's `ERROR` count.
+A mismatch there is enough to fail the test and can hide additional incorrect
+rows. Integer checks, row-count checks, ordered dates, and increasing totals
+can all pass with either wrong parser. This explains why more checking
+instructions alone did not necessarily help: the checks can confirm the
+format of the answer while sharing its mistaken interpretation.
+
+The data and reported symptom strongly support this mechanism for the
+log-summary failure family. They do not prove that each of these three v3
+candidates had identical source code, that no other defect existed, or that
+providing samples alone would repair all three. Direct Luna passed 3/3 here,
+v2 Luna passed 1/3, and v3 Luna passed 0/3. Those small, differently prompted
+groups motivate an ablation; they do not establish a causal effect size.
+
+#### Changes worth testing for log processing
+
+First, give evidence a purpose. The public requirement needs a record-format
+example and date coverage, not hundreds of filenames. Pack one compact
+inventory and representative complete records before redundant listings.
+Retain the input count, sampling rule, and omitted ranges. Samples explain
+the format; the executor must still process all required input files.
+
+Second, make the ambiguity visible. Code can identify candidate delimiters
+and records containing multiple severity words. Jev can judge which capture
+helps distinguish a field from message text, given the public requirement and
+actual records. It should not count 94,547 events or decide arithmetic that
+code can compute exactly. Do not hardcode this task's dates, expected counts,
+or generator-specific message into the runtime.
+
+Third, use a counterexample with an independently stated expectation. Given
+the observed format, alter only a synthetic record's message to contain
+another severity word. Its severity count must remain unchanged. Also vary
+filename dates around the public window boundaries, permute records, and
+split a dataset into two parts whose results should add to the whole. These
+checks target distinct assumptions; passing one does not establish the rest.
+If a parser exists only inside a one-off shell command, retain that command
+or a runnable script so a checker can exercise it against scratch inputs.
+
+Finally, provide one repair with the failed local example, actual parser
+identity, and expected versus observed behavior. Ask Luna to repair the rule
+and regenerate the full CSV. Rechecking only the miniature example would
+leave the original wrong CSV in place. The protected aggregate totals above
+are postmortem evidence and must never enter that live repair brief.
+
+### Headless terminal: a shell demonstration did not establish editor support
+
+The failed `tr384w7` trial had a 2,891-character briefing, no omitted sections,
+and the full short `BaseTerminal` interface. Unlike the log trials, there is
+no evidence of a briefing-cap problem. Luna reported building a PTY-backed
+interactive Bash implementation, loading `.bashrc`, sending control bytes,
+capturing output, and providing cleanup helpers. It reported testing startup
+files, shell commands, an interactive `read`, and Ctrl-C.
+
+**Correction to the earlier interpretation:** the task requires
+`/app/headless_terminal.py`, not `/app/vim.txt`. The latter is an artifact of
+the pinned [interactive-program test][v3-terminal-tests]. That test launches
+Vim through `send_keystrokes`, enters text, sends Escape, saves, and exits;
+then it checks the file. The earlier run analysis reports that the file was
+absent. Creating that path in advance would conceal the symptom without
+implementing the required terminal behavior.
+
+The likely gap is between testing a shell builtin such as `read` and testing
+an application that uses the terminal more fully. The report does not mention
+an editor. However, the two passing v3 runs also describe `read` checks, and
+their source is missing too. The reports establish neither that the failed
+trial never tried an editor nor that such a test alone explains the difference.
+
+Several implementation defects could produce the reported symptom:
+
+| Hypothesis, not an established defect | Evidence that would distinguish it |
+| --- | --- |
+| The application cannot initialize the terminal, for example because its terminal type or dimensions are unsuitable | Capture the PTY's output, terminal environment, dimensions, and application startup status |
+| The child lacks a usable controlling terminal or foreground process group | Inspect session/process-group state and job-control diagnostics in the candidate's environment |
+| Keystrokes arrive before the application reaches the intended mode, or `wait_sec` is not honored | Record each write, requested wait, observed output, and state transition with timestamps |
+| Output is not drained, input is incomplete, or cleanup closes the PTY before the save finishes | Retain read/write results, process status, and file state after each interaction |
+| The implementation has another defect or the reported symptom is incomplete | Recover the original module and per-test traceback before selecting a repair |
+
+The public instruction supports a general check for an interactive application;
+it does not authorize using the verifier's exact script as an in-episode
+oracle. A useful harness primitive is a bounded PTY interaction scenario:
+start an available interactive program, send input in stages, observe its
+output, and verify a scratch artifact or state transition. Use deadlines and
+clean up its process group. Preserve the actual bytes and waits so a timing
+failure can be diagnosed. Also verify that a Ctrl-C interruption leaves the
+shell usable, instead of treating an absent file immediately afterward as
+complete evidence of cancellation.
+
+Jev's useful job is to compare the stated behavior with the evidence the
+scenario exercised: does a successful shell `read` support the broader claim
+about interactive applications, or is additional evidence needed? Rust
+selects and runs an admitted check. If it fails, Luna should receive the
+terminal transcript and the narrow behavior that failed, not “create
+`vim.txt`.” A file-existence gate alone would not fix this failure class.
+
+### Async cancellation: the exact defect is unresolved, but the test gap is concrete
+
+The failed `8MSemsU` trial had a complete 2,150-character briefing and no
+omitted sections. It reported creating `/app/run.py`, enforcing the concurrency
+limit, rejecting nonpositive limits, and cancelling and awaiting running tasks
+so cleanup could finish. It reported checking concurrency, invalid limits,
+and cancellation cleanup. That report sounds compatible with the task;
+Jev's `done` was `0.65`. The two passing v3 reports are similarly confident,
+with probabilities `0.67` and `0.63`. Their recorded delegate-item counts are
+also four. Neither probability nor item count separates the failure.
+
+The pinned [tests][v3-async-tests] and [child program][v3-async-driver] clarify
+the behaviors a correct candidate must survive. Normal operation must run
+jobs concurrently while respecting the limit. Cancellation is a real SIGINT
+sent to a separate Python process, with task counts below, equal to, and
+above the concurrency limit. The above-limit case starts two of three jobs
+and expects only those started jobs to clean up. Each job's `finally` block
+itself awaits asynchronous work before reporting cleanup complete.
+
+That last detail matters. A synchronous cleanup flag can pass while awaited
+cleanup is interrupted or abandoned. An internal cancellation test can also
+miss process-level behavior. Python's [runner documentation][v3-python-runner]
+explains that SIGINT normally cancels the main task before the runner raises
+`KeyboardInterrupt`. Testing only a caught `KeyboardInterrupt` inside a
+coroutine does not cover that path. The retained environment probe records
+Python `3.13.7`; any reproduction should pin the relevant runtime behavior.
+
+These are diagnostic hypotheses, not claims about the missing `run.py`:
+
+| Possible defect | A discriminating check |
+| --- | --- |
+| The coordinator cancels workers but returns before awaited cleanup completes | Put an await between cleanup-start and cleanup-finished events; require every started worker to reach the latter before return |
+| A worker is cancelled again while already unwinding its `finally` block | Record cancellation requests and cleanup events; compare one request with the candidate's actual propagation path |
+| Queued work starts when cancellation releases a semaphore or worker slot | Cancel with more factories than slots and assert that no new factory starts afterward |
+| The coordinator handles its own cancellation but not SIGINT through `asyncio.run` | Drive a child process with a real signal and retain its stdout, stderr, exit status, and cleanup events |
+| Work is serialized, exceeds the bound, or an entry-point/import problem occurs | Check the actual module, normal completion, and peak active count separately from cancellation |
+
+The last row stays in the table because the retained reward does not identify
+which test failed. It would be misleading to conclude that the failed case
+was specifically the above-limit scenario or repeated cancellation. Those
+are high-value checks suggested by the task and test design, not recovered
+failure diagnostics. Do not prescribe a blanket `shield`, `gather`, or
+`TaskGroup` rewrite without inspecting the candidate's cancellation path.
+
+For the harness, add an isolated child-process scenario that records
+`factory_started`, `cleanup_started`, `cleanup_finished`, cancellation, and
+coordinator return. Use readiness signals to know work has started, bounded
+awaited cleanup, a deadline, and process-group cleanup. Vary whether work is
+queued. This gives a general lifecycle test derived from the public request
+for interruptible concurrent work with cleanup; it need not copy the
+protected fixture's timings or exact task counts.
+
+Jev can identify that a claimed cancellation check exercises only internal
+task cancellation, or that the supplied cleanup evidence ends before the
+await completes. Code checks event counts, ordering, limits, and return
+status. If an observed failure warrants repair, the delta brief should contain
+that event sequence and the candidate's source. “Try harder to clean up”
+does not identify which lifecycle transition is wrong.
+
+### What should change in the harness and Jev integration
+
+These failures suggest a sequence of changes more specific than adding more
+questions or raising a completion threshold:
+
+| Layer | Failure exposed here | Proposed change and evidence of success |
+| --- | --- | --- |
+| Evidence retention | Native commands, candidate artifacts, and per-test diagnostics are missing | Retain sanitized native streams, changed/generated artifacts, local checks, and post-run verifier diagnostics with digests; report missing references before publishing a result |
+| Requirement capture | Paragraphs and ordinary bullets become zero criteria | Preserve source spans for outputs, behavior, constraints, and examples; validate extraction coverage against public instructions |
+| Probe selection and briefing packing | Useful log records lose to overlapping listings | Give each capture a requirement and a purpose; choose compact spans jointly across probes and files; measure useful evidence actually delivered |
+| Completion checks | Reports of checking substitute for observed behavior | Inspect artifacts outside Git and run bounded checks tied to their current identities; distinguish format, semantics, lifecycle, and environment |
+| Jev judgments | Broad relevance and “done” have weak connections to the next operation | Judge the relevance or sufficiency of specific evidence for a specific requirement; retain uncertainty and let code choose the next admitted operation |
+| Repair | A completed delegate ends the episode despite unresolved behavior | Permit one delta repair after a concrete failed check, then recheck changed artifacts within the remaining episode budget |
+
+Keep the existing two-sided design: code owns execution and exact observations;
+Jev supplies narrow semantic judgments. Candidate questions for an offline
+evaluation include:
+
+| State supplied to Jev | One candidate Noul question | Host consumer |
+| --- | --- | --- |
+| `requirement`, `capture`, and `already_selected` with source references | “Does `capture` add information needed to interpret `requirement` that is absent from `already_selected`?” | Prefer complementary evidence when packing the briefing |
+| Public requirement, observed record format, and two otherwise equivalent example records | “Does the difference between `examples` change the field that `requirement` asks to count?” | Select a useful metamorphic check; code still executes it and compares counts |
+| Requirement, check scenario, command, and actual output | “Does `check` exercise the interactive-application behavior described in `requirement`?” | Mark behavior as covered or request an admitted additional scenario |
+| Requirement, candidate cleanup path, and observed event sequence | “Does `evidence` show completion of the asynchronous cleanup required by `requirement`?” | Identify an unsupported completion claim for a bounded repair or an unresolved outcome |
+
+These are proposed questions, not measured replacements for `done`. Give them
+explicit states and labels, including missing evidence and contradictions.
+Independent questions over one evidence packet can share a request; a later
+request is justified when a new check changes the available evidence. This
+follows TypeSafe's [state guidance][v3-typesafe-state] and
+[Noul guidance][v3-typesafe-noul]. The
+[citation-checking pattern][v3-typesafe-citations] is a useful analogy: compare
+a claim with its source, rather than asking whether a plausible claim sounds
+complete. It does not establish accuracy for coding-agent verification.
+
+Do not ask Jev whether an absent file exists, whether an exit code is zero,
+or whether two integer counts agree. Code already knows. An uncertain semantic
+answer should preserve an unresolved state, not become a silent pass. Fit
+any thresholds on labeled development evidence and validate false accepts
+separately from false rejects. Today's five failures cannot set a reliable
+production threshold.
+
+### Experiments that can distinguish the proposed explanations
+
+Start by recovering the five original native streams and verifier diagnostics
+from the run host, checking their declared digests where available. Preserve
+the submitted modules, scripts, CSVs, and relevant environment. If a file is
+unavailable, record that explicitly. The existing data supports the design
+changes above but cannot establish every original line-level defect.
+
+Then extend the evaluation plan below with these controlled comparisons:
+
+1. **Evidence intervention:** keep v3's Luna executor and budgets, replace
+   duplicate inventories with compact real records, and accurately label
+   omissions. For a finer attribution, test honest completeness directions
+   separately from packing. Measure delivered examples, total cost, and
+   protected reward; do not just enlarge every prompt.
+2. **Checker detection before repair:** collect artifacts and run generic
+   requirement-derived checks with repair disabled. Determine which failing
+   candidates the checks detect and which passing candidates they falsely
+   reject. A detector is not useful merely because it requests more work.
+3. **Jev's incremental value:** compare mechanical checks and deterministic
+   packing with the same system plus Jev evidence judgments. Keep the
+   candidate check catalog and execution bounds fixed. This establishes
+   whether Jev improves selection or coverage beyond code alone.
+4. **One bounded repair:** add the repair only after measuring detection.
+   Count failures recovered, correct results damaged, unrepaired gaps,
+   and total episode cost/time. Both delegates and all Jev calls count.
+5. **Generalization:** freeze the policy before new tasks with unfamiliar
+   record formats, interactive programs, and cancellation scenarios. The
+   three analyzed families are now development cases, not held-out evidence.
+
+The highest-confidence immediate improvements are retaining enough evidence
+to inspect the failure, delivering samples already judged useful, and
+checking actual artifacts even outside Git. Better field interpretation,
+PTY scenarios, lifecycle checks, and selective repair are plausible ways to
+improve completion. Their recovery rates and cost tradeoffs remain to be
+measured; this postmortem does not claim that v4 already passes these trials.
+
+[v3-log-generator]: https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/log-summary-date-ranges/environment/log_generator_deterministic.py
+[v3-log-tests]: https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/log-summary-date-ranges/tests/test_outputs.py
+[v3-terminal-tests]: https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/headless-terminal/tests/test_outputs.py
+[v3-async-tests]: https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/cancel-async-tasks/tests/test_outputs.py
+[v3-async-driver]: https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/cancel-async-tasks/tests/test.py
+[v3-python-runner]: https://docs.python.org/3.13/library/asyncio-runner.html#handling-keyboard-interruption
+[v3-typesafe-state]: https://docs.typesafe.ai/concepts/state
+[v3-typesafe-noul]: https://docs.typesafe.ai/primitives/noul
+[v3-typesafe-citations]: https://docs.typesafe.ai/cookbooks/citation_check
 
 ## Current system: Jev-probe v3 with Luna
 
@@ -620,7 +1029,7 @@ Measure:
 - Calls by kind and actual Codex completed-item counts, with their semantics.
 
 A successful development candidate should resolve the demonstrated log,
-missing-artifact, and cancellation regressions without regressing the five
+interactive-terminal, and cancellation regressions without regressing the five
 currently stable task families. A 24/24 rerun of the old sample would be a
 useful regression check, not sufficient adoption evidence. Promotion requires
 the frozen confirmation comparison to support the chosen reliability and

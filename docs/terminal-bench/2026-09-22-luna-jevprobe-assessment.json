@@ -3303,5 +3303,552 @@
     "path": "bench/terminal-bench/profiles/manual-prices.json",
     "sha256": "c3b1de9e6ca0e0469bd8e641aa7950cf0eb510f9674654d4527e058141ee79f9",
     "note": "Historical rates; subscription reference price, not billing evidence."
+  },
+  "failure_analysis": {
+    "kind": "postmortem_addendum_not_new_benchmark_measurement",
+    "reviewed_commit": "3d8592167381470be58a43dab6196ad5b57ca378",
+    "original_measurement_snapshot": "72ed33efda93434acd082a1ebcb33046edbf90b2",
+    "method": "Inspected all five reward-zero v3 Luna retained trajectories and sidecars, compared same-arm passing reports, and read pinned upstream instructions, generator, and tests. No inference and no original candidate replay. Reconstructed only the log-data counting mechanism offline; original native streams, candidate files, and per-test diagnostics are absent.",
+    "upstream": {
+      "commit": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4",
+      "sources": [
+        {
+          "path": "archive/log-summary-date-ranges/environment/log_generator_deterministic.py",
+          "sha256": "beb6eff59979e9aa0be63ce8a0f1b0df1178f92871f04ba9f76fa70cf8beb81c",
+          "url": "https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/log-summary-date-ranges/environment/log_generator_deterministic.py"
+        },
+        {
+          "path": "archive/log-summary-date-ranges/tests/test_outputs.py",
+          "sha256": "2fc06a6ce1944ad82f84fb437395fa75ed8c0eadd385b92e375c27e5bc9cb2b4",
+          "url": "https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/log-summary-date-ranges/tests/test_outputs.py"
+        },
+        {
+          "path": "archive/log-summary-date-ranges/instruction.md",
+          "sha256": "c1d4516ad4ec2238209740eaf01291df9ab48b0028a3fc5df383c6f831453484",
+          "url": "https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/log-summary-date-ranges/instruction.md"
+        },
+        {
+          "path": "archive/headless-terminal/tests/test_outputs.py",
+          "sha256": "c6998195e29efb64f41f903b6a727059c4f0ee267f730cd7ffca5c1f7d99ab78",
+          "url": "https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/headless-terminal/tests/test_outputs.py"
+        },
+        {
+          "path": "archive/headless-terminal/instruction.md",
+          "sha256": "004ac3efa98dd4c564f3888fe199962772d23de405c96ec9232c1eab1a2089e8",
+          "url": "https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/headless-terminal/instruction.md"
+        },
+        {
+          "path": "archive/headless-terminal/environment/base_terminal.py",
+          "sha256": "697fd6435a5df3ee8c6f6f2546340c0609a424e53cb8fe80fdb131fe1e9f050f",
+          "url": "https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/headless-terminal/environment/base_terminal.py"
+        },
+        {
+          "path": "archive/cancel-async-tasks/tests/test_outputs.py",
+          "sha256": "d6f510b51fafc81b4e9b5cc95535aa13491c8753e0e4171db42c45f4de460ee7",
+          "url": "https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/cancel-async-tasks/tests/test_outputs.py"
+        },
+        {
+          "path": "archive/cancel-async-tasks/tests/test.py",
+          "sha256": "f533c0a64db068f582b4733c5b81f2e66b8fa52fcd3efa65752e6bd6d24780aa",
+          "url": "https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/cancel-async-tasks/tests/test.py"
+        },
+        {
+          "path": "archive/cancel-async-tasks/instruction.md",
+          "sha256": "23d22f7039b50682941652c716f96dac314b8585c32c133614cac77dc067f47e",
+          "url": "https://github.com/harbor-framework/terminal-bench/blob/3b5caaa4863d64dda7f0957bf4fc2d4f019202d4/archive/cancel-async-tasks/instruction.md"
+        }
+      ]
+    },
+    "trials": [
+      {
+        "trial": "log-summary-date-ranges__XWSKgz5",
+        "task": "terminal-bench/log-summary-date-ranges",
+        "sources": {
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.json": {
+            "sha256": "fb0a0a552ffc4baa0e7aef24f88f8c35aed4229712ecb4f380bbc65cbe9228bb"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/manifest.json": {
+            "sha256": "bc0f6936335355bcf5f336e32a3f17c7057cc79c7a480e21f187690d746249ec"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/harbor-result.json": {
+            "sha256": "26c169e9a1b6efa2209015169749cf4210fd6639897e262656db6a82f57f6c80"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/usage.json": {
+            "sha256": "40a2a955ff1e6cacddc05a13412a997eb6210e2b8aade7421b51edf88e093917"
+          }
+        },
+        "reward": 0,
+        "harness_exception": null,
+        "agent_seconds": 24.650527,
+        "cost_usd": 0.001899534,
+        "delegate_status": "answered",
+        "recorded_delegate_items": 3,
+        "item_count_semantics": "Codex completed commands, file changes, tool calls, searches and messages; not model API calls.",
+        "briefing": {
+          "sha256": "d3139a5d565db081f8608422f92172621d9a30de30245c8007f68b14152e0455",
+          "chars": 10812,
+          "bytes": 10814,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ ls -la /app/logs",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": [
+            "file logs/2025-08-10_db.log (4051 characters)",
+            "file logs/2025-07-07_api.log (4052 characters)",
+            "file logs/2025-07-12_db.log (4051 characters)"
+          ]
+        },
+        "close": {
+          "done": 0.52,
+          "criteria": [],
+          "unavailable": null
+        },
+        "delegate_report": "Created [`summary.csv`](/app/summary.csv) with the requested header and 15 period/severity rows. Verified the CSV structure and that every count is an integer.",
+        "closing_change_evidence": "The working directory is not a Git work tree, so its changes are not listed.",
+        "native_stream": {
+          "path": "artifacts/delegate-1.stream.jsonl",
+          "bytes": 5206,
+          "kept_bytes": 5206,
+          "truncated": false,
+          "sha256": "89cb94c02aa613dd637e991f13b6cdfebb7db4a393b9a24e4235104d70587be8",
+          "retained_in_committed_bundle": false
+        },
+        "original_candidate_artifacts_available": false,
+        "per_test_verifier_diagnostics_available": false,
+        "original_job_present_on_this_mac": false,
+        "raw_episode_trajectory": {
+          "declared_reference": {
+            "path": "trajectory.atif.json",
+            "bytes": 84182,
+            "sha256": "a16b72bef02bf78ad30d2acf0c095890cb293b39cacbb9bb6217d2a5be9a292a"
+          },
+          "retained_harbor_export_sha256": "fb0a0a552ffc4baa0e7aef24f88f8c35aed4229712ecb4f380bbc65cbe9228bb",
+          "byte_digest_matches": false,
+          "note": "README retention procedure copies the Harbor-normalized export; the manifest names the raw episode trajectory. Retain both with a derivation record for byte-level verification."
+        },
+        "log_evidence_delivery": {
+          "survey_requests": 2,
+          "files_judged": 40,
+          "mean_file_relevance": 0.852,
+          "max_edit_probability": 0.05,
+          "listing_section_characters": 8235,
+          "listing_fraction": 0.76165371809101,
+          "log_content_sections_delivered": 0,
+          "original_parser_rule": "unknown; family-level substring error reported by README and reproduced offline, not recovered for this trial"
+        }
+      },
+      {
+        "trial": "log-summary-date-ranges__ocBe8jz",
+        "task": "terminal-bench/log-summary-date-ranges",
+        "sources": {
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.json": {
+            "sha256": "b13324a91b5db42b7981b0abe00017bf08e904a00611aca0fe8d56762a426593"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/manifest.json": {
+            "sha256": "b41df1a7cd628cc1e8f79a574482643ca7c79ace8d7229af8d5276a24c0ec677"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/harbor-result.json": {
+            "sha256": "8ea638d2c91c05e024d0e2054c267350b11bde946f9ac252eb46ac10e689599f"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/usage.json": {
+            "sha256": "23b0a7030a05ce3e232af6b1e03b1935374eda97624a88311cd5d48046f9026c"
+          }
+        },
+        "reward": 0,
+        "harness_exception": null,
+        "agent_seconds": 24.552911,
+        "cost_usd": 0.0015739820000000002,
+        "delegate_status": "answered",
+        "recorded_delegate_items": 3,
+        "item_count_semantics": "Codex completed commands, file changes, tool calls, searches and messages; not model API calls.",
+        "briefing": {
+          "sha256": "1513685ca293d9daf9ae8c62b35d5a06821848c64233890d17522aa94f8855de",
+          "chars": 10812,
+          "bytes": 10814,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ ls -la /app/logs",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": [
+            "file logs/2025-07-07_api.log (4052 characters)",
+            "file logs/2025-08-10_db.log (4051 characters)",
+            "file logs/2025-07-22_api.log (4052 characters)"
+          ]
+        },
+        "close": {
+          "done": 0.67,
+          "criteria": [],
+          "unavailable": null
+        },
+        "delegate_report": "Created `/app/summary.csv` with the requested header and 15 rows in the specified order. The counts use filename dates and the reference date 2025-08-12; the CSV structure and numeric counts were verified.",
+        "closing_change_evidence": "The working directory is not a Git work tree, so its changes are not listed.",
+        "native_stream": {
+          "path": "artifacts/delegate-1.stream.jsonl",
+          "bytes": 4903,
+          "kept_bytes": 4903,
+          "truncated": false,
+          "sha256": "6e5a10dbfd400b75a4a53f4be6b0fd506bbef292ff59b47910b22253b3541364",
+          "retained_in_committed_bundle": false
+        },
+        "original_candidate_artifacts_available": false,
+        "per_test_verifier_diagnostics_available": false,
+        "original_job_present_on_this_mac": false,
+        "raw_episode_trajectory": {
+          "declared_reference": {
+            "path": "trajectory.atif.json",
+            "bytes": 84331,
+            "sha256": "4a15abf7b702b43be54d293035ac2612e18b2f71267be291b4671caac139e29d"
+          },
+          "retained_harbor_export_sha256": "b13324a91b5db42b7981b0abe00017bf08e904a00611aca0fe8d56762a426593",
+          "byte_digest_matches": false,
+          "note": "README retention procedure copies the Harbor-normalized export; the manifest names the raw episode trajectory. Retain both with a derivation record for byte-level verification."
+        },
+        "log_evidence_delivery": {
+          "survey_requests": 2,
+          "files_judged": 40,
+          "mean_file_relevance": 0.8467499999999999,
+          "max_edit_probability": 0.05,
+          "listing_section_characters": 8235,
+          "listing_fraction": 0.76165371809101,
+          "log_content_sections_delivered": 0,
+          "original_parser_rule": "unknown; family-level substring error reported by README and reproduced offline, not recovered for this trial"
+        }
+      },
+      {
+        "trial": "log-summary-date-ranges__sEQeiWX",
+        "task": "terminal-bench/log-summary-date-ranges",
+        "sources": {
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.json": {
+            "sha256": "0cacd1106a4bde827eb261d28559485a67dd3c20246e5a6592e8cf6b0d6e93d9"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/manifest.json": {
+            "sha256": "ed42bf95a20e162670af181e2b97e9ef4000f64be0c3fbd7cb775deacbc4aa12"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/harbor-result.json": {
+            "sha256": "cc65c18175c4ee533655843c1cbeda95597d43d3377afde7ab6321a80f4a6cbc"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/usage.json": {
+            "sha256": "d6a1016992622fec2581f0022792206796748c1f20ed6eaa166bdf112f942eec"
+          }
+        },
+        "reward": 0,
+        "harness_exception": null,
+        "agent_seconds": 26.961781,
+        "cost_usd": 0.002119452,
+        "delegate_status": "answered",
+        "recorded_delegate_items": 3,
+        "item_count_semantics": "Codex completed commands, file changes, tool calls, searches and messages; not model API calls.",
+        "briefing": {
+          "sha256": "99c35f7f4bbd4e48549b5425ffd8931f0762151f28c0b594c51c46681f0fdde0",
+          "chars": 10812,
+          "bytes": 10814,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ ls -la /app/logs",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": [
+            "file logs/2025-08-10_db.log (4051 characters)",
+            "file logs/2025-07-07_api.log (4052 characters)",
+            "file logs/2025-08-07_api.log (4052 characters)"
+          ]
+        },
+        "close": {
+          "done": 0.67,
+          "criteria": [],
+          "unavailable": null
+        },
+        "delegate_report": "Created [`summary.csv`](/app/summary.csv) with the requested header, period and severity order, and counts based on 2025-08-12. Verified the CSV has 15 data rows and that the date ranges\u2019 counts are consistent.",
+        "closing_change_evidence": "The working directory is not a Git work tree, so its changes are not listed.",
+        "native_stream": {
+          "path": "artifacts/delegate-1.stream.jsonl",
+          "bytes": 5312,
+          "kept_bytes": 5312,
+          "truncated": false,
+          "sha256": "d48af28f5d38f6c29c92b0ed5fe83849df4d7e02319c0c8eedfbc68225520e5e",
+          "retained_in_committed_bundle": false
+        },
+        "original_candidate_artifacts_available": false,
+        "per_test_verifier_diagnostics_available": false,
+        "original_job_present_on_this_mac": false,
+        "raw_episode_trajectory": {
+          "declared_reference": {
+            "path": "trajectory.atif.json",
+            "bytes": 84345,
+            "sha256": "1a3ae87bb7471d9e317513a245b2d4a477b44a3dd5057178d138a68d650f3d61"
+          },
+          "retained_harbor_export_sha256": "0cacd1106a4bde827eb261d28559485a67dd3c20246e5a6592e8cf6b0d6e93d9",
+          "byte_digest_matches": false,
+          "note": "README retention procedure copies the Harbor-normalized export; the manifest names the raw episode trajectory. Retain both with a derivation record for byte-level verification."
+        },
+        "log_evidence_delivery": {
+          "survey_requests": 2,
+          "files_judged": 40,
+          "mean_file_relevance": 0.8475000000000001,
+          "max_edit_probability": 0.05,
+          "listing_section_characters": 8235,
+          "listing_fraction": 0.76165371809101,
+          "log_content_sections_delivered": 0,
+          "original_parser_rule": "unknown; family-level substring error reported by README and reproduced offline, not recovered for this trial"
+        }
+      },
+      {
+        "trial": "headless-terminal__tr384w7",
+        "task": "terminal-bench/headless-terminal",
+        "sources": {
+          "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.json": {
+            "sha256": "131ed002822d8a4b90198e4f568ba4464f452bae3bc582fc24f0e4b1e6a4170d"
+          },
+          "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/manifest.json": {
+            "sha256": "dd1c4ca6a62957562c595f53173263a28225312af5b323a660217c36a26fa4e3"
+          },
+          "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/harbor-result.json": {
+            "sha256": "696d0acaf72133b87ab61bda8a6e3c1e1c62a2582cbaf59684093771d48c9887"
+          },
+          "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/usage.json": {
+            "sha256": "7d87f7c70c065872f7fc3819bcaf7f94fdd525543e8a339d78b899381a9e2821"
+          }
+        },
+        "reward": 0,
+        "harness_exception": null,
+        "agent_seconds": 59.238028,
+        "cost_usd": 0.0026227859999999998,
+        "delegate_status": "answered",
+        "recorded_delegate_items": 5,
+        "item_count_semantics": "Codex completed commands, file changes, tool calls, searches and messages; not model API calls.",
+        "briefing": {
+          "sha256": "d852a7c0edbb8f1964c91818f6b3e74e79c2828216e5b2f24ef86372940c5e73",
+          "chars": 2891,
+          "bytes": 2891,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file base_terminal.py"
+          ],
+          "omitted": []
+        },
+        "close": {
+          "done": 0.53,
+          "criteria": [],
+          "unavailable": null
+        },
+        "delegate_report": "Implemented `HeadlessTerminal` in [headless_terminal.py](/app/headless_terminal.py). It starts an interactive Bash shell on a pseudo-terminal, sources the user\u2019s `.bashrc`, sends keystrokes verbatim (including control characters), and provides `output` and `read_output()` for collected terminal output. It also supports cleanup with `close()` or a context manager.\n\nI exercised startup-file loading, command execution, an interactive `read`, and Ctrl-C. No external dependencies were needed.",
+        "closing_change_evidence": "The working directory is not a Git work tree, so its changes are not listed.",
+        "native_stream": {
+          "path": "artifacts/delegate-1.stream.jsonl",
+          "bytes": 16180,
+          "kept_bytes": 16180,
+          "truncated": false,
+          "sha256": "faa4a0c01d199d686d7006953143b25e009d35c173869c063d0e4e9070826435",
+          "retained_in_committed_bundle": false
+        },
+        "original_candidate_artifacts_available": false,
+        "per_test_verifier_diagnostics_available": false,
+        "original_job_present_on_this_mac": false,
+        "raw_episode_trajectory": {
+          "declared_reference": {
+            "path": "trajectory.atif.json",
+            "bytes": 23616,
+            "sha256": "73eb945f9098304295a83ef6a485d35c729afdc9a3bf6f8f4c36284bc7bddd85"
+          },
+          "retained_harbor_export_sha256": "131ed002822d8a4b90198e4f568ba4464f452bae3bc582fc24f0e4b1e6a4170d",
+          "byte_digest_matches": false,
+          "note": "README retention procedure copies the Harbor-normalized export; the manifest names the raw episode trajectory. Retain both with a derivation record for byte-level verification."
+        }
+      },
+      {
+        "trial": "cancel-async-tasks__8MSemsU",
+        "task": "terminal-bench/cancel-async-tasks",
+        "sources": {
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.json": {
+            "sha256": "2eb008c7e8e7544b87f2b5675e865d9312c0b2e5995a5d8b3f99dee3f0864d62"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/manifest.json": {
+            "sha256": "09f587f53ce2a08819232078d0c5c04ecd221ebda48d5f72da0ea3c0d025b52c"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/harbor-result.json": {
+            "sha256": "023089d5a6c7f64e08773ba632bdde9e7a23adf49560a16475b553b3bff08529"
+          },
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/usage.json": {
+            "sha256": "b43f5f0195633cd1137ce28dcf918f05af01dcc733d3487c962ee052ec806787"
+          }
+        },
+        "reward": 0,
+        "harness_exception": null,
+        "agent_seconds": 36.862292,
+        "cost_usd": 0.001401012,
+        "delegate_status": "answered",
+        "recorded_delegate_items": 4,
+        "item_count_semantics": "Codex completed commands, file changes, tool calls, searches and messages; not model API calls.",
+        "briefing": {
+          "sha256": "9c0ade32ff9c1897192d3c6f236391d280beca6421819a89b43a6014dbbd3085",
+          "chars": 2150,
+          "bytes": 2150,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+          ],
+          "omitted": []
+        },
+        "close": {
+          "done": 0.65,
+          "criteria": [],
+          "unavailable": null
+        },
+        "delegate_report": "Created [run.py](/app/run.py) with `run_tasks`, which limits concurrency, rejects nonpositive limits, and cancels and awaits running tasks when interrupted so their cleanup can run.\n\nChecked the concurrency limit, invalid limit, and cancellation cleanup behavior.",
+        "closing_change_evidence": "The working directory is not a Git work tree, so its changes are not listed.",
+        "native_stream": {
+          "path": "artifacts/delegate-1.stream.jsonl",
+          "bytes": 8802,
+          "kept_bytes": 8802,
+          "truncated": false,
+          "sha256": "8b2d4ade3e044b303e57fcc08028b9ad51da0f8e68fd0d370fc23a1d84fafed6",
+          "retained_in_committed_bundle": false
+        },
+        "original_candidate_artifacts_available": false,
+        "per_test_verifier_diagnostics_available": false,
+        "original_job_present_on_this_mac": false,
+        "raw_episode_trajectory": {
+          "declared_reference": {
+            "path": "trajectory.atif.json",
+            "bytes": 17866,
+            "sha256": "1914b7e2ab00f3b59d1d3ffd711eb071fceb4153e4bc96d6ccf9830e1be33cd0"
+          },
+          "retained_harbor_export_sha256": "2eb008c7e8e7544b87f2b5675e865d9312c0b2e5995a5d8b3f99dee3f0864d62",
+          "byte_digest_matches": false,
+          "note": "README retention procedure copies the Harbor-normalized export; the manifest names the raw episode trajectory. Retain both with a derivation record for byte-level verification."
+        }
+      }
+    ],
+    "log_counting_reconstruction": {
+      "kind": "offline_reconstruction_not_original_trial_artifacts",
+      "python_version": "3.9.6",
+      "generator_sha256": "beb6eff59979e9aa0be63ce8a0f1b0df1178f92871f04ba9f76fa70cf8beb81c",
+      "mutation": "Only output_dir changed to a temporary directory; random seeds and all data generation unchanged. Temporary generated logs deleted after counting.",
+      "files": 164,
+      "lines": 94547,
+      "matches_all_15_verifier_rows": true,
+      "counts": {
+        "today": {
+          "field": {
+            "WARNING": 463,
+            "INFO": 1433,
+            "ERROR": 370
+          },
+          "substring": {
+            "WARNING": 463,
+            "INFO": 1433,
+            "ERROR": 414
+          },
+          "first_match": {
+            "WARNING": 419,
+            "INFO": 1433,
+            "ERROR": 414
+          }
+        },
+        "last_7_days": {
+          "field": {
+            "INFO": 12203,
+            "ERROR": 2969,
+            "WARNING": 4020
+          },
+          "substring": {
+            "INFO": 12203,
+            "ERROR": 3559,
+            "WARNING": 4020
+          },
+          "first_match": {
+            "INFO": 12203,
+            "ERROR": 3559,
+            "WARNING": 3430
+          }
+        },
+        "last_30_days": {
+          "field": {
+            "INFO": 38702,
+            "WARNING": 12847,
+            "ERROR": 9594
+          },
+          "substring": {
+            "INFO": 38702,
+            "WARNING": 12847,
+            "ERROR": 11432
+          },
+          "first_match": {
+            "INFO": 38702,
+            "WARNING": 11009,
+            "ERROR": 11432
+          }
+        },
+        "month_to_date": {
+          "field": {
+            "INFO": 19420,
+            "ERROR": 4682,
+            "WARNING": 6327
+          },
+          "substring": {
+            "INFO": 19420,
+            "ERROR": 5594,
+            "WARNING": 6327
+          },
+          "first_match": {
+            "INFO": 19420,
+            "ERROR": 5594,
+            "WARNING": 5415
+          }
+        },
+        "total": {
+          "field": {
+            "ERROR": 14160,
+            "INFO": 56621,
+            "WARNING": 18772
+          },
+          "substring": {
+            "ERROR": 16774,
+            "INFO": 56621,
+            "WARNING": 18772
+          },
+          "first_match": {
+            "ERROR": 16774,
+            "INFO": 56621,
+            "WARNING": 16158
+          }
+        }
+      },
+      "trap_examples": [
+        {
+          "file": "2025-08-12_api.log",
+          "line": "2025-08-12 23:57:27 [WARNING] Second failed login attempt for user: diana. Next attempt will ERROR. Retrying..."
+        },
+        {
+          "file": "2025-08-12_api.log",
+          "line": "2025-08-12 13:01:00 [WARNING] Second failed login attempt for user: alice. Next attempt will ERROR. Retrying..."
+        }
+      ]
+    },
+    "cause_confidence": {
+      "log_summary": "Reported family-level substring error, with exact numerical mechanism independently reconstructed; exact v3 candidate implementations unverified.",
+      "headless_terminal": "Missing vim.txt reported in earlier analysis; pinned test establishes it is produced by an interactive-editor scenario, not a public-task deliverable. Candidate-level PTY defect unresolved.",
+      "async_cancellation": "Failure and claimed checks observed; exact failed test and implementation defect unknown. Queued work, awaited cleanup, repeated cancellation and process-level SIGINT are diagnostic hypotheses."
+    }
   }
 }
