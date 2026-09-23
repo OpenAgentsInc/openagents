@@ -870,11 +870,12 @@ Cutting time means fewer model turns, which the delegate arms deliver.
 1. Check the result: `uv run tbench inspect <job>`, and print every
    number a row needs with `python3 tools/trial_metrics.py <job>` from
    `bench/terminal-bench`.
-2. Copy the evidence into
-   `bench/terminal-bench/traces/<job>/`: Harbor's `agent/trajectory.json`
-   as `<trial>.json`, plus `manifest.json`, `evaluation/usage.json`, and a
-   trimmed `result.json` (phase timings, reward, agent usage) under
-   `<trial>.episode/`. Check that no credential appears in any of them.
+2. Retain the evidence with `uv run tbench retain <job>` from
+   `bench/terminal-bench`. It copies the full closure (streams, raw and
+   normalized ATIF, verifier output, and a trimmed Harbor result) into
+   `bench/terminal-bench/traces/<job>/` and refuses a trial that holds a
+   credential. See the runbook's
+   [Retain the evidence](runbook.md#retain-the-evidence).
 3. Add a row to the task's table. Take generation cost from
    `usage.json`, and compute Jev cost as Jev input tokens × $0.042 ÷
    1,000,000. Take agent time from Harbor's `agent_execution` phase.

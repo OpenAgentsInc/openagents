@@ -1,0 +1,46 @@
+{
+  "environment": {
+    "repository": "",
+    "workdir": "/app/personal-site",
+    "os": "linux"
+  },
+  "issue": {
+    "url": "",
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me …",
+    "body": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.\n",
+    "labels": []
+  },
+  "survey": [
+    {
+      "path": "$ git log --oneline --graph --all -n 40",
+      "relevance": 0.92,
+      "edit": 0.0,
+      "content": "* d7d3e4b off the job market woo\n* c4e38a1 Add code link for BLADE\n* 6f46fa0 CV Update\n* dd7e395 Adds BLADE to bib\n* 2cd355a n+1 (for the last time???)\n* 8eaf505 Add BLADE\n* cc2ec78 Underline\n* d71094e Underline Conferences\n* 232b279 Remove posters\n* 3fdf5f5 Add NeurIPS\n* 8c4731d Add EMNLP acceptance\n* f54f66b Add GR link\n* 18d2430 Add other links\n* 1dd055e Ignore Gemfile, etc\n* 5c77a6d Dont overwrite\n* c7d2f95 Delete unsused files\n* 20b05d9 Remove more unused files\n* 2d144f7 Add yamls for new papers\n* 7882f2d Don't track _site\n* cd2b8de Add new papers\n* 26dc65c Fix author\n* bc1962c Interests update\n* 257eba8 More space for interests\n* ff6a94a Bib update\n* 97c4a55 Underline bold\n* a320806 Other fixes, new paper\n* 2cb7243 New PDFs\n* 7321328 PDF update\n* f1e3860 Deletions\n* 7b4d171 Update Bio\n* 073117a Another update\n* cb63517 Another CV Updatee\n* 192ae7b update headshot\n* 7fb9365 Update about and contact\n* 54ef19d CV Update\n* b0fb76a Add GR\n* 6adfab9 n plus one\n* 8a5509d Needs to be a string\n* e2f686e Add Gemfile\n* fa098ef properly handle class"
+    },
+    {
+      "path": "$ git reflog -n 40",
+      "relevance": 0.9,
+      "edit": 0.0,
+      "content": "d7d3e4b HEAD@{0}: checkout: moving from c499730ae050deb27e5d22972ea28daf778060f2 to master\nc499730 HEAD@{1}: commit: Move to Stanford\nc4e38a1 HEAD@{2}: checkout: moving from master to HEAD~1\nd7d3e4b HEAD@{3}: reset: moving to d7d3e4b\n19b5d10 HEAD@{4}: clone: from https://github.com/TheMikeMerrill/personal-site.git"
+    },
+    {
+      "path": "$ git branch -a -vv",
+      "relevance": 0.87,
+      "edit": 0.0,
+      "content": "* master d7d3e4b off the job market woo"
+    },
+    {
+      "path": "$ git status",
+      "relevance": 0.85,
+      "edit": 0.0,
+      "content": "On branch master\nnothing to commit, working tree clean"
+    },
+    {
+      "path": "$ pwd && ls -la",
+      "relevance": 0.58,
+      "edit": 0.0,
+      "content": "/app/personal-site\ntotal 92\ndrwxr-xr-x 12 root root  4096 Apr  3 07:47 .\ndrwxr-xr-x  1 root root  4096 Apr  3 07:47 ..\ndrwxr-xr-x  8 root root  4096 Apr  3 07:47 .git\n-rw-r--r--  1 root root   100 Apr  3 07:47 .gitignore\n-rw-r--r--  1 root root    14 Apr  3 07:47 CNAME\n-rw-r--r--  1 root root    42 Apr  3 07:47 Gemfile\n-rw-r--r--  1 root root   152 Apr  3 07:47 _config.yml\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _includes\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _layouts\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _posters\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _publications\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 biblib\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 css\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 fonts\n-rw-r--r--  1 root root    47 Apr  3 07:47 index.md\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 js\n-rw-r--r--  1 root root  2382 Apr  3 07:47 make_pubs.py\n-rw-r--r--  1 root root 19618 Apr  3 07:47 me.bib\ndrwxr-xr-x  4 root root  4096 Apr  3 07:47 resources"
+    }
+  ],
+  "history": []
+}

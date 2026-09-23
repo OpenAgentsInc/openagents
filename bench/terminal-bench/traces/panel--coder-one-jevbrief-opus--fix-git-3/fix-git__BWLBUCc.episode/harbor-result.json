@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/fix-git",
   "trial_name": "fix-git__BWLBUCc",
+  "task_name": "terminal-bench/fix-git",
   "started_at": "2026-09-22T20:22:51.988973Z",
   "finished_at": "2026-09-22T20:27:25.651637Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 111955,
     "n_cache_tokens": 96396,
     "n_output_tokens": 1136,
-    "cost_usd": null
-  }
+    "cost_usd": null,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

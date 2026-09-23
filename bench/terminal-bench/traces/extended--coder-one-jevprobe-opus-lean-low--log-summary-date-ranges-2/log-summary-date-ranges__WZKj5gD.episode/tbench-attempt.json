@@ -1,0 +1,92 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "fe8af9c5-bff7-46d9-9eb1-1be05a4b525e",
+    "job": "extended--coder-one-jevprobe-opus-lean-low--log-summary-date-ranges-2",
+    "trial": "log-summary-date-ranges__WZKj5gD",
+    "arm": "coder-one-jevprobe-opus-lean-low",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/log-summary-date-ranges",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/log-summary-date-ranges",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "f661ef345f023ef5a2dcdd056c353a1a2bbce29a70b04765c615c25e91b6b662",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T22:09:01.664775Z",
+    "finished_at": "2026-09-22T22:13:20.837646Z",
+    "environment_setup_ms": 2477,
+    "agent_setup_ms": 223481,
+    "agent_execution_ms": 15804,
+    "verifier_ms": 4612,
+    "total_ms": 259172
+  },
+  "environment": {
+    "image": "alexgshaw/log-summary-date-ranges:20251031",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": 80105,
+    "cache_tokens": 43849,
+    "output_tokens": 1270,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.101035522,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 13,
+    "model_invocations": 9,
+    "typed_decisions": 0,
+    "tool_calls": 8,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe-opus-lean-low--log-summary-date-ranges-2/log-summary-date-ranges__WZKj5gD/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe-opus-lean-low--log-summary-date-ranges-2/log-summary-date-ranges__WZKj5gD",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe-opus-lean-low--log-summary-date-ranges-2/tbench/manifests/log-summary-date-ranges__WZKj5gD.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

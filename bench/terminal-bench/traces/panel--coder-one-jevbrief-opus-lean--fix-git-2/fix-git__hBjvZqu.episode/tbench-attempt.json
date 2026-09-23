@@ -1,0 +1,92 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "86e213c4-cd15-4a2c-80f5-bd446d6baa2b",
+    "job": "panel--coder-one-jevbrief-opus-lean--fix-git-2",
+    "trial": "fix-git__hBjvZqu",
+    "arm": "coder-one-jevbrief-opus-lean",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "e90edb03a9d3c9902af9e8fa8ef165b3302aed0a86f27dc2f9668416cfd298a7"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T20:29:05.437043Z",
+    "finished_at": "2026-09-22T20:33:08.664872Z",
+    "environment_setup_ms": 860,
+    "agent_setup_ms": 209075,
+    "agent_execution_ms": 17757,
+    "verifier_ms": 4299,
+    "total_ms": 243227
+  },
+  "environment": {
+    "image": "alexgshaw/fix-git:20260403",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": 62214,
+    "cache_tokens": 46601,
+    "output_tokens": 979,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.05301587800000001,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 12,
+    "model_invocations": 8,
+    "typed_decisions": 0,
+    "tool_calls": 7,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus-lean--fix-git-2/fix-git__hBjvZqu/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus-lean--fix-git-2/fix-git__hBjvZqu",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus-lean--fix-git-2/tbench/manifests/fix-git__hBjvZqu.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

@@ -1,0 +1,90 @@
+Hit:1 http://deb.debian.org/debian bookworm InRelease
+Hit:2 http://deb.debian.org/debian bookworm-updates InRelease
+Hit:3 http://deb.debian.org/debian-security bookworm-security InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.88.1-10+deb12u15).
+0 upgraded, 0 newly installed, 0 to remove and 19 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 6 packages in 25ms
+============================= test session starts ==============================
+platform linux -- Python 3.13.12, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 2 items
+
+../../tests/test_outputs.py FF                                           [100%]
+
+=================================== FAILURES ===================================
+_______________________________ test_about_file ________________________________
+
+    def test_about_file():
+        """
+        Test that the about file content is correct
+        """
+>       check_file_hash(
+            "/app/personal-site/_includes/about.md", "0273104059c6bf524e767b8847b22946"
+        )
+
+/tests/test_outputs.py:28: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+file_path = '/app/personal-site/_includes/about.md'
+expected_hash = '0273104059c6bf524e767b8847b22946'
+
+    def check_file_hash(file_path, expected_hash):
+>       assert hash_file(file_path) == expected_hash, (
+            f"File {file_path} is not in the correct state"
+        )
+E       AssertionError: File /app/personal-site/_includes/about.md is not in the correct state
+E       assert '51a3f53ad109...ef3d76af95254' == '0273104059c6...67b8847b22946'
+E         
+E         - 0273104059c6bf524e767b8847b22946
+E         + 51a3f53ad1098629fd3ef3d76af95254
+
+/tests/test_outputs.py:13: AssertionError
+_______________________________ test_layout_file _______________________________
+
+    def test_layout_file():
+        """
+        Test that the layout file content is correct
+        """
+>       check_file_hash(
+            "/app/personal-site/_layouts/default.html", "0f879389f66640f45316e393a71c5f2f"
+        )
+
+/tests/test_outputs.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+file_path = '/app/personal-site/_layouts/default.html'
+expected_hash = '0f879389f66640f45316e393a71c5f2f'
+
+    def check_file_hash(file_path, expected_hash):
+>       assert hash_file(file_path) == expected_hash, (
+            f"File {file_path} is not in the correct state"
+        )
+E       AssertionError: File /app/personal-site/_layouts/default.html is not in the correct state
+E       assert '39d578f667d3...0d9a72a323cec' == '0f879389f666...6e393a71c5f2f'
+E         
+E         - 0f879389f66640f45316e393a71c5f2f
+E         + 39d578f667d39657a2e0d9a72a323cec
+
+/tests/test_outputs.py:13: AssertionError
+=========================== short test summary info ============================
+FAILED ../../tests/test_outputs.py::test_about_file - AssertionError: File /a...
+FAILED ../../tests/test_outputs.py::test_layout_file - AssertionError: File /...
+============================== 2 failed in 0.05s ===============================

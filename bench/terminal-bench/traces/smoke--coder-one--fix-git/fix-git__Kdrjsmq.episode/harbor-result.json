@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/fix-git",
   "trial_name": "fix-git__Kdrjsmq",
+  "task_name": "terminal-bench/fix-git",
   "started_at": "2026-09-22T18:33:16.274141Z",
   "finished_at": "2026-09-22T18:35:01.988157Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 104241,
     "n_cache_tokens": null,
     "n_output_tokens": 5369,
-    "cost_usd": 0.058101
-  }
+    "cost_usd": 0.058101,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

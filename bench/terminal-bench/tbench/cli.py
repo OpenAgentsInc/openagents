@@ -22,6 +22,7 @@ from .doctor import run_doctor
 from .jobconfig import list_job_profiles, load_job_profile
 from .panel import load_panel
 from .results import TrialPaths, load_trial_results
+from .retain import MAX_FILE_BYTES, MAX_TRIAL_BYTES, retain_jobs
 from .runner import RunError, RunRequest, collect, materialize, resume, run
 
 
@@ -241,6 +242,41 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_retain(args: argparse.Namespace) -> int:
+    """Copy jobs' evidence closures into the retained traces."""
+    retained, errors = retain_jobs(
+        args.job,
+        traces_dir=Path(args.traces_dir) if args.traces_dir else None,
+        trials=args.trial or None,
+        max_file_bytes=args.max_file_bytes,
+        max_trial_bytes=args.max_trial_bytes,
+        dry_run=args.dry_run,
+    )
+    total = 0
+    for item in retained:
+        total += item.retained_bytes
+        scan = item.record["credential_scan"]
+        print(
+            f"{item.job}/{item.trial}: {len(item.record['files'])} files, "
+            f"{item.retained_bytes} bytes, {len(item.missing)} missing, "
+            f"credential scan clean over {len(scan['credentials_checked'])} "
+            "values"
+        )
+        for missing in item.missing:
+            print(
+                f"  missing {missing['kind']}: {missing['reference']} "
+                f"({missing['reason']})"
+            )
+        for entry in item.record["files"]:
+            if entry["digest"] == "mismatch":
+                print(f"  digest mismatch: {entry['path']}")
+    for error in errors:
+        print(f"retain: {error}", file=sys.stderr)
+    verb = "checked" if args.dry_run else "retained"
+    print(f"retain: {verb} {len(retained)} trials, {total} bytes")
+    return 1 if errors else 0
+
+
 def cmd_materialize(args: argparse.Namespace) -> int:
     """Write the resolved job config without starting Harbor."""
     try:
@@ -328,6 +364,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     collect_parser.add_argument("job", help="job name or job dir path")
     collect_parser.set_defaults(func=cmd_collect)
+
+    retain_parser = sub.add_parser(
+        "retain",
+        help="copy jobs' full evidence closures into the retained traces",
+    )
+    retain_parser.add_argument(
+        "job", nargs="+", help="job names or job dir paths"
+    )
+    retain_parser.add_argument(
+        "--trial", action="append", help="retain only these trials"
+    )
+    retain_parser.add_argument("--traces-dir", help="where retained traces go")
+    retain_parser.add_argument(
+        "--max-file-bytes",
+        type=int,
+        default=MAX_FILE_BYTES,
+        help="report, don't copy, a file above this size",
+    )
+    retain_parser.add_argument(
+        "--max-trial-bytes",
+        type=int,
+        default=MAX_TRIAL_BYTES,
+        help="report files past this total per trial",
+    )
+    retain_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="copy to scratch and scan without writing",
+    )
+    retain_parser.set_defaults(func=cmd_retain)
 
     cmp_parser = sub.add_parser(
         "compare", help="fold attempts into a comparison report"

@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "efe553b1-76e5-4e66-8855-878b8e7c6817",
+    "job": "panel--coder-one-jevprobe2-opus-lean-low--fix-git-3",
+    "trial": "fix-git__wBiifGb",
+    "arm": "coder-one-jevprobe2-opus-lean-low",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T22:12:49.452778Z",
+    "finished_at": "2026-09-22T22:16:51.356546Z",
+    "environment_setup_ms": 2623,
+    "agent_setup_ms": 208011,
+    "agent_execution_ms": 14011,
+    "verifier_ms": 5833,
+    "total_ms": 241903
+  },
+  "usage": {
+    "input_tokens": 47420,
+    "cache_tokens": 32758,
+    "output_tokens": 708,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.054344978,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "The published image is linux/amd64; on this arm64 Mac it runs under emulation. Record that condition on every run."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-opus-lean-low--fix-git-3/fix-git__wBiifGb/result.json",
+      "sha256": "1605f99fb95b4f35e5f412f8f3c4ab298706fc4505d35701705c5e7a89a9d284",
+      "bytes": 5083
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-opus-lean-low--fix-git-3/fix-git__wBiifGb/agent/trajectory.json",
+      "sha256": "ba83d618b282364b880d7056919cb13b6286d83da1b7776b3195c9778081c943",
+      "bytes": 77741
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-opus-lean-low--fix-git-3/fix-git__wBiifGb/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-opus-lean-low--fix-git-3/fix-git__wBiifGb/verifier/ctrf.json",
+      "sha256": "37a3eee2cad05592821aff6129cbd2c3c1fb055e2b738249d6323635b8275c77",
+      "bytes": 1092
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-opus-lean-low--fix-git-3/fix-git__wBiifGb/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-opus-lean-low--fix-git-3/tbench/attempts/fix-git__wBiifGb.json",
+      "sha256": "91f0f0d51b40de129243916ca990c23700d45f9dadcfe09a232e3b2d777e5348"
+    }
+  },
+  "collected_at": "2026-09-22T22:16:52.309+00:00"
+}

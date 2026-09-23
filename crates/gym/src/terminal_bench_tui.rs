@@ -562,9 +562,10 @@ impl App {
                 .join(" · ")
         ));
         lines.push(format!(
-            "Evidence: {} items, {}. Press enter to inspect files.",
+            "Evidence: {} items, {}{}. Press enter to inspect files.",
             a.evidence.len(),
-            a.evidence_health()
+            a.evidence_health(),
+            missing_summary(a)
         ));
         lines.extend(a.notes.iter().map(|note| format!("Note: {note}")));
         lines
@@ -578,6 +579,20 @@ impl App {
             format!("{} / {}", a.job, a.trial),
             "Digest status is checked against retained bytes when a digest exists.".to_owned(),
         ];
+        let missing = a.missing_evidence();
+        if missing.is_empty() {
+            lines.push("Missing: none; every referenced file is present.".to_owned());
+        } else {
+            lines.push(format!(
+                "Missing {}: {}",
+                missing.len(),
+                missing
+                    .iter()
+                    .map(|e| e.kind.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
         for evidence in &a.evidence {
             let path = evidence
                 .path
@@ -654,6 +669,13 @@ impl App {
 fn clip(text: &str, width: usize) -> String {
     text.chars().take(width).collect()
 }
+fn missing_summary(attempt: &Attempt) -> String {
+    match attempt.missing_evidence().len() {
+        0 => String::new(),
+        n => format!(" ({n} missing)"),
+    }
+}
+
 fn ms(value: Option<u64>) -> String {
     value.map_or(DASH.to_owned(), |v| format!("{:.1}s", v as f64 / 1000.0))
 }

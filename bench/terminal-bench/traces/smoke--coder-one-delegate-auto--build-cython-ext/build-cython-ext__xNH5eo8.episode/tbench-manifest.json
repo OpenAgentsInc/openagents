@@ -1,0 +1,112 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "945dc06b-c345-403f-830f-9e3d3829d175",
+    "job": "smoke--coder-one-delegate-auto--build-cython-ext",
+    "trial": "build-cython-ext__xNH5eo8",
+    "arm": "coder-one-delegate-auto",
+    "profile": "smoke",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/build-cython-ext",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "df5a71095bf690f7b2b2091e8ea3b0ecab7ff6cd4e3629b79e86e99118702a10",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:11:14.739544Z",
+    "finished_at": "2026-09-22T19:15:10.772745Z",
+    "environment_setup_ms": 1809,
+    "agent_setup_ms": 65450,
+    "agent_execution_ms": 153491,
+    "verifier_ms": 4041,
+    "total_ms": 236033
+  },
+  "usage": {
+    "input_tokens": 461489,
+    "cache_tokens": 370767,
+    "output_tokens": 7612,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.41451874999999994,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Image is resolved from the task checkout at build time; doctor reports the manifest arch when the checkout is present."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-delegate-auto--build-cython-ext/build-cython-ext__xNH5eo8/result.json",
+      "sha256": "b8caa2f881c0fab743319abc1ceefea6bf8ef138a8bf1427589ace576a669a1f",
+      "bytes": 4881
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-delegate-auto--build-cython-ext/build-cython-ext__xNH5eo8/agent/trajectory.json",
+      "sha256": "bac8744fc5866d02dd35a935ce12e1c3a711e41b0c4c09a0d4d2af78418f834d",
+      "bytes": 243148
+    },
+    "native_traces": [],
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-delegate-auto--build-cython-ext/build-cython-ext__xNH5eo8/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-delegate-auto--build-cython-ext/build-cython-ext__xNH5eo8/verifier/ctrf.json",
+      "sha256": "acf19c482d21dd0ba91fd2a5373680e3f82f91810a318e940b346f43d48228ce",
+      "bytes": 4258
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-delegate-auto--build-cython-ext/build-cython-ext__xNH5eo8/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-delegate-auto--build-cython-ext/tbench/attempts/build-cython-ext__xNH5eo8.json",
+      "sha256": "9facb000d4aeaa56c38615d3e3cd6677062d1db0920b6c0081d7292fa227b0cb"
+    }
+  },
+  "collected_at": "2026-09-22T19:15:11.651+00:00"
+}

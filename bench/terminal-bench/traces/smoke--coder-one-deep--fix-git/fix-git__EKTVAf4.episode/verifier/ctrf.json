@@ -1,0 +1,41 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 2,
+            "passed": 1,
+            "failed": 1,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1790104320.1528363,
+            "stop": 1790104320.2027473
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_about_file",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0005081229901406914,
+                "start": 1790104320.1958337,
+                "stop": 1790104320.2021205,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_about_file():\n        \"\"\"\n        Test that the about file content is correct\n        \"\"\"\n>       check_file_hash(\n            \"/app/personal-site/_includes/about.md\", \"0273104059c6bf524e767b8847b22946\"\n        )\n\n/tests/test_outputs.py:28: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nfile_path = '/app/personal-site/_includes/about.md'\nexpected_hash = '0273104059c6bf524e767b8847b22946'\n\n    def check_file_hash(file_path, expected_hash):\n>       assert hash_file(file_path) == expected_hash, (\n            f\"File {file_path} is not in the correct state\"\n        )\nE       AssertionError: File /app/personal-site/_includes/about.md is not in the correct state\nE       assert '8d80af33a0cc...354d74a03b93d' == '0273104059c6...67b8847b22946'\nE         \nE         - 0273104059c6bf524e767b8847b22946\nE         + 8d80af33a0cc87b6228354d74a03b93d\n\n/tests/test_outputs.py:13: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_layout_file",
+                "status": "passed",
+                "duration": 0.00024075999681372195,
+                "start": 1790104320.2022758,
+                "stop": 1790104320.2026532,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "69c91bcc-f6b5-485e-9900-c8269c13940a",
+    "job": "extended--coder-one-jevprobe2-opus-lean-low--git-leak-recovery-3",
+    "trial": "git-leak-recovery__NF9S3BZ",
+    "arm": "coder-one-jevprobe2-opus-lean-low",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/git-leak-recovery",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/git-leak-recovery",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "285cc112a989ee2d0aee8db362c34d82340d6f4797488be88a42fd785cfea346",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T22:18:46.088350Z",
+    "finished_at": "2026-09-22T22:23:38.827234Z",
+    "environment_setup_ms": 2654,
+    "agent_setup_ms": 257443,
+    "agent_execution_ms": 10428,
+    "verifier_ms": 9603,
+    "total_ms": 292738
+  },
+  "usage": {
+    "input_tokens": 26612,
+    "cache_tokens": 21146,
+    "output_tokens": 616,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.036355326,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Runs natively on the x86_64 Linux host."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low--git-leak-recovery-3/git-leak-recovery__NF9S3BZ/result.json",
+      "sha256": "64c7274c3ff3b1ccf516e875bd85187c89b42363afc07e97b4cbc0654341eb4e",
+      "bytes": 5169
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low--git-leak-recovery-3/git-leak-recovery__NF9S3BZ/agent/trajectory.json",
+      "sha256": "b4f94464cd1258e3e19ff337b5fba3de4c5d33cf282762fe8900d54f663f6389",
+      "bytes": 29078
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low--git-leak-recovery-3/git-leak-recovery__NF9S3BZ/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low--git-leak-recovery-3/git-leak-recovery__NF9S3BZ/verifier/ctrf.json",
+      "sha256": "593dc445c5daca8d416cf312c4e9cf6b48403c824c129ee78b516b33705f1d62",
+      "bytes": 2188
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low--git-leak-recovery-3/git-leak-recovery__NF9S3BZ/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low--git-leak-recovery-3/tbench/attempts/git-leak-recovery__NF9S3BZ.json",
+      "sha256": "b2c7046556c912d0ef19b18c9b6add18f2721badb4ab812e817a7c5bebda9871"
+    }
+  },
+  "collected_at": "2026-09-22T22:23:39.747+00:00"
+}

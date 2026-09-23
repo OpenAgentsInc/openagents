@@ -1,0 +1,117 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "e8e0a69f-5296-45b4-83bc-fe888b749d02",
+    "job": "panel--coder-one-jevprobe-sonnet-lean-low--headless-terminal",
+    "trial": "headless-terminal__zavGnBQ",
+    "arm": "coder-one-jevprobe-sonnet-lean-low",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/headless-terminal",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "2780a403d561b00752bb52c27a6150bafc35b126d96a716af20d696fca8b55a2",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T21:22:34.512609Z",
+    "finished_at": "2026-09-22T21:28:16.772764Z",
+    "environment_setup_ms": 2307,
+    "agent_setup_ms": 283949,
+    "agent_execution_ms": 23113,
+    "verifier_ms": 21018,
+    "total_ms": 342260
+  },
+  "usage": {
+    "input_tokens": 94976,
+    "cache_tokens": 89176,
+    "output_tokens": 1465,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.047068424,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-sonnet-lean-low--headless-terminal/headless-terminal__zavGnBQ/result.json",
+      "sha256": "82ffc6e7f2d1445ffbecb80cf077e9a584ebe99c5d7c61d7a6ff8c2257e92a17",
+      "bytes": 5148
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-sonnet-lean-low--headless-terminal/headless-terminal__zavGnBQ/agent/trajectory.json",
+      "sha256": "f236d5d97973849819d0ced8d3a1dbb707dd1d206b748c159f398bb1e405c22e",
+      "bytes": 24316
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-sonnet-lean-low--headless-terminal/headless-terminal__zavGnBQ/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-sonnet-lean-low--headless-terminal/headless-terminal__zavGnBQ/verifier/ctrf.json",
+      "sha256": "8813852aa60d7ac05553a166641837f19118c1a3af491c4af2bc5c60dcaaf60d",
+      "bytes": 2845
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-sonnet-lean-low--headless-terminal/headless-terminal__zavGnBQ/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-sonnet-lean-low--headless-terminal/tbench/attempts/headless-terminal__zavGnBQ.json",
+      "sha256": "482b2b4b6e704c27bef95c5bcf102294370e80c0c0b753de7ed69fcd226e3e4a"
+    }
+  },
+  "collected_at": "2026-09-22T21:28:17.656+00:00"
+}

@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/headless-terminal",
   "trial_name": "headless-terminal__5RT68kk",
+  "task_name": "terminal-bench/headless-terminal",
   "started_at": "2026-09-22T20:01:59.166827Z",
   "finished_at": "2026-09-22T20:08:37.795246Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 222601,
     "n_cache_tokens": 0,
     "n_output_tokens": 34152,
-    "cost_usd": 0.29504
-  }
+    "cost_usd": 0.29504,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

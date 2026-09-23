@@ -1,0 +1,92 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "5fceca49-44ae-40b2-8964-d57564fd922d",
+    "job": "extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-2",
+    "trial": "git-leak-recovery__RGq9spe",
+    "arm": "coder-one-jevprobe2-opus-lean-low-5m",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/git-leak-recovery",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/git-leak-recovery",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "285cc112a989ee2d0aee8db362c34d82340d6f4797488be88a42fd785cfea346",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T23:30:44.067806Z",
+    "finished_at": "2026-09-22T23:35:50.942707Z",
+    "environment_setup_ms": 1225,
+    "agent_setup_ms": 251200,
+    "agent_execution_ms": 10609,
+    "verifier_ms": 31943,
+    "total_ms": 306874
+  },
+  "environment": {
+    "image": "alexgshaw/git-leak-recovery:20251031",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": 26410,
+    "cache_tokens": 21146,
+    "output_tokens": 570,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.027356764,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 9,
+    "model_invocations": 5,
+    "typed_decisions": 0,
+    "tool_calls": 4,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-2/git-leak-recovery__RGq9spe/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-2/git-leak-recovery__RGq9spe",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-2/tbench/manifests/git-leak-recovery__RGq9spe.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

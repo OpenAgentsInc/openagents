@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "6b08ad6d-d669-4a39-8f6c-5cb26fa8fb1f",
+    "job": "extended--coder-one-jevprobe-opus-lean-low--sqlite-db-truncate-2",
+    "trial": "sqlite-db-truncate__xaQBAtW",
+    "arm": "coder-one-jevprobe-opus-lean-low",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/sqlite-db-truncate",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/sqlite-db-truncate",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "149c8061043d593a987eea4a61d9d24a772957a7ddee70414574b70dafbe4b30",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T22:11:48.724255Z",
+    "finished_at": "2026-09-22T22:16:54.829844Z",
+    "environment_setup_ms": 1491,
+    "agent_setup_ms": 269096,
+    "agent_execution_ms": 18274,
+    "verifier_ms": 5175,
+    "total_ms": 306105
+  },
+  "usage": {
+    "input_tokens": 35974,
+    "cache_tokens": 29257,
+    "output_tokens": 1325,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.057629424,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Runs natively on the x86_64 Linux host."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe-opus-lean-low--sqlite-db-truncate-2/sqlite-db-truncate__xaQBAtW/result.json",
+      "sha256": "095ca54b097cf698a5581973c72aaea87b08d5ab1a8d0f2ab561955779c1b5de",
+      "bytes": 5162
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe-opus-lean-low--sqlite-db-truncate-2/sqlite-db-truncate__xaQBAtW/agent/trajectory.json",
+      "sha256": "9383221fbd818a73900555fbd2e44d3fe97b087d979b3beb4d745c5846ee39f7",
+      "bytes": 64499
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe-opus-lean-low--sqlite-db-truncate-2/sqlite-db-truncate__xaQBAtW/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe-opus-lean-low--sqlite-db-truncate-2/sqlite-db-truncate__xaQBAtW/verifier/ctrf.json",
+      "sha256": "35054cc0c8f66f90ef7810df070609bb76e3553e53f1f6025f90c905bf130b6d",
+      "bytes": 747
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe-opus-lean-low--sqlite-db-truncate-2/sqlite-db-truncate__xaQBAtW/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe-opus-lean-low--sqlite-db-truncate-2/tbench/attempts/sqlite-db-truncate__xaQBAtW.json",
+      "sha256": "7c61a067316d60c310db9cea0992fc62271857cb42e40c2edabc27319f5ce32c"
+    }
+  },
+  "collected_at": "2026-09-22T22:16:55.730+00:00"
+}

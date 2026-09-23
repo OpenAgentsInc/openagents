@@ -1,0 +1,52 @@
+{
+  "environment": {
+    "repository": "",
+    "workdir": "/app/personal-site",
+    "os": "linux"
+  },
+  "issue": {
+    "url": "",
+    "title": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me …",
+    "body": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.\n",
+    "labels": []
+  },
+  "survey": [
+    {
+      "path": "$ git log --oneline --graph --all -n 40",
+      "relevance": 0.92,
+      "edit": 0.0,
+      "content": "* d7d3e4b off the job market woo\n* c4e38a1 Add code link for BLADE\n* 6f46fa0 CV Update\n* dd7e395 Adds BLADE to bib\n* 2cd355a n+1 (for the last time???)\n* 8eaf505 Add BLADE\n* cc2ec78 Underline\n* d71094e Underline Conferences\n* 232b279 Remove posters\n* 3fdf5f5 Add NeurIPS\n* 8c4731d Add EMNLP acceptance\n* f54f66b Add GR link\n* 18d2430 Add other links\n* 1dd055e Ignore Gemfile, etc\n* 5c77a6d Dont overwrite\n* c7d2f95 Delete unsused files\n* 20b05d9 Remove more unused files\n* 2d144f7 Add yamls for new papers\n* 7882f2d Don't track _site\n* cd2b8de Add new papers\n* 26dc65c Fix author\n* bc1962c Interests update\n* 257eba8 More space for interests\n* ff6a94a Bib update\n* 97c4a55 Underline bold\n* a320806 Other fixes, new paper\n* 2cb7243 New PDFs\n* 7321328 PDF update\n* f1e3860 Deletions\n* 7b4d171 Update Bio\n* 073117a Another update\n* cb63517 Another CV Updatee\n* 192ae7b update headshot\n* 7fb9365 Update about and contact\n* 54ef19d CV Update\n* b0fb76a Add GR\n* 6adfab9 n plus one\n* 8a5509d Needs to be a string\n* e2f686e Add Gemfile\n* fa098ef properly handle class"
+    },
+    {
+      "path": "$ git reflog -n 40",
+      "relevance": 0.9,
+      "edit": 0.0,
+      "content": "d7d3e4b HEAD@{0}: checkout: moving from c499730ae050deb27e5d22972ea28daf778060f2 to master\nc499730 HEAD@{1}: commit: Move to Stanford\nc4e38a1 HEAD@{2}: checkout: moving from master to HEAD~1\nd7d3e4b HEAD@{3}: reset: moving to d7d3e4b\n19b5d10 HEAD@{4}: clone: from https://github.com/TheMikeMerrill/personal-site.git"
+    },
+    {
+      "path": "$ git branch -a -vv",
+      "relevance": 0.85,
+      "edit": 0.0,
+      "content": "* master d7d3e4b off the job market woo"
+    },
+    {
+      "path": "$ git status",
+      "relevance": 0.84,
+      "edit": 0.0,
+      "content": "On branch master\nnothing to commit, working tree clean"
+    },
+    {
+      "path": "$ pwd && ls -la",
+      "relevance": 0.59,
+      "edit": 0.0,
+      "content": "/app/personal-site\ntotal 92\ndrwxr-xr-x 12 root root  4096 Apr  3 07:47 .\ndrwxr-xr-x  1 root root  4096 Apr  3 07:47 ..\ndrwxr-xr-x  8 root root  4096 Apr  3 07:47 .git\n-rw-r--r--  1 root root   100 Apr  3 07:47 .gitignore\n-rw-r--r--  1 root root    14 Apr  3 07:47 CNAME\n-rw-r--r--  1 root root    42 Apr  3 07:47 Gemfile\n-rw-r--r--  1 root root   152 Apr  3 07:47 _config.yml\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _includes\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _layouts\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _posters\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _publications\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 biblib\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 css\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 fonts\n-rw-r--r--  1 root root    47 Apr  3 07:47 index.md\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 js\n-rw-r--r--  1 root root  2382 Apr  3 07:47 make_pubs.py\n-rw-r--r--  1 root root 19618 Apr  3 07:47 me.bib\ndrwxr-xr-x  4 root root  4096 Apr  3 07:47 resources"
+    },
+    {
+      "path": "$ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+      "relevance": 0.5,
+      "edit": 0.0,
+      "content": ".\n./Gemfile\n./biblib\n./biblib/algo.py\n./biblib/bib.py\n./biblib/test.py\n./biblib/__init__.py\n./biblib/messages.py\n./_config.yml\n./me.bib\n./_includes\n./_includes/interests.md\n./_includes/about.md\n./_includes/contact.md\n./fonts\n./fonts/glyphicons-halflings-regular.ttf\n./fonts/glyphicons-halflings-regular.eot\n./fonts/glyphicons-halflings-regular.woff\n./fonts/glyphicons-halflings-regular.woff2\n./fonts/Proxima-Nova-Thin.otf\n./fonts/glyphicons-halflings-regular.svg\n./fonts/Proxima-Nova-Regular.otf\n./.git\n./index.md\n./_publications\n./_publications/merrill2021multiverse.md\n./_publications/xu2022GLOBEM.md\n./_publications/ben-zeev_crosscheck_2017.md\n./_publications/merrillLanguageModelsStill2024.md\n./_publications/tseng2016ubicomp.md\n./_publications/tanAreLanguageModels2024.md\n./_publications/wang_crosscheck_2016.md\n./_publications/guBLADEBenchmarkingLanguage2024a.md\n./_publications/merrill2023selfsupervised.md\n./_publications/zhang2022coral.md\n./_publications/merrillHomekit2020BenchmarkTime2023.md\n./_publications/merrillTransformingWearableData2024a.md\n./make_pubs.py\n./CNAME\n./css\n./css/bootstrap.css.map\n./css/bootstrap-grid.min.css.map\n./css/bootstrap-reboot.css\n./css/bootstrap-reboot.min.css\n./css/bootstrap-grid.css.map\n./css/bootstrap-reboot.min.css.map\n./css/style.css\n./css/bootstrap.min.css.map\n./css/bootstrap-grid.css\n./css/bootstrap.min.css\n./css/bootstrap-grid.min.css\n./css/bootstrap-reboot.css.map\n./css/bootstrap.css\n./resources\n./resources/headshot.jpeg\n./resources/Personal_Statement_UW_Draft.pdf\n./resources/thumbnails\n./resources/thumbnails/xu2022GLOBEM.png\n./resources/thumbnails/merrillTransformingWearableData2024a.png\n./resources/thumbnails/tanAreLanguageModels2024.png\n./resources/thumbnails/tseng2016ubicomp.png\n./resources/thumbnails/guBLADEBenchmarkingLanguage2024a.png\n./resources/thumbnails/merrillHomekit2020BenchmarkTime2023.png\n./resources/thumbnails/merrillLanguageModelsStill2024.png\n./resources/thumbnails/ben-zeev_crosscheck_2017.png\n./resources/thumbnails/zhang2022coral.png\n./resources/thumbnails/merrill2023selfsupervised.png\n./resources/thumbnails/merrill2021multiverse.png\n./resources/thumbnails/wang_crosscheck_2016.png\n./resources/pubpdfs\n./resources/pubpdfs/merrill2023selfsupervised.pdf\n./resources/pubpdfs/tanAreLanguageModels2024.pdf\n./resources/pubpdfs/guBLADEBenchmarkingLanguage2024a.pdf\n./resources/pubpdfs/wang_crosscheck_2016.pdf\n./resources/pubpdfs/ben-zeev_crosscheck_2017.pdf\n./resources/pubpdfs/merrill2021multiverse.pdf\n./resources/pubpdfs/merrillLanguageModelsStill2024.pdf\n./resources/pubpdfs/tseng2016ubicomp.pdf\n./resources/pubpdfs/merrillHomekit2020BenchmarkTime2023.pdf\n./resources/pubpdfs/merrillTransformingWearableData2024a.pdf\n./resources/pubpdfs/xu2022GLOBEM.pdf\n./resources/pubpdfs/zhang2022coral.pdf\n./resources/Mike_Merrill_Resume.pdf\n./resources/Mike_Merrill_CV.pdf\n./resources/Research_Statement.pdf\n./resources/Mike_Merrill_CV_old.pdf\n./js\n./js/bootstrap.min.js\n./js/scripts.js\n./js/popper.min.js\n./js/jquery.min.js\n./_posters\n./_posters/frank2017sensing.md\n./_posters/frank2016sensing.md\n./_layouts\n./_layouts/default.html\n./.gitignore"
+    }
+  ],
+  "history": []
+}

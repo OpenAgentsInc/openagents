@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "feb67e69-a1bc-42e4-8f29-b12630623294",
+    "job": "extended--coder-one-jevprobe3-opus-lean-low--log-summary-date-ranges-3",
+    "trial": "log-summary-date-ranges__vzLeS2b",
+    "arm": "coder-one-jevprobe3-opus-lean-low",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/log-summary-date-ranges",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/log-summary-date-ranges",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "f661ef345f023ef5a2dcdd056c353a1a2bbce29a70b04765c615c25e91b6b662",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T23:13:43.406830Z",
+    "finished_at": "2026-09-22T23:19:56.839491Z",
+    "environment_setup_ms": 1274,
+    "agent_setup_ms": 333881,
+    "agent_execution_ms": 15766,
+    "verifier_ms": 10959,
+    "total_ms": 373432
+  },
+  "usage": {
+    "input_tokens": 66778,
+    "cache_tokens": 43997,
+    "output_tokens": 1184,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.072730268,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Runs natively on the x86_64 Linux host."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe3-opus-lean-low--log-summary-date-ranges-3/log-summary-date-ranges__vzLeS2b/result.json",
+      "sha256": "5130583f87d3bc9503a4abb14889cba2b5c39705ed709ce5630624f6f2ff59b8",
+      "bytes": 5272
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe3-opus-lean-low--log-summary-date-ranges-3/log-summary-date-ranges__vzLeS2b/agent/trajectory.json",
+      "sha256": "f112997d1cfe3ff5d204d23315a844be73af1d7d7ff0a75090c1365c944f760c",
+      "bytes": 88148
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe3-opus-lean-low--log-summary-date-ranges-3/log-summary-date-ranges__vzLeS2b/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe3-opus-lean-low--log-summary-date-ranges-3/log-summary-date-ranges__vzLeS2b/verifier/ctrf.json",
+      "sha256": "dfc006df65a5e30665bb5145c4e806e5d3bf75cdb9fac59ac2a9220dd01060c7",
+      "bytes": 1117
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe3-opus-lean-low--log-summary-date-ranges-3/log-summary-date-ranges__vzLeS2b/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe3-opus-lean-low--log-summary-date-ranges-3/tbench/attempts/log-summary-date-ranges__vzLeS2b.json",
+      "sha256": "a839e00646a314fb931a569683bc74c7f7a2065fb862f5ef411bf89e2255e502"
+    }
+  },
+  "collected_at": "2026-09-22T23:19:57.768+00:00"
+}

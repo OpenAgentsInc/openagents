@@ -1,0 +1,92 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "2a3ce12b-0487-4978-9250-09d9134c5410",
+    "job": "extended--coder-one-jevprobe3-opus-lean-low--sqlite-db-truncate",
+    "trial": "sqlite-db-truncate__8dLeMHL",
+    "arm": "coder-one-jevprobe3-opus-lean-low",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/sqlite-db-truncate",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/sqlite-db-truncate",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "149c8061043d593a987eea4a61d9d24a772957a7ddee70414574b70dafbe4b30",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T22:46:56.974092Z",
+    "finished_at": "2026-09-22T22:53:23.044335Z",
+    "environment_setup_ms": 1842,
+    "agent_setup_ms": 342380,
+    "agent_execution_ms": 20287,
+    "verifier_ms": 9302,
+    "total_ms": 386070
+  },
+  "environment": {
+    "image": "alexgshaw/sqlite-db-truncate:20251031",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": 36639,
+    "cache_tokens": 29752,
+    "output_tokens": 1627,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.055197508000000006,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 9,
+    "model_invocations": 5,
+    "typed_decisions": 0,
+    "tool_calls": 4,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe3-opus-lean-low--sqlite-db-truncate/sqlite-db-truncate__8dLeMHL/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe3-opus-lean-low--sqlite-db-truncate/sqlite-db-truncate__8dLeMHL",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe3-opus-lean-low--sqlite-db-truncate/tbench/manifests/sqlite-db-truncate__8dLeMHL.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

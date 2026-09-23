@@ -1,0 +1,82 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "56a7a371-5f14-4dd5-8adb-9c6a99b5907a",
+    "job": "smoke--coder-one--build-cython-ext",
+    "trial": "build-cython-ext__z3ZE6iY",
+    "arm": "coder-one",
+    "profile": "smoke",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/build-cython-ext",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "df5a71095bf690f7b2b2091e8ea3b0ecab7ff6cd4e3629b79e86e99118702a10",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOne",
+    "requested_model": "free",
+    "observed_name": "coder-one",
+    "observed_version": "coder-one 0.1.0 (cb6968b9faa6)",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T18:40:14.597536Z",
+    "finished_at": "2026-09-22T18:47:03.308947Z",
+    "environment_setup_ms": 53882,
+    "agent_setup_ms": 1208,
+    "agent_execution_ms": 338361,
+    "verifier_ms": 4216,
+    "total_ms": 408711
+  },
+  "usage": {
+    "input_tokens": 642018,
+    "cache_tokens": null,
+    "output_tokens": 16631,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.364791,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 148,
+    "model_invocations": 146,
+    "typed_decisions": 0,
+    "tool_calls": 96,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one--build-cython-ext/build-cython-ext__z3ZE6iY/result.json",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one--build-cython-ext/tbench/manifests/build-cython-ext__z3ZE6iY.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present"
+  }
+}

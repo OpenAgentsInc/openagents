@@ -1,0 +1,117 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "3e0ae297-0dee-4194-8dd0-fcc4ad3df472",
+    "job": "panel--coder-one-jevprobe-haiku-lean--headless-terminal",
+    "trial": "headless-terminal__pskGDuK",
+    "arm": "coder-one-jevprobe-haiku-lean",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/headless-terminal",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "2780a403d561b00752bb52c27a6150bafc35b126d96a716af20d696fca8b55a2",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "14c95a627a56763e5a7edb1a1a966aeb33b0fe91615c130ae73c341c4d2ec8dc"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T21:22:34.469883Z",
+    "finished_at": "2026-09-22T21:28:44.809695Z",
+    "environment_setup_ms": 2389,
+    "agent_setup_ms": 290663,
+    "agent_execution_ms": 39755,
+    "verifier_ms": 26123,
+    "total_ms": 370339
+  },
+  "usage": {
+    "input_tokens": 125587,
+    "cache_tokens": 117521,
+    "output_tokens": 3171,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.039158952000000004,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-haiku-lean--headless-terminal/headless-terminal__pskGDuK/result.json",
+      "sha256": "ddd195faa5f101952eb1ce03eda706da22ceb354f4ce5dd99c4c5c91c3b5ba9b",
+      "bytes": 5107
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-haiku-lean--headless-terminal/headless-terminal__pskGDuK/agent/trajectory.json",
+      "sha256": "21ce8d9a2f56675b3210cfa54453b7570d006f35204404d611daf0990061f291",
+      "bytes": 26282
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-haiku-lean--headless-terminal/headless-terminal__pskGDuK/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-haiku-lean--headless-terminal/headless-terminal__pskGDuK/verifier/ctrf.json",
+      "sha256": "dc6d7a960b70a5a3cbd06b7c76dd3e3e1436e29d96fc110048bb2f6a4ddc9b96",
+      "bytes": 2850
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-haiku-lean--headless-terminal/headless-terminal__pskGDuK/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe-haiku-lean--headless-terminal/tbench/attempts/headless-terminal__pskGDuK.json",
+      "sha256": "e5bb69f39c838780b4e743ead5330c0b66db22defb2785dcec2936c554abf829"
+    }
+  },
+  "collected_at": "2026-09-22T21:28:45.658+00:00"
+}

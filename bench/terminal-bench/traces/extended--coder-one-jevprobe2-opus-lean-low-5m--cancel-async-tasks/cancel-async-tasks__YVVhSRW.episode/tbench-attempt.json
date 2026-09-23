@@ -1,0 +1,92 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "804c0bbd-99ca-4aae-8f4d-81f2de899bc4",
+    "job": "extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks",
+    "trial": "cancel-async-tasks__YVVhSRW",
+    "arm": "coder-one-jevprobe2-opus-lean-low-5m",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/cancel-async-tasks",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/cancel-async-tasks",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "1566331f6913b8a4f9af6779e90cabbb79edf1b15c126b6bc544912df3f14de5",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T23:49:06.177604Z",
+    "finished_at": "2026-09-22T23:53:07.065406Z",
+    "environment_setup_ms": 1197,
+    "agent_setup_ms": 193447,
+    "agent_execution_ms": 15851,
+    "verifier_ms": 18849,
+    "total_ms": 240887
+  },
+  "environment": {
+    "image": "alexgshaw/cancel-async-tasks:20251031",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": 17015,
+    "cache_tokens": 12955,
+    "output_tokens": 1487,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.044778486,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 8,
+    "model_invocations": 4,
+    "typed_decisions": 0,
+    "tool_calls": 3,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks/cancel-async-tasks__YVVhSRW/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks/cancel-async-tasks__YVVhSRW",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks/tbench/manifests/cancel-async-tasks__YVVhSRW.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

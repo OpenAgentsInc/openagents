@@ -1,0 +1,110 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "185399b8-9670-4d48-9f38-0930086a4417",
+    "job": "panel--coder-one-deep--headless-terminal",
+    "trial": "headless-terminal__iXdx4Yq",
+    "arm": "coder-one-deep",
+    "profile": "panel",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/headless-terminal",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "2780a403d561b00752bb52c27a6150bafc35b126d96a716af20d696fca8b55a2",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOne",
+    "requested_model": "free",
+    "observed_name": "coder-one",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T20:01:59.012481Z",
+    "finished_at": "2026-09-22T20:10:28.431371Z",
+    "environment_setup_ms": 891,
+    "agent_setup_ms": 1048,
+    "agent_execution_ms": 471718,
+    "verifier_ms": 24735,
+    "total_ms": 509418
+  },
+  "usage": {
+    "input_tokens": 328621,
+    "cache_tokens": 0,
+    "output_tokens": 38163,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.324745284,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-deep--headless-terminal/headless-terminal__iXdx4Yq/result.json",
+      "sha256": "c8be64751a8491b03252ff119e404e379bbf91afa7ea6da0a5594711fb4547ec",
+      "bytes": 4594
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-deep--headless-terminal/headless-terminal__iXdx4Yq/agent/trajectory.json",
+      "sha256": "99e7ea2e71b6366f47354e09823173cdfb99e0daa39e08c22059d4188c77c252",
+      "bytes": 566624
+    },
+    "native_traces": [],
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-deep--headless-terminal/headless-terminal__iXdx4Yq/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-deep--headless-terminal/headless-terminal__iXdx4Yq/verifier/ctrf.json",
+      "sha256": "51cdc9b650f90f6655c7deb0a7b32aa1bac9ad3f7b444765f4f01a71dba2d0a8",
+      "bytes": 2848
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-deep--headless-terminal/headless-terminal__iXdx4Yq/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-deep--headless-terminal/tbench/attempts/headless-terminal__iXdx4Yq.json",
+      "sha256": "a26c341db63135c415270d783082ec46313cfb5c042fc22e7c9331375264eec0"
+    }
+  },
+  "collected_at": "2026-09-22T20:10:29.351+00:00"
+}

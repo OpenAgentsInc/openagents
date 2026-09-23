@@ -1,0 +1,117 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "3219ff82-bb21-45fc-9120-2e80f6fd2170",
+    "job": "panel--coder-one-jevprobe3-luna--headless-terminal",
+    "trial": "headless-terminal__tr384w7",
+    "arm": "coder-one-jevprobe3-luna",
+    "profile": "panel",
+    "auth_mode": "auth-json",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/headless-terminal",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "2780a403d561b00752bb52c27a6150bafc35b126d96a716af20d696fca8b55a2",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "outcome": {
+    "reward": 0.0,
+    "verifier_rewards": {
+      "reward": 0.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T22:39:42.844510Z",
+    "finished_at": "2026-09-22T22:45:39.866438Z",
+    "environment_setup_ms": 1339,
+    "agent_setup_ms": 269188,
+    "agent_execution_ms": 59238,
+    "verifier_ms": 15743,
+    "total_ms": 357021
+  },
+  "usage": {
+    "input_tokens": 63729,
+    "cache_tokens": 54272,
+    "output_tokens": 2515,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.0026227859999999998,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7/result.json",
+      "sha256": "883c8a29263f85c14c70c2d5423a12385281df4f221d2df25dc5949b514b24ef",
+      "bytes": 5063
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7/agent/trajectory.json",
+      "sha256": "131ed002822d8a4b90198e4f568ba4464f452bae3bc582fc24f0e4b1e6a4170d",
+      "bytes": 23616
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7/verifier/reward.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7/verifier/ctrf.json",
+      "sha256": "a297f0af4c4f36a1b1933278d07b0bfb8f8473c21902be0dc2e8ece22af20d60",
+      "bytes": 34028
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--headless-terminal/tbench/attempts/headless-terminal__tr384w7.json",
+      "sha256": "7ab7afc66ee5df26f3e0c02009e0cefd3e9879434ab5be900d622bac24730253"
+    }
+  },
+  "collected_at": "2026-09-22T22:45:40.735+00:00"
+}

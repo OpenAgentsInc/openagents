@@ -1,0 +1,92 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "53d4d8c7-8f26-4eea-a125-842cbbc37099",
+    "job": "panel--coder-one-jevbrief-opus--build-cython-ext-2",
+    "trial": "build-cython-ext__x3mC2Eq",
+    "arm": "coder-one-jevbrief-opus",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/build-cython-ext",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "df5a71095bf690f7b2b2091e8ea3b0ecab7ff6cd4e3629b79e86e99118702a10",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "e2a92884eba12a7b9ff8a6dfa5e18304c12241f37ea842dc3d419562e783a4a7"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T20:17:10.677486Z",
+    "finished_at": "2026-09-22T20:22:00.266155Z",
+    "environment_setup_ms": 5690,
+    "agent_setup_ms": 162658,
+    "agent_execution_ms": 104995,
+    "verifier_ms": 4508,
+    "total_ms": 289588
+  },
+  "environment": {
+    "image": null,
+    "image_source": "dockerfile",
+    "image_state": "unknown",
+    "image_action": "built",
+    "image_state_method": "Harbor builds a Dockerfile task in every trial; the trial log doesn't record whether the build cache served its layers"
+  },
+  "usage": {
+    "input_tokens": 364826,
+    "cache_tokens": 347213,
+    "output_tokens": 5268,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 7,
+    "model_invocations": 3,
+    "typed_decisions": 0,
+    "tool_calls": 2,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--build-cython-ext-2/build-cython-ext__x3mC2Eq/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--build-cython-ext-2/build-cython-ext__x3mC2Eq",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--build-cython-ext-2/tbench/manifests/build-cython-ext__x3mC2Eq.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "unknown",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "c2fbe227-cf22-42dc-9568-c6b36df6ab38",
+    "job": "panel--coder-one-jevbrief-opus--headless-terminal-3",
+    "trial": "headless-terminal__PYskap7",
+    "arm": "coder-one-jevbrief-opus",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/headless-terminal",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "2780a403d561b00752bb52c27a6150bafc35b126d96a716af20d696fca8b55a2",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "e2a92884eba12a7b9ff8a6dfa5e18304c12241f37ea842dc3d419562e783a4a7"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T20:22:52.051785Z",
+    "finished_at": "2026-09-22T20:28:43.847386Z",
+    "environment_setup_ms": 1700,
+    "agent_setup_ms": 264422,
+    "agent_execution_ms": 50339,
+    "verifier_ms": 23626,
+    "total_ms": 351795
+  },
+  "environment": {
+    "image": "alexgshaw/headless-terminal:20251031",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": 104893,
+    "cache_tokens": 95756,
+    "output_tokens": 3029,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 8,
+    "model_invocations": 4,
+    "typed_decisions": 0,
+    "tool_calls": 3,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--headless-terminal-3/headless-terminal__PYskap7/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--headless-terminal-3/headless-terminal__PYskap7",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--headless-terminal-3/tbench/manifests/headless-terminal__PYskap7.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "unknown",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

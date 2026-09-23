@@ -38,7 +38,7 @@
               "sha256": "8106febc25e50c32b9ce13f8fa78749cf48c5f6392c2f85cb95a3bdff3aae814",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext/build-cython-ext__2Edwkea.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext/build-cython-ext__2Edwkea.episode/evaluation/usage.json",
                   "sha256": "77db2f331543b1c9c7efbe66b7d39df4d06972c3826e49d7a96a850bc7756efd"
                 },
                 "manifest.json": {
@@ -52,7 +52,7 @@
               "sha256": "134b92411abc3bc557a26139dcf3625899ebe59dda9e34c982f7a39a578c1e4c",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-2/build-cython-ext__Byiv2Pm.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-2/build-cython-ext__Byiv2Pm.episode/evaluation/usage.json",
                   "sha256": "6f938b4a18d4962bd2acfa21ab69bff91939f478901ae9e61cdeeb5740c1e1a6"
                 },
                 "manifest.json": {
@@ -66,7 +66,7 @@
               "sha256": "438b15c06bb37af01a1aaacb0bcb8fe13a520c8d4146028ea1be7d9e5a4752c3",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-3/build-cython-ext__B2waRnG.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-3/build-cython-ext__B2waRnG.episode/evaluation/usage.json",
                   "sha256": "85fc8ccecfee67f774e168ad35255907483277e8ab6bfd6d13396906283c48a3"
                 },
                 "manifest.json": {
@@ -95,7 +95,7 @@
               "sha256": "a789390bda45772cc360e5055fcb51f490fa8df4e1b3a0bba25631623e864698",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks/cancel-async-tasks__NRyzQPX.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks/cancel-async-tasks__NRyzQPX.episode/evaluation/usage.json",
                   "sha256": "e3236c53eb0a7d04a52feb6867539ab887e08f37c4c922da78a6f78e11b5b4ec"
                 },
                 "manifest.json": {
@@ -109,7 +109,7 @@
               "sha256": "378e949c3e7118bdb276da86e4951beed1811557d61b0292b1d5213400f11ac8",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-2/cancel-async-tasks__5qeEQ9c.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-2/cancel-async-tasks__5qeEQ9c.episode/evaluation/usage.json",
                   "sha256": "de8f2ee1abf8f54019c3fb73386fef10e5e11e8c04195cb4d4e2a1c4bea2a617"
                 },
                 "manifest.json": {
@@ -123,7 +123,7 @@
               "sha256": "b0a8603867fc3f9ef6ad2d5a417200fcdb3baaefa0e0fee4e187bd36cd5868a8",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-3/cancel-async-tasks__TDhoGdQ.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-3/cancel-async-tasks__TDhoGdQ.episode/evaluation/usage.json",
                   "sha256": "7c255f4f33538ccc17ac39d0cf7b7218709fbd9d217801c49b1a37bb9c57bb03"
                 },
                 "manifest.json": {
@@ -152,7 +152,7 @@
               "sha256": "9b6f5d38e71daf2f64aa84fbae96dccb3a82afc57efffcc030001c19cc5dfbe8",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability/fix-code-vulnerability__J4B5tZt.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability/fix-code-vulnerability__J4B5tZt.episode/evaluation/usage.json",
                   "sha256": "f98ceef297da9c5c7642e2ccbc46b98a26307d26001e00ee2ee09c6d519bdaaa"
                 },
                 "manifest.json": {
@@ -166,7 +166,7 @@
               "sha256": "0c0e7cbb740411287590f59a1410503f2bc84e96a71f6783e6f43b3dc77e7992",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-2/fix-code-vulnerability__Wve5rKQ.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-2/fix-code-vulnerability__Wve5rKQ.episode/evaluation/usage.json",
                   "sha256": "8a57c8a3e6830fccee5a260a3d6225a4420bb4b79659f1dc4ebd06b3123b9566"
                 },
                 "manifest.json": {
@@ -180,7 +180,7 @@
               "sha256": "980f488388abe51cc9c6319124a2e96600a9b771651fb3726533269380154eab",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-3/fix-code-vulnerability__iaDWPMa.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-3/fix-code-vulnerability__iaDWPMa.episode/evaluation/usage.json",
                   "sha256": "a58f6604285d74b869a68e2898deeb2b9a96a8f6688493186737dd5353bd67f7"
                 },
                 "manifest.json": {
@@ -209,7 +209,7 @@
               "sha256": "f676eb861cdb8bcdb8ba309bd940f7994fed9f247544b0c4f859557d458fc655",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git/fix-git__M9V758R.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git/fix-git__M9V758R.episode/evaluation/usage.json",
                   "sha256": "134f01e4a180f2dba64b6ba77e03c7e4edd9b75444006fd5d2ea91767af700fc"
                 },
                 "manifest.json": {
@@ -223,7 +223,7 @@
               "sha256": "80ec3a7d80d02cd1372fa171a7b2ccf4d88af1334a7d76f10e7f6c500f0ab80d",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-2/fix-git__vvmtBuv.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-2/fix-git__vvmtBuv.episode/evaluation/usage.json",
                   "sha256": "68ab3dd51171f42a7953ca9e01cecd6f41ef17d9442c5e1f32fba601f6181f3f"
                 },
                 "manifest.json": {
@@ -237,7 +237,7 @@
               "sha256": "f76d6d5c21f527d6260c0dd87e1b1b41036810a2ba4b5f9a75c053be10d493b3",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-3/fix-git__7Q8uDYi.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-3/fix-git__7Q8uDYi.episode/evaluation/usage.json",
                   "sha256": "5819113dba019961b1a534e9d464582c8b7936a650987899defdb0ee63f5d947"
                 },
                 "manifest.json": {
@@ -266,7 +266,7 @@
               "sha256": "60f8b4f27f455f0faf23b8219e3e15e4a06a5616e8416a1f74abebb286ef80b6",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery/git-leak-recovery__DTKAoAk.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery/git-leak-recovery__DTKAoAk.episode/evaluation/usage.json",
                   "sha256": "fad94409c5ff1d37c3e21281b5a66c1ae7212ab447f80b7339602e0d3fb361e3"
                 },
                 "manifest.json": {
@@ -280,7 +280,7 @@
               "sha256": "5525a143cf4cdf34cd525c453c881403a5549718b703b69dec7a03fd510215c7",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-2/git-leak-recovery__cuxhUij.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-2/git-leak-recovery__cuxhUij.episode/evaluation/usage.json",
                   "sha256": "0617ff1e802969060330985ce989e7f666d10fc013b525b0c8d5cbbda722314c"
                 },
                 "manifest.json": {
@@ -294,7 +294,7 @@
               "sha256": "a8ce90b8c7383970156302b80b0008c4da218f617bfdbd13f597cd97153c7134",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-3/git-leak-recovery__Gasgiey.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-3/git-leak-recovery__Gasgiey.episode/evaluation/usage.json",
                   "sha256": "bfaf0a471401fdfdc4ba01ebe65930ea2c832a4c1ce1589e6cbf0b8e7ea0ede1"
                 },
                 "manifest.json": {
@@ -323,7 +323,7 @@
               "sha256": "90f2ba514124e57c49a12ab6430229379376320a62a4956b8f5219c896dcbf36",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal/headless-terminal__ou2wKAC.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal/headless-terminal__ou2wKAC.episode/evaluation/usage.json",
                   "sha256": "412176595f8d8890b25850b896ce2c5448890b59c9d03acd88b80b7d79546cc3"
                 },
                 "manifest.json": {
@@ -337,7 +337,7 @@
               "sha256": "5e0f0fe08e96a4cc82216be9d299fe7d321677709e7e58d0b3038d4be2587578",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-2/headless-terminal__U3qtrYa.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-2/headless-terminal__U3qtrYa.episode/evaluation/usage.json",
                   "sha256": "2a5e29d03fb758264146981ca21fd31316ab92cd9bfc40ccd400219068c5eefe"
                 },
                 "manifest.json": {
@@ -351,7 +351,7 @@
               "sha256": "33d5c4b76c4001691cba9a27cf6453fbd766ca5f2ff5151813d519a68d387c89",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-3/headless-terminal__C6mvzvC.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-3/headless-terminal__C6mvzvC.episode/evaluation/usage.json",
                   "sha256": "a497bf8dfb8c3bb2a10a5f2cc159a722a0253d24b065930785491a2eb10e152d"
                 },
                 "manifest.json": {
@@ -380,7 +380,7 @@
               "sha256": "d38aff35d106552a1443d7e2503bb6cb6651db446f90591322bf612c8564bf4f",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges/log-summary-date-ranges__VaVe8gb.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges/log-summary-date-ranges__VaVe8gb.episode/evaluation/usage.json",
                   "sha256": "b5975e8c8161a0b5e5899adf1779f007559c76bc0777c1daa90e5a987275f1c5"
                 },
                 "manifest.json": {
@@ -394,7 +394,7 @@
               "sha256": "9884043da06e10d3b950b7b5d9b1e049d41384ca2bee23f7a34434c84a38bed4",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-2/log-summary-date-ranges__ESN4F8o.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-2/log-summary-date-ranges__ESN4F8o.episode/evaluation/usage.json",
                   "sha256": "94f447b8954041b3a1108355b76d69344df6cc5870cc564f92b2f455308c9e00"
                 },
                 "manifest.json": {
@@ -408,7 +408,7 @@
               "sha256": "9cbb709e4c97c86adf4b31dd2bc3a0f1fdf09aac1c127fe2b7c0ac2c77e18f87",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-3/log-summary-date-ranges__UdyCYXP.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-3/log-summary-date-ranges__UdyCYXP.episode/evaluation/usage.json",
                   "sha256": "90410cf8dc1f87dbac2dddccdb5bfa406c6eb805567c3083a22cd58385a02fa2"
                 },
                 "manifest.json": {
@@ -437,7 +437,7 @@
               "sha256": "6379ce1452f46c6b7ea2c24e16c2a59f6106725fded9ce69d43e973f724f462a",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate/sqlite-db-truncate__w4UPx9e.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate/sqlite-db-truncate__w4UPx9e.episode/evaluation/usage.json",
                   "sha256": "16c0a3ea8b3c92dcb6deca08df97b0e7c2dca238908d027166a90cf27c69d48e"
                 },
                 "manifest.json": {
@@ -451,7 +451,7 @@
               "sha256": "61c9dd8a1bdf15bce7908eb40d09284e0758367db09d7249053cfec30cc9f841",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-2/sqlite-db-truncate__9fxdDfi.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-2/sqlite-db-truncate__9fxdDfi.episode/evaluation/usage.json",
                   "sha256": "6fae9058233670a2b2fe26dba2ba7b7ffb490539844770da5b546d29ff6bd7d8"
                 },
                 "manifest.json": {
@@ -465,7 +465,7 @@
               "sha256": "9f6f25dd305982693d0eeca86bd3f68e27614345ecc529fae10018b89489b9d5",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-3/sqlite-db-truncate__GwjqAhG.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-3/sqlite-db-truncate__GwjqAhG.episode/evaluation/usage.json",
                   "sha256": "04f897f986fbc121f86a0ac9594e4c108e78be7bf6a291095a28ddcbd4e65c68"
                 },
                 "manifest.json": {
@@ -507,7 +507,7 @@
               "sha256": "8e1497bc261195e3c0656a3b09c93399ae7ed554fe5fa23ee7ff4f3016b19e1e",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext/build-cython-ext__UEcLcgT.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext/build-cython-ext__UEcLcgT.episode/evaluation/usage.json",
                   "sha256": "670f78009fd7307c44ee07508e9b2d1a9582c30e77b179e28c63f8dc1ec82e3e"
                 },
                 "manifest.json": {
@@ -521,7 +521,7 @@
               "sha256": "67e94716f2854c00e535dd54e834cef5f02a594dd5e7c7eb7a9637d0bdd93621",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-2/build-cython-ext__jveEK8t.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-2/build-cython-ext__jveEK8t.episode/evaluation/usage.json",
                   "sha256": "b833a200372882d983ab606add004c89e05fd4813f0ab54136a5dfadc40d4ff8"
                 },
                 "manifest.json": {
@@ -535,7 +535,7 @@
               "sha256": "2aa4280c3e7c1b706988da5fda5c3991d6fa38a8122e60690db92cdcd209f381",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-3/build-cython-ext__XY7RUkG.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-3/build-cython-ext__XY7RUkG.episode/evaluation/usage.json",
                   "sha256": "02f0226b123456e7d3a9db2411ff93b7e681cc4bca0f58a05fc4a377b1c67a03"
                 },
                 "manifest.json": {
@@ -564,7 +564,7 @@
               "sha256": "58880b45c253fae19e48fb9f2f53e8a9cb973ba94f07650b583aaa77fb7d2375",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks/cancel-async-tasks__YCFV4em.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks/cancel-async-tasks__YCFV4em.episode/evaluation/usage.json",
                   "sha256": "8f072dede9d61f34b0f0e849124d610de4d5828c3d2bdff8a44f55575d6c4e46"
                 },
                 "manifest.json": {
@@ -578,7 +578,7 @@
               "sha256": "b7e1def1829a2faf2f13544e8192eff72c1a65bba7f25b9b830ff24364563226",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-2/cancel-async-tasks__yfgsV5G.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-2/cancel-async-tasks__yfgsV5G.episode/evaluation/usage.json",
                   "sha256": "cb2ccc3ac8621ee159ba2bbedb9f77438842d792458b7a601895e4defc4b9f55"
                 },
                 "manifest.json": {
@@ -592,7 +592,7 @@
               "sha256": "c16f95f61372271b20a73e928e4cb53b73872f2b4a1d1973df760df783f81b63",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-3/cancel-async-tasks__6EV6uNc.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-3/cancel-async-tasks__6EV6uNc.episode/evaluation/usage.json",
                   "sha256": "8e713db50fc2c4de3c0b0c87f44f60d9b235d682ddeb86874b4bebc19d2208fe"
                 },
                 "manifest.json": {
@@ -621,7 +621,7 @@
               "sha256": "c735be030b09574bf1655a6ea6d0683c4a841c15dbbd67715ca9b578904fcbe6",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability/fix-code-vulnerability__Axy9UiX.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability/fix-code-vulnerability__Axy9UiX.episode/evaluation/usage.json",
                   "sha256": "17f20a785dac09d1a5fd05ef30d60f802cc814b3d75637cd799588b9afbad839"
                 },
                 "manifest.json": {
@@ -635,7 +635,7 @@
               "sha256": "178836982ca44ec9874ab6afda189fba77d343344b89c4ee01c75b9606ba5e49",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-2/fix-code-vulnerability__RyQMuyk.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-2/fix-code-vulnerability__RyQMuyk.episode/evaluation/usage.json",
                   "sha256": "cea1b49dd14713069593fd08e197a26ce422153d7104582171e60fa28a8dc967"
                 },
                 "manifest.json": {
@@ -649,7 +649,7 @@
               "sha256": "9b4caf11ed625abd893b53cd79fc51e78458d643c10b501dc5890949b930da39",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-3/fix-code-vulnerability__oN6UBG8.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-3/fix-code-vulnerability__oN6UBG8.episode/evaluation/usage.json",
                   "sha256": "81e3418fbc356c704ee86369e9ebe86c416063bd2e0f9b044ccf8ba9f9a807c1"
                 },
                 "manifest.json": {
@@ -678,7 +678,7 @@
               "sha256": "6e1a3fdda3d82e0ecf3b079c1105315a8a83ad869487ea8cbbd59afac5e25245",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU.episode/evaluation/usage.json",
                   "sha256": "595fe25c53bc1c26d98a5037677da5e6f5e11e724d8185ccb00adf549edde557"
                 },
                 "manifest.json": {
@@ -692,7 +692,7 @@
               "sha256": "eedef376c02cf94db9da33e5f3fbadbce2bf70a006d6b0e83f2f9cfdfa83f6a9",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-2/fix-git__VWzYmBz.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-2/fix-git__VWzYmBz.episode/evaluation/usage.json",
                   "sha256": "7214393bef04c6b6eb6e2c2c032ced578441594e75960dbec062e459444ceb30"
                 },
                 "manifest.json": {
@@ -706,7 +706,7 @@
               "sha256": "97b08347b2aa3462d278973e11d0de281ec39b21de71f79d3850073f7bb6cc40",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-3/fix-git__czdDFtk.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-3/fix-git__czdDFtk.episode/evaluation/usage.json",
                   "sha256": "003bab3b45bc5599963aa86c2a36f6a68afacebdae78bf181c234efc38b49629"
                 },
                 "manifest.json": {
@@ -735,7 +735,7 @@
               "sha256": "cdeb524fbe758700db82ad49cb2512444769a698d7da5f19db5374ba16a4fd58",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery/git-leak-recovery__ZroGjMk.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery/git-leak-recovery__ZroGjMk.episode/evaluation/usage.json",
                   "sha256": "632bd8b71d6b85f50f2b3b428ee537639a63be71e2a593a1562226947e4aecb5"
                 },
                 "manifest.json": {
@@ -749,7 +749,7 @@
               "sha256": "bf7e1ecdd1498bddda6eb307998e30c6bc01ffa6821191cbf9fff88ee00a8be2",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-2/git-leak-recovery__DHQae9D.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-2/git-leak-recovery__DHQae9D.episode/evaluation/usage.json",
                   "sha256": "e30de87d8d774ea48f6725aa21708fe4698c3d378f37e2d3e78482a3ca29f41b"
                 },
                 "manifest.json": {
@@ -763,7 +763,7 @@
               "sha256": "922b6616493ae237e10ca0da07b78541e179ad1b0dc4ee44ffe288a6c726c347",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-3/git-leak-recovery__zUZcJQ9.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-3/git-leak-recovery__zUZcJQ9.episode/evaluation/usage.json",
                   "sha256": "42047f2b6d248dfa145bf488cffc9e4772468e2d9df9c63bfc70b3b194ed1daf"
                 },
                 "manifest.json": {
@@ -792,7 +792,7 @@
               "sha256": "6b8c3997447fc8a2056d725055c0d9c17f51296a3b2a37210cfd3992b5cd4ca2",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal/headless-terminal__VtBywUy.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal/headless-terminal__VtBywUy.episode/evaluation/usage.json",
                   "sha256": "6b2aa98e06b33fbd12fbc6a9b81d0d9e0f4035a1d39c22a18c64db187be59d33"
                 },
                 "manifest.json": {
@@ -806,7 +806,7 @@
               "sha256": "a5e755de338ad7cea13faf1c5cb2fbdeada835d8f59e1dda6824f702e244d1b1",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-2/headless-terminal__6HY4Krx.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-2/headless-terminal__6HY4Krx.episode/evaluation/usage.json",
                   "sha256": "92b31f128bc5cd070d1d5b44badec16b7a1765bff601df2705e23ccfd9d78828"
                 },
                 "manifest.json": {
@@ -820,7 +820,7 @@
               "sha256": "64b2f01fbf382b9327f9b416be362e248da27e55e43e7582fbd28898d89f983f",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-3/headless-terminal__7hemEGi.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-3/headless-terminal__7hemEGi.episode/evaluation/usage.json",
                   "sha256": "0c0094f85a574fe60526afe79ba52226205ea9332af2abed0b6dadec60dbf92e"
                 },
                 "manifest.json": {
@@ -849,7 +849,7 @@
               "sha256": "9560fa4980c0a7dbd310552716ee0a9f8114c6028500afae9e54a041e18d258b",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges/log-summary-date-ranges__5ABn7wE.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges/log-summary-date-ranges__5ABn7wE.episode/evaluation/usage.json",
                   "sha256": "0ef75681351427dc93638fe319e6f027181acb3e41f03c6027632abde1a70a78"
                 },
                 "manifest.json": {
@@ -863,7 +863,7 @@
               "sha256": "f13351cd253dbac7ac85aae8fc8eb2c5bbbc7ae7b4bf78ff249b43cbd1a48f94",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-2/log-summary-date-ranges__tfifzib.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-2/log-summary-date-ranges__tfifzib.episode/evaluation/usage.json",
                   "sha256": "41c87d3f6b950d4200146f3e6125d4bdcc605f8ae51fe318158bb0605cdd6f34"
                 },
                 "manifest.json": {
@@ -877,7 +877,7 @@
               "sha256": "c959240e7257f15636fa7fa2d08580ad320ce62fa926435157084b3674d07ab0",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-3/log-summary-date-ranges__r5nsTgy.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-3/log-summary-date-ranges__r5nsTgy.episode/evaluation/usage.json",
                   "sha256": "20cd99a5897346f3e628fab89aa0e860bbde6afff4683cf6603313781168f6d5"
                 },
                 "manifest.json": {
@@ -906,7 +906,7 @@
               "sha256": "f18c038039867e903ebde06825808fbee1e0397d89484a989772ea77072a8fb5",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate/sqlite-db-truncate__VzGfRX2.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate/sqlite-db-truncate__VzGfRX2.episode/evaluation/usage.json",
                   "sha256": "43b9942269583303115346c79ee0b1b5ce1c439f99fcbc74e5ca26f5ccb628e7"
                 },
                 "manifest.json": {
@@ -920,7 +920,7 @@
               "sha256": "f0df0058bc2abf2855cbc88aa1723a20e2eadded321c7c3a86b2dbd87347f95e",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-2/sqlite-db-truncate__tbYo2Fm.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-2/sqlite-db-truncate__tbYo2Fm.episode/evaluation/usage.json",
                   "sha256": "37ba65aa6cb3bac3cb781dcdc691fa9621ce79341d526de670caf28bab5c55a4"
                 },
                 "manifest.json": {
@@ -934,7 +934,7 @@
               "sha256": "28055d3cd16123dcf53ef951781ed1952a9ad3fd4d23be379a21d431329b5301",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-3/sqlite-db-truncate__4wP6K4T.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-3/sqlite-db-truncate__4wP6K4T.episode/evaluation/usage.json",
                   "sha256": "3a15537e86c728e1919409af33f1cc6aa835b63db647fd80a88a9df7e29f7863"
                 },
                 "manifest.json": {
@@ -976,7 +976,7 @@
               "sha256": "d3e096be94f9c32010314178c6531c381790ca5ec5eb6cc504f8ed84828c1cbb",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW.episode/evaluation/usage.json",
                   "sha256": "cf017dcf14d26f00bbb03b265741ac7f563173c6579fb5db86570b8a2c586333"
                 },
                 "manifest.json": {
@@ -990,7 +990,7 @@
               "sha256": "ee81b80153f2bb0500ba66815f79ef826c04f3c8d2d8766e4cbaf7f8196bcbc7",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-2/build-cython-ext__S9Qeusb.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-2/build-cython-ext__S9Qeusb.episode/evaluation/usage.json",
                   "sha256": "471755c62cdce8dd326491866f722fb38fe946736a10552225ef990e63ba069f"
                 },
                 "manifest.json": {
@@ -1004,7 +1004,7 @@
               "sha256": "e57ff115f9cfb571546a724c98a49c244d401582bf1650e6c708522c960f12c6",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-3/build-cython-ext__p3GxLHC.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-3/build-cython-ext__p3GxLHC.episode/evaluation/usage.json",
                   "sha256": "7a646b11b6ffe57d44596a21b81f18e5e7b899b78247900552189f50ca51b32b"
                 },
                 "manifest.json": {
@@ -1033,7 +1033,7 @@
               "sha256": "cc1ce966cee41e3eb310c56ca946b8357b5618f5e3ef424a2000458ac37d6aad",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks/cancel-async-tasks__Eu23An4.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks/cancel-async-tasks__Eu23An4.episode/evaluation/usage.json",
                   "sha256": "03f669e3e3dc95d59fb57653f172c0d30bcdeaf51bd43f0c21ab7ded6a85557f"
                 },
                 "manifest.json": {
@@ -1047,7 +1047,7 @@
               "sha256": "023089d5a6c7f64e08773ba632bdde9e7a23adf49560a16475b553b3bff08529",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/evaluation/usage.json",
                   "sha256": "b43f5f0195633cd1137ce28dcf918f05af01dcc733d3487c962ee052ec806787"
                 },
                 "manifest.json": {
@@ -1061,7 +1061,7 @@
               "sha256": "526b4d25f2fe7e01aaee604b456cb2d739467be1530870098566f1416b65ce94",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-3/cancel-async-tasks__Z3SFguw.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-3/cancel-async-tasks__Z3SFguw.episode/evaluation/usage.json",
                   "sha256": "5243ec2783b50e19956b5e866bd2d93c95da9ec4f9f232adbbabdbd50f69d9a1"
                 },
                 "manifest.json": {
@@ -1090,7 +1090,7 @@
               "sha256": "6a6e8a3f98b9fdc8451fddcbe1ababf3acaece87621431c729bd67939ea8e690",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability/fix-code-vulnerability__uyt6kdM.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability/fix-code-vulnerability__uyt6kdM.episode/evaluation/usage.json",
                   "sha256": "1261b9c7a60eb9568350d4694a05a8e81102570404e62a14a1b55fb4e7d44cf6"
                 },
                 "manifest.json": {
@@ -1104,7 +1104,7 @@
               "sha256": "e22ac6cfdec883019c76d18d1d61e64f5259918c08f40da74009c2bd5b6f3bfe",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-2/fix-code-vulnerability__qpLYA9P.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-2/fix-code-vulnerability__qpLYA9P.episode/evaluation/usage.json",
                   "sha256": "af0fa14648c5aaa74a071ef79146853ac34328a0fce05b23bf06cf8972891044"
                 },
                 "manifest.json": {
@@ -1118,7 +1118,7 @@
               "sha256": "9f243c1881bf48e98ccb6bffed0959fbb6f0eaa6eb59ebea82f0e30b424494b5",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-3/fix-code-vulnerability__oqk9ntS.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-3/fix-code-vulnerability__oqk9ntS.episode/evaluation/usage.json",
                   "sha256": "2281860b92e10739860bc031496cceaa078204479f273f48b3ae6718ceff208b"
                 },
                 "manifest.json": {
@@ -1147,7 +1147,7 @@
               "sha256": "6853ceba64ae0e3eb9ebee46c1d48a8c6563498bbef9726b7de1937cb823989b",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git/fix-git__c2MR9Lx.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git/fix-git__c2MR9Lx.episode/evaluation/usage.json",
                   "sha256": "87d420f5f56f65a5343579b3cf98ee3b33968df1a2b3bc6b9f4b9e5c8d427378"
                 },
                 "manifest.json": {
@@ -1161,7 +1161,7 @@
               "sha256": "0d5a5ed3f18df2e55c369b22e5bba1af0a024918f863ca3f2b4ada863d760163",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-2/fix-git__kAysiCA.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-2/fix-git__kAysiCA.episode/evaluation/usage.json",
                   "sha256": "17d8ccb9ffa25765a9541c491c45232b5f74ce0221c44d57e6e56a0a7f66b2a6"
                 },
                 "manifest.json": {
@@ -1175,7 +1175,7 @@
               "sha256": "f3b5225be761db2fb1607da909d7678fcce370990f89e2db81323f7d2ec2bcd4",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-3/fix-git__rwhcT55.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-3/fix-git__rwhcT55.episode/evaluation/usage.json",
                   "sha256": "a941969f06b7de3a3681132700cd1c7871be1479595bd669e2a4b024c83f3370"
                 },
                 "manifest.json": {
@@ -1204,7 +1204,7 @@
               "sha256": "6a594c4d8ac3e9362d1915385acd3c54d16235c9fa2fc9c1479ae54472695825",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery/git-leak-recovery__dh8ZX77.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery/git-leak-recovery__dh8ZX77.episode/evaluation/usage.json",
                   "sha256": "f703aa8a12179e0af83876761793fcdaa47c639514ab87f1b47a864a73a1d460"
                 },
                 "manifest.json": {
@@ -1218,7 +1218,7 @@
               "sha256": "80ad4c3344ff9abdc80d34d27effc1c1d3e761ad7c00832aae1d915620318d05",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-2/git-leak-recovery__Ex7ziSp.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-2/git-leak-recovery__Ex7ziSp.episode/evaluation/usage.json",
                   "sha256": "41851419fc7eeb4e1ccf913b2cb4302d7a9287db460e37c336fb15e4d4254523"
                 },
                 "manifest.json": {
@@ -1232,7 +1232,7 @@
               "sha256": "ccdcf7cafa756a218323508e1d320e14150caa9ed3a2404bf06b7cbb49fba231",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-3/git-leak-recovery__2iSZSJs.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-3/git-leak-recovery__2iSZSJs.episode/evaluation/usage.json",
                   "sha256": "93a22bd10fbbf3983b6f85d36fc76c68965b1efef1a92cfb6041204bbbbbc8b0"
                 },
                 "manifest.json": {
@@ -1261,7 +1261,7 @@
               "sha256": "696d0acaf72133b87ab61bda8a6e3c1e1c62a2582cbaf59684093771d48c9887",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/evaluation/usage.json",
                   "sha256": "7d87f7c70c065872f7fc3819bcaf7f94fdd525543e8a339d78b899381a9e2821"
                 },
                 "manifest.json": {
@@ -1275,7 +1275,7 @@
               "sha256": "9544417791d6ca402458c8e482488fa3979962f7a45abd80316f57cf8cd1e5a2",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-2/headless-terminal__bdenFDt.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-2/headless-terminal__bdenFDt.episode/evaluation/usage.json",
                   "sha256": "08f14eaef8ce85ac030a21c7275afe135482d1fa6849fb0f0d4c704d615e3a8c"
                 },
                 "manifest.json": {
@@ -1289,7 +1289,7 @@
               "sha256": "7d2832b4e86ceca970b81d883d60e7e3bf9ba8497a861002b6850018614c0c2a",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-3/headless-terminal__2aRsqY7.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-3/headless-terminal__2aRsqY7.episode/evaluation/usage.json",
                   "sha256": "2ba03047ded470a1a8bb0503010de8f9a781ea6dfb97727753aa4639877bffd4"
                 },
                 "manifest.json": {
@@ -1318,7 +1318,7 @@
               "sha256": "26c169e9a1b6efa2209015169749cf4210fd6639897e262656db6a82f57f6c80",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/evaluation/usage.json",
                   "sha256": "40a2a955ff1e6cacddc05a13412a997eb6210e2b8aade7421b51edf88e093917"
                 },
                 "manifest.json": {
@@ -1332,7 +1332,7 @@
               "sha256": "8ea638d2c91c05e024d0e2054c267350b11bde946f9ac252eb46ac10e689599f",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/evaluation/usage.json",
                   "sha256": "23b0a7030a05ce3e232af6b1e03b1935374eda97624a88311cd5d48046f9026c"
                 },
                 "manifest.json": {
@@ -1346,7 +1346,7 @@
               "sha256": "cc65c18175c4ee533655843c1cbeda95597d43d3377afde7ab6321a80f4a6cbc",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/evaluation/usage.json",
                   "sha256": "d6a1016992622fec2581f0022792206796748c1f20ed6eaa166bdf112f942eec"
                 },
                 "manifest.json": {
@@ -1375,7 +1375,7 @@
               "sha256": "aa8d8147ab9ea69df38715dfb089106e0453e9b2dbf08216db99c48e484cda98",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate/sqlite-db-truncate__rgzhtVQ.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate/sqlite-db-truncate__rgzhtVQ.episode/evaluation/usage.json",
                   "sha256": "ac6866808c237ac58d392cbd70d4e274f59fd341959a49bd0e2dc5c0a22333bb"
                 },
                 "manifest.json": {
@@ -1389,7 +1389,7 @@
               "sha256": "3189469a55b7d383e650a5cf7f7c036cfe274a7e6d0dfa668c3b2edc6e2fa28d",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-2/sqlite-db-truncate__W6vAqqc.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-2/sqlite-db-truncate__W6vAqqc.episode/evaluation/usage.json",
                   "sha256": "45bcd7d05d6d25c409ea4b4ca57d5f7f2a76c2a1e1bddc2943bec0b0f937f5a7"
                 },
                 "manifest.json": {
@@ -1403,7 +1403,7 @@
               "sha256": "f6f3a03c4319ecfe0ad2b50ce5dc67180f24bece1f33c951cef8698cb09c8c5e",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-3/sqlite-db-truncate__Qt9s6U7.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-3/sqlite-db-truncate__Qt9s6U7.episode/evaluation/usage.json",
                   "sha256": "42f8e8dce90aecfef86573ef037947d57cfb0eee0f621f2f2d917569917b971f"
                 },
                 "manifest.json": {
@@ -1445,7 +1445,7 @@
               "sha256": "959be81041905443aab50bbd6a71c04d829c9af66d7dbb157b06af10de125325",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext/build-cython-ext__nwFuqc5.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext/build-cython-ext__nwFuqc5.episode/evaluation/usage.json",
                   "sha256": "9cce445e349d380e1b92264db5851d3334c0b795ac8d0a3d2ed46cd1193e16a0"
                 },
                 "manifest.json": {
@@ -1459,7 +1459,7 @@
               "sha256": "3a3cee68dc1335460285064dc23ae5e950a1b11ee1670399f44671d3e92accc3",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-2/build-cython-ext__mTi9gsY.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-2/build-cython-ext__mTi9gsY.episode/evaluation/usage.json",
                   "sha256": "63cfc5dcc82f8168ecb2cb84e88d075267767343b115a2d001bd89934a40448c"
                 },
                 "manifest.json": {
@@ -1473,7 +1473,7 @@
               "sha256": "2d3a19fc3dc734318cdb6403bc9791f3f116360645610653631adb48eeca486e",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-3/build-cython-ext__NfNHCS2.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-3/build-cython-ext__NfNHCS2.episode/evaluation/usage.json",
                   "sha256": "c6947b9573a985da090e0dd39feb2e4062b2e148c7cb7fdd9af4f7f3a2dc7b6b"
                 },
                 "manifest.json": {
@@ -1502,7 +1502,7 @@
               "sha256": "ba42f1c8ea65beb80cb052c95586341aac1516f109c7f295ad6f25145aea0a61",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks/cancel-async-tasks__YVVhSRW.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks/cancel-async-tasks__YVVhSRW.episode/evaluation/usage.json",
                   "sha256": "0f258fec1fe24f48486bc4de90e690a18b266efaf5ca10c6c5f531855ba77fae"
                 },
                 "manifest.json": {
@@ -1516,7 +1516,7 @@
               "sha256": "4b3c3b528c45572cc45aea61fc2d15a1f2e3c280f33f36f57654af5db04fecaf",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-2/cancel-async-tasks__zCoHCkR.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-2/cancel-async-tasks__zCoHCkR.episode/evaluation/usage.json",
                   "sha256": "0e24c5720bc8841af424386576100a64a68315ef3b013a092a901c2d06fb4b4c"
                 },
                 "manifest.json": {
@@ -1530,7 +1530,7 @@
               "sha256": "ad4b85cd6dca530ad7f29c5bd0653e75cfede5a018d9fdb07bf1a4cb1d48bffd",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-3/cancel-async-tasks__G7gTPnR.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-3/cancel-async-tasks__G7gTPnR.episode/evaluation/usage.json",
                   "sha256": "cec751d36a4cfac32cff9fda4bc06a2dcfcca60ab67b6e6db890de890684f21a"
                 },
                 "manifest.json": {
@@ -1559,7 +1559,7 @@
               "sha256": "6c41bade244c99ac77580111a9e1171636a0314bb98456d0814bed6e6287c03e",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability/fix-code-vulnerability__ySbyavC.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability/fix-code-vulnerability__ySbyavC.episode/evaluation/usage.json",
                   "sha256": "9d6283686661fa4e8484ca57260baa18ae5eef926f588835f0cc9b199080ed77"
                 },
                 "manifest.json": {
@@ -1573,7 +1573,7 @@
               "sha256": "cb7847b74efe843524c1fd656abf937286bf2f4d8ccfd631c3a46f53dabf6cd0",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-2/fix-code-vulnerability__6wg2KEu.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-2/fix-code-vulnerability__6wg2KEu.episode/evaluation/usage.json",
                   "sha256": "35f15e5563e1378c3e3105a6dd562931fc096539badbffcf43f5705ddc1a01fd"
                 },
                 "manifest.json": {
@@ -1587,7 +1587,7 @@
               "sha256": "f2701b7df565fe68a11c46eda301662984285c961f10ee6a89c1dbd2673b454f",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-3/fix-code-vulnerability__iyoY74B.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-3/fix-code-vulnerability__iyoY74B.episode/evaluation/usage.json",
                   "sha256": "7333f348d266e7cdbe71ed0dd6a5b3caeecd967d9884a9398dd06a5066235599"
                 },
                 "manifest.json": {
@@ -1616,7 +1616,7 @@
               "sha256": "3377260ee6161f4ee25a8a9bf4c842744acf409e0ec72e3758bbb6d5cc64b785",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git/fix-git__W88nAT3.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git/fix-git__W88nAT3.episode/evaluation/usage.json",
                   "sha256": "dbd6878898b1d6d15c4ea9203e2c85ce3075b99e64d9fbc0336d2c133f3aeec8"
                 },
                 "manifest.json": {
@@ -1630,7 +1630,7 @@
               "sha256": "5291a8a8196bffd134f56c9a85911330f22bdac94d32e25001e4dd7de0b7f90f",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-2/fix-git__qGLTf5w.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-2/fix-git__qGLTf5w.episode/evaluation/usage.json",
                   "sha256": "55a10078ef455626797ad26adb3230dc8bd7def5eb9b5b27d8be671683f90530"
                 },
                 "manifest.json": {
@@ -1644,7 +1644,7 @@
               "sha256": "c82ae00bcd977ed6b0e9fcee4b8f3ef6d2f77bad49d3219c6364b2e0e0794e38",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-3/fix-git__4KQdFvz.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-3/fix-git__4KQdFvz.episode/evaluation/usage.json",
                   "sha256": "e3f0ed40b0da551b8dbb7e39008384ce1ecf2a7a9fe868159f2bc5664f7b4014"
                 },
                 "manifest.json": {
@@ -1673,7 +1673,7 @@
               "sha256": "390e6dc7093fc1d93dd90cf929137baa6fc402c4c9ed9b2e5ad6bf8432a5aee2",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery/git-leak-recovery__9sWmdzj.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery/git-leak-recovery__9sWmdzj.episode/evaluation/usage.json",
                   "sha256": "420bf882914e252aa557773340d23730b87afdcb9edc5054025fcf07056cb1c9"
                 },
                 "manifest.json": {
@@ -1687,7 +1687,7 @@
               "sha256": "a87f686bab0ef335673f03addd400a57a1972bee40af180a1eb2ccbc511e93a0",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-2/git-leak-recovery__RGq9spe.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-2/git-leak-recovery__RGq9spe.episode/evaluation/usage.json",
                   "sha256": "685549b8e97149d853a9b81c28d9cd374b811c94398553454cd2152866ef8603"
                 },
                 "manifest.json": {
@@ -1701,7 +1701,7 @@
               "sha256": "6f6c5a8e76049750cfe868816e3a04ce58865aade888d798407be6acd65b6c38",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-3/git-leak-recovery__FaSLWaT.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-3/git-leak-recovery__FaSLWaT.episode/evaluation/usage.json",
                   "sha256": "8fe8dd7d19a87a65f8965de36870fbf8237c05aa785ff97a566ab988797aa22e"
                 },
                 "manifest.json": {
@@ -1730,7 +1730,7 @@
               "sha256": "3b51f064bd5a9e3d672a3d10e332b6d2a4e37fddb67d74cc4e45893d1a71487f",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal/headless-terminal__3qUMBtb.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal/headless-terminal__3qUMBtb.episode/evaluation/usage.json",
                   "sha256": "d90b3cc585155f030b0ad6907238b983f793749a1ceeef2e8e68696fd0adf82c"
                 },
                 "manifest.json": {
@@ -1744,7 +1744,7 @@
               "sha256": "2abd7c13c596eceafe286c5ff33a1706534cfac5da6ae47944b5b6a72bfb3134",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-2/headless-terminal__2Qwdped.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-2/headless-terminal__2Qwdped.episode/evaluation/usage.json",
                   "sha256": "7d7f7354e093dec32046e01c32ef0dc377e8bc47831106d58351772172cd4341"
                 },
                 "manifest.json": {
@@ -1758,7 +1758,7 @@
               "sha256": "f5b3a1138defd6d37e7023700cbb23dd0d9fa7a0f39cb35821ef1b9a80ba8356",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-3/headless-terminal__r2TNz5H.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-3/headless-terminal__r2TNz5H.episode/evaluation/usage.json",
                   "sha256": "28c22330003808a5f6711bc666becd8fd3a809b7d10c37746b7bb5bc5c72f1bc"
                 },
                 "manifest.json": {
@@ -1787,7 +1787,7 @@
               "sha256": "e5ecd056d13f70b0a21ed7821e9ef24d281512491e9a43b48b949d7292b575c3",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges/log-summary-date-ranges__h2n3nWD.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges/log-summary-date-ranges__h2n3nWD.episode/evaluation/usage.json",
                   "sha256": "79a3e758fb02ce52b9b30f8d444e8ccf8aee6edbae4d5acfb72992dc81369f95"
                 },
                 "manifest.json": {
@@ -1801,7 +1801,7 @@
               "sha256": "9018a4deb6ca46f82b6f6079881e542f63683057da27e9d7e95e6c238893dc79",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-2/log-summary-date-ranges__SzuqVd8.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-2/log-summary-date-ranges__SzuqVd8.episode/evaluation/usage.json",
                   "sha256": "d77274020fe3b9d66623f01ca741540903f732a1f993f7a7a2563b5ac11563d1"
                 },
                 "manifest.json": {
@@ -1815,7 +1815,7 @@
               "sha256": "4417bac624fb4706d693fd72988aad6501f371e879f37f14bb79a3a3af4f3091",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-3/log-summary-date-ranges__pdnGWjT.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-3/log-summary-date-ranges__pdnGWjT.episode/evaluation/usage.json",
                   "sha256": "1790e8d57a08a6b7add9e793c1b267020cb8aedca709c564cf288b91a7796a26"
                 },
                 "manifest.json": {
@@ -1844,7 +1844,7 @@
               "sha256": "ffb9fa3d1e2386cb50a5c8fdeba926c2181987497da8922f12ee9c5b5d5e2800",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate/sqlite-db-truncate__Cx7CHoH.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate/sqlite-db-truncate__Cx7CHoH.episode/evaluation/usage.json",
                   "sha256": "931210aff5cd6edc6790fa35cdd828736042cbc1aabe8f1a9b164cf399277a62"
                 },
                 "manifest.json": {
@@ -1858,7 +1858,7 @@
               "sha256": "25bd0510df4da76696cf009ddf124c79d9cc037f55a502f70602fe39545c15f0",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-2/sqlite-db-truncate__iUrXqJm.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-2/sqlite-db-truncate__iUrXqJm.episode/evaluation/usage.json",
                   "sha256": "fc2a8414d28e4da28928481d9e30d84f56980124c8503409ed282be984aae080"
                 },
                 "manifest.json": {
@@ -1872,7 +1872,7 @@
               "sha256": "82603bef75ee4fa740cda236b2a62a5cc95ed877b1bc8465e02af36b32e6c098",
               "companions": {
                 "usage.json": {
-                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-3/sqlite-db-truncate__WNYhpFF.episode/usage.json",
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-3/sqlite-db-truncate__WNYhpFF.episode/evaluation/usage.json",
                   "sha256": "2a7a51a692f2593d468b99dd2f23c5045ddb4d9637ce83f18e66bf3279670a8b"
                 },
                 "manifest.json": {
@@ -3373,7 +3373,7 @@
           "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/harbor-result.json": {
             "sha256": "26c169e9a1b6efa2209015169749cf4210fd6639897e262656db6a82f57f6c80"
           },
-          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/usage.json": {
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/evaluation/usage.json": {
             "sha256": "40a2a955ff1e6cacddc05a13412a997eb6210e2b8aade7421b51edf88e093917"
           }
         },
@@ -3454,7 +3454,7 @@
           "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/harbor-result.json": {
             "sha256": "8ea638d2c91c05e024d0e2054c267350b11bde946f9ac252eb46ac10e689599f"
           },
-          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/usage.json": {
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/evaluation/usage.json": {
             "sha256": "23b0a7030a05ce3e232af6b1e03b1935374eda97624a88311cd5d48046f9026c"
           }
         },
@@ -3535,7 +3535,7 @@
           "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/harbor-result.json": {
             "sha256": "cc65c18175c4ee533655843c1cbeda95597d43d3377afde7ab6321a80f4a6cbc"
           },
-          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/usage.json": {
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/evaluation/usage.json": {
             "sha256": "d6a1016992622fec2581f0022792206796748c1f20ed6eaa166bdf112f942eec"
           }
         },
@@ -3616,7 +3616,7 @@
           "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/harbor-result.json": {
             "sha256": "696d0acaf72133b87ab61bda8a6e3c1e1c62a2582cbaf59684093771d48c9887"
           },
-          "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/usage.json": {
+          "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/evaluation/usage.json": {
             "sha256": "7d87f7c70c065872f7fc3819bcaf7f94fdd525543e8a339d78b899381a9e2821"
           }
         },
@@ -3684,7 +3684,7 @@
           "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/harbor-result.json": {
             "sha256": "023089d5a6c7f64e08773ba632bdde9e7a23adf49560a16475b553b3bff08529"
           },
-          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/usage.json": {
+          "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/evaluation/usage.json": {
             "sha256": "b43f5f0195633cd1137ce28dcf918f05af01dcc733d3487c962ee052ec806787"
           }
         },

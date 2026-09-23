@@ -15,6 +15,7 @@ Evidence commands (read-only; add --json for structured output):
   compare [--task ID] [--arm ID]  compare groups and their member attempts
   attempt JOB TRIAL        inspect one attempt and its measurements
   evidence JOB TRIAL       inspect one attempt's files and digest states
+  evidence --missing       list every attempt's missing streams, artifacts, and files
   history                 list every attempt, newest first
   runbooks                list the operating documents
 
@@ -51,6 +52,7 @@ struct SourceOptions {
     traces: Option<PathBuf>,
     samples: Option<PathBuf>,
     json: bool,
+    missing: bool,
     task: Option<String>,
     arm: Option<String>,
     positional: Vec<String>,
@@ -76,6 +78,7 @@ impl SourceOptions {
             let argument = args[index].as_str();
             match argument {
                 "--json" => options.json = true,
+                "--missing" if command == "evidence" => options.missing = true,
                 "--no-jobs" => options.jobs = None,
                 "--no-traces" => options.traces = None,
                 "--no-samples" => options.samples = None,
@@ -98,7 +101,9 @@ impl SourceOptions {
             }
             index += 1;
         }
-        let expected = if matches!(command, "attempt" | "evidence") {
+        let expected = if options.missing {
+            0
+        } else if matches!(command, "attempt" | "evidence") {
             2
         } else {
             0
@@ -168,6 +173,7 @@ fn execute(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Resul
         "overview" => overview(&records),
         "compare" => comparisons(&records, options.task.as_deref(), options.arm.as_deref()),
         "attempt" => attempt_value(find_attempt(&records, &options.positional)?),
+        "evidence" if options.missing => missing_evidence(&records),
         "evidence" => {
             let attempt = find_attempt(&records, &options.positional)?;
             json!({"job":attempt.job,"trial":attempt.trial,"health":attempt.evidence_health(),"files":attempt.evidence.iter().map(evidence_value).collect::<Vec<_>>()})
@@ -181,7 +187,7 @@ fn execute(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Resul
             &mut *out,
             &json!({
                 "schema": SCHEMA,
-                "view": command,
+                "view": if options.missing { "evidence-missing" } else { command.as_str() },
                 "data": value,
                 "read_errors": records.errors,
             }),
@@ -189,7 +195,12 @@ fn execute(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Resul
         .map_err(|error| error.to_string())?;
         writeln!(out).map_err(|error| error.to_string())?;
     } else {
-        render_text(command, &value, &records, out).map_err(|error| error.to_string())?;
+        let view = if options.missing {
+            "missing"
+        } else {
+            command.as_str()
+        };
+        render_text(view, &value, &records, out).map_err(|error| error.to_string())?;
     }
     Ok(0)
 }
@@ -205,6 +216,32 @@ fn find_attempt<'a>(records: &'a Records, identity: &[String]) -> Result<&'a Att
                 identity[0], identity[1]
             )
         })
+}
+
+fn missing_evidence(records: &Records) -> Value {
+    let attempts: Vec<_> = records
+        .attempts
+        .iter()
+        .filter_map(|attempt| {
+            let missing = attempt.missing_evidence();
+            (!missing.is_empty()).then(|| {
+                json!({
+                    "source": attempt.source,
+                    "job": attempt.job,
+                    "trial": attempt.trial,
+                    "task": attempt.task,
+                    "arm": attempt.arm,
+                    "missing": missing.into_iter().map(evidence_value).collect::<Vec<_>>(),
+                })
+            })
+        })
+        .collect();
+    json!({
+        "attempts_total": records.attempts.len(),
+        "attempts_with_missing": attempts.len(),
+        "files_missing": attempts.iter().map(|a| a["missing"].as_array().map_or(0, Vec::len)).sum::<usize>(),
+        "attempts": attempts,
+    })
 }
 
 fn evidence_value(evidence: &Evidence) -> Value {
@@ -581,6 +618,35 @@ fn render_text(
                 )?;
             }
         }
+        "missing" => {
+            writeln!(
+                out,
+                "Missing evidence: {} files across {} of {} attempts",
+                value["files_missing"], value["attempts_with_missing"], value["attempts_total"]
+            )?;
+            for attempt in value["attempts"].as_array().into_iter().flatten() {
+                writeln!(
+                    out,
+                    "{} / {} · {} / {}",
+                    show(&attempt["job"]),
+                    show(&attempt["trial"]),
+                    show(&attempt["task"]),
+                    show(&attempt["arm"])
+                )?;
+                for file in attempt["missing"].as_array().into_iter().flatten() {
+                    let note = file["note"]
+                        .as_str()
+                        .map_or(String::new(), |note| format!(" ({note})"));
+                    writeln!(
+                        out,
+                        "  {} · {}{}",
+                        show(&file["kind"]),
+                        show(&file["path"]),
+                        note
+                    )?;
+                }
+            }
+        }
         "history" => {
             for attempt in value["attempts"].as_array().into_iter().flatten() {
                 writeln!(
@@ -722,6 +788,64 @@ mod tests {
             args[1] = "missing".to_owned();
             assert!(execute(&args, &mut Vec::new(), &mut Vec::new()).is_err());
         }
+    }
+
+    #[test]
+    fn evidence_missing_lists_unretained_files_per_attempt() {
+        let temp = tempfile::tempdir().unwrap();
+        let episode = temp
+            .path()
+            .join("smoke--coder-one-x--task/task__abc.episode");
+        std::fs::create_dir_all(&episode).unwrap();
+        std::fs::write(
+            episode.join("harbor-result.json"),
+            br#"{"task_name":"terminal-bench/task"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            temp.path().join("smoke--coder-one-x--task/task__abc.json"),
+            b"{}",
+        )
+        .unwrap();
+        std::fs::write(
+            episode.join("manifest.json"),
+            br#"{"contract":"openagents.coder.episode.v1","files":{"stream":{"path":"artifacts/delegate-1.stream.jsonl","sha256":"00"}}}"#,
+        )
+        .unwrap();
+        let traces = temp.path().to_str().unwrap();
+        let args = strings(&[
+            "evidence",
+            "--missing",
+            "--no-jobs",
+            "--no-samples",
+            "--traces-dir",
+            traces,
+            "--json",
+        ]);
+        let mut output = Vec::new();
+        assert_eq!(execute(&args, &mut output, &mut Vec::new()).unwrap(), 0);
+        let value: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(value["view"], "evidence-missing");
+        assert_eq!(value["data"]["attempts_with_missing"], 1);
+        let missing = &value["data"]["attempts"][0]["missing"][0];
+        assert_eq!(missing["kind"], "stream");
+        assert!(
+            missing["path"]
+                .as_str()
+                .unwrap()
+                .ends_with("artifacts/delegate-1.stream.jsonl")
+        );
+        let mut text = Vec::new();
+        execute(&args[..args.len() - 1], &mut text, &mut Vec::new()).unwrap();
+        let text = String::from_utf8(text).unwrap();
+        assert!(
+            text.contains("Missing evidence: 1 files across 1 of 1 attempts"),
+            "{text}"
+        );
+        assert!(
+            text.contains("smoke--coder-one-x--task / task__abc"),
+            "{text}"
+        );
     }
 
     #[test]

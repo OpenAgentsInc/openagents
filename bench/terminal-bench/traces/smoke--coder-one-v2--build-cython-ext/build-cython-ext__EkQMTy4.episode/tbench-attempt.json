@@ -1,0 +1,87 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "de816fa8-d7c8-4169-b3a6-c0a2786b6188",
+    "job": "smoke--coder-one-v2--build-cython-ext",
+    "trial": "build-cython-ext__EkQMTy4",
+    "arm": "coder-one",
+    "profile": "smoke",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/build-cython-ext",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "df5a71095bf690f7b2b2091e8ea3b0ecab7ff6cd4e3629b79e86e99118702a10",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOne",
+    "requested_model": "free",
+    "observed_name": "coder-one",
+    "observed_version": "coder-one-0.1.0-99e647a7a974",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 0.0,
+    "verifier_rewards": {
+      "reward": 0.0
+    },
+    "terminal_status": "agent_error",
+    "exception": {
+      "exception_type": "NonZeroAgentExitCodeError",
+      "exception_message": "episode exited 4:  this\n  \u2502 state without impacting any branches by switching back to a branch.\n  \u2502 \n  \u2502 If you want to create a new branch to retain commits you create, you may\n  \u2502 do so (now or later) by using -c with the switch command. Example:\n  \u2502 \n  \u2502   git switch -c <new-branch-name>\n  \u2502 \n  \u2502 Or undo this operation with:\n  \u2502 \n  \u2502   git switch -\n  \u2502 \n  \u2502 Turn off this advice by setting config variable advice.detachedHead to false\n  \u2502 \n  \u2514 exit 0 in 1.0s, 612 bytes\n\n\u2500\u2500 step 3 \u2500\u2500\n  jev \u25b8 21 answers in 187 ms, 3504 input tokens\n  jev \u25b8 Relevant file pyknotid/setup.py p=0.70\n  jev \u25b8 last command: progress (0.97)\n  gen \u25b8 {\"command\":\"ls -la /app/pyknotid\",\"reason\":\"Inspect the cloned pyknotid repository structure.\"}\n  gen \u25b8 11.6s, 1463 in (0 cached) / 479 out tokens, google/gemini-3.8-flash\n  why \u25b8 Inspect the cloned pyknotid repository structure.\n  $ ls -la /app/pyknotid\n  \u2502 total 48\n  \u2502 drwxrwxrwx 6 root root 4096 Sep 22 19:11 .\n  \u2502 drwxr-xr-x 1 root root 4096 Sep 22 19:11 ..\n  \u2502 drwxrwxrwx 8 root root 4096 Sep 22 19:11 .git\n  \u2502 -rw-rw-rw- 1 root root   19 Sep 22 19:11 .gitignore\n  \u2502 -rw-rw-rw- 1 root root   12 Sep 22 19:11 .projectile\n  \u2502 -rw-rw-rw- 1 root root 1079 Sep 22 19:11 LICENSE.txt\n  \u2502 -rw-rw-rw- 1 root root 2666 Sep 22 19:11 README.rst\n  \u2502 drwxrwxrwx 4 root root 4096 Sep 22 19:11 doc\n  \u2502 drwxrwxrwx 8 root root 4096 Sep 22 19:11 pyknotid\n  \u2502 -rw-rw-rw- 1 root root 4600 Sep 22 19:11 setup.py\n  \u2502 drwxrwxrwx 2 root root 4096 Sep 22 19:11 tests\n  \u2514 exit 0 in 0.0s, 544 bytes\n\n\u2500\u2500 step 4 \u2500\u2500\n  jev \u25b8 21 answers in 157 ms, 3644 input tokens\n  jev \u25b8 Relevant file pyknotid/setup.py p=0.68\n  jev \u25b8 last command: progress (0.53)\n  gen \u25b8 \n  gen \u25b8 retry 1 in 5s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 2 in 10s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 3 in 15s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 failed: the free lane takes 20 generations a minute for one account\n\n\u2500\u2500 generation_failed \u2500\u2500\n",
+      "exception_traceback": "Traceback (most recent call last):\n  File \"/home/christopherdavid/openagents-speed/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/single_step.py\", line 77, in _run_agent\n    await self._run_agent_phase(\n    ...<5 lines>...\n    )\n  File \"/home/christopherdavid/openagents-speed/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/trial.py\", line 545, in _run_agent_phase\n    await asyncio.wait_for(\n    ...<6 lines>...\n    )\n  File \"/home/christopherdavid/.nix-profile/lib/python3.13/asyncio/tasks.py\", line 507, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/home/christopherdavid/openagents-speed/bench/terminal-bench/tbench/coder_v05.py\", line 283, in run\n    except RuntimeError as exc:\n        ^^^^^^^^^^^^^^^^^^^^^^^\n    ...<2 lines>...\n        raise\n        ^\nharbor.agents.installed.base.NonZeroAgentExitCodeError: episode exited 4:  this\n  \u2502 state without impacting any branches by switching back to a branch.\n  \u2502 \n  \u2502 If you want to create a new branch to retain commits you create, you may\n  \u2502 do so (now or later) by using -c with the switch command. Example:\n  \u2502 \n  \u2502   git switch -c <new-branch-name>\n  \u2502 \n  \u2502 Or undo this operation with:\n  \u2502 \n  \u2502   git switch -\n  \u2502 \n  \u2502 Turn off this advice by setting config variable advice.detachedHead to false\n  \u2502 \n  \u2514 exit 0 in 1.0s, 612 bytes\n\n\u2500\u2500 step 3 \u2500\u2500\n  jev \u25b8 21 answers in 187 ms, 3504 input tokens\n  jev \u25b8 Relevant file pyknotid/setup.py p=0.70\n  jev \u25b8 last command: progress (0.97)\n  gen \u25b8 {\"command\":\"ls -la /app/pyknotid\",\"reason\":\"Inspect the cloned pyknotid repository structure.\"}\n  gen \u25b8 11.6s, 1463 in (0 cached) / 479 out tokens, google/gemini-3.8-flash\n  why \u25b8 Inspect the cloned pyknotid repository structure.\n  $ ls -la /app/pyknotid\n  \u2502 total 48\n  \u2502 drwxrwxrwx 6 root root 4096 Sep 22 19:11 .\n  \u2502 drwxr-xr-x 1 root root 4096 Sep 22 19:11 ..\n  \u2502 drwxrwxrwx 8 root root 4096 Sep 22 19:11 .git\n  \u2502 -rw-rw-rw- 1 root root   19 Sep 22 19:11 .gitignore\n  \u2502 -rw-rw-rw- 1 root root   12 Sep 22 19:11 .projectile\n  \u2502 -rw-rw-rw- 1 root root 1079 Sep 22 19:11 LICENSE.txt\n  \u2502 -rw-rw-rw- 1 root root 2666 Sep 22 19:11 README.rst\n  \u2502 drwxrwxrwx 4 root root 4096 Sep 22 19:11 doc\n  \u2502 drwxrwxrwx 8 root root 4096 Sep 22 19:11 pyknotid\n  \u2502 -rw-rw-rw- 1 root root 4600 Sep 22 19:11 setup.py\n  \u2502 drwxrwxrwx 2 root root 4096 Sep 22 19:11 tests\n  \u2514 exit 0 in 0.0s, 544 bytes\n\n\u2500\u2500 step 4 \u2500\u2500\n  jev \u25b8 21 answers in 157 ms, 3644 input tokens\n  jev \u25b8 Relevant file pyknotid/setup.py p=0.68\n  jev \u25b8 last command: progress (0.53)\n  gen \u25b8 \n  gen \u25b8 retry 1 in 5s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 2 in 10s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 3 in 15s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 failed: the free lane takes 20 generations a minute for one account\n\n\u2500\u2500 generation_failed \u2500\u2500\n\n",
+      "occurred_at": "2026-09-22T19:11:50.667911Z"
+    },
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:10:54.222946Z",
+    "finished_at": "2026-09-22T19:12:06.345682Z",
+    "environment_setup_ms": 2142,
+    "agent_setup_ms": 994,
+    "agent_execution_ms": 53232,
+    "verifier_ms": 4811,
+    "total_ms": 72122
+  },
+  "usage": {
+    "input_tokens": 11733,
+    "cache_tokens": 0,
+    "output_tokens": 1264,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.007396,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 12,
+    "model_invocations": 9,
+    "typed_decisions": 0,
+    "tool_calls": 6,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-v2--build-cython-ext/build-cython-ext__EkQMTy4/result.json",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-v2--build-cython-ext/tbench/manifests/build-cython-ext__EkQMTy4.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present"
+  }
+}

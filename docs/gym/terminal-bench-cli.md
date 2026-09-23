@@ -19,6 +19,7 @@ replace it with `cargo run -p gym --bin gym --`.
 | `compare [--task ID] [--arm ID]` | Rewards, statuses, denominators, timing, usage, cost source, evidence health, and member identities for comparable groups. |
 | `attempt JOB TRIAL` | One attempt's pins, model, reward, status, timing, usage, component costs, call counts, and notes. |
 | `evidence JOB TRIAL` | Each retained path and its digest or resolution state. |
+| `evidence --missing` | Every attempt with a missing stream, artifact, or other referenced file, and why each is missing. |
 | `history` | Every attempt, newest first, including failures and unknown outcomes. |
 | `runbooks` | Paths to the operating and evidence documents. |
 

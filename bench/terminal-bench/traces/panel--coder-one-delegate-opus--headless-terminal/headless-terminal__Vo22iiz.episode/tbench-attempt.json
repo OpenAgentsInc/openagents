@@ -1,0 +1,82 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "2f79137e-091e-4f02-8592-472f78573a6e",
+    "job": "panel--coder-one-delegate-opus--headless-terminal",
+    "trial": "headless-terminal__Vo22iiz",
+    "arm": "coder-one-delegate-opus",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/headless-terminal",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "2780a403d561b00752bb52c27a6150bafc35b126d96a716af20d696fca8b55a2",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:46:07.300334Z",
+    "finished_at": "2026-09-22T19:49:38.128609Z",
+    "environment_setup_ms": 1121,
+    "agent_setup_ms": 103068,
+    "agent_execution_ms": 68355,
+    "verifier_ms": 26790,
+    "total_ms": 210828
+  },
+  "usage": {
+    "input_tokens": 88297,
+    "cache_tokens": 63354,
+    "output_tokens": 5445,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.16101169399999996,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 27,
+    "model_invocations": 23,
+    "typed_decisions": 0,
+    "tool_calls": 15,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-delegate-opus--headless-terminal/headless-terminal__Vo22iiz/result.json",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-delegate-opus--headless-terminal/tbench/manifests/headless-terminal__Vo22iiz.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present"
+  }
+}

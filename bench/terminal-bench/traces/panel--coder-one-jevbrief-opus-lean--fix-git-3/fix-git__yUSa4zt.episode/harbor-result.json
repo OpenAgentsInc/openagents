@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/fix-git",
   "trial_name": "fix-git__yUSa4zt",
+  "task_name": "terminal-bench/fix-git",
   "started_at": "2026-09-22T20:33:56.727185Z",
   "finished_at": "2026-09-22T20:37:50.963596Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 53906,
     "n_cache_tokens": 38161,
     "n_output_tokens": 887,
-    "cost_usd": 0.050217642
-  }
+    "cost_usd": 0.050217642,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

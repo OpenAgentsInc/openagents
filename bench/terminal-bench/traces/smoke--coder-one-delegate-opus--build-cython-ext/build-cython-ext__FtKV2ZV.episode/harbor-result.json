@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/build-cython-ext",
   "trial_name": "build-cython-ext__FtKV2ZV",
+  "task_name": "terminal-bench/build-cython-ext",
   "started_at": "2026-09-22T19:11:14.753269Z",
   "finished_at": "2026-09-22T19:14:44.255928Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 447814,
     "n_cache_tokens": 380950,
     "n_output_tokens": 7859,
-    "cost_usd": 0.390538954
-  }
+    "cost_usd": 0.390538954,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

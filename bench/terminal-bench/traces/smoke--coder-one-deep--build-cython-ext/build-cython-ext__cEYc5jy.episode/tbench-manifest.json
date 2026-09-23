@@ -1,0 +1,117 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "89f6915c-1c37-4e2e-b1c0-e292b649fd0c",
+    "job": "smoke--coder-one-deep--build-cython-ext",
+    "trial": "build-cython-ext__cEYc5jy",
+    "arm": "coder-one-deep",
+    "profile": "smoke",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/build-cython-ext",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "df5a71095bf690f7b2b2091e8ea3b0ecab7ff6cd4e3629b79e86e99118702a10",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOne",
+    "requested_model": "free",
+    "observed_name": "coder-one",
+    "observed_version": "coder-one-0.1.0-99e647a7a974",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 0.0,
+    "verifier_rewards": {
+      "reward": 0.0
+    },
+    "terminal_status": "agent_error",
+    "exception": {
+      "exception_type": "NonZeroAgentExitCodeError",
+      "exception_message": "episode exited 4:  \u2502 Collecting pluggy<2,>=1.5 (from pytest)\n  \u2502   Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)\n  \u2502 Collecting pygments>=2.7.2 (from pytest)\n  \u2502   Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)\n  \u2502 Downloading cython-3.3.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (3.4 MB)\n  \u2502    \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 3.4/3.4 MB 7.1 MB/s  0:00:00\n  \u2502 Downloading pytest-9.1.1-py3-none-any.whl (386 kB)\n  \u2502 Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)\n  \u2502 Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)\n  \u2502 Downloading packaging-26.3-py3-none-any.whl (129 kB)\n  \u2502 Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)\n  \u2502    \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 1.3/1.3 MB 2.0 MB/s  0:00:00\n  \u2502 Installing collected packages: pygments, pluggy, packaging, iniconfig, cython, pytest\n  \u2502 \n  \u2502 Successfully installed cython-3.3.0 iniconfig-2.3.0 packaging-26.3 pluggy-1.6.0 pygments-2.21.0 pytest-9.1.1\n  \u2502 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.\n  \u2514 exit 0 in 3.8s, 1884 bytes\n\n\u2500\u2500 step 6 \u2500\u2500\n  jev \u25b8 22 answers in 455 ms, 4190 input tokens\n  jev \u25b8 Relevant file pyknotid/setup.py p=0.67\n  jev \u25b8 Relevant file pyknotid/pyknotid/spacecurves/periodic.py p=0.52\n  jev \u25b8 last command: progress (0.97)\n  jev \u25b8 done and checked: p=0.03\n  gen \u25b8 \n  gen \u25b8 retry 1 in 5s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 2 in 10s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 3 in 15s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 failed: the free lane takes 20 generations a minute for one account\n\n\u2500\u2500 generation_failed \u2500\u2500\n",
+      "exception_traceback": "Traceback (most recent call last):\n  File \"/home/christopherdavid/openagents-speed/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/single_step.py\", line 77, in _run_agent\n    await self._run_agent_phase(\n    ...<5 lines>...\n    )\n  File \"/home/christopherdavid/openagents-speed/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/trial.py\", line 545, in _run_agent_phase\n    await asyncio.wait_for(\n    ...<6 lines>...\n    )\n  File \"/home/christopherdavid/.nix-profile/lib/python3.13/asyncio/tasks.py\", line 507, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/home/christopherdavid/openagents-speed/bench/terminal-bench/tbench/coder_v05.py\", line 283, in run\n    except RuntimeError as exc:\n        ^^^^^^^^^^^^^^^^^^^^^^^\n    ...<2 lines>...\n        raise\n        ^\nharbor.agents.installed.base.NonZeroAgentExitCodeError: episode exited 4:  \u2502 Collecting pluggy<2,>=1.5 (from pytest)\n  \u2502   Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)\n  \u2502 Collecting pygments>=2.7.2 (from pytest)\n  \u2502   Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)\n  \u2502 Downloading cython-3.3.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (3.4 MB)\n  \u2502    \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 3.4/3.4 MB 7.1 MB/s  0:00:00\n  \u2502 Downloading pytest-9.1.1-py3-none-any.whl (386 kB)\n  \u2502 Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)\n  \u2502 Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)\n  \u2502 Downloading packaging-26.3-py3-none-any.whl (129 kB)\n  \u2502 Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)\n  \u2502    \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 1.3/1.3 MB 2.0 MB/s  0:00:00\n  \u2502 Installing collected packages: pygments, pluggy, packaging, iniconfig, cython, pytest\n  \u2502 \n  \u2502 Successfully installed cython-3.3.0 iniconfig-2.3.0 packaging-26.3 pluggy-1.6.0 pygments-2.21.0 pytest-9.1.1\n  \u2502 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.\n  \u2514 exit 0 in 3.8s, 1884 bytes\n\n\u2500\u2500 step 6 \u2500\u2500\n  jev \u25b8 22 answers in 455 ms, 4190 input tokens\n  jev \u25b8 Relevant file pyknotid/setup.py p=0.67\n  jev \u25b8 Relevant file pyknotid/pyknotid/spacecurves/periodic.py p=0.52\n  jev \u25b8 last command: progress (0.97)\n  jev \u25b8 done and checked: p=0.03\n  gen \u25b8 \n  gen \u25b8 retry 1 in 5s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 2 in 10s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 3 in 15s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 failed: the free lane takes 20 generations a minute for one account\n\n\u2500\u2500 generation_failed \u2500\u2500\n\n",
+      "occurred_at": "2026-09-22T19:11:53.818997Z"
+    },
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:10:54.223004Z",
+    "finished_at": "2026-09-22T19:12:07.578545Z",
+    "environment_setup_ms": 2172,
+    "agent_setup_ms": 948,
+    "agent_execution_ms": 56406,
+    "verifier_ms": 2928,
+    "total_ms": 73355
+  },
+  "usage": {
+    "input_tokens": 27375,
+    "cache_tokens": 0,
+    "output_tokens": 1043,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.011124,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Image is resolved from the task checkout at build time; doctor reports the manifest arch when the checkout is present."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep--build-cython-ext/build-cython-ext__cEYc5jy/result.json",
+      "sha256": "8c8da8da31d801659f49f777c438032a04edc52a24fb6cc412162883f6e05f97",
+      "bytes": 10307
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep--build-cython-ext/build-cython-ext__cEYc5jy/agent/trajectory.json",
+      "sha256": "0cd78344a6a63d1b6bf70e6856dfd0fd1500ee7ac472f5bfccf7866f1a59e0e4",
+      "bytes": 116031
+    },
+    "native_traces": [],
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep--build-cython-ext/build-cython-ext__cEYc5jy/verifier/reward.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep--build-cython-ext/build-cython-ext__cEYc5jy/verifier/ctrf.json",
+      "sha256": "f24942a2768f18c7fdaa131c464e2bc24f418c6ec548c9c253d1615e2ff7224b",
+      "bytes": 10488
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep--build-cython-ext/build-cython-ext__cEYc5jy/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep--build-cython-ext/tbench/attempts/build-cython-ext__cEYc5jy.json",
+      "sha256": "02af9f3457ce288a0ec6a67eeb2e339c07679264a14c44671821e16b965ad216"
+    }
+  },
+  "collected_at": "2026-09-22T19:12:10.744+00:00"
+}

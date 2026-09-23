@@ -208,24 +208,50 @@ Pricing rules the results page follows:
 
 ## Retain the evidence
 
-For each trial you add to the results page, copy its evidence into the
-repository:
+For each job you add to the results page, run the retention tool from
+`bench/terminal-bench`:
 
 ```sh
-T=~/.openagents/terminal-bench/jobs/<job>/<trial>
-D=bench/terminal-bench/traces/<job>
-mkdir -p "$D/<trial>.episode"
-cp "$T/agent/trajectory.json" "$D/<trial>.json"
-cp "$T/agent/episode/manifest.json" "$T/agent/episode/evaluation/usage.json" "$D/<trial>.episode/"   # Coder One only
+uv run tbench retain <job> [<job>...]
 ```
 
-Also write a trimmed `harbor-result.json` beside it with the phase
-timings, the verifier result, the exception, and `agent_result`'s usage
-and cost. Then scan everything you copied for each credential's value, and
-commit only when nothing matches:
+It copies each trial's full evidence closure into
+`bench/terminal-bench/traces/<job>/`:
+
+| Path | What it holds |
+| --- | --- |
+| `<trial>.json` | Harbor's normalized ATIF trajectory |
+| `<trial>.episode/manifest.json`, `trajectory.atif.json`, `evaluation/`, `artifacts/` | Coder One's episode directory as the agent wrote it: the raw ATIF, usage, state, briefings, and the native delegate streams (`artifacts/delegate-*.stream.jsonl`) |
+| `<trial>.episode/native/` | Other executors' native traces, such as `claude-code.txt`, `codex.txt`, and session JSONL |
+| `<trial>.episode/verifier/` | The reward, the CTRF report, and the verifier's per-test output (`test-stdout.txt`) |
+| `<trial>.episode/produced/` | Files Harbor collected from the task container |
+| `<trial>.episode/harbor-result.json` | Harbor's result, trimmed to phase timings, the verifier result, the exception, and `agent_result`'s usage and cost |
+| `<trial>.episode/tbench-attempt.json`, `tbench-manifest.json` | The harness's attempt record and episode manifest |
+| `<trial>.episode/retention.json` | The retention record: each copied file and its digest, each manifest digest checked, each missing reference with its reason, how the raw ATIF relates to the normalized one, and the credential scan |
+
+The tool reports every reference it can't copy instead of dropping it: a
+file the episode manifest names but the job doesn't hold, a file over the
+size bound (4 MiB a file and 16 MiB a trial by default; change them with
+`--max-file-bytes` and `--max-trial-bytes`), and a verifier that left no
+per-test output. Harbor collects only `/logs/artifacts` from the
+container, so files a task writes elsewhere, such as `/app/summary.csv`,
+aren't retained; the record notes this.
+
+Before it writes anything, the tool scans every staged file for the
+values of `OPENAGENTS_API_KEY`, `TYPESAFE_API_KEY`,
+`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+`~/.openagents/bearer`, `api_key` in `~/.openagents/jev.json`, the OAuth
+tokens in `~/.claude/.credentials.json`, and the tokens in
+`~/.codex/auth.json`. A trial with a match isn't written, and the error
+names the file and the credential's source, never its value. Run with
+`--dry-run` to check a job without writing, and `--trial` to retain one
+trial.
+
+Then check the result in the Gym. A newly retained attempt shows
+`verified files`; any gap is listed by:
 
 ```sh
-grep -rlF -e "$OPENAGENTS_API_KEY" -e "$TYPESAFE_API_KEY" -e "$CLAUDE_CODE_OAUTH_TOKEN" "$D" || echo clean
+gym terminal-bench evidence --missing --no-jobs
 ```
 
 Three Codex `fix-git` trajectories from the Mac

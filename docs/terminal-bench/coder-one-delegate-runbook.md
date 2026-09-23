@@ -252,9 +252,10 @@ with `cost_provenance`, the briefing's `sha256`, `chars`, `cap`,
 `included`, and `omitted`, and the escalation reason. The manifest's
 `delegate` object repeats the mode, the policy, and the closing Jev check.
 
-Before you check in a trace, copy it to
-`bench/terminal-bench/traces/<job>/` the way the existing traces are kept,
-and scan it for credential material.
+Before you check in a trace, retain it with `uv run tbench retain <job>`
+from `bench/terminal-bench`. It copies the closure above into
+`bench/terminal-bench/traces/<job>/` and scans it for credential values;
+see [Retain the evidence](runbook.md#retain-the-evidence).
 
 ## Compute each column of the results table
 

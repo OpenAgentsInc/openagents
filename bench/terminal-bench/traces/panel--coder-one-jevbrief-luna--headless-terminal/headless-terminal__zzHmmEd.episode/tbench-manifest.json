@@ -1,0 +1,110 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "727a0f74-9d65-4340-8365-c9e7a63b2b3f",
+    "job": "panel--coder-one-jevbrief-luna--headless-terminal",
+    "trial": "headless-terminal__zzHmmEd",
+    "arm": "coder-one-jevbrief-luna",
+    "profile": "panel",
+    "auth_mode": "auth-json",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/headless-terminal",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "2780a403d561b00752bb52c27a6150bafc35b126d96a716af20d696fca8b55a2",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T20:10:39.882097Z",
+    "finished_at": "2026-09-22T20:16:12.966427Z",
+    "environment_setup_ms": 906,
+    "agent_setup_ms": 226524,
+    "agent_execution_ms": 73595,
+    "verifier_ms": 20429,
+    "total_ms": 333084
+  },
+  "usage": {
+    "input_tokens": 110490,
+    "cache_tokens": 98560,
+    "output_tokens": 3049,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-luna--headless-terminal/headless-terminal__zzHmmEd/result.json",
+      "sha256": "c94d07a1236ff1b847ef317fc202d2ee00e589378880633730d50811592a33b4",
+      "bytes": 4992
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-luna--headless-terminal/headless-terminal__zzHmmEd/agent/trajectory.json",
+      "sha256": "8b573645faa1f9db1fdd4158b4f9b1884fb01fd0a0635ebdf9c96f74e3679b45",
+      "bytes": 17236
+    },
+    "native_traces": [],
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-luna--headless-terminal/headless-terminal__zzHmmEd/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-luna--headless-terminal/headless-terminal__zzHmmEd/verifier/ctrf.json",
+      "sha256": "1c1962f28109ebd86d34dfd397f5dae3322b85d196d7aca05787d3d3b30bdff8",
+      "bytes": 2844
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-luna--headless-terminal/headless-terminal__zzHmmEd/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-luna--headless-terminal/tbench/attempts/headless-terminal__zzHmmEd.json",
+      "sha256": "2d90d0c04b7c95097861fe0c443b1fa84c72d05710251de13a22c00ef0fc3516"
+    }
+  },
+  "collected_at": "2026-09-22T20:16:13.774+00:00"
+}

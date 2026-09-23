@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "4a732d3e-da9d-4118-b251-2c8c2976fa50",
+    "job": "panel--coder-one-jevprobe2-luna--fix-git",
+    "trial": "fix-git__LvEuUuU",
+    "arm": "coder-one-jevprobe2-luna",
+    "profile": "panel",
+    "auth_mode": "auth-json",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "2e36780d6d7b589d5b373469b46f9e6e55349a36e090b8bef26f6d7b7c145075"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T21:43:09.085766Z",
+    "finished_at": "2026-09-22T21:47:44.650177Z",
+    "environment_setup_ms": 1896,
+    "agent_setup_ms": 225404,
+    "agent_execution_ms": 31417,
+    "verifier_ms": 4617,
+    "total_ms": 275564
+  },
+  "usage": {
+    "input_tokens": 112442,
+    "cache_tokens": 93696,
+    "output_tokens": 897,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.0026627179999999997,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "The published image is linux/amd64; on this arm64 Mac it runs under emulation. Record that condition on every run."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU/result.json",
+      "sha256": "22252c99bbfe5d883ed9aebe9f65b4ecaa96e2b3f7c2731918c24e88bdaddeb2",
+      "bytes": 4983
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU/agent/trajectory.json",
+      "sha256": "d7686d8ab18eee319e95ace3e7bb42f640a0cd4718e6656393f24d31a6ad0b3c",
+      "bytes": 74143
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU/verifier/ctrf.json",
+      "sha256": "73c548241fa06f0cae61035d6e982f6df3ef1596e8d8e002da54457cfc4e1d24",
+      "bytes": 1088
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe2-luna--fix-git/tbench/attempts/fix-git__LvEuUuU.json",
+      "sha256": "e40d5d49d58b1f690a65e5b963afb6aeaa46974b7a10d241ff726b7960c02c03"
+    }
+  },
+  "collected_at": "2026-09-22T21:47:45.545+00:00"
+}

@@ -1,0 +1,82 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "1ca2b1b0-6e3b-45cf-b651-d2fd4f92763e",
+    "job": "smoke--coder-one--fix-git",
+    "trial": "fix-git__Kdrjsmq",
+    "arm": "coder-one",
+    "profile": "smoke",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOne",
+    "requested_model": "free",
+    "observed_name": "coder-one",
+    "observed_version": "coder-one 0.1.0 (cb6968b9faa6)",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T18:33:16.274141Z",
+    "finished_at": "2026-09-22T18:35:01.988157Z",
+    "environment_setup_ms": 10888,
+    "agent_setup_ms": 1124,
+    "agent_execution_ms": 73805,
+    "verifier_ms": 8948,
+    "total_ms": 105714
+  },
+  "usage": {
+    "input_tokens": 104241,
+    "cache_tokens": null,
+    "output_tokens": 5369,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.058101,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 53,
+    "model_invocations": 51,
+    "typed_decisions": 0,
+    "tool_calls": 33,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one--fix-git/fix-git__Kdrjsmq/result.json",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one--fix-git/tbench/manifests/fix-git__Kdrjsmq.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present"
+  }
+}

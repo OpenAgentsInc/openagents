@@ -1,0 +1,112 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "faa6c495-d525-47ed-b67d-f84c5edc3f8f",
+    "job": "panel--coder-one-no-jev--fix-git",
+    "trial": "fix-git__QCD46HF",
+    "arm": "coder-one-no-jev",
+    "profile": "panel",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOne",
+    "requested_model": "free",
+    "observed_name": "coder-one",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T20:01:59.106702Z",
+    "finished_at": "2026-09-22T20:03:34.269497Z",
+    "environment_setup_ms": 918,
+    "agent_setup_ms": 680,
+    "agent_execution_ms": 71937,
+    "verifier_ms": 10056,
+    "total_ms": 95162
+  },
+  "usage": {
+    "input_tokens": 52279,
+    "cache_tokens": 0,
+    "output_tokens": 4390,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.055679,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "The published image is linux/amd64; on this arm64 Mac it runs under emulation. Record that condition on every run."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-no-jev--fix-git/fix-git__QCD46HF/result.json",
+      "sha256": "d7233d1afe8deb59e0dd32c0b94c3da63137d5ef4bbef390ecfe6c9d3405dc0d",
+      "bytes": 4454
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-no-jev--fix-git/fix-git__QCD46HF/agent/trajectory.json",
+      "sha256": "3f1024485bf4ecbc1c3365dceb22f3f81db5a7965ae8212b7ae8d755d38de5e7",
+      "bytes": 45632
+    },
+    "native_traces": [],
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-no-jev--fix-git/fix-git__QCD46HF/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-no-jev--fix-git/fix-git__QCD46HF/verifier/ctrf.json",
+      "sha256": "7b91d0acc41a8170491474d8fa9c1889b16aa89a038a6f71cc917e49384e80f4",
+      "bytes": 1093
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-no-jev--fix-git/fix-git__QCD46HF/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-no-jev--fix-git/tbench/attempts/fix-git__QCD46HF.json",
+      "sha256": "6abb1723fead1a2ed31d535ede556a4e27aa137063fccffbcb64e86d98fbdad1"
+    }
+  },
+  "collected_at": "2026-09-22T20:03:37.572+00:00"
+}

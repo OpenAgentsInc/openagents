@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 const ATTEMPT_SCHEMA: &str = "openagents.tbench.attempt.v1";
 const MANIFEST_SCHEMA: &str = "openagents.tbench.episode-manifest.v1";
+const RETENTION_SCHEMA: &str = "openagents.tbench.retention.v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EvidenceState {
@@ -138,6 +139,14 @@ impl Attempt {
         } else {
             "not checked"
         }
+    }
+
+    /// Evidence the attempt references but nobody retained.
+    pub fn missing_evidence(&self) -> Vec<&Evidence> {
+        self.evidence
+            .iter()
+            .filter(|e| e.state == EvidenceState::Missing)
+            .collect()
     }
 
     pub fn display_status(&self) -> &str {
@@ -450,8 +459,17 @@ fn read_traces(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>) 
                     });
                     let manifest = episode.join("manifest.json");
                     attach_episode(&mut attempt, &manifest, &episode, records);
+                    // Older retention kept usage beside the manifest;
+                    // `tbench retain` mirrors the episode's own layout.
                     let usage = episode.join("usage.json");
+                    let usage = if usage.is_file() {
+                        usage
+                    } else {
+                        episode.join("evaluation/usage.json")
+                    };
                     attach_usage(&mut attempt, &usage, records);
+                    attach_retention(&mut attempt, &job, &episode, records);
+                    attach_verifier(&mut attempt, &episode.join("verifier/ctrf.json"));
                     apply_manual_price(&mut attempt);
                     records.attempts.push(attempt);
                     seen.insert(format!("{job_name}: {trial}"));
@@ -746,7 +764,15 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
                 .flat_map(|m| m.iter())
             {
                 if let Some(relative) = file.get("path").and_then(Value::as_str) {
-                    let full = episode.join(relative);
+                    let mut full = episode.join(relative);
+                    // Retention before `tbench retain` flattened the
+                    // episode, keeping `evaluation/usage.json` as `usage.json`.
+                    if let Some(flat) = Path::new(relative).file_name().map(|n| episode.join(n))
+                        && !full.is_file()
+                        && flat.is_file()
+                    {
+                        full = flat;
+                    }
                     let state = if !full.is_file() {
                         EvidenceState::Missing
                     } else if file
@@ -802,6 +828,106 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
             path.display()
         )),
         Err(error) => records.errors.push(error),
+    }
+}
+
+/// Fold a `tbench retain` record into the attempt: each retained file is
+/// checked against the digest taken at retention, and each reference the
+/// retention could not copy stays visible as missing.
+fn attach_retention(attempt: &mut Attempt, job: &Path, episode: &Path, records: &mut Records) {
+    let path = episode.join("retention.json");
+    if !path.is_file() {
+        return;
+    }
+    let value = match read_json(&path) {
+        Ok(value) if string(&value, "/schema").as_deref() == Some(RETENTION_SCHEMA) => value,
+        Ok(_) => {
+            records
+                .errors
+                .push(format!("{}: unsupported retention schema", path.display()));
+            return;
+        }
+        Err(error) => {
+            records.errors.push(error);
+            return;
+        }
+    };
+    attempt.evidence.push(Evidence {
+        kind: "retention record".to_owned(),
+        path: Some(path.clone()),
+        state: EvidenceState::Unchecked,
+        note: None,
+    });
+    let known: BTreeSet<PathBuf> = attempt
+        .evidence
+        .iter()
+        .filter_map(|e| e.path.clone())
+        .collect();
+    let resolve = |relative: &str| {
+        if relative == format!("{}.json", attempt.trial) {
+            job.join(relative)
+        } else {
+            episode.join(relative)
+        }
+    };
+    for file in value
+        .get("files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(relative) = file.get("path").and_then(Value::as_str) else {
+            continue;
+        };
+        let full = resolve(relative);
+        if known.contains(&full) {
+            continue;
+        }
+        let state = if !full.is_file() {
+            EvidenceState::Missing
+        } else {
+            match file.get("sha256").and_then(Value::as_str) {
+                Some(digest) if sha256(&full).as_deref() == Some(digest) => EvidenceState::Verified,
+                Some(_) => EvidenceState::Edited,
+                None => EvidenceState::Unchecked,
+            }
+        };
+        attempt.evidence.push(Evidence {
+            kind: string(file, "/kind").unwrap_or_else(|| "retained file".to_owned()),
+            path: Some(full),
+            state,
+            note: None,
+        });
+    }
+    for missing in value
+        .get("missing")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let reference = string(missing, "/reference").unwrap_or_default();
+        let full = resolve(&reference);
+        if known.contains(&full) {
+            continue;
+        }
+        attempt.evidence.push(Evidence {
+            kind: string(missing, "/kind").unwrap_or_else(|| "evidence".to_owned()),
+            path: Some(full),
+            state: EvidenceState::Missing,
+            note: string(missing, "/reason"),
+        });
+    }
+    for note in value
+        .get("notes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        attempt.notes.push(format!("Retention: {note}"));
+    }
+    if let Some(conversion) = string(&value, "/atif/conversion") {
+        attempt.notes.push(format!("ATIF: {conversion}"));
     }
 }
 
@@ -1258,6 +1384,101 @@ mod tests {
                 .is_some_and(|amount| (amount - 0.0052).abs() < 0.0001)
         );
         assert!(luna.cost_provenance.contains("manual list price"));
+    }
+
+    #[test]
+    fn retained_v3_failures_pass_the_completeness_check() {
+        let records = Records::load(None, Some(&bench_root().join("traces")), None);
+        for (job, trial) in [
+            (
+                "extended--coder-one-jevprobe3-luna--log-summary-date-ranges",
+                "log-summary-date-ranges__XWSKgz5",
+            ),
+            (
+                "panel--coder-one-jevprobe3-luna--headless-terminal",
+                "headless-terminal__tr384w7",
+            ),
+            (
+                "extended--coder-one-jevprobe3-luna--cancel-async-tasks-2",
+                "cancel-async-tasks__8MSemsU",
+            ),
+        ] {
+            let attempt = records
+                .attempts
+                .iter()
+                .find(|a| a.job == job && a.trial == trial)
+                .unwrap();
+            assert!(attempt.missing_evidence().is_empty(), "{job}");
+            assert_eq!(attempt.evidence_health(), "verified files", "{job}");
+            assert!(attempt.evidence.iter().any(|e| {
+                e.state == EvidenceState::Verified
+                    && e.path
+                        .as_ref()
+                        .is_some_and(|p| p.ends_with("artifacts/delegate-1.stream.jsonl"))
+            }));
+            assert!(attempt.evidence.iter().any(|e| {
+                e.kind == "verifier output"
+                    && e.path
+                        .as_ref()
+                        .is_some_and(|p| p.ends_with("verifier/test-stdout.txt"))
+            }));
+            assert!(attempt.costs.iter().any(|(name, _, _)| name == "jev"));
+        }
+    }
+
+    #[test]
+    fn retention_reports_missing_and_edited_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let job = temp.path().join("extended--coder-one-x--task");
+        let episode = job.join("task__abc.episode");
+        fs::create_dir_all(episode.join("verifier")).unwrap();
+        fs::write(job.join("task__abc.json"), b"{}").unwrap();
+        fs::write(
+            episode.join("harbor-result.json"),
+            br#"{"task_name":"terminal-bench/task","verifier_result":{"rewards":{"reward":0.0}}}"#,
+        )
+        .unwrap();
+        fs::write(episode.join("verifier/test-stdout.txt"), b"edited").unwrap();
+        fs::write(
+            episode.join("retention.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema": RETENTION_SCHEMA,
+                "files": [
+                    {"kind": "verifier output", "path": "verifier/test-stdout.txt", "sha256": "0".repeat(64)},
+                    {"kind": "normalized trajectory", "path": "task__abc.json", "sha256": null},
+                ],
+                "missing": [
+                    {"kind": "native delegate stream", "reference": "artifacts/delegate-1.stream.jsonl", "reason": "referenced but not present"}
+                ],
+                "notes": ["Harbor collected nothing from /logs/artifacts."],
+                "atif": {"conversion": "No trajectory exists for this trial."}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let records = Records::load(None, Some(temp.path()), None);
+        assert!(records.errors.is_empty(), "{:?}", records.errors);
+        let attempt = &records.attempts[0];
+        let missing = attempt.missing_evidence();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].kind, "native delegate stream");
+        assert_eq!(
+            missing[0].note.as_deref(),
+            Some("referenced but not present")
+        );
+        assert!(
+            attempt
+                .evidence
+                .iter()
+                .any(|e| e.kind == "verifier output" && e.state == EvidenceState::Edited)
+        );
+        assert_eq!(attempt.evidence_health(), "digest mismatch");
+        assert!(
+            attempt
+                .notes
+                .iter()
+                .any(|n| n.starts_with("Retention: Harbor collected"))
+        );
     }
 
     #[test]

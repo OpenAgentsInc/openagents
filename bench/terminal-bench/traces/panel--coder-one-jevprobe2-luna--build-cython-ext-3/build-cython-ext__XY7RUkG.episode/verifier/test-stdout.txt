@@ -1,0 +1,210 @@
+Collecting pytest==8.4.1
+  Downloading pytest-8.4.1-py3-none-any.whl.metadata (7.7 kB)
+Collecting pytest-json-ctrf==0.3.5
+  Downloading pytest_json_ctrf-0.3.5-py3-none-any.whl.metadata (3.3 kB)
+Requirement already satisfied: iniconfig>=1 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (2.3.0)
+Requirement already satisfied: packaging>=20 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (26.3)
+Requirement already satisfied: pluggy<2,>=1.5 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (1.6.0)
+Requirement already satisfied: pygments>=2.7.2 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (2.21.0)
+Downloading pytest-8.4.1-py3-none-any.whl (365 kB)
+Downloading pytest_json_ctrf-0.3.5-py3-none-any.whl (6.8 kB)
+Installing collected packages: pytest, pytest-json-ctrf
+  Attempting uninstall: pytest
+    Found existing installation: pytest 9.1.1
+    Uninstalling pytest-9.1.1:
+      Successfully uninstalled pytest-9.1.1
+
+Successfully installed pytest-8.4.1 pytest-json-ctrf-0.3.5
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+============================= test session starts ==============================
+platform linux -- Python 3.13.15, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 11 items
+
+../tests/test_outputs.py .......F..F                                     [100%]
+
+=================================== FAILURES ===================================
+_______________________________ test_ccomplexity _______________________________
+
+    def test_ccomplexity():
+        """Test ccomplexity module on computing writhe."""
+        import numpy as np
+        import pyknotid.spacecurves.ccomplexity as cc
+    
+        # just a simple square
+        points = np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            dtype=np.float64,
+        )
+        contributions = np.zeros((4, 4), dtype=np.float64)
+        order = np.array([0, 1, 2, 3], dtype=np.int64)
+>       result = cc.cython_higher_order_writhe(points, contributions, order)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/tests/test_outputs.py:106: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+pyknotid/spacecurves/ccomplexity.pyx:11: in pyknotid.spacecurves.ccomplexity.cython_higher_order_writhe
+    ???
+pyknotid/spacecurves/ccomplexity.pyx:16: in pyknotid.spacecurves.ccomplexity.cython_higher_order_writhe
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+attr = 'int'
+
+    def __getattr__(attr):
+        # Warn for expired attributes
+        import warnings
+    
+        if attr == "linalg":
+            import numpy.linalg as linalg
+            return linalg
+        elif attr == "fft":
+            import numpy.fft as fft
+            return fft
+        elif attr == "dtypes":
+            import numpy.dtypes as dtypes
+            return dtypes
+        elif attr == "random":
+            import numpy.random as random
+            return random
+        elif attr == "polynomial":
+            import numpy.polynomial as polynomial
+            return polynomial
+        elif attr == "ma":
+            import numpy.ma as ma
+            return ma
+        elif attr == "ctypeslib":
+            import numpy.ctypeslib as ctypeslib
+            return ctypeslib
+        elif attr == "exceptions":
+            import numpy.exceptions as exceptions
+            return exceptions
+        elif attr == "testing":
+            import numpy.testing as testing
+            return testing
+        elif attr == "matlib":
+            import numpy.matlib as matlib
+            return matlib
+        elif attr == "f2py":
+            import numpy.f2py as f2py
+            return f2py
+        elif attr == "typing":
+            import numpy.typing as typing
+            return typing
+        elif attr == "rec":
+            import numpy.rec as rec
+            return rec
+        elif attr == "char":
+            import numpy.char as char
+            return char
+        elif attr == "array_api":
+            raise AttributeError("`numpy.array_api` is not available from "
+                                 "numpy 2.0 onwards", name=None)
+        elif attr == "core":
+            import numpy.core as core
+            return core
+        elif attr == "strings":
+            import numpy.strings as strings
+            return strings
+        elif attr == "distutils":
+            if 'distutils' in __numpy_submodules__:
+                import numpy.distutils as distutils
+                return distutils
+            else:
+                raise AttributeError("`numpy.distutils` is not available from "
+                                     "Python 3.12 onwards", name=None)
+    
+        if attr in __future_scalars__:
+            # And future warnings for those that will change, but also give
+            # the AttributeError
+            warnings.warn(
+                f"In the future `np.{attr}` will be defined as the "
+                "corresponding NumPy scalar.", FutureWarning, stacklevel=2)
+    
+        if attr in __former_attrs__:
+>           raise AttributeError(__former_attrs__[attr], name=None)
+E           AttributeError: module 'numpy' has no attribute 'int'.
+E           `np.int` was a deprecated alias for the builtin `int`. To avoid this error in existing code, use `int` by itself. Doing this will not modify any behavior and is safe. When replacing `np.int`, you may wish to use e.g. `np.int64` or `np.int32` to specify the precision. If you wish to review your current use, check the release note link for additional information.
+E           The aliases was originally deprecated in NumPy 1.20; for more details and guidance see the original release note at:
+E               https://numpy.org/devdocs/release/1.20.0-notes.html#deprecations
+
+/usr/local/lib/python3.13/site-packages/numpy/__init__.py:778: AttributeError
+________________________ test_pyknotid_repository_tests ________________________
+
+    def test_pyknotid_repository_tests():
+        """Download and run the original pyknotid test suite."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            git_cmd = [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                "0.5.3",
+                "https://github.com/SPOCKnots/pyknotid.git",
+                temp_dir,
+            ]
+            result = subprocess.run(git_cmd, capture_output=True, text=True)
+            tests_dir = os.path.join(temp_dir, "tests")
+    
+            # Run pytest excluding the problematic test files
+            pytest_cmd = [
+                "python",
+                "-m",
+                "pytest",
+                tests_dir,
+                "--ignore",
+                os.path.join(tests_dir, "test_random_curves.py"),
+                "--ignore",
+                os.path.join(tests_dir, "test_catalogue.py"),
+                "-v",
+            ]
+    
+            original_cwd = os.getcwd()
+            try:
+                os.chdir("/app/pyknotid")
+                result = subprocess.run(pytest_cmd, capture_output=True, text=True)
+>               assert result.returncode == 0, (
+                    f"Repository tests failed with return code {result.returncode}"
+                )
+E               AssertionError: Repository tests failed with return code 1
+E               assert 1 == 0
+E                +  where 1 = CompletedProcess(args=['python', '-m', 'pytest', '/tmp/tmpmx841a62/tests', '--ignore', '/tmp/tmpmx841a62/tests/test_ra...onstructed_space_curve\n========================= 1 failed, 17 passed in 0.99s =========================\n", stderr='').returncode
+
+/tests/test_outputs.py:173: AssertionError
+==================================== PASSES ====================================
+______________________ test_cinvariants_python_vs_cython _______________________
+----------------------------- Captured stdout call -----------------------------
+Finding crossings
+i = 0 / 47
+3.0 crossings found
+
+Currently comparing index 0
+______________________________ test_example_usage ______________________________
+----------------------------- Captured stdout call -----------------------------
+Finding crossings
+i = 0 / 97
+7.0 crossings found
+
+Simplifying: initially 14 crossings
+-> 10 crossings after 1 runs-> 10 crossings after 2 runs
+Finding crossings
+i = 0 / 97
+4.0 crossings found
+
+Simplifying: initially 8 crossings
+-> 8 crossings after 1 runs
+=========================== short test summary info ============================
+PASSED ../tests/test_outputs.py::test_numpy_version
+PASSED ../tests/test_outputs.py::test_repo_cloned
+PASSED ../tests/test_outputs.py::test_pyknotid_core_import
+PASSED ../tests/test_outputs.py::test_chelpers_cython_extension
+PASSED ../tests/test_outputs.py::test_ccomplexity_cython_extension
+PASSED ../tests/test_outputs.py::test_cinvariants_cython_extension
+PASSED ../tests/test_outputs.py::test_chelpers
+PASSED ../tests/test_outputs.py::test_cinvariants_python_vs_cython
+PASSED ../tests/test_outputs.py::test_example_usage
+FAILED ../tests/test_outputs.py::test_ccomplexity - AttributeError: module 'n...
+FAILED ../tests/test_outputs.py::test_pyknotid_repository_tests - AssertionEr...
+========================= 2 failed, 9 passed in 3.24s ==========================

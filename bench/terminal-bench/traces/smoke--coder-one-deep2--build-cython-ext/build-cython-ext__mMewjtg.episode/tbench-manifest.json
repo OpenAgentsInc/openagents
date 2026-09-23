@@ -1,0 +1,112 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "fcb350d1-afe6-4514-97d0-269672e53df1",
+    "job": "smoke--coder-one-deep2--build-cython-ext",
+    "trial": "build-cython-ext__mMewjtg",
+    "arm": "coder-one-deep",
+    "profile": "smoke",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/build-cython-ext",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "df5a71095bf690f7b2b2091e8ea3b0ecab7ff6cd4e3629b79e86e99118702a10",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOne",
+    "requested_model": "free",
+    "observed_name": "coder-one",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:30:04.768991Z",
+    "finished_at": "2026-09-22T19:35:19.535274Z",
+    "environment_setup_ms": 5879,
+    "agent_setup_ms": 1286,
+    "agent_execution_ms": 292325,
+    "verifier_ms": 4135,
+    "total_ms": 314766
+  },
+  "usage": {
+    "input_tokens": 550512,
+    "cache_tokens": 0,
+    "output_tokens": 15698,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.315543098,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Image is resolved from the task checkout at build time; doctor reports the manifest arch when the checkout is present."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep2--build-cython-ext/build-cython-ext__mMewjtg/result.json",
+      "sha256": "b467e53e3f0eb7bd99fb6aff452f31e21653b587e290800aa8d2d1a613d3d266",
+      "bytes": 4585
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep2--build-cython-ext/build-cython-ext__mMewjtg/agent/trajectory.json",
+      "sha256": "27f0bb9fe46ff1e2680595a8a31614acbd342ad095e168016765959bc2534182",
+      "bytes": 1331767
+    },
+    "native_traces": [],
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep2--build-cython-ext/build-cython-ext__mMewjtg/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep2--build-cython-ext/build-cython-ext__mMewjtg/verifier/ctrf.json",
+      "sha256": "0dff867f6fc95df3d9b712673a0a49dea6da5e15e65b3c955296e7494612fc24",
+      "bytes": 4260
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep2--build-cython-ext/build-cython-ext__mMewjtg/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-deep2--build-cython-ext/tbench/attempts/build-cython-ext__mMewjtg.json",
+      "sha256": "bf2c371ce7c7811cff4370965a3076426082021cffddc9c94a6979991327d5d1"
+    }
+  },
+  "collected_at": "2026-09-22T19:35:20.411+00:00"
+}

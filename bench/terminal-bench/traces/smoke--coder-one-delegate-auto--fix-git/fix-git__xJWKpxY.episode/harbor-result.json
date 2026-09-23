@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/fix-git",
   "trial_name": "fix-git__xJWKpxY",
+  "task_name": "terminal-bench/fix-git",
   "started_at": "2026-09-22T19:11:14.745159Z",
   "finished_at": "2026-09-22T19:13:56.376379Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 116752,
     "n_cache_tokens": 72060,
     "n_output_tokens": 2473,
-    "cost_usd": 0.140791352
-  }
+    "cost_usd": 0.140791352,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

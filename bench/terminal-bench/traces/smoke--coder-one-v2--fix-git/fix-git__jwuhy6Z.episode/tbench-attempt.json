@@ -1,0 +1,87 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "7bb077af-60d3-405c-8e81-ab61b7ed374d",
+    "job": "smoke--coder-one-v2--fix-git",
+    "trial": "fix-git__jwuhy6Z",
+    "arm": "coder-one",
+    "profile": "smoke",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOne",
+    "requested_model": "free",
+    "observed_name": "coder-one",
+    "observed_version": "coder-one-0.1.0-99e647a7a974",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 0.0,
+    "verifier_rewards": {
+      "reward": 0.0
+    },
+    "terminal_status": "agent_error",
+    "exception": {
+      "exception_type": "NonZeroAgentExitCodeError",
+      "exception_message": "episode exited 4: sly, I was a Student Researcher at [Google Research](https://research.google/), an ML Research Intern at [Apple Health AI](https://machinelearning.apple.com/work-with-us) and a data scientist and the second full-time employee at [HealthRhythms](https://www.healthrhythms.com). \n  \u2502 \\ No newline at end of file\n  \u2502 + Previously, I was a Student Researcher at [Google Research](https://research.google/), an ML Research Intern at [Apple Health AI](https://machinelearning.apple.com/work-with-us) and a data scientist and the second full-time employee at [HealthRhythms](https://www.healthrhythms.com). \n  \u2502 \\ No newline at end of file\n  \u2514 exit 0 in 0.0s, 1601 bytes\n\n\u2500\u2500 step 5 \u2500\u2500\n  jev \u25b8 21 answers in 257 ms, 3246 input tokens\n  jev \u25b8 Possibly relevant file (low) _layouts/default.html p=0.18\n  jev \u25b8 Possibly relevant file (low) _posters/frank2017sensing.md p=0.18\n  jev \u25b8 Possibly relevant file (low) .gitignore p=0.17\n  jev \u25b8 last command: progress (0.83)\n  gen \u25b8 {\"command\":\"git merge c499730\",\"reason\":\"Try merging the detached commit into master to see if it merges cleanly or has conflicts.\"}\n  gen \u25b8 3.7s, 4629 in (0 cached) / 266 out tokens, google/gemini-3.8-flash\n  why \u25b8 Try merging the detached commit into master to see if it merges cleanly or has conflicts.\n  $ git merge c499730\n  \u2502 Auto-merging _includes/about.md\n  \u2502 CONFLICT (content): Merge conflict in _includes/about.md\n  \u2502 Automatic merge failed; fix conflicts and then commit the result.\n  \u2514 exit 1 in 0.0s, 155 bytes\n\n\u2500\u2500 step 6 \u2500\u2500\n  jev \u25b8 21 answers in 249 ms, 2814 input tokens\n  jev \u25b8 Relevant file _includes/about.md p=0.82\n  jev \u25b8 last command: error (0.92)\n  gen \u25b8 \n  gen \u25b8 retry 1 in 5s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 2 in 10s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 3 in 15s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 failed: the free lane takes 20 generations a minute for one account\n\n\u2500\u2500 generation_failed \u2500\u2500\n",
+      "exception_traceback": "Traceback (most recent call last):\n  File \"/home/christopherdavid/openagents-speed/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/single_step.py\", line 77, in _run_agent\n    await self._run_agent_phase(\n    ...<5 lines>...\n    )\n  File \"/home/christopherdavid/openagents-speed/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/trial.py\", line 545, in _run_agent_phase\n    await asyncio.wait_for(\n    ...<6 lines>...\n    )\n  File \"/home/christopherdavid/.nix-profile/lib/python3.13/asyncio/tasks.py\", line 507, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/home/christopherdavid/openagents-speed/bench/terminal-bench/tbench/coder_v05.py\", line 283, in run\n    except RuntimeError as exc:\n        ^^^^^^^^^^^^^^^^^^^^^^^\n    ...<2 lines>...\n        raise\n        ^\nharbor.agents.installed.base.NonZeroAgentExitCodeError: episode exited 4: sly, I was a Student Researcher at [Google Research](https://research.google/), an ML Research Intern at [Apple Health AI](https://machinelearning.apple.com/work-with-us) and a data scientist and the second full-time employee at [HealthRhythms](https://www.healthrhythms.com). \n  \u2502 \\ No newline at end of file\n  \u2502 + Previously, I was a Student Researcher at [Google Research](https://research.google/), an ML Research Intern at [Apple Health AI](https://machinelearning.apple.com/work-with-us) and a data scientist and the second full-time employee at [HealthRhythms](https://www.healthrhythms.com). \n  \u2502 \\ No newline at end of file\n  \u2514 exit 0 in 0.0s, 1601 bytes\n\n\u2500\u2500 step 5 \u2500\u2500\n  jev \u25b8 21 answers in 257 ms, 3246 input tokens\n  jev \u25b8 Possibly relevant file (low) _layouts/default.html p=0.18\n  jev \u25b8 Possibly relevant file (low) _posters/frank2017sensing.md p=0.18\n  jev \u25b8 Possibly relevant file (low) .gitignore p=0.17\n  jev \u25b8 last command: progress (0.83)\n  gen \u25b8 {\"command\":\"git merge c499730\",\"reason\":\"Try merging the detached commit into master to see if it merges cleanly or has conflicts.\"}\n  gen \u25b8 3.7s, 4629 in (0 cached) / 266 out tokens, google/gemini-3.8-flash\n  why \u25b8 Try merging the detached commit into master to see if it merges cleanly or has conflicts.\n  $ git merge c499730\n  \u2502 Auto-merging _includes/about.md\n  \u2502 CONFLICT (content): Merge conflict in _includes/about.md\n  \u2502 Automatic merge failed; fix conflicts and then commit the result.\n  \u2514 exit 1 in 0.0s, 155 bytes\n\n\u2500\u2500 step 6 \u2500\u2500\n  jev \u25b8 21 answers in 249 ms, 2814 input tokens\n  jev \u25b8 Relevant file _includes/about.md p=0.82\n  jev \u25b8 last command: error (0.92)\n  gen \u25b8 \n  gen \u25b8 retry 1 in 5s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 2 in 10s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 retry 3 in 15s: the free lane takes 20 generations a minute for one account\n\n  gen \u25b8 failed: the free lane takes 20 generations a minute for one account\n\n\u2500\u2500 generation_failed \u2500\u2500\n\n",
+      "occurred_at": "2026-09-22T19:11:46.379572Z"
+    },
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:10:54.223361Z",
+    "finished_at": "2026-09-22T19:12:04.311435Z",
+    "environment_setup_ms": 948,
+    "agent_setup_ms": 1160,
+    "agent_execution_ms": 49972,
+    "verifier_ms": 6992,
+    "total_ms": 70088
+  },
+  "usage": {
+    "input_tokens": 32192,
+    "cache_tokens": 0,
+    "output_tokens": 1390,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.014947,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 19,
+    "model_invocations": 16,
+    "typed_decisions": 0,
+    "tool_calls": 11,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-v2--fix-git/fix-git__jwuhy6Z/result.json",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/smoke--coder-one-v2--fix-git/tbench/manifests/fix-git__jwuhy6Z.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present"
+  }
+}

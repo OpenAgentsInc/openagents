@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/build-cython-ext",
   "trial_name": "build-cython-ext__Vxf4ti9",
+  "task_name": "terminal-bench/build-cython-ext",
   "started_at": "2026-09-22T20:21:33.439080Z",
   "finished_at": "2026-09-22T20:25:23.390770Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 202471,
     "n_cache_tokens": 182505,
     "n_output_tokens": 5063,
-    "cost_usd": 0.285551412
-  }
+    "cost_usd": 0.285551412,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

@@ -1,0 +1,7 @@
+exit 0
+version: coder-one 0.1.0 (9f31630ac600)
+contract: openagents.coder.episode.v1
+generation door: https://openagents.com/v1/models answered 200 OK
+jev door: https://api.typesafe.ai answered with 2 models
+delegate: off (CODER_ONE_DELEGATE)
+ok

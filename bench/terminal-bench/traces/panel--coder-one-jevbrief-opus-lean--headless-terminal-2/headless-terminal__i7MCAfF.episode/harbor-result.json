@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/headless-terminal",
   "trial_name": "headless-terminal__i7MCAfF",
+  "task_name": "terminal-bench/headless-terminal",
   "started_at": "2026-09-22T20:29:05.459412Z",
   "finished_at": "2026-09-22T20:33:55.294462Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 45662,
     "n_cache_tokens": 39769,
     "n_output_tokens": 3100,
-    "cost_usd": 0.104778606
-  }
+    "cost_usd": 0.104778606,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

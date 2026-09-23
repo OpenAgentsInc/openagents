@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/fix-git",
   "trial_name": "fix-git__FC4TKV5",
+  "task_name": "terminal-bench/fix-git",
   "started_at": "2026-09-22T19:22:20.645914Z",
   "finished_at": "2026-09-22T19:24:00.912338Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 110439,
     "n_cache_tokens": 0,
     "n_output_tokens": 6502,
-    "cost_usd": 0.06683847
-  }
+    "cost_usd": 0.06683847,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

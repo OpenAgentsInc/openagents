@@ -1,0 +1,110 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "66eee854-be59-4d6e-89c9-746cfacd761b",
+    "job": "panel--coder-one--headless-terminal",
+    "trial": "headless-terminal__Kjipv7f",
+    "arm": "coder-one",
+    "profile": "panel",
+    "auth_mode": "door-key",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/headless-terminal",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "2780a403d561b00752bb52c27a6150bafc35b126d96a716af20d696fca8b55a2",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOne",
+    "requested_model": "free",
+    "observed_name": "coder-one",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T19:35:27.448361Z",
+    "finished_at": "2026-09-22T19:46:03.837401Z",
+    "environment_setup_ms": 1182,
+    "agent_setup_ms": 1347,
+    "agent_execution_ms": 598096,
+    "verifier_ms": 24430,
+    "total_ms": 636389
+  },
+  "usage": {
+    "input_tokens": 363689,
+    "cache_tokens": 4049,
+    "output_tokens": 28541,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.314859422,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one--headless-terminal/headless-terminal__Kjipv7f/result.json",
+      "sha256": "8b465f7e91d5ea11ee12423a2f7b3d1af308db585db7c065d8922e66f9a4f571",
+      "bytes": 4544
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one--headless-terminal/headless-terminal__Kjipv7f/agent/trajectory.json",
+      "sha256": "6535f7e255445eccfef1b5df497be1c8b065c4265ecbda22093535ff456af1b9",
+      "bytes": 683396
+    },
+    "native_traces": [],
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one--headless-terminal/headless-terminal__Kjipv7f/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one--headless-terminal/headless-terminal__Kjipv7f/verifier/ctrf.json",
+      "sha256": "589b30899a8968028bd87d70a1fa1a04392f5c10565ca646b8398036fb641b07",
+      "bytes": 2849
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one--headless-terminal/headless-terminal__Kjipv7f/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one--headless-terminal/tbench/attempts/headless-terminal__Kjipv7f.json",
+      "sha256": "3ade5a7aaba7a98f7d352640f8b7a2b57c3eaa12b50987c90531a35a66d257d3"
+    }
+  },
+  "collected_at": "2026-09-22T19:46:06.654+00:00"
+}

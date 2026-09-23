@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "984f7979-4be9-45bd-8813-80cb808022c8",
+    "job": "panel--coder-one-jevprobe3-luna--build-cython-ext",
+    "trial": "build-cython-ext__jFQbtoW",
+    "arm": "coder-one-jevprobe3-luna",
+    "profile": "panel",
+    "auth_mode": "auth-json",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/build-cython-ext",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/build-cython-ext",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "df5a71095bf690f7b2b2091e8ea3b0ecab7ff6cd4e3629b79e86e99118702a10",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "ce3c96dfa145dbcc03e4862a20cceaa246dc819dd717b64471432ad7a41c312c"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T22:39:42.744132Z",
+    "finished_at": "2026-09-22T22:46:55.522812Z",
+    "environment_setup_ms": 10070,
+    "agent_setup_ms": 222200,
+    "agent_execution_ms": 182597,
+    "verifier_ms": 6045,
+    "total_ms": 432778
+  },
+  "usage": {
+    "input_tokens": 420465,
+    "cache_tokens": 369152,
+    "output_tokens": 3394,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.009854502000000001,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Image is resolved from the task checkout at build time; doctor reports the manifest arch when the checkout is present."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW/result.json",
+      "sha256": "e5f804e3a0a2372d00ca32990eae80e0a6d3e76b2878aa94d494df3b17080e72",
+      "bytes": 5056
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW/agent/trajectory.json",
+      "sha256": "1a4ca1a46144b8465635de2c49480916e899a930090677d65af5d0b82924b965",
+      "bytes": 89193
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW/verifier/ctrf.json",
+      "sha256": "89d58417ac528dd6da86bc618ab2b0fb275c741361b46eb96564c70cb6098dca",
+      "bytes": 4261
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevprobe3-luna--build-cython-ext/tbench/attempts/build-cython-ext__jFQbtoW.json",
+      "sha256": "efcb3a7152e06fa27f0ae2fef8c5c1da5b859804b34933c9e59d4df5e3b0c567"
+    }
+  },
+  "collected_at": "2026-09-22T22:46:56.335+00:00"
+}

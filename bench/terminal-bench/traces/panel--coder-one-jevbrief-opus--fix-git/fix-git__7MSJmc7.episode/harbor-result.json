@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/fix-git",
   "trial_name": "fix-git__7MSJmc7",
+  "task_name": "terminal-bench/fix-git",
   "started_at": "2026-09-22T20:10:39.890739Z",
   "finished_at": "2026-09-22T20:14:53.079360Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 134327,
     "n_cache_tokens": 113925,
     "n_output_tokens": 1149,
-    "cost_usd": null
-  }
+    "cost_usd": null,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

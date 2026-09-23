@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/fix-git",
   "trial_name": "fix-git__MPV6d2h",
+  "task_name": "terminal-bench/fix-git",
   "started_at": "2026-09-22T20:10:39.831570Z",
   "finished_at": "2026-09-22T20:15:50.728635Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 0.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 241024,
     "n_cache_tokens": 202752,
     "n_output_tokens": 2950,
-    "cost_usd": null
-  }
+    "cost_usd": null,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

@@ -1,0 +1,110 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "2edf7a61-6054-4a37-a518-37982b15f12b",
+    "job": "panel--coder-one-jevbrief-opus--headless-terminal",
+    "trial": "headless-terminal__q5skUtM",
+    "arm": "coder-one-jevbrief-opus",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/headless-terminal",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/headless-terminal",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "2780a403d561b00752bb52c27a6150bafc35b126d96a716af20d696fca8b55a2",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T20:10:39.810452Z",
+    "finished_at": "2026-09-22T20:15:04.239192Z",
+    "environment_setup_ms": 898,
+    "agent_setup_ms": 193121,
+    "agent_execution_ms": 35600,
+    "verifier_ms": 23533,
+    "total_ms": 264428
+  },
+  "usage": {
+    "input_tokens": 104254,
+    "cache_tokens": 95461,
+    "output_tokens": 2748,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--headless-terminal/headless-terminal__q5skUtM/result.json",
+      "sha256": "181aaebbd3a7ee38adec9e51a2fea7d46f61263d303dd69411cb3f2b8a22f8a0",
+      "bytes": 4951
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--headless-terminal/headless-terminal__q5skUtM/agent/trajectory.json",
+      "sha256": "577bf2fb53cae2842eebf927ab7e1de2c6a52b948469a0106628fc0818f4424e",
+      "bytes": 21405
+    },
+    "native_traces": [],
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--headless-terminal/headless-terminal__q5skUtM/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--headless-terminal/headless-terminal__q5skUtM/verifier/ctrf.json",
+      "sha256": "8985737355ec12b2b3f4e3134c85b6f60ff989679305b3b10691f3b6396b0065",
+      "bytes": 2846
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--headless-terminal/headless-terminal__q5skUtM/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--headless-terminal/tbench/attempts/headless-terminal__q5skUtM.json",
+      "sha256": "0f7292eb7a30bd3362f473072b3b3c69832581b429617844610e6b4ae9c0494f"
+    }
+  },
+  "collected_at": "2026-09-22T20:15:05.032+00:00"
+}

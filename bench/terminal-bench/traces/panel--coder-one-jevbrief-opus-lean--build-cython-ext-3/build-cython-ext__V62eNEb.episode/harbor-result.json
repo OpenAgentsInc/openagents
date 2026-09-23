@@ -1,6 +1,6 @@
 {
-  "task_name": "terminal-bench/build-cython-ext",
   "trial_name": "build-cython-ext__V62eNEb",
+  "task_name": "terminal-bench/build-cython-ext",
   "started_at": "2026-09-22T20:33:56.721869Z",
   "finished_at": "2026-09-22T20:38:23.263432Z",
   "environment_setup": {
@@ -24,11 +24,13 @@
       "reward": 1.0
     }
   },
-  "exception_info": null,
   "agent_result": {
     "n_input_tokens": 126599,
     "n_cache_tokens": 114022,
     "n_output_tokens": 3980,
-    "cost_usd": 0.19109093800000004
-  }
+    "cost_usd": 0.19109093800000004,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
 }

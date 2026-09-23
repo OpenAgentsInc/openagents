@@ -1,0 +1,112 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "e9bed8b2-c663-4c2b-95f6-48a42d75ba0e",
+    "job": "panel--coder-one-jevbrief-opus--fix-git",
+    "trial": "fix-git__7MSJmc7",
+    "arm": "coder-one-jevbrief-opus",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneDelegate",
+    "requested_model": "free",
+    "observed_name": "coder-one-delegate",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-22T20:10:39.890739Z",
+    "finished_at": "2026-09-22T20:14:53.079360Z",
+    "environment_setup_ms": 905,
+    "agent_setup_ms": 215642,
+    "agent_execution_ms": 20542,
+    "verifier_ms": 4899,
+    "total_ms": 253188
+  },
+  "usage": {
+    "input_tokens": 134327,
+    "cache_tokens": 113925,
+    "output_tokens": 1149,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": null,
+    "provenance": "unknown",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "The published image is linux/amd64; on this arm64 Mac it runs under emulation. Record that condition on every run."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--fix-git/fix-git__7MSJmc7/result.json",
+      "sha256": "8310f3648fc4f939be02ed556f7363900bdc26dece76e342a27c576ea1c2b898",
+      "bytes": 4872
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--fix-git/fix-git__7MSJmc7/agent/trajectory.json",
+      "sha256": "1f2f457e8714e0b09b937c479c7befb6d859f0d0117d97ef3fdfad8637ce6a6d",
+      "bytes": 108952
+    },
+    "native_traces": [],
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--fix-git/fix-git__7MSJmc7/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--fix-git/fix-git__7MSJmc7/verifier/ctrf.json",
+      "sha256": "cb4e070de1b5a90c87e471d816f6f71cdb712dfe5ed3cb1342968382faea0c08",
+      "bytes": 1091
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--fix-git/fix-git__7MSJmc7/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-jevbrief-opus--fix-git/tbench/attempts/fix-git__7MSJmc7.json",
+      "sha256": "54649450e4a619103a36f693298c1e2bffcd1d05845cbdec22a17a9dd546cef8"
+    }
+  },
+  "collected_at": "2026-09-22T20:14:53.887+00:00"
+}
