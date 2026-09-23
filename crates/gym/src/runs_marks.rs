@@ -897,7 +897,7 @@ pub fn agreement_text(agreement: &Agreement) -> Vec<String> {
     ));
     lines.push(String::new());
     lines.push(format!(
-        "{:<26} {:>4} {:>4}  {:<24} {:<24} {:<24}",
+        "{:<26} {:>4} {:>4}  {:<24} {:<24} {}",
         "judgment", "pos", "neg", "agreement", "precision", "recall"
     ));
     for row in &agreement.rows {
@@ -909,7 +909,7 @@ pub fn agreement_text(agreement: &Agreement) -> Vec<String> {
         );
         if row.supported() {
             lines.push(format!(
-                "{head}{:<24} {:<24} {:<24}",
+                "{head}{:<24} {:<24} {}",
                 row.agreement().text(),
                 row.precision().text(),
                 row.recall().text()
