@@ -1,0 +1,3307 @@
+{
+  "kind": "dated_document_assessment_not_runtime_schema",
+  "reviewed_commit": "72ed33efda93434acd082a1ebcb33046edbf90b2",
+  "date": "2026-09-22",
+  "timezone": "America/Chicago",
+  "method": "Read every retained top-level *.episode/harbor-result.json; join usage and manifest sidecars. Sum per-task means. Direct Luna tokens priced using historical operator-supplied rates in trial_metrics.py. No inference performed.",
+  "retained_inventory": {
+    "trajectory_json_files": 321,
+    "harbor_result_sidecars": 300
+  },
+  "aggregates": [
+    {
+      "arm": "coder-one-jevprobe-luna",
+      "n": 24,
+      "passed": 18,
+      "sum_of_task_means": {
+        "cost": 0.031806802,
+        "agent_seconds": 438.20648166666666,
+        "total_seconds": 2644.925624,
+        "setup_seconds": 2011.263281666667
+      },
+      "tasks": [
+        {
+          "task": "build-cython-ext",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.011938578000000002,
+            "agent_seconds": 185.79649733333332,
+            "total_seconds": 373.3700773333333,
+            "setup_seconds": 165.06210099999998,
+            "jev_cost": 8.479800000000001e-05,
+            "delegate_turns": 25.666666666666668
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext/build-cython-ext__2Edwkea.episode/harbor-result.json",
+              "sha256": "8106febc25e50c32b9ce13f8fa78749cf48c5f6392c2f85cb95a3bdff3aae814",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext/build-cython-ext__2Edwkea.episode/usage.json",
+                  "sha256": "77db2f331543b1c9c7efbe66b7d39df4d06972c3826e49d7a96a850bc7756efd"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext/build-cython-ext__2Edwkea.episode/manifest.json",
+                  "sha256": "3f4680e58752d2297ce83cc313d5f813cde14b8447cfdf0efa6b630c43e585e7"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-2/build-cython-ext__Byiv2Pm.episode/harbor-result.json",
+              "sha256": "134b92411abc3bc557a26139dcf3625899ebe59dda9e34c982f7a39a578c1e4c",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-2/build-cython-ext__Byiv2Pm.episode/usage.json",
+                  "sha256": "6f938b4a18d4962bd2acfa21ab69bff91939f478901ae9e61cdeeb5740c1e1a6"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-2/build-cython-ext__Byiv2Pm.episode/manifest.json",
+                  "sha256": "92e9ae4fe9e7de6a12dc6e24660e334e93bc11ea4bf8b5e7674e1a052e4ad446"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-3/build-cython-ext__B2waRnG.episode/harbor-result.json",
+              "sha256": "438b15c06bb37af01a1aaacb0bcb8fe13a520c8d4146028ea1be7d9e5a4752c3",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-3/build-cython-ext__B2waRnG.episode/usage.json",
+                  "sha256": "85fc8ccecfee67f774e168ad35255907483277e8ab6bfd6d13396906283c48a3"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--build-cython-ext-3/build-cython-ext__B2waRnG.episode/manifest.json",
+                  "sha256": "48948e82396c56484b79f9c6a3b85687b15873d9eb1cd51193d91f93e8cef13f"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "cancel-async-tasks",
+          "n": 3,
+          "passed": 0,
+          "means": {
+            "cost": 0.0012029933333333334,
+            "agent_seconds": 24.098191,
+            "total_seconds": 321.5815646666667,
+            "setup_seconds": 262.25327,
+            "jev_cost": 5.782e-05,
+            "delegate_turns": 3.3333333333333335
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks/cancel-async-tasks__NRyzQPX.episode/harbor-result.json",
+              "sha256": "a789390bda45772cc360e5055fcb51f490fa8df4e1b3a0bba25631623e864698",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks/cancel-async-tasks__NRyzQPX.episode/usage.json",
+                  "sha256": "e3236c53eb0a7d04a52feb6867539ab887e08f37c4c922da78a6f78e11b5b4ec"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks/cancel-async-tasks__NRyzQPX.episode/manifest.json",
+                  "sha256": "5cf47061ded6c04095afd9e66801dfa5f166342ee00604700316869d0e3af78a"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-2/cancel-async-tasks__5qeEQ9c.episode/harbor-result.json",
+              "sha256": "378e949c3e7118bdb276da86e4951beed1811557d61b0292b1d5213400f11ac8",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-2/cancel-async-tasks__5qeEQ9c.episode/usage.json",
+                  "sha256": "de8f2ee1abf8f54019c3fb73386fef10e5e11e8c04195cb4d4e2a1c4bea2a617"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-2/cancel-async-tasks__5qeEQ9c.episode/manifest.json",
+                  "sha256": "f93e5b660b4d7e94447b0aa6882d069561970b600996c1e77d42333419f3b7dd"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-3/cancel-async-tasks__TDhoGdQ.episode/harbor-result.json",
+              "sha256": "b0a8603867fc3f9ef6ad2d5a417200fcdb3baaefa0e0fee4e187bd36cd5868a8",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-3/cancel-async-tasks__TDhoGdQ.episode/usage.json",
+                  "sha256": "7c255f4f33538ccc17ac39d0cf7b7218709fbd9d217801c49b1a37bb9c57bb03"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--cancel-async-tasks-3/cancel-async-tasks__TDhoGdQ.episode/manifest.json",
+                  "sha256": "4fa28316b70cc3f340ecf9fe3da56d1aa5d6e26d2e23d0afef29e337f563c0f3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "fix-code-vulnerability",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.003505346666666667,
+            "agent_seconds": 31.090300666666668,
+            "total_seconds": 279.41821166666665,
+            "setup_seconds": 232.67883933333334,
+            "jev_cost": 0.00126322,
+            "delegate_turns": 6.666666666666667
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability/fix-code-vulnerability__J4B5tZt.episode/harbor-result.json",
+              "sha256": "9b6f5d38e71daf2f64aa84fbae96dccb3a82afc57efffcc030001c19cc5dfbe8",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability/fix-code-vulnerability__J4B5tZt.episode/usage.json",
+                  "sha256": "f98ceef297da9c5c7642e2ccbc46b98a26307d26001e00ee2ee09c6d519bdaaa"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability/fix-code-vulnerability__J4B5tZt.episode/manifest.json",
+                  "sha256": "64c7a48fd456743817dc18a3f4b20172eed66112dfd3931347d805ca508f49bc"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-2/fix-code-vulnerability__Wve5rKQ.episode/harbor-result.json",
+              "sha256": "0c0e7cbb740411287590f59a1410503f2bc84e96a71f6783e6f43b3dc77e7992",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-2/fix-code-vulnerability__Wve5rKQ.episode/usage.json",
+                  "sha256": "8a57c8a3e6830fccee5a260a3d6225a4420bb4b79659f1dc4ebd06b3123b9566"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-2/fix-code-vulnerability__Wve5rKQ.episode/manifest.json",
+                  "sha256": "f0fbfaaa9f9bb17ec7d650e6ac3f74f43e11e6a3dacdd7b3de2ef5531162a75e"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-3/fix-code-vulnerability__iaDWPMa.episode/harbor-result.json",
+              "sha256": "980f488388abe51cc9c6319124a2e96600a9b771651fb3726533269380154eab",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-3/fix-code-vulnerability__iaDWPMa.episode/usage.json",
+                  "sha256": "a58f6604285d74b869a68e2898deeb2b9a96a8f6688493186737dd5353bd67f7"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-code-vulnerability-3/fix-code-vulnerability__iaDWPMa.episode/manifest.json",
+                  "sha256": "baf7cd73706da6d83fefecc7a54c492fd57499e170ad1a39b51e60900eaad239"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "fix-git",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.003239028666666667,
+            "agent_seconds": 35.99145933333333,
+            "total_seconds": 300.991681,
+            "setup_seconds": 246.797258,
+            "jev_cost": 0.0006623820000000001,
+            "delegate_turns": 8
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git/fix-git__M9V758R.episode/harbor-result.json",
+              "sha256": "f676eb861cdb8bcdb8ba309bd940f7994fed9f247544b0c4f859557d458fc655",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git/fix-git__M9V758R.episode/usage.json",
+                  "sha256": "134f01e4a180f2dba64b6ba77e03c7e4edd9b75444006fd5d2ea91767af700fc"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git/fix-git__M9V758R.episode/manifest.json",
+                  "sha256": "1ad8831e9d68042dcd8f63cc8b89810c7e9fe7ef742a4c80e61802d7d1e94025"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-2/fix-git__vvmtBuv.episode/harbor-result.json",
+              "sha256": "80ec3a7d80d02cd1372fa171a7b2ccf4d88af1334a7d76f10e7f6c500f0ab80d",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-2/fix-git__vvmtBuv.episode/usage.json",
+                  "sha256": "68ab3dd51171f42a7953ca9e01cecd6f41ef17d9442c5e1f32fba601f6181f3f"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-2/fix-git__vvmtBuv.episode/manifest.json",
+                  "sha256": "3e6b5cd433b7146c386a79d606bca88454614905c0f8a39107fe439b5258fbbd"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-3/fix-git__7Q8uDYi.episode/harbor-result.json",
+              "sha256": "f76d6d5c21f527d6260c0dd87e1b1b41036810a2ba4b5f9a75c053be10d493b3",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-3/fix-git__7Q8uDYi.episode/usage.json",
+                  "sha256": "5819113dba019961b1a534e9d464582c8b7936a650987899defdb0ee63f5d947"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--fix-git-3/fix-git__7Q8uDYi.episode/manifest.json",
+                  "sha256": "d02032cfefa8d327be54eeff38c94b253ab7df6c8adefa109dbdcbc81df7f719"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "git-leak-recovery",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.0018936506666666667,
+            "agent_seconds": 27.84440366666667,
+            "total_seconds": 342.344158,
+            "setup_seconds": 287.530566,
+            "jev_cost": 9.220400000000001e-05,
+            "delegate_turns": 6.666666666666667
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery/git-leak-recovery__DTKAoAk.episode/harbor-result.json",
+              "sha256": "60f8b4f27f455f0faf23b8219e3e15e4a06a5616e8416a1f74abebb286ef80b6",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery/git-leak-recovery__DTKAoAk.episode/usage.json",
+                  "sha256": "fad94409c5ff1d37c3e21281b5a66c1ae7212ab447f80b7339602e0d3fb361e3"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery/git-leak-recovery__DTKAoAk.episode/manifest.json",
+                  "sha256": "8b1f9b19348df43e0cd2833bb3b68a3c6b0893598b843c912cbabe8ba14f3411"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-2/git-leak-recovery__cuxhUij.episode/harbor-result.json",
+              "sha256": "5525a143cf4cdf34cd525c453c881403a5549718b703b69dec7a03fd510215c7",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-2/git-leak-recovery__cuxhUij.episode/usage.json",
+                  "sha256": "0617ff1e802969060330985ce989e7f666d10fc013b525b0c8d5cbbda722314c"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-2/git-leak-recovery__cuxhUij.episode/manifest.json",
+                  "sha256": "a8b46e40f39189bfc737aeda8ded5eff6d2bc52718374591370aafdb0dd15d23"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-3/git-leak-recovery__Gasgiey.episode/harbor-result.json",
+              "sha256": "a8ce90b8c7383970156302b80b0008c4da218f617bfdbd13f597cd97153c7134",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-3/git-leak-recovery__Gasgiey.episode/usage.json",
+                  "sha256": "bfaf0a471401fdfdc4ba01ebe65930ea2c832a4c1ce1589e6cbf0b8e7ea0ede1"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--git-leak-recovery-3/git-leak-recovery__Gasgiey.episode/manifest.json",
+                  "sha256": "2fe4e157ea7f8f59b3d1e641aa3b25323f3ed005f1f0e1127c336ef74c21e464"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "headless-terminal",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.003172044666666667,
+            "agent_seconds": 65.22824633333333,
+            "total_seconds": 368.05061133333334,
+            "setup_seconds": 269.74215833333335,
+            "jev_cost": 8.8578e-05,
+            "delegate_turns": 7.666666666666667
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal/headless-terminal__ou2wKAC.episode/harbor-result.json",
+              "sha256": "90f2ba514124e57c49a12ab6430229379376320a62a4956b8f5219c896dcbf36",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal/headless-terminal__ou2wKAC.episode/usage.json",
+                  "sha256": "412176595f8d8890b25850b896ce2c5448890b59c9d03acd88b80b7d79546cc3"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal/headless-terminal__ou2wKAC.episode/manifest.json",
+                  "sha256": "02b5f89871fde10f91d146e91ffd2364e4e112b47364788df803432851593af5"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-2/headless-terminal__U3qtrYa.episode/harbor-result.json",
+              "sha256": "5e0f0fe08e96a4cc82216be9d299fe7d321677709e7e58d0b3038d4be2587578",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-2/headless-terminal__U3qtrYa.episode/usage.json",
+                  "sha256": "2a5e29d03fb758264146981ca21fd31316ab92cd9bfc40ccd400219068c5eefe"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-2/headless-terminal__U3qtrYa.episode/manifest.json",
+                  "sha256": "6b988a4b1c86ddeadc5c6e91bb1f7d2e7f3456e813c237c46ae5b6b8905e7d72"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-3/headless-terminal__C6mvzvC.episode/harbor-result.json",
+              "sha256": "33d5c4b76c4001691cba9a27cf6453fbd766ca5f2ff5151813d519a68d387c89",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-3/headless-terminal__C6mvzvC.episode/usage.json",
+                  "sha256": "a497bf8dfb8c3bb2a10a5f2cc159a722a0253d24b065930785491a2eb10e152d"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe-luna--headless-terminal-3/headless-terminal__C6mvzvC.episode/manifest.json",
+                  "sha256": "aea765009e89a96e8be3042a48ac1c3229dd6e061044baaf8313281d7996bcea"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "log-summary-date-ranges",
+          "n": 3,
+          "passed": 0,
+          "means": {
+            "cost": 0.0026966746666666668,
+            "agent_seconds": 24.64110833333333,
+            "total_seconds": 327.7364416666667,
+            "setup_seconds": 278.52327533333334,
+            "jev_cost": 0.001162168,
+            "delegate_turns": 3
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges/log-summary-date-ranges__VaVe8gb.episode/harbor-result.json",
+              "sha256": "d38aff35d106552a1443d7e2503bb6cb6651db446f90591322bf612c8564bf4f",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges/log-summary-date-ranges__VaVe8gb.episode/usage.json",
+                  "sha256": "b5975e8c8161a0b5e5899adf1779f007559c76bc0777c1daa90e5a987275f1c5"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges/log-summary-date-ranges__VaVe8gb.episode/manifest.json",
+                  "sha256": "ab37a768462826dfc552a3c371da581c01c7a925f185534714039db122d55c9c"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-2/log-summary-date-ranges__ESN4F8o.episode/harbor-result.json",
+              "sha256": "9884043da06e10d3b950b7b5d9b1e049d41384ca2bee23f7a34434c84a38bed4",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-2/log-summary-date-ranges__ESN4F8o.episode/usage.json",
+                  "sha256": "94f447b8954041b3a1108355b76d69344df6cc5870cc564f92b2f455308c9e00"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-2/log-summary-date-ranges__ESN4F8o.episode/manifest.json",
+                  "sha256": "27fd6b0bb6d2a5e8f9a3e12d65ff44e9e85cf700fb12778f6085f780f504813d"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-3/log-summary-date-ranges__UdyCYXP.episode/harbor-result.json",
+              "sha256": "9cbb709e4c97c86adf4b31dd2bc3a0f1fdf09aac1c127fe2b7c0ac2c77e18f87",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-3/log-summary-date-ranges__UdyCYXP.episode/usage.json",
+                  "sha256": "90410cf8dc1f87dbac2dddccdb5bfa406c6eb805567c3083a22cd58385a02fa2"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--log-summary-date-ranges-3/log-summary-date-ranges__UdyCYXP.episode/manifest.json",
+                  "sha256": "f67c5eaffe635a07dc475fab14bfe0022eae014cc77c32513bdc6d745806d166"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "sqlite-db-truncate",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.004158485333333334,
+            "agent_seconds": 43.516275,
+            "total_seconds": 331.43287833333335,
+            "setup_seconds": 268.67581366666667,
+            "jev_cost": 0.000140252,
+            "delegate_turns": 6
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate/sqlite-db-truncate__w4UPx9e.episode/harbor-result.json",
+              "sha256": "6379ce1452f46c6b7ea2c24e16c2a59f6106725fded9ce69d43e973f724f462a",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate/sqlite-db-truncate__w4UPx9e.episode/usage.json",
+                  "sha256": "16c0a3ea8b3c92dcb6deca08df97b0e7c2dca238908d027166a90cf27c69d48e"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate/sqlite-db-truncate__w4UPx9e.episode/manifest.json",
+                  "sha256": "2dea082096486b2e58947ae0b2a91dda1103ff0ff298da6f0328d9854243e7cf"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-2/sqlite-db-truncate__9fxdDfi.episode/harbor-result.json",
+              "sha256": "61c9dd8a1bdf15bce7908eb40d09284e0758367db09d7249053cfec30cc9f841",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-2/sqlite-db-truncate__9fxdDfi.episode/usage.json",
+                  "sha256": "6fae9058233670a2b2fe26dba2ba7b7ffb490539844770da5b546d29ff6bd7d8"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-2/sqlite-db-truncate__9fxdDfi.episode/manifest.json",
+                  "sha256": "7d275733bf5ba08c0058c7c5f9f08b1397529dcc0701b1849a1574f03825f1c6"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-3/sqlite-db-truncate__GwjqAhG.episode/harbor-result.json",
+              "sha256": "9f6f25dd305982693d0eeca86bd3f68e27614345ecc529fae10018b89489b9d5",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-3/sqlite-db-truncate__GwjqAhG.episode/usage.json",
+                  "sha256": "04f897f986fbc121f86a0ac9594e4c108e78be7bf6a291095a28ddcbd4e65c68"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe-luna--sqlite-db-truncate-3/sqlite-db-truncate__GwjqAhG.episode/manifest.json",
+                  "sha256": "7be9d46e421df48c5c71a98fd094ae6e8ed79cc2fb24b17bd0dc19f3b289f5e8"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "coder-one-jevprobe2-luna",
+      "n": 24,
+      "passed": 17,
+      "sum_of_task_means": {
+        "cost": 0.030656324000000006,
+        "agent_seconds": 410.15166,
+        "total_seconds": 2433.913606,
+        "setup_seconds": 1833.8583516666665
+      },
+      "tasks": [
+        {
+          "task": "build-cython-ext",
+          "n": 3,
+          "passed": 0,
+          "means": {
+            "cost": 0.013526899333333335,
+            "agent_seconds": 158.315936,
+            "total_seconds": 346.372298,
+            "setup_seconds": 160.95388466666665,
+            "jev_cost": 0.00048186600000000007,
+            "delegate_turns": 19
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext/build-cython-ext__UEcLcgT.episode/harbor-result.json",
+              "sha256": "8e1497bc261195e3c0656a3b09c93399ae7ed554fe5fa23ee7ff4f3016b19e1e",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext/build-cython-ext__UEcLcgT.episode/usage.json",
+                  "sha256": "670f78009fd7307c44ee07508e9b2d1a9582c30e77b179e28c63f8dc1ec82e3e"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext/build-cython-ext__UEcLcgT.episode/manifest.json",
+                  "sha256": "65cbec81a9560d069a2f5b0fa70f0b4248c657df2fa9759925b606c79f02c044"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-2/build-cython-ext__jveEK8t.episode/harbor-result.json",
+              "sha256": "67e94716f2854c00e535dd54e834cef5f02a594dd5e7c7eb7a9637d0bdd93621",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-2/build-cython-ext__jveEK8t.episode/usage.json",
+                  "sha256": "b833a200372882d983ab606add004c89e05fd4813f0ab54136a5dfadc40d4ff8"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-2/build-cython-ext__jveEK8t.episode/manifest.json",
+                  "sha256": "0aa25e37c2ea68a2f1b33b7c26f278585c59a94a3d6ef2c75ef3a012833910b4"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-3/build-cython-ext__XY7RUkG.episode/harbor-result.json",
+              "sha256": "2aa4280c3e7c1b706988da5fda5c3991d6fa38a8122e60690db92cdcd209f381",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-3/build-cython-ext__XY7RUkG.episode/usage.json",
+                  "sha256": "02f0226b123456e7d3a9db2411ff93b7e681cc4bca0f58a05fc4a377b1c67a03"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--build-cython-ext-3/build-cython-ext__XY7RUkG.episode/manifest.json",
+                  "sha256": "e66023cbe3af1568867a780aa87186c68d9fde67090e3798ccedb4af926d4dd1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "cancel-async-tasks",
+          "n": 3,
+          "passed": 1,
+          "means": {
+            "cost": 0.0015791840000000002,
+            "agent_seconds": 37.14995433333333,
+            "total_seconds": 308.8043896666667,
+            "setup_seconds": 240.36936666666665,
+            "jev_cost": 5.7904e-05,
+            "delegate_turns": 4.333333333333333
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks/cancel-async-tasks__YCFV4em.episode/harbor-result.json",
+              "sha256": "58880b45c253fae19e48fb9f2f53e8a9cb973ba94f07650b583aaa77fb7d2375",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks/cancel-async-tasks__YCFV4em.episode/usage.json",
+                  "sha256": "8f072dede9d61f34b0f0e849124d610de4d5828c3d2bdff8a44f55575d6c4e46"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks/cancel-async-tasks__YCFV4em.episode/manifest.json",
+                  "sha256": "8a0d591636e0ce563be4b1d9937886f2751f401784bc5c5255ebd4c83f205014"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-2/cancel-async-tasks__yfgsV5G.episode/harbor-result.json",
+              "sha256": "b7e1def1829a2faf2f13544e8192eff72c1a65bba7f25b9b830ff24364563226",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-2/cancel-async-tasks__yfgsV5G.episode/usage.json",
+                  "sha256": "cb2ccc3ac8621ee159ba2bbedb9f77438842d792458b7a601895e4defc4b9f55"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-2/cancel-async-tasks__yfgsV5G.episode/manifest.json",
+                  "sha256": "bd1c4edffb38da9392d4f4fd9ccb7f42838959f4163b8fdf59cb26234a96c8a8"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-3/cancel-async-tasks__6EV6uNc.episode/harbor-result.json",
+              "sha256": "c16f95f61372271b20a73e928e4cb53b73872f2b4a1d1973df760df783f81b63",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-3/cancel-async-tasks__6EV6uNc.episode/usage.json",
+                  "sha256": "8e713db50fc2c4de3c0b0c87f44f60d9b235d682ddeb86874b4bebc19d2208fe"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--cancel-async-tasks-3/cancel-async-tasks__6EV6uNc.episode/manifest.json",
+                  "sha256": "f9890ac56d5aee6de137ad259195a377da7e18fcb4e9d09b6455839730f7be25"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "fix-code-vulnerability",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.0030134093333333335,
+            "agent_seconds": 25.088005000000003,
+            "total_seconds": 256.7827966666667,
+            "setup_seconds": 214.91057066666667,
+            "jev_cost": 0.000711956,
+            "delegate_turns": 5.333333333333333
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability/fix-code-vulnerability__Axy9UiX.episode/harbor-result.json",
+              "sha256": "c735be030b09574bf1655a6ea6d0683c4a841c15dbbd67715ca9b578904fcbe6",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability/fix-code-vulnerability__Axy9UiX.episode/usage.json",
+                  "sha256": "17f20a785dac09d1a5fd05ef30d60f802cc814b3d75637cd799588b9afbad839"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability/fix-code-vulnerability__Axy9UiX.episode/manifest.json",
+                  "sha256": "5ed6130d9b4fa2a511fcbe18016fbf582fdaa3ea0ae5000a6d62e479a9e2bd06"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-2/fix-code-vulnerability__RyQMuyk.episode/harbor-result.json",
+              "sha256": "178836982ca44ec9874ab6afda189fba77d343344b89c4ee01c75b9606ba5e49",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-2/fix-code-vulnerability__RyQMuyk.episode/usage.json",
+                  "sha256": "cea1b49dd14713069593fd08e197a26ce422153d7104582171e60fa28a8dc967"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-2/fix-code-vulnerability__RyQMuyk.episode/manifest.json",
+                  "sha256": "3209035ab0e8b449ed0df67c6d4f5d606e51f7b85b2ba378822c4622589eced8"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-3/fix-code-vulnerability__oN6UBG8.episode/harbor-result.json",
+              "sha256": "9b4caf11ed625abd893b53cd79fc51e78458d643c10b501dc5890949b930da39",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-3/fix-code-vulnerability__oN6UBG8.episode/usage.json",
+                  "sha256": "81e3418fbc356c704ee86369e9ebe86c416063bd2e0f9b044ccf8ba9f9a807c1"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-code-vulnerability-3/fix-code-vulnerability__oN6UBG8.episode/manifest.json",
+                  "sha256": "0dc5cbd1aeaac17dd8106b5104b83bf71db9265b561645d453f856abda91d95e"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "fix-git",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.002761918,
+            "agent_seconds": 30.869847333333333,
+            "total_seconds": 268.95898566666665,
+            "setup_seconds": 218.93423833333333,
+            "jev_cost": 0.000432698,
+            "delegate_turns": 7.666666666666667
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU.episode/harbor-result.json",
+              "sha256": "6e1a3fdda3d82e0ecf3b079c1105315a8a83ad869487ea8cbbd59afac5e25245",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU.episode/usage.json",
+                  "sha256": "595fe25c53bc1c26d98a5037677da5e6f5e11e724d8185ccb00adf549edde557"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git/fix-git__LvEuUuU.episode/manifest.json",
+                  "sha256": "ab0d2eed4a5333f6b2d6c1b7c1d492107a240afe1f501fdceda4ff16d2ca6b0c"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-2/fix-git__VWzYmBz.episode/harbor-result.json",
+              "sha256": "eedef376c02cf94db9da33e5f3fbadbce2bf70a006d6b0e83f2f9cfdfa83f6a9",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-2/fix-git__VWzYmBz.episode/usage.json",
+                  "sha256": "7214393bef04c6b6eb6e2c2c032ced578441594e75960dbec062e459444ceb30"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-2/fix-git__VWzYmBz.episode/manifest.json",
+                  "sha256": "7f1d63e842d14e855449be4d413037ce48dd13b3c0c710ea7ded6346dae0ca78"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-3/fix-git__czdDFtk.episode/harbor-result.json",
+              "sha256": "97b08347b2aa3462d278973e11d0de281ec39b21de71f79d3850073f7bb6cc40",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-3/fix-git__czdDFtk.episode/usage.json",
+                  "sha256": "003bab3b45bc5599963aa86c2a36f6a68afacebdae78bf181c234efc38b49629"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--fix-git-3/fix-git__czdDFtk.episode/manifest.json",
+                  "sha256": "271989a666a4e3270d145d3578f03d650bdefcc19339a12bed8060150f2cbb0b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "git-leak-recovery",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.0016113753333333333,
+            "agent_seconds": 22.852482666666667,
+            "total_seconds": 328.429447,
+            "setup_seconds": 281.6311983333333,
+            "jev_cost": 0.000118342,
+            "delegate_turns": 5
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery/git-leak-recovery__ZroGjMk.episode/harbor-result.json",
+              "sha256": "cdeb524fbe758700db82ad49cb2512444769a698d7da5f19db5374ba16a4fd58",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery/git-leak-recovery__ZroGjMk.episode/usage.json",
+                  "sha256": "632bd8b71d6b85f50f2b3b428ee537639a63be71e2a593a1562226947e4aecb5"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery/git-leak-recovery__ZroGjMk.episode/manifest.json",
+                  "sha256": "43b2dc940bb45e6a69839c40b911c015e7adac8f118813a5f172c99745cfec45"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-2/git-leak-recovery__DHQae9D.episode/harbor-result.json",
+              "sha256": "bf7e1ecdd1498bddda6eb307998e30c6bc01ffa6821191cbf9fff88ee00a8be2",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-2/git-leak-recovery__DHQae9D.episode/usage.json",
+                  "sha256": "e30de87d8d774ea48f6725aa21708fe4698c3d378f37e2d3e78482a3ca29f41b"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-2/git-leak-recovery__DHQae9D.episode/manifest.json",
+                  "sha256": "69e19f4ec2cfd09e7e7acbe95a6a48b7eb377ee21302fe05f1fdbcf953e28a8a"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-3/git-leak-recovery__zUZcJQ9.episode/harbor-result.json",
+              "sha256": "922b6616493ae237e10ca0da07b78541e179ad1b0dc4ee44ffe288a6c726c347",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-3/git-leak-recovery__zUZcJQ9.episode/usage.json",
+                  "sha256": "42047f2b6d248dfa145bf488cffc9e4772468e2d9df9c63bfc70b3b194ed1daf"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--git-leak-recovery-3/git-leak-recovery__zUZcJQ9.episode/manifest.json",
+                  "sha256": "32652630ab02287421e6986e152b3a6d621f20f5a91c581a6a1f248d4a2b28f5"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "headless-terminal",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.002092102,
+            "agent_seconds": 51.02649433333333,
+            "total_seconds": 324.240785,
+            "setup_seconds": 240.02701533333334,
+            "jev_cost": 8.838200000000001e-05,
+            "delegate_turns": 4.666666666666667
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal/headless-terminal__VtBywUy.episode/harbor-result.json",
+              "sha256": "6b8c3997447fc8a2056d725055c0d9c17f51296a3b2a37210cfd3992b5cd4ca2",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal/headless-terminal__VtBywUy.episode/usage.json",
+                  "sha256": "6b2aa98e06b33fbd12fbc6a9b81d0d9e0f4035a1d39c22a18c64db187be59d33"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal/headless-terminal__VtBywUy.episode/manifest.json",
+                  "sha256": "b81d93e4e29477e455c94280144a6ff789685d05ec7d550af68bb61b11983b4b"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-2/headless-terminal__6HY4Krx.episode/harbor-result.json",
+              "sha256": "a5e755de338ad7cea13faf1c5cb2fbdeada835d8f59e1dda6824f702e244d1b1",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-2/headless-terminal__6HY4Krx.episode/usage.json",
+                  "sha256": "92b31f128bc5cd070d1d5b44badec16b7a1765bff601df2705e23ccfd9d78828"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-2/headless-terminal__6HY4Krx.episode/manifest.json",
+                  "sha256": "0001f9063886770ae14cad33618bffd859c6ea19266f6b86f52e33f955c3e30b"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-3/headless-terminal__7hemEGi.episode/harbor-result.json",
+              "sha256": "64b2f01fbf382b9327f9b416be362e248da27e55e43e7582fbd28898d89f983f",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-3/headless-terminal__7hemEGi.episode/usage.json",
+                  "sha256": "0c0094f85a574fe60526afe79ba52226205ea9332af2abed0b6dadec60dbf92e"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-luna--headless-terminal-3/headless-terminal__7hemEGi.episode/manifest.json",
+                  "sha256": "1cd79a15b9ef54c69464bf6a1abb88da085931b5a6b753ddf9e47e67cbaef638"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "log-summary-date-ranges",
+          "n": 3,
+          "passed": 1,
+          "means": {
+            "cost": 0.002162976666666667,
+            "agent_seconds": 27.807231,
+            "total_seconds": 281.3401826666667,
+            "setup_seconds": 234.05796666666666,
+            "jev_cost": 0.00060851,
+            "delegate_turns": 3.3333333333333335
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges/log-summary-date-ranges__5ABn7wE.episode/harbor-result.json",
+              "sha256": "9560fa4980c0a7dbd310552716ee0a9f8114c6028500afae9e54a041e18d258b",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges/log-summary-date-ranges__5ABn7wE.episode/usage.json",
+                  "sha256": "0ef75681351427dc93638fe319e6f027181acb3e41f03c6027632abde1a70a78"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges/log-summary-date-ranges__5ABn7wE.episode/manifest.json",
+                  "sha256": "b56c308e356422b5833d6236c567c7d538d73f60154775d198d422d0eef46f32"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-2/log-summary-date-ranges__tfifzib.episode/harbor-result.json",
+              "sha256": "f13351cd253dbac7ac85aae8fc8eb2c5bbbc7ae7b4bf78ff249b43cbd1a48f94",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-2/log-summary-date-ranges__tfifzib.episode/usage.json",
+                  "sha256": "41c87d3f6b950d4200146f3e6125d4bdcc605f8ae51fe318158bb0605cdd6f34"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-2/log-summary-date-ranges__tfifzib.episode/manifest.json",
+                  "sha256": "996ac4e1993bd198e64815960885dfa9b195b7ed427d891f79f10827977f26c3"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-3/log-summary-date-ranges__r5nsTgy.episode/harbor-result.json",
+              "sha256": "c959240e7257f15636fa7fa2d08580ad320ce62fa926435157084b3674d07ab0",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-3/log-summary-date-ranges__r5nsTgy.episode/usage.json",
+                  "sha256": "20cd99a5897346f3e628fab89aa0e860bbde6afff4683cf6603313781168f6d5"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--log-summary-date-ranges-3/log-summary-date-ranges__r5nsTgy.episode/manifest.json",
+                  "sha256": "c8f76e6739ba8cea84fb9a06cccac6ef5efafa02cc7b35f3b73ebdd679d61ad0"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "sqlite-db-truncate",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.003908459333333334,
+            "agent_seconds": 57.04170933333333,
+            "total_seconds": 318.9847213333333,
+            "setup_seconds": 242.974111,
+            "jev_cost": 0.000140266,
+            "delegate_turns": 6.333333333333333
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate/sqlite-db-truncate__VzGfRX2.episode/harbor-result.json",
+              "sha256": "f18c038039867e903ebde06825808fbee1e0397d89484a989772ea77072a8fb5",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate/sqlite-db-truncate__VzGfRX2.episode/usage.json",
+                  "sha256": "43b9942269583303115346c79ee0b1b5ce1c439f99fcbc74e5ca26f5ccb628e7"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate/sqlite-db-truncate__VzGfRX2.episode/manifest.json",
+                  "sha256": "fbdd3017f3728fa9f3e37c921311bd56f12d8bc8e6a8b0e05f0dc4fa2947b322"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-2/sqlite-db-truncate__tbYo2Fm.episode/harbor-result.json",
+              "sha256": "f0df0058bc2abf2855cbc88aa1723a20e2eadded321c7c3a86b2dbd87347f95e",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-2/sqlite-db-truncate__tbYo2Fm.episode/usage.json",
+                  "sha256": "37ba65aa6cb3bac3cb781dcdc691fa9621ce79341d526de670caf28bab5c55a4"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-2/sqlite-db-truncate__tbYo2Fm.episode/manifest.json",
+                  "sha256": "2016138ef3d1d3aecc44bbb97dee7990a34777e98933e9bcb17d4017c1fccd70"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-3/sqlite-db-truncate__4wP6K4T.episode/harbor-result.json",
+              "sha256": "28055d3cd16123dcf53ef951781ed1952a9ad3fd4d23be379a21d431329b5301",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-3/sqlite-db-truncate__4wP6K4T.episode/usage.json",
+                  "sha256": "3a15537e86c728e1919409af33f1cc6aa835b63db647fd80a88a9df7e29f7863"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-luna--sqlite-db-truncate-3/sqlite-db-truncate__4wP6K4T.episode/manifest.json",
+                  "sha256": "e89f6634c024964a3f5f2a6cab290bc7071bcb6f6a45c926289fbc0e293d429a"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "coder-one-jevprobe3-luna",
+      "n": 24,
+      "passed": 19,
+      "sum_of_task_means": {
+        "cost": 0.028550246666666668,
+        "agent_seconds": 420.17002499999995,
+        "total_seconds": 2826.455556666667,
+        "setup_seconds": 2184.864603
+      },
+      "tasks": [
+        {
+          "task": "build-cython-ext",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.011978151333333334,
+            "agent_seconds": 163.82571133333332,
+            "total_seconds": 402.812832,
+            "setup_seconds": 211.45392166666667,
+            "jev_cost": 0.000481838,
+            "delegate_turns": 18.666666666666668
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW.episode/harbor-result.json",
+              "sha256": "d3e096be94f9c32010314178c6531c381790ca5ec5eb6cc504f8ed84828c1cbb",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW.episode/usage.json",
+                  "sha256": "cf017dcf14d26f00bbb03b265741ac7f563173c6579fb5db86570b8a2c586333"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW.episode/manifest.json",
+                  "sha256": "e4603261ff00af03d51a06b02ce2ade9a852d98003ebaba36d50b7cf81364ef6"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-2/build-cython-ext__S9Qeusb.episode/harbor-result.json",
+              "sha256": "ee81b80153f2bb0500ba66815f79ef826c04f3c8d2d8766e4cbaf7f8196bcbc7",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-2/build-cython-ext__S9Qeusb.episode/usage.json",
+                  "sha256": "471755c62cdce8dd326491866f722fb38fe946736a10552225ef990e63ba069f"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-2/build-cython-ext__S9Qeusb.episode/manifest.json",
+                  "sha256": "1c5c2cf62a62d699be06dbfddf9f8a38d1764614cf72685f51d61dc7dbe7bff9"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-3/build-cython-ext__p3GxLHC.episode/harbor-result.json",
+              "sha256": "e57ff115f9cfb571546a724c98a49c244d401582bf1650e6c708522c960f12c6",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-3/build-cython-ext__p3GxLHC.episode/usage.json",
+                  "sha256": "7a646b11b6ffe57d44596a21b81f18e5e7b899b78247900552189f50ca51b32b"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-3/build-cython-ext__p3GxLHC.episode/manifest.json",
+                  "sha256": "f1ecb498fb7d4cb8bb5c40417513df4e9e2a48388ffe9f5682977e7180dd28ee"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "cancel-async-tasks",
+          "n": 3,
+          "passed": 2,
+          "means": {
+            "cost": 0.0015294093333333334,
+            "agent_seconds": 35.900248,
+            "total_seconds": 370.1664446666667,
+            "setup_seconds": 299.71587366666665,
+            "jev_cost": 5.8016e-05,
+            "delegate_turns": 4
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks/cancel-async-tasks__Eu23An4.episode/harbor-result.json",
+              "sha256": "cc1ce966cee41e3eb310c56ca946b8357b5618f5e3ef424a2000458ac37d6aad",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks/cancel-async-tasks__Eu23An4.episode/usage.json",
+                  "sha256": "03f669e3e3dc95d59fb57653f172c0d30bcdeaf51bd43f0c21ab7ded6a85557f"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks/cancel-async-tasks__Eu23An4.episode/manifest.json",
+                  "sha256": "82007c5fe392f0d7c6c5c618ef5b0c9afd486d16d448d50b4adb8a17467783f9"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/harbor-result.json",
+              "sha256": "023089d5a6c7f64e08773ba632bdde9e7a23adf49560a16475b553b3bff08529",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/usage.json",
+                  "sha256": "b43f5f0195633cd1137ce28dcf918f05af01dcc733d3487c962ee052ec806787"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/manifest.json",
+                  "sha256": "09f587f53ce2a08819232078d0c5c04ecd221ebda48d5f72da0ea3c0d025b52c"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-3/cancel-async-tasks__Z3SFguw.episode/harbor-result.json",
+              "sha256": "526b4d25f2fe7e01aaee604b456cb2d739467be1530870098566f1416b65ce94",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-3/cancel-async-tasks__Z3SFguw.episode/usage.json",
+                  "sha256": "5243ec2783b50e19956b5e866bd2d93c95da9ec4f9f232adbbabdbd50f69d9a1"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-3/cancel-async-tasks__Z3SFguw.episode/manifest.json",
+                  "sha256": "0714c0f91464c4c94f67923d10caa5ab0fa54f0803d4d0dbc4e0a3102a59f643"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "fix-code-vulnerability",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.0030647133333333338,
+            "agent_seconds": 29.430638666666667,
+            "total_seconds": 321.924282,
+            "setup_seconds": 275.38699099999997,
+            "jev_cost": 0.00071232,
+            "delegate_turns": 5.666666666666667
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability/fix-code-vulnerability__uyt6kdM.episode/harbor-result.json",
+              "sha256": "6a6e8a3f98b9fdc8451fddcbe1ababf3acaece87621431c729bd67939ea8e690",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability/fix-code-vulnerability__uyt6kdM.episode/usage.json",
+                  "sha256": "1261b9c7a60eb9568350d4694a05a8e81102570404e62a14a1b55fb4e7d44cf6"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability/fix-code-vulnerability__uyt6kdM.episode/manifest.json",
+                  "sha256": "017ce58b00f5c796e210dc89004b3e86b1d7644876ae9de6b9f3b84a7ee987bf"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-2/fix-code-vulnerability__qpLYA9P.episode/harbor-result.json",
+              "sha256": "e22ac6cfdec883019c76d18d1d61e64f5259918c08f40da74009c2bd5b6f3bfe",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-2/fix-code-vulnerability__qpLYA9P.episode/usage.json",
+                  "sha256": "af0fa14648c5aaa74a071ef79146853ac34328a0fce05b23bf06cf8972891044"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-2/fix-code-vulnerability__qpLYA9P.episode/manifest.json",
+                  "sha256": "c8e4e09c821073f644d52612d0976420ffabde5330c021955b4dd3e1a6e4d4a3"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-3/fix-code-vulnerability__oqk9ntS.episode/harbor-result.json",
+              "sha256": "9f243c1881bf48e98ccb6bffed0959fbb6f0eaa6eb59ebea82f0e30b424494b5",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-3/fix-code-vulnerability__oqk9ntS.episode/usage.json",
+                  "sha256": "2281860b92e10739860bc031496cceaa078204479f273f48b3ae6718ceff208b"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-3/fix-code-vulnerability__oqk9ntS.episode/manifest.json",
+                  "sha256": "af13c2cd045c499265aa75a8d372df0fb47989d45b9d6d2f09f7de2edea16f23"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "fix-git",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.0028553893333333334,
+            "agent_seconds": 34.173943666666666,
+            "total_seconds": 373.89052,
+            "setup_seconds": 314.0965816666667,
+            "jev_cost": 0.000432656,
+            "delegate_turns": 8.333333333333334
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git/fix-git__c2MR9Lx.episode/harbor-result.json",
+              "sha256": "6853ceba64ae0e3eb9ebee46c1d48a8c6563498bbef9726b7de1937cb823989b",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git/fix-git__c2MR9Lx.episode/usage.json",
+                  "sha256": "87d420f5f56f65a5343579b3cf98ee3b33968df1a2b3bc6b9f4b9e5c8d427378"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git/fix-git__c2MR9Lx.episode/manifest.json",
+                  "sha256": "835af50c5bf5ce8814e56605c1e9141b34bf94f75495d692d5405a9ddbe1de01"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-2/fix-git__kAysiCA.episode/harbor-result.json",
+              "sha256": "0d5a5ed3f18df2e55c369b22e5bba1af0a024918f863ca3f2b4ada863d760163",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-2/fix-git__kAysiCA.episode/usage.json",
+                  "sha256": "17d8ccb9ffa25765a9541c491c45232b5f74ce0221c44d57e6e56a0a7f66b2a6"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-2/fix-git__kAysiCA.episode/manifest.json",
+                  "sha256": "8ec57276fbb097c435d4f16d8821075673e2ab633a33e20ea266b3e70cd8039f"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-3/fix-git__rwhcT55.episode/harbor-result.json",
+              "sha256": "f3b5225be761db2fb1607da909d7678fcce370990f89e2db81323f7d2ec2bcd4",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-3/fix-git__rwhcT55.episode/usage.json",
+                  "sha256": "a941969f06b7de3a3681132700cd1c7871be1479595bd669e2a4b024c83f3370"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-3/fix-git__rwhcT55.episode/manifest.json",
+                  "sha256": "d6d04e1514e2cb33d4dc7b7710151f4640950323426ca6465edb67ae1b9150d9"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "git-leak-recovery",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.0014543693333333334,
+            "agent_seconds": 26.564788333333333,
+            "total_seconds": 313.2167,
+            "setup_seconds": 251.621377,
+            "jev_cost": 0.00011807600000000001,
+            "delegate_turns": 5.666666666666667
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery/git-leak-recovery__dh8ZX77.episode/harbor-result.json",
+              "sha256": "6a594c4d8ac3e9362d1915385acd3c54d16235c9fa2fc9c1479ae54472695825",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery/git-leak-recovery__dh8ZX77.episode/usage.json",
+                  "sha256": "f703aa8a12179e0af83876761793fcdaa47c639514ab87f1b47a864a73a1d460"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery/git-leak-recovery__dh8ZX77.episode/manifest.json",
+                  "sha256": "124d7651effe6f0e39195c557afaf9a4f9302bdb8f1024abd9d90928e42e62ee"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-2/git-leak-recovery__Ex7ziSp.episode/harbor-result.json",
+              "sha256": "80ad4c3344ff9abdc80d34d27effc1c1d3e761ad7c00832aae1d915620318d05",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-2/git-leak-recovery__Ex7ziSp.episode/usage.json",
+                  "sha256": "41851419fc7eeb4e1ccf913b2cb4302d7a9287db460e37c336fb15e4d4254523"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-2/git-leak-recovery__Ex7ziSp.episode/manifest.json",
+                  "sha256": "38d5ef95a4f8adba82bb121d6b52b28ae6d226070cd903990253b6d26cdcd50c"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-3/git-leak-recovery__2iSZSJs.episode/harbor-result.json",
+              "sha256": "ccdcf7cafa756a218323508e1d320e14150caa9ed3a2404bf06b7cbb49fba231",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-3/git-leak-recovery__2iSZSJs.episode/usage.json",
+                  "sha256": "93a22bd10fbbf3983b6f85d36fc76c68965b1efef1a92cfb6041204bbbbbc8b0"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-3/git-leak-recovery__2iSZSJs.episode/manifest.json",
+                  "sha256": "1b5e99849ea97f06d227603a8afcf9f199149931a914ef7c186f2dec7fdb91d2"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "headless-terminal",
+          "n": 3,
+          "passed": 2,
+          "means": {
+            "cost": 0.0019296993333333334,
+            "agent_seconds": 47.72235533333333,
+            "total_seconds": 337.980655,
+            "setup_seconds": 250.792857,
+            "jev_cost": 8.874600000000001e-05,
+            "delegate_turns": 3.6666666666666665
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/harbor-result.json",
+              "sha256": "696d0acaf72133b87ab61bda8a6e3c1e1c62a2582cbaf59684093771d48c9887",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/usage.json",
+                  "sha256": "7d87f7c70c065872f7fc3819bcaf7f94fdd525543e8a339d78b899381a9e2821"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/manifest.json",
+                  "sha256": "dd1c4ca6a62957562c595f53173263a28225312af5b323a660217c36a26fa4e3"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-2/headless-terminal__bdenFDt.episode/harbor-result.json",
+              "sha256": "9544417791d6ca402458c8e482488fa3979962f7a45abd80316f57cf8cd1e5a2",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-2/headless-terminal__bdenFDt.episode/usage.json",
+                  "sha256": "08f14eaef8ce85ac030a21c7275afe135482d1fa6849fb0f0d4c704d615e3a8c"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-2/headless-terminal__bdenFDt.episode/manifest.json",
+                  "sha256": "997a99c665a5bbe983b28eeeebeec43387449cb165dbc8d396ed14945fc94dd5"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-3/headless-terminal__2aRsqY7.episode/harbor-result.json",
+              "sha256": "7d2832b4e86ceca970b81d883d60e7e3bf9ba8497a861002b6850018614c0c2a",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-3/headless-terminal__2aRsqY7.episode/usage.json",
+                  "sha256": "2ba03047ded470a1a8bb0503010de8f9a781ea6dfb97727753aa4639877bffd4"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-3/headless-terminal__2aRsqY7.episode/manifest.json",
+                  "sha256": "0bba792fd3b33ae02251d3cdb2403983dae22371dffe8a3c672aca1f181b87eb"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "log-summary-date-ranges",
+          "n": 3,
+          "passed": 0,
+          "means": {
+            "cost": 0.0018643226666666668,
+            "agent_seconds": 25.388406333333332,
+            "total_seconds": 338.3239663333333,
+            "setup_seconds": 291.936292,
+            "jev_cost": 0.000608916,
+            "delegate_turns": 3
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/harbor-result.json",
+              "sha256": "26c169e9a1b6efa2209015169749cf4210fd6639897e262656db6a82f57f6c80",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/usage.json",
+                  "sha256": "40a2a955ff1e6cacddc05a13412a997eb6210e2b8aade7421b51edf88e093917"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/manifest.json",
+                  "sha256": "bc0f6936335355bcf5f336e32a3f17c7057cc79c7a480e21f187690d746249ec"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/harbor-result.json",
+              "sha256": "8ea638d2c91c05e024d0e2054c267350b11bde946f9ac252eb46ac10e689599f",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/usage.json",
+                  "sha256": "23b0a7030a05ce3e232af6b1e03b1935374eda97624a88311cd5d48046f9026c"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/manifest.json",
+                  "sha256": "b41df1a7cd628cc1e8f79a574482643ca7c79ace8d7229af8d5276a24c0ec677"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/harbor-result.json",
+              "sha256": "cc65c18175c4ee533655843c1cbeda95597d43d3377afde7ab6321a80f4a6cbc",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/usage.json",
+                  "sha256": "d6a1016992622fec2581f0022792206796748c1f20ed6eaa166bdf112f942eec"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/manifest.json",
+                  "sha256": "ed42bf95a20e162670af181e2b97e9ef4000f64be0c3fbd7cb775deacbc4aa12"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "sqlite-db-truncate",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.003874192,
+            "agent_seconds": 57.16393333333333,
+            "total_seconds": 368.14015666666666,
+            "setup_seconds": 289.860709,
+            "jev_cost": 0.000140252,
+            "delegate_turns": 6
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate/sqlite-db-truncate__rgzhtVQ.episode/harbor-result.json",
+              "sha256": "aa8d8147ab9ea69df38715dfb089106e0453e9b2dbf08216db99c48e484cda98",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate/sqlite-db-truncate__rgzhtVQ.episode/usage.json",
+                  "sha256": "ac6866808c237ac58d392cbd70d4e274f59fd341959a49bd0e2dc5c0a22333bb"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate/sqlite-db-truncate__rgzhtVQ.episode/manifest.json",
+                  "sha256": "3fc91619a48a5007ad5588ee08a1a819f9e3731e7c99e4f8fe967c304b561b0f"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-2/sqlite-db-truncate__W6vAqqc.episode/harbor-result.json",
+              "sha256": "3189469a55b7d383e650a5cf7f7c036cfe274a7e6d0dfa668c3b2edc6e2fa28d",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-2/sqlite-db-truncate__W6vAqqc.episode/usage.json",
+                  "sha256": "45bcd7d05d6d25c409ea4b4ca57d5f7f2a76c2a1e1bddc2943bec0b0f937f5a7"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-2/sqlite-db-truncate__W6vAqqc.episode/manifest.json",
+                  "sha256": "eec2269b199d1826cc8aef617cd00ed13e597eef76112635235f03702702c3de"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-3/sqlite-db-truncate__Qt9s6U7.episode/harbor-result.json",
+              "sha256": "f6f3a03c4319ecfe0ad2b50ce5dc67180f24bece1f33c951cef8698cb09c8c5e",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-3/sqlite-db-truncate__Qt9s6U7.episode/usage.json",
+                  "sha256": "42f8e8dce90aecfef86573ef037947d57cfb0eee0f621f2f2d917569917b971f"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-3/sqlite-db-truncate__Qt9s6U7.episode/manifest.json",
+                  "sha256": "eaf0c4a29b9a89f2d589055025bdc28d029b05843e09995227b6ad4584f282bb"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "coder-one-jevprobe2-opus-lean-low-5m",
+      "n": 24,
+      "passed": 24,
+      "sum_of_task_means": {
+        "cost": 0.42820595733333333,
+        "agent_seconds": 191.58332833333333,
+        "total_seconds": 2456.1451546666667,
+        "setup_seconds": 2042.9875820000002
+      },
+      "tasks": [
+        {
+          "task": "build-cython-ext",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.10473962933333333,
+            "agent_seconds": 87.67222633333333,
+            "total_seconds": 278.5095063333333,
+            "setup_seconds": 161.875545,
+            "jev_cost": 0.0004936960000000001,
+            "delegate_turns": 6
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext/build-cython-ext__nwFuqc5.episode/harbor-result.json",
+              "sha256": "959be81041905443aab50bbd6a71c04d829c9af66d7dbb157b06af10de125325",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext/build-cython-ext__nwFuqc5.episode/usage.json",
+                  "sha256": "9cce445e349d380e1b92264db5851d3334c0b795ac8d0a3d2ed46cd1193e16a0"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext/build-cython-ext__nwFuqc5.episode/manifest.json",
+                  "sha256": "0021acaec5c312e553d09e7f2019255a3bb0dbedaae38987fb0873919d4a8754"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-2/build-cython-ext__mTi9gsY.episode/harbor-result.json",
+              "sha256": "3a3cee68dc1335460285064dc23ae5e950a1b11ee1670399f44671d3e92accc3",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-2/build-cython-ext__mTi9gsY.episode/usage.json",
+                  "sha256": "63cfc5dcc82f8168ecb2cb84e88d075267767343b115a2d001bd89934a40448c"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-2/build-cython-ext__mTi9gsY.episode/manifest.json",
+                  "sha256": "cc21cd515b94a5628efe3618a6512500afc8504454b5fa557e7cfc099cdfc2d2"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-3/build-cython-ext__NfNHCS2.episode/harbor-result.json",
+              "sha256": "2d3a19fc3dc734318cdb6403bc9791f3f116360645610653631adb48eeca486e",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-3/build-cython-ext__NfNHCS2.episode/usage.json",
+                  "sha256": "c6947b9573a985da090e0dd39feb2e4062b2e148c7cb7fdd9af4f7f3a2dc7b6b"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--build-cython-ext-3/build-cython-ext__NfNHCS2.episode/manifest.json",
+                  "sha256": "c93c63afc7d8a3dbc4f76fa105ae3665d145b0d5ed498d4f109cb9e174f90727"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "cancel-async-tasks",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.045266365333333336,
+            "agent_seconds": 16.566569333333334,
+            "total_seconds": 274.8859043333333,
+            "setup_seconds": 223.901105,
+            "jev_cost": 6.843200000000001e-05,
+            "delegate_turns": 2.3333333333333335
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks/cancel-async-tasks__YVVhSRW.episode/harbor-result.json",
+              "sha256": "ba42f1c8ea65beb80cb052c95586341aac1516f109c7f295ad6f25145aea0a61",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks/cancel-async-tasks__YVVhSRW.episode/usage.json",
+                  "sha256": "0f258fec1fe24f48486bc4de90e690a18b266efaf5ca10c6c5f531855ba77fae"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks/cancel-async-tasks__YVVhSRW.episode/manifest.json",
+                  "sha256": "5ca1cccfd08a38d3db403471f4d97db8869007de4844ad39936dfdb87be9efc7"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-2/cancel-async-tasks__zCoHCkR.episode/harbor-result.json",
+              "sha256": "4b3c3b528c45572cc45aea61fc2d15a1f2e3c280f33f36f57654af5db04fecaf",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-2/cancel-async-tasks__zCoHCkR.episode/usage.json",
+                  "sha256": "0e24c5720bc8841af424386576100a64a68315ef3b013a092a901c2d06fb4b4c"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-2/cancel-async-tasks__zCoHCkR.episode/manifest.json",
+                  "sha256": "1ed2fb766a63ddf5b46724e17734f9e980da6918a89dca1ac9818681790e5839"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-3/cancel-async-tasks__G7gTPnR.episode/harbor-result.json",
+              "sha256": "ad4b85cd6dca530ad7f29c5bd0653e75cfede5a018d9fdb07bf1a4cb1d48bffd",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-3/cancel-async-tasks__G7gTPnR.episode/usage.json",
+                  "sha256": "cec751d36a4cfac32cff9fda4bc06a2dcfcca60ab67b6e6db890de890684f21a"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--cancel-async-tasks-3/cancel-async-tasks__G7gTPnR.episode/manifest.json",
+                  "sha256": "dc94982183bb4fa3a8c23d3313a4870bfd439b6a048ea32471ee6f9e79ad3190"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "fix-code-vulnerability",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.04540662999999999,
+            "agent_seconds": 11.109647333333333,
+            "total_seconds": 262.332148,
+            "setup_seconds": 233.80618933333332,
+            "jev_cost": 0.00071743,
+            "delegate_turns": 3
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability/fix-code-vulnerability__ySbyavC.episode/harbor-result.json",
+              "sha256": "6c41bade244c99ac77580111a9e1171636a0314bb98456d0814bed6e6287c03e",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability/fix-code-vulnerability__ySbyavC.episode/usage.json",
+                  "sha256": "9d6283686661fa4e8484ca57260baa18ae5eef926f588835f0cc9b199080ed77"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability/fix-code-vulnerability__ySbyavC.episode/manifest.json",
+                  "sha256": "64adbd569f53e08c5900171ab18c6d055e9e527f888710f44913c8cf47bb3896"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-2/fix-code-vulnerability__6wg2KEu.episode/harbor-result.json",
+              "sha256": "cb7847b74efe843524c1fd656abf937286bf2f4d8ccfd631c3a46f53dabf6cd0",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-2/fix-code-vulnerability__6wg2KEu.episode/usage.json",
+                  "sha256": "35f15e5563e1378c3e3105a6dd562931fc096539badbffcf43f5705ddc1a01fd"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-2/fix-code-vulnerability__6wg2KEu.episode/manifest.json",
+                  "sha256": "265ccb1424adde0d76e2953033e41884fef16d8d40125412527aeb9daf262672"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-3/fix-code-vulnerability__iyoY74B.episode/harbor-result.json",
+              "sha256": "f2701b7df565fe68a11c46eda301662984285c961f10ee6a89c1dbd2673b454f",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-3/fix-code-vulnerability__iyoY74B.episode/usage.json",
+                  "sha256": "7333f348d266e7cdbe71ed0dd6a5b3caeecd967d9884a9398dd06a5066235599"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-code-vulnerability-3/fix-code-vulnerability__iyoY74B.episode/manifest.json",
+                  "sha256": "5a69e71faa34e7144f5b690d5cbbca37b68a843290b79c22325ddd96f92b4a5b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "fix-git",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.041776579333333334,
+            "agent_seconds": 14.716115666666667,
+            "total_seconds": 339.903689,
+            "setup_seconds": 305.38911766666666,
+            "jev_cost": 0.000440846,
+            "delegate_turns": 4
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git/fix-git__W88nAT3.episode/harbor-result.json",
+              "sha256": "3377260ee6161f4ee25a8a9bf4c842744acf409e0ec72e3758bbb6d5cc64b785",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git/fix-git__W88nAT3.episode/usage.json",
+                  "sha256": "dbd6878898b1d6d15c4ea9203e2c85ce3075b99e64d9fbc0336d2c133f3aeec8"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git/fix-git__W88nAT3.episode/manifest.json",
+                  "sha256": "9da517a5798240beb70d52eed42dab83d9e15c44f4eae0842f1ee28e55aba6b8"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-2/fix-git__qGLTf5w.episode/harbor-result.json",
+              "sha256": "5291a8a8196bffd134f56c9a85911330f22bdac94d32e25001e4dd7de0b7f90f",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-2/fix-git__qGLTf5w.episode/usage.json",
+                  "sha256": "55a10078ef455626797ad26adb3230dc8bd7def5eb9b5b27d8be671683f90530"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-2/fix-git__qGLTf5w.episode/manifest.json",
+                  "sha256": "4d9816cc8f6425c08fa11a660f14792f7f7bf195d153d1ea158e7a95123bdf34"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-3/fix-git__4KQdFvz.episode/harbor-result.json",
+              "sha256": "c82ae00bcd977ed6b0e9fcee4b8f3ef6d2f77bad49d3219c6364b2e0e0794e38",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-3/fix-git__4KQdFvz.episode/usage.json",
+                  "sha256": "e3f0ed40b0da551b8dbb7e39008384ce1ecf2a7a9fe868159f2bc5664f7b4014"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--fix-git-3/fix-git__4KQdFvz.episode/manifest.json",
+                  "sha256": "f78df629c0f851528eae55b5e80d7de8bc2e75e5b055feea13145680b87bbf4a"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "git-leak-recovery",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.027691974,
+            "agent_seconds": 10.648447,
+            "total_seconds": 307.76891866666665,
+            "setup_seconds": 257.23307966666664,
+            "jev_cost": 0.000123774,
+            "delegate_turns": 3
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery/git-leak-recovery__9sWmdzj.episode/harbor-result.json",
+              "sha256": "390e6dc7093fc1d93dd90cf929137baa6fc402c4c9ed9b2e5ad6bf8432a5aee2",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery/git-leak-recovery__9sWmdzj.episode/usage.json",
+                  "sha256": "420bf882914e252aa557773340d23730b87afdcb9edc5054025fcf07056cb1c9"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery/git-leak-recovery__9sWmdzj.episode/manifest.json",
+                  "sha256": "00e599703f5e4cd9a770106c1afbdf1ff7ec39e13a9a6d2f6e2aa7bba68e6176"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-2/git-leak-recovery__RGq9spe.episode/harbor-result.json",
+              "sha256": "a87f686bab0ef335673f03addd400a57a1972bee40af180a1eb2ccbc511e93a0",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-2/git-leak-recovery__RGq9spe.episode/usage.json",
+                  "sha256": "685549b8e97149d853a9b81c28d9cd374b811c94398553454cd2152866ef8603"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-2/git-leak-recovery__RGq9spe.episode/manifest.json",
+                  "sha256": "6eee3c2be122a950285f4f99c4126ac066528f8c6b285244e894dc1404479281"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-3/git-leak-recovery__FaSLWaT.episode/harbor-result.json",
+              "sha256": "6f6c5a8e76049750cfe868816e3a04ce58865aade888d798407be6acd65b6c38",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-3/git-leak-recovery__FaSLWaT.episode/usage.json",
+                  "sha256": "8fe8dd7d19a87a65f8965de36870fbf8237c05aa785ff97a566ab988797aa22e"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--git-leak-recovery-3/git-leak-recovery__FaSLWaT.episode/manifest.json",
+                  "sha256": "ca470fe194634ac6c39a8de1007616c4ecea6716345e2307bd51905ced7ceb30"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "headless-terminal",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.05133691533333333,
+            "agent_seconds": 20.320927,
+            "total_seconds": 344.323155,
+            "setup_seconds": 283.55726333333337,
+            "jev_cost": 9.8182e-05,
+            "delegate_turns": 2
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal/headless-terminal__3qUMBtb.episode/harbor-result.json",
+              "sha256": "3b51f064bd5a9e3d672a3d10e332b6d2a4e37fddb67d74cc4e45893d1a71487f",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal/headless-terminal__3qUMBtb.episode/usage.json",
+                  "sha256": "d90b3cc585155f030b0ad6907238b983f793749a1ceeef2e8e68696fd0adf82c"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal/headless-terminal__3qUMBtb.episode/manifest.json",
+                  "sha256": "c27f5e6b9118850216d3ddcd30281d04dfbbfa09ebcc5432295e77d5cb7dd3c8"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-2/headless-terminal__2Qwdped.episode/harbor-result.json",
+              "sha256": "2abd7c13c596eceafe286c5ff33a1706534cfac5da6ae47944b5b6a72bfb3134",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-2/headless-terminal__2Qwdped.episode/usage.json",
+                  "sha256": "7d7f7354e093dec32046e01c32ef0dc377e8bc47831106d58351772172cd4341"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-2/headless-terminal__2Qwdped.episode/manifest.json",
+                  "sha256": "2de7141f3f09efa6ebfceeeeb58d6fcc4573e01ba34d0ea9013bd2d3de396045"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-3/headless-terminal__r2TNz5H.episode/harbor-result.json",
+              "sha256": "f5b3a1138defd6d37e7023700cbb23dd0d9fa7a0f39cb35821ef1b9a80ba8356",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-3/headless-terminal__r2TNz5H.episode/usage.json",
+                  "sha256": "28c22330003808a5f6711bc666becd8fd3a809b7d10c37746b7bb5bc5c72f1bc"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe2-opus-lean-low-5m--headless-terminal-3/headless-terminal__r2TNz5H.episode/manifest.json",
+                  "sha256": "fbe24aff6136d6e61c7a1a1ed2a7211a0310b5426f13023186482b8a42a824ff"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "log-summary-date-ranges",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.067239114,
+            "agent_seconds": 14.336986666666666,
+            "total_seconds": 348.0088456666667,
+            "setup_seconds": 313.31425033333335,
+            "jev_cost": 0.000626514,
+            "delegate_turns": 3
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges/log-summary-date-ranges__h2n3nWD.episode/harbor-result.json",
+              "sha256": "e5ecd056d13f70b0a21ed7821e9ef24d281512491e9a43b48b949d7292b575c3",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges/log-summary-date-ranges__h2n3nWD.episode/usage.json",
+                  "sha256": "79a3e758fb02ce52b9b30f8d444e8ccf8aee6edbae4d5acfb72992dc81369f95"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges/log-summary-date-ranges__h2n3nWD.episode/manifest.json",
+                  "sha256": "fee1b2f1c947fb68f97468b1dd7e54186345020dcedb1dc05747af08506058a0"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-2/log-summary-date-ranges__SzuqVd8.episode/harbor-result.json",
+              "sha256": "9018a4deb6ca46f82b6f6079881e542f63683057da27e9d7e95e6c238893dc79",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-2/log-summary-date-ranges__SzuqVd8.episode/usage.json",
+                  "sha256": "d77274020fe3b9d66623f01ca741540903f732a1f993f7a7a2563b5ac11563d1"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-2/log-summary-date-ranges__SzuqVd8.episode/manifest.json",
+                  "sha256": "418b6311b817c45b2a70c6f4f26d91f66587b4a1ff31c6810f0bb8f6d8938028"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-3/log-summary-date-ranges__pdnGWjT.episode/harbor-result.json",
+              "sha256": "4417bac624fb4706d693fd72988aad6501f371e879f37f14bb79a3a3af4f3091",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-3/log-summary-date-ranges__pdnGWjT.episode/usage.json",
+                  "sha256": "1790e8d57a08a6b7add9e793c1b267020cb8aedca709c564cf288b91a7796a26"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--log-summary-date-ranges-3/log-summary-date-ranges__pdnGWjT.episode/manifest.json",
+                  "sha256": "41fa4e724f8333059f7fb68596eb765c024e98db1f452281d4440f3d08b5171d"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "task": "sqlite-db-truncate",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.04474875,
+            "agent_seconds": 16.212409,
+            "total_seconds": 300.41298766666665,
+            "setup_seconds": 263.91103166666664,
+            "jev_cost": 0.00015015000000000002,
+            "delegate_turns": 3.3333333333333335
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate/sqlite-db-truncate__Cx7CHoH.episode/harbor-result.json",
+              "sha256": "ffb9fa3d1e2386cb50a5c8fdeba926c2181987497da8922f12ee9c5b5d5e2800",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate/sqlite-db-truncate__Cx7CHoH.episode/usage.json",
+                  "sha256": "931210aff5cd6edc6790fa35cdd828736042cbc1aabe8f1a9b164cf399277a62"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate/sqlite-db-truncate__Cx7CHoH.episode/manifest.json",
+                  "sha256": "406125d33740a8a9e74e7e06c1786366c5dd2d6f1aa8523e163cbbea06f60b73"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-2/sqlite-db-truncate__iUrXqJm.episode/harbor-result.json",
+              "sha256": "25bd0510df4da76696cf009ddf124c79d9cc037f55a502f70602fe39545c15f0",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-2/sqlite-db-truncate__iUrXqJm.episode/usage.json",
+                  "sha256": "fc2a8414d28e4da28928481d9e30d84f56980124c8503409ed282be984aae080"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-2/sqlite-db-truncate__iUrXqJm.episode/manifest.json",
+                  "sha256": "923e128eac4a09f8a3f546e1a8a5d36c54f5fcfdc54d964a9773c5b1b8fec3ce"
+                }
+              }
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-3/sqlite-db-truncate__WNYhpFF.episode/harbor-result.json",
+              "sha256": "82603bef75ee4fa740cda236b2a62a5cc95ed877b1bc8465e02af36b32e6c098",
+              "companions": {
+                "usage.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-3/sqlite-db-truncate__WNYhpFF.episode/usage.json",
+                  "sha256": "2a7a51a692f2593d468b99dd2f23c5045ddb4d9637ce83f18e66bf3279670a8b"
+                },
+                "manifest.json": {
+                  "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe2-opus-lean-low-5m--sqlite-db-truncate-3/sqlite-db-truncate__WNYhpFF.episode/manifest.json",
+                  "sha256": "e72786e4eaf36d99b738f541616a86364e202b154135443bc27fb40dda84758d"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "claude-code-opus",
+      "n": 24,
+      "passed": 24,
+      "sum_of_task_means": {
+        "cost": 1.0862524666666666,
+        "agent_seconds": 306.41023499999994,
+        "total_seconds": 2271.6654413333335,
+        "setup_seconds": 1769.2610563333337
+      },
+      "tasks": [
+        {
+          "task": "build-cython-ext",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.34813299999999997,
+            "agent_seconds": 111.854288,
+            "total_seconds": 254.936223,
+            "setup_seconds": 121.92272633333333,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--build-cython-ext-2/build-cython-ext__YvFKes6.episode/harbor-result.json",
+              "sha256": "583490be0c3dca9de1dfd43d86f8d4391d632aaee483319f099ad0b39fad57d2",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--build-cython-ext-3/build-cython-ext__zqyZwUz.episode/harbor-result.json",
+              "sha256": "848369b17644c8219adf860b7aace40c4eac791f8d41a09a516e27da7d61045b",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/smoke--claude-code-opus--build-cython-ext/build-cython-ext__9RjaaUj.episode/harbor-result.json",
+              "sha256": "ed303f24c3b65c220a14a97b64b5537dcffb5be69f39107f8d15dc29db926a0c",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "cancel-async-tasks",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.18331840000000002,
+            "agent_seconds": 51.465804,
+            "total_seconds": 335.60536933333333,
+            "setup_seconds": 249.78339266666666,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--cancel-async-tasks/cancel-async-tasks__GRhEGmn.episode/harbor-result.json",
+              "sha256": "aea5c387d3b30e61484bb5e20b64e5ecb758204a644827d0d06430efef00507d",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--cancel-async-tasks-2/cancel-async-tasks__ym5VCjt.episode/harbor-result.json",
+              "sha256": "c0278b48c9734cf794432b1d6605f66d2753c53f54fbe44afa01b6a1a343d5a4",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--cancel-async-tasks-3/cancel-async-tasks__7FrzaLt.episode/harbor-result.json",
+              "sha256": "c0611f744074b811bce728403830991ff9c9ebf44f152d2b7c41746bc270f6c6",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "fix-code-vulnerability",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.0400332,
+            "agent_seconds": 11.448618333333334,
+            "total_seconds": 207.05201033333333,
+            "setup_seconds": 179.74641533333335,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--fix-code-vulnerability/fix-code-vulnerability__MSBTTjy.episode/harbor-result.json",
+              "sha256": "cabb12cc6c88e69ca71a8a8c95f4fd143fcbadebcbbe3b3e63ed319700586cb8",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--fix-code-vulnerability-2/fix-code-vulnerability__VeDxeip.episode/harbor-result.json",
+              "sha256": "6b6c9e6e2875de3bf352c2eeba26db5b0bea2783a04b46ac754447a76b66fd30",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--fix-code-vulnerability-3/fix-code-vulnerability__5fKkK5s.episode/harbor-result.json",
+              "sha256": "dcdb6964c10f7c4b69de05fce95c63bf56f15173bd5aec70be7ea764e2f2d921",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "fix-git",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.12157926666666667,
+            "agent_seconds": 23.483126666666667,
+            "total_seconds": 220.27082900000002,
+            "setup_seconds": 179.51495033333333,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--fix-git-2/fix-git__7apYPzV.episode/harbor-result.json",
+              "sha256": "1f2cdc0016fa7325d9f00ed24e84233a553f5b8a14560dc32e18e9ec9b98c35e",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--fix-git-3/fix-git__9HXYNgC.episode/harbor-result.json",
+              "sha256": "c4a514990fd56cd0aabbd69ed15f7785609f8ee0723c1398210f5b0d99da6f69",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/smoke--claude-code-opus--fix-git/fix-git__LDzZJkU.episode/harbor-result.json",
+              "sha256": "8a23a787ba1ac365f1699069d3ec028ce8d885d3a3a7fb627786cd6cd4d8d7bb",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "git-leak-recovery",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.07493640000000001,
+            "agent_seconds": 19.518392,
+            "total_seconds": 349.36688,
+            "setup_seconds": 298.60135866666667,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--git-leak-recovery/git-leak-recovery__NMNtcJZ.episode/harbor-result.json",
+              "sha256": "e9dac600ac0fc4678444ddb8aacebbe111f2931b141606a44a46a396686a1501",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--git-leak-recovery-2/git-leak-recovery__cossNC7.episode/harbor-result.json",
+              "sha256": "f595125951c48b9d2decd370ea9640552c77eff45a5d901d0fc8bc4d3af7e619",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--git-leak-recovery-3/git-leak-recovery__zUqp3Kb.episode/harbor-result.json",
+              "sha256": "02fe88bba223cc5be4d926ecd50470b7c9c6e7d69886d5bc07db13e2519801d4",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "headless-terminal",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.1456286,
+            "agent_seconds": 49.13139433333333,
+            "total_seconds": 292.6826223333333,
+            "setup_seconds": 206.06078333333332,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--headless-terminal/headless-terminal__SQXFp7r.episode/harbor-result.json",
+              "sha256": "ad6f9613b009279faca7cfe29865b5b655ece85ab742d28fa3494e2f877f96d8",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--headless-terminal-2/headless-terminal__DyUgRCD.episode/harbor-result.json",
+              "sha256": "039fcc36a295d1e3f44e1f6cafd191b404b3308012915575361ff0d86e959137",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/panel--claude-code-opus--headless-terminal-3/headless-terminal__eVzqvsq.episode/harbor-result.json",
+              "sha256": "0dfabab04f3df634d24ea3958dd3dbcbea06869d31a6c487934e1d522c1477e0",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "log-summary-date-ranges",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.09453600000000001,
+            "agent_seconds": 19.417440666666668,
+            "total_seconds": 323.629732,
+            "setup_seconds": 283.7231026666667,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--log-summary-date-ranges/log-summary-date-ranges__VY6RTPz.episode/harbor-result.json",
+              "sha256": "1cd1041009bd242e3e307d74e8adac6a7a8f27d51667b74640617d13bd1210ce",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--log-summary-date-ranges-2/log-summary-date-ranges__rRLdFLQ.episode/harbor-result.json",
+              "sha256": "fc9915f223be75f82e48588759b2681668d67c977abcfb2732b48c2e5ffbc31b",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--log-summary-date-ranges-3/log-summary-date-ranges__uRmFQVP.episode/harbor-result.json",
+              "sha256": "efe5a1399526dd88ff83f9ba7e2f925b19ab143ae984d142a74f2a81f7e972a1",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "sqlite-db-truncate",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.07808760000000001,
+            "agent_seconds": 20.091171,
+            "total_seconds": 288.12177533333335,
+            "setup_seconds": 249.90832699999999,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--sqlite-db-truncate/sqlite-db-truncate__LFu6qxN.episode/harbor-result.json",
+              "sha256": "25bb49cf3da957b4d113e2a29dc46abca574bdecc586d91f7d64585fc9880ba2",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--sqlite-db-truncate-2/sqlite-db-truncate__MnF5ze4.episode/harbor-result.json",
+              "sha256": "08312762f7d6da19cd4f697de6ab2200726549069ef4721e7a2266bea93c284f",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--claude-code-opus--sqlite-db-truncate-3/sqlite-db-truncate__pTUPGVk.episode/harbor-result.json",
+              "sha256": "d3cbd5ec41ef3b1351c675494f4a820c91b709c1be71da9f6dc6e61964e98ed2",
+              "companions": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "codex-gpt-6-luna",
+      "n": 16,
+      "passed": 13,
+      "sum_of_task_means": {
+        "cost": 0.04315505333333333,
+        "agent_seconds": 577.9389976666666,
+        "total_seconds": 2273.44698,
+        "setup_seconds": 1475.088330666667
+      },
+      "tasks": [
+        {
+          "task": "build-cython-ext",
+          "n": 1,
+          "passed": 1,
+          "means": {
+            "cost": 0.017396779999999997,
+            "agent_seconds": 204.744318,
+            "total_seconds": 286.34488,
+            "setup_seconds": 52.93617,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/smoke--codex-gpt-6-luna--build-cython-ext/build-cython-ext__enAZDH2.episode/harbor-result.json",
+              "sha256": "f2b36030e35f997564a32ee3bb7f5935005b736f1b377466f2d178e61d5740d0",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "cancel-async-tasks",
+          "n": 3,
+          "passed": 1,
+          "means": {
+            "cost": 0.0016281066666666668,
+            "agent_seconds": 37.91020533333334,
+            "total_seconds": 333.439452,
+            "setup_seconds": 253.61556433333334,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--cancel-async-tasks/cancel-async-tasks__QsgoyqM.episode/harbor-result.json",
+              "sha256": "6ffb0f1d3b4042681bbd7e4a063f720453f181f24d1002e20311f262606f10cd",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--cancel-async-tasks-2/cancel-async-tasks__QyNh4hS.episode/harbor-result.json",
+              "sha256": "8e506da7873354345034be674e1f9b18e04de182dc7780b732def8e2b89d2d2c",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--cancel-async-tasks-3/cancel-async-tasks__JKuxhWi.episode/harbor-result.json",
+              "sha256": "67269d093e301ea4a9515ffbc4f5a442ea52541fd6aa60e3c4c4e7e1319b54e1",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "fix-code-vulnerability",
+          "n": 1,
+          "passed": 1,
+          "means": {
+            "cost": 0.00787006,
+            "agent_seconds": 49.733656,
+            "total_seconds": 182.171892,
+            "setup_seconds": 116.272633,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--codex-gpt-6-luna--fix-code-vulnerability/fix-code-vulnerability__HikB2CD.episode/harbor-result.json",
+              "sha256": "1c73cbf727c29e75dff32258a43cccd419c405bf051676947e776c73467972f1",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "fix-git",
+          "n": 1,
+          "passed": 1,
+          "means": {
+            "cost": 0.0052236,
+            "agent_seconds": 65.308175,
+            "total_seconds": 168.391413,
+            "setup_seconds": 80.705851,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/smoke--codex-gpt-6-luna--fix-git/fix-git__BscvqG8.episode/harbor-result.json",
+              "sha256": "3be4237e822765a6bc91c9eb10d89f5a93f41dc6cc9570b7746d5b1169c3ceb6",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "git-leak-recovery",
+          "n": 3,
+          "passed": 2,
+          "means": {
+            "cost": 0.0027918,
+            "agent_seconds": 58.37163066666667,
+            "total_seconds": 361.238793,
+            "setup_seconds": 276.3333773333333,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--git-leak-recovery/git-leak-recovery__Px5XLYp.episode/harbor-result.json",
+              "sha256": "534c7aea7955859cd7377fc386371331733d6637213179375b217987adaddaed",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--git-leak-recovery-2/git-leak-recovery__2DpCMUB.episode/harbor-result.json",
+              "sha256": "4a8f9f152ffcae6a3778438e0bb10eb58d1521062b8fac5a0c3bc74a6b9a0116",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--git-leak-recovery-3/git-leak-recovery__QwKqxEE.episode/harbor-result.json",
+              "sha256": "0becc0a0430398ffb43211020207c61a2b286a331af8efb2c047abb6a278427d",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "headless-terminal",
+          "n": 1,
+          "passed": 1,
+          "means": {
+            "cost": 0.0031557,
+            "agent_seconds": 67.709692,
+            "total_seconds": 262.929266,
+            "setup_seconds": 155.997034,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/panel--codex-gpt-6-luna--headless-terminal/headless-terminal__uSs7yKU.episode/harbor-result.json",
+              "sha256": "7ce87afefafd07c899652f229efc402d1051ad614740629519c100cfdffd9ee7",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "log-summary-date-ranges",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.0015820333333333334,
+            "agent_seconds": 26.279949333333334,
+            "total_seconds": 312.7423253333333,
+            "setup_seconds": 262.53506533333336,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--log-summary-date-ranges/log-summary-date-ranges__atEfQzQ.episode/harbor-result.json",
+              "sha256": "85bfc3be35c06317a26b32ce17ebfe841a794cccc835433c048c638d18982ccb",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--log-summary-date-ranges-2/log-summary-date-ranges__tCSZFuY.episode/harbor-result.json",
+              "sha256": "ac399ff26502bf0b63cd46b42ff69f9e85a2f8dc958e9bfbcf4aecaa8029320f",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--log-summary-date-ranges-3/log-summary-date-ranges__rJomAiT.episode/harbor-result.json",
+              "sha256": "3124918352ad660fa2010e2d84720124164ded6da94066a2890f092dcf0906f6",
+              "companions": {}
+            }
+          ]
+        },
+        {
+          "task": "sqlite-db-truncate",
+          "n": 3,
+          "passed": 3,
+          "means": {
+            "cost": 0.003506973333333333,
+            "agent_seconds": 67.88137133333333,
+            "total_seconds": 366.1889586666667,
+            "setup_seconds": 276.69263566666666,
+            "jev_cost": null,
+            "delegate_turns": null
+          },
+          "inputs": [
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--sqlite-db-truncate/sqlite-db-truncate__T8KUQ5r.episode/harbor-result.json",
+              "sha256": "79991f82c403c70e6f60ddc842fea5453ec6850f585e9fa491019750591e9c18",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--sqlite-db-truncate-2/sqlite-db-truncate__dUgwPwT.episode/harbor-result.json",
+              "sha256": "0d8fb5f5ec0b5ed220f36ea5f2ed44160c21ef809a769d4e9d13e345221a712f",
+              "companions": {}
+            },
+            {
+              "result": "bench/terminal-bench/traces/extended--codex-gpt-6-luna--sqlite-db-truncate-3/sqlite-db-truncate__QU3DPmn.episode/harbor-result.json",
+              "sha256": "4344437bd93207c97dc2bd3aac64a772a7ba0f95258a38834a0eba7b7dbd93c9",
+              "companions": {}
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "v3_checks": {
+    "empty_criteria": 24,
+    "n": 24,
+    "hypothetical_done_gte_0_5": {
+      "accepted_pass": 15,
+      "accepted_fail": 5,
+      "rejected_pass": 4,
+      "rejected_fail": 0
+    },
+    "jev_cost_share": 0.09249727439599471,
+    "agent_setup_share_of_total_wall": 0.7730051151332036,
+    "trials": [
+      {
+        "task": "cancel-async-tasks",
+        "job": "extended--coder-one-jevprobe3-luna--cancel-async-tasks",
+        "reward": 1.0,
+        "close": {
+          "done": 0.67,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "90d5b9c22f081c0e1e30f96028e3b44ad9a824556c8efb141a15b70686106118",
+          "chars": 2150,
+          "bytes": 2150,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks/cancel-async-tasks__Eu23An4.episode/harbor-result.json"
+      },
+      {
+        "task": "cancel-async-tasks",
+        "job": "extended--coder-one-jevprobe3-luna--cancel-async-tasks-2",
+        "reward": 0.0,
+        "close": {
+          "done": 0.65,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "9c0ade32ff9c1897192d3c6f236391d280beca6421819a89b43a6014dbbd3085",
+          "chars": 2150,
+          "bytes": 2150,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-2/cancel-async-tasks__8MSemsU.episode/harbor-result.json"
+      },
+      {
+        "task": "cancel-async-tasks",
+        "job": "extended--coder-one-jevprobe3-luna--cancel-async-tasks-3",
+        "reward": 1.0,
+        "close": {
+          "done": 0.63,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "2065a4ffac7345722ffae6ad44ec1b33166407fb8229b0523f176473e0c2b41e",
+          "chars": 2150,
+          "bytes": 2150,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--cancel-async-tasks-3/cancel-async-tasks__Z3SFguw.episode/harbor-result.json"
+      },
+      {
+        "task": "git-leak-recovery",
+        "job": "extended--coder-one-jevprobe3-luna--git-leak-recovery",
+        "reward": 1.0,
+        "close": {
+          "done": 0.65,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "4c876c561cc6a724562fd423c0c1087a46f0ded1b6314b15be929f7e8633e086",
+          "chars": 2766,
+          "bytes": 2766,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ git -C /app/repo reflog -n 40",
+            "file $ git -C /app/repo status",
+            "file $ git -C /app/repo log --oneline --graph --all -n 40",
+            "file $ pwd && ls -la",
+            "file $ git -C /app/repo branch -a -vv",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery/git-leak-recovery__dh8ZX77.episode/harbor-result.json"
+      },
+      {
+        "task": "git-leak-recovery",
+        "job": "extended--coder-one-jevprobe3-luna--git-leak-recovery-2",
+        "reward": 1.0,
+        "close": {
+          "done": 0.6,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "fb9fc490efae522e2864e5cb6e39129677fe265c3ed392a0245d758bf6ee61d3",
+          "chars": 2766,
+          "bytes": 2766,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ git -C /app/repo reflog -n 40",
+            "file $ git -C /app/repo log --oneline --graph --all -n 40",
+            "file $ pwd && ls -la",
+            "file $ git -C /app/repo branch -a -vv",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ git -C /app/repo status"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-2/git-leak-recovery__Ex7ziSp.episode/harbor-result.json"
+      },
+      {
+        "task": "git-leak-recovery",
+        "job": "extended--coder-one-jevprobe3-luna--git-leak-recovery-3",
+        "reward": 1.0,
+        "close": {
+          "done": 0.63,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "fe5f325a43ec534e48395c64cc3127f1688612bc43be9ec0cebc92086a92caab",
+          "chars": 2766,
+          "bytes": 2766,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ git -C /app/repo reflog -n 40",
+            "file $ git -C /app/repo log --oneline --graph --all -n 40",
+            "file $ git -C /app/repo status",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ git -C /app/repo branch -a -vv",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--git-leak-recovery-3/git-leak-recovery__2iSZSJs.episode/harbor-result.json"
+      },
+      {
+        "task": "log-summary-date-ranges",
+        "job": "extended--coder-one-jevprobe3-luna--log-summary-date-ranges",
+        "reward": 0.0,
+        "close": {
+          "done": 0.52,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "d3139a5d565db081f8608422f92172621d9a30de30245c8007f68b14152e0455",
+          "chars": 10812,
+          "bytes": 10814,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ ls -la /app/logs",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": [
+            "file logs/2025-08-10_db.log (4051 characters)",
+            "file logs/2025-07-07_api.log (4052 characters)",
+            "file logs/2025-07-12_db.log (4051 characters)"
+          ]
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.episode/harbor-result.json"
+      },
+      {
+        "task": "log-summary-date-ranges",
+        "job": "extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2",
+        "reward": 0.0,
+        "close": {
+          "done": 0.67,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "1513685ca293d9daf9ae8c62b35d5a06821848c64233890d17522aa94f8855de",
+          "chars": 10812,
+          "bytes": 10814,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ ls -la /app/logs",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": [
+            "file logs/2025-07-07_api.log (4052 characters)",
+            "file logs/2025-08-10_db.log (4051 characters)",
+            "file logs/2025-07-22_api.log (4052 characters)"
+          ]
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz.episode/harbor-result.json"
+      },
+      {
+        "task": "log-summary-date-ranges",
+        "job": "extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3",
+        "reward": 0.0,
+        "close": {
+          "done": 0.67,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "99c35f7f4bbd4e48549b5425ffd8931f0762151f28c0b594c51c46681f0fdde0",
+          "chars": 10812,
+          "bytes": 10814,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ ls -la /app/logs",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": [
+            "file logs/2025-08-10_db.log (4051 characters)",
+            "file logs/2025-07-07_api.log (4052 characters)",
+            "file logs/2025-08-07_api.log (4052 characters)"
+          ]
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX.episode/harbor-result.json"
+      },
+      {
+        "task": "sqlite-db-truncate",
+        "job": "extended--coder-one-jevprobe3-luna--sqlite-db-truncate",
+        "reward": 1.0,
+        "close": {
+          "done": 0.61,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "cc310123efb5338b3950639824d103ee78ae5da8877829dfce79937a6b3e2197",
+          "chars": 5871,
+          "bytes": 5894,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ head -200 /app/trunc.db",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate/sqlite-db-truncate__rgzhtVQ.episode/harbor-result.json"
+      },
+      {
+        "task": "sqlite-db-truncate",
+        "job": "extended--coder-one-jevprobe3-luna--sqlite-db-truncate-2",
+        "reward": 1.0,
+        "close": {
+          "done": 0.63,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "ddafbe8e504100ff122f6d8eb0d23c6ab7167c1a13d63e909f4ec6cc57383870",
+          "chars": 5871,
+          "bytes": 5894,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ head -200 /app/trunc.db",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-2/sqlite-db-truncate__W6vAqqc.episode/harbor-result.json"
+      },
+      {
+        "task": "sqlite-db-truncate",
+        "job": "extended--coder-one-jevprobe3-luna--sqlite-db-truncate-3",
+        "reward": 1.0,
+        "close": {
+          "done": 0.67,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "5830bf438c27d50ca125c374f72c05b1d240ba42490881dc110dfd0a7f7eaa50",
+          "chars": 5871,
+          "bytes": 5894,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ head -200 /app/trunc.db",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--sqlite-db-truncate-3/sqlite-db-truncate__Qt9s6U7.episode/harbor-result.json"
+      },
+      {
+        "task": "build-cython-ext",
+        "job": "panel--coder-one-jevprobe3-luna--build-cython-ext",
+        "reward": 1.0,
+        "close": {
+          "done": 0.78,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "4aa44cad30bd40dfe724523ca8da9efd4939ffc11a8fcf1b480853bbf37b8343",
+          "chars": 9711,
+          "bytes": 9713,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git /app/pyknotid   (setup the host already ran: exit 0)",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ pwd && ls -la",
+            "file $ find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' -o -name tests -o -name '*.test.*' \\) -not -path '*/.git/*' | head -40",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file $ git -C /app/pyknotid status",
+            "file $ git -C /app/pyknotid branch -a -vv",
+            "file pyknotid/pyknotid/spacecurves/periodic.py"
+          ],
+          "omitted": [
+            "file pyknotid/setup.py (4046 characters)"
+          ]
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext/build-cython-ext__jFQbtoW.episode/harbor-result.json"
+      },
+      {
+        "task": "build-cython-ext",
+        "job": "panel--coder-one-jevprobe3-luna--build-cython-ext-2",
+        "reward": 1.0,
+        "close": {
+          "done": 0.75,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "7612a14a95ec7c4ab3912b12b3cdc76cd3ffc9401ef7fe056791f92378e55d2e",
+          "chars": 9687,
+          "bytes": 9689,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git /app/pyknotid   (setup the host already ran: exit 0)",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ pwd && ls -la",
+            "file $ find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' -o -name tests -o -name '*.test.*' \\) -not -path '*/.git/*' | head -40",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file $ git -C /app/pyknotid status",
+            "file $ git -C /app/pyknotid branch -a -vv",
+            "file pyknotid/setup.py"
+          ],
+          "omitted": [
+            "file pyknotid/pyknotid/spacecurves/periodic.py (4070 characters)"
+          ]
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-2/build-cython-ext__S9Qeusb.episode/harbor-result.json"
+      },
+      {
+        "task": "build-cython-ext",
+        "job": "panel--coder-one-jevprobe3-luna--build-cython-ext-3",
+        "reward": 1.0,
+        "close": {
+          "done": 0.77,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "1b9e18824adc9de793f389a253aff5e5c99b2f71681c17aed9d928f0ac855177",
+          "chars": 9687,
+          "bytes": 9689,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git /app/pyknotid   (setup the host already ran: exit 0)",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ pwd && ls -la",
+            "file $ find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' -o -name tests -o -name '*.test.*' \\) -not -path '*/.git/*' | head -40",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file $ git -C /app/pyknotid branch -a -vv",
+            "file $ git -C /app/pyknotid status",
+            "file pyknotid/setup.py"
+          ],
+          "omitted": [
+            "file pyknotid/pyknotid/spacecurves/periodic.py (4070 characters)"
+          ]
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--build-cython-ext-3/build-cython-ext__p3GxLHC.episode/harbor-result.json"
+      },
+      {
+        "task": "fix-code-vulnerability",
+        "job": "panel--coder-one-jevprobe3-luna--fix-code-vulnerability",
+        "reward": 1.0,
+        "close": {
+          "done": 0.37,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "08fe5d737390ffcdb9b026396eee12dd64bf1ea4dec8d413a1510889db4eeb68",
+          "chars": 11205,
+          "bytes": 11205,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ git status",
+            "file $ git log --oneline --graph --all -n 40",
+            "file $ find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' -o -name tests -o -name '*.test.*' \\) -not -path '*/.git/*' | head -40"
+          ],
+          "omitted": [
+            "file $ head -200 /app/bottle.py (4055 characters)",
+            "file bottle.py (16038 characters)"
+          ]
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability/fix-code-vulnerability__uyt6kdM.episode/harbor-result.json"
+      },
+      {
+        "task": "fix-code-vulnerability",
+        "job": "panel--coder-one-jevprobe3-luna--fix-code-vulnerability-2",
+        "reward": 1.0,
+        "close": {
+          "done": 0.34,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "e210731998a6087a5a7da0a1cbed2d5d3044338086777288ef5dcd3c492f6c35",
+          "chars": 10557,
+          "bytes": 10557,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ git status",
+            "file $ git log --oneline --graph --all -n 40",
+            "file $ git branch -a -vv"
+          ],
+          "omitted": [
+            "file $ head -200 /app/bottle.py (4055 characters)",
+            "file bottle.py (16038 characters)"
+          ]
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-2/fix-code-vulnerability__qpLYA9P.episode/harbor-result.json"
+      },
+      {
+        "task": "fix-code-vulnerability",
+        "job": "panel--coder-one-jevprobe3-luna--fix-code-vulnerability-3",
+        "reward": 1.0,
+        "close": {
+          "done": 0.31,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "ab0dc3135a153e07005be90db14dd9adcac6f51509826d102a632e3b21a445ac",
+          "chars": 10557,
+          "bytes": 10557,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ git status",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ git log --oneline --graph --all -n 40",
+            "file $ git branch -a -vv"
+          ],
+          "omitted": [
+            "file $ head -200 /app/bottle.py (4055 characters)",
+            "file bottle.py (16038 characters)"
+          ]
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-code-vulnerability-3/fix-code-vulnerability__oqk9ntS.episode/harbor-result.json"
+      },
+      {
+        "task": "fix-git",
+        "job": "panel--coder-one-jevprobe3-luna--fix-git",
+        "reward": 1.0,
+        "close": {
+          "done": 0.89,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "222e4f272dc6b840d3714232a827a4c6f15643d75d15f64b0be2ea24f265e181",
+          "chars": 4046,
+          "bytes": 4046,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ git log --oneline --graph --all -n 40",
+            "file $ git reflog -n 40",
+            "file $ git branch -a -vv",
+            "file $ git status",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git/fix-git__c2MR9Lx.episode/harbor-result.json"
+      },
+      {
+        "task": "fix-git",
+        "job": "panel--coder-one-jevprobe3-luna--fix-git-2",
+        "reward": 1.0,
+        "close": {
+          "done": 0.87,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "2b79bcbe724394a9916bfd91153bdec3bd0cf9a665e85ac02a8f664ff8ce3e18",
+          "chars": 4046,
+          "bytes": 4046,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ git log --oneline --graph --all -n 40",
+            "file $ git reflog -n 40",
+            "file $ git branch -a -vv",
+            "file $ git status",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-2/fix-git__kAysiCA.episode/harbor-result.json"
+      },
+      {
+        "task": "fix-git",
+        "job": "panel--coder-one-jevprobe3-luna--fix-git-3",
+        "reward": 1.0,
+        "close": {
+          "done": 0.89,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "92187d77cf9fbcf8ccbbc06060ddbfaf3284096d805462579f10eceff621eeb5",
+          "chars": 4046,
+          "bytes": 4046,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ git log --oneline --graph --all -n 40",
+            "file $ git reflog -n 40",
+            "file $ git branch -a -vv",
+            "file $ git status",
+            "file $ pwd && ls -la"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--fix-git-3/fix-git__rwhcT55.episode/harbor-result.json"
+      },
+      {
+        "task": "headless-terminal",
+        "job": "panel--coder-one-jevprobe3-luna--headless-terminal",
+        "reward": 0.0,
+        "close": {
+          "done": 0.53,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "d852a7c0edbb8f1964c91818f6b3e74e79c2828216e5b2f24ef86372940c5e73",
+          "chars": 2891,
+          "bytes": 2891,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file base_terminal.py"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal/headless-terminal__tr384w7.episode/harbor-result.json"
+      },
+      {
+        "task": "headless-terminal",
+        "job": "panel--coder-one-jevprobe3-luna--headless-terminal-2",
+        "reward": 1.0,
+        "close": {
+          "done": 0.48,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "3b153babfc8aa1907403cebd2a577103cf0401176ede3e2598098cf038671a05",
+          "chars": 2891,
+          "bytes": 2891,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file base_terminal.py"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-2/headless-terminal__bdenFDt.episode/harbor-result.json"
+      },
+      {
+        "task": "headless-terminal",
+        "job": "panel--coder-one-jevprobe3-luna--headless-terminal-3",
+        "reward": 1.0,
+        "close": {
+          "done": 0.6,
+          "criteria": [],
+          "unavailable": null
+        },
+        "briefing": {
+          "sha256": "c7f4ec4a140101b32092c2e9b2b2a5520259b58de0b372328d4cd4bd6e3c9c35",
+          "chars": 2891,
+          "bytes": 2891,
+          "cap": 12000,
+          "included": [
+            "instruction",
+            "explorer conclusion",
+            "file $ pwd && ls -la",
+            "file $ find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+            "file $ python3 --version 2>&1; pip list 2>/dev/null | head -60",
+            "file base_terminal.py"
+          ],
+          "omitted": []
+        },
+        "path": "bench/terminal-bench/traces/panel--coder-one-jevprobe3-luna--headless-terminal-3/headless-terminal__2aRsqY7.episode/harbor-result.json"
+      }
+    ]
+  },
+  "commit_inventory": [
+    {
+      "commit": "36fc742e5b63538907f7919caf4aaa055fea3845",
+      "author_time": "2026-09-22T00:28:14-05:00",
+      "title": "docs(coder): match Terminal-Bench tasks to recent chat work"
+    },
+    {
+      "commit": "624480405c60eb74abf7a5635ed02d58bc67de60",
+      "author_time": "2026-09-22T00:44:37-05:00",
+      "title": "docs: propose Coder v0.5 algorithm and golden traces"
+    },
+    {
+      "commit": "e4542628f7bf4a8c8231c7fd537803fa5fce5256",
+      "author_time": "2026-09-22T09:40:24-05:00",
+      "title": "bench: pin the Terminal-Bench harness for issue 9530"
+    },
+    {
+      "commit": "f6bf479106565b81324a330f950ed4f4b30a13ce",
+      "author_time": "2026-09-22T09:42:59-05:00",
+      "title": "atif: put observation metadata under extra for Harbor"
+    },
+    {
+      "commit": "9e8dcae67dcc6f5ba2f88ed29cea42b6ffbcbf9b",
+      "author_time": "2026-09-22T09:43:59-05:00",
+      "title": "docs: add the Terminal-Bench runbook and v0.5 episode contract"
+    },
+    {
+      "commit": "343fe6f5b067f8b61e1c9e70774208dfb2faa05d",
+      "author_time": "2026-09-22T09:48:46-05:00",
+      "title": "bench: retain pins in attempt records and add a real oracle sample"
+    },
+    {
+      "commit": "8dd69eaff48a3fed23699c23f7bb9d6901587746",
+      "author_time": "2026-09-22T09:57:20-05:00",
+      "title": "bench: prove the v0.5 episode contract end-to-end on real trials"
+    },
+    {
+      "commit": "9fe42cb1d0f18b81d38883333e06f216e4edf766",
+      "author_time": "2026-09-22T10:17:27-05:00",
+      "title": "bench: keep auth selectors host-side and pin per-mode models"
+    },
+    {
+      "commit": "90e8133eaa73b9c40f50c16036893f86b0aedeb8",
+      "author_time": "2026-09-22T10:50:08-05:00",
+      "title": "bench: add a devin agent profile"
+    },
+    {
+      "commit": "4872529f925a5ebec0c4f20d29347f20c01c8435",
+      "author_time": "2026-09-22T11:01:50-05:00",
+      "title": "docs: document Claude OAuth and Devin auth in the bench runbook"
+    },
+    {
+      "commit": "05c85f88e2ec707ccf25bcc28dc434d25a439570",
+      "author_time": "2026-09-22T11:12:44-05:00",
+      "title": "bench: pin claude-code to fable-5.1"
+    },
+    {
+      "commit": "0de24c0c6593483f7361759043caa9b5117ce82c",
+      "author_time": "2026-09-22T11:47:36-05:00",
+      "title": "Preserve Terminal-Bench ATIF traces and analyze agent behavior step by step"
+    },
+    {
+      "commit": "65a1bb46ba5b066292431dcf7c6631c169ca7165",
+      "author_time": "2026-09-22T12:33:57-05:00",
+      "title": "coder-one: add the crate for a minimal Jev-steered agent"
+    },
+    {
+      "commit": "3344e6b277048b996fbf4c9835aabbae727f1ebc",
+      "author_time": "2026-09-22T12:52:07-05:00",
+      "title": "coder-one: run the loop live from an issue to a draft pull request"
+    },
+    {
+      "commit": "cb6968b9faa6eb50a352bc921a822d64978d4182",
+      "author_time": "2026-09-22T13:32:35-05:00",
+      "title": "coder-one: run as a Terminal-Bench arm through the episode contract"
+    },
+    {
+      "commit": "f02a27ec88632123dc00e3ac8449121f7cb15004",
+      "author_time": "2026-09-22T13:42:12-05:00",
+      "title": "docs: add the single Terminal-Bench results page"
+    },
+    {
+      "commit": "e6bc0604871e7b9391c20abd987d11537918d698",
+      "author_time": "2026-09-22T13:47:57-05:00",
+      "title": "docs: record Coder One passing build-cython-ext"
+    },
+    {
+      "commit": "5d4f474854f2da65c0628fe8e607ccb7e9f3480b",
+      "author_time": "2026-09-22T13:49:41-05:00",
+      "title": "bench: add a Claude Code on Opus 5.5 arm"
+    },
+    {
+      "commit": "1afdd31a5da87ea94f65e1c556a29eb91bd92c0e",
+      "author_time": "2026-09-22T13:53:33-05:00",
+      "title": "docs: add Claude Code on Opus 5.5 to the Terminal-Bench results"
+    },
+    {
+      "commit": "e516646aad58ac5d785af0074602e3c813dbaac1",
+      "author_time": "2026-09-22T13:57:41-05:00",
+      "title": "bench: add Codex arms for GPT-6 Astra, Sol, and Luna"
+    },
+    {
+      "commit": "9d7f081dc05115c8d71a15902ebca8587db0317f",
+      "author_time": "2026-09-22T14:09:37-05:00",
+      "title": "coder-one: add delegate mode with Jev-prepared briefings for Claude Code"
+    },
+    {
+      "commit": "c357f1dc9c19c418286b149bb3790b207ce3be83",
+      "author_time": "2026-09-22T14:10:29-05:00",
+      "title": "coder-one: cache-stable prompts and a deep Jev mode"
+    },
+    {
+      "commit": "9f31630ac600b15e0217c89012438c68f16c5807",
+      "author_time": "2026-09-22T14:13:12-05:00",
+      "title": "coder-one: wait out the free lane's rate limit instead of giving up"
+    },
+    {
+      "commit": "d9599a9dba7f7c2caf17ff65b1a6af66060c2a43",
+      "author_time": "2026-09-22T14:17:41-05:00",
+      "title": "docs: record the delegate arms and GPT-6 on Terminal-Bench"
+    },
+    {
+      "commit": "91ad664d094d0bf993667e33295070c14af34817",
+      "author_time": "2026-09-22T14:18:20-05:00",
+      "title": "docs: price the GPT-6 trials with cached-input rates"
+    },
+    {
+      "commit": "1b77501587169ff4d5cf93cae8f0f1a08a9e96f3",
+      "author_time": "2026-09-22T14:21:24-05:00",
+      "title": "docs: rank each Terminal-Bench task's trials from cheapest up"
+    },
+    {
+      "commit": "e464b4e0f591ff4ff3c491a83e6436f3e0c3c791",
+      "author_time": "2026-09-22T14:27:55-05:00",
+      "title": "docs: add Terminal-Bench operating notes and a trial metrics tool"
+    },
+    {
+      "commit": "1a9c712f158b88628e07c73f443ae5ec8c41e652",
+      "author_time": "2026-09-22T14:34:54-05:00",
+      "title": "coder-one: add a Codex delegate executor for GPT-6 Luna"
+    },
+    {
+      "commit": "d6626285b583ac6665b387874398d97b6c0276e3",
+      "author_time": "2026-09-22T15:10:14-05:00",
+      "title": "coder-one: brief a delegate from the Jev survey alone"
+    },
+    {
+      "commit": "e8bb75309411a19eb2d4bd68fdfa9d8b8b90de9b",
+      "author_time": "2026-09-22T15:11:08-05:00",
+      "title": "tbench: survive cancellation and resume, record image state, add intervals"
+    },
+    {
+      "commit": "a63716e418d9f1f8236493630b483f1329a08775",
+      "author_time": "2026-09-22T15:11:08-05:00",
+      "title": "docs: record the Terminal-Bench failure demonstrations"
+    },
+    {
+      "commit": "1f883564aab4ea9f62371f739d5147f135858c9d",
+      "author_time": "2026-09-22T15:17:03-05:00",
+      "title": "coder-one: count no generation as a known zero cost"
+    },
+    {
+      "commit": "60bfb94370ae04838a56f130fcbed868e81abf9f",
+      "author_time": "2026-09-22T15:20:03-05:00",
+      "title": "docs: four-task Terminal-Bench results and Jev-brief delegation"
+    },
+    {
+      "commit": "dfe91a8e4d0264aff82ff137d9124ec363fe203b",
+      "author_time": "2026-09-22T15:21:07-05:00",
+      "title": "coder-one: let a delegate run a lean Claude Code"
+    },
+    {
+      "commit": "93fa6710ed184491291cddd20164b2b34ffbb5a3",
+      "author_time": "2026-09-22T15:31:46-05:00",
+      "title": "Connect Gym terminal to Terminal-Bench evidence"
+    },
+    {
+      "commit": "1b490383d87e4190e36c2eb466a05c27d263649e",
+      "author_time": "2026-09-22T15:39:45-05:00",
+      "title": "docs: repeat the Opus comparison three times and add lean Jev-brief"
+    },
+    {
+      "commit": "ae845863d4e29a241d1c58ea97196c4f08359801",
+      "author_time": "2026-09-22T15:43:51-05:00",
+      "title": "Expose Terminal-Bench evidence and runs from Gym CLI"
+    },
+    {
+      "commit": "5cb5df22e00d5c16a7556cfa24f82110e321708e",
+      "author_time": "2026-09-22T15:55:29-05:00",
+      "title": "Distinguish absent collection marker from missing evidence"
+    },
+    {
+      "commit": "b2d101d72ddcf08901a8099f95c3b4e6731ec91b",
+      "author_time": "2026-09-22T16:01:02-05:00",
+      "title": "coder-one: let Jev choose from a probe battery before delegating"
+    },
+    {
+      "commit": "774c2a9340a27e8688b738f3039629cdd9f9e35a",
+      "author_time": "2026-09-22T16:02:01-05:00",
+      "title": "coder-one: let a delegate run at a chosen reasoning effort"
+    },
+    {
+      "commit": "153c974bc87bd087b61bade9362b77e298116d6a",
+      "author_time": "2026-09-22T16:08:11-05:00",
+      "title": "bench: add low-effort Jev-probe arms"
+    },
+    {
+      "commit": "76a652613ec7dbbe69dcdc5227c80460b7d8d9f6",
+      "author_time": "2026-09-22T16:22:22-05:00",
+      "title": "bench: add Jev-probe arms delegating to Sonnet 5 and Haiku 4.5"
+    },
+    {
+      "commit": "55f5b4fb9000a54824bdfeabf3ea27b1a88f8255",
+      "author_time": "2026-09-22T16:30:31-05:00",
+      "title": "docs: explain how Claude costs are computed on the results page"
+    },
+    {
+      "commit": "f030f31697b814a21657eb5b95369a71cf6d811e",
+      "author_time": "2026-09-22T16:35:43-05:00",
+      "title": "bench: add an extended profile of four unseen tasks"
+    },
+    {
+      "commit": "46fd94bf7480d8977a1da4b8ff0511747db921ea",
+      "author_time": "2026-09-22T16:37:12-05:00",
+      "title": "docs: analyze the cheapest and fastest Coder One runs"
+    },
+    {
+      "commit": "7a7405304023960c8ef101c20cff12bf45fe85a9",
+      "author_time": "2026-09-22T16:37:28-05:00",
+      "title": "docs: correct Opus direct's exploration count in the analysis"
+    },
+    {
+      "commit": "03401dad748371423c81f7a434c4543492df27f3",
+      "author_time": "2026-09-22T16:40:48-05:00",
+      "title": "coder-one: add Jev-probe v2 behind CODER_ONE_PROBE_V2"
+    },
+    {
+      "commit": "49b06a936db245432e24b6e2ab5fd827f19ef102",
+      "author_time": "2026-09-22T16:45:36-05:00",
+      "title": "docs: capture the system prompt Claude Code sends as the Opus delegate"
+    },
+    {
+      "commit": "05adbaed76d74e33803ede327f42b4e7067806c7",
+      "author_time": "2026-09-22T17:38:33-05:00",
+      "title": "docs: record the Jev-probe and probe v2 results on eight tasks"
+    },
+    {
+      "commit": "88f47d67b4059c615aca2bd68deb5172014ffe50",
+      "author_time": "2026-09-22T17:39:25-05:00",
+      "title": "coder-one: add probe v3 directions and a five-minute cache arm"
+    },
+    {
+      "commit": "c5c791ede3c355e25bb0fd584959760de7f5e3ed",
+      "author_time": "2026-09-22T18:20:55-05:00",
+      "title": "docs: record probe v3 results on eight tasks"
+    },
+    {
+      "commit": "b58a841c4eed6d60d23a2abc44fd16b359e9a38b",
+      "author_time": "2026-09-22T18:21:10-05:00",
+      "title": "bench: add a probe v2 Opus arm on the five-minute cache"
+    },
+    {
+      "commit": "72ed33efda93434acd082a1ebcb33046edbf90b2",
+      "author_time": "2026-09-22T18:54:05-05:00",
+      "title": "docs: record probe v2 on the five-minute cache"
+    }
+  ],
+  "manual_price_source": {
+    "path": "bench/terminal-bench/profiles/manual-prices.json",
+    "sha256": "c3b1de9e6ca0e0469bd8e641aa7950cf0eb510f9674654d4527e058141ee79f9",
+    "note": "Historical rates; subscription reference price, not billing evidence."
+  }
+}

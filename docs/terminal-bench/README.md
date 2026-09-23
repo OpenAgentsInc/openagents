@@ -16,6 +16,8 @@ local Harbor jobs and the evidence linked below without running inference.
 - Coder One's delegate arms: [the delegate runbook](coder-one-delegate-runbook.md).
 - Why the two winning configurations were cheap and fast, and the upgrade
   plan: [the winning-runs analysis](winning-runs-analysis.md).
+- Full-day review and proposed Luna/Jev upgrade:
+  [requirement coverage, evidence packing, and bounded repair](2026-09-22-luna-jevprobe-upgrade.md).
 - Tasks: the upstream Terminal-Bench repository at `3b5caaa4863d`.
 - Evidence: each row links its retained trajectory under
   [`bench/terminal-bench/traces/`](../../bench/terminal-bench/traces/).
