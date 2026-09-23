@@ -22,6 +22,7 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | `exec.scripted` | How the host starts, observes, steers, stops, and resumes a scripted session. | None |
 | `control.monitor` | Whether a running session is making progress, repeating a failed approach, re-reading briefed evidence, or claiming it is done. Shadow mode: it records, never acts. | One request per trigger |
 | `control.handoff` | Whether to continue, steer, escalate to another executor, split the work between a planner and a worker, or race, within one budget. The [mini-task guide](coder-one-minitasks.md#hand-off-escalate-and-split-work) covers it. | None; its monitor can ask Jev |
+| `control.route` | Which executor starts a Terminal-Bench episode, from task.profile's features and the task's timeout. [Run the tunable composition](coder-one-tunable.md) covers it. | One request |
 | `exec.system` | The executor's system prompt: the manifest's sections, plus the optional sections the task needs. | One request |
 | `verify.close` | Whether the delegate's report and the changes show the task done. | One request |
 | `verify.checks` | Which requirements admitted scenarios observe, contradict, or can't verify against the candidate. | None |
@@ -35,7 +36,8 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 `verify.support` in
 [Judge requirement support with paired Jev questions](coder-one-support.md),
 and `verify.repair` in
-[Repair once from a diagnostic packet](coder-one-repair.md).
+[Repair once from a diagnostic packet](coder-one-repair.md). [Run the tunable composition on Terminal-Bench](coder-one-tunable.md)
+covers how they run together in one episode.
 
 Each component is a function from a serializable input to an output and
 named metrics. To add one, implement `coder_one::component::Component`

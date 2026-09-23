@@ -1,0 +1,36 @@
+{
+  "trial_name": "fix-git__m4eoyBB",
+  "task_name": "terminal-bench/fix-git",
+  "started_at": "2026-09-23T05:29:48.697871Z",
+  "finished_at": "2026-09-23T05:30:51.679359Z",
+  "environment_setup": {
+    "started_at": "2026-09-23T05:29:49.377578Z",
+    "finished_at": "2026-09-23T05:30:04.665311Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-23T05:30:04.665397Z",
+    "finished_at": "2026-09-23T05:30:09.775711Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-23T05:30:09.775904Z",
+    "finished_at": "2026-09-23T05:30:29.350602Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-23T05:30:29.671465Z",
+    "finished_at": "2026-09-23T05:30:40.277960Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 57669,
+    "n_cache_tokens": 26431,
+    "n_output_tokens": 737,
+    "cost_usd": 0.06983926800000001,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

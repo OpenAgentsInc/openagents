@@ -1,0 +1,17 @@
+{
+  "base": "d7d3e4ba9350f634d92d39ace2b471433ee57d50",
+  "revision_before": "fb7dbe7bf199d4c9a018032eac292f48109d3a118c75454337fe92ab511e3fda",
+  "revision_after": "fb7dbe7bf199d4c9a018032eac292f48109d3a118c75454337fe92ab511e3fda",
+  "tracked_bytes": 4943,
+  "untracked": [],
+  "limits": {
+    "files": 200,
+    "file_bytes": 1048576,
+    "total_bytes": 8388608
+  },
+  "schema": "openagents.coder-one.collection.v1",
+  "stale": false,
+  "complete": true,
+  "patch_sha256": "2d460bd48c80f9cc0debaca9d1980d317e5494903912587c32a637030b87856b",
+  "patch_bytes": 4943
+}

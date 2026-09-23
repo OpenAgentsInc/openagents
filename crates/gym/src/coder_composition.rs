@@ -219,6 +219,7 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
         words(&first["reason"]),
         profile["difficulty"]
             .as_f64()
+            .filter(|_| !words(&first["reason"]).contains("difficulty"))
             .map_or(String::new(), |d| format!(" · difficulty {d:.2}"))
     ));
     let horizon = &record["horizon"];
@@ -302,8 +303,20 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
     if let Some(support) = record["support"].as_object() {
         lines.push(format!(
             "  support: {}",
-            serde_json::to_string(support.get("states").unwrap_or(&Value::Null))
-                .unwrap_or_default()
+            [
+                "judged",
+                "supported",
+                "contradicted",
+                "unresolved",
+                "skipped"
+            ]
+            .iter()
+            .map(|key| format!(
+                "{} {key}",
+                support.get(*key).and_then(Value::as_u64).unwrap_or(0)
+            ))
+            .collect::<Vec<_>>()
+            .join(" · ")
         ));
     }
     let repair = &record["repair"];

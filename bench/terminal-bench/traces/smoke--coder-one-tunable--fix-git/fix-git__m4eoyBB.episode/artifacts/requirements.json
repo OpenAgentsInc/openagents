@@ -1,0 +1,63 @@
+{
+  "schema": "openagents.coder-one.requirements.v1",
+  "instruction_sha256": "f98174e47ba5ce040f6fad22ef3cbca4dd27b3192868ea5d082077222c3ec4e8",
+  "method": "jev",
+  "spans": [
+    {
+      "id": "s1",
+      "start": 0,
+      "end": 104,
+      "form": "sentence",
+      "text": "I just made some changes to my personal site and checked out master, but now I can't find those changes.",
+      "requirement": null,
+      "kind": "context",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.95,
+        "deliverable": 0.05
+      },
+      "answered": true
+    },
+    {
+      "id": "s2",
+      "start": 105,
+      "end": 157,
+      "form": "sentence",
+      "text": "Please help me find them and merge them into master.",
+      "requirement": "R1",
+      "kind": "deliverable",
+      "kinds": {
+        "behavior": 0.0,
+        "check": 0.0,
+        "constraint": 0.0,
+        "context": 0.0,
+        "deliverable": 1.0
+      },
+      "answered": true
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "spans": [
+        "s2"
+      ],
+      "kind": "deliverable",
+      "binding": "yes",
+      "state": "unobserved",
+      "p": 1.0,
+      "text": "Please help me find them and merge them into master."
+    }
+  ],
+  "coverage": {
+    "chars": 128,
+    "covered": 128,
+    "fraction": 1.0,
+    "spans": 2,
+    "requirement_spans": 1,
+    "context_spans": 1,
+    "unanswered_spans": 0
+  }
+}
