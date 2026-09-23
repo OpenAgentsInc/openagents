@@ -1,0 +1,192 @@
+{
+  "at": "2026-09-23T15:13:12.857437+00:00",
+  "completed_model_attempts": 12,
+  "grader_only_replays": 1,
+  "trials": [
+    {
+      "job": "matched-20260923--batched-eval-parity--r1--coder",
+      "trial": "batched-eval-parity__zAAp2Jy",
+      "started_at": "2026-09-23T13:42:43.041280Z",
+      "finished_at": "2026-09-23T13:49:37.978566Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r1--plain",
+      "trial": "batched-eval-parity__HTsoe2W",
+      "started_at": "2026-09-23T13:37:05.559994Z",
+      "finished_at": "2026-09-23T13:42:41.668113Z",
+      "reward": null,
+      "exception_type": "RuntimeError"
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r1--plain-regrade",
+      "trial": "batched-eval-parity__Em7KkGh",
+      "started_at": "2026-09-23T13:46:14.873539Z",
+      "finished_at": "2026-09-23T13:48:13.950334Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r2--coder",
+      "trial": "batched-eval-parity__yMr4Wo4",
+      "started_at": "2026-09-23T14:07:15.059087Z",
+      "finished_at": "2026-09-23T14:13:57.316597Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r2--plain",
+      "trial": "batched-eval-parity__b6ttGJi",
+      "started_at": "2026-09-23T14:13:59.191689Z",
+      "finished_at": "2026-09-23T14:21:50.686355Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r3--coder",
+      "trial": "batched-eval-parity__MRdoTBa",
+      "started_at": "2026-09-23T14:46:00.660345Z",
+      "finished_at": "2026-09-23T14:52:39.580142Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r3--plain",
+      "trial": "batched-eval-parity__MCC7Mfe",
+      "started_at": "2026-09-23T14:40:09.561128Z",
+      "finished_at": "2026-09-23T14:45:59.089128Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r1--coder",
+      "trial": "nextjs-performance__ajfrZR6",
+      "started_at": "2026-09-23T13:58:49.650876Z",
+      "finished_at": "2026-09-23T14:07:13.348898Z",
+      "reward": {
+        "reward": 0.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r1--plain",
+      "trial": "nextjs-performance__5A4s7Pz",
+      "started_at": "2026-09-23T13:51:19.380676Z",
+      "finished_at": "2026-09-23T13:58:47.976602Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r2--coder",
+      "trial": "nextjs-performance__dhy6o9c",
+      "started_at": "2026-09-23T14:21:52.414583Z",
+      "finished_at": "2026-09-23T14:29:49.860570Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r2--plain",
+      "trial": "nextjs-performance__7Yj4GVu",
+      "started_at": "2026-09-23T14:29:51.420360Z",
+      "finished_at": "2026-09-23T14:40:07.980009Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r3--coder",
+      "trial": "nextjs-performance__ZdJvNTW",
+      "started_at": "2026-09-23T15:05:23.205038Z",
+      "finished_at": "2026-09-23T15:12:17.750566Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r3--plain",
+      "trial": "nextjs-performance__7mVCLM3",
+      "started_at": "2026-09-23T14:52:41.263726Z",
+      "finished_at": "2026-09-23T15:03:21.646055Z",
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    }
+  ],
+  "task_commit": "452bf305c6daa62fc59061d22133a7cbc7c1572e",
+  "task_status": "",
+  "artifact_sha256": "178e3db41660e16e73d8904a69aab334640a481ac2de49eaf8f470a264260f03",
+  "free_disk_gib": 55.7320671081543,
+  "source_sha256": {
+    ".___init__.py": "08806a9fd07dbc9c5fced7280ad8c2766c5b8b4922ff8e89109cb20d7f6793a2",
+    ".___main__.py": "08806a9fd07dbc9c5fced7280ad8c2766c5b8b4922ff8e89109cb20d7f6793a2",
+    "._agents.py": "08806a9fd07dbc9c5fced7280ad8c2766c5b8b4922ff8e89109cb20d7f6793a2",
+    "._catalog.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._cli.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._coder_one.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._coder_v05.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._compare.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._counts.py": "08806a9fd07dbc9c5fced7280ad8c2766c5b8b4922ff8e89109cb20d7f6793a2",
+    "._doctor.py": "08806a9fd07dbc9c5fced7280ad8c2766c5b8b4922ff8e89109cb20d7f6793a2",
+    "._gpu_docker.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._host.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._jobconfig.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._live.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._matched.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._panel.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._paths.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._prebuilt.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._reference.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._results.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._retain.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._runner.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._suite.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._toolchain.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "._usage_limit.py": "a99a4c05396955a5ed66be22832e8d0fb93e83d0be33a413eaaeffac2e4f60a4",
+    "__init__.py": "597e02aeeef1e4cb83f5bdb44383c5e0637e3fd8aaa77dae71a9569419842656",
+    "__main__.py": "16bf73893e765ca39252ae6d2f192f37a575ee0e4210cc1ffbbb3fe607aaad47",
+    "agents.py": "01db5a43bbbbe7cd63f79c3ad397df854e3a7f64a7fb4dfe7f06f5295653ab4c",
+    "catalog.py": "dded95af9890b83f8bffc6e5c5c9d6a5df4ee50d92530a28355e5cb347c4764c",
+    "cli.py": "5e8f579828d7d9d931f56b72810b1969bf5e4b86484738cee87b3b05f3476085",
+    "coder_one.py": "3764f1619b8d2f221c9cbca609c828ecb22487e5c567c8b2c40f5ce04e1c8e12",
+    "coder_v05.py": "69afbcd75a41e72a3ae3850ee8b1389ed84226e468bc84f6470994e081b3edbc",
+    "compare.py": "fb2594786b0f16026d3b55bc027a9c31b39acf3910e7030d9b65e77024e1dc4e",
+    "counts.py": "cb5a58822f34695fb45fa4e506218dff04df8453296e86c36c35709a4fc25adb",
+    "doctor.py": "cdf35c7e6dfbbfc9e20f965faa55533997e5719874041daf147b00c2cc73282d",
+    "gpu_docker.py": "1fd9d03b2f7e3784f8cd513a5e46cdf95c8deab0fa50b7e7e45849d7099f1281",
+    "host.py": "e25bbd9826346c82fe8c6ff1957e9f68e1d1c8c1576e4202df9cb13a14fcb964",
+    "jobconfig.py": "2b052c71ee31948a8a028cf47ce27044a01379626b4b4dfd9793b761061e7ab2",
+    "live.py": "73b24bca5da3030bf5411b430d0b8cdb747bc38343d0eebe776fdd88218f310e",
+    "matched.py": "9aed3cc61a155ac9819e8928d8d6c86d9190e9f24eb08e260baa4c01071a20c1",
+    "matched_regrade.py": "865a3317ff9a4fc938d552d4d85f56308116fc5540139c16acd2140b65c32e95",
+    "panel.py": "853244174124103177be6e9051c2fa536d57800cee3d088a6d80bc7d6bfb341c",
+    "paths.py": "1f09a98962764c32fe969effa884b9b1615712f0a1f8d6366e70237b188ee94a",
+    "prebuilt.py": "ea820454f49f5231112bf90c57f7f522140199887b90af40609819a180963030",
+    "reference.py": "e3694f837e3b5d30a18a1c4875aee29dd2f1062fbd2b57cf9e29890e22a36237",
+    "results.py": "7c62954832853130f3a5a3adca80c48f88bedb6245c5469eb74adb817b201c67",
+    "retain.py": "f411f3978cd503ce3890f37d5d649f5df2b6e63654ef020cf64da0b62706c1e4",
+    "runner.py": "6b452f14dd5965a52c9a3d1040ad315035b779c4bab84825aac9f6a71127560c",
+    "suite.py": "73f5dc15229df1b9f55c5971b7d23e9e0214606b690d1cd591569efbd1c45e20",
+    "toolchain.py": "c425c11c2366bc4642f056bddd5180822901c355923e845ebe904295a10b9b67",
+    "usage_limit.py": "26c2bbb7aa8845890604067c163592d2e190ce572967382834f676f23c0d7863"
+  }
+}

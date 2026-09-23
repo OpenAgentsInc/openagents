@@ -1,0 +1,7 @@
+{
+  "at": "2026-09-23T13:36:48.431630+00:00",
+  "before_first_inference": true,
+  "old_slots": 5,
+  "new_slots": 6,
+  "reason": "All five existing slots occupied; one additional serial 2-CPU 4-GiB experiment fits observed host CPU and memory capacity. Disk floor and usage-limit stopping rule remain."
+}

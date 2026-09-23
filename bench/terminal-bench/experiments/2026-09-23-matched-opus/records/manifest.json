@@ -1,0 +1,37 @@
+{
+  "schema": "openagents.tbench.experiment-records.v1",
+  "exported_at": "2026-09-23T15:13:18.876546+00:00",
+  "credential_scan": {
+    "known_values": 8,
+    "matches": 0
+  },
+  "files": {
+    "matched-20260923--batched-eval-parity--r3--coder.json": "1516a7fcb465f79c5ea6f0dc5c96befa384d231ed93f0f2dcb0bc17be2e791ae",
+    "matched-20260923--batched-eval-parity--r1--plain.json": "3cc0d4c498e691f77b517308cbb1768826b37cfab6afa0a76cfe7f5d3b798506",
+    "completion.json": "25e9eddfbf407504868187d4818e5682f72f137fab30801d2d6de8b776907868",
+    "matched-20260923--nextjs-performance--r3--plain.json": "3bca1edfdfe811d1dc5ab6514c6504a96291bfa587889f61ee6cc0e47585b743",
+    "matched-20260923--nextjs-performance--r1--coder.json": "024b7de1adf55e26fca6f000850d65b1305dbc6f9711aab2ff40b953d0dd09ab",
+    "admission-amendment.json": "ab77ff9dc092997b010bca7488c1191f57080c5f04b35117df63bdfc1903eb8d",
+    "matched-20260923--batched-eval-parity--r3--plain.json": "915af9d748e87a2f123ca1a36966b147f48a14d36660a1f9c63e7062613f7c4a",
+    "initial-execution-pins.json": "2a6fbda980f8507011812fec3d0493878acbf4244b4acef59f3cc816ee4da839",
+    "collection-fix.json": "3c76faf9829ee5697b430a71a11c6c98792280e0541afbf057d7380681d75893",
+    "matched-20260923--batched-eval-parity--r2--plain.json": "311b55a174dc064f2ea0a7eaee64adc72e14bd5ffed14118bdd45c1bfbdcb886",
+    "matched-20260923--nextjs-performance--r1--plain.json": "fea85576a5e33f5b24cec1c956ce0924c1ea32fb5f9858f8351d59ea4c2bcf13",
+    "grader-contract-review.json": "a4679c741e23f9f4089c8e6b4f08e4ea0b3b6a918ab9ba461a333b9139083da9",
+    "matched-20260923--nextjs-performance--r2--coder.json": "2444047c6966d6e579166de8d0267be40b01d674c0555388425ff550e4a27bae",
+    "host-and-task-pins.json": "1e69c465b4f3edeccf004b00b74957e7354239ab7acfdc13362128dabaa01f33",
+    "matched-20260923--nextjs-performance--r3--coder.json": "e36ffa55821bae99f5c2dedecbd878d37dd8d4aff06f5ebcf4f6df0d40a36460",
+    "disk-admission.json": "c429ebcd31cdd254115925f80ceaec421a55c6d5be550f45fd522fec3e9c5ad7",
+    "matched-20260923--nextjs-performance--r2--plain.json": "d08098ec361abd7fd7e2d379658b58a608be139d906724fb85d4cd119b5d5d50",
+    "disk-admission-second.json": "6119061d0cf190f97b8f5772c8d410e3b2d87a39743fc88f688b2d3a80a197e2",
+    "prelaunch-pins.json": "2486f74be8d9a5a0c7d0a8d1524acdf744b2a55a9727ac04b92da49866fb1e24",
+    "after-collection-fix-pins.json": "9e2bd093221ae4c61bf17c06b43d56b4ecb503449b3ab2fb9656c93c7bd56546",
+    "prelaunch-five-slot-pins.json": "a7dda63f10729552fffa1be6a3db9290f5cd9d74d4b3f19d2a55792173476041",
+    "regrade-config.json": "3fd1d495c5e1a9f4744b7bc766822456e642ce799d73040dbdf6ef3a2564d780",
+    "prompt-token-fix.json": "c19650fbf016709d268f490cc542c89b09e4a53837efb8ffc85363b769a1ae96",
+    "matched-20260923--batched-eval-parity--r2--coder.json": "c8b2861a4396fcc39e080b9e3fd55ce59f9aa7c4d83ac021fc8ea5b51179d7ba",
+    "pins.json": "c8958aef84cae863371f4aaf95f2b2aac3bbf382d451a78547c902ca6a67fe9e",
+    "disk-admission-third.json": "3efcacaf4e77ed92042b12c65f40670ac2d1e809578c2c18ede6617f6545312e",
+    "matched-20260923--batched-eval-parity--r1--coder.json": "e88b94de4b4ed172cad90965af60b204a1637587c6d3204835997016fbff362b"
+  }
+}

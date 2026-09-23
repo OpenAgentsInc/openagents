@@ -1,0 +1,11 @@
+{
+  "at": "2026-09-23T14:04:35.512246+00:00",
+  "old_runner_sha256": "c065ab9e41fbb0d7c76ae14babba16349c30627029bd441747edd6c3fd186047",
+  "new_runner_sha256": "9aed3cc61a155ac9819e8928d8d6c86d9190e9f24eb08e260baa4c01071a20c1",
+  "change": "Normalize Harbor n_input_tokens as input + cache reads + cache creation, matching its ATIF converter. Native token categories, dollar costs, timings, model calls, prompts, and controls are unchanged.",
+  "affected_attempts": [
+    "matched-20260923--batched-eval-parity--r1--plain",
+    "matched-20260923--nextjs-performance--r1--plain"
+  ],
+  "analysis": "Use native token categories for every trial; retain original Harbor counters unchanged."
+}

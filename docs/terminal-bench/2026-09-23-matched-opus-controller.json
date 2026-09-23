@@ -1,0 +1,1958 @@
+{
+  "schema": "openagents.tbench.matched-results.v1",
+  "protocol": {
+    "schema": "openagents.tbench.matched.v1",
+    "id": "matched-20260923",
+    "tasks": [
+      "batched-eval-parity",
+      "nextjs-performance"
+    ],
+    "repetitions": 3,
+    "orders": [
+      [
+        "plain",
+        "coder"
+      ],
+      [
+        "coder",
+        "plain"
+      ],
+      [
+        "plain",
+        "coder"
+      ]
+    ],
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "claude_version": "2.1.280",
+    "tools": "Bash,Read,Edit,Write,Glob,Grep",
+    "cache_ttl": "5m",
+    "harbor_agent_timeout_sec": 1800,
+    "episode_allowance_sec": 1680,
+    "max_claude_concurrent": 6,
+    "min_free_disk_gib": 55,
+    "artifact_commit": "756500c1f9",
+    "artifact_sha256": "178e3db41660e16e73d8904a69aab334640a481ac2de49eaf8f470a264260f03",
+    "source_commit": "7e3e1a1872",
+    "task_commit": "452bf305c6daa62fc59061d22133a7cbc7c1572e",
+    "stopping_rule": "Run all 12 trials once. No success-based stopping or automatic retries. Stop the remaining schedule on a provider usage limit or invalid matching; retain every started attempt.",
+    "cost_note": "Subscription list-price usage, not incremental subscription charges. Add all controller usage to the Coder arm. No dollar or token cap in either arm; equal finite wall-clock allowance.",
+    "treatment": "Coder v2 preparation, Jev monitoring, checks, support, and checked repair. Fixed Opus executor; no routing or cross-model handoff. Internal time allocation and additional controller calls are part of the treatment.",
+    "selection": "Two historical both-pass efficiency examples selected before new outcomes. Development tasks, not held out.",
+    "metrics": [
+      "verifier reward for all attempts",
+      "total agent execution seconds",
+      "full trial wall seconds",
+      "total reported/estimated USD including controller",
+      "native model turns and tool calls",
+      "controller calls and repair dispatches"
+    ],
+    "admission_amendment": "Before any experiment inference, reserve a sixth Claude slot for this serial schedule. Five existing long-running jobs occupy the host slots, while observed CPU and memory usage leave capacity for one additional 2-CPU, 4-GiB trial. Keep the 55-GiB disk floor and stop on provider usage limits."
+  },
+  "complete": true,
+  "not_retained": [],
+  "trials": [
+    {
+      "job": "matched-20260923--batched-eval-parity--r1--plain",
+      "trial": "batched-eval-parity__HTsoe2W",
+      "task": "batched-eval-parity",
+      "arm": "plain",
+      "repetition": 1,
+      "started_at": "2026-09-23T13:37:05.559994Z",
+      "finished_at": "2026-09-23T13:42:41.668113Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r1--plain/batched-eval-parity__HTsoe2W.episode",
+      "reward": null,
+      "exception": {
+        "exception_type": "RuntimeError",
+        "exception_message": "Docker compose command failed for environment batched-eval-parity. Command: docker compose --project-name batched-eval-parity__htsoe2w__env --project-directory /home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/batched-eval-parity/environment -f /tmp/tmp7c64ej03/batched-eval-parity__HTsoe2W__env-docker-compose-resources.json -f /home/christopherdavid/openagents/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/environments/docker/docker-compose-build.yaml -f /tmp/tmpqasnt1mt/docker-compose-environment.json -f /tmp/tmp1hx73bph/docker-compose-mounts.json cp main:/root/.claude/projects/. /home/christopherdavid/.openagents/terminal-bench/jobs/matched-20260923--batched-eval-parity--r1--plain/batched-eval-parity__HTsoe2W/agent/sessions/projects. Return code: 1. Stdout:  batched-eval-parity__htsoe2w__env-main-1 Copying batched-eval-parity__htsoe2w__env-main-1:/root/.claude/projects/. to /home/christopherdavid/.openagents/terminal-bench/jobs/matched-20260923--batched-eval-parity--r1--plain/batched-eval-parity__HTsoe2W/agent/sessions/projects\ninvalid output path: directory \"/home/christopherdavid/.openagents/terminal-bench/jobs/matched-20260923--batched-eval-parity--r1--plain/batched-eval-parity__HTsoe2W/agent/sessions\" does not exist\n. Stderr: None. ",
+        "exception_traceback": "Traceback (most recent call last):\n  File \"/home/christopherdavid/openagents/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/trial.py\", line 409, in run\n    await self._run()\n  File \"/home/christopherdavid/openagents/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/single_step.py\", line 41, in _run\n    await self._run_agent()\n  File \"/home/christopherdavid/openagents/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/single_step.py\", line 77, in _run_agent\n    await self._run_agent_phase(\n    ...<5 lines>...\n    )\n  File \"/home/christopherdavid/openagents/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/trial/trial.py\", line 545, in _run_agent_phase\n    await asyncio.wait_for(\n    ...<6 lines>...\n    )\n  File \"/home/christopherdavid/.nix-profile/lib/python3.13/asyncio/tasks.py\", line 507, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/home/christopherdavid/.openagents/terminal-bench/experiments/matched-source/bench/terminal-bench/tbench/matched.py\", line 86, in run\n    await environment.download_dir(home.stdout.strip() + \"/.claude/projects\",\n                                   self.logs_dir / \"sessions/projects\")\n  File \"/home/christopherdavid/openagents/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/environments/docker/docker.py\", line 1046, in download_dir\n    await self._platform.download_dir(source_dir, target_dir)\n  File \"/home/christopherdavid/openagents/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/environments/docker/docker_unix.py\", line 197, in download_dir\n    await self._env._run_docker_compose_command(\n    ...<2 lines>...\n    )\n  File \"/home/christopherdavid/openagents/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/environments/docker/docker.py\", line 656, in _run_docker_compose_command\n    raise RuntimeError(\n    ...<5 lines>...\n    )\nRuntimeError: Docker compose command failed for environment batched-eval-parity. Command: docker compose --project-name batched-eval-parity__htsoe2w__env --project-directory /home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench-v4.0.0/tasks/batched-eval-parity/environment -f /tmp/tmp7c64ej03/batched-eval-parity__HTsoe2W__env-docker-compose-resources.json -f /home/christopherdavid/openagents/bench/terminal-bench/.venv/lib/python3.13/site-packages/harbor/environments/docker/docker-compose-build.yaml -f /tmp/tmpqasnt1mt/docker-compose-environment.json -f /tmp/tmp1hx73bph/docker-compose-mounts.json cp main:/root/.claude/projects/. /home/christopherdavid/.openagents/terminal-bench/jobs/matched-20260923--batched-eval-parity--r1--plain/batched-eval-parity__HTsoe2W/agent/sessions/projects. Return code: 1. Stdout:  batched-eval-parity__htsoe2w__env-main-1 Copying batched-eval-parity__htsoe2w__env-main-1:/root/.claude/projects/. to /home/christopherdavid/.openagents/terminal-bench/jobs/matched-20260923--batched-eval-parity--r1--plain/batched-eval-parity__HTsoe2W/agent/sessions/projects\ninvalid output path: directory \"/home/christopherdavid/.openagents/terminal-bench/jobs/matched-20260923--batched-eval-parity--r1--plain/batched-eval-parity__HTsoe2W/agent/sessions\" does not exist\n. Stderr: None. \n",
+        "occurred_at": "2026-09-23T13:42:30.722469Z"
+      },
+      "usage_limited": false,
+      "agent_seconds": 319.241532,
+      "trial_seconds": null,
+      "setup_seconds": 2.3336,
+      "cost_usd": 1.2342738,
+      "unpriced_calls": 0,
+      "controller_usage": null,
+      "controller_cost_usd": null,
+      "checks": null,
+      "repair": null,
+      "branches": null,
+      "horizon": null,
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r1--plain/batched-eval-parity__HTsoe2W.episode/native/claude-code.txt",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 26,
+          "model_messages": 24,
+          "tool_calls": 25,
+          "cost_usd": 1.2342738,
+          "duration_ms": 318151,
+          "api_duration_ms": 282146,
+          "usage": {
+            "input_tokens": 48,
+            "cache_creation_input_tokens": 76215,
+            "cache_read_input_tokens": 1164734,
+            "output_tokens": 31003,
+            "output_tokens_details": {
+              "thinking_tokens": 12680
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 76215
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1469,
+                "cache_read_input_tokens": 79793,
+                "cache_creation_input_tokens": 885,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 885,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "13af1cadc154f23060ec15015e83e7ce1e040177d4f26480c4cb6e1e64dbd6bb",
+      "matching_violations": [],
+      "retention_missing": [
+        {
+          "kind": "normalized trajectory",
+          "reference": "@trajectory",
+          "reason": "referenced but not present in the job directory"
+        },
+        {
+          "kind": "verifier output",
+          "reference": "verifier/test-stdout.txt",
+          "reason": "the verifier left no such file"
+        },
+        {
+          "kind": "verifier output",
+          "reference": "verifier/ctrf.json",
+          "reason": "the verifier left no such file"
+        }
+      ],
+      "verified_files": 29,
+      "recovered_grade": {
+        "reward": 1.0,
+        "evidence": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r1--plain-regrade/batched-eval-parity__Em7KkGh.episode",
+        "model_calls": 0,
+        "unchanged_files_verified": 17,
+        "verified_files": 23,
+        "regrade_trial_seconds": 119.076795
+      },
+      "original_trial_seconds": 336.108119
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r1--coder",
+      "trial": "batched-eval-parity__zAAp2Jy",
+      "task": "batched-eval-parity",
+      "arm": "coder",
+      "repetition": 1,
+      "started_at": "2026-09-23T13:42:43.041280Z",
+      "finished_at": "2026-09-23T13:49:37.978566Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r1--coder/batched-eval-parity__zAAp2Jy.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 349.65018,
+      "trial_seconds": 414.937286,
+      "setup_seconds": 2.504003,
+      "cost_usd": 1.3665549520000002,
+      "unpriced_calls": 0,
+      "controller_usage": {
+        "generation": 0,
+        "decisions": 54,
+        "decisions_skipped": 0,
+        "delegates": 1,
+        "failed": 0,
+        "retries": 0
+      },
+      "controller_cost_usd": 0.006470351999999999,
+      "checks": [
+        {
+          "after": "primary",
+          "file": "verification/checks.json",
+          "summary": {
+            "candidate": "d571541dbb201e1a4b2b242744a06dc8cc35f4eb6fd9948ce81619bde2a87e62",
+            "scenarios": 0,
+            "verdicts": {},
+            "requirements": {
+              "unobserved": 29
+            },
+            "packets": 0
+          },
+          "self_report": null
+        }
+      ],
+      "repair": {
+        "tier": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "effort": "medium",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "version": "2.1.280"
+        },
+        "triggered": false,
+        "ran": false,
+        "changed": false,
+        "skipped": "no check contradicted a requirement",
+        "session": null,
+        "recheck": null,
+        "cost_usd": 0.0
+      },
+      "branches": [
+        {
+          "role": "primary",
+          "tier": {
+            "agent": "claude-code",
+            "model": "claude-opus-5-5",
+            "effort": "medium",
+            "tools": "Bash,Read,Edit,Write,Glob,Grep",
+            "prompt_cache_ttl": "5m",
+            "version": "2.1.280"
+          },
+          "status": "answered",
+          "milliseconds": 343434,
+          "requested_sec": 1236,
+          "usd": 1.3600846000000002,
+          "charge": "priced",
+          "turns": 24,
+          "stopped_by": null,
+          "session_id": "97411fb6-366b-4f92-a125-d9f2f6995dd8"
+        }
+      ],
+      "horizon": {
+        "policy": {
+          "first_share": 0.55,
+          "later_share": 0.75,
+          "min_dispatch_sec": 300,
+          "check_share": 0.05,
+          "long_after_sec": 1,
+          "long_effort": "medium",
+          "long_command_sec": 3600
+        },
+        "episode_deadline_sec": 1678,
+        "long": true,
+        "first_dispatch_sec": 1236,
+        "check_budget": {
+          "max_scenarios": 12,
+          "seconds": 180
+        },
+        "command_sec": 60
+      },
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r1--coder/batched-eval-parity__zAAp2Jy.episode/artifacts/delegate-1.stream.jsonl",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 24,
+          "model_messages": 21,
+          "tool_calls": 23,
+          "cost_usd": 1.3600846000000002,
+          "duration_ms": 342788,
+          "api_duration_ms": 316701,
+          "usage": {
+            "input_tokens": 42,
+            "cache_creation_input_tokens": 79985,
+            "cache_read_input_tokens": 1136058,
+            "output_tokens": 36639,
+            "output_tokens_details": {
+              "thinking_tokens": 13778
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 79985
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1411,
+                "cache_read_input_tokens": 83631,
+                "cache_creation_input_tokens": 817,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 817,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "13af1cadc154f23060ec15015e83e7ce1e040177d4f26480c4cb6e1e64dbd6bb",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 41
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r1--plain",
+      "trial": "nextjs-performance__5A4s7Pz",
+      "task": "nextjs-performance",
+      "arm": "plain",
+      "repetition": 1,
+      "started_at": "2026-09-23T13:51:19.380676Z",
+      "finished_at": "2026-09-23T13:58:47.976602Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r1--plain/nextjs-performance__5A4s7Pz.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 245.142268,
+      "trial_seconds": 448.595926,
+      "setup_seconds": 2.506437,
+      "cost_usd": 0.6948907999999998,
+      "unpriced_calls": 0,
+      "controller_usage": null,
+      "controller_cost_usd": null,
+      "checks": null,
+      "repair": null,
+      "branches": null,
+      "horizon": null,
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r1--plain/nextjs-performance__5A4s7Pz.episode/native/claude-code.txt",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 21,
+          "model_messages": 20,
+          "tool_calls": 20,
+          "cost_usd": 0.6948907999999998,
+          "duration_ms": 244037,
+          "api_duration_ms": 180988,
+          "usage": {
+            "input_tokens": 40,
+            "cache_creation_input_tokens": 38036,
+            "cache_read_input_tokens": 538854,
+            "output_tokens": 19839,
+            "output_tokens_details": {
+              "thinking_tokens": 5531
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 38036
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1003,
+                "cache_read_input_tokens": 42319,
+                "cache_creation_input_tokens": 180,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 180,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "b538e182cc473922015ae532d4a39c9335ea9de7274408d6ed9437cb19753085",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 46
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r1--coder",
+      "trial": "nextjs-performance__ajfrZR6",
+      "task": "nextjs-performance",
+      "arm": "coder",
+      "repetition": 1,
+      "started_at": "2026-09-23T13:58:49.650876Z",
+      "finished_at": "2026-09-23T14:07:13.348898Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r1--coder/nextjs-performance__ajfrZR6.episode",
+      "reward": 0.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 426.700423,
+      "trial_seconds": 503.698022,
+      "setup_seconds": 2.542517,
+      "cost_usd": 0.9442249100000001,
+      "unpriced_calls": 0,
+      "controller_usage": {
+        "generation": 0,
+        "decisions": 55,
+        "decisions_skipped": 0,
+        "delegates": 1,
+        "failed": 0,
+        "retries": 0
+      },
+      "controller_cost_usd": 0.004874309999999999,
+      "checks": [
+        {
+          "after": "primary",
+          "file": "verification/checks.json",
+          "summary": {
+            "candidate": "b602b6566c77ca9cabccbde2b849c5b238d6e300a83b3883a4c2c2af9638f731",
+            "scenarios": 0,
+            "verdicts": {},
+            "requirements": {
+              "unobserved": 10
+            },
+            "packets": 0
+          },
+          "self_report": null
+        }
+      ],
+      "repair": {
+        "tier": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "effort": "medium",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "version": "2.1.280"
+        },
+        "triggered": false,
+        "ran": false,
+        "changed": false,
+        "skipped": "no check contradicted a requirement",
+        "session": null,
+        "recheck": null,
+        "cost_usd": 0.0
+      },
+      "branches": [
+        {
+          "role": "primary",
+          "tier": {
+            "agent": "claude-code",
+            "model": "claude-opus-5-5",
+            "effort": "medium",
+            "tools": "Bash,Read,Edit,Write,Glob,Grep",
+            "prompt_cache_ttl": "5m",
+            "version": "2.1.280"
+          },
+          "status": "answered",
+          "milliseconds": 420957,
+          "requested_sec": 1236,
+          "usd": 0.9393506,
+          "charge": "priced",
+          "turns": 24,
+          "stopped_by": null,
+          "session_id": "4fba6890-a725-4237-9a80-ca539e041d7c"
+        }
+      ],
+      "horizon": {
+        "policy": {
+          "first_share": 0.55,
+          "later_share": 0.75,
+          "min_dispatch_sec": 300,
+          "check_share": 0.05,
+          "long_after_sec": 1,
+          "long_effort": "medium",
+          "long_command_sec": 3600
+        },
+        "episode_deadline_sec": 1678,
+        "long": true,
+        "first_dispatch_sec": 1236,
+        "check_budget": {
+          "max_scenarios": 12,
+          "seconds": 180
+        },
+        "command_sec": 60
+      },
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r1--coder/nextjs-performance__ajfrZR6.episode/artifacts/delegate-1.stream.jsonl",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 24,
+          "model_messages": 24,
+          "tool_calls": 23,
+          "cost_usd": 0.9393506000000001,
+          "duration_ms": 420116,
+          "api_duration_ms": 260429,
+          "usage": {
+            "input_tokens": 48,
+            "cache_creation_input_tokens": 49043,
+            "cache_read_input_tokens": 875418,
+            "output_tokens": 25943,
+            "output_tokens_details": {
+              "thinking_tokens": 6424
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 49043
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1239,
+                "cache_read_input_tokens": 53299,
+                "cache_creation_input_tokens": 207,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 207,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "b538e182cc473922015ae532d4a39c9335ea9de7274408d6ed9437cb19753085",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 53
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r2--coder",
+      "trial": "batched-eval-parity__yMr4Wo4",
+      "task": "batched-eval-parity",
+      "arm": "coder",
+      "repetition": 2,
+      "started_at": "2026-09-23T14:07:15.059087Z",
+      "finished_at": "2026-09-23T14:13:57.316597Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r2--coder/batched-eval-parity__yMr4Wo4.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 338.165195,
+      "trial_seconds": 402.25751,
+      "setup_seconds": 2.316053,
+      "cost_usd": 1.214138324,
+      "unpriced_calls": 0,
+      "controller_usage": {
+        "generation": 0,
+        "decisions": 46,
+        "decisions_skipped": 0,
+        "delegates": 1,
+        "failed": 0,
+        "retries": 0
+      },
+      "controller_cost_usd": 0.005738124000000001,
+      "checks": [
+        {
+          "after": "primary",
+          "file": "verification/checks.json",
+          "summary": {
+            "candidate": "cd77c65cf03bef327f1e12d7658ba26d2f87aefc46acc37fb27411b022ecf257",
+            "scenarios": 0,
+            "verdicts": {},
+            "requirements": {
+              "unobserved": 29
+            },
+            "packets": 0
+          },
+          "self_report": null
+        }
+      ],
+      "repair": {
+        "tier": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "effort": "medium",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "version": "2.1.280"
+        },
+        "triggered": false,
+        "ran": false,
+        "changed": false,
+        "skipped": "no check contradicted a requirement",
+        "session": null,
+        "recheck": null,
+        "cost_usd": 0.0
+      },
+      "branches": [
+        {
+          "role": "primary",
+          "tier": {
+            "agent": "claude-code",
+            "model": "claude-opus-5-5",
+            "effort": "medium",
+            "tools": "Bash,Read,Edit,Write,Glob,Grep",
+            "prompt_cache_ttl": "5m",
+            "version": "2.1.280"
+          },
+          "status": "answered",
+          "milliseconds": 332424,
+          "requested_sec": 1236,
+          "usd": 1.2084002,
+          "charge": "priced",
+          "turns": 19,
+          "stopped_by": null,
+          "session_id": "f1ccd6f3-8e79-4e2e-82ae-66a68038d7ef"
+        }
+      ],
+      "horizon": {
+        "policy": {
+          "first_share": 0.55,
+          "later_share": 0.75,
+          "min_dispatch_sec": 300,
+          "check_share": 0.05,
+          "long_after_sec": 1,
+          "long_effort": "medium",
+          "long_command_sec": 3600
+        },
+        "episode_deadline_sec": 1678,
+        "long": true,
+        "first_dispatch_sec": 1236,
+        "check_budget": {
+          "max_scenarios": 12,
+          "seconds": 180
+        },
+        "command_sec": 60
+      },
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r2--coder/batched-eval-parity__yMr4Wo4.episode/artifacts/delegate-1.stream.jsonl",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 19,
+          "model_messages": 16,
+          "tool_calls": 18,
+          "cost_usd": 1.2084002,
+          "duration_ms": 331574,
+          "api_duration_ms": 286722,
+          "usage": {
+            "input_tokens": 32,
+            "cache_creation_input_tokens": 76718,
+            "cache_read_input_tokens": 840611,
+            "output_tokens": 32828,
+            "output_tokens_details": {
+              "thinking_tokens": 13941
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 76718
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1487,
+                "cache_read_input_tokens": 79554,
+                "cache_creation_input_tokens": 1627,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 1627,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "13af1cadc154f23060ec15015e83e7ce1e040177d4f26480c4cb6e1e64dbd6bb",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 41
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r2--plain",
+      "trial": "batched-eval-parity__b6ttGJi",
+      "task": "batched-eval-parity",
+      "arm": "plain",
+      "repetition": 2,
+      "started_at": "2026-09-23T14:13:59.191689Z",
+      "finished_at": "2026-09-23T14:21:50.686355Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r2--plain/batched-eval-parity__b6ttGJi.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 406.35171,
+      "trial_seconds": 471.494666,
+      "setup_seconds": 2.452098,
+      "cost_usd": 1.3981578000000003,
+      "unpriced_calls": 0,
+      "controller_usage": null,
+      "controller_cost_usd": null,
+      "checks": null,
+      "repair": null,
+      "branches": null,
+      "horizon": null,
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r2--plain/batched-eval-parity__b6ttGJi.episode/native/claude-code.txt",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 29,
+          "model_messages": 26,
+          "tool_calls": 28,
+          "cost_usd": 1.3981578000000003,
+          "duration_ms": 405369,
+          "api_duration_ms": 353324,
+          "usage": {
+            "input_tokens": 52,
+            "cache_creation_input_tokens": 80670,
+            "cache_read_input_tokens": 1305699,
+            "output_tokens": 36673,
+            "output_tokens_details": {
+              "thinking_tokens": 14270
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 80670
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1363,
+                "cache_read_input_tokens": 83913,
+                "cache_creation_input_tokens": 1220,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 1220,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "13af1cadc154f23060ec15015e83e7ce1e040177d4f26480c4cb6e1e64dbd6bb",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 34
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r2--coder",
+      "trial": "nextjs-performance__dhy6o9c",
+      "task": "nextjs-performance",
+      "arm": "coder",
+      "repetition": 2,
+      "started_at": "2026-09-23T14:21:52.414583Z",
+      "finished_at": "2026-09-23T14:29:49.860570Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r2--coder/nextjs-performance__dhy6o9c.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 403.211952,
+      "trial_seconds": 477.445987,
+      "setup_seconds": 2.603136,
+      "cost_usd": 0.8765208179999999,
+      "unpriced_calls": 0,
+      "controller_usage": {
+        "generation": 0,
+        "decisions": 55,
+        "decisions_skipped": 0,
+        "delegates": 1,
+        "failed": 0,
+        "retries": 0
+      },
+      "controller_cost_usd": 0.004894218000000001,
+      "checks": [
+        {
+          "after": "primary",
+          "file": "verification/checks.json",
+          "summary": {
+            "candidate": "332b896b0d2a269e543cea1667e27eacaa33e316855d7531fc8d85f3f1ddfb77",
+            "scenarios": 0,
+            "verdicts": {},
+            "requirements": {
+              "unobserved": 9
+            },
+            "packets": 0
+          },
+          "self_report": null
+        }
+      ],
+      "repair": {
+        "tier": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "effort": "medium",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "version": "2.1.280"
+        },
+        "triggered": false,
+        "ran": false,
+        "changed": false,
+        "skipped": "no check contradicted a requirement",
+        "session": null,
+        "recheck": null,
+        "cost_usd": 0.0
+      },
+      "branches": [
+        {
+          "role": "primary",
+          "tier": {
+            "agent": "claude-code",
+            "model": "claude-opus-5-5",
+            "effort": "medium",
+            "tools": "Bash,Read,Edit,Write,Glob,Grep",
+            "prompt_cache_ttl": "5m",
+            "version": "2.1.280"
+          },
+          "status": "answered",
+          "milliseconds": 397528,
+          "requested_sec": 1236,
+          "usd": 0.8716265999999999,
+          "charge": "priced",
+          "turns": 24,
+          "stopped_by": null,
+          "session_id": "bdd1a8dd-6857-499d-b2aa-6559e71acfb9"
+        }
+      ],
+      "horizon": {
+        "policy": {
+          "first_share": 0.55,
+          "later_share": 0.75,
+          "min_dispatch_sec": 300,
+          "check_share": 0.05,
+          "long_after_sec": 1,
+          "long_effort": "medium",
+          "long_command_sec": 3600
+        },
+        "episode_deadline_sec": 1678,
+        "long": true,
+        "first_dispatch_sec": 1236,
+        "check_budget": {
+          "max_scenarios": 12,
+          "seconds": 180
+        },
+        "command_sec": 60
+      },
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r2--coder/nextjs-performance__dhy6o9c.episode/artifacts/delegate-1.stream.jsonl",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 24,
+          "model_messages": 24,
+          "tool_calls": 23,
+          "cost_usd": 0.8716265999999999,
+          "duration_ms": 396872,
+          "api_duration_ms": 219230,
+          "usage": {
+            "input_tokens": 48,
+            "cache_creation_input_tokens": 45438,
+            "cache_read_input_tokens": 793823,
+            "output_tokens": 24274,
+            "output_tokens_details": {
+              "thinking_tokens": 5926
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 45438
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1262,
+                "cache_read_input_tokens": 49101,
+                "cache_creation_input_tokens": 800,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 800,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "b538e182cc473922015ae532d4a39c9335ea9de7274408d6ed9437cb19753085",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 53
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r2--plain",
+      "trial": "nextjs-performance__7Yj4GVu",
+      "task": "nextjs-performance",
+      "arm": "plain",
+      "repetition": 2,
+      "started_at": "2026-09-23T14:29:51.420360Z",
+      "finished_at": "2026-09-23T14:40:07.980009Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r2--plain/nextjs-performance__7Yj4GVu.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 541.261484,
+      "trial_seconds": 616.559649,
+      "setup_seconds": 2.344378,
+      "cost_usd": 1.1844057999999997,
+      "unpriced_calls": 0,
+      "controller_usage": null,
+      "controller_cost_usd": null,
+      "checks": null,
+      "repair": null,
+      "branches": null,
+      "horizon": null,
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r2--plain/nextjs-performance__7Yj4GVu.episode/native/claude-code.txt",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 43,
+          "model_messages": 42,
+          "tool_calls": 42,
+          "cost_usd": 1.1844057999999997,
+          "duration_ms": 540193,
+          "api_duration_ms": 300337,
+          "usage": {
+            "input_tokens": 84,
+            "cache_creation_input_tokens": 54344,
+            "cache_read_input_tokens": 1523849,
+            "output_tokens": 30379,
+            "output_tokens_details": {
+              "thinking_tokens": 10154
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 54344
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1253,
+                "cache_read_input_tokens": 57877,
+                "cache_creation_input_tokens": 930,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 930,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "b538e182cc473922015ae532d4a39c9335ea9de7274408d6ed9437cb19753085",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 47
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r3--plain",
+      "trial": "batched-eval-parity__MCC7Mfe",
+      "task": "batched-eval-parity",
+      "arm": "plain",
+      "repetition": 3,
+      "started_at": "2026-09-23T14:40:09.561128Z",
+      "finished_at": "2026-09-23T14:45:59.089128Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r3--plain/batched-eval-parity__MCC7Mfe.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 276.030402,
+      "trial_seconds": 349.528,
+      "setup_seconds": 2.431329,
+      "cost_usd": 1.1595718000000002,
+      "unpriced_calls": 0,
+      "controller_usage": null,
+      "controller_cost_usd": null,
+      "checks": null,
+      "repair": null,
+      "branches": null,
+      "horizon": null,
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r3--plain/batched-eval-parity__MCC7Mfe.episode/native/claude-code.txt",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 26,
+          "model_messages": 24,
+          "tool_calls": 25,
+          "cost_usd": 1.1595718000000002,
+          "duration_ms": 274935,
+          "api_duration_ms": 269873,
+          "usage": {
+            "input_tokens": 48,
+            "cache_creation_input_tokens": 68406,
+            "cache_read_input_tokens": 1044749,
+            "output_tokens": 30420,
+            "output_tokens_details": {
+              "thinking_tokens": 10957
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 68406
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1485,
+                "cache_read_input_tokens": 71960,
+                "cache_creation_input_tokens": 909,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 909,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "13af1cadc154f23060ec15015e83e7ce1e040177d4f26480c4cb6e1e64dbd6bb",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 34
+    },
+    {
+      "job": "matched-20260923--batched-eval-parity--r3--coder",
+      "trial": "batched-eval-parity__MRdoTBa",
+      "task": "batched-eval-parity",
+      "arm": "coder",
+      "repetition": 3,
+      "started_at": "2026-09-23T14:46:00.660345Z",
+      "finished_at": "2026-09-23T14:52:39.580142Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r3--coder/batched-eval-parity__MRdoTBa.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 303.532705,
+      "trial_seconds": 398.919797,
+      "setup_seconds": 2.397403,
+      "cost_usd": 1.0416480879999999,
+      "unpriced_calls": 0,
+      "controller_usage": {
+        "generation": 0,
+        "decisions": 48,
+        "decisions_skipped": 0,
+        "delegates": 1,
+        "failed": 0,
+        "retries": 0
+      },
+      "controller_cost_usd": 0.0059288879999999985,
+      "checks": [
+        {
+          "after": "primary",
+          "file": "verification/checks.json",
+          "summary": {
+            "candidate": "c10f30a1f1183d402cb27dfe9587eba506f6dcd7d3adfe68ac751112d89eab26",
+            "scenarios": 0,
+            "verdicts": {},
+            "requirements": {
+              "unobserved": 29
+            },
+            "packets": 0
+          },
+          "self_report": null
+        }
+      ],
+      "repair": {
+        "tier": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "effort": "medium",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "version": "2.1.280"
+        },
+        "triggered": false,
+        "ran": false,
+        "changed": false,
+        "skipped": "no check contradicted a requirement",
+        "session": null,
+        "recheck": null,
+        "cost_usd": 0.0
+      },
+      "branches": [
+        {
+          "role": "primary",
+          "tier": {
+            "agent": "claude-code",
+            "model": "claude-opus-5-5",
+            "effort": "medium",
+            "tools": "Bash,Read,Edit,Write,Glob,Grep",
+            "prompt_cache_ttl": "5m",
+            "version": "2.1.280"
+          },
+          "status": "answered",
+          "milliseconds": 296150,
+          "requested_sec": 1236,
+          "usd": 1.0357192,
+          "charge": "priced",
+          "turns": 19,
+          "stopped_by": null,
+          "session_id": "d284541b-d5ca-4ec7-b1c3-1e32aaafbd9a"
+        }
+      ],
+      "horizon": {
+        "policy": {
+          "first_share": 0.55,
+          "later_share": 0.75,
+          "min_dispatch_sec": 300,
+          "check_share": 0.05,
+          "long_after_sec": 1,
+          "long_effort": "medium",
+          "long_command_sec": 3600
+        },
+        "episode_deadline_sec": 1678,
+        "long": true,
+        "first_dispatch_sec": 1236,
+        "check_budget": {
+          "max_scenarios": 12,
+          "seconds": 180
+        },
+        "command_sec": 60
+      },
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--batched-eval-parity--r3--coder/batched-eval-parity__MRdoTBa.episode/artifacts/delegate-1.stream.jsonl",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 19,
+          "model_messages": 17,
+          "tool_calls": 18,
+          "cost_usd": 1.0357192,
+          "duration_ms": 295127,
+          "api_duration_ms": 243832,
+          "usage": {
+            "input_tokens": 34,
+            "cache_creation_input_tokens": 65195,
+            "cache_read_input_tokens": 774341,
+            "output_tokens": 27737,
+            "output_tokens_details": {
+              "thinking_tokens": 10368
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 65195
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1548,
+                "cache_read_input_tokens": 68402,
+                "cache_creation_input_tokens": 1256,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 1256,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "13af1cadc154f23060ec15015e83e7ce1e040177d4f26480c4cb6e1e64dbd6bb",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 41
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r3--plain",
+      "trial": "nextjs-performance__7mVCLM3",
+      "task": "nextjs-performance",
+      "arm": "plain",
+      "repetition": 3,
+      "started_at": "2026-09-23T14:52:41.263726Z",
+      "finished_at": "2026-09-23T15:03:21.646055Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r3--plain/nextjs-performance__7mVCLM3.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 433.716677,
+      "trial_seconds": 640.382329,
+      "setup_seconds": 2.72468,
+      "cost_usd": 0.9721904,
+      "unpriced_calls": 0,
+      "controller_usage": null,
+      "controller_cost_usd": null,
+      "checks": null,
+      "repair": null,
+      "branches": null,
+      "horizon": null,
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r3--plain/nextjs-performance__7mVCLM3.episode/native/claude-code.txt",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 31,
+          "model_messages": 30,
+          "tool_calls": 30,
+          "cost_usd": 0.9721904,
+          "duration_ms": 432834,
+          "api_duration_ms": 247642,
+          "usage": {
+            "input_tokens": 60,
+            "cache_creation_input_tokens": 46425,
+            "cache_read_input_tokens": 965227,
+            "output_tokens": 27339,
+            "output_tokens_details": {
+              "thinking_tokens": 7755
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 46425
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1168,
+                "cache_read_input_tokens": 50184,
+                "cache_creation_input_tokens": 704,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 704,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "b538e182cc473922015ae532d4a39c9335ea9de7274408d6ed9437cb19753085",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 47
+    },
+    {
+      "job": "matched-20260923--nextjs-performance--r3--coder",
+      "trial": "nextjs-performance__ZdJvNTW",
+      "task": "nextjs-performance",
+      "arm": "coder",
+      "repetition": 3,
+      "started_at": "2026-09-23T15:05:23.205038Z",
+      "finished_at": "2026-09-23T15:12:17.750566Z",
+      "evidence": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r3--coder/nextjs-performance__ZdJvNTW.episode",
+      "reward": 1.0,
+      "exception": null,
+      "usage_limited": false,
+      "agent_seconds": 241.022846,
+      "trial_seconds": 414.545528,
+      "setup_seconds": 2.322611,
+      "cost_usd": 0.693627178,
+      "unpriced_calls": 0,
+      "controller_usage": {
+        "generation": 0,
+        "decisions": 41,
+        "decisions_skipped": 0,
+        "delegates": 1,
+        "failed": 0,
+        "retries": 0
+      },
+      "controller_cost_usd": 0.003826577999999999,
+      "checks": [
+        {
+          "after": "primary",
+          "file": "verification/checks.json",
+          "summary": {
+            "candidate": "95f5062a99512f75cad7f355bacfba52c9805ff282eac840f1ec265200266017",
+            "scenarios": 0,
+            "verdicts": {},
+            "requirements": {
+              "unobserved": 10
+            },
+            "packets": 0
+          },
+          "self_report": null
+        }
+      ],
+      "repair": {
+        "tier": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "effort": "medium",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "version": "2.1.280"
+        },
+        "triggered": false,
+        "ran": false,
+        "changed": false,
+        "skipped": "no check contradicted a requirement",
+        "session": null,
+        "recheck": null,
+        "cost_usd": 0.0
+      },
+      "branches": [
+        {
+          "role": "primary",
+          "tier": {
+            "agent": "claude-code",
+            "model": "claude-opus-5-5",
+            "effort": "medium",
+            "tools": "Bash,Read,Edit,Write,Glob,Grep",
+            "prompt_cache_ttl": "5m",
+            "version": "2.1.280"
+          },
+          "status": "answered",
+          "milliseconds": 235407,
+          "requested_sec": 1236,
+          "usd": 0.6898006,
+          "charge": "priced",
+          "turns": 18,
+          "stopped_by": null,
+          "session_id": "887c26f5-ba26-4c5d-90ec-8ccc15dfda08"
+        }
+      ],
+      "horizon": {
+        "policy": {
+          "first_share": 0.55,
+          "later_share": 0.75,
+          "min_dispatch_sec": 300,
+          "check_share": 0.05,
+          "long_after_sec": 1,
+          "long_effort": "medium",
+          "long_command_sec": 3600
+        },
+        "episode_deadline_sec": 1678,
+        "long": true,
+        "first_dispatch_sec": 1236,
+        "check_budget": {
+          "max_scenarios": 12,
+          "seconds": 180
+        },
+        "command_sec": 60
+      },
+      "sessions": [
+        {
+          "path": "bench/terminal-bench/traces/matched-20260923--nextjs-performance--r3--coder/nextjs-performance__ZdJvNTW.episode/artifacts/delegate-1.stream.jsonl",
+          "initialization": {
+            "model": "claude-opus-5-5",
+            "tools": [
+              "Bash",
+              "Edit",
+              "Glob",
+              "Grep",
+              "Read",
+              "Write"
+            ],
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.280",
+            "cwd": "/app"
+          },
+          "models_billed": [
+            "claude-opus-5-5"
+          ],
+          "turns": 18,
+          "model_messages": 18,
+          "tool_calls": 17,
+          "cost_usd": 0.6898006,
+          "duration_ms": 234674,
+          "api_duration_ms": 169968,
+          "usage": {
+            "input_tokens": 36,
+            "cache_creation_input_tokens": 38665,
+            "cache_read_input_tokens": 558558,
+            "output_tokens": 19231,
+            "output_tokens_details": {
+              "thinking_tokens": 3843
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 38665
+            },
+            "inference_geo": "not_available",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1030,
+                "cache_read_input_tokens": 42983,
+                "cache_creation_input_tokens": 145,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 145,
+                  "ephemeral_1h_input_tokens": 0
+                },
+                "type": "message",
+                "model": null
+              }
+            ],
+            "speed": "standard"
+          },
+          "is_error": false,
+          "terminal_reason": "completed",
+          "invalid_json_lines": 0,
+          "usage_limit": null
+        }
+      ],
+      "system_sha256": [
+        "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+      ],
+      "instruction_sha256": "b538e182cc473922015ae532d4a39c9335ea9de7274408d6ed9437cb19753085",
+      "matching_violations": [],
+      "retention_missing": [],
+      "verified_files": 53
+    }
+  ],
+  "aggregates": {
+    "all": {
+      "plain": {
+        "started_trials": 6,
+        "original_infrastructure_exceptions": 1,
+        "grades_recovered_without_inference": 1,
+        "passes": 6,
+        "cost_usd": {
+          "total": 6.6434904,
+          "mean": 1.1072484,
+          "range": [
+            0.6948907999999998,
+            1.3981578000000003
+          ]
+        },
+        "agent_seconds": {
+          "total": 2221.744073,
+          "mean": 370.29067883333335,
+          "range": [
+            245.142268,
+            541.261484
+          ]
+        },
+        "trial_seconds": {
+          "total": null,
+          "mean": null,
+          "range": null
+        }
+      },
+      "coder": {
+        "started_trials": 6,
+        "original_infrastructure_exceptions": 0,
+        "grades_recovered_without_inference": 0,
+        "passes": 5,
+        "cost_usd": {
+          "total": 6.136714270000001,
+          "mean": 1.0227857116666668,
+          "range": [
+            0.693627178,
+            1.3665549520000002
+          ]
+        },
+        "agent_seconds": {
+          "total": 2062.283301,
+          "mean": 343.7138835,
+          "range": [
+            241.022846,
+            426.700423
+          ]
+        },
+        "trial_seconds": {
+          "total": 2611.80413,
+          "mean": 435.3006883333333,
+          "range": [
+            398.919797,
+            503.698022
+          ]
+        }
+      }
+    },
+    "batched-eval-parity": {
+      "plain": {
+        "started_trials": 3,
+        "original_infrastructure_exceptions": 1,
+        "grades_recovered_without_inference": 1,
+        "passes": 3,
+        "cost_usd": {
+          "total": 3.7920034000000005,
+          "mean": 1.2640011333333334,
+          "range": [
+            1.1595718000000002,
+            1.3981578000000003
+          ]
+        },
+        "agent_seconds": {
+          "total": 1001.623644,
+          "mean": 333.874548,
+          "range": [
+            276.030402,
+            406.35171
+          ]
+        },
+        "trial_seconds": {
+          "total": null,
+          "mean": null,
+          "range": null
+        }
+      },
+      "coder": {
+        "started_trials": 3,
+        "original_infrastructure_exceptions": 0,
+        "grades_recovered_without_inference": 0,
+        "passes": 3,
+        "cost_usd": {
+          "total": 3.6223413640000004,
+          "mean": 1.2074471213333333,
+          "range": [
+            1.0416480879999999,
+            1.3665549520000002
+          ]
+        },
+        "agent_seconds": {
+          "total": 991.34808,
+          "mean": 330.44936,
+          "range": [
+            303.532705,
+            349.65018
+          ]
+        },
+        "trial_seconds": {
+          "total": 1216.114593,
+          "mean": 405.371531,
+          "range": [
+            398.919797,
+            414.937286
+          ]
+        }
+      }
+    },
+    "nextjs-performance": {
+      "plain": {
+        "started_trials": 3,
+        "original_infrastructure_exceptions": 0,
+        "grades_recovered_without_inference": 0,
+        "passes": 3,
+        "cost_usd": {
+          "total": 2.8514869999999997,
+          "mean": 0.9504956666666665,
+          "range": [
+            0.6948907999999998,
+            1.1844057999999997
+          ]
+        },
+        "agent_seconds": {
+          "total": 1220.120429,
+          "mean": 406.7068096666667,
+          "range": [
+            245.142268,
+            541.261484
+          ]
+        },
+        "trial_seconds": {
+          "total": 1705.537904,
+          "mean": 568.5126346666667,
+          "range": [
+            448.595926,
+            640.382329
+          ]
+        }
+      },
+      "coder": {
+        "started_trials": 3,
+        "original_infrastructure_exceptions": 0,
+        "grades_recovered_without_inference": 0,
+        "passes": 2,
+        "cost_usd": {
+          "total": 2.514372906,
+          "mean": 0.838124302,
+          "range": [
+            0.693627178,
+            0.9442249100000001
+          ]
+        },
+        "agent_seconds": {
+          "total": 1070.935221,
+          "mean": 356.978407,
+          "range": [
+            241.022846,
+            426.700423
+          ]
+        },
+        "trial_seconds": {
+          "total": 1395.689537,
+          "mean": 465.2298456666667,
+          "range": [
+            414.545528,
+            503.698022
+          ]
+        }
+      }
+    }
+  },
+  "task_instruction_sha256": {
+    "batched-eval-parity": [
+      "13af1cadc154f23060ec15015e83e7ce1e040177d4f26480c4cb6e1e64dbd6bb"
+    ],
+    "nextjs-performance": [
+      "b538e182cc473922015ae532d4a39c9335ea9de7274408d6ed9437cb19753085"
+    ]
+  },
+  "sensitivity_excluding_recovered_pairs": {
+    "plain": {
+      "started_trials": 5,
+      "original_infrastructure_exceptions": 0,
+      "grades_recovered_without_inference": 0,
+      "passes": 5,
+      "cost_usd": {
+        "total": 5.4092166,
+        "mean": 1.08184332,
+        "range": [
+          0.6948907999999998,
+          1.3981578000000003
+        ]
+      },
+      "agent_seconds": {
+        "total": 1902.502541,
+        "mean": 380.5005082,
+        "range": [
+          245.142268,
+          541.261484
+        ]
+      },
+      "trial_seconds": {
+        "total": 2526.56057,
+        "mean": 505.312114,
+        "range": [
+          349.528,
+          640.382329
+        ]
+      }
+    },
+    "coder": {
+      "started_trials": 5,
+      "original_infrastructure_exceptions": 0,
+      "grades_recovered_without_inference": 0,
+      "passes": 4,
+      "cost_usd": {
+        "total": 4.770159318,
+        "mean": 0.9540318636,
+        "range": [
+          0.693627178,
+          1.214138324
+        ]
+      },
+      "agent_seconds": {
+        "total": 1712.633121,
+        "mean": 342.5266242,
+        "range": [
+          241.022846,
+          426.700423
+        ]
+      },
+      "trial_seconds": {
+        "total": 2196.866844,
+        "mean": 439.3733688,
+        "range": [
+          398.919797,
+          503.698022
+        ]
+      }
+    }
+  }
+}

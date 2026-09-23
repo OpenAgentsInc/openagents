@@ -1,0 +1,14 @@
+{
+  "at": "2026-09-23T13:52:56.998667+00:00",
+  "task_commit": "452bf305c6daa62fc59061d22133a7cbc7c1572e",
+  "task_status": "",
+  "task_file_sha256": {
+    "batched-eval-parity/instruction.md": "5da93cdf030a3d4a10bcb463fe313c8b317d99568dae74c52ebb493ab63308dc",
+    "batched-eval-parity/task.toml": "f9b7572461c0263731973adc9c03caaa8541144bbd32bd0f3f5f1fa24fa64b81",
+    "nextjs-performance/instruction.md": "ba7bb4dddcd86fa36380226d7bc66c02dfc7fddf49649cf6e584a60e5b6df11e",
+    "nextjs-performance/task.toml": "a8dae8d4fa6b270fd19e75fd19285ad18af7436f9b493d9358c536bb75f2dcd8"
+  },
+  "harbor_version": "0.22.0",
+  "architecture": "x86_64",
+  "cpu_count": "28"
+}

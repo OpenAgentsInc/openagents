@@ -1,0 +1,17 @@
+{
+  "at": "2026-09-23T15:05:17.724209+00:00",
+  "when": "After the third plain Next.js attempt, before admission of the final Coder attempt",
+  "free_before_gib": 45.21303176879883,
+  "minimum_free_gib": 55,
+  "action": [
+    "docker",
+    "builder",
+    "prune",
+    "--force"
+  ],
+  "exit_code": 0,
+  "reclaimed_reported": "Total:\t21.47GB",
+  "free_after_gib": 61.595947265625,
+  "scope": "Unused build cache only. No active trial, container, or retained evidence removed.",
+  "interpretation": "Build-cache warmth is not controlled; agent time remains separate from setup and grading."
+}

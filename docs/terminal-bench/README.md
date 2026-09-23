@@ -1,10 +1,20 @@
 # Terminal-Bench status
 
-Updated on 2026-09-23 with the trace audit of `coderos` and public Harbor
-comparisons. This page summarizes retained evidence; it does not report
-the execution host's live queue.
+Updated on 2026-09-23 with a completed matched-executor pilot, the `coderos`
+trace audit, and public Harbor comparisons. This page summarizes retained
+evidence; it does not report the execution host's live queue.
 
 ## Latest status
+
+**Matched executor controls: 12 attempts completed.** With the same Opus 5.5,
+medium effort, six tools, system prompt, cache policy, and outer budgets,
+plain Claude passed 6/6 for $6.64 and 37.0 agent-minutes; Coder passed 5/6
+for $6.14 and 34.4 minutes, including Jev. That is 7.6% less usage cost and
+7.2% less time with one fewer pass, so it does not establish an efficiency
+win at equal success. One plain grade was recovered from unchanged output
+after a collection error; the sensitivity result excludes that entire pair.
+See the [full analysis, protocol, and traces](2026-09-23-matched-opus-controller.md).
+These two-task development runs are separate from the TB4 suite below.
 
 **The highlighted wins now have retained traces.** The
 [revised task-win analysis](2026-09-23-task-win-analysis.md) audits 20 local
@@ -84,6 +94,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 | Document | Contents |
 | --- | --- |
+| [Matched Opus controller experiment](2026-09-23-matched-opus-controller.md) | Twelve fresh attempts with executor controls held fixed: cost, time, steps, failure analysis, sensitivity, retained traces, and explicit retention gaps. |
 | [Coder One against Claude Code on TB4](2026-09-23-coder-one-vs-claude-code-tb4.md) | The same-host, same-model comparison on 26 tasks: per-task results, where the two extra passes and the cost gap come from, and how strong each claim is. |
 | [TB4 results](tb4-results.md) | Full matrix, arm versions, matched comparisons, harness checks, and refresh limits. |
 | [Coder One's task-level wins](2026-09-23-task-win-analysis.md) | Detailed reconstruction of ten wins, local and public failures, controller gaps, costs, conditional completion scenarios, and an upgrade plan. Includes a complete evidence index. |

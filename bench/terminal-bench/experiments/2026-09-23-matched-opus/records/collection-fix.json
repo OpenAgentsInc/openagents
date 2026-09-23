@@ -1,0 +1,8 @@
+{
+  "at": "2026-09-23T13:45:06.716872+00:00",
+  "old_runner_sha256": "d2921b55261f094dd16deb555ac656c7f1db01df46e1013dd25d2d48bf2b9b40",
+  "new_runner_sha256": "c065ab9e41fbb0d7c76ae14babba16349c30627029bd441747edd6c3fd186047",
+  "change": "Create the parent directory before Docker compose cp downloads native sessions. No inference, prompt, policy, task, budget, or scheduling changes.",
+  "affected_attempt": "matched-20260923--batched-eval-parity--r1--plain/batched-eval-parity__HTsoe2W",
+  "recovery": "Retain original failure and all available artifacts. Replay the unchanged produced candidate through the pinned verifier without another agent call; retain the replay separately."
+}

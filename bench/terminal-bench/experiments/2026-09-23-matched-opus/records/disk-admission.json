@@ -1,0 +1,15 @@
+{
+  "when": "After the first matched pair, before the first Next.js agent execution",
+  "free_before_gib": 54.66191482543945,
+  "minimum_free_gib": 55,
+  "action": [
+    "docker",
+    "builder",
+    "prune",
+    "--force"
+  ],
+  "reclaimed_reported": "24.3 GB",
+  "free_after_gib": 73.83501052856445,
+  "scope": "Unused build cache only. No active trial or retained evidence was removed.",
+  "interpretation": "Build-cache warmth is not fixed across the schedule; compare agent time separately from total trial time."
+}
