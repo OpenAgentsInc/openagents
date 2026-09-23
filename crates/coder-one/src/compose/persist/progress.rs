@@ -466,6 +466,8 @@ mod tests {
     fn standing(failed: usize, confirmed: usize) -> Standing {
         Standing {
             failed,
+            failed_checks: failed,
+            self_reported: 0,
             contradicted: 0,
             confirmed,
             passed_scenarios: 0,

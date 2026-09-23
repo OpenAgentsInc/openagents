@@ -24,8 +24,8 @@ verify.checks       scenarios on the live workspace
 verify.support      Jev's paired judgments per requirement
 control.handoff     escalate: the second executor from a handoff brief
 verify.repair       one fresh session from the diagnostic packets
-verify.second       a second executor on the original state, when the
-                    checks can't confirm the result
+verify.second       a second executor on the original state, on a
+                    trigger its `on` list names
 control.persist     fresh rounds from a continue brief, while a long task
                     has time left
 ```
@@ -103,13 +103,22 @@ unless the manifest sets it, so an older manifest checks as it always has.
 
 ### Verify by a second executor
 
-`verify.second` runs after the repair when the checks can't confirm the
-result. Its `on` list names when:
+`verify.second` runs after the repair. Its `on` list names when:
 
-- `failed`: a scenario still fails, or `verify.support` still reads a
-  requirement as contradicted.
+- `check`: a scenario other than `generic.self-report` still fails.
+- `self_report`: `generic.self-report` still fails, so the executor said
+  itself that the result fails. It needs `verify.self_report`.
+- `failed`: a scenario still fails, the self-report included, or
+  `verify.support` still reads a requirement as contradicted.
 - `unconfirmed`: no scenario other than the self-report passed, or
   `verify.support` left a requirement unresolved.
+
+`tunable-v9-escalate.json` names only `check` and `self_report`, so it
+never escalates on a result the checks merely can't confirm or on a
+contradiction that `verify.support` reads alone. The record gives the
+triggers that fired by name (`fired`), the executor (`tier`), the
+outcome (`kept_second` or `kept_first`), and the escalation's cost and
+time.
 
 The episode needs `min_remaining_sec` left. The host copies the first
 line's candidate aside, restores the task's original state (the workspace
@@ -266,6 +275,7 @@ in `evaluation/usage.json`.
 | `crates/coder-one/policies/tunable-v4.json` | `coder-one-tunable-v4` | v3 (the coverage packer, the checked repair, and xhigh effort on long tasks), plus `self_report`, `optional_outputs`, an eight-requirement behavior-first support budget on long tasks, the `profile-v2` route with a family table that can start GPT-6 Astra through Codex, and `verify.second` with Astra or lean Opus. |
 | `crates/coder-one/policies/tunable-v5.json` | `coder-one-tunable-v5` | v4, plus `control.persist`: up to three fresh rounds on a long task while at least 30 minutes are left, each asking for half of the time left, guarded, without alternates. |
 | `crates/coder-one/policies/tunable-v8.json` | `coder-one-tunable-v8` | v7, with up to four persist rounds: the host runs the executor's own tests after each, stops on a round without progress, runs rounds from the second on Codex GPT-6 Sol at high effort with one escalation back to Opus, and caps the rounds at half of what a $10 task budget has left. |
+| `crates/coder-one/policies/tunable-v9-escalate.json` | `coder-one-tunable-v9-escalate` | v9 (per-task effort on long tasks), plus v7's checks (`self_report`, `optional_outputs`, `behavior`, and the support budget) and `verify.second` with Codex on GPT-6 Astra, only on a failed check or a self-reported failure. |
 
 The v4 family table is fitted in sample: its rows are the leaderboard's
 Opus 5 and GPT-6 Astra rows at xhigh, summed over the Terminal-Bench 4.0
@@ -311,7 +321,9 @@ the whole trial 63 seconds.
 ## See it in the Gym
 
 The episode writes `artifacts/composition.json`
-(`openagents.coder-one.composition.v2`; v1 before the persist deltas): the route and its profile, the
+(`openagents.coder-one.composition.v3`; v2 before `verify.second` named
+its triggers and recorded its outcome and cost, and v1 before the persist
+deltas): the route and its profile, the
 horizon, each dispatch with its tier, status, time, requested deadline,
 and cost, each handoff and its trigger, the checks after each dispatch,
 support, the repair, `verify.second`, and `control.persist`'s rounds with
@@ -326,6 +338,9 @@ and `verification/support-second.json`.
 gym coder composition                # one row per composed attempt, then the newest in detail
 gym coder composition fix-git        # the detail of each attempt on fix-git
 gym coder composition --json         # openagents.gym.coder-composition.v1
+gym coder composition --escalations --arm coder-one-tunable-v9-escalate
+                                     # each escalation's triggers, executor, outcome, and cost,
+                                     # and the conditional success (openagents.gym.coder-escalations.v1 with --json)
 ```
 
 In `gym-terminal`, the attempt view lists the same detail under the

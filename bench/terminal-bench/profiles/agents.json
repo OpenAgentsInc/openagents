@@ -2197,6 +2197,68 @@
       },
       "note": "The tunable composition end to end (crates/coder-one/policies/tunable.json): task.profile routes the start (Codex on GPT-6 Luna for cheap, likely-easy tasks; lean Claude Code on Opus 5.5 for hard or long ones), deep Jev briefs it, control.monitor watches, verify.checks runs requirement-derived and generic checks on the live workspace, verify.support judges each requirement, control.handoff escalates Luna to lean Opus on a stall, a failed check, a contradicted requirement, or no answer, and verify.repair runs once. control.horizon sizes every dispatch from the task's own timeout, up to eight hours. Both CLIs install from prebuilt layers. artifacts/composition.json records the route, the dispatches, the checks, and the repair. v2: coverage packer and the checked repair trigger. v3: xhigh effort on long tasks."
     },
+    "coder-one-tunable-v9-escalate": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneTunable",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "policy": "crates/coder-one/policies/tunable-v9-escalate.json",
+        "executors": {
+          "claude-code": "2.1.280",
+          "codex": "0.155.1"
+        }
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "api.anthropic.com",
+        "downloads.claude.ai",
+        "chatgpt.com",
+        "api.openai.com",
+        "registry.npmjs.org"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; Claude Code's dispatches are its own total_cost_usd, a list-price figure on a subscription token; Codex's are price estimates from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22. Every dispatch (planner, first executor, escalation, repair) is a delegate call in evaluation/usage.json; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "subscription-oauth": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ],
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "note": "Generation and Jev as in coder-one. Claude Code runs on a subscription token from `claude setup-token`, with the API-key variables excluded so the CLI uses it; its total_cost_usd is a list-price figure (cli_list_price). Codex signs in with the host's ChatGPT-account auth.json, which the adapter places in the container and removes after the run. CODEX_FORCE_AUTH_JSON stays a host-side selector: the mode forwards the resolved file path instead."
+        }
+      },
+      "note": "The tunable composition end to end (crates/coder-one/policies/tunable.json): task.profile routes the start (Codex on GPT-6 Luna for cheap, likely-easy tasks; lean Claude Code on Opus 5.5 for hard or long ones), deep Jev briefs it, control.monitor watches, verify.checks runs requirement-derived and generic checks on the live workspace, verify.support judges each requirement, control.handoff escalates Luna to lean Opus on a stall, a failed check, a contradicted requirement, or no answer, and verify.repair runs once. control.horizon sizes every dispatch from the task's own timeout, up to eight hours. Both CLIs install from prebuilt layers. artifacts/composition.json records the route, the dispatches, the checks, and the repair. v2: coverage packer and the checked repair trigger. v3: xhigh effort on long tasks. v9: control.effort picks a long task's effort per task. v9-escalate (#9571): v9 with v7's checks, and verify.second runs Codex on GPT-6 Astra on the task's original state only when a check failed or the executor reported a failure, keeping the candidate whose checks fail less."
+    },
     "coder-one-tunable-opus": {
       "role": "candidate",
       "harbor_import_path": "tbench.coder_one:CoderOneTunable",

@@ -2,15 +2,18 @@
 //!
 //! A composed episode (`control.route`, `control.handoff`,
 //! `control.horizon`, and `verify` in its policy manifest) writes
-//! `artifacts/composition.json` (`openagents.coder-one.composition.v2`, or
-//! v1 before persistence rounds recorded their deltas):
+//! `artifacts/composition.json` (`openagents.coder-one.composition.v3`; v2
+//! before `verify.second` named its triggers and recorded its outcome and
+//! cost, and v1 before persistence rounds recorded their deltas):
 //! where the route started and why, the deadline each dispatch asked for,
 //! every dispatch with its tier, status, time, and cost, each handoff and
 //! its trigger, the checks after each dispatch with what
 //! `generic.self-report` found, `verify.support`'s states, the repair, and
 //! `verify.second`'s second executor, and each `control.persist` round with
 //! its executor, own tests fixed and broken, and cost. This module reads it
-//! from each attempt and renders it.
+//! from each attempt and renders it, and `--escalations` reports each
+//! escalation's trigger, executor, and outcome, and the conditional success
+//! of the escalated attempts.
 
 use std::path::PathBuf;
 
@@ -29,10 +32,15 @@ fn short(text: &str, width: usize) -> String {
 }
 
 /// The schema a composition record carries.
-pub const SCHEMA: &str = "openagents.coder-one.composition.v2";
+pub const SCHEMA: &str = "openagents.coder-one.composition.v3";
 
-/// The schemas this module reads: v1 has no persistence deltas.
-pub const SCHEMAS: [&str; 2] = ["openagents.coder-one.composition.v1", SCHEMA];
+/// The schemas this module reads: v1 has no persistence deltas, and v2 no
+/// escalation triggers by name.
+pub const SCHEMAS: [&str; 3] = [
+    "openagents.coder-one.composition.v1",
+    "openagents.coder-one.composition.v2",
+    SCHEMA,
+];
 
 /// Whether a record carries a schema this module reads.
 fn readable(record: &Value) -> bool {
@@ -41,6 +49,9 @@ fn readable(record: &Value) -> bool {
 
 /// The schema of this module's JSON.
 pub const VIEW_SCHEMA: &str = "openagents.gym.coder-composition.v1";
+
+/// The schema of `--escalations --json`.
+pub const ESCALATIONS_SCHEMA: &str = "openagents.gym.coder-escalations.v1";
 
 fn words(value: &Value) -> String {
     value.as_str().map_or_else(|| "?".to_owned(), str::to_owned)
@@ -180,6 +191,7 @@ impl Row {
             "dispatches": self.roles(),
             "escalated": self.record["escalated"],
             "second_kept": self.record["second"]["kept"],
+            "second_fired": fired(&self.record["second"]),
             "persist_rounds": self.record["persist"]["rounds"].as_array().map(Vec::len),
             "persist_stopped": self.record["persist"]["stopped"],
             "persist_totals": self.record["persist"]["totals"],
@@ -391,11 +403,20 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
         Some(format!("  second: skipped: {why}"))
     } else {
         Some(format!(
-            "  second: {} · {} · kept the {} candidate · {}",
+            "  second: {} · {} · kept the {} candidate · {}{}",
             tier(&second["tier"]),
             words(&second["trigger"]),
             words(&second["kept"]),
-            words(&second["why"])
+            words(&second["why"]),
+            if second.get("cost_usd").is_some() {
+                format!(
+                    " · {} · {}",
+                    money(&second["cost_usd"]),
+                    seconds(&second["milliseconds"])
+                )
+            } else {
+                String::new()
+            }
         ))
     };
     lines.push(format!(
@@ -548,6 +569,320 @@ pub fn to_json(rows: &[Row]) -> Value {
     })
 }
 
+/// The trigger names that fired for a `verify.second` record: `fired`
+/// when the record has it (composition v3), else the words before each
+/// `:` of its `trigger` text.
+fn fired(second: &Value) -> Vec<String> {
+    if let Some(names) = second["fired"].as_array() {
+        return names
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect();
+    }
+    let text = match &second["trigger"] {
+        Value::String(text) => text.clone(),
+        Value::Array(items) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join("; "),
+        _ => String::new(),
+    };
+    text.split("; ")
+        .filter_map(|part| part.split_once(':').map(|(name, _)| name.trim().to_owned()))
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+/// One escalation: an attempt whose `verify.second` ran a second executor.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Escalation {
+    pub job: String,
+    pub trial: String,
+    pub task: String,
+    pub arm: String,
+    pub reward: Option<f64>,
+    /// The trigger names that fired.
+    pub fired: Vec<String>,
+    /// The second executor.
+    pub executor: String,
+    /// Whether the host kept the second candidate.
+    pub kept_second: bool,
+    /// The second executor's cost, when it reported one.
+    pub cost_usd: Option<f64>,
+    pub milliseconds: Option<u64>,
+}
+
+impl Escalation {
+    fn of(row: &Row) -> Option<Self> {
+        let second = &row.record["second"];
+        if second.is_null() || second.get("skipped").is_some() || second["kept"].is_null() {
+            return None;
+        }
+        let branch = row.record["branches"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|b| b["role"] == "second");
+        let cost_usd = second["cost_usd"]
+            .as_f64()
+            .or_else(|| branch.and_then(|b| b["usd"].as_f64()));
+        let milliseconds = second["milliseconds"]
+            .as_u64()
+            .or_else(|| branch.and_then(|b| b["milliseconds"].as_u64()));
+        Some(Escalation {
+            job: row.job.clone(),
+            trial: row.trial.clone(),
+            task: row.task.clone(),
+            arm: row.arm.clone(),
+            reward: row.reward,
+            fired: fired(second),
+            executor: tier(&second["tier"]),
+            kept_second: second["kept"] == "second",
+            cost_usd,
+            milliseconds,
+        })
+    }
+
+    /// Whether the verifier passed the attempt.
+    #[must_use]
+    pub fn passed(&self) -> Option<bool> {
+        self.reward.map(|r| r >= 1.0)
+    }
+
+    fn to_json(&self) -> Value {
+        json!({
+            "job": self.job,
+            "trial": self.trial,
+            "task": self.task,
+            "arm": self.arm,
+            "reward": self.reward,
+            "fired": self.fired,
+            "executor": self.executor,
+            "outcome": if self.kept_second { "kept_second" } else { "kept_first" },
+            "cost_usd": self.cost_usd,
+            "milliseconds": self.milliseconds,
+        })
+    }
+}
+
+/// The escalations over a set of composed attempts.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct EscalationSummary {
+    /// Composed attempts read.
+    pub attempts: usize,
+    /// Attempts where a trigger fired but the second executor was skipped,
+    /// with why.
+    pub skipped_after_trigger: Vec<(String, String)>,
+    pub escalations: Vec<Escalation>,
+}
+
+impl EscalationSummary {
+    /// Summarizes `rows`.
+    #[must_use]
+    pub fn of(rows: &[Row]) -> Self {
+        let mut summary = EscalationSummary {
+            attempts: rows.len(),
+            ..EscalationSummary::default()
+        };
+        for row in rows {
+            if let Some(escalation) = Escalation::of(row) {
+                summary.escalations.push(escalation);
+                continue;
+            }
+            let second = &row.record["second"];
+            if let Some(why) = second["skipped"].as_str()
+                && !fired(second).is_empty()
+            {
+                summary
+                    .skipped_after_trigger
+                    .push((row.task.clone(), why.to_owned()));
+            }
+        }
+        summary
+    }
+
+    /// The escalated attempts the verifier graded.
+    fn graded(&self) -> impl Iterator<Item = &Escalation> {
+        self.escalations.iter().filter(|e| e.passed().is_some())
+    }
+
+    /// Escalated, graded attempts that kept the second candidate and
+    /// passed: the first candidate, which a check flagged, was set aside.
+    #[must_use]
+    pub fn rescued(&self) -> usize {
+        self.graded()
+            .filter(|e| e.kept_second && e.passed() == Some(true))
+            .count()
+    }
+
+    /// `(passed, failed)` among graded escalations that kept `second` or
+    /// not.
+    fn outcomes(&self, second: bool) -> (usize, usize) {
+        let kept: Vec<&Escalation> = self.graded().filter(|e| e.kept_second == second).collect();
+        let passed = kept.iter().filter(|e| e.passed() == Some(true)).count();
+        (passed, kept.len() - passed)
+    }
+
+    /// Per trigger name, how many escalations it fired in.
+    #[must_use]
+    pub fn by_trigger(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut out = std::collections::BTreeMap::new();
+        for e in &self.escalations {
+            for name in &e.fired {
+                *out.entry(name.clone()).or_insert(0) += 1;
+            }
+        }
+        out
+    }
+
+    /// The escalations' reported cost, and how many reported none.
+    #[must_use]
+    pub fn cost(&self) -> (f64, usize) {
+        let known: f64 = self.escalations.iter().filter_map(|e| e.cost_usd).sum();
+        let unknown = self
+            .escalations
+            .iter()
+            .filter(|e| e.cost_usd.is_none())
+            .count();
+        (known, unknown)
+    }
+
+    /// The report as text.
+    #[must_use]
+    pub fn lines(&self) -> Vec<String> {
+        let graded = self.graded().count();
+        let mut lines = vec![format!(
+            "Escalation (verify.second) · {} composed attempts · {} escalated · {} graded",
+            self.attempts,
+            self.escalations.len(),
+            graded
+        )];
+        if self.escalations.is_empty() {
+            lines.push("  No attempt ran a second executor.".to_owned());
+        }
+        let triggers: Vec<String> = self
+            .by_trigger()
+            .iter()
+            .map(|(name, n)| format!("{name} {n}"))
+            .collect();
+        if !triggers.is_empty() {
+            lines.push(format!("  triggers: {}", triggers.join(" · ")));
+        }
+        let rescued = self.rescued();
+        let percent = |n: usize| {
+            if graded == 0 {
+                "—".to_owned()
+            } else {
+                format!("{:.0}%", 100.0 * n as f64 / graded as f64)
+            }
+        };
+        lines.push(format!(
+            "  conditional success: {rescued} of {graded} graded escalations ({}) kept the second candidate and passed",
+            percent(rescued)
+        ));
+        let (second_passed, second_failed) = self.outcomes(true);
+        let (first_passed, first_failed) = self.outcomes(false);
+        lines.push(format!(
+            "  kept the second candidate: {} ({second_passed} passed, {second_failed} failed)",
+            second_passed + second_failed
+        ));
+        lines.push(format!(
+            "  kept the first candidate: {} ({first_passed} passed, {first_failed} failed)",
+            first_passed + first_failed
+        ));
+        let (cost, unknown) = self.cost();
+        let priced = self.escalations.len() - unknown;
+        lines.push(format!(
+            "  escalation cost: ${cost:.4} over {priced} priced{}{}",
+            if priced > 0 {
+                format!(" · mean ${:.4}", cost / priced as f64)
+            } else {
+                String::new()
+            },
+            if unknown > 0 {
+                format!(" · {unknown} unreported")
+            } else {
+                String::new()
+            }
+        ));
+        if graded > 0 {
+            lines.push(format!(
+                "  cost per rescue: {}",
+                if rescued == 0 {
+                    "no rescue".to_owned()
+                } else {
+                    format!("${:.4}", cost / rescued as f64)
+                }
+            ));
+        }
+        if !self.skipped_after_trigger.is_empty() {
+            lines.push(format!(
+                "  triggered but skipped: {}",
+                self.skipped_after_trigger.len()
+            ));
+            for (task, why) in &self.skipped_after_trigger {
+                lines.push(format!("    {task}: {why}"));
+            }
+        }
+        if !self.escalations.is_empty() {
+            lines.push(String::new());
+            lines.push(format!(
+                "  {:<28} {:<24} {:>6}  {:<20} {:<24} {:<12} {:>9} {:>7}",
+                "task", "arm", "reward", "fired", "executor", "outcome", "cost", "time"
+            ));
+            for e in &self.escalations {
+                lines.push(format!(
+                    "  {:<28} {:<24} {:>6}  {:<20} {:<24} {:<12} {:>9} {:>7}",
+                    short(&e.task, 28),
+                    short(&e.arm, 24),
+                    e.reward
+                        .map_or_else(|| "—".to_owned(), |r| format!("{r:.1}")),
+                    short(&e.fired.join("+"), 20),
+                    short(&e.executor, 24),
+                    if e.kept_second {
+                        "kept second"
+                    } else {
+                        "kept first"
+                    },
+                    e.cost_usd
+                        .map_or_else(|| "—".to_owned(), |usd| format!("${usd:.3}")),
+                    e.milliseconds.map_or_else(
+                        || "—".to_owned(),
+                        |ms| format!("{:.0}s", ms as f64 / 1000.0)
+                    ),
+                ));
+            }
+        }
+        lines
+    }
+
+    /// The report as versioned JSON.
+    #[must_use]
+    pub fn to_json(&self) -> Value {
+        let graded = self.graded().count();
+        let (second_passed, second_failed) = self.outcomes(true);
+        let (first_passed, first_failed) = self.outcomes(false);
+        let (cost, unknown) = self.cost();
+        json!({
+            "schema": ESCALATIONS_SCHEMA,
+            "attempts": self.attempts,
+            "escalated": self.escalations.len(),
+            "graded": graded,
+            "rescued": self.rescued(),
+            "conditional_success": (graded > 0).then(|| self.rescued() as f64 / graded as f64),
+            "kept_second": { "passed": second_passed, "failed": second_failed },
+            "kept_first": { "passed": first_passed, "failed": first_failed },
+            "by_trigger": self.by_trigger(),
+            "cost_usd": cost,
+            "cost_unreported": unknown,
+            "skipped_after_trigger": self.skipped_after_trigger.iter().map(|(task, why)| json!({ "task": task, "why": why })).collect::<Vec<_>>(),
+            "escalations": self.escalations.iter().map(Escalation::to_json).collect::<Vec<_>>(),
+        })
+    }
+}
+
 const HELP: &str = "gym coder composition [QUERY] [--json]
 
 Each Terminal-Bench attempt that ran Coder One's tunable composition: where
@@ -561,6 +896,12 @@ job, or trial contains it for detail; the newest is shown otherwise.
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
   --traces-dir PATH        retained checkout traces
   --no-jobs | --no-traces  omit one source
+  --arm NAME               only attempts of this arm
+  --job TEXT               only attempts whose job name contains TEXT
+  --escalations            report verify.second instead: each escalation's
+                           triggers, executor, outcome, and cost, and the
+                           conditional success, the graded escalations that
+                           kept the second candidate and passed
   --json                   print versioned JSON instead of text";
 
 /// `gym coder composition`.
@@ -575,6 +916,9 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         .map(|home| home.join(".openagents/terminal-bench/jobs"));
     let mut traces = Some(repo.join("traces"));
     let mut json_out = false;
+    let mut escalations = false;
+    let mut arm: Option<String> = None;
+    let mut job: Option<String> = None;
     let mut query = None;
     let mut index = 0;
     while index < args.len() {
@@ -585,6 +929,19 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
                 return Ok(0);
             }
             "--json" => json_out = true,
+            "--escalations" => escalations = true,
+            "--arm" | "--job" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| format!("{argument} needs a value"))?
+                    .clone();
+                if argument == "--arm" {
+                    arm = Some(value);
+                } else {
+                    job = Some(value);
+                }
+                index += 1;
+            }
             "--no-jobs" => jobs = None,
             "--no-traces" => traces = None,
             "--jobs-dir" | "--traces-dir" => {
@@ -604,7 +961,27 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         index += 1;
     }
     let records = Records::load(jobs.as_deref(), traces.as_deref(), None);
-    let rows = rows(&records);
+    let rows: Vec<Row> = rows(&records)
+        .into_iter()
+        .filter(|row| arm.as_ref().is_none_or(|arm| &row.arm == arm))
+        .filter(|row| {
+            job.as_ref()
+                .is_none_or(|job| row.job.contains(job.as_str()))
+        })
+        .collect();
+    if escalations {
+        let summary = EscalationSummary::of(&rows);
+        if json_out {
+            serde_json::to_writer_pretty(&mut *out, &summary.to_json())
+                .map_err(|error| error.to_string())?;
+            writeln!(out).map_err(|error| error.to_string())?;
+        } else {
+            for line in summary.lines() {
+                writeln!(out, "{line}").map_err(|error| error.to_string())?;
+            }
+        }
+        return Ok(0);
+    }
     if json_out {
         serde_json::to_writer_pretty(&mut *out, &to_json(&rows))
             .map_err(|error| error.to_string())?;
@@ -755,8 +1132,11 @@ mod tests {
         assert!(readable(
             &json!({ "schema": "openagents.coder-one.composition.v1" })
         ));
+        assert!(readable(
+            &json!({ "schema": "openagents.coder-one.composition.v2" })
+        ));
         assert!(!readable(
-            &json!({ "schema": "openagents.coder-one.composition.v3" })
+            &json!({ "schema": "openagents.coder-one.composition.v4" })
         ));
         let text = detail_lines(&value).join("\n");
         assert!(
@@ -805,5 +1185,127 @@ mod tests {
     fn no_composed_attempt_says_how_to_make_one() {
         let text = lines(&[], None).join("\n");
         assert!(text.contains("coder-one-tunable"));
+    }
+
+    /// A composed attempt on `task` whose `verify.second` record is
+    /// `second`, graded `reward`.
+    fn escalated(task: &str, reward: Option<f64>, second: Value) -> crate::terminal_bench::Attempt {
+        let mut value = record();
+        value["second"] = second;
+        let mut attempt = crate::terminal_bench::test_attempt();
+        attempt.task = task.to_owned();
+        attempt.arm = "coder-one-tunable-v9-escalate".to_owned();
+        attempt.reward = reward;
+        attempt.composition = Some(value);
+        attempt
+    }
+
+    #[test]
+    fn escalations_report_their_triggers_outcomes_and_conditional_success() {
+        let astra = json!({ "agent": "codex", "model": "gpt-6-astra", "effort": "xhigh" });
+        let attempts = vec![
+            // Rescued: a check fired, the second candidate stayed, it passed.
+            escalated(
+                "atrx-vep-crispr",
+                Some(1.0),
+                json!({ "tier": astra, "trigger": "check: 1 scenario(s) failed", "fired": ["check"], "outcome": "kept_second", "kept": "second", "cost_usd": 2.5, "milliseconds": 600_000 }),
+            ),
+            // The second candidate stayed and still failed.
+            escalated(
+                "ks-solver-cpp",
+                Some(0.0),
+                json!({ "tier": astra, "trigger": "self_report: the executor reported that the result fails", "fired": ["self_report"], "outcome": "kept_second", "kept": "second", "cost_usd": 1.5, "milliseconds": 300_000 }),
+            ),
+            // The first stayed and passed: the flag was wrong.
+            escalated(
+                "wal-recovery-ordering",
+                Some(1.0),
+                json!({ "tier": astra, "trigger": "check: 2 scenario(s) failed; self_report: the executor reported that the result fails", "fired": ["check", "self_report"], "outcome": "kept_first", "kept": "first", "cost_usd": null, "milliseconds": 100_000 }),
+            ),
+            // A v4 record: the trigger text only, and the cost on the branch.
+            escalated(
+                "mvcc-lsm-compaction",
+                None,
+                json!({ "tier": astra, "trigger": "unconfirmed: no scenario confirmed the result", "kept": "second" }),
+            ),
+            // Triggered, but too little time was left.
+            escalated(
+                "production-planning",
+                Some(0.0),
+                json!({ "skipped": "less than 1800 s left in the episode", "trigger": ["check: 1 scenario(s) failed"], "fired": ["check"] }),
+            ),
+            // Nothing fired.
+            escalated(
+                "cad-model",
+                Some(1.0),
+                json!({ "skipped": "no check failed and the executor reported no failure" }),
+            ),
+        ];
+        let rows = rows(&Records {
+            attempts,
+            ..Records::default()
+        });
+        let summary = EscalationSummary::of(&rows);
+        assert_eq!(summary.attempts, 6);
+        assert_eq!(summary.escalations.len(), 4);
+        assert_eq!(summary.rescued(), 1);
+        assert_eq!(
+            summary.by_trigger(),
+            [
+                ("check".to_owned(), 2),
+                ("self_report".to_owned(), 2),
+                ("unconfirmed".to_owned(), 1)
+            ]
+            .into_iter()
+            .collect()
+        );
+        assert_eq!(summary.cost(), (4.0, 2));
+        assert_eq!(summary.skipped_after_trigger.len(), 1);
+        let text = summary.lines().join("\n");
+        assert!(
+            text.contains("6 composed attempts · 4 escalated · 3 graded"),
+            "{text}"
+        );
+        assert!(
+            text.contains("conditional success: 1 of 3 graded escalations (33%)"),
+            "{text}"
+        );
+        assert!(
+            text.contains("kept the second candidate: 2 (1 passed, 1 failed)"),
+            "{text}"
+        );
+        assert!(
+            text.contains("kept the first candidate: 1 (1 passed, 0 failed)"),
+            "{text}"
+        );
+        assert!(text.contains("cost per rescue: $4.0000"), "{text}");
+        assert!(
+            text.contains("production-planning: less than 1800 s left"),
+            "{text}"
+        );
+        let value = summary.to_json();
+        assert_eq!(value["schema"], ESCALATIONS_SCHEMA);
+        assert_eq!(value["rescued"], 1);
+        assert_eq!(value["graded"], 3);
+        assert_eq!(value["escalations"][0]["outcome"], "kept_second");
+        assert_eq!(
+            value["escalations"][2]["fired"],
+            json!(["check", "self_report"])
+        );
+        // The row JSON carries the fired names too.
+        assert_eq!(
+            to_json(&rows)["attempts"][0]["second_fired"],
+            json!(["check"])
+        );
+        // The detail line shows the escalation's cost and time.
+        let detail = detail_lines(&rows[0].record).join("\n");
+        assert!(detail.contains("$2.5000 · 600s"), "{detail}");
+    }
+
+    #[test]
+    fn no_escalation_says_so() {
+        let text = EscalationSummary::of(&[]).lines().join("\n");
+        assert!(text.contains("No attempt ran a second executor."), "{text}");
+        assert!(text.contains("0 of 0 graded escalations (—)"), "{text}");
     }
 }

@@ -844,6 +844,8 @@ fn every_v4_tier_is_listed_for_the_doctor() {
 fn a_standing_prefers_fewer_failures_then_more_confirmed_requirements() {
     let standing = |failed, contradicted, confirmed| Standing {
         failed,
+        failed_checks: failed,
+        self_reported: 0,
         contradicted,
         confirmed,
         passed_scenarios: 1,
@@ -1610,4 +1612,263 @@ fn the_v8_manifest_is_v7_with_a_cheaper_ladder() {
     );
     // The doctor sees the cheap tier.
     assert!(tiers(&v8).iter().any(|t| t.model == "gpt-6-sol"));
+}
+
+// ---------------------------------------------------------------------------
+// v9-escalate: verify.second on a failed check or a self-reported failure.
+// ---------------------------------------------------------------------------
+
+/// v9-escalate without its route, so the manifest's executor (lean Opus)
+/// starts, and with verify.second's time floor lowered for a
+/// fifteen-minute test.
+fn escalate_unrouted() -> Manifest {
+    let mut manifest = manifest("tunable-v9-escalate.json");
+    manifest.policy.control.route = None;
+    manifest
+        .policy
+        .verify
+        .as_mut()
+        .and_then(|v| v.second.as_mut())
+        .unwrap()
+        .min_remaining_sec = 60;
+    manifest
+}
+
+fn standing(failed_checks: usize, self_reported: usize, contradicted: usize) -> Standing {
+    Standing {
+        failed: failed_checks + self_reported,
+        failed_checks,
+        self_reported,
+        contradicted,
+        confirmed: 1,
+        passed_scenarios: 1,
+        unresolved: 0,
+    }
+}
+
+#[test]
+fn escalation_fires_on_a_failed_check_or_a_self_report_and_nothing_else() {
+    let on: Vec<String> = manifest("tunable-v9-escalate.json")
+        .policy
+        .verify
+        .unwrap()
+        .second
+        .unwrap()
+        .on;
+    assert_eq!(on, ["check", "self_report"]);
+    assert_eq!(standing(2, 0, 0).fired(&on), ["check"]);
+    assert_eq!(standing(0, 1, 0).fired(&on), ["self_report"]);
+    assert_eq!(standing(1, 1, 0).fired(&on), ["check", "self_report"]);
+    assert_eq!(
+        standing(2, 0, 0).triggers(&on),
+        ["check: 2 scenario(s) failed"]
+    );
+    // A contradiction verify.support reads alone is not a failed check.
+    assert!(standing(0, 0, 1).fired(&on).is_empty());
+    // Nor is a result the checks can't confirm.
+    let mut unconfirmed = standing(0, 0, 0);
+    unconfirmed.passed_scenarios = 0;
+    unconfirmed.confirmed = 0;
+    unconfirmed.unresolved = 3;
+    assert!(unconfirmed.fired(&on).is_empty());
+    assert!(unconfirmed.triggers(&on).is_empty());
+    // The older words mean what they did.
+    let older = vec!["failed".to_string(), "unconfirmed".to_string()];
+    assert_eq!(standing(0, 0, 1).fired(&older), ["failed"]);
+    assert_eq!(unconfirmed.fired(&older), ["unconfirmed"]);
+}
+
+#[test]
+fn the_better_candidate_is_the_one_whose_checks_fail_less() {
+    // Fewer failures and contradictions win, whichever kind.
+    assert!(standing(1, 0, 0).beaten_by(&standing(0, 0, 0)));
+    assert!(standing(0, 1, 0).beaten_by(&standing(0, 0, 0)));
+    assert!(standing(2, 1, 0).beaten_by(&standing(1, 0, 0)));
+    // A second candidate that fails as much doesn't replace the first
+    // unless it confirms more; one that fails more never does.
+    assert!(!standing(1, 0, 0).beaten_by(&standing(0, 1, 0)));
+    let mut confirms_more = standing(0, 1, 0);
+    confirms_more.confirmed = 4;
+    assert!(standing(1, 0, 0).beaten_by(&confirms_more));
+    assert!(!standing(0, 0, 0).beaten_by(&standing(1, 0, 0)));
+}
+
+#[test]
+fn the_escalate_manifest_is_v9_with_v7s_checks_and_an_astra_second() {
+    let escalate = manifest("tunable-v9-escalate.json");
+    escalate.validate().unwrap();
+    let v9 = manifest("tunable-v9.json");
+    assert_eq!(escalate.policy.control, v9.policy.control);
+    assert_eq!(escalate.policy.executor, v9.policy.executor);
+    assert_eq!(escalate.policy.brief, v9.policy.brief);
+    let verify = escalate.policy.verify.as_ref().unwrap();
+    let v7 = Manifest::parse(include_str!("../../policies/tunable-v7.json"))
+        .unwrap()
+        .policy
+        .verify
+        .unwrap();
+    assert_eq!(
+        (
+            verify.self_report,
+            verify.optional_outputs,
+            verify.behavior,
+            verify.support_budget
+        ),
+        (
+            v7.self_report,
+            v7.optional_outputs,
+            v7.behavior,
+            v7.support_budget
+        )
+    );
+    assert_eq!(verify.repair, v9.policy.verify.as_ref().unwrap().repair);
+    let second = verify.second.as_ref().unwrap();
+    let labels: Vec<String> = second.to.iter().map(Tier::label).collect();
+    assert_eq!(labels, ["codex/gpt-6-astra"]);
+    assert!(tiers(&escalate).iter().any(|t| t.model == "gpt-6-astra"));
+
+    // A self_report trigger needs the self-report scenario, and a word
+    // outside the vocabulary is refused.
+    let mut broken = verify.clone();
+    broken.self_report = false;
+    assert!(
+        broken
+            .validate()
+            .iter()
+            .any(|p| p.contains("self_report needs verify.self_report")),
+        "{:?}",
+        broken.validate()
+    );
+    let mut broken = verify.clone();
+    broken.second.as_mut().unwrap().on = vec!["unsure".to_string()];
+    assert!(
+        broken
+            .validate()
+            .iter()
+            .any(|p| p.contains("must be one of check, self_report, failed, unconfirmed"))
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_failed_check_escalates_to_astra_and_the_better_candidate_stays() {
+    if !python() {
+        return;
+    }
+    let ran = compose(
+        "escalate-check",
+        &escalate_unrouted(),
+        vec![
+            script_saying("opus", 7, &["first.txt"], "Done."),
+            // The repair changes nothing, so the check still fails.
+            script_saying("opus-repair", 7, &["first.txt"], "Done."),
+            script_saying("astra", 6, &["second.txt"], "Done."),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let record = &ran.record;
+    assert_eq!(record["schema"], SCHEMA);
+    let labels: Vec<String> = ran.made.iter().map(|(tier, _)| tier.label()).collect();
+    assert_eq!(
+        labels,
+        [
+            "claude-code/claude-opus-5-5",
+            "claude-code/claude-opus-5-5",
+            "codex/gpt-6-astra"
+        ]
+    );
+    let second = &record["second"];
+    assert_eq!(second["fired"], json!(["check"]), "{record:#}");
+    assert_eq!(second["outcome"], "kept_second");
+    assert_eq!(second["kept"], "second");
+    assert_eq!(second["tier"]["model"], "gpt-6-astra");
+    assert_eq!(second["status"], "answered");
+    assert!(second["milliseconds"].is_u64());
+    assert!(second.get("cost_usd").is_some());
+    assert_eq!(second["first"]["failed_checks"], 1);
+    assert_eq!(second["second"]["failed"], 0);
+    assert_eq!(sum_in(&ran.work), 6);
+    assert!(!ran.work.join("first.txt").exists());
+    assert_eq!(record["final_tier"]["model"], "gpt-6-astra");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_self_reported_failure_escalates_even_when_every_check_passes() {
+    if !python() {
+        return;
+    }
+    let admits = "Done, but the task doesn't pin down the rounding, so I guessed at it.";
+    let ran = compose(
+        "escalate-self-report",
+        &escalate_unrouted(),
+        vec![
+            script_saying("opus", 6, &[], admits),
+            script_saying("opus-repair", 6, &[], admits),
+            script_saying(
+                "astra",
+                6,
+                &["second.txt"],
+                "Done: answer.json holds the sum.",
+            ),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let record = &ran.record;
+    let second = &record["second"];
+    assert_eq!(second["fired"], json!(["self_report"]), "{record:#}");
+    assert_eq!(second["first"]["failed_checks"], 0);
+    assert_eq!(second["first"]["self_reported"], 1);
+    assert_eq!(second["outcome"], "kept_second");
+    assert!(ran.work.join("second.txt").is_file());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn an_escalation_that_checks_no_better_keeps_the_first_candidate() {
+    if !python() {
+        return;
+    }
+    let ran = compose(
+        "escalate-loses",
+        &escalate_unrouted(),
+        vec![
+            script_saying("opus", 7, &["first.txt"], "Done."),
+            script_saying("opus-repair", 7, &["first.txt"], "Done."),
+            script_saying("astra", 5, &["second.txt"], "Done."),
+        ],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    let second = &ran.record["second"];
+    assert_eq!(second["fired"], json!(["check"]), "{:#}", ran.record);
+    assert_eq!(second["outcome"], "kept_first");
+    assert_eq!(sum_in(&ran.work), 7);
+    assert!(ran.work.join("first.txt").is_file());
+    assert!(!ran.work.join("second.txt").exists());
+    assert_eq!(ran.record["final_tier"]["model"], "claude-opus-5-5");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_passing_result_never_escalates() {
+    if !python() {
+        return;
+    }
+    let ran = compose(
+        "escalate-skipped",
+        &escalate_unrouted(),
+        vec![script_saying("opus", 6, &[], "Done.")],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    assert_eq!(ran.made.len(), 1);
+    let second = &ran.record["second"];
+    assert_eq!(
+        second["skipped"],
+        "no check failed and the executor reported no failure"
+    );
+    assert!(second.get("fired").is_none());
 }

@@ -14,9 +14,11 @@
 //!                  requirement, or no answer, the second executor continues
 //!                  from a handoff brief
 //! verify.repair    one fresh session from the diagnostic packets, then a recheck
-//! verify.second    when the checks can't confirm the result, a second
-//!                  executor on the task's original state; the candidate
-//!                  whose checks confirm more requirements stays
+//! verify.second    on a trigger the manifest names (a failed check, a
+//!                  self-reported failure, or, under older manifests, a
+//!                  result the checks can't confirm), a second executor
+//!                  on the task's original state; the candidate whose
+//!                  checks fail less and confirm more requirements stays
 //! control.persist  on a long task with time left, fresh rounds from a
 //!                  continue brief until a round changes nothing, the
 //!                  checks confirm the result, or the round cap
@@ -52,8 +54,10 @@ use crate::state::State;
 
 /// The schema of `artifacts/composition.json`. v2: each
 /// `control.persist` round records its class, executor, own-tests run, and
-/// delta, and the rounds record their totals and spending cap.
-pub const SCHEMA: &str = "openagents.coder-one.composition.v2";
+/// delta, and the rounds record their totals and spending cap. v3:
+/// `verify.second` records the triggers that fired by name, and the
+/// escalation's outcome, cost, and time.
+pub const SCHEMA: &str = "openagents.coder-one.composition.v3";
 
 /// Where the episode keeps the composition's record.
 pub const FILE: &str = "artifacts/composition.json";
@@ -534,8 +538,8 @@ pub struct VerifyPolicy {
     /// (`checks::behavior`).
     #[serde(default, skip_serializing_if = "is_false")]
     pub behavior: bool,
-    /// `verify.second`: a second executor when the checks can't confirm
-    /// the result.
+    /// `verify.second`: a second executor when a trigger in its `on`
+    /// holds for the result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub second: Option<SecondPolicy>,
     /// `verify.snapshot`: save the workspace and the check's subject right
@@ -601,11 +605,15 @@ impl VerifyPolicy {
                 problems.push("verify.second.on names no trigger".to_string());
             }
             for on in &second.on {
-                if !matches!(on.as_str(), "unconfirmed" | "failed") {
+                if !TRIGGERS.contains(&on.as_str()) {
                     problems.push(format!(
-                        "verify.second.on must be unconfirmed or failed, not {on}"
+                        "verify.second.on must be one of {}, not {on}",
+                        TRIGGERS.join(", ")
                     ));
                 }
+            }
+            if second.on.iter().any(|on| on == "self_report") && !self.self_report {
+                problems.push("verify.second.on self_report needs verify.self_report".to_string());
             }
             if !(second.share > 0.0 && second.share <= 1.0) {
                 problems.push("verify.second.share must be above 0 and at most 1".to_string());
@@ -665,20 +673,26 @@ fn second_max_copy_mb() -> u64 {
     256
 }
 
-/// `verify.second`: verify by a second executor. When the checks can't
-/// confirm the first line's result, the host puts that candidate aside in
-/// a scratch copy, restores the task's original state, runs a second
+/// The words `verify.second.on` takes.
+pub const TRIGGERS: [&str; 4] = ["check", "self_report", "failed", "unconfirmed"];
+
+/// `verify.second`: verify by a second executor. When a trigger in `on`
+/// holds for the first line's result, the host puts that candidate aside
+/// in a scratch copy, restores the task's original state, runs a second
 /// executor from the same briefing, checks what it leaves, and keeps the
-/// candidate whose checks confirm more requirements.
+/// candidate whose checks fail less and confirm more requirements.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SecondPolicy {
     /// Executors to try, in order: the first whose agent and model differ
     /// from the one that produced the candidate runs.
     pub to: Vec<Tier>,
-    /// `unconfirmed`: no scenario other than the self-report passed, or
-    /// `verify.support` left a requirement unresolved. `failed`: a check
-    /// still fails or a requirement is still contradicted.
+    /// `check`: a scenario other than `generic.self-report` failed.
+    /// `self_report`: `generic.self-report` failed, so the executor said
+    /// itself that the result fails. `failed`: either of those, or
+    /// `verify.support` read a requirement as contradicted. `unconfirmed`:
+    /// no scenario other than the self-report passed, or `verify.support`
+    /// left a requirement unresolved.
     pub on: Vec<String>,
     /// The share of the time left that the second executor asks for.
     #[serde(default = "second_share")]
@@ -1792,8 +1806,8 @@ where
         }
     }
 
-    // verify.second: a second executor when the checks can't confirm the
-    // result.
+    // verify.second: a second executor when a trigger in its `on` holds
+    // for the result.
     let mut second_record = Value::Null;
     if let (Some(policy), Some(base), None) = (&verify.second, base, &usage_limited) {
         let context = SecondContext {
@@ -2094,6 +2108,11 @@ fn replace_contents(dir: &Path, from: &Path) -> Result<(), String> {
 pub struct Standing {
     /// Failed scenarios, the self-report's included.
     pub failed: usize,
+    /// Failed scenarios other than `generic.self-report`.
+    pub failed_checks: usize,
+    /// Failed `generic.self-report` scenarios: the executor's own report
+    /// of a failure.
+    pub self_reported: usize,
     /// Requirements `verify.support` read as contradicted and no scenario
     /// failed.
     pub contradicted: usize,
@@ -2119,6 +2138,11 @@ impl Standing {
             .verdicts
             .iter()
             .filter(|v| v.verdict == "failed")
+            .count();
+        let self_reported = report
+            .verdicts
+            .iter()
+            .filter(|v| v.verdict == "failed" && v.scenario.starts_with("generic.self-report"))
             .count();
         let contradicted_by_scenario: Vec<&str> = report
             .coverage
@@ -2151,6 +2175,8 @@ impl Standing {
         let unresolved = fresh.iter().filter(|s| s.state == "unresolved").count();
         Standing {
             failed,
+            failed_checks: failed - self_reported,
+            self_reported,
             contradicted,
             confirmed: confirmed.len(),
             passed_scenarios,
@@ -2166,23 +2192,56 @@ impl Standing {
         bad(other) < bad(self) || (bad(other) == bad(self) && other.confirmed > self.confirmed)
     }
 
+    /// The names of the triggers in `on` this standing meets, in
+    /// [`TRIGGERS`] order.
+    #[must_use]
+    pub fn fired(&self, on: &[String]) -> Vec<&'static str> {
+        self.named(on).into_iter().map(|(name, _)| name).collect()
+    }
+
     /// The triggers in `on` this standing meets, with why.
     #[must_use]
     pub fn triggers(&self, on: &[String]) -> Vec<String> {
+        self.named(on).into_iter().map(|(_, why)| why).collect()
+    }
+
+    fn named(&self, on: &[String]) -> Vec<(&'static str, String)> {
+        let wants = |name: &str| on.iter().any(|o| o == name);
         let mut out = Vec::new();
-        if on.iter().any(|o| o == "failed") && self.failed + self.contradicted > 0 {
-            out.push(format!(
-                "failed: {} failed scenario(s) and {} contradicted requirement(s) remain",
-                self.failed, self.contradicted
+        if wants("check") && self.failed_checks > 0 {
+            out.push((
+                "check",
+                format!("check: {} scenario(s) failed", self.failed_checks),
             ));
         }
-        if on.iter().any(|o| o == "unconfirmed") {
+        if wants("self_report") && self.self_reported > 0 {
+            out.push((
+                "self_report",
+                "self_report: the executor reported that the result fails".to_string(),
+            ));
+        }
+        if wants("failed") && self.failed + self.contradicted > 0 {
+            out.push((
+                "failed",
+                format!(
+                    "failed: {} failed scenario(s) and {} contradicted requirement(s) remain",
+                    self.failed, self.contradicted
+                ),
+            ));
+        }
+        if wants("unconfirmed") {
             if self.passed_scenarios == 0 {
-                out.push("unconfirmed: no scenario confirmed the result".to_string());
+                out.push((
+                    "unconfirmed",
+                    "unconfirmed: no scenario confirmed the result".to_string(),
+                ));
             } else if self.unresolved > 0 {
-                out.push(format!(
-                    "unconfirmed: verify.support left {} requirement(s) unresolved",
-                    self.unresolved
+                out.push((
+                    "unconfirmed",
+                    format!(
+                        "unconfirmed: verify.support left {} requirement(s) unresolved",
+                        self.unresolved
+                    ),
                 ));
             }
         }
@@ -2229,10 +2288,11 @@ impl SecondOutcome {
     }
 }
 
-/// `verify.second`: when the first line's checks can't confirm its
-/// result, sets that candidate aside, restores the task's original state,
-/// runs a second executor from the same briefing, checks what it leaves,
-/// and keeps the candidate whose checks confirm more.
+/// `verify.second`: when a trigger in `policy.on` holds for the first
+/// line's result, sets that candidate aside, restores the task's original
+/// state, runs a second executor from the same briefing, checks what it
+/// leaves, and keeps the candidate whose checks fail less and confirm
+/// more.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn verify_by_second<F: Factory>(
     context: &SecondContext<'_>,
@@ -2259,12 +2319,19 @@ async fn verify_by_second<F: Factory>(
     };
     let before = Standing::of(first_report, support);
     let triggers = before.triggers(&policy.on);
+    let fired = before.fired(&policy.on);
     if triggers.is_empty() {
-        let record = json!({ "skipped": "the checks confirmed the result", "first": before });
+        let why = if policy.on.iter().any(|on| on == "unconfirmed") {
+            "the checks confirmed the result"
+        } else {
+            "no check failed and the executor reported no failure"
+        };
+        let record = json!({ "skipped": why, "first": before, "on": policy.on });
         return Ok(SecondOutcome::skipped(finish(record, &base)));
     }
     if let Some(why) = &base.refused {
-        let record = json!({ "skipped": why, "first": before, "trigger": triggers });
+        let record =
+            json!({ "skipped": why, "first": before, "trigger": triggers, "fired": fired });
         return Ok(SecondOutcome::skipped(finish(record, &base)));
     }
     let left = setup.deadline.allowance().map(|d| d.as_secs());
@@ -2273,6 +2340,7 @@ async fn verify_by_second<F: Factory>(
             "skipped": format!("less than {} s left in the episode", policy.min_remaining_sec),
             "first": before,
             "trigger": triggers,
+            "fired": fired,
         });
         return Ok(SecondOutcome::skipped(finish(record, &base)));
     }
@@ -2282,7 +2350,7 @@ async fn verify_by_second<F: Factory>(
         .find(|t| t.agent != produced_by.agent || t.model != produced_by.model)
         .cloned()
     else {
-        let record = json!({ "skipped": "every verify.second executor is the one that produced the candidate", "first": before, "trigger": triggers });
+        let record = json!({ "skipped": "every verify.second executor is the one that produced the candidate", "first": before, "trigger": triggers, "fired": fired });
         return Ok(SecondOutcome::skipped(finish(record, &base)));
     };
     if context.long
@@ -2293,14 +2361,15 @@ async fn verify_by_second<F: Factory>(
     let outside: Vec<PathBuf> = base.outside.iter().map(|(p, _)| p.clone()).collect();
     let first_copy = Snapshot::take(setup.workdir, &outside, u64::MAX / (1024 * 1024), "first");
     if let Some(why) = &first_copy.refused {
-        let record = json!({ "skipped": why, "first": before, "trigger": triggers });
+        let record =
+            json!({ "skipped": why, "first": before, "trigger": triggers, "fired": fired });
         return Ok(SecondOutcome::skipped(finish(record, &base)));
     }
     if let Err(error) = base.restore(setup.workdir) {
         // Put the first candidate back before giving up.
         let _ = first_copy.restore(setup.workdir);
         first_copy.discard();
-        let record = json!({ "skipped": format!("cannot restore the original state: {error}"), "first": before, "trigger": triggers });
+        let record = json!({ "skipped": format!("cannot restore the original state: {error}"), "first": before, "trigger": triggers, "fired": fired });
         return Ok(SecondOutcome::skipped(finish(record, &base)));
     }
     let trigger = triggers.join("; ");
@@ -2393,9 +2462,15 @@ async fn verify_by_second<F: Factory>(
     } else {
         "the second candidate's checks don't beat the first's, so the first stays".to_string()
     };
+    let (charge, _) = delegate::charge(&report);
     let mut record = json!({
         "tier": tier,
         "trigger": trigger,
+        "fired": fired,
+        "outcome": if keep_second { "kept_second" } else { "kept_first" },
+        "cost_usd": (charge == "priced").then_some(report.summary.total_cost_usd).flatten(),
+        "charge": charge,
+        "milliseconds": report.milliseconds,
         "requested_sec": sec,
         "status": report.status.word(),
         "first": before,
