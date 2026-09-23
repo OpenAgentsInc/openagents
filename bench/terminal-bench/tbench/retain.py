@@ -42,6 +42,8 @@ MAX_FILE_BYTES = 4 * 1024 * 1024
 # A trial whose retained files would exceed this total keeps its first
 # files in closure order and reports the rest.
 MAX_TRIAL_BYTES = 16 * 1024 * 1024
+# The post-executor snapshot's archive, relative to the episode directory.
+SNAPSHOT_ARCHIVE = "snapshot/workspace.tar.gz"
 # Credential values shorter than this are too generic to scan for.
 MIN_SECRET_CHARS = 16
 
@@ -305,9 +307,19 @@ def plan_trial(trial_dir: Path) -> tuple[_Plan, dict[str, Any]]:
             context["raw_atif"] = episode / trajectory["path"]
     # Episode files the manifest doesn't name, such as late delegate
     # streams or local check output, still belong to the closure.
+    # The post-executor snapshot's workspace archive stays in the job
+    # directory, where `tbench replay` reads it; its subject and record are
+    # retained.
     if episode.is_dir():
         for path in sorted(p for p in episode.rglob("*") if p.is_file()):
-            plan.add("episode file", path, path.relative_to(episode).as_posix())
+            relative = path.relative_to(episode).as_posix()
+            if relative == SNAPSHOT_ARCHIVE:
+                plan.notes.append(
+                    f"The workspace snapshot {relative} stays in the job "
+                    "directory; it is not retained."
+                )
+                continue
+            plan.add("episode file", path, relative)
 
     native = 0
     for pattern in ("*.jsonl", "*.txt", "sessions/**/*.jsonl", "rollout*.jsonl"):
@@ -323,6 +335,9 @@ def plan_trial(trial_dir: Path) -> tuple[_Plan, dict[str, Any]]:
     setup = agent / "toolchain-setup.json"
     if setup.is_file():
         plan.add("setup record", setup, "setup/toolchain-setup.json")
+    starts = trial_dir / "tbench-environment.jsonl"
+    if starts.is_file():
+        plan.add("setup record", starts, "setup/tbench-environment.jsonl")
 
     verifier = trial_dir / "verifier"
     if verifier.is_dir():

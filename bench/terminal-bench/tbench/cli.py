@@ -588,6 +588,85 @@ def cmd_reference(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_try(args: argparse.Namespace) -> int:
+    """Run one arm on a few tasks and report the loop time."""
+    from .tryout import prepare, run_try
+
+    try:
+        request = _load(args.profile, args.arm)
+        assert request is not None
+        wanted = [t.strip() for part in args.task for t in part.split(",") if t.strip()]
+        request.tasks = request.panel.select(wanted)
+    except (RunError, KeyError, ValueError) as exc:
+        print(f"try: {exc}", file=sys.stderr)
+        return 1
+    request.auth_mode = args.auth_mode
+    kwargs = {}
+    for pair in args.agent_kwarg or []:
+        key, _, value = pair.partition("=")
+        if not value:
+            print(f"try: --agent-kwarg wants key=value, got {pair!r}", file=sys.stderr)
+            return 1
+        kwargs[key] = value
+    request.agent_kwargs = kwargs or None
+    prepare(
+        request,
+        attempts=args.attempts,
+        concurrency=args.concurrency,
+        warm=not args.cold,
+        name=args.job_name,
+    )
+    _job_dir, _summary, code = run_try(
+        request, interval=args.interval, retain=not args.no_retain
+    )
+    return code
+
+
+def _job_or_trial(name: str) -> Path | None:
+    path = Path(name)
+    if not path.exists():
+        path = paths.jobs_dir() / name
+    return path if path.exists() else None
+
+
+def cmd_looptime(args: argparse.Namespace) -> int:
+    """Print where each trial's time went, for jobs or trial directories."""
+    from . import looptime
+
+    rows = []
+    for name in args.job:
+        path = _job_or_trial(name)
+        if path is None:
+            print(f"looptime: no job or trial at {name}", file=sys.stderr)
+            return 1
+        if (path / "result.json").is_file() and (path / "agent").is_dir():
+            rows.append(looptime.trial_looptime(path))
+        else:
+            rows.extend(looptime.job_looptimes(path))
+    if args.json:
+        print(json.dumps({"totals": looptime.totals(rows), "trials": rows}, indent=2))
+    else:
+        print(looptime.render(rows))
+    return 0
+
+
+def cmd_images(args: argparse.Namespace) -> int:
+    """List or remove the task images tbench.warm_docker keeps."""
+    from .warm_docker import remove_warm_images, warm_images
+
+    if args.images_command == "prune":
+        removed = remove_warm_images(args.match)
+        for reference in removed:
+            print(f"removed {reference}")
+        print(f"images: removed {len(removed)} kept images")
+        return 0
+    images = warm_images()
+    for image in images:
+        print(f"{image['reference']:<72} {image['size']:>10}  {image['created']}")
+    print(f"images: {len(images)} kept task images")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tbench",
@@ -824,6 +903,68 @@ def build_parser() -> argparse.ArgumentParser:
         "--out", help="where to write (default reference/tb4-leaderboard.json)"
     )
     reference_parser.set_defaults(func=cmd_reference)
+
+    try_parser = sub.add_parser(
+        "try",
+        help="run one arm on a few tasks from kept images and report loop time",
+    )
+    try_parser.add_argument("--arm", required=True, help="agent profile id")
+    try_parser.add_argument(
+        "--task",
+        action="append",
+        required=True,
+        help="task ids, comma-separated or repeated",
+    )
+    try_parser.add_argument(
+        "--attempts", type=int, default=1, help="trials per task (default 1)"
+    )
+    try_parser.add_argument(
+        "--profile", default="tb4", help="job profile the tasks come from (default tb4)"
+    )
+    try_parser.add_argument(
+        "--concurrency",
+        type=int,
+        help="trials at once (default: all of them); keep Claude arms at 3 or fewer",
+    )
+    try_parser.add_argument("--auth-mode", help="pick one configured auth mode")
+    try_parser.add_argument(
+        "--agent-kwarg", action="append", help="key=value adapter kwargs"
+    )
+    try_parser.add_argument("--job-name", help="override the try--<arm>--<stamp> name")
+    try_parser.add_argument(
+        "--cold",
+        action="store_true",
+        help="build task images fresh instead of reusing kept ones",
+    )
+    try_parser.add_argument(
+        "--no-retain",
+        action="store_true",
+        help="don't copy the evidence into the retained traces",
+    )
+    try_parser.add_argument(
+        "--interval", type=float, default=10.0, help="seconds between table polls"
+    )
+    try_parser.set_defaults(func=cmd_try)
+
+    looptime_parser = sub.add_parser(
+        "looptime", help="where each trial's time went: setup, agent, checks, verifier"
+    )
+    looptime_parser.add_argument(
+        "job", nargs="+", help="job names, job dirs, or trial dirs"
+    )
+    looptime_parser.add_argument("--json", action="store_true", help="print JSON")
+    looptime_parser.set_defaults(func=cmd_looptime)
+
+    images_parser = sub.add_parser(
+        "images", help="list or remove the task images kept between trials"
+    )
+    images_sub = images_parser.add_subparsers(dest="images_command", required=True)
+    images_sub.add_parser("list", help="list the kept task images")
+    prune_parser = images_sub.add_parser("prune", help="remove kept task images")
+    prune_parser.add_argument(
+        "--match", help="remove only images whose reference contains this text"
+    )
+    images_parser.set_defaults(func=cmd_images)
 
     cmp_parser = sub.add_parser(
         "compare", help="fold attempts into a comparison report"

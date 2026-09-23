@@ -269,6 +269,80 @@ more than about four of them Claude Code arms. Retry a setup timeout once
 after moving its job directory to `failed/`. A setup timeout is never a
 result.
 
+## Iterate on a few tasks
+
+Run targeted experiments, not suites, until a change shows a large gain on
+the tasks it targets (issue #9566). A targeted experiment is one arm on a
+few TB4 tasks with one or more attempts each, and it takes minutes.
+
+### Try an arm
+
+`tbench try` runs one arm on the tasks you name as one Harbor job, without
+the suite scheduler:
+
+```sh
+uv run tbench try --arm coder-one-tunable-luna-v2 \
+  --task cargo-flight-dispatch,risk-scorer-replay,interleaved-vigenere \
+  --attempts 1 --agent-kwarg artifact_path=... --agent-kwarg artifact_sha256=...
+```
+
+- Every environment starts from a kept task image
+  (`tbench.warm_docker:WarmDockerEnvironment`). The first run of a task
+  builds its images and tags them `tbench-warm/<task>:<role>-<hash>`; later
+  runs start from them and build nothing. `--cold` builds fresh.
+- Each time a trial changes stage, `try` prints a table: the stage (the
+  episode's current component while the agent runs), the reward, the cost,
+  whether the image was warm, and the loop time of each phase.
+- At the end it writes `tbench/looptime.json` into the job and retains the
+  evidence into `traces/`. `--no-retain` skips the retention.
+- All trials run at once by default. Keep arms that run Claude to three or
+  four at once with `--concurrency`, because they share one subscription.
+- Run mechanics on a cheaper executor first, such as
+  `coder-one-tunable-luna-v2` or `codex-gpt-6-luna`, and switch to Opus
+  only for the confirming run.
+
+The job is named `try--<arm>--<UTC stamp>`, so a try never resumes or
+pools with a suite's jobs.
+
+### Read the loop time
+
+`tbench looptime` prints the same table for any job or trial directory:
+
+```sh
+uv run tbench looptime try--nop--20260923T160717Z
+uv run tbench looptime tb4--coder-one-tunable-v6--cargo-flight-dispatch --json
+```
+
+| Column | What it measures |
+| --- | --- |
+| `env` | Harbor's environment setup. `image` says whether the task image was `warm`, `cold`, or the task's own `task-image`. |
+| `agent_setup` | Harbor's agent setup: the toolchain, the artifact, and its doctor. |
+| `prep` | The episode's requirement map, probes, survey, and briefing. |
+| `executor` | The first executor session. |
+| `checks`, `support`, `repair` | `verify.checks` (with the closing check), `verify.support`, and `verify.repair`. |
+| `later` | Escalations, a second executor, and persistence. |
+| `verifier` | Harbor's verifier, its environment included. |
+| `total` | The trial from start to finish. |
+
+Every figure comes from what the trial recorded: Harbor's `result.json`,
+the episode's invocation log, and the environment start records in
+`tbench-environment.jsonl`.
+
+### Keep and prune task images
+
+Kept images take disk: most TB4 task images are 0.2 to 2 GB, and a task
+with a separate verifier keeps two. List and remove them:
+
+```sh
+uv run tbench images list
+uv run tbench images prune --match cargo-flight-dispatch
+uv run tbench images prune
+```
+
+A changed Dockerfile or build context changes the tag, so an old image is
+never reused, but it stays on disk until you prune it. The suite scheduler
+doesn't use kept images and never removes them.
+
 ## Run the Terminal-Bench 4.0 suite
 
 The `tb4` profile is Terminal-Bench 4.0: all 66 tasks under `tasks/` at
