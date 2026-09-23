@@ -414,6 +414,13 @@ class _TunableEnvironment(_CodexEnvironment):
             self.commands.append(command)
             self.envs.append(dict(env or {}))
             return _Result("/root/.local/share/claude/versions/2.1.280\n2.1.280 (Claude Code)\n")
+        if "episode doctor" in command and env and "CODER_ONE_POLICY" in env:
+            import json
+
+            self.commands.append(command)
+            self.envs.append(dict(env))
+            name = json.loads(env["CODER_ONE_POLICY"])["name"]
+            return _Result(f"policy: {name} 0123 (inline)\nok\n")
         return await super().exec(command, env=env)
 
 
@@ -473,3 +480,26 @@ def test_a_masked_codex_path_from_a_resumed_config_counts_as_unset(tmp_path, mon
     monkeypatch.setenv("CODEX_FORCE_AUTH_JSON", "1")
     monkeypatch.setattr(agent, "_get_env", lambda name: "/hom****son" if name == "CODEX_AUTH_JSON_PATH" else None)
     assert str(agent.codex_auth_path()).endswith(".codex/auth.json")
+
+
+def test_an_artifact_that_ignores_the_policy_is_refused(tmp_path):
+    path, digest = _binary(tmp_path)
+    agent = CoderOne(
+        logs_dir=tmp_path,
+        artifact_path=path,
+        artifact_sha256=digest,
+        policy="crates/coder-one/policies/tunable-luna-v2.json",
+    )
+    good = "version: coder-one 0.1.0 (753a17ed975f)\npolicy: coder-one-tunable-luna-v2 abc (inline, 1 overrides)\nok\n"
+    agent._check_doctor_report(good)
+    old = "version: coder-one 0.1.0 (03401dad7483)\ndelegate: off (CODER_ONE_DELEGATE)\nok\n"
+    with pytest.raises(EpisodeContractError, match="didn't report resolving policy"):
+        agent._check_doctor_report(old)
+    wrong = "policy: coder-one-tunable abc (inline)\n"
+    with pytest.raises(EpisodeContractError):
+        agent._check_doctor_report(wrong)
+
+
+def test_an_arm_without_a_policy_accepts_any_doctor_report(tmp_path):
+    path, digest = _binary(tmp_path)
+    CoderOne(logs_dir=tmp_path, artifact_path=path, artifact_sha256=digest)._check_doctor_report("ok\n")

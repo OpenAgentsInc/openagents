@@ -182,6 +182,25 @@ class CoderOne(CoderV05):
         return env
 
 
+    def _check_doctor_report(self, report: str) -> None:
+        """Refuses an artifact that ignores the arm's policy manifest.
+
+        An artifact built before policy manifests runs its own defaults and
+        says nothing, so an arm pointed at it would measure something else.
+        A policy-aware artifact's doctor names the policy it resolved.
+        """
+        super()._check_doctor_report(report)
+        if self._policy is None:
+            return
+        name = str(self._policy.get("name") or "")
+        lines = [line.strip() for line in report.splitlines()]
+        if not any(line.startswith(f"policy: {name} ") for line in lines):
+            raise EpisodeContractError(
+                f"the artifact's doctor didn't report resolving policy {name!r}; "
+                "it predates policy manifests or ignored CODER_ONE_POLICY"
+            )
+
+
 # The oldest Claude Code the delegate arms accept: the API refuses Opus 5.5
 # to 2.1.278 (claude_code_version_too_old).
 CLAUDE_CODE_MIN = (2, 1, 280)
@@ -203,6 +222,7 @@ TOOLCHAIN_MODES = ("prebuilt", "network")
 _INSTALL_GUARDS: dict[int, asyncio.Semaphore] = {}
 
 
+
 def _install_guard(limit: int) -> asyncio.Semaphore:
     guard = _INSTALL_GUARDS.get(limit)
     if guard is None:
@@ -216,6 +236,7 @@ def _version_tuple(text: str) -> tuple[int, ...] | None:
         return tuple(int(part) for part in word.split("."))
     except ValueError:
         return None
+
 
 
 class CoderOneDelegate(CoderOne):

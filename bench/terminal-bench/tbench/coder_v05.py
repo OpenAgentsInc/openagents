@@ -229,6 +229,11 @@ class CoderV05(BaseInstalledAgent):
                 "episode doctor failed before inference: "
                 f"{doctor.stderr or doctor.stdout}"
             )
+        self._check_doctor_report(doctor.stdout or "")
+
+    def _check_doctor_report(self, report: str) -> None:
+        """Checks the doctor's report against the arm; a subclass refuses
+        an artifact that can't run what the arm asks for."""
 
     def _fetch_artifact(self, target: Path) -> None:
         import urllib.request
