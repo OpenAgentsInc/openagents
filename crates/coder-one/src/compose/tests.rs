@@ -145,6 +145,7 @@ struct Ran {
     made: Vec<(Tier, Duration)>,
     work: PathBuf,
     out: PathBuf,
+    recorder: Recorder,
 }
 
 async fn compose(
@@ -154,8 +155,29 @@ async fn compose(
     profile: Option<crate::profile::Profile>,
     total: Duration,
 ) -> Ran {
+    compose_task(label, manifest, scripts, profile, total, None).await
+}
+
+/// [`compose`] on a mini-task's instruction and files instead of the sum
+/// task.
+async fn compose_task(
+    label: &str,
+    manifest: &Manifest,
+    scripts: Vec<Script>,
+    profile: Option<crate::profile::Profile>,
+    total: Duration,
+    task: Option<&crate::minitask::MiniTask>,
+) -> Ran {
     let dir = workspace(label);
     let work = dir.join("work");
+    let instruction = match task {
+        Some(task) => {
+            std::fs::remove_dir_all(&work).unwrap();
+            crate::minitask::setup(task, &work).unwrap();
+            task.instruction
+        }
+        None => INSTRUCTION,
+    };
     let out = dir.join("out");
     let recorder = Recorder::default();
     let deadline = Deadline::new(Some(total), Duration::from_secs(5));
@@ -167,8 +189,8 @@ async fn compose(
         },
         Issue {
             url: String::new(),
-            title: "Sum the numbers".to_string(),
-            body: INSTRUCTION.to_string(),
+            title: task.map_or("Sum the numbers", |t| t.id).to_string(),
+            body: instruction.to_string(),
             labels: Vec::new(),
         },
     );
@@ -189,7 +211,7 @@ async fn compose(
         },
         max_steps: 0,
         prompt: "Complete this task.",
-        instruction: INSTRUCTION,
+        instruction,
         directions: brief.directions.text(),
         cap: brief.cap,
         packer: brief.packer,
@@ -199,7 +221,7 @@ async fn compose(
     };
     let setup = Setup {
         manifest,
-        instruction: INSTRUCTION,
+        instruction,
         workdir: &work,
         dir: &out,
         recorder: &recorder,
@@ -232,6 +254,7 @@ async fn compose(
         made: factory.made,
         work,
         out,
+        recorder,
     }
 }
 
@@ -801,4 +824,415 @@ fn a_standing_prefers_fewer_failures_then_more_confirmed_requirements() {
             .triggers(&["unconfirmed".to_string()])
             .is_empty()
     );
+}
+
+// ---------------------------------------------------------------------------
+// v5: control.persist.
+// ---------------------------------------------------------------------------
+
+const EIGHT_HOURS: Duration = Duration::from_secs(8 * 3600 - 120);
+
+/// v5 without its route or its second executor, so lean Opus starts and
+/// every dispatch after the first is the repair or a persist round.
+fn v5_unrouted() -> Manifest {
+    let mut manifest = manifest("tunable-v5.json");
+    manifest.policy.control.route = None;
+    manifest.policy.verify.as_mut().unwrap().second = None;
+    manifest
+}
+
+/// A session that reads, says it is done, and changes nothing.
+fn idle(name: &str) -> Script {
+    let mut script = script(name, 0, 0);
+    script.events = vec![
+        at(
+            0,
+            Act::Claim {
+                text: "My tests pass; nothing to change.".to_string(),
+            },
+        ),
+        at(100, Act::End { error: false }),
+    ];
+    script
+}
+
+fn log_task() -> crate::minitask::MiniTask {
+    crate::minitask::find("log-severity").unwrap()
+}
+
+fn log_script(which: &str) -> Script {
+    crate::minitask::scripts(&log_task())
+        .into_iter()
+        .find(|(name, _)| *name == which)
+        .unwrap()
+        .1
+}
+
+fn roles(record: &Value) -> Vec<String> {
+    record["branches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["role"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn persist_fixes_a_subtly_wrong_answer_that_v4_leaves() {
+    if !python() {
+        return;
+    }
+    let task = log_task();
+    // The first session counts any severity word on a line, not the
+    // severity field; the repair makes the same mistake; the first persist
+    // round writes its own tests and fixes it; the second changes nothing.
+    let ran = compose_task(
+        "persist-fixes",
+        &v5_unrouted(),
+        vec![
+            log_script("bad"),
+            log_script("bad"),
+            log_script("good"),
+            idle("opus-idle"),
+        ],
+        None,
+        EIGHT_HOURS,
+        Some(&task),
+    )
+    .await;
+    let record = &ran.record;
+    let grade = crate::minitask::grade(&task, &ran.work, &ran.out.join("grade")).await;
+    assert_eq!(grade.verdict, "passed", "{grade:?}\n{record:#}");
+    assert_eq!(record["repair"]["changed"], false, "{record:#}");
+    let persist = &record["persist"];
+    assert_eq!(persist["stopped"], "round 2 changed nothing", "{record:#}");
+    let rounds = persist["rounds"].as_array().unwrap();
+    assert_eq!(rounds.len(), 2);
+    assert_eq!(rounds[0]["changed"], true);
+    assert_eq!(rounds[0]["kept"], true);
+    assert_eq!(rounds[0]["before"]["failed"], 1);
+    assert_eq!(rounds[0]["after"]["failed"], 0);
+    assert!(
+        rounds[0]["files_changed"]
+            .as_array()
+            .unwrap()
+            .contains(&json!({ "path": "summary.csv", "change": "modified" }))
+    );
+    assert_eq!(rounds[1]["changed"], false);
+    assert_eq!(roles(record), ["primary", "persist-1", "persist-2"]);
+    // Each round is a fresh session at the long effort.
+    assert_eq!(rounds[0]["tier"]["effort"], "xhigh");
+    assert_ne!(rounds[0]["session_id"], rounds[1]["session_id"]);
+    assert_eq!(
+        record["checks"].as_array().unwrap().last().unwrap()["after"],
+        "persist-1"
+    );
+    assert!(ran.out.join(persist::checks_file(1)).is_file());
+    // The brief is built by code from the task, the requirement states,
+    // the changes, the packets, and the previous report.
+    let brief = std::fs::read_to_string(ran.out.join(persist::brief_path(1))).unwrap();
+    for part in [
+        "The severity levels to count are exactly",
+        "## Requirements and what the host's checks know about them",
+        "- `summary.csv`: added",
+        "It observed:",
+        "## The previous session's final report",
+        "the CSV has the header and 9 integer rows",
+        "Write your own rigorous tests",
+        "anything under /tests",
+    ] {
+        assert!(brief.contains(part), "{part} missing from\n{brief}");
+    }
+    // One control.persist invocation, with each round a child and each
+    // round's session a child of the round.
+    let invocations = crate::record::invocations(&ran.recorder.steps());
+    let parent = invocations
+        .iter()
+        .find(|i| i.component == persist::COMPONENT && i.name.as_deref() == Some("persist"))
+        .unwrap();
+    let children: Vec<&crate::record::Invocation> = invocations
+        .iter()
+        .filter(|i| i.parent.as_deref() == Some(parent.id.as_str()))
+        .collect();
+    assert_eq!(children.len(), 2);
+    assert!(children.iter().all(|c| c.component == persist::COMPONENT));
+    assert!(
+        invocations.iter().any(|i| i.component == "exec.session"
+            && i.parent.as_deref() == Some(children[0].id.as_str()))
+    );
+
+    // The canary: v4, without control.persist, stops after the repair
+    // with the wrong counts.
+    let mut v4 = v4_unrouted();
+    v4.policy.verify.as_mut().unwrap().second = None;
+    let ran = compose_task(
+        "persist-canary",
+        &v4,
+        vec![log_script("bad"), log_script("bad")],
+        None,
+        EIGHT_HOURS,
+        Some(&task),
+    )
+    .await;
+    let grade = crate::minitask::grade(&task, &ran.work, &ran.out.join("grade")).await;
+    assert_eq!(grade.verdict, "failed");
+    assert_eq!(ran.record["persist"], Value::Null);
+    assert_eq!(ran.made.len(), 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn persist_alternates_executors_up_to_the_round_cap() {
+    if !python() {
+        return;
+    }
+    let mut manifest = v5_unrouted();
+    let policy = manifest.policy.control.persist.as_mut().unwrap();
+    policy.max_rounds = 2;
+    policy.alternate = vec![Tier::new("codex", "gpt-6-astra")];
+    let ran = compose(
+        "persist-alternate",
+        &manifest,
+        vec![
+            script_saying("opus", 7, &[], "Done."),
+            script_saying("opus-repair", 7, &[], "Done."),
+            // Still wrong, but no worse: the round stays.
+            script_saying("opus-persist", 8, &[], "Done."),
+            script_saying("astra-persist", 6, &[], "Done."),
+        ],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    let record = &ran.record;
+    let labels: Vec<String> = ran.made.iter().map(|(tier, _)| tier.label()).collect();
+    assert_eq!(
+        labels,
+        [
+            "claude-code/claude-opus-5-5",
+            "claude-code/claude-opus-5-5",
+            "claude-code/claude-opus-5-5",
+            "codex/gpt-6-astra"
+        ],
+        "{record:#}"
+    );
+    let persist = &record["persist"];
+    assert_eq!(
+        persist["stopped"], "reached the cap of 2 rounds",
+        "{record:#}"
+    );
+    assert_eq!(persist["rounds"][0]["kept"], true);
+    assert_eq!(persist["rounds"][1]["after"]["failed"], 0);
+    assert_eq!(sum_in(&ran.work), 6);
+    assert_eq!(record["final_tier"]["model"], "gpt-6-astra");
+    // The rounds drew on the one episode deadline: each asked half of
+    // what was left, never more than the whole.
+    let asked: Vec<u64> = ran.made.iter().map(|(_, d)| d.as_secs()).collect();
+    assert!(asked[2] <= asked[0], "{asked:?}");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn persist_puts_back_a_round_whose_checks_come_out_worse() {
+    if !python() {
+        return;
+    }
+    let mut manifest = v5_unrouted();
+    manifest
+        .policy
+        .control
+        .persist
+        .as_mut()
+        .unwrap()
+        .stop_when_confirmed = false;
+    let ran = compose(
+        "persist-guard",
+        &manifest,
+        vec![
+            script_saying("opus", 6, &[], "Done."),
+            script_saying("opus-persist", 5, &["scratch.txt"], "Done."),
+            idle("opus-idle"),
+        ],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    let record = &ran.record;
+    let round = &record["persist"]["rounds"][0];
+    assert_eq!(round["kept"], false, "{record:#}");
+    assert!(
+        round["why"]
+            .as_str()
+            .unwrap()
+            .contains("put the workspace back")
+    );
+    assert_eq!(sum_in(&ran.work), 6);
+    assert!(!ran.work.join("scratch.txt").exists());
+    assert_eq!(record["persist"]["stopped"], "round 2 changed nothing");
+    // The final checks are the ones from before the round that was put
+    // back.
+    assert!(record["final_checks"]["verdicts"]["failed"].is_null());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn persist_skips_a_short_task_and_an_episode_near_its_deadline() {
+    if !python() {
+        return;
+    }
+    // Fifteen minutes is not a long task.
+    let ran = compose(
+        "persist-short",
+        &v5_unrouted(),
+        vec![script_saying("opus", 7, &[], "Done."), idle("repair")],
+        None,
+        Duration::from_secs(900),
+    )
+    .await;
+    assert_eq!(ran.record["persist"]["skipped"], "not a long task");
+    assert_eq!(ran.made.len(), 2);
+    // A long task whose deadline has less than the floor left.
+    let mut manifest = v5_unrouted();
+    manifest
+        .policy
+        .control
+        .persist
+        .as_mut()
+        .unwrap()
+        .min_remaining_sec = 9 * 3600;
+    let ran = compose(
+        "persist-floor",
+        &manifest,
+        vec![script_saying("opus", 7, &[], "Done."), idle("repair")],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    assert_eq!(
+        ran.record["persist"]["stopped"],
+        "less than 32400 s left in the episode"
+    );
+    assert_eq!(ran.record["persist"]["rounds"], json!([]));
+    assert_eq!(ran.made.len(), 2);
+}
+
+#[test]
+fn a_persist_round_is_gated_on_confirmation_of_every_binding_requirement() {
+    use crate::requirements::Binding;
+    let map = crate::requirements::mechanical(INSTRUCTION);
+    let binding: Vec<String> = map
+        .requirements
+        .iter()
+        .filter(|r| r.binding != Binding::Uncertain)
+        .map(|r| r.id.clone())
+        .collect();
+    assert!(!binding.is_empty());
+    let report = |states: &[(&str, &str)], failed: bool| {
+        let mut report: checks::Report = serde_json::from_value(json!({
+            "schema": "x",
+            "implementation": checks::implementation(),
+            "candidate": { "digest": "c1" },
+            "requirements_method": "rule",
+            "ineligible": [],
+            "scenarios": [],
+            "selection": null,
+            "verdicts": [],
+            "coverage": [],
+            "packets": [],
+        }))
+        .unwrap();
+        for (id, state) in states {
+            report.coverage.push(checks::Covered {
+                id: (*id).to_string(),
+                text: String::new(),
+                kind: "behavior".to_string(),
+                state: (*state).to_string(),
+                scenarios: Vec::new(),
+            });
+        }
+        if failed {
+            report.verdicts.push(
+                serde_json::from_value(json!({ "scenario": "generic.output", "verdict": "failed", "observations": [], "coverage": [] }))
+                    .unwrap(),
+            );
+        }
+        report
+    };
+    let all: Vec<(&str, &str)> = binding.iter().map(|id| (id.as_str(), "observed")).collect();
+    assert!(persist::confirmed(Some(&map), &report(&all, false), None));
+    assert!(!persist::confirmed(Some(&map), &report(&all, true), None));
+    assert!(!persist::confirmed(
+        Some(&map),
+        &report(&all[1..], false),
+        None
+    ));
+    // A map with no binding requirement confirms nothing.
+    let mut empty = map.clone();
+    empty.requirements.clear();
+    assert!(!persist::confirmed(
+        Some(&empty),
+        &report(&all, false),
+        None
+    ));
+}
+
+#[test]
+fn persist_cycles_the_producing_executor_with_its_alternates() {
+    let opus = Tier::new("claude-code", "claude-opus-5-5");
+    let astra = Tier::new("codex", "gpt-6-astra");
+    let mut policy = PersistPolicy::default();
+    assert_eq!(policy.tier_for(1, &opus), opus);
+    assert_eq!(policy.tier_for(3, &opus), opus);
+    policy.alternate = vec![astra.clone(), opus.clone()];
+    let labels: Vec<String> = (1..=4).map(|n| policy.tier_for(n, &opus).label()).collect();
+    assert_eq!(
+        labels,
+        [
+            "claude-code/claude-opus-5-5",
+            "codex/gpt-6-astra",
+            "claude-code/claude-opus-5-5",
+            "codex/gpt-6-astra"
+        ]
+    );
+    // A candidate Astra produced alternates with nothing new.
+    assert_eq!(policy.tier_for(2, &astra), opus);
+}
+
+#[test]
+fn the_v5_manifest_is_v4_plus_persist_and_v4_keeps_its_digest() {
+    let v5 = manifest("tunable-v5.json");
+    v5.validate().unwrap();
+    let persist = v5.policy.control.persist.as_ref().unwrap();
+    assert_eq!(persist.max_rounds, 3);
+    assert_eq!(persist.min_remaining_sec, 1_800);
+    assert!(persist.long_only && persist.guard && persist.alternate.is_empty());
+    let mut stripped = v5.policy.clone();
+    stripped.control.persist = None;
+    assert_eq!(stripped, manifest("tunable-v4.json").policy);
+    // v4 serializes without the field, so its digest is what it was.
+    let v4: Value = serde_json::from_str(include_str!("../../policies/tunable-v4.json")).unwrap();
+    assert!(v4["policy"]["control"].get("persist").is_none());
+    let parsed = manifest("tunable-v4.json");
+    assert_eq!(
+        serde_json::to_value(&parsed.policy.control).unwrap(),
+        v4["policy"]["control"]
+    );
+    // A bad policy is refused.
+    let mut bad = v5.clone();
+    let policy = bad.policy.control.persist.as_mut().unwrap();
+    policy.max_rounds = 0;
+    policy.share = 1.5;
+    let problems = bad.validate().unwrap_err();
+    assert!(problems.contains("max_rounds"), "{problems}");
+    assert!(problems.contains("share"), "{problems}");
+    let mut unlong = v5.clone();
+    unlong.policy.control.horizon = None;
+    assert!(unlong.validate().unwrap_err().contains("long_after_sec"));
+    // An alternate executor is listed for the doctor.
+    let mut alternating = v5;
+    alternating
+        .policy
+        .control
+        .persist
+        .as_mut()
+        .unwrap()
+        .alternate = vec![Tier::new("codex", "gpt-6-astra")];
+    assert!(tiers(&alternating).iter().any(|t| t.model == "gpt-6-astra"));
 }

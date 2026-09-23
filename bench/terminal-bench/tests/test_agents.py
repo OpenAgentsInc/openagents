@@ -50,6 +50,7 @@ def test_known_arms(agents):
         "coder-one-tunable-luna-v2",
         "coder-one-tunable-v3",
         "coder-one-tunable-v4",
+        "coder-one-tunable-v5",
         "oracle",
         "nop",
     }
@@ -201,6 +202,7 @@ def test_tunable_arms_install_both_clis_and_forward_both_credentials(agents):
         ("coder-one-tunable-luna-v2", "tunable-luna-v2.json"),
         ("coder-one-tunable-v3", "tunable-v3.json"),
         ("coder-one-tunable-v4", "tunable-v4.json"),
+        ("coder-one-tunable-v5", "tunable-v5.json"),
     ):
         profile = agents[arm]
         assert profile.harbor_import_path == "tbench.coder_one:CoderOneTunable"
@@ -225,3 +227,31 @@ def test_tunable_arms_install_both_clis_and_forward_both_credentials(agents):
         # Without the Codex credential the mode is not configured.
         del env["CODEX_FORCE_AUTH_JSON"]
         assert configured_auth_modes(profile, env=env) == []
+
+
+def test_the_v5_arm_is_v4_plus_persist(agents):
+    import json
+    from pathlib import Path
+
+    from tbench.coder_one import manifest_tiers
+
+    root = Path(__file__).resolve().parents[3]
+    v4 = json.loads((root / "crates/coder-one/policies/tunable-v4.json").read_text())
+    v5 = json.loads((root / agents["coder-one-tunable-v5"].kwargs["policy"]).read_text())
+    assert v5["name"] == "coder-one-tunable-v5"
+    persist = v5["policy"]["control"].pop("persist")
+    assert persist["max_rounds"] == 3
+    assert persist["min_remaining_sec"] == 1800
+    assert persist["long_only"] is True
+    # Everything else is v4, so a screen measures persistence alone.
+    assert v5["policy"] == v4["policy"]
+    assert v5["protected"] == v4["protected"]
+    profile = agents["coder-one-tunable-v5"]
+    assert profile.kwargs["executors"] == agents["coder-one-tunable-v4"].kwargs["executors"]
+    # An alternate persist executor is installed like any other tier.
+    v5["policy"]["control"]["persist"] = dict(
+        persist, alternate=[{"agent": "codex", "model": "gpt-6-astra", "version": "0.155.1"}]
+    )
+    v5["policy"]["verify"].pop("second")
+    v5["policy"]["control"]["route"].pop("families")
+    assert "gpt-6-astra" in {tier["model"] for tier in manifest_tiers(v5)}

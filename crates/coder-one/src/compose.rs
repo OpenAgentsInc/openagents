@@ -17,10 +17,13 @@
 //! verify.second    when the checks can't confirm the result, a second
 //!                  executor on the task's original state; the candidate
 //!                  whose checks confirm more requirements stays
+//! control.persist  on a long task with time left, fresh rounds from a
+//!                  continue brief until a round changes nothing, the
+//!                  checks confirm the result, or the round cap
 //! ```
 //!
 //! The policy manifest turns each part on: `control.route`,
-//! `control.horizon`, `control.handoff`, and `verify`. `control.horizon`
+//! `control.horizon`, `control.handoff`, `control.persist`, and `verify`. `control.horizon`
 //! sizes each dispatch from the episode deadline, so an eight-hour task
 //! gives its executors hours instead of the ten-minute default. The
 //! episode writes the whole account to `artifacts/composition.json`.
@@ -67,6 +70,9 @@ pub const SECOND_SUPPORT: &str = "verification/support-second.json";
 
 /// The component that runs the second executor.
 pub const SECOND: &str = "verify.second";
+
+pub mod persist;
+pub use persist::PersistPolicy;
 
 fn half() -> f64 {
     0.5
@@ -714,6 +720,9 @@ pub fn tiers(manifest: &crate::policy::Manifest) -> Vec<Tier> {
     {
         out.extend(second.to.iter().cloned());
     }
+    if let Some(persist) = &control.persist {
+        out.extend(persist.alternate.iter().cloned());
+    }
     out
 }
 
@@ -724,6 +733,7 @@ pub fn composes(manifest: &crate::policy::Manifest) -> bool {
     manifest.policy.verify.is_some()
         || control.route.is_some()
         || control.horizon.is_some()
+        || control.persist.is_some()
         || control
             .handoff
             .as_ref()
@@ -1343,6 +1353,13 @@ where
         None => None,
     };
 
+    // control.persist lists what the executors changed, so it reads the
+    // workspace before any of them runs.
+    let initial = control
+        .persist
+        .as_ref()
+        .map(|_| persist::files_of(&subject, setup.workdir));
+
     // planner-worker: the planner writes a plan in a scratch copy first.
     let mut directions = plan.directions.to_string();
     let mut planned = Value::Null;
@@ -1453,6 +1470,8 @@ where
         crate::support::FILE,
     )
     .await?;
+    // The final report of the session that produced the candidate.
+    let mut previous = first_delegation.report.output();
 
     // control.handoff escalate.
     let mut escalated = false;
@@ -1556,6 +1575,7 @@ where
             runs = exec.runs();
             branches.push(row("escalation", &to, &report, &exec.last(), sec));
             ended = delegate::ending(&ended, &report, state.history.len(), &state.issue.title);
+            previous = report.output();
             first = to.clone();
             escalated = true;
             if verify.checks {
@@ -1610,6 +1630,11 @@ where
             |granted| factory.make(&tier, granted, made_runs),
         )
         .await?;
+        if result.changed
+            && let Some(said) = result.record["session"]["result"].as_str()
+        {
+            previous = said.to_string();
+        }
         repaired = json!({
             "tier": first,
             "triggered": result.record["triggered"],
@@ -1668,12 +1693,47 @@ where
         if outcome.kept_second {
             if let Some((tier, report, _, _)) = &outcome.branch {
                 ended = delegate::ending(&ended, report, state.history.len(), &state.issue.title);
+                previous = report.output();
                 first = tier.clone();
             }
             checked = outcome.checked;
             support = outcome.support;
         }
         second_record = outcome.record;
+    }
+
+    // control.persist: fresh rounds while a long task has time left.
+    let mut persist_record = Value::Null;
+    if let (Some(policy), Some(initial)) = (&control.persist, &initial) {
+        let outside = output_paths(subject.requirements.as_ref(), setup.workdir);
+        let context = persist::Context {
+            setup,
+            subject: &subject,
+            verify: &verify,
+            horizon: &horizon,
+            long,
+            support_params,
+            fallback,
+            isolation: plan.isolation,
+            initial,
+            outside: &outside,
+        };
+        let current = persist::Current {
+            tier: first.clone(),
+            checked: checked.take(),
+            support: support.take(),
+            previous,
+        };
+        let persisted = persist::run(&context, policy, current, factory, &mut runs).await?;
+        branches.extend(persisted.branches);
+        checks_log.extend(persisted.checks_log);
+        if let Some(report) = &persisted.report {
+            ended = delegate::ending(&ended, report, state.history.len(), &state.issue.title);
+        }
+        first = persisted.current.tier;
+        checked = persisted.current.checked;
+        support = persisted.current.support;
+        persist_record = persisted.record;
     }
 
     let record = json!({
@@ -1696,6 +1756,7 @@ where
         "support": support.as_ref().map(crate::support::Report::summary),
         "repair": repaired,
         "second": second_record,
+        "persist": persist_record,
         "final_tier": first,
         "final_checks": checked.as_ref().map(|(_, report)| report.summary()),
         "verify": verify,

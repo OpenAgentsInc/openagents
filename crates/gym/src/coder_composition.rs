@@ -168,6 +168,8 @@ impl Row {
             "dispatches": self.roles(),
             "escalated": self.record["escalated"],
             "second_kept": self.record["second"]["kept"],
+            "persist_rounds": self.record["persist"]["rounds"].as_array().map(Vec::len),
+            "persist_stopped": self.record["persist"]["stopped"],
             "last_checks": self.last_checks(),
             "composition": self.record,
         })
@@ -378,6 +380,57 @@ pub fn detail_lines(record: &Value) -> Vec<String> {
         }
     ));
     lines.extend(second_line);
+    lines.extend(persist_lines(&record["persist"]));
+    lines
+}
+
+/// `control.persist`: each round's executor, time, cost, change, and
+/// checks, and why the rounds stopped.
+fn persist_lines(persist: &Value) -> Vec<String> {
+    if persist.is_null() {
+        return Vec::new();
+    }
+    if let Some(why) = persist["skipped"].as_str() {
+        return vec![format!("  persist: skipped: {why}")];
+    }
+    let rounds = persist["rounds"].as_array().cloned().unwrap_or_default();
+    let mut lines = vec![format!(
+        "  persist: {} round{} · stopped: {}",
+        rounds.len(),
+        if rounds.len() == 1 { "" } else { "s" },
+        persist["stopped"].as_str().unwrap_or("-")
+    )];
+    for round in &rounds {
+        let files = round["files_changed"].as_array().map_or(0, Vec::len);
+        let checks = if round["after"].is_object() {
+            format!(
+                " · failed {} → {}",
+                round["before"]["failed"].as_u64().unwrap_or(0),
+                round["after"]["failed"].as_u64().unwrap_or(0)
+            )
+        } else {
+            String::new()
+        };
+        lines.push(format!(
+            "    round {} {:<42} {:<10} {:>6} · {} · {}{}{}",
+            round["round"],
+            tier(&round["tier"]),
+            words(&round["status"]),
+            seconds(&round["milliseconds"]),
+            money(&round["cost_usd"]),
+            if round["changed"] == true {
+                format!("{files} file{} changed", if files == 1 { "" } else { "s" })
+            } else {
+                "no change".to_owned()
+            },
+            checks,
+            if round["kept"] == false {
+                " · put back"
+            } else {
+                ""
+            }
+        ));
+    }
     lines
 }
 
@@ -432,7 +485,8 @@ Each Terminal-Bench attempt that ran Coder One's tunable composition: where
 control.route started and why, the deadline each dispatch asked for, every
 dispatch (planner, primary, escalation) with its tier, status, time, and
 cost, each handoff and its trigger, verify.checks after each dispatch,
-verify.support's states, the repair, and verify.second. QUERY picks the attempts whose task,
+verify.support's states, the repair, verify.second, and each control.persist
+round. QUERY picks the attempts whose task,
 job, or trial contains it for detail; the newest is shown otherwise.
 
   --jobs-dir PATH          local Harbor jobs (default ~/.openagents/terminal-bench/jobs)
@@ -590,6 +644,28 @@ mod tests {
             text.contains("second: skipped: the checks confirmed the result"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn a_v5_attempt_shows_each_persist_round() {
+        let mut value = record();
+        value["persist"] = json!({
+            "stopped": "round 2 changed nothing",
+            "rounds": [
+                { "round": 1, "tier": { "agent": "claude-code", "model": "claude-opus-5-5", "effort": "xhigh" }, "status": "answered", "milliseconds": 412000, "cost_usd": 0.91, "changed": true, "files_changed": [{ "path": "out.step", "change": "modified" }], "before": { "failed": 1 }, "after": { "failed": 0 }, "kept": true },
+                { "round": 2, "tier": { "agent": "claude-code", "model": "claude-opus-5-5", "effort": "xhigh" }, "status": "answered", "milliseconds": 95000, "cost_usd": 0.2, "changed": false, "files_changed": [], "kept": true },
+            ],
+        });
+        let text = detail_lines(&value).join("\n");
+        assert!(
+            text.contains("persist: 2 rounds · stopped: round 2 changed nothing"),
+            "{text}"
+        );
+        assert!(text.contains("1 file changed · failed 1 → 0"), "{text}");
+        assert!(text.contains("no change"), "{text}");
+        value["persist"] = json!({ "skipped": "not a long task", "rounds": [] });
+        let text = detail_lines(&value).join("\n");
+        assert!(text.contains("persist: skipped: not a long task"), "{text}");
     }
 
     #[test]

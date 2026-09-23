@@ -197,6 +197,11 @@ pub struct ControlPolicy {
     /// `executor.deadline_sec`, and the digest is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub horizon: Option<crate::compose::Horizon>,
+    /// `control.persist`: fresh executor rounds while a long task has time
+    /// left. Absent, the episode ends after the last verification step,
+    /// and the digest is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persist: Option<crate::compose::PersistPolicy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -522,6 +527,7 @@ impl Manifest {
                     handoff: None,
                     route: None,
                     horizon: None,
+                    persist: None,
                 },
                 brief: BriefPolicy {
                     cap: delegate::BRIEFING_CAP,
@@ -703,6 +709,27 @@ impl Manifest {
         }
         if let Some(horizon) = &self.policy.control.horizon {
             problems.extend(horizon.validate());
+        }
+        if let Some(persist) = &self.policy.control.persist {
+            problems.extend(persist.validate());
+            if policy.control.delegate == DelegateMode::Off {
+                problems.push("control.persist needs a delegate mode other than off".to_string());
+            }
+            if self.policy.verify.as_ref().is_some_and(|v| !v.checks) {
+                problems.push("control.persist needs verify.checks".to_string());
+            }
+            if persist.long_only
+                && self
+                    .policy
+                    .control
+                    .horizon
+                    .as_ref()
+                    .is_none_or(|h| h.long_after_sec.is_none())
+            {
+                problems.push(
+                    "control.persist.long_only needs control.horizon.long_after_sec".to_string(),
+                );
+            }
         }
         if let Some(to) = self
             .policy
@@ -1327,6 +1354,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
     (
         "tunable-v4.json",
         include_str!("../policies/tunable-v4.json"),
+    ),
+    (
+        "tunable-v5.json",
+        include_str!("../policies/tunable-v5.json"),
     ),
 ];
 

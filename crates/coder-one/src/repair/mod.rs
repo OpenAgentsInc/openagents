@@ -455,7 +455,7 @@ pub struct Repaired {
     pub support_after: Option<crate::support::Report>,
 }
 
-fn session_cost(agent: &str, report: &delegate::Report) -> Cost {
+pub(crate) fn session_cost(agent: &str, report: &delegate::Report) -> Cost {
     if agent == "scripted" {
         // A script runs no inference.
         return Cost::none();

@@ -4,9 +4,10 @@ Each Coder One component runs alone on fixtures, in the Gym, and in a
 mini-task episode. A Terminal-Bench episode runs them together when its
 policy manifest turns them on: `control.route` picks the first executor,
 `control.monitor` watches it, `verify.checks` and `verify.support` judge
-what it left, `control.handoff` escalates or splits the work, and
-`verify.repair` runs once, all within one deadline sized from the task's
-own timeout.
+what it left, `control.handoff` escalates or splits the work,
+`verify.repair` runs once, and `control.persist` keeps working while a
+long task has time left, all within one deadline sized from the task's own
+timeout.
 
 The design is in
 [Coder as a tunable system](../../optimization/coder-components.md).
@@ -25,11 +26,13 @@ control.handoff     escalate: the second executor from a handoff brief
 verify.repair       one fresh session from the diagnostic packets
 verify.second       a second executor on the original state, when the
                     checks can't confirm the result
+control.persist     fresh rounds from a continue brief, while a long task
+                    has time left
 ```
 
 An episode runs this path when its manifest sets any of `control.route`,
-`control.handoff` (escalate or planner-worker), `control.horizon`, or
-`verify`. A manifest without them runs one executor, as before, and keeps
+`control.handoff` (escalate or planner-worker), `control.horizon`,
+`control.persist`, or `verify`. A manifest without them runs one executor, as before, and keeps
 its digest. Steer and race still run only on mini-tasks: steer needs an
 adapter that demonstrated steering, and race needs two isolated copies of
 the task's state.
@@ -120,6 +123,56 @@ more confirmed requirements, then the first. When the first stays, the
 host puts it back. A workspace over `max_copy_mb` or 20,000 files isn't
 copied, and the second executor is skipped with that reason.
 
+### Persist on a long task
+
+On Terminal-Bench 4.0, lean Opus ended its session after 0.4% to 3.2% of an
+eight-hour grant, and several of its failures were near misses.
+`control.persist` spends the rest. After the checks, support, the repair,
+and `verify.second` have run, the host starts a fresh executor session,
+not a resume, from a continue brief it builds itself:
+
+- The task's instruction.
+- Each requirement with its current state: the fresh `verify.support`
+  judgment when there is one, otherwise what the checks observed.
+- Each file the earlier sessions added, changed, or removed since the
+  episode started, with its size and first lines, and whether each output
+  file the task names outside the working directory exists.
+- The last checks' diagnostic packets, up to three.
+- The previous session's final report.
+- Directions to write rigorous tests from the task's words (edge cases,
+  input variants, scale, and exact output formats) outside the
+  deliverables and never from the protected verifier, run them, fix what
+  fails, render or measure a visual or numeric output, and stop only when
+  the tests pass.
+
+The brief is kept at `artifacts/persist-<n>.brief.md`. After each round,
+the checks and support run again, into `verification/checks-persist-<n>.json`
+and `verification/support-persist-<n>.json`. The rounds stop at the first
+of these:
+
+- A round leaves the workspace as it found it.
+- No scenario fails, no requirement is contradicted, and every binding
+  requirement is observed by a scenario or supported by `verify.support`.
+- The round cap is reached.
+- Less than the floor is left of the episode deadline.
+
+| Field | Default | Effect |
+| --- | --- | --- |
+| `max_rounds` | 3 | The most rounds, 1 to 10. |
+| `min_remaining_sec` | 1800 | A round starts only with at least this much of the episode deadline left. |
+| `share` | 0.5 | The share of the time left that each round asks for. |
+| `long_only` | true | Run only on a long task, as `control.horizon.long_after_sec` reads the deadline. |
+| `stop_when_unchanged` | true | Stop after a round that changes no file. |
+| `stop_when_confirmed` | true | Don't start a round when the checks and support confirm every binding requirement. |
+| `guard` | true | Copy the workspace aside before each round, and put it back when the round's checks come out worse. |
+| `max_copy_mb` | 256 | The largest workspace the guard copies; a larger one runs unguarded, and the record says so. |
+| `alternate` | none | Executors to alternate with: round 1 runs the executor that produced the candidate, and later rounds cycle through it and each alternate that differs from it. |
+
+Each round runs at `horizon.long_effort` on a long task. The rounds are
+children of one `control.persist` invocation, each round's session is an
+`exec.session` under it with its own cost, and each session is a delegate
+call in `evaluation/usage.json`, against the one episode deadline.
+
 ### Escalate or split
 
 With `control.handoff` set to `escalate`, the first executor runs under
@@ -183,6 +236,7 @@ in `evaluation/usage.json`.
 | `crates/coder-one/policies/tunable-opus.json` | `coder-one-tunable-opus` | Lean Opus 5.5 at low effort, checks, and one repair. |
 | `crates/coder-one/policies/tunable-luna.json` | `coder-one-tunable-luna` | Luna, checks, escalation to lean Opus, and one repair. |
 | `crates/coder-one/policies/tunable-v4.json` | `coder-one-tunable-v4` | v3 (the coverage packer, the checked repair, and xhigh effort on long tasks), plus `self_report`, `optional_outputs`, an eight-requirement behavior-first support budget on long tasks, the `profile-v2` route with a family table that can start GPT-6 Astra through Codex, and `verify.second` with Astra or lean Opus. |
+| `crates/coder-one/policies/tunable-v5.json` | `coder-one-tunable-v5` | v4, plus `control.persist`: up to three fresh rounds on a long task while at least 30 minutes are left, each asking for half of the time left, guarded, without alternates. |
 
 The v4 family table is fitted in sample: its rows are the leaderboard's
 Opus 5 and GPT-6 Astra rows at xhigh, summed over the Terminal-Bench 4.0
@@ -231,7 +285,9 @@ The episode writes `artifacts/composition.json`
 (`openagents.coder-one.composition.v1`): the route and its profile, the
 horizon, each dispatch with its tier, status, time, requested deadline,
 and cost, each handoff and its trigger, the checks after each dispatch,
-support, the repair, and `verify.second`. Each checks entry carries what
+support, the repair, `verify.second`, and `control.persist`'s rounds with
+each one's executor, time, cost, changed files, checks before and after,
+and why the rounds stopped. Each checks entry carries what
 `generic.self-report` found. The bundle's manifest names it, and its
 `verification` block carries the checks, support, and repair; the second
 candidate's checks and support are in `verification/checks-second.json`
@@ -245,7 +301,8 @@ gym coder composition --json         # openagents.gym.coder-composition.v1
 
 In `gym-terminal`, the attempt view lists the same detail under the
 attempt's calls: the route's family, each self-report finding, and the
-second executor's trigger and the candidate it kept.
+second executor's trigger and the candidate it kept, and each persist
+round.
 
 ```sh
 gym coder families                   # the v4 family table, recomputed and compared
@@ -295,4 +352,18 @@ and the replay of the retained Terminal-Bench 4.0 trials:
 ```sh
 cargo test -p coder-one checks::
 cargo test -p gym coder_families
+```
+
+The v5 tests run `control.persist` on the `log-severity` mini-task, whose
+first answer counts any severity word on a line rather than the severity
+field: the repair repeats the mistake, the first round fixes it, the
+second changes nothing, and the mini-task's grader passes it. The canary
+runs the same sessions under v4, which stops after the repair with the
+wrong counts. Other tests cover alternating executors up to the round cap,
+a round the guard puts back, a short task, the deadline floor, and the
+confirmation gate:
+
+```sh
+cargo test -p coder-one compose::tests::persist
+cargo test -p gym coder_composition
 ```

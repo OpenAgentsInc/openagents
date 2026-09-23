@@ -1,0 +1,398 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-tunable-v5",
+  "note": "The whole tunable composition in a Terminal-Bench episode: task.profile routes the start (Codex on GPT-6 Luna for cheap, likely-easy tasks; lean Claude Code on Opus 5.5 for hard or long ones), deep Jev briefs it, control.monitor watches, verify.checks and verify.support judge the result, control.handoff escalates Luna to lean Opus on a stall, a failed check, a contradicted requirement, or no answer, and verify.repair runs once from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout. Both executors run the headless core system prompt with its protected sections, and Claude Code writes the five-minute prompt cache. v2: the briefing uses the coverage packer with Jev coverage judgments, and verify.repair runs only when a scenario observed a failure (trigger checked). v3: long tasks (over an hour) run the executor at xhigh effort instead of medium; on Terminal-Bench 4.0, lean Opus at medium stopped itself after 1 to 3 minutes of an 8-hour budget, and the leaderboard's Opus 5 rows gain 30 passes of 330 from medium to xhigh. v4: the checks, support, and routing levers from the Terminal-Bench 4.0 failure analysis. verify.self_report counts a failure the executor reports itself (route_feasible: false, an admitted guess, a named command that last exited nonzero) as a failed check with a packet; verify.optional_outputs lets an output the task asks for only when needed be empty; verify.support_budget judges up to 8 requirements on a long task, behaviors and checks first; control.route uses profile-v2, where a long deadline only lowers the difficulty bar, and a family table picks GPT-6 Astra through Codex for families where the leaderboard's Astra row passed more (in sample: the rows come from the TB4 tasks themselves); verify.second runs a second executor on the task's original state when the checks can't confirm the result, and keeps the candidate whose checks confirm more. v5: v4 plus control.persist. On a long task, after the checks, support, repair, and second executor have run, the host starts up to three fresh executor sessions (not resumes) while at least 30 minutes of the episode deadline are left. Each reads a code-built continue brief (the task, each requirement's current state, the files the earlier sessions changed, the last checks' diagnostic packets, and the previous session's final report) that tells it to write and run its own tests from the task's words, fix what fails, render or measure visual and numeric outputs, and stop only when its tests pass. The host rechecks after each round, puts the workspace back when a round's checks come out worse, and stops early when a round changes nothing or the checks and support confirm every binding requirement. On Terminal-Bench 4.0, lean Opus stopped after 0.4% to 3.2% of its budget, and its failures included near misses.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "monitor": {
+        "on_operation": true,
+        "on_artifact": true,
+        "on_claim": true,
+        "silence_ms": 300000,
+        "window": 8,
+        "event_chars": 300,
+        "requirements": 10,
+        "threshold": 0.5,
+        "jev": true,
+        "stall_commands": 12,
+        "latency_ms": 800
+      },
+      "handoff": {
+        "pattern": "escalate",
+        "to": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "effort": "low",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "version": "2.1.280"
+        },
+        "on": [
+          "stalled",
+          "repeating"
+        ],
+        "after": 3,
+        "max_handoffs": 1,
+        "brief": {
+          "requirements": true,
+          "diff": true,
+          "errors": true,
+          "packets": true
+        },
+        "monitor": {
+          "on_operation": true,
+          "on_artifact": true,
+          "on_claim": true,
+          "silence_ms": 300000,
+          "window": 8,
+          "event_chars": 300,
+          "requirements": 10,
+          "threshold": 0.5,
+          "jev": true,
+          "stall_commands": 12,
+          "latency_ms": 800
+        }
+      },
+      "route": {
+        "rule": "profile-v2",
+        "cheap": {
+          "agent": "codex",
+          "model": "gpt-6-luna",
+          "version": "0.155.1"
+        },
+        "strong": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "effort": "low",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "version": "2.1.280"
+        },
+        "hard_at": 0.5,
+        "hard_features": [
+          "builds_code",
+          "concurrency"
+        ],
+        "feature_at": 0.7,
+        "long_after_sec": 3600,
+        "long_hard_at": 0.35,
+        "families": {
+          "source": "Terminal-Bench 4.0 leaderboard (bench/terminal-bench/reference/tb4-leaderboard.json, fetched 2026-09-23): Claude Code on Opus 5 at xhigh and Codex on GPT-6 Astra at xhigh, five trials a task, summed over the TB4 tasks each family's words match; recompute with gym coder families",
+          "profiles": {
+            "astra": {
+              "agent": "codex",
+              "model": "gpt-6-astra",
+              "version": "0.155.1"
+            },
+            "opus": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            }
+          },
+          "reference_rows": {
+            "astra": "Codex / GPT-6 Astra (xhigh)",
+            "opus": "Claude Code / Opus 5 (xhigh)"
+          },
+          "min_trials": 10,
+          "min_gap": 0.2,
+          "table": [
+            {
+              "name": "cad-from-drawing",
+              "any": [
+                "step file",
+                "freecad"
+              ],
+              "all": [
+                [
+                  "schematic",
+                  "engineering drawing",
+                  "2d drawing",
+                  "the drawing"
+                ]
+              ],
+              "outcomes": [
+                {
+                  "profile": "astra",
+                  "passes": 10,
+                  "trials": 10,
+                  "mean_cost_usd": 2.0976
+                },
+                {
+                  "profile": "opus",
+                  "passes": 8,
+                  "trials": 10,
+                  "mean_cost_usd": 6.7326
+                }
+              ]
+            },
+            {
+              "name": "training-regression",
+              "any": [
+                "validation loss",
+                "training loss",
+                "loss spike",
+                "loss diverge",
+                "diverges",
+                "pretraining",
+                "pretrain"
+              ],
+              "outcomes": [
+                {
+                  "profile": "astra",
+                  "passes": 10,
+                  "trials": 10,
+                  "mean_cost_usd": 3.5758
+                },
+                {
+                  "profile": "opus",
+                  "passes": 5,
+                  "trials": 10,
+                  "mean_cost_usd": 17.1226
+                }
+              ]
+            },
+            {
+              "name": "web-performance",
+              "any": [
+                "performance",
+                "layout shift",
+                "responsiveness"
+              ],
+              "all": [
+                [
+                  "website",
+                  "web app",
+                  "next.js",
+                  "nextjs",
+                  "page"
+                ]
+              ],
+              "outcomes": [
+                {
+                  "profile": "astra",
+                  "passes": 9,
+                  "trials": 10,
+                  "mean_cost_usd": 20.3864
+                },
+                {
+                  "profile": "opus",
+                  "passes": 5,
+                  "trials": 10,
+                  "mean_cost_usd": 36.5411
+                }
+              ]
+            },
+            {
+              "name": "storage-recovery",
+              "any": [
+                "write-ahead",
+                "wal",
+                "crash recovery",
+                "compaction",
+                "post-crash"
+              ],
+              "outcomes": [
+                {
+                  "profile": "astra",
+                  "passes": 9,
+                  "trials": 10,
+                  "mean_cost_usd": 1.9398
+                },
+                {
+                  "profile": "opus",
+                  "passes": 5,
+                  "trials": 10,
+                  "mean_cost_usd": 2.6481
+                }
+              ]
+            },
+            {
+              "name": "routing-and-reimplementation",
+              "any": [
+                "waypoint",
+                "route the",
+                "pathfinding",
+                "graph isomorphism",
+                "reference binary"
+              ],
+              "outcomes": [
+                {
+                  "profile": "astra",
+                  "passes": 14,
+                  "trials": 15,
+                  "mean_cost_usd": 7.33
+                },
+                {
+                  "profile": "opus",
+                  "passes": 5,
+                  "trials": 15,
+                  "mean_cost_usd": 33.2791
+                }
+              ]
+            },
+            {
+              "name": "genomics",
+              "any": [
+                "genomic",
+                "transcript",
+                "proteomics",
+                "gene set"
+              ],
+              "outcomes": [
+                {
+                  "profile": "astra",
+                  "passes": 0,
+                  "trials": 10,
+                  "mean_cost_usd": 2.9741
+                },
+                {
+                  "profile": "opus",
+                  "passes": 5,
+                  "trials": 10,
+                  "mean_cost_usd": 2.8013
+                }
+              ]
+            },
+            {
+              "name": "compliance-operations",
+              "any": [
+                "filing",
+                "production plan",
+                "erp",
+                "month-end"
+              ],
+              "outcomes": [
+                {
+                  "profile": "astra",
+                  "passes": 0,
+                  "trials": 10,
+                  "mean_cost_usd": 3.9291
+                },
+                {
+                  "profile": "opus",
+                  "passes": 7,
+                  "trials": 10,
+                  "mean_cost_usd": 6.8511
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "horizon": {
+        "first_share": 0.55,
+        "later_share": 0.75,
+        "min_dispatch_sec": 300,
+        "check_share": 0.05,
+        "long_after_sec": 3600,
+        "long_effort": "xhigh",
+        "long_command_sec": 3600
+      },
+      "persist": {
+        "max_rounds": 3,
+        "min_remaining_sec": 1800,
+        "share": 0.5,
+        "long_only": true,
+        "stop_when_unchanged": true,
+        "stop_when_confirmed": true,
+        "guard": true,
+        "max_copy_mb": 256
+      }
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked",
+      "packer": "coverage-jev"
+    },
+    "executor": {
+      "agent": "claude-code",
+      "version": "2.1.280",
+      "model": "claude-opus-5-5",
+      "effort": "low",
+      "tools": "Bash,Read,Edit,Write,Glob,Grep",
+      "prompt_cache_ttl": "5m",
+      "deadline_sec": 600,
+      "system": {
+        "mode": "replace",
+        "sections": [
+          "role",
+          "security",
+          "authority",
+          "verify",
+          "report",
+          "code-style"
+        ]
+      }
+    },
+    "verify": {
+      "checks": true,
+      "support": true,
+      "repair": {
+        "brief": "packet",
+        "trigger": "checked"
+      },
+      "support_budget": {
+        "max_requirements": 3,
+        "long_max_requirements": 8,
+        "order": "behavior-first"
+      },
+      "self_report": true,
+      "optional_outputs": true,
+      "second": {
+        "to": [
+          {
+            "agent": "codex",
+            "model": "gpt-6-astra",
+            "version": "0.155.1"
+          },
+          {
+            "agent": "claude-code",
+            "model": "claude-opus-5-5",
+            "effort": "low",
+            "tools": "Bash,Read,Edit,Write,Glob,Grep",
+            "prompt_cache_ttl": "5m",
+            "version": "2.1.280"
+          }
+        ],
+        "on": [
+          "unconfirmed",
+          "failed"
+        ],
+        "share": 0.6,
+        "min_remaining_sec": 1800,
+        "max_copy_mb": 256
+      }
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}
