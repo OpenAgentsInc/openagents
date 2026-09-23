@@ -29,6 +29,7 @@ review does not establish their live status on the Linux host. See the
 | Tunable v3 | Raises effort to xhigh on long tasks. | Five selected tasks; not the same task mix as v2. |
 | Tunable v4 | Checks executor-reported failures, handles optional outputs, prioritizes behavioral support questions, routes by task family, and can run Astra as a second executor. | Five selected tasks. Family routing is fitted on the public benchmark; offline checks flag six of 12 failures and zero of seven passes in 19 earlier fixtures. |
 | Tunable v5 | Adds up to three fresh persistence sessions after v4's checks and repair, with at least 30 minutes remaining and half the remaining time per round. Rechecks and rolls back a worse candidate. | Implemented in `6f65e13a06`; no graded TB4 results in this snapshot. |
+| Tunable v6 | Runs the second executor only on a failed check and limits persistence to two rounds. | Implemented after this snapshot in `3f0bdc6621`; no published graded results. |
 
 The [tunable guide](../coder/guides/coder-one-tunable.md) describes these
 components and their policy fields. The older **Jev-probe v3** in the
@@ -161,6 +162,13 @@ passed zero or one of five trials. It also passed `nextjs-performance`,
 `photonic-waveguide-routing`, and `session-window-debug`, where Opus 5 max
 passed none. These are cases worth repeating, not evidence that one
 successful attempt establishes a higher pass rate.
+
+The [task-level win analysis](2026-09-23-task-win-analysis.md) examines
+these comparisons and possible full-suite implications. One qualification:
+Opus 5 max's five `photonic-waveguide-routing` trials all recorded errors,
+so its zero is not a clean comparison of completed attempts. Four of
+Coder One's recorded wins correspond to 0/25 successes across Astra's
+five effort settings, with no recorded errors in those reference trials.
 
 Tunable v3 passed `cad-model` and `vba-userform-port` after v2 failures.
 It also passed `gsea-proteomics` and `interleaved-vigenere`, which have no

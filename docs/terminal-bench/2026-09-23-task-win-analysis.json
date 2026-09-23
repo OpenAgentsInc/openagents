@@ -1,0 +1,1480 @@
+{
+  "schema": "openagents.terminal-bench.task-win-analysis.v1",
+  "review_date": "2026-09-23",
+  "status": "Historical local scoreboard; quota reconciliation pending. Scenarios are assumptions, not forecasts.",
+  "sources": {
+    "local_scoreboard": "docs/terminal-bench/tb4-results.md",
+    "leaderboard": "bench/terminal-bench/reference/tb4-leaderboard.json",
+    "leaderboard_sha256": "17252bc954a3077839bea13e0fa00f38ec6e0983c8ca25f856e6b3caa3c5d7b6",
+    "leaderboard_fetched_at": "2026-09-23T05:18:54+00:00",
+    "task_pin": "452bf305c6da",
+    "instructions_verified_against_pin": true
+  },
+  "highlights": [
+    {
+      "task": "batched-eval-parity",
+      "local_passing_arms": [
+        "coder-one-tunable-v2"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 1,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 1,
+          "trials": 5,
+          "errors": 0
+        },
+        "Fable 5.1": {
+          "successes": 4,
+          "trials": 5,
+          "errors": 0
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 2,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 2,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 4,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 4,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "5da93cdf030a3d4a10bcb463fe313c8b317d99568dae74c52ebb493ab63308dc"
+    },
+    {
+      "task": "intrastat-meldung",
+      "local_passing_arms": [
+        "coder-one-tunable-v2"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 1,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 1,
+          "trials": 5,
+          "errors": 0
+        },
+        "Fable 5.1": {
+          "successes": 2,
+          "trials": 5,
+          "errors": 0
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 2,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 3,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "4a7fe80e9378902748fff17fe6ccf75768acb8d47c3cdb2e1ab22549662a9fd0"
+    },
+    {
+      "task": "react-lead-form",
+      "local_passing_arms": [
+        "coder-one-tunable-v2"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 0,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 2,
+          "trials": 5,
+          "errors": 0
+        },
+        "Fable 5.1": {
+          "successes": 2,
+          "trials": 5,
+          "errors": 0
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 2,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 2,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 2,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "e1cc9571c8c9e69a2c12ace760ecad6ff2330bbc246b8ad025edd03a7eea9f9d"
+    },
+    {
+      "task": "roy-polymorph-cn",
+      "local_passing_arms": [
+        "coder-one-tunable-v2"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 0,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 1,
+          "trials": 5,
+          "errors": 0
+        },
+        "Fable 5.1": {
+          "successes": 2,
+          "trials": 5,
+          "errors": 0
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "da944cb2cafd1183cc2b9c6356e8872214af45111f1bbc800d9304e6c4d180e1"
+    },
+    {
+      "task": "nextjs-performance",
+      "local_passing_arms": [
+        "coder-one-tunable-v2"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 5,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 0,
+          "trials": 5,
+          "errors": 0
+        },
+        "Fable 5.1": {
+          "successes": 4,
+          "trials": 5,
+          "errors": 0
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "ba7bb4dddcd86fa36380226d7bc66c02dfc7fddf49649cf6e584a60e5b6df11e"
+    },
+    {
+      "task": "photonic-waveguide-routing",
+      "local_passing_arms": [
+        "coder-one-tunable-v2"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 5,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 0,
+          "trials": 5,
+          "errors": 5
+        },
+        "Fable 5.1": {
+          "successes": 1,
+          "trials": 5,
+          "errors": 4
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 5,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 0,
+            "trials": 5,
+            "errors": 5,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 0,
+            "trials": 5,
+            "errors": 5,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 3,
+            "trials": 5,
+            "errors": 2,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 1,
+            "trials": 5,
+            "errors": 1,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "4e980c5b49b1ce91f92d59e73d1b1b71b526a471c35e0fa0ecfe95b839388cb9"
+    },
+    {
+      "task": "session-window-debug",
+      "local_passing_arms": [
+        "coder-one-tunable-v2"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 3,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 0,
+          "trials": 5,
+          "errors": 0
+        },
+        "Fable 5.1": {
+          "successes": 0,
+          "trials": 5,
+          "errors": 0
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 3,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 2,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 5,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "65b05c866323a7b7195a5ab72ac9c4844d1d4e5f179ff24c15baf86a5a50e193"
+    },
+    {
+      "task": "gsea-proteomics",
+      "local_passing_arms": [
+        "coder-one-tunable-v3"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 0,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 4,
+          "trials": 5,
+          "errors": 0
+        },
+        "Fable 5.1": {
+          "successes": 4,
+          "trials": 5,
+          "errors": 0
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 4,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 4,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 3,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "df6d4abd314213ba5c3298b7c652571a3b4335f09de239e0973bd2a14a57dc86"
+    },
+    {
+      "task": "atrx-vep-crispr",
+      "local_passing_arms": [
+        "coder-one-tunable-v4"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 0,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 2,
+          "trials": 5,
+          "errors": 0
+        },
+        "Fable 5.1": {
+          "successes": 1,
+          "trials": 5,
+          "errors": 0
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 4,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 2,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 4,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 3,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "189f0bba9ce7068fe0bef168c2e61d9ac6b5c6e88c2900e8fa01d122708c93d6"
+    },
+    {
+      "task": "vba-userform-port",
+      "local_passing_arms": [
+        "coder-one-tunable-v3"
+      ],
+      "reference_max": {
+        "GPT-6 Astra": {
+          "successes": 1,
+          "trials": 5,
+          "errors": 0
+        },
+        "Opus 5": {
+          "successes": 3,
+          "trials": 5,
+          "errors": 0
+        },
+        "Fable 5.1": {
+          "successes": 1,
+          "trials": 5,
+          "errors": 0
+        }
+      },
+      "reference_by_effort": {
+        "GPT-6 Astra": [
+          {
+            "effort": "max",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/0f01715e-2f98-40e3-836f-1ac4fdce39a4"
+            ]
+          },
+          {
+            "effort": "xhigh",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/caf6e433-9fff-4475-b0bc-977f14ac7052"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/86e3ac63-37c4-4003-8248-483fdb9b43ce"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/2350fd05-ea3b-407e-94ad-07b67c1ed847"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a538f69d-7756-444a-9dfe-43a0ab10b3a8"
+            ]
+          }
+        ],
+        "Opus 5": [
+          {
+            "effort": "xhigh",
+            "successes": 2,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/153e8318-9b14-4488-973c-345f4fa4b1ba"
+            ]
+          },
+          {
+            "effort": "max",
+            "successes": 3,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/a1ac63a1-8a9b-4bc7-9906-2b63657ee1c2"
+            ]
+          },
+          {
+            "effort": "high",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/cf440c37-307c-4a9a-9baf-71d52572fab4"
+            ]
+          },
+          {
+            "effort": "medium",
+            "successes": 0,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/3c35174a-3a05-4705-bf8e-c09a3d09f013"
+            ]
+          },
+          {
+            "effort": "low",
+            "successes": 1,
+            "trials": 5,
+            "errors": 0,
+            "source_jobs": [
+              "https://hub.harborframework.com/jobs/7595dfd2-22f0-4b03-81a9-c3c22b6ae047"
+            ]
+          }
+        ]
+      },
+      "instruction_sha256": "33d576e87bef222748bbf86da9ad1eb9ceb7913b104deb517d15176e28bce01d"
+    }
+  ],
+  "populations": {
+    "v2_tasks": [
+      "atrx-vep-crispr",
+      "batched-eval-parity",
+      "bun-sourcemap-leak",
+      "cad-model",
+      "cargo-flight-dispatch",
+      "coq-block-bound",
+      "data-anonymization",
+      "embedding-drift-monitor",
+      "fin-saccr-rwa",
+      "foodstuff-beta-activity",
+      "glycan-ms2-elucidation",
+      "hof-topology-interpenetration",
+      "html-js-filter",
+      "intrastat-meldung",
+      "kv-live-surgery",
+      "legacy-utility-triage",
+      "medical-claims-processing",
+      "music-harmony",
+      "mvcc-lsm-compaction",
+      "nextjs-performance",
+      "ontology-kg-querying",
+      "payments-pipeline-fix",
+      "photonic-waveguide-routing",
+      "production-planning",
+      "react-lead-form",
+      "retro-console-soc",
+      "risk-scorer-replay",
+      "roy-polymorph-cn",
+      "session-window-debug",
+      "sglang-qwen-burst",
+      "sound-change-cascade",
+      "telecom-entity-resolution",
+      "vba-userform-port",
+      "vf2-speedup-networkx",
+      "vllm-deepseek-streaming",
+      "wal-recovery-ordering"
+    ],
+    "v2_passes": [
+      "batched-eval-parity",
+      "coq-block-bound",
+      "embedding-drift-monitor",
+      "fin-saccr-rwa",
+      "hof-topology-interpenetration",
+      "intrastat-meldung",
+      "kv-live-surgery",
+      "nextjs-performance",
+      "payments-pipeline-fix",
+      "photonic-waveguide-routing",
+      "react-lead-form",
+      "retro-console-soc",
+      "roy-polymorph-cn",
+      "session-window-debug",
+      "sound-change-cascade",
+      "telecom-entity-resolution"
+    ],
+    "selected_v2_v4_tasks": [
+      "atrx-vep-crispr",
+      "batched-eval-parity",
+      "bun-sourcemap-leak",
+      "cad-model",
+      "cargo-flight-dispatch",
+      "coq-block-bound",
+      "data-anonymization",
+      "embedding-drift-monitor",
+      "fin-saccr-rwa",
+      "foodstuff-beta-activity",
+      "glycan-ms2-elucidation",
+      "gsea-proteomics",
+      "hof-topology-interpenetration",
+      "html-js-filter",
+      "interleaved-vigenere",
+      "intrastat-meldung",
+      "kv-live-surgery",
+      "legacy-utility-triage",
+      "medical-claims-processing",
+      "music-harmony",
+      "mvcc-lsm-compaction",
+      "nextjs-performance",
+      "ontology-kg-querying",
+      "payments-pipeline-fix",
+      "photonic-waveguide-routing",
+      "production-planning",
+      "react-lead-form",
+      "retro-console-soc",
+      "risk-scorer-replay",
+      "roy-polymorph-cn",
+      "session-window-debug",
+      "sglang-qwen-burst",
+      "sound-change-cascade",
+      "telecom-entity-resolution",
+      "vba-userform-port",
+      "vf2-speedup-networkx",
+      "vllm-deepseek-streaming",
+      "wal-recovery-ordering"
+    ],
+    "selected_v2_v4_passes": [
+      "atrx-vep-crispr",
+      "batched-eval-parity",
+      "cad-model",
+      "coq-block-bound",
+      "embedding-drift-monitor",
+      "fin-saccr-rwa",
+      "gsea-proteomics",
+      "hof-topology-interpenetration",
+      "interleaved-vigenere",
+      "intrastat-meldung",
+      "kv-live-surgery",
+      "mvcc-lsm-compaction",
+      "nextjs-performance",
+      "payments-pipeline-fix",
+      "photonic-waveguide-routing",
+      "react-lead-form",
+      "retro-console-soc",
+      "roy-polymorph-cn",
+      "session-window-debug",
+      "sound-change-cascade",
+      "telecom-entity-resolution",
+      "vba-userform-port"
+    ],
+    "local_baseline_common": [
+      "batched-eval-parity",
+      "bun-sourcemap-leak",
+      "cargo-flight-dispatch",
+      "coq-block-bound",
+      "embedding-drift-monitor",
+      "glycan-ms2-elucidation",
+      "music-harmony",
+      "mvcc-lsm-compaction",
+      "nextjs-performance",
+      "ontology-kg-querying",
+      "production-planning"
+    ],
+    "local_baseline_common_agreements": 11
+  },
+  "balance_vs_astra_max": {
+    "v2": {
+      "tasks": 36,
+      "local_passes": 16,
+      "astra_expected": 17.8,
+      "gains_on_local_passes": 4.4,
+      "losses_on_local_failures": 6.2
+    },
+    "selected_versions": {
+      "tasks": 38,
+      "local_passes": 22,
+      "astra_expected": 18.8,
+      "gains_on_local_passes": 7.4,
+      "losses_on_local_failures": 4.2
+    }
+  },
+  "empirical_routing_references": {
+    "n_tasks": 66,
+    "astra_expected": 38.4,
+    "opus_expected_from_task_cells": 34.6,
+    "best_astra_or_opus_max": 43.4,
+    "best_of_27_rows": 54.6,
+    "tasks_any_reference_passed": 59,
+    "tasks_any_reference_passed_all_five": 47,
+    "remaining_28_astra_expected": 19.6
+  },
+  "finish_remaining_scenarios": [
+    {
+      "remaining_success_rate": 0.4,
+      "assumed_repeatable_prior_passes": 22,
+      "remaining_tasks": 28,
+      "expected_solved": 33.2,
+      "expected_fraction": 0.5030303
+    },
+    {
+      "remaining_success_rate": 0.6,
+      "assumed_repeatable_prior_passes": 22,
+      "remaining_tasks": 28,
+      "expected_solved": 38.8,
+      "expected_fraction": 0.58787879
+    },
+    {
+      "remaining_success_rate": 0.7,
+      "assumed_repeatable_prior_passes": 22,
+      "remaining_tasks": 28,
+      "expected_solved": 41.6,
+      "expected_fraction": 0.63030303
+    },
+    {
+      "remaining_success_rate": 0.8,
+      "assumed_repeatable_prior_passes": 22,
+      "remaining_tasks": 28,
+      "expected_solved": 44.4,
+      "expected_fraction": 0.67272727
+    },
+    {
+      "remaining_success_rate": 1,
+      "assumed_repeatable_prior_passes": 22,
+      "remaining_tasks": 28,
+      "expected_solved": 50,
+      "expected_fraction": 0.75757576
+    }
+  ],
+  "rescue_scenarios": [
+    {
+      "baseline_success_rate": 0.5818181818181818,
+      "conditional_rescue_rate": 0.1,
+      "conditional_regression_rate": 0.02,
+      "expected_fraction": 0.612,
+      "expected_solved": 40.392
+    },
+    {
+      "baseline_success_rate": 0.5818181818181818,
+      "conditional_rescue_rate": 0.2,
+      "conditional_regression_rate": 0.02,
+      "expected_fraction": 0.65381818,
+      "expected_solved": 43.152
+    },
+    {
+      "baseline_success_rate": 0.5818181818181818,
+      "conditional_rescue_rate": 0.3,
+      "conditional_regression_rate": 0.02,
+      "expected_fraction": 0.69563636,
+      "expected_solved": 45.912
+    },
+    {
+      "baseline_success_rate": 0.5818181818181818,
+      "conditional_rescue_rate": 0.4,
+      "conditional_regression_rate": 0.02,
+      "expected_fraction": 0.73745455,
+      "expected_solved": 48.672
+    },
+    {
+      "baseline_success_rate": 0.5818181818181818,
+      "conditional_rescue_rate": 0.5,
+      "conditional_regression_rate": 0.02,
+      "expected_fraction": 0.77927273,
+      "expected_solved": 51.432
+    }
+  ],
+  "rescue_needed_for_targets": [
+    {
+      "target_success_rate": 0.6,
+      "conditional_regression_rate": 0.02,
+      "required_conditional_rescue_rate": 0.07130435
+    },
+    {
+      "target_success_rate": 0.65,
+      "conditional_regression_rate": 0.02,
+      "required_conditional_rescue_rate": 0.19086957
+    },
+    {
+      "target_success_rate": 0.7,
+      "conditional_regression_rate": 0.02,
+      "required_conditional_rescue_rate": 0.31043478
+    },
+    {
+      "target_success_rate": 0.75,
+      "conditional_regression_rate": 0.02,
+      "required_conditional_rescue_rate": 0.43
+    },
+    {
+      "target_success_rate": 0.8,
+      "conditional_regression_rate": 0.02,
+      "required_conditional_rescue_rate": 0.54956522
+    }
+  ],
+  "result_snapshot_revision": "48498ee5c35f9027477952b6e3ee8dd5c96af574",
+  "implementation_review_revision": "3f0bdc662159f0bd2667eb9011604ed8e714432e"
+}

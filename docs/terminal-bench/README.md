@@ -1,11 +1,11 @@
 # Terminal-Bench status
 
-Reviewed through `4b6c619770` on 2026-09-23. This page summarizes committed
+Reviewed through `3f0bdc6621` on 2026-09-23. This page summarizes committed
 evidence; it does not report live execution-host progress.
 
 ## Latest status
 
-**TB4 results need a quota audit.** The latest commit reports 21 attempts
+**TB4 results need a quota audit.** Incident note `4b6c619770` reports 21 attempts
 that hit Claude's usage limit but were graded anyway. It reports 19 moved
 and rerun without reconciling their replacements or the remaining two.
 The published scoreboard predates that note. Its totals below are a
@@ -17,6 +17,7 @@ historical snapshot, not corrected pass rates.
 | Coder One tunable v3 | 4/5 | Selected tasks; pending reconciliation. |
 | Coder One tunable v4 | 2/5 | Selected tasks; pending reconciliation. |
 | Coder One tunable v5 | — | Persistence implemented; no graded results in the snapshot. |
+| Coder One tunable v6 | — | Second executor only on failed checks, at most two persistence rounds; no published graded results. |
 | Claude Code / Opus 5.5 | 4/13 | Pending quota reconciliation. |
 
 See the [full 66-task matrix and corrected comparisons](tb4-results.md)
@@ -58,6 +59,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 | Document | Contents |
 | --- | --- |
 | [TB4 results](tb4-results.md) | Full matrix, arm versions, matched comparisons, harness checks, and refresh limits. |
+| [Coder One's task-level wins](2026-09-23-task-win-analysis.md) | Wins against Astra and Opus reference rows, possible causes, full-suite scenarios, and the experiment needed to establish an advantage. |
 | [TB4 leaderboard](tb4-leaderboard.md) | Retained public reference: 27 rows, five trials per task, source inconsistencies. |
 | [Tunable results, September 23](2026-09-23-tunable-results.md) | Coverage packing, routing, repair, escalation, and monitor experiments. |
 | [Development results, September 22](development-results.md) | Four- and eight-task comparisons, cost rankings, individual trial tables. |
