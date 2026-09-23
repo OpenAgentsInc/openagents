@@ -1,6 +1,20 @@
 {
   "schema": "openagents.coder-one.jev-recorded.v1",
   "entries": {
+    "07276eec947bf137db7cbef73c57f0480578ea7903993f66c90a289cb7a5b611": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.46
+        }
+      },
+      "input_tokens": 468,
+      "output_tokens": 23,
+      "milliseconds": 154,
+      "source": "live component run of evidence.pack#jev_coverage-e3"
+    },
     "07ba3c3ca465c89828f484bc07de576b9f5127950230298feec40cdc5946e06f": {
       "name": "jev_survey",
       "model": "jev-1.13.0",
@@ -219,6 +233,20 @@
       "milliseconds": 230,
       "source": "fix-git__c2MR9Lx#jev-4"
     },
+    "42cac554337a854d4b984395af9a757c86642b37c9fbc20217d575e88aa2eaba": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.55
+        }
+      },
+      "input_tokens": 971,
+      "output_tokens": 23,
+      "milliseconds": 271,
+      "source": "live component run of evidence.pack#jev_coverage-e1"
+    },
     "578ca1300cf4e934292671f0a00ac9fe48d3379e6f30335a2ce08575b99e50a2": {
       "name": "jev_probe",
       "model": "jev-1.13.0",
@@ -256,6 +284,34 @@
       "output_tokens": 130,
       "milliseconds": 674,
       "source": "fix-git__c2MR9Lx#jev-probe-1"
+    },
+    "7ddaaff0bf0aa46e48c9f6837512877198d3e8e4039b500156ed69aec3bfaa4b": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.48
+        }
+      },
+      "input_tokens": 461,
+      "output_tokens": 23,
+      "milliseconds": 191,
+      "source": "live component run of evidence.pack#jev_coverage-e4"
+    },
+    "87814687172ebfde60341cceac3225d33d2b9507a22693e63f42e0331a88d07b": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.75
+        }
+      },
+      "input_tokens": 604,
+      "output_tokens": 23,
+      "milliseconds": 195,
+      "source": "live component run of evidence.pack#jev_coverage-e2"
     },
     "e6a1d7080e506ecf953cbdfa2aad76e89f1f53d9deae19779a8b15fb46073a9a": {
       "name": "jev_survey",
@@ -426,6 +482,20 @@
       "output_tokens": 744,
       "milliseconds": 246,
       "source": "fix-git__c2MR9Lx#jev-survey-2"
+    },
+    "e72dc10883192fe30822487001d2cfaf2ac091d8be9381ad76057984ee2036e9": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.38
+        }
+      },
+      "input_tokens": 1026,
+      "output_tokens": 23,
+      "milliseconds": 240,
+      "source": "live component run of evidence.pack#jev_coverage-e5"
     }
   }
 }

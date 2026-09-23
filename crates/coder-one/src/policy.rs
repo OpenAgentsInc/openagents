@@ -67,6 +67,7 @@ pub const SEARCHABLE: &[&str] = &[
     "policy.control.explore_steps",
     "policy.brief.cap",
     "policy.brief.directions",
+    "policy.brief.packer",
     "policy.executor.agent",
     "policy.executor.model",
     "policy.executor.effort",
@@ -204,6 +205,33 @@ pub struct BriefPolicy {
     pub cap: usize,
     /// The closing directions.
     pub directions: Directions,
+    /// How the briefing is packed. Left out of a manifest that keeps the
+    /// first packer, so earlier manifests keep their digests.
+    #[serde(default, skip_serializing_if = "Packer::is_sections")]
+    pub packer: Packer,
+}
+
+/// How the briefing is packed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Packer {
+    /// The first packer: probes, then files, each section whole or left
+    /// out, in priority order.
+    #[default]
+    Sections,
+    /// `evidence.pack` by requirement coverage: joint ranking, duplicate
+    /// listings removed, representative records, trimmed spans, and every
+    /// omission named.
+    Coverage,
+    /// The coverage packer with Jev's coverage judgments deciding which
+    /// requirements each item informs.
+    CoverageJev,
+}
+
+impl Packer {
+    fn is_sections(&self) -> bool {
+        *self == Packer::Sections
+    }
 }
 
 /// The briefing's closing directions.
@@ -366,6 +394,7 @@ impl Manifest {
                 brief: BriefPolicy {
                     cap: delegate::BRIEFING_CAP,
                     directions: Directions::Plain,
+                    packer: Packer::Sections,
                 },
                 executor: ExecutorPolicy {
                     agent: AgentName::ClaudeCode,
@@ -444,6 +473,9 @@ impl Manifest {
         }
         if policy.brief.cap < 1_000 {
             problems.push("brief.cap must be at least 1000 characters".to_string());
+        }
+        if policy.brief.packer == Packer::CoverageJev && policy.jev.mode == JevMode::Off {
+            problems.push("brief.packer = coverage-jev needs Jev".to_string());
         }
         let executor = &policy.executor;
         if executor.model.trim().is_empty() {
@@ -1047,6 +1079,7 @@ pub const REFERENCE: &[(&str, &str)] = &[
         "jevprobe2-opus-lean-low-5m.json",
         include_str!("../policies/jevprobe2-opus-lean-low-5m.json"),
     ),
+    ("pack-luna.json", include_str!("../policies/pack-luna.json")),
 ];
 
 /// Where the reference manifests live in the checkout.
@@ -1393,6 +1426,7 @@ mod tests {
         "policy.control.explore_steps",
         "policy.brief.cap",
         "policy.brief.directions",
+        "policy.brief.packer",
         "policy.executor.agent",
         "policy.executor.model",
         "policy.executor.effort",
@@ -1532,6 +1566,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
             instruction: &issue.body,
             directions: manifest.policy.brief.directions.text(),
             cap: manifest.policy.brief.cap,
+            packer: manifest.policy.brief.packer,
             isolation: "none",
             base: None,
         };
@@ -1744,6 +1779,29 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
             let seen = observe(&with(|m| m.policy.brief.directions = directions), &[]).await;
             assert!(seen.stdin.contains(directions.text()), "{directions:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn canary_policy_brief_packer() {
+        let first = observe(&opus(), &[]).await;
+        assert!(first.stdin.contains("complete and current"));
+        assert!(
+            !first
+                .stdin
+                .contains("each says whether it is complete or trimmed")
+        );
+        let coverage = observe(&with(|m| m.policy.brief.packer = Packer::Coverage), &[]).await;
+        assert!(!coverage.stdin.contains("complete and current"));
+        assert!(
+            coverage
+                .stdin
+                .contains("each says whether it is complete or trimmed")
+        );
+        assert!(
+            coverage
+                .stdin
+                .contains("## Requirements from the task's own words")
+        );
     }
 
     #[tokio::test]

@@ -509,6 +509,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             instruction: &instruction,
             directions: policy.policy.brief.directions.text(),
             cap: policy.policy.brief.cap,
+            packer: policy.policy.brief.packer,
             isolation: "none",
             base: bundle.base.as_deref(),
         };
@@ -533,6 +534,11 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         )
         .await
     };
+    if let Some(pack) = delegated.as_ref().and_then(|d| d.pack.clone()) {
+        let mut record = pack;
+        record["schema"] = json!(crate::pack::RECORD_SCHEMA);
+        bundle.attach("briefing_pack", "artifacts/briefing-pack.json", record);
+    }
 
     let (outcome, code) = match &ended {
         Ended::Finished { title, summary, .. } => {

@@ -34,6 +34,7 @@ def test_known_arms(agents):
         "coder-one-jevprobe-luna",
         "coder-one-jevprobe2-luna",
         "coder-one-jevprobe3-luna",
+        "coder-one-pack-luna",
         "coder-one-jevprobe2-opus-lean-low-5m",
         "coder-one-jevprobe3-opus-lean-low",
         "coder-one-jevprobe2-opus-lean-low",

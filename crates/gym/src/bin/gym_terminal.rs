@@ -127,10 +127,12 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         .as_deref()
         .map(gym::coder_minitasks::load)
         .unwrap_or_default();
+    let briefing = gym::coder_briefing::report(runs.as_deref(), &records);
     let mut app = terminal_bench_tui::App::new(records)
         .with_components(components)
         .with_requirements(requirements)
-        .with_minitasks(minitask_runs, minitask_errors);
+        .with_minitasks(minitask_runs, minitask_errors)
+        .with_briefing(briefing);
     if print_only {
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {

@@ -370,12 +370,22 @@ pub fn extract(trajectory: &Path, source: &Value, out: &Path) -> Result<Extracte
                         omitted.len()
                     ));
                 }
-                write(
-                    "evidence.pack",
-                    call,
-                    json!({ "inputs": inputs, "cap": cap }),
-                    record.clone(),
-                )?;
+                // The episode's survey restores the text of every omitted
+                // item and each surveyed item whole, for the coverage
+                // packer; the first packer's inputs stay as they were.
+                let state = trajectory
+                    .with_extension("episode")
+                    .join("artifacts/state.json");
+                let whole = std::fs::read(&state)
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                    .map(|state| super::replay::restore(&inputs, &omitted, &state).1);
+                let mut input = json!({ "inputs": inputs, "cap": cap });
+                if let Some(whole) = whole {
+                    notes.push("The coverage packer's input restores each surveyed item whole from the episode's state.json.".to_string());
+                    input["whole"] = json!(whole);
+                }
+                write("evidence.pack", call, input, record.clone())?;
             }
             Err(error) => notes.push(format!("the briefing doesn't read back: {error}")),
         }
@@ -541,10 +551,17 @@ mod tests {
             let component = super::super::find(id).unwrap();
             let dirs = super::super::fixtures_for(&out, id);
             assert_eq!(dirs.len(), 24);
+            // The packer's Jev coverage judgments were never retained, so
+            // the rebuild runs without Jev; the rest replay recorded Jev.
+            let choice = if id == "evidence.pack" {
+                super::super::JevChoice::Off
+            } else {
+                super::super::JevChoice::Recorded
+            };
             let suite = super::super::suite(
                 component.as_ref(),
                 &dirs,
-                &super::super::JevChoice::Recorded,
+                &choice,
                 &crate::record::Recorder::default(),
                 false,
             )

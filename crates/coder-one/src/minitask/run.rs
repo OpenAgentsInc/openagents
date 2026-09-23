@@ -315,6 +315,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         instruction: task.instruction,
         directions,
         cap: delegate::BRIEFING_CAP,
+        packer: manifest_policy.policy.brief.packer,
         isolation: if script.is_some() {
             "a scratch directory"
         } else {

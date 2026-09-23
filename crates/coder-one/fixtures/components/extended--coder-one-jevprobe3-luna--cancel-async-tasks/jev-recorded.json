@@ -23,6 +23,50 @@
       "milliseconds": 597,
       "source": "cancel-async-tasks__Eu23An4#jev-probe-1"
     },
+    "1e9daa04e4caad9e5ba809beee4fae7bcefe342aa338972a87269795f665b541": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "informs_R3": {
+          "type": "noul",
+          "noul": 0.15
+        }
+      },
+      "input_tokens": 829,
+      "output_tokens": 61,
+      "milliseconds": 361,
+      "source": "live component run of evidence.pack#jev_coverage-e2"
+    },
+    "2bd502e5edf5d57a5e33bf3bff3dc7d886aee5a646466e8e0ecddc692834257d": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.59
+        },
+        "informs_R3": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "input_tokens": 850,
+      "output_tokens": 61,
+      "milliseconds": 443,
+      "source": "live component run of evidence.pack#jev_coverage-e1"
+    },
     "768a12133ff871e64227bcb7fac5a86dfddce556df2acf2b031f19722db5241f": {
       "name": "jev_close",
       "model": "jev-1.13.0",
@@ -70,6 +114,28 @@
       "output_tokens": 116,
       "milliseconds": 399,
       "source": "live component run of exec.system#jev_system-1"
+    },
+    "82d9fabcb7bab41ef8248fae90d41bcbaaf2340169a6248a25fcfe63a6a1ddca": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "informs_R3": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 833,
+      "output_tokens": 61,
+      "milliseconds": 285,
+      "source": "live component run of evidence.pack#jev_coverage-e3"
     }
   }
 }

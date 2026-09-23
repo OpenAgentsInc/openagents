@@ -13,6 +13,7 @@ pub const USAGE: &str = "usage: coder-one component list [--json]
        coder-one component suite ID [--fixtures DIR] [--jev recorded|live|off] [--save-jev]
                                  [--out DIR | --no-record] [--json]
        coder-one component extract --traces DIR --arm TEXT --out DIR
+       coder-one component replay evidence.pack [--traces DIR] [--out FILE] [--json]
 
 --jev defaults to recorded: answers replay from each fixture's jev-recorded.json,
 and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY;
@@ -211,7 +212,86 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 extracted.iter().any(|one| one.reproduces == Some(false)),
             ))
         }
+        "replay" => {
+            if flags.positional.first().map(String::as_str) != Some("evidence.pack") {
+                return Err(format!("component replay takes evidence.pack\n{USAGE}"));
+            }
+            let traces = flags.traces.clone().unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../bench/terminal-bench/traces")
+            });
+            let report = super::replay::replay_tree(&traces, crate::pack::Params::default());
+            let value = serde_json::to_value(&report).map_err(|error| error.to_string())?;
+            let out = flags.out.clone().or_else(|| {
+                default_runs_dir()
+                    .map(|dir| dir.join(format!("pack-replay-{}.json", atif::now_ms())))
+            });
+            if let Some(path) = &out {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+                }
+                let text =
+                    serde_json::to_string_pretty(&value).map_err(|error| error.to_string())?;
+                crate::record::write_atomic(path, format!("{text}\n").as_bytes())?;
+            }
+            if flags.json {
+                print_json(&value)?;
+            } else {
+                print_replay(&report);
+                if let Some(path) = &out {
+                    println!("written to {}", path.display());
+                }
+            }
+            Ok(0)
+        }
         _ => Err(USAGE.to_string()),
+    }
+}
+
+fn print_replay(report: &super::replay::Report) {
+    let totals = &report.totals;
+    println!(
+        "evidence.pack replay · {} manifests · {} briefings · {} replayed · {} rebuild exactly · {} skipped",
+        report.manifests,
+        report.briefings,
+        totals["replayed"],
+        totals["reproduces"],
+        report.skipped.len()
+    );
+    println!("{:<52} {:>12} {:>12}", "", "before", "after");
+    for (label, key) in [
+        ("Jev-selected items", "selected"),
+        ("  delivered, whole or trimmed", "selected_delivered"),
+        ("  dropped", "selected_dropped"),
+        (
+            "  dropped although larger than the cap",
+            "selected_over_cap_dropped",
+        ),
+        ("items left out", "omitted_items"),
+        ("duplicate listing bytes", "duplicate_bytes"),
+        ("data-file characters delivered", "data_chars"),
+        (
+            "episodes dropping selected items",
+            "episodes_dropping_selected",
+        ),
+        (
+            "  while keeping duplicate listings",
+            "episodes_dropping_selected_while_duplicates_kept",
+        ),
+        ("briefings over the cap", "over_cap"),
+    ] {
+        println!(
+            "{label:<52} {:>12} {:>12}",
+            short(&totals["before"][key]),
+            short(&totals["after"][key])
+        );
+    }
+    println!(
+        "requirements naming a path or constant with no delivered evidence after: {} of {}",
+        totals["keyed_uncovered_after"], totals["keyed_requirements"]
+    );
+    for (dir, why) in &report.skipped {
+        println!("skipped {dir}: {why}");
     }
 }
 

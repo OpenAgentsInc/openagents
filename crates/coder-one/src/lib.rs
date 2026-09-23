@@ -31,6 +31,7 @@ pub mod generate;
 pub mod judge;
 pub mod minitask;
 pub mod ops;
+pub mod pack;
 pub mod policy;
 pub mod probes;
 pub mod prompt;

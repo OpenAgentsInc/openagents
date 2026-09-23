@@ -36,7 +36,10 @@ gym coder minitasks [--run ID|latest] [--json]
                            see gym coder minitasks --help
 gym coder prompt [ATTEMPT] [--json]
                            executor system prompt variants, or one attempt's
-                           sections; see gym coder prompt --help";
+                           sections; see gym coder prompt --help
+gym coder briefing [QUERY] [--json]
+                           what each briefing delivered, trimmed, and left out,
+                           and the packer replay's before and after";
 
 const SCHEMA: &str = "openagents.gym.coder-policy.v1";
 
@@ -114,6 +117,9 @@ pub fn run(args: Vec<String>) -> i32 {
 fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     if args.first().map(String::as_str) == Some("components") {
         return gym::coder_components::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("briefing") {
+        return gym::coder_briefing::command(&args[1..], out);
     }
     if args.first().map(String::as_str) == Some("requirements") {
         return gym::coder_requirements::command(&args[1..], out);

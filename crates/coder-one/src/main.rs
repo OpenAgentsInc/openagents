@@ -455,6 +455,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             instruction: &instruction,
             directions: ISSUE_DIRECTIONS,
             cap: delegate::BRIEFING_CAP,
+            packer: coder_one::policy::Packer::Sections,
             isolation: "none",
             base: base.as_deref(),
         };

@@ -21,10 +21,11 @@ pub enum View {
     Requirements,
     MiniTasks,
     Prompt,
+    Briefing,
 }
 
 impl View {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
@@ -35,6 +36,7 @@ impl View {
         Self::Requirements,
         Self::MiniTasks,
         Self::Prompt,
+        Self::Briefing,
     ];
     pub fn title(self) -> &'static str {
         match self {
@@ -48,6 +50,7 @@ impl View {
             Self::Requirements => "requirements",
             Self::MiniTasks => "mini-tasks",
             Self::Prompt => "prompt",
+            Self::Briefing => "briefing",
         }
     }
     fn index(self) -> usize {
@@ -62,6 +65,7 @@ impl View {
             Self::Requirements => 7,
             Self::MiniTasks => 8,
             Self::Prompt => 9,
+            Self::Briefing => 10,
         }
     }
     /// The view a digit opens: `1` to `9` open the first nine, `0` the
@@ -70,6 +74,7 @@ impl View {
         let index = match digit {
             '1'..='9' => digit as usize - '1' as usize,
             '0' => 9,
+            'b' => 10,
             _ => return None,
         };
         Self::ALL.get(index).copied()
@@ -95,6 +100,8 @@ pub struct App {
     /// comparison.
     library: crate::coder_prompt::Library,
     prompts: crate::coder_prompt::Comparison,
+    /// Coder One's briefings.
+    briefing: Option<crate::coder_briefing::Report>,
 }
 
 impl App {
@@ -123,7 +130,15 @@ impl App {
             components: None,
             requirements: None,
             minitasks: (Vec::new(), Vec::new()),
+            briefing: None,
         }
+    }
+
+    /// Adds the Briefing view's report.
+    #[must_use]
+    pub fn with_briefing(mut self, report: crate::coder_briefing::Report) -> Self {
+        self.briefing = Some(report);
+        self
     }
 
     /// Adds the Requirements view's report.
@@ -194,6 +209,7 @@ impl App {
             View::Requirements => self.requirements().len(),
             View::MiniTasks => self.minitasks.0.len(),
             View::Prompt => self.prompt().len(),
+            View::Briefing => self.briefing().len(),
         }
     }
     pub fn inspect(&mut self) {
@@ -227,7 +243,8 @@ impl App {
             | View::Components
             | View::Requirements
             | View::MiniTasks
-            | View::Prompt => {}
+            | View::Prompt
+            | View::Briefing => {}
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -298,7 +315,7 @@ impl App {
                 self.ladder.style(Intensity::Half),
             )),
         );
-        let keys = "1-9,0 view  tab/h/l switch  j/k move  enter inspect  q quit";
+        let keys = "1-9,0,b view  tab/h/l switch  j/k move  enter inspect  q quit";
         rail(
             box_area,
             buf,
@@ -351,7 +368,9 @@ impl App {
             View::History => Some(3 + self.cursor()),
             View::Evidence => Some(2 + self.cursor()),
             View::Attempt | View::Guide => None,
-            View::Components | View::Requirements | View::Prompt => Some(self.cursor()),
+            View::Components | View::Requirements | View::Prompt | View::Briefing => {
+                Some(self.cursor())
+            }
             View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 2 + self.cursor()),
         }
     }
@@ -372,6 +391,7 @@ impl App {
                 Some(self.cursor()),
             ),
             View::Prompt => self.prompt(),
+            View::Briefing => self.briefing(),
         }
     }
 
@@ -805,6 +825,18 @@ impl App {
         lines
     }
 
+    fn briefing(&self) -> Vec<String> {
+        self.briefing.as_ref().map_or_else(
+            || {
+                vec![
+                    "No briefing records loaded. Run `coder-one component replay evidence.pack`."
+                        .to_owned(),
+                ]
+            },
+            |report| report.lines(None),
+        )
+    }
+
     fn requirements(&self) -> Vec<String> {
         self.requirements.as_ref().map_or_else(
             || {
@@ -941,6 +973,7 @@ mod tests {
         assert!(text.contains("exec.system variants"), "{text}");
         assert!(text.contains("(core)"), "{text}");
         assert_eq!(View::from_digit('0'), Some(View::Prompt));
+        assert_eq!(View::from_digit('b'), Some(View::Briefing));
     }
 
     #[test]

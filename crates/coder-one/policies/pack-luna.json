@@ -1,0 +1,50 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-pack-luna",
+  "note": "Jev probe v3 on Codex with GPT-6 Luna, with the briefing packed by requirement coverage and Jev's coverage judgments (#9547) in place of the first packer. Every other field matches jevprobe3-luna.json, so a screen against v3 isolates the packer.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked",
+      "packer": "coverage-jev"
+    },
+    "executor": {
+      "agent": "codex",
+      "version": "0.155.1",
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 600
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

@@ -1885,6 +1885,8 @@ pub struct Plan<'a> {
     /// The briefing's closing directions.
     pub directions: &'a str,
     pub cap: usize,
+    /// How the briefing is packed.
+    pub packer: crate::policy::Packer,
     pub isolation: &'a str,
     /// The Git commit the closing check diffs against, when known.
     pub base: Option<&'a str>,
@@ -1895,6 +1897,9 @@ pub struct Plan<'a> {
 pub struct Delegated {
     pub reason: Reason,
     pub briefing: Briefing,
+    /// The coverage packer's record, with the inputs and requirement map
+    /// it packed, when that packer built the briefing.
+    pub pack: Option<Value>,
     pub report: Report,
     pub close: crate::judge::Close,
     /// The system prompt the executor was sent (`exec.system`).
@@ -1908,6 +1913,8 @@ impl Delegated {
         json!({
             "escalation": { "code": self.reason.code(), "reason": self.reason.to_string() },
             "briefing": self.briefing.record(),
+            "packer": if self.pack.is_some() { "coverage" } else { "sections" },
+            "uncovered_requirements": self.pack.as_ref().and_then(|p| p.pointer("/record/uncovered").cloned()),
             "status": self.report.status.word(),
             "status_detail": self.report.status.to_string(),
             "num_turns": self.report.summary.num_turns,
@@ -1991,15 +1998,55 @@ where
         plan.instruction,
         plan.directions,
     );
+    let coverage_packer = plan.packer != crate::policy::Packer::Sections;
+    let params = crate::pack::Params {
+        cap: plan.cap,
+        ..crate::pack::Params::default()
+    };
     let pack = recorder.enter(
         Start::new(
             "evidence.pack",
-            crate::component::pack::implementation(plan.cap),
+            if coverage_packer {
+                crate::pack::implementation(
+                    params,
+                    plan.packer == crate::policy::Packer::CoverageJev,
+                )
+            } else {
+                crate::component::pack::implementation(plan.cap)
+            },
         )
         .named("briefing")
         .reading(&serde_json::to_value(&inputs).unwrap_or(Value::Null)),
     );
-    let briefing = Briefing::build(&inputs, plan.cap);
+    let (briefing, pack_record) = if coverage_packer {
+        let whole = crate::pack::whole(state, &inputs);
+        let map = judge.jev().requirements.clone();
+        let coverage = if plan.packer == crate::policy::Packer::CoverageJev {
+            let (coverage, _) = crate::pack::judge_coverage(
+                &state.issue.title,
+                &state.issue.body,
+                &whole,
+                &map,
+                &judge.jev().jev_mode(),
+                recorder,
+                Some(judge.jev().episode_deadline()),
+            )
+            .await;
+            (!coverage.is_empty()).then_some(coverage)
+        } else {
+            None
+        };
+        let packed = crate::pack::pack(&whole, &map, coverage.as_ref(), params);
+        let record = json!({
+            "record": packed.record,
+            "coverage": coverage,
+            "requirements": map.record(),
+            "inputs": whole,
+        });
+        (packed.briefing, Some(record))
+    } else {
+        (Briefing::build(&inputs, plan.cap), None)
+    };
     recorder.end(
         &pack,
         Finish::new(RecordOutcome::Completed)
@@ -2147,6 +2194,7 @@ where
         Some(Delegated {
             reason,
             briefing,
+            pack: pack_record,
             report,
             close,
             system: executor.describe().remove("system").unwrap_or(Value::Null),
@@ -2885,6 +2933,7 @@ pub(crate) mod tests {
             instruction: "Fix the parser.",
             directions: "Go.",
             cap: BRIEFING_CAP,
+            packer: crate::policy::Packer::Sections,
             isolation: "none",
             base: None,
         };

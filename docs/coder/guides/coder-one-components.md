@@ -17,7 +17,7 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | `evidence.probes.planner` | Which typed, read-only operations the host runs before the work. The isolated run plans only; it never runs an operation. | None |
 | `evidence.probes.selector` | Which finished probe outputs the briefing carries. | One request |
 | `evidence.select` | Which candidate files the survey reads into the briefing. | One request per 20 files |
-| `evidence.pack` | The briefing within its character budget, with every omission named. | None |
+| `evidence.pack` | The briefing within its character budget, packed by requirement coverage, with every omission named. The suite measures the first packer beside it. | One request per item with Jev coverage judgments; none without |
 | `exec.scripted` | How the host starts, observes, steers, stops, and resumes a scripted session. | None |
 | `exec.system` | The executor's system prompt: the manifest's sections, plus the optional sections the task needs. | One request |
 | `verify.close` | Whether the delegate's report and the changes show the task done. | One request |
@@ -84,6 +84,58 @@ coder-one component suite task.requirements            # recorded Jev
 coder-one component suite task.requirements --jev off  # the rule alone
 gym coder requirements log-summary                     # spans, kinds, coverage
 ```
+
+## Pack the briefing by requirement coverage
+
+The first packer took probe outputs first, then files, each section whole
+or not at all, until the 12,000-character cap. Overlapping directory
+listings then filled most of a briefing while the log excerpts Jev selected
+were dropped, a selected file larger than the cap never went in, and the
+directions still called the evidence complete.
+
+The coverage packer (`coder_one::pack`) works from the requirement map:
+
+1. It ranks probe outputs, files, output spans, and commands together, by
+   Jev's relevance and by the requirements each one informs. An item
+   informs a requirement when it names one of the requirement's exact paths
+   or constants, or, with `packer: coverage-jev`, when Jev's coverage
+   judgment says so.
+2. It removes the lines of a listing that an earlier listing already holds,
+   and names a listing that adds nothing as a duplicate.
+3. It reserves the task text, gives each requirement's best item and each
+   Jev-selected item a first slice (an equal share when the room is
+   short), then fills in rank order. A data file's slice is representative
+   records: as many opening lines as fit, plus a line for each constant the
+   requirements name. An item is trimmed at a line boundary, not dropped
+   whole.
+4. Each item's heading says whether it is complete or trimmed, how much of
+   it is shown, and what it informs; a trimmed or left-out item names how
+   to read the rest, such as `sed -n '25,128p' logs/2025-08-10_db.log`.
+   The directions' blanket "complete and current" sentence becomes that
+   per-item account.
+
+The policy manifest selects the packer with `brief.packer`: `sections` (the
+first packer, the default), `coverage`, or `coverage-jev`.
+`policies/pack-luna.json` is `jevprobe3-luna.json` with `coverage-jev`, and
+the `coder-one-pack-luna` arm runs it. An episode with the coverage packer
+writes `artifacts/briefing-pack.json`: the pack record, the Jev coverage
+judgments, the requirement map, and the inputs.
+
+Replay the packer over every retained briefing:
+
+```sh
+coder-one component replay evidence.pack     # --json, --out FILE, --traces DIR
+coder-one component suite evidence.pack      # both packers per fixture, with recorded Jev
+gym coder briefing                           # totals before and after
+gym coder briefing log-summary-date-ranges   # per attempt, and each item's fate
+```
+
+The replay reads each retained briefing back into the first packer's
+inputs, checks that they rebuild the retained digest, restores each omitted
+item's relevance and text from the episode's `state.json`, and packs the
+same evidence with the coverage packer. "Needed" evidence recall still needs
+independent labels; the replay measures selected against delivered items,
+duplicate bytes, and omissions.
 
 ## Observe without changing the workspace
 
@@ -163,7 +215,7 @@ question on them with recorded Jev.
 ```sh
 gym coder components
 gym coder components --component evidence.pack --json
-gym-terminal --terminal-bench        # press 7 for components, 8 for requirements
+gym-terminal --terminal-bench        # 7 components, 8 requirements, b briefing
 ```
 
 The episode timeline (`gym terminal-bench attempt JOB TRIAL --timeline`)

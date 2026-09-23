@@ -1,6 +1,42 @@
 {
   "schema": "openagents.coder-one.jev-recorded.v1",
   "entries": {
+    "40264b100234cd6b5dd5645a628f319a0d1179428c7caf03eff292731cff2dca": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.44
+        }
+      },
+      "input_tokens": 2131,
+      "output_tokens": 42,
+      "milliseconds": 204,
+      "source": "live component run of evidence.pack#jev_coverage-e2"
+    },
+    "41a79bc01fe9bd00cdd874dda6a08a55696d18d84d908653725d374fc92bc4c7": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.35
+        }
+      },
+      "input_tokens": 698,
+      "output_tokens": 42,
+      "milliseconds": 204,
+      "source": "live component run of evidence.pack#jev_coverage-e1"
+    },
     "5d5ee6e96dfcf5248b1e4551cd6918e2ef962f05b049dd0e6fea47bb4b74beaa": {
       "name": "jev_system",
       "model": "jev-1.13.0",
@@ -92,6 +128,24 @@
       "output_tokens": 40,
       "milliseconds": 229,
       "source": "sqlite-db-truncate__rgzhtVQ#jev-survey-2"
+    },
+    "b714710bc66d8d6c48de43da1660f14f096f4f64cd3219117bfb0650d94afd5d": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.76
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.35
+        }
+      },
+      "input_tokens": 657,
+      "output_tokens": 42,
+      "milliseconds": 203,
+      "source": "live component run of evidence.pack#jev_coverage-e3"
     }
   }
 }

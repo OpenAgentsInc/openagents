@@ -351,6 +351,18 @@ impl JevJudge {
         self.recorder.revise();
     }
 
+    /// How this judge reaches Jev, for a component that asks on its own.
+    #[must_use]
+    pub fn jev_mode(&self) -> JevMode {
+        self.client.clone().map_or(JevMode::Off, JevMode::Live)
+    }
+
+    /// The episode deadline every request is bounded by.
+    #[must_use]
+    pub fn episode_deadline(&self) -> Deadline {
+        self.deadline.clone()
+    }
+
     /// One Jev request through the shared component call, with the judge's
     /// counters kept.
     async fn ask_jev(

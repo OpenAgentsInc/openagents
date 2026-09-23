@@ -1113,6 +1113,57 @@
       },
       "note": "Jev-probe: no Gemini. Before delegating, a battery of read-only probes (listing, git state, README, tests, versions, paths the task names) runs in parallel, Jev keeps the outputs the task needs, and those join the Jev file survey in the briefing. Codex on GPT-6 Luna finishes. Probe v3 (#9535): probe v2 with directions that test every changed code path instead of one final check. The policy manifest crates/coder-one/policies/jevprobe3-luna.json (#9540) now holds the configuration: it pins Codex 0.155.1 and reproduces the environment switches this arm set before."
     },
+    "coder-one-pack-luna": {
+      "role": "candidate",
+      "harbor_import_path": "tbench.coder_one:CoderOneDelegate",
+      "version": null,
+      "model": "free",
+      "kwargs": {
+        "policy": "crates/coder-one/policies/pack-luna.json"
+      },
+      "required_kwargs": [
+        "artifact_path",
+        "artifact_sha256"
+      ],
+      "extra_allowed_hosts": [
+        "openagents.com",
+        "api.typesafe.ai",
+        "chatgpt.com",
+        "api.openai.com",
+        "registry.npmjs.org"
+      ],
+      "cost_provenance": "mixed",
+      "cost_note": "Generation is the door's provider-reported cost_microusd per call; Jev is a price estimate at the published input-token rate; the Codex delegate is a price estimate from its token counts at OpenAI's standard list prices, supplied manually by the operator on 2026-09-22, because Codex reports no cost. evaluation/usage.json keeps the three apart under components and sums them in cost.amount_usd; unreported values are null, never zero.",
+      "env_forward": [
+        "OPENAGENTS_API_KEY",
+        "OPENAGENTS_DOOR_URL",
+        "TYPESAFE_API_KEY",
+        "CODER_ONE_MAX_STEPS",
+        "CODER_ONE_COMMAND_TIMEOUT",
+        "CODEX_AUTH_JSON_PATH",
+        "CODEX_FORCE_AUTH_JSON"
+      ],
+      "auth_modes": {
+        "auth-json": {
+          "requires_all": [
+            "OPENAGENTS_API_KEY",
+            "TYPESAFE_API_KEY"
+          ],
+          "requires_any": [
+            "CODEX_AUTH_JSON_PATH",
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "env_overrides": {
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
+          },
+          "exclude_env": [
+            "CODEX_FORCE_AUTH_JSON"
+          ],
+          "note": "Generation and Jev as in coder-one; the Codex delegate signs in with the host's ChatGPT-account auth.json, which the adapter places in the container the way Harbor's codex agent does and removes after the run. CODEX_FORCE_AUTH_JSON stays a host-side selector: the mode forwards the resolved file path instead."
+        }
+      },
+      "note": "Jev probe v3 on Codex with GPT-6 Luna, with the briefing packed by requirement coverage and Jev's coverage judgments (#9547): joint ranking, duplicate listings removed, representative records of data files, trimmed spans, and every omission named. The policy manifest crates/coder-one/policies/pack-luna.json differs from jevprobe3-luna.json only in brief.packer, so a screen against v3 isolates the packer."
+    },
     "coder-one-jevprobe-luna-low": {
       "role": "candidate",
       "harbor_import_path": "tbench.coder_one:CoderOneDelegate",

@@ -15,6 +15,106 @@
       "milliseconds": 208,
       "source": "log-summary-date-ranges__XWSKgz5#jev-4"
     },
+    "3330ddafc6c694eddb51693ef28f5097f94b437145fee3470e99e213854d95b7": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "informs_R3": {
+          "type": "noul",
+          "noul": 0.76
+        },
+        "informs_R4": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "informs_R5": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "informs_R6": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "informs_R7": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "informs_R8": {
+          "type": "noul",
+          "noul": 0.71
+        },
+        "informs_R9": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "informs_R10": {
+          "type": "noul",
+          "noul": 0.71
+        }
+      },
+      "input_tokens": 3083,
+      "output_tokens": 195,
+      "milliseconds": 269,
+      "source": "live component run of evidence.pack#jev_coverage-e5"
+    },
+    "3ab6c2aebd9c3682bddc197546402a4ca79b136329e6a2e7fe1c67f7dc6ccfa7": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "informs_R3": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "informs_R4": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "informs_R5": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "informs_R6": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "informs_R7": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "informs_R8": {
+          "type": "noul",
+          "noul": 0.77
+        },
+        "informs_R9": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "informs_R10": {
+          "type": "noul",
+          "noul": 0.73
+        }
+      },
+      "input_tokens": 3069,
+      "output_tokens": 195,
+      "milliseconds": 338,
+      "source": "live component run of evidence.pack#jev_coverage-e4"
+    },
     "61c3aa5dea5478d44edc482bf91865068117c8b2eef8463914a2152505e819c4": {
       "name": "jev_survey",
       "model": "jev-1.13.0",
@@ -389,6 +489,106 @@
       "milliseconds": 243,
       "source": "live component run of exec.system#jev_system-1"
     },
+    "cf1870e5b5f26878113b1b2765030c20b47a769201fc8e20db44748b95468249": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "informs_R3": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "informs_R4": {
+          "type": "noul",
+          "noul": 0.69
+        },
+        "informs_R5": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "informs_R6": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "informs_R7": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "informs_R8": {
+          "type": "noul",
+          "noul": 0.69
+        },
+        "informs_R9": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "informs_R10": {
+          "type": "noul",
+          "noul": 0.82
+        }
+      },
+      "input_tokens": 3060,
+      "output_tokens": 195,
+      "milliseconds": 247,
+      "source": "live component run of evidence.pack#jev_coverage-e6"
+    },
+    "d10beacbcfbd100f3fa0fb8be7b0956a5d65c725b2b748736725f72556d6cb80": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "informs_R3": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "informs_R4": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "informs_R5": {
+          "type": "noul",
+          "noul": 0.47
+        },
+        "informs_R6": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "informs_R7": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "informs_R8": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "informs_R9": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "informs_R10": {
+          "type": "noul",
+          "noul": 0.15
+        }
+      },
+      "input_tokens": 1757,
+      "output_tokens": 195,
+      "milliseconds": 193,
+      "source": "live component run of evidence.pack#jev_coverage-e3"
+    },
     "d94e93ae6e756146ca48d66b41d1016b58a8372599c97bd7a6cebcc0b331274e": {
       "name": "jev_probe",
       "model": "jev-1.13.0",
@@ -414,6 +614,106 @@
       "output_tokens": 76,
       "milliseconds": 919,
       "source": "log-summary-date-ranges__XWSKgz5#jev-probe-1"
+    },
+    "dad675e5377c905668b326c0a726eea359e5b5ef8c6eb53ab86ac129721a5c71": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "informs_R3": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "informs_R4": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "informs_R5": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "informs_R6": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "informs_R7": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "informs_R8": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "informs_R9": {
+          "type": "noul",
+          "noul": 0.57
+        },
+        "informs_R10": {
+          "type": "noul",
+          "noul": 0.47
+        }
+      },
+      "input_tokens": 3553,
+      "output_tokens": 195,
+      "milliseconds": 188,
+      "source": "live component run of evidence.pack#jev_coverage-e1"
+    },
+    "fce792184da3f031d7147431e557255649db7f0feb75b27e66d6202b885c7927": {
+      "name": "jev_coverage",
+      "model": "jev-1.13.0",
+      "answers": {
+        "informs_R1": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "informs_R2": {
+          "type": "noul",
+          "noul": 0.69
+        },
+        "informs_R3": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "informs_R4": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "informs_R5": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "informs_R6": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "informs_R7": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "informs_R8": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "informs_R9": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "informs_R10": {
+          "type": "noul",
+          "noul": 0.45
+        }
+      },
+      "input_tokens": 3630,
+      "output_tokens": 195,
+      "milliseconds": 206,
+      "source": "live component run of evidence.pack#jev_coverage-e2"
     }
   }
 }

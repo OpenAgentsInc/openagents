@@ -22,6 +22,7 @@ pub mod evidence;
 pub mod extract;
 pub mod jev;
 pub mod pack;
+pub mod replay;
 pub mod scripted;
 
 use std::path::{Path, PathBuf};
@@ -580,6 +581,10 @@ struct Pack;
 struct PackInput {
     inputs: BriefingInputs,
     cap: usize,
+    /// The same evidence with each surveyed item whole, for the coverage
+    /// packer; `inputs` when absent.
+    #[serde(default)]
+    whole: Option<BriefingInputs>,
 }
 
 impl Component for Pack {
@@ -587,19 +592,21 @@ impl Component for Pack {
         "evidence.pack"
     }
     fn implementation(&self) -> Implementation {
-        pack::default_implementation()
+        crate::pack::implementation(crate::pack::Params::default(), false)
     }
     fn about(&self) -> &'static str {
-        "Code packs the evidence into a briefing within a character budget."
+        "Code packs the evidence by requirement coverage into a briefing within a character budget."
     }
     fn run<'a>(
         &'a self,
         fixture: &'a Fixture,
-        _jev: &'a JevMode,
-        _recorder: &'a Recorder,
+        jev: &'a JevMode,
+        recorder: &'a Recorder,
     ) -> LocalBoxFuture<'a, Result<Ran, String>> {
         Box::pin(async move {
             let input: PackInput = input(fixture)?;
+            // Before: the first packer, which must rebuild the retained
+            // briefing.
             let briefing = Briefing::build(&input.inputs, input.cap);
             let mut metrics = pack::metrics(&input.inputs, &briefing);
             metrics.insert(
@@ -610,8 +617,87 @@ impl Component for Pack {
                     .and_then(Value::as_str)
                     .map_or(Value::Null, |sha| json!(sha == briefing.sha256())),
             );
+            // After: the coverage packer on the same evidence, whole.
+            let whole = input.whole.clone().unwrap_or_else(|| input.inputs.clone());
+            let params = crate::pack::Params {
+                cap: input.cap,
+                ..crate::pack::Params::default()
+            };
+            let map = crate::requirements::mechanical(&whole.instruction);
+            // The first packer's items as it had them, with the relevance
+            // of each item its briefing left out restored from `whole`.
+            let mut first = input.inputs.clone();
+            for (file, restored) in first.files.iter_mut().zip(&whole.files) {
+                if file.1.is_none() {
+                    file.1 = restored.1;
+                }
+            }
+            let before = crate::pack::measure(
+                &briefing,
+                &crate::pack::delivered_by_sections(&first, &briefing),
+            );
+            let after = crate::pack::pack(&whole, &map, None, params);
+            let measured = crate::pack::measure(
+                &after.briefing,
+                &crate::pack::delivered_by_pack(&whole, &after),
+            );
+            let mut add = |prefix: &str, m: &crate::pack::Measure, uncovered: Option<usize>| {
+                for (name, value) in [
+                    ("selected_dropped", json!(m.selected_dropped)),
+                    ("duplicate_bytes", json!(m.duplicate_bytes)),
+                    ("omitted", json!(m.omitted)),
+                    ("data_chars", json!(m.data_chars)),
+                    ("chars", json!(m.chars)),
+                    (
+                        "drops_selected_while_duplicates_kept",
+                        json!(m.dropped_while_duplicates_kept),
+                    ),
+                ] {
+                    metrics.insert(format!("{prefix}_{name}"), value);
+                }
+                if let Some(uncovered) = uncovered {
+                    metrics.insert(format!("{prefix}_uncovered_requirements"), json!(uncovered));
+                }
+            };
+            add("before", &before, None);
+            add("after", &measured, Some(after.record.uncovered.len()));
+            // With Jev: the same packer, with Jev's coverage judgments
+            // deciding what each item informs.
+            let mut jev_record = Value::Null;
+            if !matches!(jev, JevMode::Off) {
+                let title = whole
+                    .instruction
+                    .lines()
+                    .find(|line| !line.trim().is_empty())
+                    .map(|line| crate::judge::clip(line.trim(), 120))
+                    .unwrap_or_default();
+                let (coverage, asked) = crate::pack::judge_coverage(
+                    &title,
+                    &whole.instruction,
+                    &whole,
+                    &map,
+                    jev,
+                    recorder,
+                    None,
+                )
+                .await;
+                if asked.iter().any(|a| a.answered()) {
+                    let judged = crate::pack::pack(&whole, &map, Some(&coverage), params);
+                    let m = crate::pack::measure(
+                        &judged.briefing,
+                        &crate::pack::delivered_by_pack(&whole, &judged),
+                    );
+                    add("after_jev", &m, Some(judged.record.uncovered.len()));
+                    jev_record = json!(judged.record);
+                }
+            }
             Ok(Ran {
-                output: briefing.record(),
+                output: json!({
+                    "before": briefing.record(),
+                    "after": after.record,
+                    "after_text": after.briefing.text,
+                    "after_jev": jev_record,
+                }),
                 metrics,
             })
         })
@@ -1267,7 +1353,8 @@ mod tests {
         assert_eq!(
             invocations
                 .iter()
-                .filter(|i| i.component == "evidence.pack")
+                .filter(|i| i.component == "evidence.pack"
+                    && i.parent.as_deref() == Some(invocations[0].id.as_str()))
                 .count(),
             dirs.len()
         );
