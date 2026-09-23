@@ -1,0 +1,1402 @@
+{
+  "schema": "openagents.coder-one.check-recall.v1",
+  "columns": [
+    "episode",
+    "v6",
+    "v7"
+  ],
+  "totals": [
+    {
+      "arm": "episode",
+      "failures": 27,
+      "flagged_failures": 5,
+      "recall": 0.18518518518518517,
+      "passes": 34,
+      "flagged_passes": 5,
+      "false_alarm_rate": 0.14705882352941177
+    },
+    {
+      "arm": "v6",
+      "failures": 27,
+      "flagged_failures": 12,
+      "recall": 0.4444444444444444,
+      "passes": 34,
+      "flagged_passes": 1,
+      "false_alarm_rate": 0.029411764705882353
+    },
+    {
+      "arm": "v7",
+      "failures": 27,
+      "flagged_failures": 14,
+      "recall": 0.5185185185185185,
+      "passes": 34,
+      "flagged_passes": 1,
+      "false_alarm_rate": 0.029411764705882353
+    }
+  ],
+  "excluded": [
+    {
+      "job": "tb4--coder-one-tunable-v2--ctr-optimization",
+      "trial": "ctr-optimization__YsgQpry",
+      "why": "Harbor recorded OSError: [Errno 28] No space left on device"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--freecad-impeller",
+      "trial": "freecad-impeller__tGWAcTW",
+      "why": "Harbor recorded RuntimeError: Docker compose command failed for environment freecad-impeller. Command: docker compose --project-name freecad-impeller__tgwactw__verifier__trial --project-dire…"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--freecad-platform-drawing",
+      "trial": "freecad-platform-drawing__FpXwhxd",
+      "why": "Harbor recorded RuntimeError: Docker compose command failed for environment freecad-platform-drawing. Command: docker compose --project-name freecad-platform-drawing__fpxwhxd__verifier__tria…"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--freecad-spring-clip",
+      "trial": "freecad-spring-clip__YTR49AY",
+      "why": "Harbor recorded RuntimeError: Docker compose command failed for environment freecad-spring-clip. Command: docker compose --project-name freecad-spring-clip__ytr49ay__verifier__trial --projec…"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--freight-dispatch-shift",
+      "trial": "freight-dispatch-shift__mD6mGp8",
+      "why": "the verifier left no reward"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--jax-speedrun-gpu",
+      "trial": "jax-speedrun-gpu__JGQ3Bqr",
+      "why": "Harbor recorded CancelledError: "
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--legacy-utility-triage",
+      "trial": "legacy-utility-triage__UzgKrwV",
+      "why": "the verifier left no reward"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--medical-claims-processing",
+      "trial": "medical-claims-processing__xRGX835",
+      "why": "the verifier left no reward"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--pretrain-shard-corruption",
+      "trial": "pretrain-shard-corruption__WC3BZtY",
+      "why": "Harbor recorded CancelledError: "
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--rs-archive-clone",
+      "trial": "rs-archive-clone__yjunKjH",
+      "why": "Harbor recorded NonZeroAgentExitCodeError: episode exited 1: coder-one: cannot read /opt/openagents/instruction.txt: Permission denied (os error 13)"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--uefi-bootkit",
+      "trial": "uefi-bootkit__j9TMd5W",
+      "why": "Harbor recorded OSError: [Errno 28] No space left on device"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vba-userform-port",
+      "trial": "vba-userform-port__UFHaKKE",
+      "why": "the verifier left no reward"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vpp-loss-divergence",
+      "trial": "vpp-loss-divergence__PdciRBD",
+      "why": "Harbor recorded RuntimeError: Docker compose command failed for environment vpp-loss-divergence. Command: docker compose --project-name vpp-loss-divergence__pdcirbd__env --project-directory …"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vba-userform-port",
+      "trial": "vba-userform-port__EumaQXp",
+      "why": "the verifier left no reward"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vpp-loss-divergence",
+      "trial": "vpp-loss-divergence__5hi2F2h",
+      "why": "Harbor recorded RuntimeError: Docker compose command failed for environment vpp-loss-divergence. Command: docker compose --project-name vpp-loss-divergence__5hi2f2h__verifier__trial --projec…"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--risk-scorer-replay",
+      "trial": "risk-scorer-replay__zPm6vdi",
+      "why": "Harbor recorded NonZeroAgentExitCodeError: episode exited 1: coder-one: cannot read /opt/openagents/instruction.txt: Permission denied (os error 13)"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--bun-sourcemap-leak",
+      "trial": "bun-sourcemap-leak__Vkf7HJ9",
+      "why": "Harbor recorded CancelledError: "
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--risk-scorer-replay",
+      "trial": "risk-scorer-replay__wtTVWth",
+      "why": "Harbor recorded NonZeroAgentExitCodeError: episode exited 1: coder-one: cannot read /opt/openagents/instruction.txt: Permission denied (os error 13)"
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--bun-sourcemap-leak",
+      "trial": "bun-sourcemap-leak__ApqxRfH",
+      "why": "Harbor recorded CancelledError: "
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--embedding-drift-monitor",
+      "trial": "embedding-drift-monitor__o9aPgjV",
+      "why": "Harbor recorded CancelledError: "
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--fin-saccr-rwa",
+      "trial": "fin-saccr-rwa__LYRuJ2C",
+      "why": "Harbor recorded CancelledError: "
+    }
+  ],
+  "targets": [
+    {
+      "task": "heat-pump-warranty",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      }
+    },
+    {
+      "task": "html-js-filter",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": true
+      }
+    },
+    {
+      "task": "ks-solver-cpp",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      }
+    },
+    {
+      "task": "production-planning",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      }
+    },
+    {
+      "task": "protein-autointerp-disulfide",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      }
+    },
+    {
+      "task": "sglang-qwen-burst",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      }
+    },
+    {
+      "task": "wal-recovery-ordering",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      }
+    },
+    {
+      "task": "html-js-filter",
+      "arm": "coder-one-tunable-v3",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      }
+    },
+    {
+      "task": "ks-solver-cpp",
+      "arm": "coder-one-tunable-v3",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      }
+    },
+    {
+      "task": "production-planning",
+      "arm": "coder-one-tunable-v4",
+      "reward": 0.0,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      }
+    }
+  ],
+  "rows": [
+    {
+      "job": "tb4--coder-one-tunable-v2--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n4pQEBK",
+      "task": "atrx-vep-crispr",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 8,
+      "passed_tests": 8,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": true
+      },
+      "failed": {
+        "v6": [],
+        "v7": [
+          "behavior.json-overlap:/app/output/mutation.report.json"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--batched-eval-parity",
+      "trial": "batched-eval-parity__CMa4h7f",
+      "task": "batched-eval-parity",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 5,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--biped-contact-dynamics",
+      "trial": "biped-contact-dynamics__Cg7CqRp",
+      "task": "biped-contact-dynamics",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 3,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--bun-sourcemap-leak",
+      "trial": "bun-sourcemap-leak__UEEnDnL",
+      "task": "bun-sourcemap-leak",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 4,
+      "passed_tests": 32,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cad-model",
+      "trial": "cad-model__93HTQVd",
+      "task": "cad-model",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 6,
+      "passed_tests": 2,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__DRH9R9E",
+      "task": "cargo-flight-dispatch",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 8,
+      "passed_tests": 19,
+      "flagged": {
+        "episode": true,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--coq-block-bound",
+      "trial": "coq-block-bound__BuaH7r9",
+      "task": "coq-block-bound",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 4,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--cumulative-layout-shift",
+      "trial": "cumulative-layout-shift__ceBid2H",
+      "task": "cumulative-layout-shift",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 0,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--data-anonymization",
+      "trial": "data-anonymization__nyv2W9N",
+      "task": "data-anonymization",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 2,
+      "passed_tests": 6,
+      "flagged": {
+        "episode": true,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--embedding-drift-monitor",
+      "trial": "embedding-drift-monitor__W8tf8im",
+      "task": "embedding-drift-monitor",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 11,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--fin-saccr-rwa",
+      "trial": "fin-saccr-rwa__3udZRiv",
+      "task": "fin-saccr-rwa",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 24,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--foodstuff-beta-activity",
+      "trial": "foodstuff-beta-activity__E3RY23V",
+      "task": "foodstuff-beta-activity",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 2,
+      "passed_tests": 11,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--glycan-ms2-elucidation",
+      "trial": "glycan-ms2-elucidation__SJyggQr",
+      "task": "glycan-ms2-elucidation",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 1,
+      "passed_tests": 11,
+      "flagged": {
+        "episode": true,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--gsea-proteomics",
+      "trial": "gsea-proteomics__D6NCFzF",
+      "task": "gsea-proteomics",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 5,
+      "passed_tests": 11,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--heat-pump-warranty",
+      "trial": "heat-pump-warranty__AfdurXo",
+      "task": "heat-pump-warranty",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 0,
+      "passed_tests": 0,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--hof-topology-interpenetration",
+      "trial": "hof-topology-interpenetration__Adzjrvb",
+      "task": "hof-topology-interpenetration",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 38,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--html-js-filter",
+      "trial": "html-js-filter__LCP4hV7",
+      "task": "html-js-filter",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 2,
+      "passed_tests": 0,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": true
+      },
+      "failed": {
+        "v6": [],
+        "v7": [
+          "behavior.filter-preserves"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--interleaved-vigenere",
+      "trial": "interleaved-vigenere__RsGcrb3",
+      "task": "interleaved-vigenere",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 6,
+      "flagged": {
+        "episode": true,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--intrastat-meldung",
+      "trial": "intrastat-meldung__kPAoUMb",
+      "task": "intrastat-meldung",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 1,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--ks-solver-cpp",
+      "trial": "ks-solver-cpp__VoHECwg",
+      "task": "ks-solver-cpp",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 0,
+      "passed_tests": 0,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--kv-live-surgery",
+      "trial": "kv-live-surgery__LFqoK6L",
+      "task": "kv-live-surgery",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 6,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--layout-config-recreation",
+      "trial": "layout-config-recreation__CJ76ek5",
+      "task": "layout-config-recreation",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 12,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--layout-config-recreation2",
+      "trial": "layout-config-recreation2__dKArjvs",
+      "task": "layout-config-recreation2",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 9,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--mp-checkpoint-consolidation",
+      "trial": "mp-checkpoint-consolidation__JwHGCSm",
+      "task": "mp-checkpoint-consolidation",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 4,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--music-harmony",
+      "trial": "music-harmony__foosfLn",
+      "task": "music-harmony",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 0,
+      "passed_tests": 0,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--mvcc-lsm-compaction",
+      "trial": "mvcc-lsm-compaction__nhUf8R2",
+      "task": "mvcc-lsm-compaction",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 4,
+      "passed_tests": 11,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--nextjs-performance",
+      "trial": "nextjs-performance__9mhSdgu",
+      "task": "nextjs-performance",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 5,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--ontology-kg-querying",
+      "trial": "ontology-kg-querying__iZQFjNF",
+      "task": "ontology-kg-querying",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 2,
+      "passed_tests": 11,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--payments-pipeline-fix",
+      "trial": "payments-pipeline-fix__gbaYqCg",
+      "task": "payments-pipeline-fix",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 3,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--photonic-waveguide-routing",
+      "trial": "photonic-waveguide-routing__JYAGpSt",
+      "task": "photonic-waveguide-routing",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 14,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--production-planning",
+      "trial": "production-planning__c6E8jPq",
+      "task": "production-planning",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 1,
+      "passed_tests": 19,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--protein-autointerp-disulfide",
+      "trial": "protein-autointerp-disulfide__mFaPwNz",
+      "task": "protein-autointerp-disulfide",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 1,
+      "passed_tests": 1,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--react-lead-form",
+      "trial": "react-lead-form__b2MsQ4F",
+      "task": "react-lead-form",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 0,
+      "flagged": {
+        "episode": true,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--retro-console-soc",
+      "trial": "retro-console-soc__zSmxL3Z",
+      "task": "retro-console-soc",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 8,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--roy-polymorph-cn",
+      "trial": "roy-polymorph-cn__De3ie25",
+      "task": "roy-polymorph-cn",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 3,
+      "flagged": {
+        "episode": true,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--satb-audio-transcription",
+      "trial": "satb-audio-transcription__4hNhXf2",
+      "task": "satb-audio-transcription",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 40,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--session-window-debug",
+      "trial": "session-window-debug__joa7QeZ",
+      "task": "session-window-debug",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 7,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--sglang-qwen-burst",
+      "trial": "sglang-qwen-burst__ioERXod",
+      "task": "sglang-qwen-burst",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 12,
+      "passed_tests": 1,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--sound-change-cascade",
+      "trial": "sound-change-cascade__9pSQecy",
+      "task": "sound-change-cascade",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 7,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--takens-embedding-lean",
+      "trial": "takens-embedding-lean__N4BtTbm",
+      "task": "takens-embedding-lean",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 9,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--telecom-entity-resolution",
+      "trial": "telecom-entity-resolution__QkWGffc",
+      "task": "telecom-entity-resolution",
+      "arm": "coder-one-tunable-v2",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 10,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vf2-speedup-networkx",
+      "trial": "vf2-speedup-networkx__ArPJp6A",
+      "task": "vf2-speedup-networkx",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 1,
+      "passed_tests": 59,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--vllm-deepseek-streaming",
+      "trial": "vllm-deepseek-streaming__usfxVic",
+      "task": "vllm-deepseek-streaming",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 4,
+      "passed_tests": 1,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v2--wal-recovery-ordering",
+      "trial": "wal-recovery-ordering__BYcFKPX",
+      "task": "wal-recovery-ordering",
+      "arm": "coder-one-tunable-v2",
+      "reward": 0.0,
+      "failed_tests": 2,
+      "passed_tests": 95,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--cad-model",
+      "trial": "cad-model__CS37B9J",
+      "task": "cad-model",
+      "arm": "coder-one-tunable-v3",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 8,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--gsea-proteomics",
+      "trial": "gsea-proteomics__r4EXrRJ",
+      "task": "gsea-proteomics",
+      "arm": "coder-one-tunable-v3",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 16,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--html-js-filter",
+      "trial": "html-js-filter__eCVVDAg",
+      "task": "html-js-filter",
+      "arm": "coder-one-tunable-v3",
+      "reward": 0.0,
+      "failed_tests": 1,
+      "passed_tests": 1,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--interleaved-vigenere",
+      "trial": "interleaved-vigenere__yfy8vrD",
+      "task": "interleaved-vigenere",
+      "arm": "coder-one-tunable-v3",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 6,
+      "flagged": {
+        "episode": true,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--ks-solver-cpp",
+      "trial": "ks-solver-cpp__ZnfrMxv",
+      "task": "ks-solver-cpp",
+      "arm": "coder-one-tunable-v3",
+      "reward": 0.0,
+      "failed_tests": 0,
+      "passed_tests": 0,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v3--vf2-speedup-networkx",
+      "trial": "vf2-speedup-networkx__jgSFKBL",
+      "task": "vf2-speedup-networkx",
+      "arm": "coder-one-tunable-v3",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 60,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n56Tmj4",
+      "task": "atrx-vep-crispr",
+      "arm": "coder-one-tunable-v4",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 16,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--cad-model",
+      "trial": "cad-model__kou5pbz",
+      "task": "cad-model",
+      "arm": "coder-one-tunable-v4",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 8,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--music-harmony",
+      "trial": "music-harmony__6Jk4UFX",
+      "task": "music-harmony",
+      "arm": "coder-one-tunable-v4",
+      "reward": 0.0,
+      "failed_tests": 0,
+      "passed_tests": 0,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--mvcc-lsm-compaction",
+      "trial": "mvcc-lsm-compaction__JiQV4ft",
+      "task": "mvcc-lsm-compaction",
+      "arm": "coder-one-tunable-v4",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 15,
+      "flagged": {
+        "episode": true,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v4--production-planning",
+      "trial": "production-planning__8AzrC5r",
+      "task": "production-planning",
+      "arm": "coder-one-tunable-v4",
+      "reward": 0.0,
+      "failed_tests": 4,
+      "passed_tests": 16,
+      "flagged": {
+        "episode": false,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__n5F2AiC",
+      "task": "atrx-vep-crispr",
+      "arm": "coder-one-tunable-v5",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 16,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v5--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__kS32Mq7",
+      "task": "cargo-flight-dispatch",
+      "arm": "coder-one-tunable-v5",
+      "reward": 0.0,
+      "failed_tests": 2,
+      "passed_tests": 25,
+      "flagged": {
+        "episode": true,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--atrx-vep-crispr",
+      "trial": "atrx-vep-crispr__dQsvJqp",
+      "task": "atrx-vep-crispr",
+      "arm": "coder-one-tunable-v6",
+      "reward": 0.0,
+      "failed_tests": 1,
+      "passed_tests": 15,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--batched-eval-parity",
+      "trial": "batched-eval-parity__fzyVtJh",
+      "task": "batched-eval-parity",
+      "arm": "coder-one-tunable-v6",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 5,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--cargo-flight-dispatch",
+      "trial": "cargo-flight-dispatch__GEa4vKX",
+      "task": "cargo-flight-dispatch",
+      "arm": "coder-one-tunable-v6",
+      "reward": 0.0,
+      "failed_tests": 2,
+      "passed_tests": 25,
+      "flagged": {
+        "episode": true,
+        "v6": true,
+        "v7": true
+      },
+      "failed": {
+        "v6": [
+          "generic.self-report"
+        ],
+        "v7": [
+          "generic.self-report"
+        ]
+      }
+    },
+    {
+      "job": "tb4--coder-one-tunable-v6--coq-block-bound",
+      "trial": "coq-block-bound__Mu8ygpJ",
+      "task": "coq-block-bound",
+      "arm": "coder-one-tunable-v6",
+      "reward": 1.0,
+      "failed_tests": 0,
+      "passed_tests": 4,
+      "flagged": {
+        "episode": false,
+        "v6": false,
+        "v7": false
+      },
+      "failed": {
+        "v6": [],
+        "v7": []
+      }
+    }
+  ]
+}

@@ -527,6 +527,11 @@ pub struct VerifyPolicy {
     /// was unsure binds.
     #[serde(default, skip_serializing_if = "is_false")]
     pub optional_outputs: bool,
+    /// Admit only the outputs a requirement tells the executor to write,
+    /// and run the behavior scenarios the instruction's words justify
+    /// (`checks::behavior`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub behavior: bool,
     /// `verify.second`: a second executor when the checks can't confirm
     /// the result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -555,6 +560,7 @@ impl VerifyPolicy {
             support_budget: None,
             self_report: false,
             optional_outputs: false,
+            behavior: false,
             second: None,
             snapshot: None,
         }
@@ -573,8 +579,10 @@ impl VerifyPolicy {
                 problems.push("verify.support_budget needs verify.support".to_string());
             }
         }
-        if (self.self_report || self.optional_outputs) && !self.checks {
-            problems.push("verify.self_report and optional_outputs need verify.checks".to_string());
+        if (self.self_report || self.optional_outputs || self.behavior) && !self.checks {
+            problems.push(
+                "verify.self_report, optional_outputs, and behavior need verify.checks".to_string(),
+            );
         }
         if let Some(second) = &self.second {
             if !self.checks {
@@ -627,6 +635,7 @@ impl VerifyPolicy {
         generic::Options {
             self_report: self.self_report,
             optional_outputs: self.optional_outputs,
+            behavior: self.behavior,
         }
     }
 }
@@ -1348,6 +1357,8 @@ where
             command_sec,
             report: None,
             options: verify.check_options(),
+            root: None,
+            collected: Vec::new(),
         }),
     };
     let support_params = verify.support_params(long);

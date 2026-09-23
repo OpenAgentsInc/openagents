@@ -14,6 +14,8 @@ pub const USAGE: &str = "usage: coder-one checks synthetic [NAME] [--json]
        coder-one checks recover --traces DIR [--arm ARM|all] [--out DIR] [--json]
        coder-one checks replay [--jobs DIR] [--match TEXT] [--policy FILE]
                                [--write-fixtures DIR] [--json]
+       coder-one checks recall [ARM...] [TASK...] [--jobs DIR] [--match TEXT]
+                               [--out DIR] [--json]
 
 synthetic runs the known-good and known-bad candidates and says whether each
 scenario tells them apart. run checks the candidate in an input file
@@ -29,7 +31,18 @@ replay reads composed Terminal-Bench trials (the jobs whose names contain
 --jobs fixtures) and says what verify.self_report, verify.optional_outputs,
 and the support budget of --policy (tunable-v4.json by default) would have
 done on each first check. It runs nothing and asks Jev nothing.
---write-fixtures writes each trial as a fixture.";
+--write-fixtures writes each trial as a fixture.
+
+recall builds the labeled set from finished Terminal-Bench trials (the jobs
+whose names contain --match, tb4--coder-one-tunable-v by default): for each
+graded trial it rebuilds the task's filesystem from the task image's public
+files and the outputs Harbor collected, runs the checks against it in a
+bwrap sandbox under each ARM (v6: self-report and optional outputs; v7:
+also the behavior scenarios; both by default), and reports recall on the
+verifier's failures and false alarms on its passes, beside the episode's
+own first check. TASK names limit it to those tasks. Reports go to
+<out>/<job>/<trial>/checks-<arm>.json and the table to <out>/summary.json;
+--out defaults to ~/.openagents/coder-one/checks-recall.";
 
 /// The schema of a recovery summary.
 pub const RECOVERY_SCHEMA: &str = "openagents.coder-one.checks-recovery.v1";
@@ -241,8 +254,69 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             }
             Ok(0)
         }
+        "recall" => {
+            let dir = match jobs.as_deref() {
+                Some(dir) => PathBuf::from(dir),
+                None => std::env::var_os("HOME")
+                    .map(|home| PathBuf::from(home).join(".openagents/terminal-bench/jobs"))
+                    .ok_or("no --jobs and no HOME")?,
+            };
+            let matching = if matching == "tb4--coder-one-" {
+                "tb4--coder-one-tunable-v".to_string()
+            } else {
+                matching
+            };
+            let out = out.or_else(recall_dir).ok_or("no --out and no HOME")?;
+            let arms: Vec<String> = positional
+                .iter()
+                .filter(|p| super::labeled::arm_options(p).is_some())
+                .cloned()
+                .collect();
+            let arms = if arms.is_empty() {
+                vec!["v6".to_string(), "v7".to_string()]
+            } else {
+                arms
+            };
+            let only: Vec<&String> = positional
+                .iter()
+                .filter(|p| super::labeled::arm_options(p).is_none())
+                .collect();
+            let mut rows = Vec::new();
+            for labeled in super::labeled::scan(&dir, &matching) {
+                if !only.is_empty() && !only.iter().any(|t| **t == labeled.label.task) {
+                    continue;
+                }
+                if !json_output {
+                    eprintln!("checking {} {}", labeled.label.job, labeled.label.trial);
+                }
+                rows.push(super::labeled::check_trial(&labeled, &arms, &out).await);
+            }
+            let summary = super::labeled::summary(&rows, &arms, &super::labeled::targets());
+            let text = serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(&out)
+                .map_err(|e| format!("cannot create {}: {e}", out.display()))?;
+            std::fs::write(out.join("summary.json"), text.clone() + "\n")
+                .map_err(|e| format!("cannot write summary: {e}"))?;
+            if json_output {
+                println!("{text}");
+            } else {
+                for line in super::labeled::lines(&summary) {
+                    println!("{line}");
+                }
+                println!("Wrote {}.", out.join("summary.json").display());
+            }
+            Ok(0)
+        }
         _ => Err(USAGE.to_string()),
     }
+}
+
+/// Where `checks recall` writes by default.
+#[must_use]
+pub fn recall_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(|home| PathBuf::from(home).join(".openagents/coder-one/checks-recall"))
 }
 
 /// The long-task support parameters of the policy at `path`, or of

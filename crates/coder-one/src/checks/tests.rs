@@ -235,6 +235,8 @@ async fn live_check(
             command_sec: 30,
             report: report.map(str::to_string),
             options,
+            root: None,
+            collected: Vec::new(),
         }),
     };
     let input = subject.input(&work);
@@ -400,4 +402,181 @@ async fn a_self_reported_failure_is_a_failed_check_with_a_packet() {
     )
     .await;
     assert_eq!(verdict_of(&off, "generic.self-report"), "not run");
+}
+
+/// A live check with the behavior scenarios on, of the instruction
+/// `instruction` makes from the workspace's absolute path, over `files`.
+async fn behavior_check(
+    label: &str,
+    instruction: impl Fn(&str) -> String,
+    files: &[(&str, &str)],
+) -> Report {
+    let dir = scratch(label);
+    let work = dir.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    for (path, text) in files {
+        std::fs::write(work.join(path), text).unwrap();
+    }
+    let text = instruction(&work.to_string_lossy());
+    let subject = Subject {
+        label: label.to_string(),
+        task: TaskText {
+            title: label.to_string(),
+            instruction: text.clone(),
+        },
+        requirements: Some(crate::requirements::mechanical(&text)),
+        provided: Vec::new(),
+        inputs: None,
+        budget: Budget::default(),
+        live: Some(generic::Workspace {
+            dir: String::new(),
+            claimed: Vec::new(),
+            command_sec: 30,
+            report: None,
+            options: generic::Options {
+                behavior: true,
+                ..generic::Options::default()
+            },
+            root: None,
+            collected: Vec::new(),
+        }),
+    };
+    let input = subject.input(&work);
+    let report = check(&input, &Recorder::default(), &dir.join("scratch")).await;
+    let _ = std::fs::remove_dir_all(&dir);
+    report
+}
+
+fn filter_task(work: &str) -> String {
+    format!(
+        "Create a python file `{work}/filter.py` that removes JavaScript from HTML files to prevent XSS attacks.\n\n\
+The script should take an HTML file as a command-line argument (argv[1]) and modify the file in-place to remove all JavaScript.\n\n\
+Preserve the formatting of the HTML content, except for normalization that may occur during HTML parsing."
+    )
+}
+
+#[tokio::test]
+async fn the_filter_scenarios_tell_a_sanitizer_from_a_lossy_or_idle_one() {
+    if crate::minitask::process::python().is_none() {
+        return;
+    }
+    let idle = behavior_check(
+        "filter-idle",
+        filter_task,
+        &[("filter.py", "import sys\nsys.exit(0)\n")],
+    )
+    .await;
+    assert_eq!(verdict_of(&idle, "behavior.filter-removes"), "failed");
+    assert_eq!(verdict_of(&idle, "behavior.filter-preserves"), "passed");
+    let lossy = behavior_check(
+        "filter-lossy",
+        filter_task,
+        &[(
+            "filter.py",
+            "import re, sys\np = sys.argv[1]\nt = open(p).read()\nt = re.sub(r'<!--.*?-->', '', t, flags=re.S)\nopen(p, 'w').write(t)\n",
+        )],
+    )
+    .await;
+    assert_eq!(verdict_of(&lossy, "behavior.filter-preserves"), "failed");
+}
+
+#[tokio::test]
+async fn a_named_command_must_write_the_same_bytes_twice_when_the_task_says_so() {
+    if crate::minitask::process::python().is_none() {
+        return;
+    }
+    let task = |work: &str| {
+        format!(
+            "The command `python3 {work}/build.py --out {work}/out` should rebuild the report. Repeated rebuilds must produce deterministic outputs."
+        )
+    };
+    let script = |body: &str| {
+        format!(
+            "import os, sys, time\nout = sys.argv[sys.argv.index('--out') + 1]\nos.makedirs(out, exist_ok=True)\nopen(os.path.join(out, 'report.txt'), 'w').write({body})\n"
+        )
+    };
+    let steady = behavior_check("named-steady", task, &[("build.py", &script("'42\\n'"))]).await;
+    assert_eq!(verdict_of(&steady, "behavior.named-command:1"), "passed");
+    let drifting = behavior_check(
+        "named-drifting",
+        task,
+        &[("build.py", &script("str(time.time_ns())"))],
+    )
+    .await;
+    assert_eq!(verdict_of(&drifting, "behavior.named-command:1"), "failed");
+}
+
+#[tokio::test]
+async fn a_selected_position_must_lie_in_the_range_it_was_chosen_for() {
+    let task = |work: &str| {
+        format!(
+            "Identify the variant whose protein position overlaps with the domain. Write the final results to `{work}/report.json`."
+        )
+    };
+    let report = |position: i64| {
+        format!(
+            r#"{{"domain": {{"protein_residue_start": 10, "protein_residue_end": 20}}, "selected": {{"protein_position": {position}}}}}"#
+        )
+    };
+    let overlap = |r: &Report| {
+        r.verdicts
+            .iter()
+            .find(|v| v.scenario.starts_with("behavior.json-overlap"))
+            .map(|v| v.verdict.clone())
+    };
+    let inside = behavior_check("overlap-in", task, &[("report.json", &report(15))]).await;
+    assert_eq!(overlap(&inside).as_deref(), Some("passed"));
+    let outside = behavior_check("overlap-out", task, &[("report.json", &report(25))]).await;
+    assert_eq!(overlap(&outside).as_deref(), Some("failed"));
+}
+
+#[test]
+fn the_v7_policy_is_v6_with_the_behavior_scenarios_and_a_snapshot() {
+    let read = |name: &str| {
+        let text = std::fs::read_to_string(crate::policy::reference_dir().join(name)).unwrap();
+        crate::policy::Manifest::parse(&text).unwrap()
+    };
+    let v6 = read("tunable-v6.json");
+    let v7 = read("tunable-v7.json");
+    let (six, seven) = (v6.policy.verify.unwrap(), v7.policy.verify.unwrap());
+    assert!(!six.check_options().behavior);
+    assert!(seven.check_options().behavior);
+    assert!(seven.snapshot.is_some());
+    assert_eq!(v6.policy.control, v7.policy.control);
+    assert_eq!(v6.policy.executor, v7.policy.executor);
+    assert_eq!(six.second, seven.second);
+    assert!(seven.validate().is_empty());
+}
+
+#[test]
+fn a_replayed_input_carries_no_verifier_test_name() {
+    let labeled = labeled::Labeled {
+        label: labeled::Label {
+            schema: labeled::LABEL_SCHEMA.to_string(),
+            job: "tb4--coder-one-tunable-v2--x".to_string(),
+            trial: "x__1".to_string(),
+            task: "x".to_string(),
+            arm: "coder-one-tunable-v2".to_string(),
+            reward: Some(0.0),
+            excluded: None,
+            failed_tests: vec!["test_hidden_packet_uses_manifest_paths".to_string()],
+            passed_tests: 3,
+            episode_flagged: None,
+            collected: Vec::new(),
+        },
+        task_dir: PathBuf::from("/nonexistent"),
+        trial_dir: PathBuf::from("/nonexistent"),
+        instruction: "Write `/app/out.json`.".to_string(),
+        requirements: None,
+        report: Some("Done.".to_string()),
+        claimed: Vec::new(),
+    };
+    let input = labeled::input(
+        &labeled,
+        Path::new("/nonexistent-root"),
+        "/app",
+        labeled::arm_options("v7").unwrap(),
+    );
+    let text = serde_json::to_string(&input).unwrap();
+    assert!(!text.contains("test_hidden_packet_uses_manifest_paths"));
 }

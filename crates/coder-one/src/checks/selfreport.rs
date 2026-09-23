@@ -12,7 +12,10 @@
 //!
 //! - **The final report**: a guess, an unresolved ambiguity, an explicit
 //!   "could not" followed by an outcome verb, a stated infeasible result, a
-//!   test that still fails, or a `FAILED` marker.
+//!   test that still fails, a failure the executor predicts under a
+//!   grader's reading ("a grader that reads them differently could fail
+//!   it"), an outcome on the hidden inputs it calls untested or
+//!   unconfirmed, or a `FAILED` marker.
 //! - **The output files the task names**: a JSON object whose own
 //!   top-level or summary fields mark the result as failed, such as
 //!   `route_feasible: false` or `"status": "failed"`. Arrays are records,
@@ -36,7 +39,8 @@ pub struct Finding {
     /// `report`, `output`, or `command`.
     pub source: String,
     /// What kind of statement: `guess`, `underdetermined`, `could-not`,
-    /// `infeasible`, `still-failing`, `failed-marker`, `output-flag`, or
+    /// `infeasible`, `still-failing`, `conditional-failure`,
+    /// `unconfirmed-outcome`, `failed-marker`, `output-flag`, or
     /// `named-command-exit`.
     pub signal: String,
     /// The words or the field that matched, clipped.
@@ -117,6 +121,35 @@ const INFEASIBLE: &[&str] = &[
 ];
 
 const STILL_FAILING: &[&str] = &["still fails", "still failing", "still fail "];
+
+/// Who grades the result, in the executor's words.
+const GRADERS: &[&str] = &["grader", "checker", "verifier", "hidden test"];
+
+/// A failure the executor predicts under a reading or a setting it names.
+const WOULD_FAIL: &[&str] = &[
+    "could fail",
+    "would fail",
+    "might fail",
+    "may fail",
+    "will fail",
+    "this fails",
+    "it fails",
+    "mismatch",
+];
+
+/// The real inputs the executor had no access to.
+const HIDDEN_INPUTS: &[&str] = &["hidden", "the real ", "the actual "];
+
+/// Words that say the outcome on those inputs is unknown.
+const UNCONFIRMED: &[&str] = &[
+    "untested",
+    "unconfirmed",
+    "unverified",
+    "not been tested",
+    "not been confirmed",
+    "not confirmed",
+    "not verified",
+];
 
 /// Keys whose `false` marks the result failed.
 const FLAG_KEYS: &[&str] = &[
@@ -286,6 +319,18 @@ pub fn admissions(report: &str) -> Vec<Finding> {
     for (at, _) in find_all(&lower, STILL_FAILING) {
         hits.push((at, "still-failing", false));
     }
+    for (at, _) in find_all(&lower, WOULD_FAIL) {
+        let said = sentence(&lower, at);
+        if GRADERS.iter().any(|g| said.contains(g)) {
+            hits.push((at, "conditional-failure", false));
+        }
+    }
+    for (at, _) in find_all(&lower, UNCONFIRMED) {
+        let said = sentence(&lower, at);
+        if HIDDEN_INPUTS.iter().any(|h| said.contains(h)) {
+            hits.push((at, "unconfirmed-outcome", false));
+        }
+    }
     let mut from = 0;
     while let Some(i) = text[from..].find("FAILED") {
         let at = from + i;
@@ -444,6 +489,9 @@ pub fn optional_output(requirement: &str) -> bool {
             .iter()
             .any(|w| lower.contains(w));
     any_needed
+        || lower.contains("may be empty")
+        || lower.contains("can be empty")
+        || (lower.contains("leave ") && lower.contains(" empty"))
         || lower.contains("if any")
         || lower.contains("optional")
         || lower.contains("if needed")
@@ -496,6 +544,50 @@ mod tests {
         assert!(found[0].evidence.contains("route_feasible"));
         assert!(signals("`route_feasible` now covers every check.").is_empty());
         assert!(signals("feasible = False").contains(&"infeasible".to_string()));
+    }
+
+    #[test]
+    fn a_predicted_grader_failure_is_an_admission() {
+        assert_eq!(
+            signals(
+                "The plan rests on readings of unclear wording; a grader that reads them differently could fail it."
+            ),
+            ["conditional-failure"]
+        );
+        assert_eq!(
+            signals("If the checker expects every WIP to continue, this fails."),
+            ["conditional-failure"]
+        );
+        assert_eq!(
+            signals(
+                "If the grader expects the piano layout, this is the most likely point of mismatch."
+            ),
+            ["conditional-failure"]
+        );
+        assert!(
+            signals("Choices the spec left open, which a hidden grader could read differently.")
+                .is_empty()
+        );
+        assert!(signals("A failed request could fail over to the backup.").is_empty());
+    }
+
+    #[test]
+    fn an_untested_outcome_on_hidden_inputs_is_an_admission() {
+        assert_eq!(
+            signals("How it does on the hidden problem is untested."),
+            ["unconfirmed-outcome"]
+        );
+        assert_eq!(
+            signals("How it does on the hidden data is still unconfirmed."),
+            ["unconfirmed-outcome"]
+        );
+        assert!(
+            signals(
+                "I can't see the hidden verifier, so the speed figures come from my own simulation of it."
+            )
+            .is_empty()
+        );
+        assert!(signals("An untested helper was removed.").is_empty());
     }
 
     #[test]
@@ -567,6 +659,12 @@ mod tests {
         ));
         assert!(optional_output(
             "Write any apt packages needed to run your code to `/app/apt-packages.txt`, one per line."
+        ));
+        assert!(optional_output(
+            "Write any Python dependencies to `/app/requirements.txt` (may be empty)."
+        ));
+        assert!(optional_output(
+            "If you do not need any extra packages, leave `/app/requirements.txt` empty."
         ));
         assert!(!optional_output("Write the answer to `/app/answer.json`."));
     }

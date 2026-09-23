@@ -310,7 +310,10 @@ pub fn reconstruct(episode: &Path) -> Result<Subject, String> {
             options: generic::Options {
                 self_report: verify["self_report"].as_bool().unwrap_or(false),
                 optional_outputs: verify["optional_outputs"].as_bool().unwrap_or(false),
+                behavior: verify["behavior"].as_bool().unwrap_or(false),
             },
+            root: None,
+            collected: Vec::new(),
         }),
     })
 }
@@ -375,14 +378,16 @@ pub fn repair_brief(episode: &Path, input: &checks::Input, report: &Report) -> V
 
 /// The snapshot commands' usage.
 pub const USAGE: &str = "usage: coder-one snapshot checks --bundle DIR --workdir DIR [--out DIR]
-                                 [--subject FILE] [--repair] [--json]
+                                 [--subject FILE] [--policy FILE] [--repair] [--json]
        coder-one snapshot subject --bundle DIR
 
 checks runs verify.checks on the workspace at --workdir with the subject of
 the episode bundle at --bundle (an episode directory, a Harbor trial, or a
 retained <trial>.episode): the snapshot's subject.json when the episode took
 one, else one reconstructed from the bundle. --subject reads another subject
-file. The report goes to <out>/verification/checks.json (a scratch directory
+file. --policy runs the checks with that policy manifest's check options
+(self-report, optional outputs, behavior scenarios) instead of the
+subject's. The report goes to <out>/verification/checks.json (a scratch directory
 by default). --repair also writes <out>/verification/repair-brief.md, the
 brief the episode's repair policy would send, with the bundle's retained
 support report. It calls no model. subject prints the subject.";
@@ -397,6 +402,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         return Err(USAGE.to_string());
     };
     let (mut bundle, mut workdir, mut out, mut subject_file) = (None, None, None, None);
+    let mut policy: Option<PathBuf> = None;
     let (mut repair, mut json_output) = (false, false);
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
@@ -410,6 +416,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--workdir" => workdir = Some(value("--workdir")?),
             "--out" => out = Some(value("--out")?),
             "--subject" => subject_file = Some(value("--subject")?),
+            "--policy" => policy = Some(value("--policy")?),
             "--repair" => repair = true,
             "--json" => json_output = true,
             other => return Err(format!("unknown option {other}\n{USAGE}")),
@@ -447,7 +454,20 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             });
             std::fs::create_dir_all(&out)
                 .map_err(|e| format!("cannot create {}: {e}", out.display()))?;
-            let subject = retarget(subject, &workdir);
+            let mut subject = retarget(subject, &workdir);
+            if let Some(path) = &policy {
+                let text = std::fs::read_to_string(path)
+                    .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+                let manifest = crate::policy::Manifest::parse(&text)?;
+                let options = manifest
+                    .policy
+                    .verify
+                    .map(|verify| verify.check_options())
+                    .unwrap_or_default();
+                if let Some(live) = &mut subject.live {
+                    live.options = options;
+                }
+            }
             let started = Instant::now();
             let (input, report) = checks::check_subject_as(
                 &subject,
@@ -570,6 +590,8 @@ mod tests {
                 command_sec: 30,
                 report: Some("Done.".to_string()),
                 options: generic::Options::default(),
+                root: None,
+                collected: Vec::new(),
             }),
         }
     }

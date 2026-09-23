@@ -95,6 +95,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 | Document | Contents |
 | --- | --- |
 | [Matched Opus controller experiment](2026-09-23-matched-opus-controller.md) | Twelve fresh attempts with executor controls held fixed: cost, time, steps, failure analysis, sensitivity, retained traces, and explicit retention gaps. |
+| [Check recall on retained TB4 trials](2026-09-23-check-recall.md) | The labeled set of 61 graded trials, how often each version of the checks flags the verifier's failures and passes, what flagged each failure, and a live confirmation on the target tasks. |
 | [What the TB4 runs so far show](2026-09-23-what-we-have-learned.md) | Where every arm stands, nine lessons (configuration over controller, blind checks, effort, headroom, persistence, cost, routing, infrastructure, evidence), and the ranked improvements. |
 | [Coder One against Claude Code on TB4](2026-09-23-coder-one-vs-claude-code-tb4.md) | The same-host, same-model comparison on 26 tasks: per-task results, where the two extra passes and the cost gap come from, and how strong each claim is. |
 | [TB4 results](tb4-results.md) | Full matrix, arm versions, matched comparisons, harness checks, and refresh limits. |

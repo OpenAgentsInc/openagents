@@ -32,6 +32,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use super::place::Place;
 use super::selfreport;
 use super::{Bounds, Context, Ineligible, Relation, Scenario, Verdict};
 use crate::requirements::{Binding, Kind, Requirement};
@@ -50,17 +51,6 @@ const MAX_CLAIMED: usize = 3;
 
 /// The most characters of a command's output an observation keeps.
 const OUTPUT_CHARS: usize = 2_000;
-
-/// Variables a check never passes to a command it runs.
-const CREDENTIALS: &[&str] = &[
-    "OPENAGENTS_API_KEY",
-    "TYPESAFE_API_KEY",
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_AUTH_TOKEN",
-    "OPENAI_API_KEY",
-    "CODER_ONE_POLICY",
-];
 
 /// One command the executor ran, as its session reported it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +77,36 @@ pub struct Workspace {
     /// Which optional behaviors the generic scenarios run.
     #[serde(default, skip_serializing_if = "Options::is_default")]
     pub options: Options,
+    /// A replay root standing in for the task's filesystem: absolute paths
+    /// resolve under it and commands run in a sandbox rooted at it. `None`
+    /// in an episode, where the check runs in the task's own container.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
+    /// In a replay, the paths whose final state the trial retained: a
+    /// missing output elsewhere is unknown, not missing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collected: Vec<String>,
+}
+
+impl Workspace {
+    /// Where this workspace's files and commands are.
+    #[must_use]
+    pub fn place(&self) -> Place {
+        Place::of(self.root.as_deref())
+    }
+
+    /// Whether the state of `path` is known: always in an episode, and in
+    /// a replay when the trial retained it or a directory holding it.
+    #[must_use]
+    pub fn known(&self, path: &str) -> bool {
+        if self.root.is_none() || self.collected.is_empty() {
+            return true;
+        }
+        self.collected.iter().any(|c| {
+            let c = c.trim_end_matches('/');
+            path == c || path.starts_with(&format!("{c}/"))
+        })
+    }
 }
 
 /// The generic scenarios' optional behaviors; all off by default, so a
@@ -103,6 +123,11 @@ pub struct Options {
     /// against a requirement the extraction was unsure binds.
     #[serde(default)]
     pub optional_outputs: bool,
+    /// Admit only the outputs a requirement tells the executor to write,
+    /// not files a program writes at run time or inputs it reads, and
+    /// build the behavior scenarios in [`super::behavior`].
+    #[serde(default)]
+    pub behavior: bool,
 }
 
 impl Options {
@@ -143,13 +168,138 @@ fn resolve(dir: &Path, path: &str) -> Option<PathBuf> {
     Some(dir.join(path))
 }
 
+/// Verbs that tell the executor to write a file, for [`asks_executor`].
+const WRITE_VERBS: &[&str] = &[
+    "write", "save", "create", "produce", "generate", "store", "export", "place", "put", "provide",
+    "emit", "submit",
+];
+
+/// Words that may come before an imperative write verb without naming
+/// someone or something else as its subject.
+const LEAD_WORDS: &[&str] = &[
+    "please",
+    "then",
+    "also",
+    "and",
+    "finally",
+    "additionally",
+    "first",
+    "next",
+    "lastly",
+    "you",
+    "should",
+    "must",
+    "need",
+    "to",
+    "will",
+    "can",
+    "then,",
+    "additionally,",
+    "finally,",
+    "also,",
+];
+
+/// Whether a requirement tells the executor to write a file, rather than
+/// describing a file a program writes at run time ("Accepted leads should
+/// write ...") or naming an input ("`output_format.txt`: naming rules").
+/// A requirement that opens with a condition describes run-time behavior.
+#[must_use]
+pub fn asks_executor(text: &str) -> bool {
+    let lower = text
+        .trim_start_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase();
+    if ["if ", "when ", "whenever ", "unless ", "once "]
+        .iter()
+        .any(|w| lower.starts_with(w))
+    {
+        return false;
+    }
+    let words: Vec<&str> = lower
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != ','))
+        .collect();
+    let Some(at) = words.iter().position(|w| {
+        WRITE_VERBS.iter().any(|verb| {
+            w.strip_prefix(verb)
+                .is_some_and(|rest| rest.is_empty() || rest == "s")
+        })
+    }) else {
+        // "must be written to", "is saved as": the file is the subject.
+        return [
+            "be written",
+            "be saved",
+            "be stored",
+            "be placed",
+            "be created",
+        ]
+        .iter()
+        .any(|p| lower.contains(p));
+    };
+    words[..at]
+        .iter()
+        .all(|w| w.is_empty() || LEAD_WORDS.contains(w))
+        || words[..at]
+            .windows(2)
+            .any(|w| w == ["you", "should"] || w == ["you", "must"])
+}
+
+/// The directory a requirement puts its outputs in, when it names exactly
+/// one: "save it inside `/results/`".
+#[must_use]
+pub fn named_directory(text: &str) -> Option<String> {
+    let mut found: Vec<String> = Vec::new();
+    let tokens: Vec<&str> = text.split_whitespace().collect();
+    for (i, raw) in tokens.iter().enumerate() {
+        let token = raw
+            .trim_start_matches(['`', '"', '\'', '(', '*'])
+            .trim_end_matches(|c: char| {
+                matches!(c, '`' | '"' | '\'' | ',' | ';' | ':' | ')' | '*' | '.')
+            });
+        if !token.starts_with('/') || token.len() < 2 || token.contains('*') {
+            continue;
+        }
+        let last = token.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+        let placed = i > 0
+            && ["inside", "in", "into", "under", "to", "at"].contains(
+                &tokens[i - 1]
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase()
+                    .as_str(),
+            );
+        let directory = token.ends_with('/') || (placed && !last.contains('.'));
+        let dir = token.trim_end_matches('/').to_string();
+        if directory && !dir.is_empty() && !found.contains(&dir) {
+            found.push(dir);
+        }
+    }
+    (found.len() == 1).then(|| found.remove(0))
+}
+
+/// Where an output a requirement names lives: a bare name inside the one
+/// directory the requirement names, else as [`resolve`] places it.
+fn resolve_output(dir: &Path, requirement: &Requirement, path: &str) -> Option<PathBuf> {
+    let bare = !path.trim().starts_with('/') && !path.contains('/');
+    if bare
+        && let Some(named) = named_directory(&requirement.text)
+        && named != "/tests"
+        && !named.starts_with("/tests/")
+    {
+        return Some(PathBuf::from(named).join(path.trim()));
+    }
+    resolve(dir, path)
+}
+
 /// The output paths a requirement asks for: the paths it names when it is a
-/// deliverable or its words ask for a file to be written.
-fn outputs(requirement: &Requirement) -> Vec<String> {
+/// deliverable or its words ask for a file to be written. With
+/// [`Options::behavior`], only when it tells the executor to write them.
+fn outputs(requirement: &Requirement, options: Options) -> Vec<String> {
     let lower = requirement.text.to_lowercase();
     let asks = requirement.kind == Kind::Deliverable
         || WRITE_WORDS.iter().any(|word| lower.contains(word));
     if !asks || requirement.kind == Kind::Context {
+        return Vec::new();
+    }
+    if options.behavior && !asks_executor(&requirement.text) {
         return Vec::new();
     }
     requirement
@@ -202,7 +352,15 @@ fn test_word(part: &str) -> bool {
                 || words.get(1).is_some_and(|script| name(script))
         }
         "bash" | "sh" => words.get(1).is_some_and(|script| name(script)),
-        "make" => words.get(1).is_some_and(|t| matches!(*t, "test" | "check")),
+        "make" => {
+            // `make -C DIR test` names the directory first.
+            let target = if words.get(1) == Some(&"-C") {
+                words.get(3)
+            } else {
+                words.get(1)
+            };
+            target.is_some_and(|t| matches!(*t, "test" | "check"))
+        }
         "cargo" | "go" => words.get(1) == Some(&"test"),
         "npm" | "yarn" | "pnpm" => {
             words.get(1) == Some(&"test")
@@ -319,8 +477,8 @@ pub fn build(context: &Context<'_>) -> Result<Vec<Scenario>, Vec<Ineligible>> {
     let mut ineligible = Vec::new();
     let mut seen = Vec::new();
     for requirement in &context.map.requirements {
-        for path in outputs(requirement) {
-            let Some(resolved) = resolve(dir, &path) else {
+        for path in outputs(requirement, workspace.options) {
+            let Some(resolved) = resolve_output(dir, requirement, &path) else {
                 continue;
             };
             if seen.contains(&resolved) {
@@ -523,7 +681,9 @@ fn self_report_target<'a>(context: &'a Context<'_>) -> Option<&'a Requirement> {
         .iter()
         .find(|r| {
             matches!(r.kind, Kind::Check | Kind::Behavior)
-                && (!r.extracted.commands.is_empty() || !outputs(r).is_empty())
+                && (!r.extracted.commands.is_empty()
+                    || !outputs(r, context.workspace.map(|w| w.options).unwrap_or_default())
+                        .is_empty())
         })
         .or_else(|| requirement_for(context, &[Kind::Check, Kind::Behavior, Kind::Deliverable]))
 }
@@ -541,11 +701,11 @@ fn self_report(context: &Context<'_>, workspace: &Workspace) -> Result<Scenario,
     let dir = Path::new(&workspace.dir);
     let mut files: Vec<serde_json::Value> = Vec::new();
     for r in &context.map.requirements {
-        for path in outputs(r) {
+        for path in outputs(r, workspace.options) {
             if extension(&path) != Some("json") {
                 continue;
             }
-            if let Some(resolved) = resolve(dir, &path)
+            if let Some(resolved) = resolve_output(dir, r, &path)
                 && !files.iter().any(|f| f["path"] == path.as_str())
             {
                 files.push(json!({ "path": path, "resolved": resolved.to_string_lossy() }));
@@ -644,15 +804,23 @@ fn csv_problem(text: &str, header: Option<&str>) -> Option<String> {
 }
 
 /// Runs one generic scenario.
-pub async fn run(context: &Context<'_>, scenario: &Scenario) -> Verdict {
+pub async fn run(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> Verdict {
     let Some(workspace) = context.workspace else {
         return Verdict::unavailable(&scenario.id, "the check has no live workspace");
     };
+    let place = workspace.place();
     let mut verdict = Verdict::new(&scenario.id, "passed");
     match scenario.kind.as_str() {
         "generic.output" => {
-            let path = PathBuf::from(scenario.params["resolved"].as_str().unwrap_or_default());
+            let resolved = scenario.params["resolved"].as_str().unwrap_or_default();
+            let path = place.host(Path::new(resolved));
             let meta = std::fs::metadata(&path);
+            if meta.is_err() && !workspace.known(resolved) {
+                return Verdict::unavailable(
+                    &scenario.id,
+                    "the trial didn't retain this path, so a replay can't tell whether it was written",
+                );
+            }
             let observed = match &meta {
                 Ok(meta) if meta.is_file() => {
                     json!({ "path": scenario.params["path"], "exists": true, "bytes": meta.len() })
@@ -690,7 +858,9 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario) -> Verdict {
                 .push("checks that the file is there, not what it holds".to_string());
         }
         "generic.parse" => {
-            let path = PathBuf::from(scenario.params["resolved"].as_str().unwrap_or_default());
+            let path = place.host(Path::new(
+                scenario.params["resolved"].as_str().unwrap_or_default(),
+            ));
             let format = scenario.params["format"].as_str().unwrap_or_default();
             let Ok(text) = std::fs::read_to_string(&path) else {
                 return Verdict::unavailable(&scenario.id, "the file is missing or isn't text");
@@ -759,26 +929,25 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario) -> Verdict {
         }
         "generic.public-command" | "generic.claimed-command" => {
             let command_text = scenario.params["command"].as_str().unwrap_or_default();
-            let shell = crate::minitask::process::which("bash")
-                .or_else(|| crate::minitask::process::which("sh"));
-            let Some(shell) = shell else {
-                return Verdict::unavailable(&scenario.id, "no shell on this host");
+            let command = match place.shell(command_text, &workspace.dir, &[], scratch) {
+                Ok(command) => command,
+                Err(why) => return Verdict::unavailable(&scenario.id, &why),
             };
-            let mut command = std::process::Command::new(shell);
-            command
-                .arg("-c")
-                .arg(command_text)
-                .current_dir(&workspace.dir)
-                .stdin(std::process::Stdio::null());
-            for name in CREDENTIALS {
-                command.env_remove(name);
-            }
             let ran = crate::minitask::process::run(
                 command,
                 Duration::from_secs(scenario.bounds.seconds),
             )
             .await;
             let output = crate::support::scrub(&format!("{}{}", ran.stdout, ran.stderr));
+            if ran.code != Some(0)
+                && place.is_replay()
+                && let Some(missing) = super::place::missing_environment(&output)
+            {
+                return Verdict::unavailable(
+                    &scenario.id,
+                    &format!("the replay lacks what the task's image provides: {missing}"),
+                );
+            }
             verdict.observations.push(json!({
                 "command": command_text,
                 "exit_code": ran.code,
@@ -819,7 +988,7 @@ pub async fn run(context: &Context<'_>, scenario: &Scenario) -> Verdict {
                 findings.extend(selfreport::admissions(report));
             }
             for file in scenario.params["outputs"].as_array().into_iter().flatten() {
-                let resolved = PathBuf::from(file["resolved"].as_str().unwrap_or_default());
+                let resolved = place.host(Path::new(file["resolved"].as_str().unwrap_or_default()));
                 let small = std::fs::metadata(&resolved).is_ok_and(|m| m.len() <= 4 * 1024 * 1024);
                 if small && let Ok(text) = std::fs::read_to_string(&resolved) {
                     findings.extend(selfreport::output_flags(
@@ -877,12 +1046,60 @@ mod tests {
         assert_eq!(refusal("python3 test_solution.py"), None);
         assert_eq!(refusal("bash run_tests.sh"), None);
         assert_eq!(refusal("cargo test --release"), None);
+        assert_eq!(refusal("make -C /app test"), None);
+        assert!(refusal("make -C /app repro").is_some());
         assert!(refusal("pytest /tests/test_outputs.py").is_some());
         assert!(refusal("python3 summarize.py LOG_DIR > out.csv").is_some());
         assert!(refusal("pip install pytest && pytest").is_some());
         assert!(refusal("python3 solve.py").is_some());
         assert!(refusal("rm -rf build && make test").is_some());
         assert!(refusal("python3 x.py <input>").is_some());
+    }
+
+    #[test]
+    fn a_bare_output_lives_in_the_directory_its_requirement_names() {
+        assert_eq!(
+            named_directory(
+                "Provide your answers as a CSV file named `TB3_Conf_Answers.csv` and save it inside `/results/`."
+            )
+            .as_deref(),
+            Some("/results")
+        );
+        assert_eq!(
+            named_directory("Save it inside /results."),
+            Some("/results".to_string())
+        );
+        assert_eq!(named_directory("Write `answer.json`."), None);
+        assert_eq!(named_directory("Copy /a/ into /b/."), None);
+    }
+
+    #[test]
+    fn only_an_instruction_to_the_executor_asks_for_an_output() {
+        assert!(asks_executor(
+            "Provide your answers as a CSV file named `x.csv` and save it inside `/results/`."
+        ));
+        assert!(asks_executor(
+            "Write any Python dependencies to `/app/requirements.txt`."
+        ));
+        assert!(asks_executor("Then save the report to /app/report.json."));
+        assert!(asks_executor(
+            "You should write the plan to `/app/plan.json`."
+        ));
+        assert!(asks_executor(
+            "The final answer must be written to `/app/answer.txt`."
+        ));
+        assert!(!asks_executor(
+            "Accepted leads should write `/app/output/submission.json`."
+        ));
+        assert!(!asks_executor(
+            "If `crm_leads.json` is malformed, then record it in `/app/output/rejected.json`."
+        ));
+        assert!(!asks_executor(
+            "- **`output_format.txt`**: naming rules and formatting requirements for your answer."
+        ));
+        assert!(!asks_executor(
+            "References to the same entity must produce the same token across `subject_links.csv`."
+        ));
     }
 
     #[test]

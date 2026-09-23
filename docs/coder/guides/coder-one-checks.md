@@ -29,6 +29,37 @@ verifier test names, counts, and fixture timings never enter a scenario. A
 test builds scenarios from every recovered v3 candidate and checks that no
 verifier test name appears in them.
 
+## Behavior scenarios
+
+A policy with `verify.behavior` (`tunable-v7.json`) adds scenarios that
+run the candidate the way the task says it will be run. They cover the
+families of the Terminal-Bench 4.0 tasks that another agent solves
+reliably and Coder One hadn't:
+
+| Scenario | Applies when the instruction | Expected relation |
+| --- | --- | --- |
+| `behavior.filter-removes` | Asks for a program that removes JavaScript from an HTML file named on its command line, in place | After it runs on documents with common script vectors, no script element, event handler, or script URL is left, and the surrounding content is. |
+| `behavior.filter-preserves` | Also asks it to preserve the rest of the HTML | Clean documents, with comments, entities, forms, and tables, come out unchanged, up to parser normalization. |
+| `behavior.named-command` | Names a command that writes named outputs | The command exits 0 and writes each output. When the instruction says so, a second run writes the same bytes, another seed writes different bytes, the inputs stay unchanged, and the command runs without the executable the verifier removes. |
+| `behavior.reference-diff` | Asks for a program that behaves exactly like a reference binary | On help, each subcommand's help, and a bad command, the exit code, output, and errors match the reference's. |
+| `behavior.json-overlap` | Asks for a JSON report and says a selected position overlaps a range | Each position field lies within the start-to-end range whose field names share its unit. |
+
+The vectors, clean documents, and probes are the host's own, written from
+the public wording of each family. None comes from a verifier.
+
+With `verify.behavior`, an output check admits only the outputs a
+requirement tells the executor to write. A file a program writes at run
+time ("Accepted leads should write `/app/output/crm_leads.json`") or an
+input the requirement names (`output_format.txt`) isn't an output. Every
+policy resolves a bare output name into the one directory its requirement
+names, so `TB3_Conf_Answers.csv` "inside `/results/`" is read at
+`/results/TB3_Conf_Answers.csv`, not under the working directory.
+
+`generic.self-report` also counts two more admissions: a failure the
+executor predicts under a grader's reading ("a grader that reads them
+differently could fail it"), and an outcome on hidden inputs it calls
+untested or unconfirmed.
+
 ## How a check runs
 
 A check runs four recorded suboperations, each an invocation under one
@@ -106,6 +137,43 @@ what a repair does with a packet.
 Results go to `~/.openagents/coder-one/checks/<job>/<trial>/checks.json`,
 beside the rebuilt `input.json`, with a summary of detections and false
 alarms in `summary-<arm>.json`.
+
+## Measure recall on the labeled set
+
+```sh
+coder-one checks recall                      # every graded tb4--coder-one-tunable-v* trial
+coder-one checks recall v7 html-js-filter    # one arm, one task
+gym coder recall --failures
+```
+
+`recall` builds the labeled set from the finished Harbor trials under
+`~/.openagents/terminal-bench/jobs`. For each graded trial it rebuilds the
+task's filesystem under a replay root: the files the task's public
+`environment/Dockerfile` copies in, with the outputs Harbor collected on
+top. It then runs the checks against that root in a `bwrap` sandbox with
+no network and no home directory, under each arm (`v6`: self-report and
+optional outputs; `v7`: also the behavior scenarios). The table compares
+each arm with the episode's own first check: recall on the verifier's
+failures and false alarms on its passes.
+
+A trial whose agent never ran is left out. The verifier's failed test
+names stay in each trial's `label.json` for postmortem reading; no check
+reads them. The replay's limits make a scenario `unavailable` rather than
+failed: a path the trial didn't retain, a module or command only the task
+image's build steps installed, or an input those steps made. To give the
+sandbox more tools, put them on `CODER_ONE_REPLAY_PATH`; only executables
+in the Nix store are linked in.
+
+For the task's own image instead of a sandbox, run the same checks through
+`tbench replay`:
+
+```sh
+tbench replay --stage checks --artifact PATH/coder-one \
+  --policy crates/coder-one/policies/tunable-v7.json <job>/<trial> ...
+```
+
+The results on the retained Terminal-Bench 4.0 trials are in
+[Check recall on retained TB4 trials](../../terminal-bench/2026-09-23-check-recall.md).
 
 ## See coverage in the Gym
 

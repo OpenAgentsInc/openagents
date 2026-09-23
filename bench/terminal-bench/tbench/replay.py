@@ -328,6 +328,7 @@ def replay_checks(
     repair: bool,
     artifact: Path | None,
     out: Path,
+    policy: Path | None = None,
 ) -> Replay:
     """Run the checks, and with ``repair`` the repair brief, in the task's
     image against the trial's workspace."""
@@ -362,6 +363,8 @@ def replay_checks(
             _docker(["exec", "-u", "0", name, "mkdir", "-p", str(REMOTE / "bin"), str(REMOTE / "out")])
             _docker(["cp", str(binary), f"{name}:{REMOTE / 'bin' / 'coder-one'}"])
             _docker(["cp", f"{bundle}/.", f"{name}:{REMOTE / 'bundle'}"])
+            if policy is not None:
+                _docker(["cp", str(policy), f"{name}:{REMOTE / 'policy.json'}"])
             _docker(["exec", "-u", "0", name, "sh", "-c", f"chmod -R a+rwX {REMOTE}"])
             clock.lap("restore")
             command = [
@@ -378,6 +381,8 @@ def replay_checks(
             ]
             if repair:
                 command.append("--repair")
+            if policy is not None:
+                command += ["--policy", str(REMOTE / "policy.json")]
             ran = _docker(["exec", "-w", workdir, name, *command], timeout=3600)
             clock.lap("checks")
             out.mkdir(parents=True, exist_ok=True)
@@ -547,16 +552,26 @@ def replay_verify(trial: Path, out: Path) -> Replay:
 
 
 def replay(
-    trial: Path, stage: str, *, artifact: Path | None = None, out: Path | None = None
+    trial: Path,
+    stage: str,
+    *,
+    artifact: Path | None = None,
+    out: Path | None = None,
+    policy: Path | None = None,
 ) -> Replay:
-    """One stage of one trial, with the result written to ``replay.json``."""
+    """One stage of one trial, with the result written to ``replay.json``.
+
+    ``policy`` runs the checks with that policy manifest's check options
+    instead of the ones the trial's episode ran."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = out or replays_dir() / f"{trial.name}--{stage}--{stamp}-{uuid.uuid4().hex[:4]}"
     try:
         if stage == "verify":
             result = replay_verify(trial, out)
         else:
-            result = replay_checks(trial, repair=stage == "repair", artifact=artifact, out=out)
+            result = replay_checks(
+                trial, repair=stage == "repair", artifact=artifact, out=out, policy=policy
+            )
     except (ReplayError, OSError, subprocess.TimeoutExpired) as exc:
         result = Replay(trial.name, stage, "-", original_reward(trial), {}, {}, out, str(exc))
     out.mkdir(parents=True, exist_ok=True)
@@ -571,12 +586,13 @@ def replay_many(
     artifact: Path | None = None,
     jobs: int = 4,
     echo: Callable[[str], None] = print,
+    policy: Path | None = None,
 ) -> list[Replay]:
     """Replays several trials at once, printing each as it finishes."""
     done: list[Replay] = []
 
     def one(trial: Path) -> Replay:
-        result = replay(trial, stage, artifact=artifact)
+        result = replay(trial, stage, artifact=artifact, policy=policy)
         echo(line(result))
         return result
 

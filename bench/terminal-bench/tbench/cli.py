@@ -667,10 +667,14 @@ def cmd_replay(args: argparse.Namespace) -> int:
         print("replay: name trials, or --failing MATCH to pick them", file=sys.stderr)
         return 1
     artifact = Path(args.artifact).expanduser() if args.artifact else None
+    policy = Path(args.policy).expanduser() if args.policy else None
+    if policy is not None and not policy.is_file():
+        print(f"replay: no policy manifest at {policy}", file=sys.stderr)
+        return 1
     started = time.monotonic()
     echo = (lambda _line: None) if args.json else print
     results = replay.replay_many(
-        trials, args.stage, artifact=artifact, jobs=args.jobs, echo=echo
+        trials, args.stage, artifact=artifact, jobs=args.jobs, echo=echo, policy=policy
     )
     summary = replay.summary(results, time.monotonic() - started)
     if args.json:
@@ -1057,6 +1061,11 @@ def build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument(
         "--artifact",
         help="the Coder One build to run the checks with (default: the trial's own)",
+    )
+    replay_parser.add_argument(
+        "--policy",
+        help="a policy manifest whose check options the replay runs instead of the "
+        "trial's own (for example crates/coder-one/policies/tunable-v7.json)",
     )
     replay_parser.add_argument(
         "--failing",

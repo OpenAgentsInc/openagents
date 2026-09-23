@@ -15,6 +15,10 @@
 //! | `cancel.<how>.<size>` | After an interrupt below, at, or above the limit, every started task finishes its cleanup before the call returns. |
 //! | `generic.output`, `generic.parse` | An output file a requirement asks for exists, isn't empty, and parses as its format. |
 //! | `generic.public-command`, `generic.claimed-command` | A test the instruction names, or one the executor ran and saw pass, exits 0 on the final state. |
+//! | `behavior.filter-removes`, `behavior.filter-preserves` | An in-place HTML filter defuses common script vectors and leaves clean documents unchanged. |
+//! | `behavior.named-command` | A command the instruction names writes its outputs, and does so deterministically, without changing its inputs, when the instruction says so. |
+//! | `behavior.reference-diff` | A program asked to behave exactly like a reference binary matches it on help and error paths. |
+//! | `behavior.json-overlap` | A JSON report's selected position lies within the range the instruction says it overlaps. |
 //!
 //! The component runs in four recorded suboperations: **build** admits the
 //! scenarios whose applicability conditions hold and that a requirement's
@@ -28,11 +32,15 @@
 //! derived. Protected verifier test names, counts, and fixture timings
 //! never enter one.
 
+pub mod behavior;
 pub mod cancel;
 pub mod cli;
 pub mod data;
 pub mod generic;
+pub mod html;
 pub mod interactive;
+pub mod labeled;
+pub mod place;
 pub mod recover;
 pub mod replay;
 pub mod selfreport;
@@ -374,6 +382,13 @@ pub fn implementation_for(options: generic::Options) -> Implementation {
     {
         catalog.push(json!("generic.self-report"));
     }
+    if options.behavior
+        && let Some(catalog) = config["catalog"].as_array_mut()
+    {
+        for kind in behavior::KINDS {
+            catalog.push(json!(kind));
+        }
+    }
     Implementation::new(
         "verify.checks",
         "admitted scenario catalog, deterministic selector",
@@ -445,6 +460,7 @@ pub fn build(context: &Context<'_>) -> (Vec<Scenario>, Vec<Ineligible>) {
         interactive::build(context),
         cancel::build(context),
         generic::build(context),
+        behavior::build(context),
     ] {
         match built {
             Ok(mut admitted) => scenarios.append(&mut admitted),
@@ -510,7 +526,8 @@ pub async fn run_one(context: &Context<'_>, scenario: &Scenario, scratch: &Path)
             interactive::run(context, scenario, scratch).await
         }
         "cancellation" => cancel::run(context, scenario, scratch).await,
-        kind if generic::KINDS.contains(&kind) => generic::run(context, scenario).await,
+        kind if generic::KINDS.contains(&kind) => generic::run(context, scenario, scratch).await,
+        kind if behavior::KINDS.contains(&kind) => behavior::run(context, scenario, scratch).await,
         other => Verdict::unavailable(&scenario.id, &format!("no runner for {other}")),
     }
 }

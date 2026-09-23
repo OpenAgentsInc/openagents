@@ -66,6 +66,10 @@ gym coder monitor [--json] control.monitor's replay over retained streams: trigg
 gym coder coverage [--attempt JOB/TRIAL | --run ID] [--json]
                            verify.checks requirement coverage per attempt and
                            mini-task run; see gym coder coverage --help
+gym coder recall [--failures] [--json]
+                           check recall on the labeled Terminal-Bench set:
+                           verifier failures and passes the checks flagged;
+                           see gym coder recall --help
 gym coder study [ID] [--all] [--json]
                            hill-climbing studies: candidates by tier, development
                            and held-out results, frontiers, promotions, and spend";
@@ -155,6 +159,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("coverage") {
         return gym::coder_coverage::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("recall") {
+        return gym::coder_recall::command(&args[1..], out);
     }
     if args.first().map(String::as_str) == Some("minitasks") {
         return gym::coder_minitasks::command(&args[1..], out);
