@@ -283,3 +283,8 @@ Opus's time on `build-cython-ext`, where it still takes 19 turns and about
 160 seconds. Beating both at once needs a Luna that finishes build-heavy
 tasks in a handful of turns, or a route that sends only those tasks to
 Opus; the second would cost about $0.10 more on the panel.
+
+[Coder as a tunable system](../optimization/coder-components.md) takes the
+next step: rather than one configuration that beats both winners, a
+per-task policy. An oracle choosing the cheapest reliable arm per task over
+today's trials passes all 24 trials for $0.0716.

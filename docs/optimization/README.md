@@ -26,6 +26,7 @@ host's authority or makes an unmeasured design effective.
 | [Architecture and opportunity map](architecture.md) | What stays fixed, what can vary, and how this changes every TypeSafe opportunity. |
 | [Experiments and promotion](experiments.md) | How to reuse Gym, isolate evidence, run actual candidates, and adopt results. |
 | [Conceptual references](sources.md) | Primary sources for the concepts used in this design. |
+| [Coder as a tunable system](coder-components.md) | Coder One's components, today's composition, the interleaved target, the objective, the hill-climbing study, and the Gym views to follow it. |
 | [Proposed integration issues](proposed-issues.md) | One consolidated, unfiled implementation backlog with dependencies and acceptance criteria. |
 | [NIP-OPT](../../nips/openagents/NIP-OPT.md) | The normative v1 wire contracts for semantic signatures, implementations, studies, candidates, trials, and results. |
 
