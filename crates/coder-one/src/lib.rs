@@ -47,6 +47,7 @@ pub mod prompt;
 pub mod record;
 pub mod repair;
 pub mod requirements;
+pub mod say;
 pub mod scripted;
 pub mod session;
 pub mod shell;
@@ -57,6 +58,7 @@ pub mod study;
 pub mod support;
 pub mod system;
 pub mod tail;
+pub mod terminal;
 
 pub use action::Action;
 pub use agent::{Bounds, Ended, Generate, Judge, Judgments, Shell, run};

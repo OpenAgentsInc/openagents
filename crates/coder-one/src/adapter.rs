@@ -236,6 +236,9 @@ pub struct CliSession<'a> {
     pub deadline: Duration,
     /// Whether to launch Claude Code with stream-json input.
     pub steerable: bool,
+    /// A session to continue instead of starting a new one: the first
+    /// process resumes this ID with the briefing as its message.
+    pub resume: Option<String>,
     /// The stream files' base name, such as `delegate-1`.
     name: String,
     session_id: Option<String>,
@@ -260,6 +263,7 @@ impl<'a> CliSession<'a> {
             binary,
             deadline: cli.deadline,
             steerable: false,
+            resume: None,
             name: name.to_string(),
             session_id: None,
             processes: Vec::new(),
@@ -444,13 +448,17 @@ impl Session for CliSession<'_> {
             return Err("the session already started".to_string());
         }
         self.clock = Instant::now();
-        let session = match self.cli.agent {
-            Agent::ClaudeCode => {
+        let session = match (self.resume.clone(), self.cli.agent) {
+            (Some(id), _) => {
+                self.session_id = Some(id.clone());
+                SessionArg::Resume(id)
+            }
+            (None, Agent::ClaudeCode) => {
                 let id = new_session_id();
                 self.session_id = Some(id.clone());
                 SessionArg::New(Some(id))
             }
-            Agent::Codex => SessionArg::New(None),
+            (None, Agent::Codex) => SessionArg::New(None),
         };
         let started = self.launch(session, &briefing.text).await;
         if let Err(error) = &started {

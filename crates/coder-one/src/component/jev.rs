@@ -343,7 +343,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
             recorder.push(credit(
                 Step::called(decision.call()).noting("jev_usage", charge_skipped()),
             ));
-            println!("  {} ▸ {DEADLINE_SKIP}", ask.name);
+            crate::say::say!("  {} ▸ {DEADLINE_SKIP}", ask.name);
             Asked {
                 answers: None,
                 error: Some(DEADLINE_SKIP.to_string()),
