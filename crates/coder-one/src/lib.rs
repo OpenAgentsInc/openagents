@@ -21,6 +21,7 @@
 pub mod action;
 pub mod adapter;
 pub mod agent;
+pub mod ask;
 pub mod capabilities;
 pub mod capture;
 pub mod checks;

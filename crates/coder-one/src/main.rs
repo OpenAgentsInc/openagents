@@ -8,6 +8,7 @@
 //!                       [--delegate-agent claude-code|codex]
 //!                       [--delegate-model MODEL] [--delegate-timeout SECONDS]
 //! coder-one --version
+//! coder-one ask "QUESTION" [--scope gym|repo] [--executor luna|opus] [--budget USD] [--json]
 //! coder-one episode doctor --contract openagents.coder.episode.v1
 //! coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
 //! coder-one component list|run|suite|extract …
@@ -59,6 +60,8 @@ const USAGE: &str = "usage: coder-one doctor
                  [--delegate-agent claude-code|codex]
                  [--delegate-model MODEL] [--delegate-timeout SECONDS]
        coder-one --version
+       coder-one ask \"QUESTION\" [--scope gym|repo] [--executor luna|opus] [--budget USD] [--json]
+                                                    (coder-one ask --help)
        coder-one episode doctor --contract openagents.coder.episode.v1
        coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
        coder-one component list|run|suite|extract   (coder-one component help)
@@ -109,6 +112,18 @@ async fn main() -> ExitCode {
         Some("handoff") => return handoff_command(&args[1..]).await,
         Some("support") => return support_command(&args[1..]).await,
         Some("repair") => return repair_command(&args[1..]).await,
+        Some("ask") if args.get(1).map(String::as_str) == Some("tools") => {
+            coder_one::ask::tools::command(&args[2..]).await
+        }
+        Some("ask") => {
+            return match coder_one::ask::command(&args[1..]).await {
+                Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+                Err(message) => {
+                    eprintln!("coder-one: {message}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Some("doctor") if args.len() == 1 => doctor(),
         Some(url) if url.starts_with("https://github.com/") && url.contains("/issues/") => {
             match Options::parse(&args[1..]) {

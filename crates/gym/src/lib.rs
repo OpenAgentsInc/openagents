@@ -54,6 +54,7 @@ pub mod ab;
 pub mod admission;
 pub mod build;
 pub mod calibrate;
+pub mod coder_asks;
 pub mod coder_briefing;
 pub mod coder_calls;
 pub mod coder_capabilities;

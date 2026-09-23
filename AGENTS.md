@@ -216,6 +216,10 @@ uses, and marks which are implemented and which are only specified.
   from Jev's evidence; delegation is a host
   decision, never a tool the model sees. Issue #9532 and
   `docs/terminal-bench/coder-one-delegate-runbook.md` cover it.
+  `coder-one ask` answers a question about runs by reading the Gym,
+  inside a read-only boundary, with an allowlisted `read` tool and code
+  that checks every citation; `docs/coder/guides/coder-one-ask.md` covers
+  it, and issue #9574 holds the design.
 - `crates/capability` — the capability manifest contract `coder` and
   `coderbench` share. Reading a registry is inert; an executable probe
   runs only under an approval the operator recorded with the

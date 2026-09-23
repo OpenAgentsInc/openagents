@@ -163,6 +163,10 @@ the agent with its variant or model, such as `Coder One · tunable-v6` or
 `Claude Code · Opus 5.5`. `--members N` sets how many members the text
 lists per group; `--json` lists them all.
 
+`coder-one ask` reads these views to answer a question about runs with
+checked citations; [Ask Coder One about runs](../coder/guides/coder-one-ask.md)
+covers it, and `gym coder asks` lists what it answered.
+
 `gym runs show RUN --json` carries every judgment's probability in
 `learning.every_judgment`, with its tag, category, and whether it's a
 reason, not only the reasons above the threshold. Each transcript step
