@@ -35,6 +35,7 @@ pub const KNOWN: &[&str] = &[
     "exec.system",
     "exec.session",
     "control.monitor",
+    "control.handoff",
     "verify.close",
 ];
 

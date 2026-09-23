@@ -1,0 +1,69 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-handoff-race",
+  "note": "Race where state can be isolated: Codex on GPT-6 Luna and Claude Code on Opus 5.5 run at once, each in its own copy of the task's scratch directory; the first to end with its checks passing wins, and the host stops and reaps the other before copying the winner's state back. Both are charged. Runs on mini-tasks with the scripted adapter only: a task container's state can't be copied, and no CLI adapter has demonstrated lockstep sessions.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "handoff": {
+        "pattern": "race",
+        "to": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5"
+        },
+        "on": [
+          "stalled",
+          "repeating"
+        ],
+        "after": 2,
+        "max_handoffs": 1,
+        "brief": {
+          "requirements": true,
+          "diff": true,
+          "errors": true,
+          "packets": true
+        },
+        "isolation": "scratch-copy"
+      }
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked"
+    },
+    "executor": {
+      "agent": "codex",
+      "version": "0.155.1",
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 600
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

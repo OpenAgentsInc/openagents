@@ -684,13 +684,24 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         return Err(format!("unknown option {other}"));
     }
     let (matrix, _) = source.matrix();
+    // The mini-task patterns are policies too, measured on another task set.
+    let patterns = crate::coder_handoff::load(&crate::coder_handoff::default_path()).ok();
     if source.json {
-        serde_json::to_writer_pretty(&mut *out, &matrix.to_json())
-            .map_err(|error| error.to_string())?;
+        let mut value = matrix.to_json();
+        if let (Some(map), Some(patterns)) = (value.as_object_mut(), &patterns) {
+            map.insert("minitask_patterns".to_owned(), patterns.to_json());
+        }
+        serde_json::to_writer_pretty(&mut *out, &value).map_err(|error| error.to_string())?;
         writeln!(out).map_err(|error| error.to_string())?;
     } else {
         for line in matrix.lines() {
             writeln!(out, "{line}").map_err(|error| error.to_string())?;
+        }
+        if let Some(patterns) = &patterns {
+            writeln!(out).map_err(|error| error.to_string())?;
+            for line in patterns.lines() {
+                writeln!(out, "{line}").map_err(|error| error.to_string())?;
+            }
         }
     }
     Ok(0)

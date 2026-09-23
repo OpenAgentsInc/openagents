@@ -31,6 +31,7 @@ pub mod deadline;
 pub mod delegate;
 pub mod episode;
 pub mod generate;
+pub mod handoff;
 pub mod judge;
 pub mod minitask;
 pub mod monitor;

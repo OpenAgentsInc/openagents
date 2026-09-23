@@ -12,6 +12,7 @@
 //! coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
 //! coder-one component list|run|suite|extract …
 //! coder-one minitask list|run …
+//! coder-one handoff run|compare …
 //! coder-one checks synthetic|run|recover …
 //! coder-one support evaluate|run|fixtures …
 //! coder-one repair study|brief …
@@ -62,6 +63,7 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
        coder-one component list|run|suite|extract   (coder-one component help)
        coder-one minitask list|run                  (coder-one minitask help)
+       coder-one handoff run|compare                (coder-one handoff help)
        coder-one capabilities [--demonstrate] [--json]  (coder-one capabilities help)
        coder-one prompt list|show|capture           (coder-one prompt help)
        coder-one checks synthetic|run|recover       (coder-one checks help)
@@ -102,6 +104,7 @@ async fn main() -> ExitCode {
             };
         }
         Some("checks") => return checks_command(&args[1..]).await,
+        Some("handoff") => return handoff_command(&args[1..]).await,
         Some("support") => return support_command(&args[1..]).await,
         Some("repair") => return repair_command(&args[1..]).await,
         Some("doctor") if args.len() == 1 => doctor(),
@@ -186,6 +189,24 @@ async fn checks_command(args: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match coder_one::checks::cli::command(args).await {
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Err(message) => {
+            eprintln!("coder-one: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `coder-one handoff …`: `run` is 0 when the grader passed.
+async fn handoff_command(args: &[String]) -> ExitCode {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h") | None
+    ) {
+        println!("{}", coder_one::handoff::USAGE);
+        return ExitCode::SUCCESS;
+    }
+    match coder_one::handoff::command(args).await {
         Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
         Err(message) => {
             eprintln!("coder-one: {message}");

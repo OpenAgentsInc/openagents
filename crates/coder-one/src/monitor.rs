@@ -1000,17 +1000,26 @@ pub struct Setup {
     pub params: Params,
     pub jev: JevMode,
     pub task: String,
+    /// What the monitor proposes beyond recording; `None` is shadow mode.
+    pub acting: Option<Acting>,
 }
 
 impl Setup {
-    /// A shadow monitor for a session started on `briefing`.
+    /// A shadow monitor, or an acting one, for a session started on
+    /// `briefing`. An acting monitor's steer carries the last errors and
+    /// the open requirements.
     #[must_use]
     pub fn start(&self, briefing: &str) -> Monitor {
-        Monitor::new(
+        let mut monitor = Monitor::new(
             self.params.clone(),
             Context::new(&self.task, briefing),
             self.jev.clone(),
-        )
+        );
+        monitor.acting.clone_from(&self.acting);
+        if self.acting.is_some() {
+            monitor.message = Some(Box::new(Monitor::steer_text));
+        }
+        monitor
     }
 }
 

@@ -140,6 +140,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(Pack),
         Box::new(scripted::ScriptedAdapter),
         Box::new(monitor::MonitorComponent),
+        Box::new(HandoffComponent),
         Box::new(SystemSelect),
         Box::new(checks::Checks),
         Box::new(support::Support),
@@ -1523,5 +1524,135 @@ mod tests {
         );
         assert!(invocations.iter().all(|i| i.outcome() == "completed"));
         let _ = std::fs::remove_dir_all(out);
+    }
+}
+
+#[derive(Deserialize)]
+struct HandoffInput {
+    /// A policy manifest under `crates/coder-one/policies`.
+    manifest: String,
+    task: String,
+    #[serde(default)]
+    expect: HandoffExpect,
+}
+
+#[derive(Deserialize, Default)]
+struct HandoffExpect {
+    passed: Option<bool>,
+    /// Handoff actions, in order.
+    #[serde(default)]
+    actions: Vec<String>,
+    /// Branch roles, in order.
+    #[serde(default)]
+    branches: Vec<String>,
+}
+
+/// `control.handoff`: one pattern on one mini-task with scripted tiers.
+struct HandoffComponent;
+
+impl Component for HandoffComponent {
+    fn id(&self) -> &'static str {
+        crate::handoff::COMPONENT
+    }
+    fn implementation(&self) -> Implementation {
+        crate::handoff::Policy::single().implementation()
+    }
+    fn about(&self) -> &'static str {
+        "Escalate, plan and implement, steer, or race within one budget, on a mini-task with scripted tiers."
+    }
+    fn run<'a>(
+        &'a self,
+        fixture: &'a Fixture,
+        _jev: &'a JevMode,
+        _recorder: &'a Recorder,
+    ) -> LocalBoxFuture<'a, Result<Ran, String>> {
+        Box::pin(async move {
+            let input: HandoffInput = input(fixture)?;
+            let path = crate::policy::reference_dir().join(&input.manifest);
+            let text = std::fs::read_to_string(&path)
+                .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+            let manifest = crate::policy::Manifest::parse(&text)?;
+            let candidate = crate::handoff::manifest_candidate(&manifest);
+            let mut policy = candidate.policy;
+            if let Some(to) = &policy.to {
+                policy.to = Some(crate::handoff::scripted(to));
+            }
+            let out = std::env::temp_dir().join(format!(
+                "coder-one-component-handoff-{}-{}",
+                std::process::id(),
+                atif::now_ms()
+            ));
+            let ran = crate::handoff::run(crate::handoff::Options {
+                task: crate::minitask::find(&input.task)?,
+                policy,
+                first: crate::handoff::scripted(&candidate.first),
+                out: out.clone(),
+                deadline: std::time::Duration::from_secs(600),
+                jev: None,
+                checks: false,
+            })
+            .await;
+            let _ = std::fs::remove_dir_all(&out);
+            let ran = ran?;
+            let passed = match ran.grade.verdict.as_str() {
+                "passed" => Some(true),
+                "failed" => Some(false),
+                _ => None,
+            };
+            let actions: Vec<String> = ran
+                .handoffs
+                .iter()
+                .filter_map(|h| h["action"].as_str().map(str::to_string))
+                .collect();
+            let branches: Vec<String> =
+                ran.ledger.branches.iter().map(|b| b.role.clone()).collect();
+            let mut matches = true;
+            if let Some(want) = input.expect.passed {
+                matches &= passed == Some(want);
+            }
+            if !input.expect.actions.is_empty() {
+                matches &= input.expect.actions == actions;
+            }
+            if !input.expect.branches.is_empty() {
+                matches &= input.expect.branches == branches;
+            }
+            let mut metrics = Map::new();
+            metrics.insert(
+                "passed".to_string(),
+                passed.map_or(Value::Null, |p| json!(p)),
+            );
+            metrics.insert("matches_expected".to_string(), json!(matches));
+            metrics.insert(
+                "episode_seconds".to_string(),
+                json!(ran.ledger.clock_ms as f64 / 1_000.0),
+            );
+            metrics.insert(
+                "usd".to_string(),
+                ran.ledger
+                    .usd()
+                    .map_or(Value::Null, |usd| json!((usd * 1e6).round() / 1e6)),
+            );
+            metrics.insert("handoffs".to_string(), json!(ran.handoffs.len()));
+            metrics.insert(
+                "reaped".to_string(),
+                json!(
+                    ran.ledger
+                        .branches
+                        .iter()
+                        .filter(|b| b.stopped_by.is_some())
+                        .all(|b| b.reaped)
+                ),
+            );
+            Ok(Ran {
+                output: json!({
+                    "pattern": ran.manifest["pattern"],
+                    "grade": ran.grade.verdict,
+                    "actions": actions,
+                    "ledger": ran.ledger.record(),
+                    "briefs": ran.handoffs.iter().map(|h| h["brief"]["sha256"].clone()).collect::<Vec<_>>(),
+                }),
+                metrics,
+            })
+        })
     }
 }

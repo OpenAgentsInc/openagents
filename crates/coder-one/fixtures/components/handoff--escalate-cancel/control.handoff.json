@@ -1,0 +1,23 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.handoff",
+  "source": {
+    "kind": "synthetic",
+    "note": "Luna loops, is stopped, and Opus finishes from the brief"
+  },
+  "input": {
+    "manifest": "handoff-escalate.json",
+    "task": "cancel-cleanup",
+    "expect": {
+      "passed": true,
+      "actions": [
+        "escalate"
+      ],
+      "branches": [
+        "primary",
+        "escalation"
+      ]
+    }
+  },
+  "retained": null
+}

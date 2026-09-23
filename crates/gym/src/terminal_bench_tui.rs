@@ -137,6 +137,8 @@ pub struct App {
     studies: (Vec<crate::coder_study::Study>, Vec<String>),
     /// `control.monitor`'s replay over the retained streams.
     monitor: Option<crate::coder_monitor::Report>,
+    /// `control.handoff`'s patterns compared on the mini-tasks.
+    patterns: Option<crate::coder_handoff::Report>,
 }
 
 impl App {
@@ -183,6 +185,7 @@ impl App {
             coverage: BTreeMap::new(),
             studies: (Vec::new(), Vec::new()),
             monitor: crate::coder_monitor::load(&crate::coder_monitor::default_path()).ok(),
+            patterns: crate::coder_handoff::load(&crate::coder_handoff::default_path()).ok(),
         }
     }
 
@@ -324,7 +327,7 @@ impl App {
             View::MiniTasks => self.minitasks.0.len(),
             View::Prompt => self.prompt().len(),
             View::Briefing => self.briefing().len(),
-            View::Matrix => self.matrix.lines().len(),
+            View::Matrix => self.matrix_lines().len(),
             View::Router => self.router.lines().len(),
             View::Live => self.live().len(),
             View::Study => self.study().len(),
@@ -519,7 +522,7 @@ impl App {
             ),
             View::Prompt => self.prompt(),
             View::Briefing => self.briefing(),
-            View::Matrix => self.matrix.lines(),
+            View::Matrix => self.matrix_lines(),
             View::Router => self.router.lines(),
             View::Live => self.live(),
             View::Study => self.study(),
@@ -928,6 +931,16 @@ impl App {
                 a.job,
                 a.trial
             ));
+        }
+        lines
+    }
+
+    /// The outcome matrix, then the mini-task handoff patterns.
+    fn matrix_lines(&self) -> Vec<String> {
+        let mut lines = self.matrix.lines();
+        if let Some(patterns) = &self.patterns {
+            lines.push(String::new());
+            lines.extend(patterns.lines());
         }
         lines
     }

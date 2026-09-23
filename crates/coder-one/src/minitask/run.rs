@@ -436,6 +436,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             crate::component::jev::JevMode::Live,
         ),
         task: task.instruction.to_string(),
+        acting: None,
     });
     let (ended, delegated, session_record) = match (&options.executor, script) {
         (ExecutorChoice::Scripted { .. }, Some(script)) => {

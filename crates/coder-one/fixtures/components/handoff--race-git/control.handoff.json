@@ -1,0 +1,24 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.handoff",
+  "source": {
+    "kind": "synthetic",
+    "note": "Luna and Opus race in copies; the loser is stopped and reaped"
+  },
+  "input": {
+    "manifest": "handoff-race.json",
+    "task": "git-recovery",
+    "expect": {
+      "passed": true,
+      "actions": [
+        "race",
+        "race won"
+      ],
+      "branches": [
+        "racer-1",
+        "racer-2"
+      ]
+    }
+  },
+  "retained": null
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.handoff",
+  "source": {
+    "kind": "synthetic",
+    "note": "Opus plans, Luna implements from the plan"
+  },
+  "input": {
+    "manifest": "handoff-planner-worker.json",
+    "task": "log-severity",
+    "expect": {
+      "passed": true,
+      "actions": [
+        "plan"
+      ],
+      "branches": [
+        "planner",
+        "worker"
+      ]
+    }
+  },
+  "retained": null
+}

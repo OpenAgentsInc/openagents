@@ -1,0 +1,20 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.handoff",
+  "source": {
+    "kind": "synthetic",
+    "note": "Luna calls a wrong parser done: no stall, so no escalation"
+  },
+  "input": {
+    "manifest": "handoff-escalate.json",
+    "task": "log-severity",
+    "expect": {
+      "passed": false,
+      "actions": [],
+      "branches": [
+        "primary"
+      ]
+    }
+  },
+  "retained": null
+}

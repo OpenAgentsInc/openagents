@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.handoff",
+  "source": {
+    "kind": "synthetic",
+    "note": "a single Luna pass that loops, then hangs until the episode deadline"
+  },
+  "input": {
+    "manifest": "jevprobe3-luna.json",
+    "task": "cancel-cleanup",
+    "expect": {
+      "passed": false,
+      "branches": [
+        "primary"
+      ]
+    }
+  },
+  "retained": null
+}

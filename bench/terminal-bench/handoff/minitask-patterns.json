@@ -1,0 +1,964 @@
+{
+  "schema": "openagents.coder-one.handoff-compare.v1",
+  "executor": "scripted tiers: each manifest's executors replaced by scripted ones of the same model family",
+  "deadline_ms": 600000,
+  "objective": {
+    "usd_per_second": 0.0001,
+    "fail_usd": 1.0,
+    "j_runtime": "mean cost + λ · mean episode seconds, handoffs and every branch included",
+    "j_offline": "j_runtime + (1 − pass rate) · fail_usd"
+  },
+  "rates": [
+    {
+      "family": "luna",
+      "usd_per_second": 0.000064,
+      "source": "coder-one-jevprobe3-luna: $0.0032 over 50 s per dispatch"
+    },
+    {
+      "family": "opus",
+      "usd_per_second": 0.00244,
+      "source": "coder-one-jevprobe2-opus-lean-low-5m: $0.0532 over 22 s per dispatch"
+    },
+    {
+      "family": "haiku",
+      "usd_per_second": 0.00196,
+      "source": "coder-one-jevprobe-haiku-lean: $0.1583 over 81 s per dispatch"
+    },
+    {
+      "family": "sonnet",
+      "usd_per_second": 0.00281,
+      "source": "coder-one-jevprobe-sonnet-lean-low: $0.1251 over 44 s per dispatch"
+    }
+  ],
+  "notes": [
+    "Scripted tiers play modeled behavior, not measurements: Opus solves each task in about 22 s; the cheap families solve git-recovery, call a wrong log parser done, and loop on a failing check on the terminal and cancellation tasks until stopped, and a steer or a plan leads them to the fix.",
+    "Costs are modeled: each branch's episode seconds times its family's mean spend per second in the retained arms.",
+    "Times are episode time on the host's virtual clock, the time boundary of the agent's sessions; a race charges its wall time once and both branches' cost."
+  ],
+  "policies": [
+    {
+      "policy": "coder-one-jevprobe3-luna",
+      "pattern": "single",
+      "first": "codex/gpt-6-luna",
+      "to": null,
+      "passed": 1,
+      "graded": 4,
+      "tasks": 4,
+      "mean_usd": 0.02008,
+      "mean_seconds": 313.8,
+      "handoffs": 0,
+      "j_runtime": 0.051455,
+      "j_offline": 0.8015,
+      "errors": 0
+    },
+    {
+      "policy": "coder-one-jevprobe2-opus-lean-low-5m",
+      "pattern": "single",
+      "first": "claude-code/claude-opus-5-5",
+      "to": null,
+      "passed": 4,
+      "graded": 4,
+      "tasks": 4,
+      "mean_usd": 0.05368,
+      "mean_seconds": 22.0,
+      "handoffs": 0,
+      "j_runtime": 0.05588,
+      "j_offline": 0.0559,
+      "errors": 0
+    },
+    {
+      "policy": "coder-one-handoff-escalate",
+      "pattern": "escalate",
+      "first": "codex/gpt-6-luna",
+      "to": "claude-code/claude-opus-5-5",
+      "passed": 3,
+      "graded": 4,
+      "tasks": 4,
+      "mean_usd": 0.02932,
+      "mean_seconds": 49.8,
+      "handoffs": 2,
+      "j_runtime": 0.034295,
+      "j_offline": 0.2843,
+      "errors": 0
+    },
+    {
+      "policy": "coder-one-handoff-planner-worker",
+      "pattern": "planner-worker",
+      "first": "codex/gpt-6-luna",
+      "to": "claude-code/claude-opus-5-5",
+      "passed": 4,
+      "graded": 4,
+      "tasks": 4,
+      "mean_usd": 0.0312,
+      "mean_seconds": 42.0,
+      "handoffs": 4,
+      "j_runtime": 0.0354,
+      "j_offline": 0.0354,
+      "errors": 0
+    },
+    {
+      "policy": "coder-one-handoff-steer",
+      "pattern": "steer",
+      "first": "claude-code/claude-haiku-4-5-20251001",
+      "to": null,
+      "passed": 3,
+      "graded": 4,
+      "tasks": 4,
+      "mean_usd": 0.09555,
+      "mean_seconds": 48.8,
+      "handoffs": 2,
+      "j_runtime": 0.100425,
+      "j_offline": 0.3504,
+      "errors": 0
+    },
+    {
+      "policy": "coder-one-handoff-race",
+      "pattern": "race",
+      "first": "codex/gpt-6-luna",
+      "to": "claude-code/claude-opus-5-5",
+      "passed": 4,
+      "graded": 4,
+      "tasks": 4,
+      "mean_usd": 0.055088,
+      "mean_seconds": 22.0,
+      "handoffs": 8,
+      "j_runtime": 0.057288,
+      "j_offline": 0.0573,
+      "errors": 0
+    }
+  ],
+  "cells": [
+    {
+      "policy": "coder-one-jevprobe3-luna",
+      "pattern": "single",
+      "task": "log-severity",
+      "passed": false,
+      "ms": 30000,
+      "usd": 0.00192,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 30000,
+          "usd": 0.0019199999999999998,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-jevprobe3-luna",
+      "pattern": "single",
+      "task": "interactive-terminal",
+      "passed": false,
+      "ms": 600000,
+      "usd": 0.0384,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 600000,
+          "usd": 0.0384,
+          "usd_basis": "modeled",
+          "status": "timed_out",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-jevprobe3-luna",
+      "pattern": "single",
+      "task": "cancel-cleanup",
+      "passed": false,
+      "ms": 600000,
+      "usd": 0.0384,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 600000,
+          "usd": 0.0384,
+          "usd_basis": "modeled",
+          "status": "timed_out",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-jevprobe3-luna",
+      "pattern": "single",
+      "task": "git-recovery",
+      "passed": true,
+      "ms": 25000,
+      "usd": 0.0016,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 25000,
+          "usd": 0.0015999999999999999,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-jevprobe2-opus-lean-low-5m",
+      "pattern": "single",
+      "task": "log-severity",
+      "passed": true,
+      "ms": 22000,
+      "usd": 0.05368,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-jevprobe2-opus-lean-low-5m",
+      "pattern": "single",
+      "task": "interactive-terminal",
+      "passed": true,
+      "ms": 22000,
+      "usd": 0.05368,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-jevprobe2-opus-lean-low-5m",
+      "pattern": "single",
+      "task": "cancel-cleanup",
+      "passed": true,
+      "ms": 22000,
+      "usd": 0.05368,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-jevprobe2-opus-lean-low-5m",
+      "pattern": "single",
+      "task": "git-recovery",
+      "passed": true,
+      "ms": 22000,
+      "usd": 0.05368,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-escalate",
+      "pattern": "escalate",
+      "task": "log-severity",
+      "passed": false,
+      "ms": 30000,
+      "usd": 0.00192,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 30000,
+          "usd": 0.0019199999999999998,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-escalate",
+      "pattern": "escalate",
+      "task": "interactive-terminal",
+      "passed": true,
+      "ms": 72000,
+      "usd": 0.05688,
+      "handoffs": 1,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 50000,
+          "usd": 0.0031999999999999997,
+          "usd_basis": "modeled",
+          "status": "harness",
+          "stopped_by": "control.handoff",
+          "reaped": true,
+          "won": null
+        },
+        {
+          "n": 2,
+          "role": "escalation",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 50000,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-escalate",
+      "pattern": "escalate",
+      "task": "cancel-cleanup",
+      "passed": true,
+      "ms": 72000,
+      "usd": 0.05688,
+      "handoffs": 1,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 50000,
+          "usd": 0.0031999999999999997,
+          "usd_basis": "modeled",
+          "status": "harness",
+          "stopped_by": "control.handoff",
+          "reaped": true,
+          "won": null
+        },
+        {
+          "n": 2,
+          "role": "escalation",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 50000,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-escalate",
+      "pattern": "escalate",
+      "task": "git-recovery",
+      "passed": true,
+      "ms": 25000,
+      "usd": 0.0016,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 25000,
+          "usd": 0.0015999999999999999,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-planner-worker",
+      "pattern": "planner-worker",
+      "task": "log-severity",
+      "passed": true,
+      "ms": 42000,
+      "usd": 0.0312,
+      "handoffs": 1,
+      "branches": [
+        {
+          "n": 1,
+          "role": "planner",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 12000,
+          "usd": 0.029279999999999997,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        },
+        {
+          "n": 2,
+          "role": "worker",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 12000,
+          "ms": 30000,
+          "usd": 0.0019199999999999998,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-planner-worker",
+      "pattern": "planner-worker",
+      "task": "interactive-terminal",
+      "passed": true,
+      "ms": 42000,
+      "usd": 0.0312,
+      "handoffs": 1,
+      "branches": [
+        {
+          "n": 1,
+          "role": "planner",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 12000,
+          "usd": 0.029279999999999997,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        },
+        {
+          "n": 2,
+          "role": "worker",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 12000,
+          "ms": 30000,
+          "usd": 0.0019199999999999998,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-planner-worker",
+      "pattern": "planner-worker",
+      "task": "cancel-cleanup",
+      "passed": true,
+      "ms": 42000,
+      "usd": 0.0312,
+      "handoffs": 1,
+      "branches": [
+        {
+          "n": 1,
+          "role": "planner",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 12000,
+          "usd": 0.029279999999999997,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        },
+        {
+          "n": 2,
+          "role": "worker",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 12000,
+          "ms": 30000,
+          "usd": 0.0019199999999999998,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-planner-worker",
+      "pattern": "planner-worker",
+      "task": "git-recovery",
+      "passed": true,
+      "ms": 42000,
+      "usd": 0.0312,
+      "handoffs": 1,
+      "branches": [
+        {
+          "n": 1,
+          "role": "planner",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 12000,
+          "usd": 0.029279999999999997,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        },
+        {
+          "n": 2,
+          "role": "worker",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 12000,
+          "ms": 30000,
+          "usd": 0.0019199999999999998,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-steer",
+      "pattern": "steer",
+      "task": "log-severity",
+      "passed": false,
+      "ms": 30000,
+      "usd": 0.0588,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-haiku-4-5-20251001"
+          },
+          "started_ms": 0,
+          "ms": 30000,
+          "usd": 0.0588,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-steer",
+      "pattern": "steer",
+      "task": "interactive-terminal",
+      "passed": true,
+      "ms": 70000,
+      "usd": 0.1372,
+      "handoffs": 1,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-haiku-4-5-20251001"
+          },
+          "started_ms": 0,
+          "ms": 70000,
+          "usd": 0.1372,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-steer",
+      "pattern": "steer",
+      "task": "cancel-cleanup",
+      "passed": true,
+      "ms": 70000,
+      "usd": 0.1372,
+      "handoffs": 1,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-haiku-4-5-20251001"
+          },
+          "started_ms": 0,
+          "ms": 70000,
+          "usd": 0.1372,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-steer",
+      "pattern": "steer",
+      "task": "git-recovery",
+      "passed": true,
+      "ms": 25000,
+      "usd": 0.049,
+      "handoffs": 0,
+      "branches": [
+        {
+          "n": 1,
+          "role": "primary",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-haiku-4-5-20251001"
+          },
+          "started_ms": 0,
+          "ms": 25000,
+          "usd": 0.049,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-race",
+      "pattern": "race",
+      "task": "log-severity",
+      "passed": true,
+      "ms": 22000,
+      "usd": 0.055088,
+      "handoffs": 2,
+      "branches": [
+        {
+          "n": 1,
+          "role": "racer-1",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.001408,
+          "usd_basis": "modeled",
+          "status": "harness",
+          "stopped_by": "lost the race",
+          "reaped": true,
+          "won": false
+        },
+        {
+          "n": 2,
+          "role": "racer-2",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": true
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-race",
+      "pattern": "race",
+      "task": "interactive-terminal",
+      "passed": true,
+      "ms": 22000,
+      "usd": 0.055088,
+      "handoffs": 2,
+      "branches": [
+        {
+          "n": 1,
+          "role": "racer-1",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.001408,
+          "usd_basis": "modeled",
+          "status": "harness",
+          "stopped_by": "lost the race",
+          "reaped": true,
+          "won": false
+        },
+        {
+          "n": 2,
+          "role": "racer-2",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": true
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-race",
+      "pattern": "race",
+      "task": "cancel-cleanup",
+      "passed": true,
+      "ms": 22000,
+      "usd": 0.055088,
+      "handoffs": 2,
+      "branches": [
+        {
+          "n": 1,
+          "role": "racer-1",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.001408,
+          "usd_basis": "modeled",
+          "status": "harness",
+          "stopped_by": "lost the race",
+          "reaped": true,
+          "won": false
+        },
+        {
+          "n": 2,
+          "role": "racer-2",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": true
+        }
+      ],
+      "error": null
+    },
+    {
+      "policy": "coder-one-handoff-race",
+      "pattern": "race",
+      "task": "git-recovery",
+      "passed": true,
+      "ms": 22000,
+      "usd": 0.055088,
+      "handoffs": 2,
+      "branches": [
+        {
+          "n": 1,
+          "role": "racer-1",
+          "tier": {
+            "agent": "scripted",
+            "model": "gpt-6-luna"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.001408,
+          "usd_basis": "modeled",
+          "status": "harness",
+          "stopped_by": "lost the race",
+          "reaped": true,
+          "won": false
+        },
+        {
+          "n": 2,
+          "role": "racer-2",
+          "tier": {
+            "agent": "scripted",
+            "model": "claude-opus-5-5"
+          },
+          "started_ms": 0,
+          "ms": 22000,
+          "usd": 0.05368,
+          "usd_basis": "modeled",
+          "status": "answered",
+          "stopped_by": null,
+          "reaped": false,
+          "won": true
+        }
+      ],
+      "error": null
+    }
+  ]
+}

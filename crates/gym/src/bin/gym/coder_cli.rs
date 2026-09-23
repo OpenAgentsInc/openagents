@@ -48,7 +48,10 @@ gym coder capabilities [--json]
 gym coder briefing [QUERY] [--json]
                            what each briefing delivered, trimmed, and left out,
                            and the packer replay's before and after
-gym coder matrix [--json]  the outcome matrix: task by policy, frontiers, oracles
+gym coder matrix [--json]  the outcome matrix: task by policy, frontiers, oracles,
+                           and the mini-task handoff patterns as policies
+gym coder handoff [--json] control.handoff's patterns on the mini-tasks: pass, modeled
+                           cost, episode time, and the objective per policy
 gym coder router [--json]  task features, router picks, and leave-one-task-out
                            regret against fixed and hand-written baselines
 gym coder monitor [--json] control.monitor's replay over retained streams: trigger
@@ -169,6 +172,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("monitor") {
         return gym::coder_monitor::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("handoff") {
+        return gym::coder_handoff::command(&args[1..], out);
     }
     let (Some("policy"), Some(command)) = (
         args.first().map(String::as_str),

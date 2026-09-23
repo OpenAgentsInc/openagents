@@ -176,6 +176,11 @@ pub struct ControlPolicy {
     /// and the manifest's digest is what it was before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitor: Option<crate::monitor::Params>,
+    /// `control.handoff`: escalate, plan and implement, steer, or race
+    /// within the episode's one budget. Absent, one executor runs from
+    /// start to finish, and the manifest's digest is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handoff: Option<crate::handoff::Policy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -498,6 +503,7 @@ impl Manifest {
                     error_streak: 3,
                     unchanged_steps: 6,
                     monitor: None,
+                    handoff: None,
                 },
                 brief: BriefPolicy {
                     cap: delegate::BRIEFING_CAP,
@@ -657,6 +663,18 @@ impl Manifest {
         }
         if let Some(system) = &executor.system {
             problems.extend(system.validate(executor.agent.agent()));
+        }
+        if let Some(handoff) = &self.policy.control.handoff {
+            let first = crate::handoff::Tier::new(
+                match executor.agent {
+                    AgentName::ClaudeCode => "claude-code",
+                    AgentName::Codex => "codex",
+                },
+                &executor.model,
+            );
+            if let Err(problem) = handoff.check(&first) {
+                problems.push(problem);
+            }
         }
         if let Some(session) = &executor.session {
             let (demonstrated, _) = crate::adapter::capabilities(executor.agent.agent());
@@ -1232,6 +1250,22 @@ pub const REFERENCE: &[(&str, &str)] = &[
         include_str!("../policies/jevprobe2-opus-lean-low-5m.json"),
     ),
     ("pack-luna.json", include_str!("../policies/pack-luna.json")),
+    (
+        "handoff-escalate.json",
+        include_str!("../policies/handoff-escalate.json"),
+    ),
+    (
+        "handoff-planner-worker.json",
+        include_str!("../policies/handoff-planner-worker.json"),
+    ),
+    (
+        "handoff-steer.json",
+        include_str!("../policies/handoff-steer.json"),
+    ),
+    (
+        "handoff-race.json",
+        include_str!("../policies/handoff-race.json"),
+    ),
 ];
 
 /// Where the reference manifests live in the checkout.

@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.handoff",
+  "source": {
+    "kind": "synthetic",
+    "note": "a single Opus pass"
+  },
+  "input": {
+    "manifest": "jevprobe2-opus-lean-low-5m.json",
+    "task": "cancel-cleanup",
+    "expect": {
+      "passed": true,
+      "branches": [
+        "primary"
+      ]
+    }
+  },
+  "retained": null
+}

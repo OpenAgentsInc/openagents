@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.handoff",
+  "source": {
+    "kind": "synthetic",
+    "note": "a looping session steered in place"
+  },
+  "input": {
+    "manifest": "handoff-steer.json",
+    "task": "interactive-terminal",
+    "expect": {
+      "passed": true,
+      "actions": [
+        "steer"
+      ],
+      "branches": [
+        "primary"
+      ]
+    }
+  },
+  "retained": null
+}

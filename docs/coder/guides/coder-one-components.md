@@ -21,6 +21,7 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | `evidence.pack` | The briefing within its character budget, packed by requirement coverage, with every omission named. The suite measures the first packer beside it. | One request per item with Jev coverage judgments; none without |
 | `exec.scripted` | How the host starts, observes, steers, stops, and resumes a scripted session. | None |
 | `control.monitor` | Whether a running session is making progress, repeating a failed approach, re-reading briefed evidence, or claiming it is done. Shadow mode: it records, never acts. | One request per trigger |
+| `control.handoff` | Whether to continue, steer, escalate to another executor, split the work between a planner and a worker, or race, within one budget. The [mini-task guide](coder-one-minitasks.md#hand-off-escalate-and-split-work) covers it. | None; its monitor can ask Jev |
 | `exec.system` | The executor's system prompt: the manifest's sections, plus the optional sections the task needs. | One request |
 | `verify.close` | Whether the delegate's report and the changes show the task done. | One request |
 | `verify.checks` | Which requirements admitted scenarios observe, contradict, or can't verify against the candidate. | None |
