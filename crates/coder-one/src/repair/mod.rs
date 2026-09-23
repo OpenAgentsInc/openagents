@@ -84,6 +84,11 @@ impl BriefKind {
 pub enum Trigger {
     /// Only when a check contradicted a requirement: the episode's policy.
     Detected,
+    /// Only when a scenario observed a failure. A requirement that only the
+    /// support judge contradicted doesn't trigger a repair: on
+    /// git-leak-recovery those judgments repaired passing work three times
+    /// out of three and changed nothing.
+    Checked,
     /// On every candidate, to count what an unneeded repair breaks.
     Always,
 }
@@ -94,11 +99,12 @@ impl Trigger {
     pub fn word(self) -> &'static str {
         match self {
             Trigger::Detected => "detected",
+            Trigger::Checked => "checked",
             Trigger::Always => "always",
         }
     }
 
-    /// Parses `detected` or `always`.
+    /// Parses `detected`, `checked`, or `always`.
     ///
     /// # Errors
     ///
@@ -106,8 +112,11 @@ impl Trigger {
     pub fn parse(word: &str) -> Result<Self, String> {
         match word {
             "detected" => Ok(Trigger::Detected),
+            "checked" => Ok(Trigger::Checked),
             "always" => Ok(Trigger::Always),
-            other => Err(format!("a trigger is detected or always, not {other}")),
+            other => Err(format!(
+                "a trigger is detected, checked, or always, not {other}"
+            )),
         }
     }
 }
@@ -488,6 +497,7 @@ pub async fn attempt<E: Executor>(
     );
     let triggered = match policy.trigger {
         Trigger::Detected => !found.is_empty(),
+        Trigger::Checked => found.iter().any(|gap| !gap.packets.is_empty()),
         Trigger::Always => true,
     };
     let mut record = json!({

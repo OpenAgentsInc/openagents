@@ -14,7 +14,7 @@ use crate::minitask::{CATALOG, find};
 /// The repair commands' usage.
 pub const USAGE: &str =
     "usage: coder-one repair study [--tasks ID,ID…] [--same PROFILE] [--other PROFILE]
-                              [--trigger detected|always] [--allowance SECONDS]
+                              [--trigger detected|checked|always] [--allowance SECONDS]
                               [--out DIR] [--json]
        coder-one repair brief --run DIR
 

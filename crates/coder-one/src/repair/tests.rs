@@ -296,3 +296,13 @@ async fn an_arm_with_no_repair_leaves_the_copy_as_it_was() {
     assert_eq!(row["triggered"], json!(false));
     let _ = std::fs::remove_dir_all(out);
 }
+
+#[test]
+fn every_trigger_round_trips_through_its_word() {
+    for trigger in [Trigger::Detected, Trigger::Checked, Trigger::Always] {
+        assert_eq!(Trigger::parse(trigger.word()), Ok(trigger));
+        let json = serde_json::to_value(trigger).unwrap();
+        assert_eq!(json, json!(trigger.word()));
+    }
+    assert!(Trigger::parse("sometimes").is_err());
+}

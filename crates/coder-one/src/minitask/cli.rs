@@ -19,7 +19,7 @@ pub const USAGE: &str = "usage: coder-one minitask list [--json]
                                  [--controls FILE] [--no-checks] [--monitor]
                                  [--out DIR] [--json]
                                  [--repair PROFILE [--repair-brief packet|plain]
-                                  [--repair-trigger detected|always]]
+                                  [--repair-trigger detected|checked|always]]
 
 run sets the task up in a scratch directory, runs one episode with no
 explore steps, and grades it. The scripted executor (the default) plays the
