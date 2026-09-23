@@ -25,6 +25,7 @@ pub mod delegate;
 pub mod episode;
 pub mod generate;
 pub mod judge;
+pub mod policy;
 pub mod record;
 pub mod shell;
 pub mod state;

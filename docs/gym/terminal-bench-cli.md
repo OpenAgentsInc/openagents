@@ -46,6 +46,23 @@ from `bench/terminal-bench/samples/`. Use `--jobs-dir`, `--traces-dir`, or
 `--no-samples` to omit one. Nested resilience samples and resumed trials
 are included. Read errors stay visible in text and JSON output.
 
+## Compare Coder One policy manifests
+
+`gym coder policy` reads the policy manifest every Coder One episode
+records, and the manifest files in `crates/coder-one/policies/`. Attempts
+that record a manifest group in `compare` by its digest, so a group's label
+is `policy <digest prefix>` and it lists the arms that ran it.
+
+```sh
+gym coder policy list
+gym coder policy show coder-one-jevprobe3-luna
+gym coder policy diff bdefda51a03c coder-one-jevprobe2-opus-lean-low-5m --json
+```
+
+A query is a digest or a prefix of six or more hex digits, a manifest name,
+an arm, or a manifest file name. `--policies-dir` adds another manifest
+directory, and the source options above apply.
+
 ## Run the pinned harness
 
 The commands below call `uv run tbench` in `bench/terminal-bench/`. The

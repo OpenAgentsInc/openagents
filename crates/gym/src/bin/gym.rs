@@ -52,6 +52,8 @@ use gym::suite::{Item, Partition, Suite};
 use jev::{Client, Config, Questions, SystemOneRequest};
 use serde_json::Value;
 
+#[path = "gym/coder_cli.rs"]
+mod coder_cli;
 #[path = "gym/terminal_bench_cli.rs"]
 mod terminal_bench_cli;
 
@@ -185,6 +187,9 @@ fn main() {
     if command == "terminal-bench" {
         std::process::exit(terminal_bench_cli::run(args.collect()));
     }
+    if command == "coder" {
+        std::process::exit(coder_cli::run(args.collect()));
+    }
     let options = read_options(args);
     match command.as_str() {
         "eval" => run(eval_command(options)),
@@ -229,6 +234,7 @@ gym regress  compare a door with its own last recorded run
 gym admit    judge a frozen admission plan against recorded evidence and
              write the decision a registry activates
 gym terminal-bench  inspect evidence or run the pinned Harbor harness
+gym coder policy    list, show, and diff Coder One policy manifests
 
   --door name=url     a door to ask; repeatable
   --jev               hosted Jev, from TYPESAFE_API_KEY

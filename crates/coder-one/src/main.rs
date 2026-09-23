@@ -369,6 +369,19 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             artifacts_label: run_dir.to_string_lossy().into_owned(),
             env: Vec::new(),
             credential,
+            // Issue mode keeps reading the older switches directly; an
+            // episode resolves them through its policy manifest.
+            effort: env("CODER_ONE_DELEGATE_EFFORT")
+                .map(|effort| effort.trim().to_string())
+                .filter(|effort| {
+                    !effort.is_empty() && effort.chars().all(|c| c.is_ascii_lowercase())
+                }),
+            tools: env("CODER_ONE_DELEGATE_TOOLS")
+                .map(|tools| tools.trim().to_string())
+                .filter(|tools| !tools.is_empty()),
+            prompt_cache_ttl: env("CLAUDE_CODE_PROMPT_CACHE_TTL")
+                .map(|ttl| ttl.trim().to_string())
+                .filter(|ttl| !ttl.is_empty()),
             runs: 0,
         };
         let instruction = format!("{}\n\n{}", state.issue.title, state.issue.body);

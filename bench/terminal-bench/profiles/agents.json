@@ -1068,11 +1068,7 @@
       "version": null,
       "model": "free",
       "kwargs": {
-        "delegate": "always",
-        "delegate_agent": "codex",
-        "codex_version": "0.155.1",
-        "delegate_model": "gpt-6-luna",
-        "explore_steps": 0
+        "policy": "crates/coder-one/policies/jevprobe3-luna.json"
       },
       "required_kwargs": [
         "artifact_path",
@@ -1107,10 +1103,7 @@
             "CODEX_FORCE_AUTH_JSON"
           ],
           "env_overrides": {
-            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json",
-            "CODER_ONE_DEEP": "on",
-            "CODER_ONE_PROBES": "on",
-            "CODER_ONE_PROBE_V2": "v3"
+            "CODEX_AUTH_JSON_PATH": "~/.codex/auth.json"
           },
           "exclude_env": [
             "CODEX_FORCE_AUTH_JSON"
@@ -1118,7 +1111,7 @@
           "note": "Generation and Jev as in coder-one; the Codex delegate signs in with the host's ChatGPT-account auth.json, which the adapter places in the container the way Harbor's codex agent does and removes after the run. CODEX_FORCE_AUTH_JSON stays a host-side selector: the mode forwards the resolved file path instead."
         }
       },
-      "note": "Jev-probe: no Gemini. Before delegating, a battery of read-only probes (listing, git state, README, tests, versions, paths the task names) runs in parallel, Jev keeps the outputs the task needs, and those join the Jev file survey in the briefing. Codex on GPT-6 Luna finishes. Probe v3 (#9535): probe v2 with directions that test every changed code path instead of one final check."
+      "note": "Jev-probe: no Gemini. Before delegating, a battery of read-only probes (listing, git state, README, tests, versions, paths the task names) runs in parallel, Jev keeps the outputs the task needs, and those join the Jev file survey in the briefing. Codex on GPT-6 Luna finishes. Probe v3 (#9535): probe v2 with directions that test every changed code path instead of one final check. The policy manifest crates/coder-one/policies/jevprobe3-luna.json (#9540) now holds the configuration: it pins Codex 0.155.1 and reproduces the environment switches this arm set before."
     },
     "coder-one-jevprobe-luna-low": {
       "role": "candidate",
@@ -1326,10 +1319,7 @@
       "version": null,
       "model": "free",
       "kwargs": {
-        "delegate": "always",
-        "claude_code_version": "2.1.280",
-        "delegate_model": "claude-opus-5-5",
-        "explore_steps": 0
+        "policy": "crates/coder-one/policies/jevprobe2-opus-lean-low-5m.json"
       },
       "required_kwargs": [
         "artifact_path",
@@ -1366,14 +1356,7 @@
             "ANTHROPIC_AUTH_TOKEN"
           ],
           "note": "Generation and Jev as in coder-one; the delegate runs on a Claude subscription token from `claude setup-token`. The API-key variables are excluded so the CLI uses the token. The delegate's total_cost_usd is then a list-price figure, not a bill (cli_list_price).",
-          "env_overrides": {
-            "CODER_ONE_DEEP": "on",
-            "CODER_ONE_DELEGATE_TOOLS": "Bash,Read,Edit,Write,Glob,Grep",
-            "CODER_ONE_PROBES": "on",
-            "CODER_ONE_DELEGATE_EFFORT": "low",
-            "CODER_ONE_PROBE_V2": "on",
-            "CLAUDE_CODE_PROMPT_CACHE_TTL": "5m"
-          }
+          "env_overrides": {}
         },
         "api-key": {
           "requires_all": [
@@ -1391,7 +1374,7 @@
           "env_overrides": {}
         }
       },
-      "note": "Jev-probe: no Gemini. Before delegating, a battery of read-only probes (listing, git state, README, tests, versions, paths the task names) runs in parallel, Jev keeps the outputs the task needs, and those join the Jev file survey in the briefing. Claude Code on Opus 5.5 with six tools finishes. The delegate runs at reasoning effort low. Probe v2 (#9535): a Jev-gated setup pack runs the clone and install steps the task names, named repositories get git probes, likely edit targets go on whole, the survey pool is 40 files, and the delegate is told to work in few, large steps. Claude Code writes the five-minute prompt cache (CLAUDE_CODE_PROMPT_CACHE_TTL=5m) instead of the subscription's one hour."
+      "note": "Jev-probe: no Gemini. Before delegating, a battery of read-only probes (listing, git state, README, tests, versions, paths the task names) runs in parallel, Jev keeps the outputs the task needs, and those join the Jev file survey in the briefing. Claude Code on Opus 5.5 with six tools finishes. The delegate runs at reasoning effort low. Probe v2 (#9535): a Jev-gated setup pack runs the clone and install steps the task names, named repositories get git probes, likely edit targets go on whole, the survey pool is 40 files, and the delegate is told to work in few, large steps. Claude Code writes the five-minute prompt cache (CLAUDE_CODE_PROMPT_CACHE_TTL=5m) instead of the subscription's one hour. The policy manifest crates/coder-one/policies/jevprobe2-opus-lean-low-5m.json (#9540) now holds the configuration: it pins Claude Code 2.1.280 and reproduces the environment switches this arm set before."
     },
     "coder-one-jevprobe3-opus-lean-low": {
       "role": "candidate",

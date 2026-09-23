@@ -133,6 +133,32 @@ an arm's profile sets:
 | `CODER_ONE_DELEGATE_TOOLS`, `CODER_ONE_DELEGATE_EFFORT` | the lean and low-effort arms | Claude Code's `--tools` list and `--effort`, or Codex's `model_reasoning_effort`. |
 | `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` | `coder-one-jevprobe2-opus-lean-low-5m`, `coder-one-jevprobe3-opus-lean-low` | Read by Claude Code itself: the five-minute prompt cache instead of the one hour a subscription token gets. Writes cost 1.25 times the input rate instead of 2 times. |
 
+### Configure an arm with a policy manifest
+
+A policy manifest names every component's implementation and parameters in
+one JSON file with the schema `openagents.coder-one.policy.v1`. The
+reference manifests live in `crates/coder-one/policies/`:
+`jevprobe3-luna.json` and `jevprobe2-opus-lean-low-5m.json` reproduce the
+switches those two arms set in the table above, and their profiles now
+point at them with the `policy` kwarg. The adapter reads the file on the
+host, installs the executor and version the manifest pins, and passes the
+manifest to the episode as `CODER_ONE_POLICY`.
+
+The episode resolves its configuration once, before anything runs: the
+manifest, or the built-in default when there is none, with each switch
+above applied on top as an override. The bundle's `manifest.json` records
+the resolved manifest, its digest, and every override under `policy`, and
+the Gym groups comparisons by that digest. The `protected` part (the
+isolation boundary, the effect policy, the acceptance rule, and the
+resource ceilings) is outside any candidate's search space, and a field
+is searchable only when a canary test in `coder_one::policy` shows that
+changing it reaches the invoked executor.
+
+```sh
+gym coder policy list
+gym coder policy diff coder-one-jevprobe3-luna coder-one-jevprobe2-opus-lean-low-5m
+```
+
 ## Don't install too many agents at once
 
 Harbor gives an agent 360 seconds to install. Each Claude Code arm

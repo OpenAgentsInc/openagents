@@ -42,7 +42,7 @@ const YES: f64 = 0.5;
 
 /// A file code found that might matter to the issue.
 #[derive(Debug, Clone)]
-struct Candidate {
+pub(crate) struct Candidate {
     path: String,
     hits: usize,
     excerpt: String,
@@ -73,8 +73,10 @@ pub struct JevJudge {
     /// commands and let Jev pick the outputs worth handing on.
     probes: bool,
     /// Probe v2: a Jev-gated setup pack, git probes in the repositories the
-    /// task names, and a smaller survey pool.
+    /// task names, and whole edit targets.
     v2: bool,
+    /// The most files the deep survey judges.
+    survey_files: usize,
 }
 
 /// The most characters of one probe's output Jev reads and a briefing keeps.
@@ -84,9 +86,9 @@ const PROBE_KEEP: usize = 6;
 const PROBE_TOTAL_CHARS: usize = 14_000;
 
 /// The most files the survey judges, in batches of [`SURVEY_BATCH`].
-const SURVEY_FILES: usize = 100;
+pub(crate) const SURVEY_FILES: usize = 100;
 /// Probe v2's smaller survey pool: Jev's file survey was most of its cost.
-const SURVEY_FILES_V2: usize = 40;
+pub(crate) const SURVEY_FILES_V2: usize = 40;
 /// The most characters of one likely edit target probe v2 hands on.
 const EDIT_TARGET_CHARS: usize = 16_000;
 const SURVEY_BATCH: usize = 20;
@@ -136,7 +138,29 @@ impl JevJudge {
             deep: false,
             probes: false,
             v2: false,
+            survey_files: SURVEY_FILES,
         }
+    }
+
+    /// Sets how many files the deep survey judges, at most
+    /// [`SURVEY_FILES`].
+    #[must_use]
+    pub fn survey_files(mut self, files: usize) -> Self {
+        self.survey_files = files.clamp(1, SURVEY_FILES);
+        self
+    }
+
+    /// The judge's switches, for the record and the policy canaries:
+    /// whether Jev runs, deep mode, probes, probe v2, and the survey size.
+    #[must_use]
+    pub fn switches(&self) -> (bool, bool, bool, bool, usize) {
+        (
+            self.client.is_some(),
+            self.deep,
+            self.probes,
+            self.v2,
+            self.survey_files,
+        )
     }
 
     /// Turns on probe v2.
@@ -669,7 +693,7 @@ impl JevJudge {
     /// The files the survey judges: those the issue names, then by
     /// keyword hits, then build manifests, then short paths, at most
     /// [`SURVEY_FILES`].
-    fn survey_pool(&self, issue: &Issue) -> Vec<Candidate> {
+    pub(crate) fn survey_pool(&self, issue: &Issue) -> Vec<Candidate> {
         let (tracked, hits) = self.search();
         let mut order: Vec<String> = self.candidates(issue).into_iter().map(|c| c.path).collect();
         let mut ranked: Vec<(&String, &usize)> = hits.iter().collect();
@@ -686,24 +710,14 @@ impl JevJudge {
             .chain(manifests)
             .chain(rest)
         {
-            if order.len()
-                >= if self.v2 {
-                    SURVEY_FILES_V2
-                } else {
-                    SURVEY_FILES
-                }
-            {
+            if order.len() >= self.survey_files {
                 break;
             }
             if !order.contains(path) {
                 order.push(path.clone());
             }
         }
-        order.truncate(if self.v2 {
-            SURVEY_FILES_V2
-        } else {
-            SURVEY_FILES
-        });
+        order.truncate(self.survey_files);
         order
             .into_iter()
             .map(|path| {

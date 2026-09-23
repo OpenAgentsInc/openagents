@@ -608,24 +608,6 @@ const SURVEYED_FILE_CHARS: usize = 4_000;
 /// of reading it first.
 const EDIT_TARGET_FILE_CHARS: usize = 16_000;
 
-/// The delegate's reasoning effort, from `CODER_ONE_DELEGATE_EFFORT`, or
-/// empty for the CLI's default. Only a plain lowercase word passes.
-fn delegate_effort() -> String {
-    std::env::var("CODER_ONE_DELEGATE_EFFORT")
-        .map(|effort| effort.trim().to_string())
-        .ok()
-        .filter(|effort| effort.chars().all(|c| c.is_ascii_lowercase()))
-        .unwrap_or_default()
-}
-
-/// Claude Code's tool list for the delegate, from `CODER_ONE_DELEGATE_TOOLS`,
-/// or empty for the CLI's full default set.
-fn delegate_tools() -> String {
-    std::env::var("CODER_ONE_DELEGATE_TOOLS")
-        .map(|tools| tools.trim().to_string())
-        .unwrap_or_default()
-}
-
 /// The briefing sent to the delegate, and exactly what was left out.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Briefing {
@@ -1292,6 +1274,18 @@ pub struct Cli {
     /// Variables set for the child beyond the inherited environment.
     pub env: Vec<(String, String)>,
     pub credential: Credential,
+    /// Reasoning effort: Claude Code's `--effort` or Codex's
+    /// `model_reasoning_effort`. `None` keeps the CLI's default.
+    pub effort: Option<String>,
+    /// Claude Code's built-in tools, such as `Bash,Read,Edit,Write`. Fewer
+    /// tools make a smaller fixed prompt on every call: four tools halved
+    /// it, from about 17,800 to 9,000 tokens, on 2026-09-22. `None` keeps
+    /// the full default set.
+    pub tools: Option<String>,
+    /// Claude Code's prompt-cache TTL, set as `CLAUDE_CODE_PROMPT_CACHE_TTL`
+    /// for the child. `None` removes any inherited value, so the child runs
+    /// the CLI's default.
+    pub prompt_cache_ttl: Option<String>,
     /// Delegations run so far.
     pub runs: u32,
 }
@@ -1303,6 +1297,63 @@ impl Cli {
             format!("delegate-{}.briefing.md", self.runs),
             format!("delegate-{}.stream.jsonl", self.runs),
         )
+    }
+
+    /// The command one run invokes: `binary` through `sh`, with the
+    /// briefing redirected in and the stream out, and the child's
+    /// environment set from the resolved configuration.
+    #[must_use]
+    pub fn command(&self, binary: &Path, briefing: &Path, stream: &Path) -> std::process::Command {
+        // The supervisor gives the child a null standard input, so a shell
+        // redirects the briefing in and the stream out to a file: the
+        // stream's last event is the result, and a capped pipe would lose it.
+        let script = match self.agent {
+            Agent::ClaudeCode => {
+                "exec \"$0\" -p --output-format stream-json --verbose --model \"$1\" \
+                 --permission-mode bypassPermissions ${4:+--tools \"$4\"} ${5:+--effort \"$5\"} \
+                 < \"$2\" > \"$3\""
+            }
+            // The task container or the fresh clone is the boundary, so
+            // Codex runs without its own sandbox or approval prompts.
+            Agent::Codex => {
+                "exec \"$0\" exec --json --skip-git-repo-check -m \"$1\" \
+                 ${5:+-c \"model_reasoning_effort=$5\"} \
+                 --dangerously-bypass-approvals-and-sandbox - < \"$2\" > \"$3\""
+            }
+        };
+        let mut command = std::process::Command::new("sh");
+        command
+            .arg("-c")
+            .arg(script)
+            .arg(binary)
+            .arg(&self.model)
+            .arg(briefing)
+            .arg(stream)
+            .arg(self.tools.as_deref().unwrap_or_default())
+            .arg(self.effort.as_deref().unwrap_or_default())
+            .current_dir(&self.workdir)
+            // A parent Claude Code session's marker makes the CLI refuse to
+            // start; the delegate is its own session.
+            .env_remove("CLAUDECODE")
+            .env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
+            // Bytecode the delegate's test runs leave behind is not part of
+            // the change, and in issue mode the host would commit it.
+            .env("PYTHONDONTWRITEBYTECODE", "1");
+        match &self.prompt_cache_ttl {
+            Some(ttl) => command.env("CLAUDE_CODE_PROMPT_CACHE_TTL", ttl),
+            None => command.env_remove("CLAUDE_CODE_PROMPT_CACHE_TTL"),
+        };
+        if self.credential == Credential::OauthToken {
+            // With a subscription token present, a stray API key would
+            // take precedence and bill the API instead.
+            command
+                .env_remove("ANTHROPIC_API_KEY")
+                .env_remove("ANTHROPIC_AUTH_TOKEN");
+        }
+        for (name, value) in &self.env {
+            command.env(name, value);
+        }
+        command
     }
 }
 
@@ -1334,6 +1385,9 @@ impl Executor for Cli {
         );
         extra.insert("workdir".to_string(), json!(self.workdir.to_string_lossy()));
         extra.insert("credential".to_string(), json!(self.credential.word()));
+        extra.insert("effort".to_string(), json!(self.effort));
+        extra.insert("tools".to_string(), json!(self.tools));
+        extra.insert("prompt_cache_ttl".to_string(), json!(self.prompt_cache_ttl));
         extra
     }
 
@@ -1359,58 +1413,7 @@ impl Executor for Cli {
         if let Err(error) = std::fs::write(&briefing_path, &briefing.text) {
             return harness(format!("cannot write {}: {error}", briefing_path.display()));
         }
-        // The supervisor gives the child a null standard input, so a shell
-        // redirects the briefing in and the stream out to a file: the
-        // stream's last event is the result, and a capped pipe would lose it.
-        let script = match self.agent {
-            Agent::ClaudeCode => {
-                "exec \"$0\" -p --output-format stream-json --verbose --model \"$1\" \
-                 --permission-mode bypassPermissions ${4:+--tools \"$4\"} ${5:+--effort \"$5\"} \
-                 < \"$2\" > \"$3\""
-            }
-            // The task container or the fresh clone is the boundary, so
-            // Codex runs without its own sandbox or approval prompts.
-            Agent::Codex => {
-                "exec \"$0\" exec --json --skip-git-repo-check -m \"$1\" \
-                 ${5:+-c \"model_reasoning_effort=$5\"} \
-                 --dangerously-bypass-approvals-and-sandbox - < \"$2\" > \"$3\""
-            }
-        };
-        let mut command = std::process::Command::new("sh");
-        command
-            .arg("-c")
-            .arg(script)
-            .arg(&binary)
-            .arg(&self.model)
-            .arg(&briefing_path)
-            .arg(&stream_path)
-            // `CODER_ONE_DELEGATE_TOOLS` names Claude Code's built-in tools
-            // (for example `Bash,Read,Edit,Write`). Fewer tools make a
-            // smaller fixed prompt on every call: four tools halved it, from
-            // about 17,800 to 9,000 tokens, on 2026-09-22.
-            .arg(delegate_tools())
-            // `CODER_ONE_DELEGATE_EFFORT` sets the delegate's reasoning
-            // effort: Claude Code's `--effort`, Codex's
-            // `model_reasoning_effort`. Unset keeps each CLI's default.
-            .arg(delegate_effort())
-            .current_dir(&self.workdir)
-            // A parent Claude Code session's marker makes the CLI refuse to
-            // start; the delegate is its own session.
-            .env_remove("CLAUDECODE")
-            .env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
-            // Bytecode the delegate's test runs leave behind is not part of
-            // the change, and in issue mode the host would commit it.
-            .env("PYTHONDONTWRITEBYTECODE", "1");
-        if self.credential == Credential::OauthToken {
-            // With a subscription token present, a stray API key would
-            // take precedence and bill the API instead.
-            command
-                .env_remove("ANTHROPIC_API_KEY")
-                .env_remove("ANTHROPIC_AUTH_TOKEN");
-        }
-        for (name, value) in &self.env {
-            command.env(name, value);
-        }
+        let command = self.command(&binary, &briefing_path, &stream_path);
         println!(
             "  delegate ▸ {} ({}) · deadline {}s · briefing {} characters",
             self.agent(),

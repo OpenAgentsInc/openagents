@@ -32,6 +32,14 @@
 //! | `CODER_ONE_DEEP` | `on` runs deep Jev mode: a parallel survey before the first step, a readiness question each step, and repeated-command hints. |
 //! | `CODER_ONE_PROBES` | `on`, with deep mode, runs a battery of read-only probes (listing, git state, README, tests, versions) and lets Jev pick the outputs that go into the survey and the briefing. |
 //! | `CODER_ONE_PROBE_V2` | `v3` adds directions that test every changed code path. `on`, with probes and deep mode: a Jev-gated setup pack, git probes in named repositories, whole edit targets, a 40-file survey, and batch-mode directions. |
+//! | `CODER_ONE_POLICY` | A policy manifest: a path, or the JSON itself. The switches above then override it. |
+//! | `CODER_ONE_EXECUTOR_VERSION` | The delegate CLI version the harness installed; the doctor refuses another. |
+//! | `CLAUDE_CODE_PROMPT_CACHE_TTL` | The Claude Code delegate's prompt-cache TTL, `5m` or `1h`. |
+//!
+//! `coder_one::policy` resolves all of these once, before anything runs,
+//! into the policy manifest the episode reads its configuration from. The
+//! bundle's manifest records the resolved manifest, its digest, and each
+//! override under `policy`.
 //!
 //! The bundle is rewritten at the start of every step, so a deadline that
 //! kills the process still leaves the evidence up to the last step.
@@ -45,9 +53,10 @@ use sha2::{Digest, Sha256};
 
 use crate::agent::{EPISODE_INSTRUCTIONS, Judge, Judgments};
 use crate::credentials::{self, Secret};
-use crate::delegate::{self, Agent, Cli, Credential, Delegated, Explorer, Mode, Plan, Policy};
+use crate::delegate::{self, Agent, Credential, Delegated, Explorer, Mode, Plan};
 use crate::generate::Door;
 use crate::judge::JevJudge;
+use crate::policy::{ExecutorHost, Manifest, Resolution};
 use crate::record::Recorder;
 use crate::shell::Checkout;
 use crate::state::{Environment, Issue, State};
@@ -70,24 +79,15 @@ pub fn version() -> String {
 /// tokens, retrieved 2026-09-22. Used only for a labeled estimate.
 const JEV_USD_PER_MILLION_INPUT: f64 = 0.042;
 
-/// Everything the episode reads from its environment, resolved once.
+/// Everything the episode reads from its environment, resolved once: the
+/// credentials and what the host found, beside the resolved policy.
 struct Settings {
     bearer: Option<Secret>,
     door_url: String,
-    lane: String,
     jev_key: Option<Secret>,
-    jev: bool,
-    deep: bool,
-    max_steps: usize,
-    command_timeout: Duration,
-    delegate: Mode,
-    delegate_agent: Agent,
-    delegate_model: String,
-    delegate_timeout: Duration,
-    policy: Policy,
-    briefing_cap: usize,
     delegate_bin: Option<PathBuf>,
     credential: Credential,
+    resolution: Resolution,
 }
 
 impl Settings {
@@ -99,54 +99,27 @@ impl Settings {
                 .filter(|value| !value.is_empty())
         };
         let dir = credentials::openagents_dir().unwrap_or_else(|| PathBuf::from("/nonexistent"));
-        let jev = !matches!(env("CODER_ONE_JEV").as_deref(), Some("off" | "0" | "false"));
-        let number = |name: &str, default: u64| -> Result<u64, String> {
-            env(name).map_or(Ok(default), |value| {
-                value
-                    .parse()
-                    .map_err(|_| format!("{name} must be a whole number"))
-            })
-        };
-        let delegate_agent = Agent::parse(
-            env("CODER_ONE_DELEGATE_AGENT")
-                .as_deref()
-                .unwrap_or("claude-code"),
-        )?;
-        let (delegate_bin, credential) = delegate::resolve(delegate_agent, |name| env(name));
+        let resolution = Resolution::resolve(env, model)?;
+        let agent = resolution.manifest.policy.executor.agent.agent();
+        let (delegate_bin, credential) = delegate::resolve(agent, |name| env(name));
         Ok(Settings {
             bearer: credentials::bearer(|name| env(name), &dir)
                 .ok()
                 .map(|found| found.secret),
             door_url: env("OPENAGENTS_DOOR_URL")
                 .unwrap_or_else(|| credentials::GENERATION_BASE_URL.to_string()),
-            lane: model
-                .map(str::to_string)
-                .or_else(|| env("OPENAGENTS_MODEL"))
-                .unwrap_or_else(|| "free".to_string()),
             jev_key: credentials::jev_key(|name| env(name), &dir)
                 .ok()
                 .map(|found| found.secret),
-            jev,
-            deep: jev && matches!(env("CODER_ONE_DEEP").as_deref(), Some("on" | "1" | "true")),
-            max_steps: usize::try_from(number("CODER_ONE_MAX_STEPS", 50)?).unwrap_or(50),
-            command_timeout: Duration::from_secs(number("CODER_ONE_COMMAND_TIMEOUT", 300)?),
-            delegate: Mode::parse(env("CODER_ONE_DELEGATE").as_deref().unwrap_or("off"))?,
-            delegate_agent,
-            delegate_model: env("CODER_ONE_DELEGATE_MODEL")
-                .unwrap_or_else(|| delegate_agent.default_model().to_string()),
-            delegate_timeout: Duration::from_secs(number("CODER_ONE_DELEGATE_TIMEOUT", 600)?),
-            policy: Policy {
-                explore_steps: usize::try_from(number("CODER_ONE_EXPLORE_STEPS", 8)?).unwrap_or(8),
-                ..Policy::default()
-            },
-            briefing_cap: usize::try_from(number(
-                "CODER_ONE_BRIEFING_CAP",
-                delegate::BRIEFING_CAP as u64,
-            )?)
-            .unwrap_or(delegate::BRIEFING_CAP),
             delegate_bin,
             credential,
+            resolution,
         })
+    }
+
+    /// The resolved policy.
+    fn policy(&self) -> &Manifest {
+        &self.resolution.manifest
     }
 }
 
@@ -156,9 +129,17 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
         return Err(format!("this binary implements {CONTRACT}, not {contract}"));
     }
     let settings = Settings::from_env(None)?;
+    let policy = settings.policy();
     let mut problems = Vec::new();
     println!("version: {}", version());
     println!("contract: {CONTRACT}");
+    println!(
+        "policy: {} {} ({}, {} overrides)",
+        policy.name.as_deref().unwrap_or("unnamed"),
+        settings.resolution.digest(),
+        settings.resolution.source,
+        settings.resolution.overrides.len()
+    );
 
     match &settings.bearer {
         None => problems.push("OPENAGENTS_API_KEY is not set".to_string()),
@@ -179,7 +160,7 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
         }
     }
 
-    if settings.jev {
+    if policy.jev() {
         match &settings.jev_key {
             None => problems
                 .push("TYPESAFE_API_KEY is not set and CODER_ONE_JEV is not off".to_string()),
@@ -199,16 +180,17 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
         println!("jev: off (CODER_ONE_JEV)");
     }
 
-    if settings.delegate == Mode::Off {
+    if policy.mode() == Mode::Off {
         println!("delegate: off (CODER_ONE_DELEGATE)");
     } else {
+        let executor = &policy.policy.executor;
         println!(
             "delegate: {} to {} ({}), explore {} steps, deadline {}s",
-            settings.delegate.word(),
-            settings.delegate_agent.word(),
-            settings.delegate_model,
-            settings.policy.explore_steps,
-            settings.delegate_timeout.as_secs()
+            policy.mode().word(),
+            executor.agent.agent().word(),
+            executor.model,
+            policy.policy.control.explore_steps,
+            executor.deadline_sec
         );
         problems.extend(check_delegate(&settings).await);
     }
@@ -229,7 +211,8 @@ const CLAUDE_MIN: (u64, u64, u64) = (2, 1, 280);
 /// enough, and that a credential is present, without any inference.
 async fn check_delegate(settings: &Settings) -> Vec<String> {
     let mut problems = Vec::new();
-    let agent = settings.delegate_agent;
+    let agent = settings.policy().policy.executor.agent.agent();
+    let pinned = settings.policy().policy.executor.version.as_deref();
     match &settings.delegate_bin {
         None => problems.push(format!(
             "no {} binary: set {} or put it on PATH",
@@ -254,6 +237,16 @@ async fn check_delegate(settings: &Settings) -> Vec<String> {
                     .join(" "),
                 Agent::ClaudeCode => text.clone(),
             };
+            let installed = version_text.split_whitespace().next().unwrap_or_default();
+            if ended.ending.success()
+                && let Some(pinned) = pinned
+                && installed != pinned
+            {
+                problems.push(format!(
+                    "{} {installed} is installed, but the policy pins {pinned}",
+                    agent.word()
+                ));
+            }
             match (ended.ending.success(), parse_version(&version_text)) {
                 (true, Some(_)) if agent == Agent::Codex => {
                     println!("codex: {} at {}", text, binary.display());
@@ -294,38 +287,6 @@ fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
     Some((parts.next()??, parts.next()??, parts.next()??))
 }
 
-/// Whether `CODER_ONE_PROBE_V2` asks for probe v2: the setup pack, git
-/// probes in named repositories, whole edit targets, a smaller survey, and
-/// batch-mode directions for the delegate.
-fn probe_v2_on() -> bool {
-    matches!(
-        std::env::var("CODER_ONE_PROBE_V2")
-            .as_deref()
-            .map(str::trim),
-        Ok("on" | "1" | "true" | "v3")
-    )
-}
-
-/// Whether `CODER_ONE_PROBE_V2=v3` asks for probe v2 with checked batch
-/// directions: few, large steps, but every changed code path tested.
-fn probe_v3_on() -> bool {
-    matches!(
-        std::env::var("CODER_ONE_PROBE_V2")
-            .as_deref()
-            .map(str::trim),
-        Ok("v3")
-    )
-}
-
-/// Whether `CODER_ONE_PROBES` asks for the probe battery. It runs with the
-/// deep survey, so it needs `CODER_ONE_DEEP` too.
-fn probes_on() -> bool {
-    matches!(
-        std::env::var("CODER_ONE_PROBES").as_deref().map(str::trim),
-        Ok("on" | "1" | "true")
-    )
-}
-
 /// The arguments `episode run` takes.
 pub struct RunArgs {
     pub instruction_file: PathBuf,
@@ -346,11 +307,12 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         ));
     }
     let settings = Settings::from_env(args.model.as_deref())?;
+    let policy = settings.policy().clone();
     let bearer = settings
         .bearer
         .clone()
         .ok_or("OPENAGENTS_API_KEY is not set")?;
-    let jev_client = if settings.jev {
+    let jev_client = if policy.jev() {
         let key = settings
             .jev_key
             .as_ref()
@@ -382,26 +344,30 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             labels: Vec::new(),
         },
     );
+    let control = &policy.policy.control;
     println!("{} · {CONTRACT}", version());
     println!(
         "workdir {} · lane {} · jev {}{} · {} steps · {}s per command · delegate {}",
         workdir.display(),
-        settings.lane,
-        if settings.jev {
+        control.lane,
+        if policy.jev() {
             credentials::JEV_MODEL
         } else {
             "off"
         },
-        if settings.deep { " (deep)" } else { "" },
-        settings.max_steps,
-        settings.command_timeout.as_secs(),
-        settings.delegate.word()
+        if policy.deep() { " (deep)" } else { "" },
+        control.max_steps,
+        control.command_timeout_sec,
+        policy.mode().word()
+    );
+    println!(
+        "policy {} {} ({})",
+        policy.name.as_deref().unwrap_or("unnamed"),
+        settings.resolution.digest(),
+        settings.resolution.source
     );
 
-    let mut judge = JevJudge::new(jev_client, workdir.clone(), &state.issue, recorder.clone())
-        .deep(settings.deep)
-        .probing(settings.deep && probes_on())
-        .probe_v2(settings.deep && probes_on() && probe_v2_on());
+    let mut judge = policy.judge(jev_client, workdir.clone(), &state.issue, recorder.clone());
     judge.survey(&mut state).await;
     let mut judge = Snapshots {
         inner: judge,
@@ -411,7 +377,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     let mut door = Door::new(
         &settings.door_url,
         bearer,
-        &settings.lane,
+        &control.lane,
         EPISODE_INSTRUCTIONS,
         Box::new(|delta| {
             use std::io::Write as _;
@@ -423,17 +389,17 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     .caching_under(&bundle.session.id);
     let mut shell = Checkout {
         workdir: workdir.clone(),
-        deadline: settings.command_timeout,
+        deadline: Duration::from_secs(control.command_timeout_sec),
         recorder: recorder.clone(),
         commands: 0,
     };
 
-    let (ended, delegated) = if settings.delegate == Mode::Off {
+    let (ended, delegated) = if policy.mode() == Mode::Off {
         let ended = run(
             &mut state,
             "Complete this task.",
             Bounds {
-                max_steps: settings.max_steps,
+                max_steps: control.max_steps,
             },
             &mut judge,
             &mut door,
@@ -442,11 +408,9 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         .await;
         (ended, None)
     } else {
-        let mut executor = Cli {
-            agent: settings.delegate_agent,
+        let mut executor = policy.executor(ExecutorHost {
             binary: settings.delegate_bin.clone(),
-            model: settings.delegate_model.clone(),
-            deadline: settings.delegate_timeout,
+            credential: settings.credential,
             workdir: workdir.clone(),
             artifacts: args.output_dir.join("artifacts"),
             artifacts_label: "artifacts".to_string(),
@@ -454,23 +418,15 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             // as root there, where the CLI refuses to bypass permissions
             // unless told it is in a sandbox.
             env: vec![("IS_SANDBOX".to_string(), "1".to_string())],
-            credential: settings.credential,
-            runs: 0,
-        };
+        });
         let plan = Plan {
-            mode: settings.delegate,
-            policy: settings.policy,
-            max_steps: settings.max_steps,
+            mode: policy.mode(),
+            policy: policy.escalation(),
+            max_steps: control.max_steps,
             prompt: "Complete this task.",
             instruction: &instruction,
-            directions: if probe_v3_on() {
-                EPISODE_DIRECTIONS_BATCH_CHECKED
-            } else if probe_v2_on() {
-                EPISODE_DIRECTIONS_BATCH
-            } else {
-                EPISODE_DIRECTIONS
-            },
-            cap: settings.briefing_cap,
+            directions: policy.policy.brief.directions.text(),
+            cap: policy.policy.brief.cap,
             isolation: "none",
             base: bundle.base.as_deref(),
         };
@@ -531,46 +487,6 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     Ok(code)
 }
 
-/// The delegate's closing directions in an episode.
-const EPISODE_DIRECTIONS: &str = "Complete the task in the current working \
-directory. Nobody answers questions, so decide from the task and the \
-environment. An automated checker grades the final state of the environment \
-against the task, so verify every requirement, including exact paths, names, \
-and formats, before you stop. The files and command outputs in this briefing \
-were gathered just before you started and are current: use them instead of \
-re-running those commands, and go straight to the work. End with a short \
-summary of what you changed and how you checked it.";
-
-/// Probe v2's directions: the same contract, plus batch mode. Each turn
-/// costs the delegate seconds, so it should take few, large steps.
-const EPISODE_DIRECTIONS_BATCH: &str = "Complete the task in the current working \
-directory. Nobody answers questions, so decide from the task and the \
-environment. An automated checker grades the final state of the environment \
-against the task, so verify every requirement, including exact paths, names, \
-and formats, before you stop. The files, command outputs, and setup results in \
-this briefing were gathered just before you started and are complete and \
-current: do not list, read, or run them again. Work in as few steps as \
-possible: write each file whole in one command, chain related commands \
-(installs, builds, tests) with && in one call, and run one final check that \
-covers every requirement. End with a short summary of what you changed and how \
-you checked it.";
-
-/// Probe v3's directions: batch mode, without the single final check that
-/// let v2's delegate stop before its checks reached every change.
-const EPISODE_DIRECTIONS_BATCH_CHECKED: &str = "Complete the task in the current \
-working directory. Nobody answers questions, so decide from the task and the \
-environment. An automated checker grades the final state of the environment \
-against the task, so verify every requirement, including exact paths, names, \
-and formats, before you stop. The files, command outputs, and setup results in \
-this briefing were gathered just before you started and are complete and \
-current: do not list, read, or run them again. Work in few, large steps: write \
-each file whole in one command, and chain related commands (installs, builds) \
-with && in one call. Before you stop, run the checks the task names and \
-exercise every code path you changed, not only the example the task gives. \
-After a bulk find-and-replace, search the result for occurrences it missed or \
-changed twice. End with a short summary of what you changed and how you \
-checked it.";
-
 /// A judge that rewrites the bundle before every step, so a killed
 /// episode leaves its evidence behind.
 struct Snapshots<'a> {
@@ -620,9 +536,11 @@ impl Bundle {
         }
         let started = atif::document::now_ms();
         let id = format!("coder-one-{started}");
+        let policy = settings.policy();
+        let executor = &policy.policy.executor;
         let mut session = Session::opening(
             &id,
-            &settings.lane,
+            &policy.policy.control.lane,
             &settings.door_url,
             &workdir.to_string_lossy(),
             &version(),
@@ -637,18 +555,24 @@ impl Bundle {
             .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string());
         let header = json!({
             "contract": CONTRACT,
-            "delegate": if settings.delegate == Mode::Off {
+            "policy": settings.resolution.record(),
+            "delegate": if policy.mode() == Mode::Off {
                 json!({ "mode": "off" })
             } else {
                 json!({
-                    "mode": settings.delegate.word(),
-                    "agent": settings.delegate_agent.word(),
-                    "model": settings.delegate_model,
+                    "mode": policy.mode().word(),
+                    "agent": executor.agent.agent().word(),
+                    "model": executor.model,
+                    "version": executor.version,
+                    "effort": executor.effort,
+                    "tools": executor.tools,
+                    "prompt_cache_ttl": executor.prompt_cache_ttl,
                     "executor_path": settings.delegate_bin.as_ref().map(|path| path.to_string_lossy()),
                     "credential": settings.credential.word(),
-                    "deadline_sec": settings.delegate_timeout.as_secs(),
-                    "briefing_cap": settings.briefing_cap,
-                    "policy": settings.policy.record(),
+                    "deadline_sec": executor.deadline_sec,
+                    "briefing_cap": policy.policy.brief.cap,
+                    "directions": policy.policy.brief.directions,
+                    "policy": policy.escalation().record(),
                     "isolation": "none: the task container is the boundary",
                 })
             },
@@ -660,19 +584,19 @@ impl Bundle {
             "doors": {
                 "generation": {
                     "url": settings.door_url,
-                    "lane_requested": settings.lane,
+                    "lane_requested": policy.policy.control.lane,
                 },
-                "jev": if settings.jev {
+                "jev": if policy.jev() {
                     json!({ "url": credentials::JEV_BASE_URL, "model": credentials::JEV_MODEL })
                 } else {
                     json!({ "enabled": false })
                 },
             },
-            "jev_mode": if !settings.jev { "off" } else if settings.deep { "deep" } else { "step" },
+            "jev_mode": policy.policy.jev.mode,
             "prompt_layout": "cache-stable-prefix",
             "bounds": {
-                "max_steps": settings.max_steps,
-                "command_timeout_sec": settings.command_timeout.as_secs(),
+                "max_steps": policy.policy.control.max_steps,
+                "command_timeout_sec": policy.policy.control.command_timeout_sec,
                 "episode_deadline": "owned by the harness's exec timeout",
             },
         });

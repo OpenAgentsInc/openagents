@@ -75,6 +75,9 @@ pub struct Attempt {
     pub counts: Vec<(String, Option<u64>)>,
     pub evidence: Vec<Evidence>,
     pub notes: Vec<String>,
+    /// The Coder One policy manifest the episode resolved, when its
+    /// manifest records one.
+    pub policy: Option<crate::coder_policy::PolicyRecord>,
 }
 
 impl Attempt {
@@ -173,8 +176,27 @@ pub struct Records {
 pub struct ComparisonGroup {
     pub task: String,
     pub pin: String,
+    /// The arm, or `policy <digest prefix>` when the attempts recorded a
+    /// policy manifest: attempts group by what ran, not by arm name.
     pub arm: String,
+    /// The policy manifest digest the group shares, when there is one.
+    pub policy: Option<String>,
+    /// The arm names of the group's attempts.
+    pub arms: Vec<String>,
     pub attempts: Vec<usize>,
+}
+
+impl ComparisonGroup {
+    /// Whether `query` names this group: its label, one of its arms, or a
+    /// prefix of its policy digest.
+    pub fn named(&self, query: &str) -> bool {
+        self.arm == query
+            || self.arms.iter().any(|arm| arm == query)
+            || self
+                .policy
+                .as_deref()
+                .is_some_and(|digest| query.len() >= 6 && digest.starts_with(query))
+    }
 }
 
 impl ComparisonGroup {
@@ -193,18 +215,40 @@ impl ComparisonGroup {
             } else {
                 format!("{identity} / job {}", attempt.job)
             };
+            // Attempts that recorded a policy manifest group by its digest,
+            // so two arm names running one configuration pool, and one arm
+            // name whose configuration changed splits.
+            let side = attempt.policy.as_ref().map_or_else(
+                || attempt.arm.clone(),
+                |policy| format!("policy {}", policy.digest),
+            );
             grouped
-                .entry((attempt.task.clone(), pin, attempt.arm.clone()))
+                .entry((attempt.task.clone(), pin, side))
                 .or_default()
                 .push(index);
         }
         grouped
             .into_iter()
-            .map(|((task, pin, arm), attempts)| Self {
-                task,
-                pin,
-                arm,
-                attempts,
+            .map(|((task, pin, side), attempts)| {
+                let mut arms: Vec<String> = attempts
+                    .iter()
+                    .map(|&index| records.attempts[index].arm.clone())
+                    .collect();
+                arms.sort();
+                arms.dedup();
+                let policy = side.strip_prefix("policy ").map(str::to_owned);
+                let arm = match &policy {
+                    Some(digest) => format!("policy {}", crate::coder_policy::short(digest)),
+                    None => side,
+                };
+                Self {
+                    task,
+                    pin,
+                    arm,
+                    policy,
+                    arms,
+                    attempts,
+                }
             })
             .collect()
     }
@@ -633,6 +677,7 @@ fn empty_attempt(source: &str, job: &str, trial: &str) -> Attempt {
         counts: Vec::new(),
         evidence: Vec::new(),
         notes: Vec::new(),
+        policy: None,
     }
 }
 
@@ -751,6 +796,18 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
             if string(&value, "/contract").as_deref() == Some("openagents.coder.episode.v1") =>
         {
             attempt.artifact = string(&value, "/artifact/version");
+            attempt.policy = value
+                .get("policy")
+                .and_then(crate::coder_policy::PolicyRecord::from_episode);
+            if let Some(policy) = &attempt.policy {
+                attempt.notes.push(format!(
+                    "Policy {} {} ({}, {} overrides)",
+                    policy.name.as_deref().unwrap_or("unnamed"),
+                    policy.short(),
+                    policy.source.as_deref().unwrap_or("unknown source"),
+                    policy.overrides.len()
+                ));
+            }
             attempt.evidence.push(Evidence {
                 kind: "agent episode manifest".to_owned(),
                 path: Some(path.to_path_buf()),

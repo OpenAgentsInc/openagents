@@ -398,7 +398,17 @@ impl App {
             )
         };
         let mut lines = vec![
-            format!("{} / {} · {}", group.task, group.arm, group.pin),
+            format!(
+                "{} / {}{} · {}",
+                group.task,
+                group.arm,
+                if group.policy.is_some() {
+                    format!(" (arms: {})", group.arms.join(", "))
+                } else {
+                    String::new()
+                },
+                group.pin
+            ),
             format!("{} attempts; {} graded; reward mean {} over graded only", members.len(), rewarded, if rewarded == 0 { DASH.to_owned() } else { format!("{:.3}", sum / rewarded as f64) }),
             uncertainty,
             "Trial                    reward status              agent/total       cost and source                  tokens in/out        evidence".to_owned(),

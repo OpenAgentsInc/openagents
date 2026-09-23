@@ -20,10 +20,19 @@ the way Harbor's own ``claude-code`` agent does and forwards the Claude
 credential by name. For Codex it installs the CLI and places the host's
 ``auth.json`` the way Harbor's own ``codex`` agent does, and removes the
 file after the run.
+
+Either arm takes a ``policy`` kwarg: a Coder One policy manifest
+(``crates/coder-one/policies/*.json``), relative to the repository root
+or absolute. The adapter reads it on the host and passes it inline as
+``CODER_ONE_POLICY``; the episode resolves its whole configuration from
+it and records the manifest and its digest. For the delegate arm the
+manifest also decides which CLI and version install, so the kwargs that
+would repeat it are refused when they disagree.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 from pathlib import Path, PurePosixPath
@@ -32,6 +41,25 @@ from typing import Any, ClassVar
 from harbor.environments.base import BaseEnvironment
 
 from tbench.coder_v05 import INSTALL_ROOT, CoderV05, EpisodeContractError
+from tbench.paths import PACKAGE_DIR
+
+# The repository root, which a relative policy path is read against.
+REPO_ROOT = PACKAGE_DIR.parent.parent
+POLICY_SCHEMA = "openagents.coder-one.policy.v1"
+
+
+def load_policy(path: str) -> dict[str, Any]:
+    """Read a Coder One policy manifest; the episode validates it fully."""
+    file = Path(path).expanduser()
+    if not file.is_absolute():
+        file = REPO_ROOT / file
+    try:
+        manifest = json.loads(file.read_text())
+    except (OSError, ValueError) as exc:
+        raise EpisodeContractError(f"cannot read policy {file}: {exc}") from exc
+    if not isinstance(manifest, dict) or manifest.get("schema") != POLICY_SCHEMA:
+        raise EpisodeContractError(f"policy {file} is not a {POLICY_SCHEMA} manifest")
+    return manifest
 
 
 class CoderOne(CoderV05):
@@ -53,6 +81,17 @@ class CoderOne(CoderV05):
     @staticmethod
     def name() -> str:
         return "coder-one"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        policy = kwargs.pop("policy", None)
+        self._policy: dict[str, Any] | None = load_policy(policy) if policy else None
+        super().__init__(*args, **kwargs)
+
+    def _episode_env(self) -> dict[str, str]:
+        env = super()._episode_env()
+        if self._policy is not None:
+            env["CODER_ONE_POLICY"] = json.dumps(self._policy, separators=(",", ":"))
+        return env
 
 
 # The oldest Claude Code the delegate arms accept: the API refuses Opus 5.5
@@ -92,6 +131,9 @@ class CoderOneDelegate(CoderOne):
     - ``delegate_timeout_sec``, ``explore_steps``: optional bounds, passed
       to the episode as ``CODER_ONE_DELEGATE_TIMEOUT`` and
       ``CODER_ONE_EXPLORE_STEPS``.
+    - ``policy``: a policy manifest. It supplies the mode, the agent, the
+      model, the pinned version, and the bounds above, so those kwargs
+      must agree with it or be left out.
     """
 
     EPISODE_ENV: ClassVar[tuple[str, ...]] = CoderOne.EPISODE_ENV + (
@@ -118,6 +160,18 @@ class CoderOneDelegate(CoderOne):
         return "coder-one-delegate"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        explicit = {
+            key: kwargs.get(key)
+            for key in (
+                "delegate",
+                "delegate_agent",
+                "delegate_model",
+                "delegate_timeout_sec",
+                "explore_steps",
+                "codex_version",
+                "claude_code_version",
+            )
+        }
         self._delegate = kwargs.pop("delegate", None)
         self._delegate_agent = kwargs.pop("delegate_agent", None) or "claude-code"
         self._codex_version = str(kwargs.pop("codex_version", None) or "0.155.1")
@@ -131,7 +185,46 @@ class CoderOneDelegate(CoderOne):
         self._explore_steps = kwargs.pop("explore_steps", None)
         self._claude_bin: str | None = None
         self._codex_bin: str | None = None
+        policy = kwargs.get("policy")
+        if policy:
+            self._from_policy(load_policy(policy), explicit)
         super().__init__(*args, **kwargs)
+
+    def _from_policy(self, manifest: dict[str, Any], explicit: dict[str, Any]) -> None:
+        """Take the executor and its bounds from the manifest, refusing a
+        kwarg that says something else."""
+        policy = manifest.get("policy") or {}
+        executor = policy.get("executor") or {}
+        control = policy.get("control") or {}
+        agent = executor.get("agent")
+        derived = {
+            "delegate": control.get("delegate"),
+            "delegate_agent": agent,
+            "delegate_model": executor.get("model"),
+            "delegate_timeout_sec": executor.get("deadline_sec"),
+            "explore_steps": control.get("explore_steps"),
+        }
+        if executor.get("version"):
+            key = "codex_version" if agent == "codex" else "claude_code_version"
+            derived[key] = executor["version"]
+        for key, value in derived.items():
+            given = explicit.get(key)
+            if given is not None and value is not None and str(given) != str(value):
+                raise EpisodeContractError(
+                    f"{key}={given!r} disagrees with the policy manifest's {value!r}"
+                )
+        self._delegate = derived["delegate"]
+        self._delegate_agent = agent or "claude-code"
+        self._delegate_model = derived["delegate_model"] or DEFAULT_MODELS.get(
+            self._delegate_agent, ""
+        )
+        if "codex_version" in derived:
+            self._codex_version = str(derived["codex_version"])
+        if "claude_code_version" in derived:
+            self._claude_code_version = str(derived["claude_code_version"])
+        # The manifest carries these; the episode reads them from it.
+        self._delegate_timeout_sec = None
+        self._explore_steps = None
 
     def _preflight(self) -> None:
         super()._preflight()
@@ -309,9 +402,17 @@ class CoderOneDelegate(CoderOne):
 
     def _episode_env(self) -> dict[str, str]:
         env = super()._episode_env()
-        env["CODER_ONE_DELEGATE"] = self._delegate
-        env["CODER_ONE_DELEGATE_AGENT"] = self._delegate_agent
-        env["CODER_ONE_DELEGATE_MODEL"] = self._delegate_model
+        if self._policy is None:
+            env["CODER_ONE_DELEGATE"] = self._delegate
+            env["CODER_ONE_DELEGATE_AGENT"] = self._delegate_agent
+            env["CODER_ONE_DELEGATE_MODEL"] = self._delegate_model
+            # The version the adapter installs, so the episode records it
+            # and its doctor refuses another.
+            env["CODER_ONE_EXECUTOR_VERSION"] = (
+                self._codex_version
+                if self._delegate_agent == "codex"
+                else self._claude_code_version
+            )
         if self._claude_bin:
             env["CODER_ONE_CLAUDE_BIN"] = self._claude_bin
         if self._delegate_agent == "codex":

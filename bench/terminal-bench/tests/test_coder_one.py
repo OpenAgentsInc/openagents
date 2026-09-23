@@ -226,3 +226,73 @@ def test_an_explore_bound_of_zero_reaches_the_episode(tmp_path):
     agent = _delegate(tmp_path, delegate="always", explore_steps=0)
     agent._claude_bin = "/root/.local/share/claude/versions/2.1.280"
     assert agent._episode_env()["CODER_ONE_EXPLORE_STEPS"] == "0"
+
+
+LUNA_POLICY = "crates/coder-one/policies/jevprobe3-luna.json"
+OPUS_POLICY = "crates/coder-one/policies/jevprobe2-opus-lean-low-5m.json"
+
+
+def test_a_policy_manifest_decides_the_executor_and_reaches_the_episode_inline(
+    tmp_path,
+):
+    import json
+
+    agent = _delegate(tmp_path, policy=LUNA_POLICY)
+    assert agent._delegate == "always"
+    assert agent._delegate_agent == "codex"
+    assert agent._codex_version == "0.155.1"
+    agent._codex_bin = "/usr/local/bin/codex"
+    env = agent._episode_env()
+    manifest = json.loads(env["CODER_ONE_POLICY"])
+    assert manifest["policy"]["executor"]["model"] == "gpt-6-luna"
+    assert manifest["policy"]["brief"]["directions"] == "batch-checked"
+    # The manifest carries the configuration; the switches stay unset.
+    for name in (
+        "CODER_ONE_DELEGATE",
+        "CODER_ONE_DELEGATE_AGENT",
+        "CODER_ONE_DELEGATE_MODEL",
+        "CODER_ONE_EXPLORE_STEPS",
+        "CODER_ONE_PROBE_V2",
+    ):
+        assert name not in env
+    assert env["CODER_ONE_CODEX_BIN"] == "/usr/local/bin/codex"
+
+    opus = _delegate(tmp_path, policy=OPUS_POLICY)
+    assert opus._delegate_agent == "claude-code"
+    assert opus._claude_code_version == "2.1.280"
+
+
+def test_a_kwarg_that_disagrees_with_the_policy_is_refused(tmp_path):
+    with pytest.raises(EpisodeContractError, match="disagrees with the policy"):
+        _delegate(tmp_path, policy=LUNA_POLICY, delegate_model="gpt-6-sol")
+    with pytest.raises(EpisodeContractError, match="disagrees with the policy"):
+        _delegate(tmp_path, policy=OPUS_POLICY, claude_code_version="2.1.281")
+    # Agreeing kwargs are fine.
+    assert _delegate(tmp_path, policy=LUNA_POLICY, delegate_agent="codex")
+
+
+def test_a_missing_or_foreign_policy_is_refused(tmp_path):
+    with pytest.raises(EpisodeContractError, match="cannot read policy"):
+        _delegate(tmp_path, policy=str(tmp_path / "absent.json"))
+    foreign = tmp_path / "foreign.json"
+    foreign.write_text('{"schema": "something-else"}')
+    with pytest.raises(EpisodeContractError, match="is not a"):
+        _delegate(tmp_path, policy=str(foreign))
+
+
+def test_switch_arms_record_the_installed_executor_version(tmp_path):
+    agent = _delegate(tmp_path, delegate="always", delegate_agent="codex")
+    assert agent._episode_env()["CODER_ONE_EXECUTOR_VERSION"] == "0.155.1"
+    agent = _delegate(tmp_path, delegate="always")
+    agent._claude_bin = "/root/.local/bin/claude"
+    assert agent._episode_env()["CODER_ONE_EXECUTOR_VERSION"] == "2.1.280"
+
+
+def test_the_reference_arms_point_at_their_manifests():
+    from tbench.agents import load_agents
+
+    agents = load_agents()
+    assert agents["coder-one-jevprobe3-luna"].kwargs == {"policy": LUNA_POLICY}
+    assert agents["coder-one-jevprobe2-opus-lean-low-5m"].kwargs == {
+        "policy": OPUS_POLICY
+    }

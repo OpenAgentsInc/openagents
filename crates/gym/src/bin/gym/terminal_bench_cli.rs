@@ -296,6 +296,12 @@ fn attempt_value(attempt: &Attempt) -> Value {
         "evidence_health": attempt.evidence_health(),
         "evidence": attempt.evidence.iter().map(evidence_value).collect::<Vec<_>>(),
         "notes": attempt.notes,
+        "policy": attempt.policy.as_ref().map(|policy| json!({
+            "digest": policy.digest,
+            "name": policy.name,
+            "source": policy.source,
+            "overrides": policy.overrides,
+        })),
     })
 }
 
@@ -334,7 +340,7 @@ fn comparisons(records: &Records, task: Option<&str>, arm: Option<&str>) -> Valu
     let groups = ComparisonGroup::from_records(records)
         .into_iter()
         .filter(|group| task.is_none_or(|task| group.task == task))
-        .filter(|group| arm.is_none_or(|arm| group.arm == arm))
+        .filter(|group| arm.is_none_or(|arm| group.named(arm)))
         .map(|group| {
             let members: Vec<_> = group.attempts.iter().map(|&index| &records.attempts[index]).collect();
             let graded: Vec<_> = members.iter().filter_map(|attempt| attempt.reward).collect();
@@ -349,6 +355,8 @@ fn comparisons(records: &Records, task: Option<&str>, arm: Option<&str>) -> Valu
             json!({
                 "task": group.task,
                 "arm": group.arm,
+                "policy": group.policy,
+                "arms": group.arms,
                 "pin": group.pin,
                 "attempts_total": members.len(),
                 "graded_denominator": graded.len(),
