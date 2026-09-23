@@ -567,6 +567,9 @@ pub(super) async fn run<F: Factory>(
     );
     let mut n = 1;
     let stopped = loop {
+        if super::limited(recorder).is_some() {
+            break "a delegate session hit a usage limit".to_string();
+        }
         if let Some(why) = gate(context, policy, n, &current) {
             break why;
         }
@@ -665,6 +668,23 @@ pub(super) async fn run<F: Factory>(
         let last = exec.last();
         drop(exec);
         branches.push(row(&format!("persist-{n}"), &tier, &report, &last, sec));
+        if let Some(limit) = report.limit(&tier.agent) {
+            if let Some(g) = &guard {
+                g.discard();
+            }
+            let entry = json!({
+                "round": n,
+                "tier": tier,
+                "requested_sec": sec,
+                "status": report.status.word(),
+                "milliseconds": report.milliseconds,
+                "session_id": report.summary.session_id,
+                "usage_limit": limit.record(),
+            });
+            recorder.end(&round, Finish::new(Outcome::Failed).output(entry.clone()));
+            rounds.push(entry);
+            break format!("round {n}'s session hit a usage limit");
+        }
 
         let after_files = files_of(context.subject, setup.workdir);
         let after_outside = outside_of(context.outside);

@@ -53,6 +53,7 @@ from harbor.models.agent.context import AgentContext
 from harbor.models.trajectories import Trajectory
 
 from tbench.live import DEFAULT_INTERVAL_SEC, LOG_NAME, LiveTail
+from tbench.usage_limit import USAGE_LIMIT_EXIT_CODE, UsageLimitError
 
 CONTRACT_ID = "openagents.coder.episode.v1"
 INSTALL_ROOT = PurePosixPath("/opt/openagents")
@@ -329,6 +330,23 @@ class CoderV05(BaseInstalledAgent):
                     await tail.finish()
             await self._collect_bundle(environment)
 
+        # Exit 6 says a delegate session hit its provider's usage or rate
+        # limit. That is an infrastructure failure, not a result: raising
+        # something other than Harbor's agent-exit error ends the trial
+        # before the verifier runs, and the scheduler requeues it.
+        if result.return_code == USAGE_LIMIT_EXIT_CODE:
+            with contextlib.suppress(OSError):
+                (self.logs_dir / "episode-exit.txt").write_text(
+                    f"exit {USAGE_LIMIT_EXIT_CODE}: usage_limited\n"
+                )
+            manifest = self._read_json(self.logs_dir / "episode" / "manifest.json") or {}
+            limit = manifest.get("usage_limit") or {}
+            raise UsageLimitError(
+                f"episode exited {USAGE_LIMIT_EXIT_CODE}: a delegate session hit "
+                f"a usage limit ({limit.get('provider') or 'unknown provider'}): "
+                f"{limit.get('message') or 'no message recorded'}; resets "
+                f"{limit.get('resets_at_iso') or 'at an unknown time'}"
+            )
         # An outcome code says the episode ran to its end without a local
         # success: it hit its step limit (3), its generation failed (4), or
         # its delegate didn't answer (5). The work in the environment is

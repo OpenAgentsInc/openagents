@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import usage_limit
+
 ATTEMPT_SCHEMA = "openagents.tbench.attempt.v1"
 MANIFEST_SCHEMA = "openagents.tbench.episode-manifest.v1"
 
@@ -32,6 +34,7 @@ TERMINAL_STATUSES = (
     "install_failure",
     "verifier_failure",
     "provider_refusal",
+    "usage_limited",
     "agent_error",
     "unverifiable",
     "unknown",
@@ -78,6 +81,8 @@ def _terminal_status(result: dict[str, Any]) -> str:
     """Map a Harbor TrialResult onto the benchmark's terminal statuses."""
     exception = result.get("exception_info")
     if exception:
+        if exception.get("exception_type") in usage_limit.EXCEPTION_TYPES:
+            return usage_limit.STATUS
         etype = (exception.get("exception_type") or "").lower()
         # The contract adapter's refusals (a wrong digest, a missing
         # binary, a failed episode doctor) happen before inference, so
@@ -354,6 +359,14 @@ def attempt_record(
     if isinstance(rewards, dict):
         reward = rewards.get("reward", next(iter(rewards.values()), None))
 
+    # A provider that throttled the agent leaves a verifier reward that says
+    # nothing about the agent: the trial is an infrastructure failure, kept
+    # as evidence with its reward withheld.
+    limit = usage_limit.trial_usage_limit(trial_dir, trial_result)
+    terminal_status = usage_limit.STATUS if limit else _terminal_status(trial_result)
+    if limit:
+        reward = None
+
     cost_usd = _cost_total(trial_result)
     provenance = (
         declared_cost_provenance if cost_usd is not None else "unknown"
@@ -431,14 +444,15 @@ def attempt_record(
         "outcome": {
             "reward": reward,
             "verifier_rewards": rewards,
-            "terminal_status": _terminal_status(trial_result),
+            "terminal_status": terminal_status,
+            "usage_limit": limit,
             "exception": trial_result.get("exception_info"),
             "verifier_environment_mode": trial_result.get(
                 "verifier_environment_mode"
             ),
         },
         "timing": timing,
-        "setup": setup_summary(trial_dir, timing, _terminal_status(trial_result)),
+        "setup": setup_summary(trial_dir, timing, terminal_status),
         "environment": image_state(trial_result, trial_dir),
         "usage": usage,
         "cost": {

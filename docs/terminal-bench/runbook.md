@@ -375,6 +375,56 @@ and the first wave a run would start. `--tasks a,b` narrows a suite, and
   the job directory to `failed/<job>-setup-timeout-<unix time>` and runs the
   trial once more; a second timeout marks it `failed`. A trial whose process
   exits without a finished result is resumed twice, then marked `failed`.
+- **Usage limits.** A trial whose Claude or Codex session hit its
+  provider's usage or rate limit is an infrastructure failure, not a
+  result, whatever the verifier wrote. On 2026-09-23 the Claude
+  subscription limit throttled 21 TB4 trials that were then graded as
+  failures; the retained copies are under
+  `failed/*-usage-limit-1790164313`. The signatures are a Claude Code
+  stream `result` with `"api_error_status":429` and "You've hit your
+  session limit · resets 11:50am (UTC)" after a `rate_limit_event` whose
+  status is `rejected`, and a Codex `turn.failed` saying "You've hit your
+  usage limit" with "try again at 3:04 PM". Every layer checks for them:
+  - Coder One stops at the first throttled delegate session, skipping
+    escalation, repair, the second executor, and persist rounds, and
+    exits 6 with the outcome `usage_limited`. The episode manifest's
+    `usage_limit` and the composition's `usage_limited` record the
+    provider, the message, and the reset time (`resets_at`, epoch
+    seconds, from the rate-limit event or the message).
+  - The Coder One adapter raises `UsageLimitError` on exit 6, so Harbor
+    records the trial without running the verifier. Exit 6 isn't in
+    `OUTCOME_EXIT_CODES`.
+  - For Harbor's `claude-code` and `codex` agents, which Harbor still
+    grades, the harness reads `agent/claude-code.txt` or `agent/codex.txt`
+    after the run. The attempt record's `terminal_status` becomes
+    `usage_limited`, its `reward` is withheld (the verifier's stays under
+    `verifier_rewards`), and `outcome.usage_limit` holds the limit.
+  - The scheduler moves the job directory to
+    `failed/<job>-usage-limit-<unix time>`, queues the trial again with no
+    retry cap, and pauses every arm on that provider until the stated
+    reset plus one minute, or for `--usage-backoff-min` (30 by default)
+    from the trial's end when the message states no reset. The pause is
+    the host-wide file `~/.openagents/terminal-bench/usage-pauses.json`,
+    so every scheduler honors it; a limit whose reset has already passed
+    requeues the trial without a pause. `suite status` lists active
+    pauses.
+  - `tools/tb4_scoreboard.py` leaves these trials out of every cell and
+    counts them in a `Usage-limited (not graded)` column, and the Gym's
+    `terminal-bench overview` reports them as `usage_limited`, apart
+    from graded attempts, with `usage_limited` in `--json`.
+- **Claude slots.** Every suite on the host draws on one Claude
+  subscription, so trials whose arm runs Claude take one of
+  `--max-claude-concurrent` host-wide slots, 2 by default, the lock files
+  `~/.openagents/terminal-bench/claude-slots/claude-<n>.lock`. Like the GPU
+  slot, a trial's `tbench` process holds its slot for its whole life. A
+  trial that finds every slot taken stays `pending` with the reason
+  `waiting for a host-wide Claude slot`, and `suite status` names the
+  holders. An arm uses Claude when its Harbor agent is `claude-code`, its
+  Coder One delegate is Claude Code, or its policy manifest can dispatch
+  to Claude Code. Give every scheduler on the host the same value;
+  `--max-claude-concurrent 0` turns the cap off. Trials that a scheduler
+  started before this slot existed don't hold one, so restart the
+  schedulers before you rely on the cap.
 - **Restarts.** The scheduler keeps no state the job directories don't. On
   every start it reads each job directory, adopts any trial whose `tbench`
   process still runs, and resumes interrupted ones. `suite stop` (or

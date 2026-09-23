@@ -201,7 +201,8 @@ python3 tools/tb4_scoreboard.py --jobs /path/to/audited/jobs
 
 The current [reporting script](../../bench/terminal-bench/tools/tb4_scoreboard.py)
 reads local job results, despite its docstring mentioning retained traces.
-It counts any recorded verifier reward, does not classify quota failures,
+It counts any recorded verifier reward except a usage-limited trial's,
+which it leaves out and counts in a `Usage-limited (not graded)` column,
 and sums known costs or lower bounds without exposing missing charges.
 Its output needs the [data-quality audit](data-quality.md) before
 publication. This Mac checkout has no TB4 jobs or complete retained TB4

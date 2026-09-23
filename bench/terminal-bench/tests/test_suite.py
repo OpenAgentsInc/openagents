@@ -16,8 +16,11 @@ from tbench.suite import (
     Budget,
     Host,
     Scheduler,
+    acquire_claude_slot,
     acquire_gpu_slot,
+    claude_slot_holders,
     gpu_slot_holder,
+    read_pauses,
     inspect_job,
     job_name,
     read_status,
@@ -67,14 +70,14 @@ class FakeLauncher:
         self.started.append((trial.job, verb))
         self.live.add(self.next_pid)
         self.pids[trial.job] = self.next_pid
-        if hold is not None:
-            self.held[trial.job] = os.dup(hold)
+        holds = (hold,) if isinstance(hold, int) else tuple(hold or ())
+        if holds:
+            self.held[trial.job] = [os.dup(fd) for fd in holds]
         return self.next_pid
 
     def exit(self, job):
         self.live.discard(self.pids[job])
-        held = self.held.pop(job, None)
-        if held is not None:
+        for held in self.held.pop(job, []):
             os.close(held)
 
     def alive(self, pid):
@@ -89,10 +92,11 @@ class FakeLauncher:
 
 
 class FakeHost:
-    def __init__(self, free_gb=200.0, gpu=False, lock=None):
+    def __init__(self, free_gb=200.0, gpu=False, lock=None, claude_slots=None):
         self.free_gb = free_gb
         self.gpu = gpu
         self.lock = lock
+        self.claude_slots = claude_slots
         self.images: set[str] = set()
         self.removed: list[str] = []
         self.cache_pruned = 0
@@ -107,6 +111,9 @@ class FakeHost:
             remove_images=self._remove,
             prune_build_cache=self._prune_cache,
             gpu_slot=lambda job: acquire_gpu_slot(self.lock, job),
+            claude_slot=lambda job, slots: acquire_claude_slot(
+                self.claude_slots, job, slots
+            ),
         )
 
     def _remove(self, names):
@@ -119,15 +126,27 @@ class FakeHost:
         return True
 
 
-def _scheduler(tmp_path, tasks, *, attempts=1, budget=None, host=None, running=None):
+def _scheduler(
+    tmp_path,
+    tasks,
+    *,
+    attempts=1,
+    budget=None,
+    host=None,
+    running=None,
+    arm="arm",
+    providers=frozenset(),
+    wall=lambda: 1_790_163_000.0,
+):
     jobs = tmp_path / "jobs"
     jobs.mkdir(parents=True, exist_ok=True)
     launcher = FakeLauncher(jobs, tmp_path / "logs")
     host = host or FakeHost()
     host.lock = host.lock or tmp_path / "gpu.lock"
+    host.claude_slots = host.claude_slots or tmp_path / "claude-slots"
     scheduler = Scheduler(
         profile="tb4",
-        arm="arm",
+        arm=arm,
         pin={"git_commit_id": "abc"},
         tasks=tasks,
         attempts=attempts,
@@ -139,6 +158,9 @@ def _scheduler(tmp_path, tasks, *, attempts=1, budget=None, host=None, running=N
         clock=lambda: 0.0,
         find_running=(running or {}).get,
         failed=tmp_path / "failed",
+        providers=frozenset(providers),
+        pauses=tmp_path / "usage-pauses.json",
+        wall=wall,
     )
     return scheduler, launcher, host
 
@@ -464,3 +486,177 @@ def test_a_long_lived_setup_token_wins_over_the_refreshed_login(tmp_path, monkey
     assert suite.fresh_environment({"CLAUDE_CODE_OAUTH_TOKEN": "x"}, creds)[
         "CLAUDE_CODE_OAUTH_TOKEN"
     ] == "long-lived"
+
+
+# -- usage limits and the Claude slots ---------------------------------------
+
+USAGE_FIXTURES = Path(__file__).parent / "fixtures" / "usage-limit"
+# 2026-09-23T11:30:00Z, just before the retained sessions were throttled;
+# their limit reset at 11:50 UTC (1790164200).
+BEFORE_RESET = 1_790_163_000.0
+RESET = 1_790_164_200
+
+
+def _write_throttled(job_dir: Path, *, reward=0.0, exception="ApiRateLimitError") -> None:
+    """A finished claude-code trial whose session hit the subscription limit."""
+    _write_result(job_dir, reward=reward, exception=exception)
+    agent = job_dir / "trial__abc" / "agent"
+    agent.mkdir(parents=True, exist_ok=True)
+    (agent / "claude-code.txt").write_text((USAGE_FIXTURES / "claude-code.txt").read_text())
+
+
+def test_a_usage_limited_trial_is_set_aside_requeued_and_pauses_its_provider(tmp_path):
+    clock = {"now": BEFORE_RESET}
+    scheduler, launcher, _ = _scheduler(
+        tmp_path,
+        [_task("cad-model"), _task("ctr-optimization")],
+        providers={"anthropic"},
+        wall=lambda: clock["now"],
+        budget=Budget(max_cpus=24, max_mem_gb=100, max_claude_concurrent=0),
+    )
+    scheduler.reconcile()
+    assert len(scheduler.launch_ready()) == 2
+    _write_throttled(tmp_path / "jobs" / "tb4--arm--cad-model")
+    launcher.exit("tb4--arm--cad-model")
+    scheduler.poll()
+    trial = next(t for t in scheduler.trials if t.task.id == "cad-model")
+    # Not a result: queued again, never counted as graded.
+    assert trial.state == PENDING
+    assert trial.usage_limits == 1
+    assert trial.reward is None
+    assert "usage limit" in trial.reason
+    assert not (tmp_path / "jobs" / "tb4--arm--cad-model").exists()
+    moved = list((tmp_path / "failed").iterdir())
+    assert len(moved) == 1 and "-usage-limit-" in moved[0].name
+    status = scheduler.status()
+    assert status["graded"] == 0
+    assert status["usage_limited"] == 1
+    # The provider pauses until the stated reset, plus a margin.
+    pause = read_pauses(tmp_path / "usage-pauses.json")["anthropic"]
+    assert pause["until"] == RESET + 60
+    assert pause["job"] == "tb4--arm--cad-model"
+    assert scheduler.launch_ready() == []
+    assert any("not starting trials" in e["message"] for e in scheduler.events)
+    assert any("paused   anthropic" in line for line in status_lines(scheduler.status()))
+    # Once the limit resets, the trial runs again as a fresh job.
+    clock["now"] = RESET + 61
+    assert [t.job for t in scheduler.launch_ready()] == ["tb4--arm--cad-model"]
+    assert launcher.started[-1] == ("tb4--arm--cad-model", "run")
+
+
+def test_a_limit_without_a_reset_time_backs_off_and_other_providers_run(tmp_path):
+    job = tmp_path / "jobs" / "tb4--codex--fix-git"
+    _write_result(job, reward=0.0)
+    agent = job / "trial__abc" / "agent"
+    agent.mkdir(parents=True)
+    (agent / "codex.txt").write_text(
+        '{"type":"thread.started","thread_id":"t"}\n'
+        '{"type":"turn.failed","error":{"message":"You\'ve hit your usage limit."}}\n'
+    )
+    scheduler, _, _ = _scheduler(
+        tmp_path, [_task("fix-git")], arm="codex", providers={"openai"}
+    )
+    scheduler.reconcile()
+    pause = read_pauses(tmp_path / "usage-pauses.json")["openai"]
+    assert pause["until"] == int(BEFORE_RESET + 1800)
+    assert scheduler.trials[0].state == PENDING
+    assert scheduler.launch_ready() == []
+    # An arm on another provider isn't held back by it.
+    other, _, _ = _scheduler(
+        tmp_path / "other", [_task("fix-git")], providers={"anthropic"}
+    )
+    other.pauses = tmp_path / "usage-pauses.json"
+    other.reconcile()
+    assert len(other.launch_ready()) == 1
+
+
+def test_a_graded_trial_without_a_limit_still_finishes(tmp_path):
+    scheduler, launcher, _ = _scheduler(tmp_path, [_task("a")], providers={"anthropic"})
+    scheduler.reconcile()
+    scheduler.launch_ready()
+    launcher.finish("tb4--arm--a", reward=1.0)
+    scheduler.poll()
+    assert scheduler.trials[0].state == FINISHED
+    assert not (tmp_path / "usage-pauses.json").exists()
+
+
+def test_claude_trials_share_a_host_wide_cap_across_schedulers(tmp_path):
+    slots = tmp_path / "claude-slots"
+    budget = Budget(max_cpus=24, max_mem_gb=100, max_claude_concurrent=2)
+    first, first_launcher, _ = _scheduler(
+        tmp_path / "one",
+        [_task("a"), _task("b"), _task("c")],
+        providers={"anthropic"},
+        host=FakeHost(claude_slots=slots),
+        budget=budget,
+    )
+    second, second_launcher, _ = _scheduler(
+        tmp_path / "two",
+        [_task("d")],
+        arm="other",
+        providers={"anthropic", "openai"},
+        host=FakeHost(claude_slots=slots),
+        budget=budget,
+    )
+    codex, _, _ = _scheduler(
+        tmp_path / "three",
+        [_task("e")],
+        arm="codex",
+        providers={"openai"},
+        host=FakeHost(claude_slots=slots),
+        budget=budget,
+    )
+    first.reconcile()
+    second.reconcile()
+    codex.reconcile()
+    assert len(first.launch_ready()) == 2
+    assert len(claude_slot_holders(slots, 2)) == 2
+    # The other suite's Claude trial waits for a slot; a Codex arm doesn't.
+    assert second.launch_ready() == []
+    assert "host-wide Claude slot" in second.trials[0].reason
+    assert len(codex.launch_ready()) == 1
+    # A trial's exit frees its slot for whichever suite asks next.
+    first_launcher.finish("tb4--arm--a", reward=1.0)
+    first.poll()
+    assert [t.job for t in second.launch_ready()] == ["tb4--other--d"]
+    assert first.launch_ready() == []
+    second_launcher.finish("tb4--other--d", reward=0.0)
+    second.poll()
+    assert len(first.launch_ready()) == 1
+
+
+def test_the_claude_cap_off_starts_every_trial_that_fits(tmp_path):
+    scheduler, _, _ = _scheduler(
+        tmp_path,
+        [_task("a"), _task("b"), _task("c")],
+        providers={"anthropic"},
+        budget=Budget(max_cpus=24, max_mem_gb=100, max_claude_concurrent=0),
+    )
+    scheduler.reconcile()
+    assert len(scheduler.launch_ready()) == 3
+
+
+def test_inspect_job_names_a_usage_limit_before_a_reward(tmp_path):
+    job = tmp_path / "tb4--claude-code-opus--cad-model"
+    _write_throttled(job)
+    state = inspect_job(job)
+    assert state.kind == "usage_limited"
+    assert state.usage_limit["resets_at"] == RESET
+    assert state.usage_limit["provider"] == "anthropic"
+
+
+def test_a_limit_long_past_requeues_without_pausing(tmp_path):
+    # A restarted scheduler finds a trial the limit throttled hours ago.
+    _write_throttled(tmp_path / "jobs" / "tb4--arm--cad-model")
+    scheduler, _, _ = _scheduler(
+        tmp_path,
+        [_task("cad-model")],
+        providers={"anthropic"},
+        wall=lambda: RESET + 3 * 3600,
+    )
+    scheduler.reconcile()
+    trial = scheduler.trials[0]
+    assert trial.state == PENDING
+    assert trial.reason.endswith("already past)")
+    assert not (tmp_path / "usage-pauses.json").exists()
+    assert [t.job for t in scheduler.launch_ready()] == ["tb4--arm--cad-model"]

@@ -45,9 +45,13 @@ These are small development screens, not held-out benchmark estimates.
 
 **Harness:** TB4 has 66 pinned tasks; CPU and RTX 4080 oracle checks pass.
 `fp8-rmsnorm-gemm` requires an H100 and cannot run on the current Linux
-host. Distinct usage-limit handling, requeue, and a host-wide Claude cap
-are proposed in the incident note, not verified as implemented by this
-review. See [harness validation](tb4-results.md#harness-validation-and-remaining-coverage).
+host. A usage-limited trial is now its own outcome: Coder One exits 6,
+the harness withholds the reward, the scheduler requeues the trial and
+pauses the provider until the limit resets, and a host-wide cap runs at
+most two Claude trials at once
+([#9564](https://github.com/OpenAgentsInc/openagents/issues/9564);
+[runbook](runbook.md#schedule-a-suite)). The trials graded before that
+still need the quota audit. See [harness validation](tb4-results.md#harness-validation-and-remaining-coverage).
 
 ## Results and analysis
 

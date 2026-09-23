@@ -456,6 +456,7 @@ fn overview(records: &Records, board: Option<&Reference>) -> Value {
         "attempts_total": records.attempts.len(),
         "groups_total": groups.len(),
         "status_counts": records.status_counts(),
+        "usage_limited": records.usage_limited(),
         "usage_coverage": coverage,
         "controls": records.attempts.iter().filter(|attempt| attempt.is_control()).count(),
         "latest_started_at": records.attempts.iter().filter_map(|attempt| attempt.started_at.as_ref()).max(),
@@ -616,6 +617,13 @@ fn render_text(
                     .collect::<Vec<_>>()
                     .join(" · ")
             )?;
+            if records.usage_limited() > 0 {
+                writeln!(
+                    out,
+                    "Usage-limited: {} attempts throttled by a provider; not graded",
+                    records.usage_limited()
+                )?;
+            }
             writeln!(
                 out,
                 "Controls: {} · latest: {}",

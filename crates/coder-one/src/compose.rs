@@ -983,6 +983,11 @@ pub struct Composed {
     pub record: Value,
 }
 
+/// The usage limit a delegate session in this episode hit, as its record.
+pub(crate) fn limited(recorder: &Recorder) -> Option<Value> {
+    crate::limit::from_steps(&recorder.steps())
+}
+
 /// One dispatch's ledger row.
 fn row(role: &str, tier: &Tier, report: &Report, last: &Value, granted: u64) -> Value {
     let (charge, _) = delegate::charge(report);
@@ -1369,6 +1374,22 @@ where
         && let Some(planner) = h.to.clone()
     {
         planned = plan_first(setup, &planner, factory, &mut runs, &horizon, &mut branches).await;
+        if let Some(limit) = limited(setup.recorder) {
+            println!("  usage limit ▸ the planner's session was throttled; stopping");
+            let record = json!({ "schema": SCHEMA, "route": route_record, "planner": planned, "branches": branches, "usage_limited": limit });
+            let ended = Ended::Delegated {
+                answered: false,
+                status: format!("refused: {}", delegate::USAGE_LIMIT),
+                title: state.issue.title.clone(),
+                summary: limit["message"].as_str().unwrap_or_default().to_string(),
+                steps: state.history.len(),
+            };
+            return Ok(Composed {
+                ended,
+                delegated: None,
+                record,
+            });
+        }
         if let Some(text) = planned["plan"].as_str().filter(|t| !t.trim().is_empty()) {
             directions.push_str(&format!(
                 "\n\n## The plan from {}\n\nA planner read this task and wrote the plan below. Follow it, and check each scenario it names before you finish.\n\n{}\n",
@@ -1436,6 +1457,13 @@ where
         });
     };
 
+    // A throttled executor stops the composition: every later dispatch
+    // would draw on the same exhausted quota.
+    let mut usage_limited = limited(setup.recorder);
+    if usage_limited.is_some() {
+        println!("  usage limit ▸ the first executor's session was throttled; stopping");
+    }
+
     // verify.checks and verify.support on what the first executor left.
     let mut checks_log = Vec::new();
     let check = |file: &'static str, report: Option<String>| {
@@ -1448,7 +1476,7 @@ where
             checks::check_subject_as(&subject, setup.workdir, setup.dir, setup.recorder, file).await
         }
     };
-    let mut checked = if verify.checks {
+    let mut checked = if verify.checks && usage_limited.is_none() {
         Some(
             check(
                 checks::COVERAGE_FILE,
@@ -1462,20 +1490,24 @@ where
     if let Some((_, report)) = &checked {
         checks_log.push(json!({ "after": "primary", "file": checks::COVERAGE_FILE, "summary": report.summary(), "self_report": self_reported(report) }));
     }
-    let mut support = judge_support(
-        setup,
-        &verify,
-        checked.as_ref(),
-        support_params,
-        crate::support::FILE,
-    )
-    .await?;
+    let mut support = if usage_limited.is_none() {
+        judge_support(
+            setup,
+            &verify,
+            checked.as_ref(),
+            support_params,
+            crate::support::FILE,
+        )
+        .await?
+    } else {
+        None
+    };
     // The final report of the session that produced the candidate.
     let mut previous = first_delegation.report.output();
 
     // control.handoff escalate.
     let mut escalated = false;
-    if let Some((policy, to)) = &escalate {
+    if let Some((policy, to)) = escalate.as_ref().filter(|_| usage_limited.is_none()) {
         let to = escalate_to.clone().unwrap_or_else(|| to.clone());
         let stopped = last["stopped_by"].as_str() == Some(handoff::COMPONENT);
         let failed_check = checked.as_ref().is_some_and(|(_, r)| r.detected());
@@ -1578,7 +1610,8 @@ where
             previous = report.output();
             first = to.clone();
             escalated = true;
-            if verify.checks {
+            usage_limited = limited(setup.recorder);
+            if verify.checks && usage_limited.is_none() {
                 checked = Some(check(ESCALATED_CHECKS, Some(report.output())).await);
                 if let Some((_, report)) = &checked {
                     checks_log.push(json!({ "after": "escalation", "file": ESCALATED_CHECKS, "summary": report.summary(), "self_report": self_reported(report) }));
@@ -1599,7 +1632,9 @@ where
 
     // verify.repair: one fresh session from the packets.
     let mut repaired = Value::Null;
-    if let (Some(policy), Some((input, report))) = (verify.repair, checked.as_ref()) {
+    if let (Some(policy), Some((input, report)), None) =
+        (verify.repair, checked.as_ref(), &usage_limited)
+    {
         let place = crate::repair::Place {
             task: None,
             subject: &subject,
@@ -1645,6 +1680,7 @@ where
             "recheck": result.record["recheck"],
             "cost_usd": result.cost_usd,
         });
+        usage_limited = limited(setup.recorder);
         if let Some(recheck) = result.recheck {
             checks_log.push(json!({ "after": "repair", "file": crate::repair::RECHECK_FILE, "summary": recheck.1.summary(), "self_report": self_reported(&recheck.1) }));
             checked = Some(recheck);
@@ -1661,7 +1697,7 @@ where
     // verify.second: a second executor when the checks can't confirm the
     // result.
     let mut second_record = Value::Null;
-    if let (Some(policy), Some(base)) = (&verify.second, base) {
+    if let (Some(policy), Some(base), None) = (&verify.second, base, &usage_limited) {
         let context = SecondContext {
             setup,
             subject: &subject,
@@ -1700,11 +1736,12 @@ where
             support = outcome.support;
         }
         second_record = outcome.record;
+        usage_limited = limited(setup.recorder);
     }
 
     // control.persist: fresh rounds while a long task has time left.
     let mut persist_record = Value::Null;
-    if let (Some(policy), Some(initial)) = (&control.persist, &initial) {
+    if let (Some(policy), Some(initial), None) = (&control.persist, &initial, &usage_limited) {
         let outside = output_paths(subject.requirements.as_ref(), setup.workdir);
         let context = persist::Context {
             setup,
@@ -1734,6 +1771,7 @@ where
         checked = persisted.current.checked;
         support = persisted.current.support;
         persist_record = persisted.record;
+        usage_limited = limited(setup.recorder);
     }
 
     let record = json!({
@@ -1760,6 +1798,7 @@ where
         "final_tier": first,
         "final_checks": checked.as_ref().map(|(_, report)| report.summary()),
         "verify": verify,
+        "usage_limited": usage_limited,
     });
     Ok(Composed {
         ended,

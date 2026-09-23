@@ -30,8 +30,16 @@ Before publishing corrected results:
    then regenerate counts, costs, and matched-task comparisons from that
    same population. Mark unknown charges and lower bounds explicitly.
 4. Update the status index with the reconciled snapshot's date and source.
-   Treat a distinct usage-limited outcome, requeue, and host-wide Claude
-   concurrency cap as pending until their implementation is verified.
+
+The distinct usage-limited outcome, the requeue, and the host-wide Claude
+concurrency cap are implemented
+([#9564](https://github.com/OpenAgentsInc/openagents/issues/9564)); the
+[runbook](runbook.md#schedule-a-suite) describes each layer. They apply to
+trials that finish after the schedulers restart on that commit. On a
+restart, the scheduler also finds throttled trials still in the jobs
+directory, moves them to `failed/`, and requeues them. `tb4_scoreboard.py`
+now leaves every usage-limited trial out of its cells and counts it in a
+separate column, which helps with step 1 but doesn't replace the audit.
 
 ## Incident record
 

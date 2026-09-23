@@ -11,6 +11,32 @@ const ATTEMPT_SCHEMA: &str = "openagents.tbench.attempt.v1";
 const MANIFEST_SCHEMA: &str = "openagents.tbench.episode-manifest.v1";
 const RETENTION_SCHEMA: &str = "openagents.tbench.retention.v1";
 
+/// The status of an attempt a provider's usage or rate limit throttled.
+pub const USAGE_LIMITED: &str = "usage_limited";
+
+/// Exceptions that mean a provider throttled the agent: the harness's own
+/// and Harbor's two classifications of a CLI's limit output.
+const USAGE_LIMIT_EXCEPTIONS: [&str; 3] =
+    ["UsageLimitError", "ApiRateLimitError", "ApiUsageLimitError"];
+
+/// The note a usage limit's record reads as.
+fn usage_limit_note(limit: &Value) -> Option<String> {
+    let message = limit.get("message").and_then(Value::as_str);
+    let resets = limit.get("resets_at_iso").and_then(Value::as_str);
+    if message.is_none() && resets.is_none() {
+        return None;
+    }
+    Some(format!(
+        "Usage limit ({}): {} Resets {}.",
+        limit
+            .get("provider")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown provider"),
+        message.unwrap_or("no message recorded."),
+        resets.unwrap_or("at an unknown time")
+    ))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EvidenceState {
     Verified,
@@ -183,6 +209,31 @@ impl Attempt {
     /// The setup cache state, for grouping setup times.
     pub fn setup_cache_label(&self) -> &str {
         self.setup_cache.as_deref().unwrap_or("unknown")
+    }
+
+    /// Whether a provider's usage or rate limit throttled the attempt's
+    /// session: an infrastructure failure, never a graded result.
+    pub fn is_usage_limited(&self) -> bool {
+        self.status == USAGE_LIMITED
+    }
+
+    /// Marks the attempt usage-limited: its reward says nothing about the
+    /// agent, so it is withheld, and the limit is noted.
+    pub fn mark_usage_limited(&mut self, limit: &Value) {
+        if !self.is_usage_limited() {
+            if let Some(reward) = self.reward {
+                self.notes.push(format!(
+                    "Verifier reward {reward} withheld: the session was usage-limited."
+                ));
+            }
+            self.status = USAGE_LIMITED.to_owned();
+            self.reward = None;
+        }
+        if let Some(note) = usage_limit_note(limit)
+            && !self.notes.contains(&note)
+        {
+            self.notes.push(note);
+        }
     }
 
     pub fn display_status(&self) -> &str {
@@ -369,6 +420,14 @@ impl Records {
         records
     }
 
+    /// Attempts a provider's usage or rate limit throttled: never graded.
+    pub fn usage_limited(&self) -> usize {
+        self.attempts
+            .iter()
+            .filter(|attempt| attempt.is_usage_limited())
+            .count()
+    }
+
     pub fn status_counts(&self) -> BTreeMap<String, usize> {
         let mut counts = BTreeMap::new();
         for attempt in &self.attempts {
@@ -499,6 +558,10 @@ fn read_traces(root: &Path, records: &mut Records, seen: &mut BTreeSet<String>) 
                         .pointer("/verifier_result/rewards/reward")
                         .and_then(Value::as_f64);
                     attempt.status = retained_status(&value, attempt.reward).to_owned();
+                    if attempt.status == USAGE_LIMITED {
+                        attempt.status = "completed".to_owned();
+                        attempt.mark_usage_limited(&Value::Null);
+                    }
                     attempt.started_at = string(&value, "/started_at");
                     attempt.phases_ms = [
                         "/environment_setup",
@@ -616,6 +679,15 @@ fn parse_attempt(
         string(value, "/outcome/terminal_status").unwrap_or_else(|| "unknown".to_owned());
     if let Some(exception) = string(value, "/outcome/exception/exception_type") {
         attempt.notes.push(format!("Exception: {exception}"));
+        if USAGE_LIMIT_EXCEPTIONS.contains(&exception.as_str()) {
+            attempt.mark_usage_limited(&Value::Null);
+        }
+    }
+    if let Some(limit) = value
+        .pointer("/outcome/usage_limit")
+        .filter(|v| v.is_object())
+    {
+        attempt.mark_usage_limited(limit);
     }
     attempt.started_at = string(value, "/timing/started_at");
     attempt.phases_ms = [
@@ -851,6 +923,11 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
             if string(&value, "/contract").as_deref() == Some("openagents.coder.episode.v1") =>
         {
             attempt.artifact = string(&value, "/artifact/version");
+            if let Some(limit) = value.get("usage_limit").filter(|v| v.is_object()) {
+                attempt.mark_usage_limited(limit);
+            } else if string(&value, "/outcome").as_deref() == Some(USAGE_LIMITED) {
+                attempt.mark_usage_limited(&Value::Null);
+            }
             attempt.policy = value
                 .get("policy")
                 .and_then(crate::coder_policy::PolicyRecord::from_episode);
@@ -1328,9 +1405,12 @@ fn retained_status(value: &Value, reward: Option<f64>) -> &'static str {
             "unverifiable"
         };
     };
+    let kind = string(exception, "/exception_type").unwrap_or_default();
+    if USAGE_LIMIT_EXCEPTIONS.contains(&kind.as_str()) {
+        return USAGE_LIMITED;
+    }
     let detail = format!(
-        "{} {}",
-        string(exception, "/exception_type").unwrap_or_default(),
+        "{kind} {}",
         string(exception, "/exception_message").unwrap_or_default()
     )
     .to_ascii_lowercase();
@@ -1663,6 +1743,110 @@ mod tests {
             ),
             Some(1150)
         );
+    }
+
+    #[test]
+    fn a_usage_limited_attempt_is_counted_apart_and_never_graded() {
+        let temp = tempfile::tempdir().unwrap();
+        let attempts = |job: &str| {
+            let dir = temp.path().join(job).join("tbench/attempts");
+            fs::create_dir_all(&dir).unwrap();
+            dir
+        };
+        let record = |job: &str, trial: &str, outcome: Value| {
+            serde_json::to_vec(&serde_json::json!({
+                "schema": ATTEMPT_SCHEMA,
+                "attempt": {"job": job, "trial": trial, "arm": "claude-code-opus", "kind": "fresh"},
+                "task": {"name": "cad-model"},
+                "outcome": outcome,
+            }))
+            .unwrap()
+        };
+        // A record the harness wrote before it knew about usage limits:
+        // Harbor's rate-limit exception, and a verifier reward of 0.
+        let old = "tb4--claude-code-opus--cad-model";
+        fs::write(
+            attempts(old).join("cad-model__a.json"),
+            record(
+                old,
+                "cad-model__a",
+                serde_json::json!({
+                    "reward": 0.0,
+                    "terminal_status": "agent_error",
+                    "exception": {"exception_type": "ApiRateLimitError"},
+                }),
+            ),
+        )
+        .unwrap();
+        // A record the harness writes now.
+        let new = "tb4--claude-code-opus--cad-model-2";
+        fs::write(
+            attempts(new).join("cad-model__b.json"),
+            record(
+                new,
+                "cad-model__b",
+                serde_json::json!({
+                    "reward": null,
+                    "verifier_rewards": {"reward": 0.0},
+                    "terminal_status": "usage_limited",
+                    "usage_limit": {
+                        "provider": "anthropic",
+                        "message": "You've hit your session limit · resets 11:50am (UTC)",
+                        "resets_at_iso": "2026-09-23T11:50:00+00:00",
+                    },
+                }),
+            ),
+        )
+        .unwrap();
+        // A graded attempt beside them.
+        let graded = "tb4--claude-code-opus--cad-model-3";
+        fs::write(
+            attempts(graded).join("cad-model__c.json"),
+            record(
+                graded,
+                "cad-model__c",
+                serde_json::json!({"reward": 1.0, "terminal_status": "completed"}),
+            ),
+        )
+        .unwrap();
+        let records = Records::load(Some(temp.path()), None, None);
+        assert_eq!(records.attempts.len(), 3, "{:?}", records.errors);
+        assert_eq!(records.usage_limited(), 2);
+        assert_eq!(records.status_counts().get(USAGE_LIMITED), Some(&2));
+        for attempt in records.attempts.iter().filter(|a| a.is_usage_limited()) {
+            assert_eq!(attempt.reward, None, "{}", attempt.job);
+        }
+        let old = records.attempts.iter().find(|a| a.job == old).unwrap();
+        assert!(old.notes.iter().any(|n| n.contains("reward 0 withheld")));
+        let new = records.attempts.iter().find(|a| a.job == new).unwrap();
+        assert!(
+            new.notes
+                .iter()
+                .any(|n| n.contains("Resets 2026-09-23T11:50:00"))
+        );
+        // A Coder One episode manifest that says so is enough on its own.
+        let mut episode = test_attempt();
+        episode.reward = Some(0.0);
+        episode.status = "completed".to_owned();
+        let manifest = temp.path().join("manifest.json");
+        fs::write(
+            &manifest,
+            serde_json::to_vec(&serde_json::json!({
+                "contract": "openagents.coder.episode.v1",
+                "outcome": "usage_limited",
+                "usage_limit": {"provider": "anthropic", "message": "limited"},
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let mut scratch = Records::default();
+        attach_episode(&mut episode, &manifest, temp.path(), &mut scratch);
+        assert!(episode.is_usage_limited());
+        assert_eq!(episode.reward, None);
+        // Harbor's own classification of a retained trace.
+        let harbor =
+            serde_json::json!({"exception_info": {"exception_type": "ApiUsageLimitError"}});
+        assert_eq!(retained_status(&harbor, Some(0.0)), USAGE_LIMITED);
     }
 
     #[test]

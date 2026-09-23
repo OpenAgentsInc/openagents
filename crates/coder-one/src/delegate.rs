@@ -841,6 +841,8 @@ pub struct Summary {
     /// it itself, as Codex does not.
     pub cost_provenance: Option<&'static str>,
     pub cost_note: Option<&'static str>,
+    /// The usage or rate limit that ended the session, when one did.
+    pub limit: Option<crate::limit::Limit>,
 }
 
 impl Summary {
@@ -896,6 +898,23 @@ pub struct SummaryReader {
     items: u64,
     failure: Option<String>,
     failed: bool,
+    /// Limit evidence as it arrives; `finish` decides whether the session
+    /// ended on it.
+    limits: LimitEvidence,
+}
+
+/// What a stream said about a usage or rate limit.
+#[derive(Debug, Clone, Default)]
+struct LimitEvidence {
+    /// The limit's own words, from the first error that said it.
+    message: Option<String>,
+    /// The HTTP status a result reported, when it reported 429.
+    status: Option<u64>,
+    /// `resetsAt` and `rateLimitType` from a `rejected` rate-limit event.
+    reset: Option<(u64, Option<String>)>,
+    /// The time of the event that reported the limit, for reading a reset
+    /// time without a date.
+    at: Option<u64>,
 }
 
 impl SummaryReader {
@@ -912,6 +931,7 @@ impl SummaryReader {
             items: 0,
             failure: None,
             failed: false,
+            limits: LimitEvidence::default(),
         }
     }
 
@@ -954,8 +974,36 @@ impl SummaryReader {
                 summary.version = text("claude_code_version");
                 summary.api_key_source = text("apiKeySource");
             }
+            Some("rate_limit_event") => {
+                let info = &event["rate_limit_info"];
+                if info.get("status").and_then(Value::as_str) == Some("rejected")
+                    && let Some(at) = info.get("resetsAt").and_then(Value::as_u64)
+                {
+                    self.limits.reset = Some((
+                        at,
+                        info.get("rateLimitType")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                    ));
+                }
+            }
             Some("assistant") => {
                 let message = &event["message"];
+                if event.get("error").and_then(Value::as_str) == Some("rate_limit") {
+                    let said = message["content"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|block| block.get("text").and_then(Value::as_str))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.limits.message.get_or_insert(said);
+                    self.limits.at = event
+                        .get("timestamp")
+                        .and_then(Value::as_str)
+                        .and_then(crate::limit::parse_iso)
+                        .or(self.limits.at);
+                }
                 if let Some(id) = message.get("id").and_then(Value::as_str) {
                     let usage = &message["usage"];
                     let tokens = [
@@ -985,6 +1033,14 @@ impl SummaryReader {
                 summary.session_id = text("session_id");
                 summary.usage = event.get("usage").cloned();
                 summary.model_usage = event.get("modelUsage").cloned();
+                let status = event.get("api_error_status").and_then(Value::as_u64);
+                let said = summary.result.clone().unwrap_or_default();
+                if status == Some(429)
+                    || (summary.is_error == Some(true) && crate::limit::says_limited(&said))
+                {
+                    self.limits.status = status;
+                    self.limits.message = Some(said);
+                }
             }
             _ => {}
         }
@@ -1010,17 +1066,24 @@ impl SummaryReader {
             }
             Some("turn.failed") => {
                 self.failed = true;
-                self.failure = Some(
-                    event
-                        .pointer("/error/message")
-                        .and_then(Value::as_str)
-                        .unwrap_or("the turn failed")
-                        .to_string(),
-                );
+                let message = event
+                    .pointer("/error/message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("the turn failed")
+                    .to_string();
+                if crate::limit::says_limited(&message) {
+                    self.limits.message.get_or_insert_with(|| message.clone());
+                }
+                self.failure = Some(message);
             }
             Some("error") => {
                 if let Some(message) = event.get("message").and_then(Value::as_str) {
                     self.failure.get_or_insert_with(|| message.to_string());
+                    if crate::limit::says_limited(message) {
+                        self.limits
+                            .message
+                            .get_or_insert_with(|| message.to_string());
+                    }
                 }
             }
             Some("item.completed") => {
@@ -1052,6 +1115,12 @@ impl SummaryReader {
             summary.api_calls = Some(self.order.len() as u64);
             summary.input_per_call = self.order.iter().map(|id| self.calls[id]).collect();
         }
+        // A rate-limit error the session recovered from ends in a clean
+        // result; only a session that ended on one is limited.
+        let ended_clean = summary.has_result && summary.is_error == Some(false);
+        if !ended_clean {
+            summary.limit = self.limits.limit("anthropic");
+        }
         summary
     }
 
@@ -1063,9 +1132,13 @@ impl SummaryReader {
             items,
             failure,
             failed,
+            limits,
             ..
         } = self;
         let model = summary.model.clone().unwrap_or_default();
+        if failed || turns == 0 {
+            summary.limit = limits.limit("openai");
+        }
         summary.has_result = turns > 0 && !failed;
         summary.is_error = if failed {
             Some(true)
@@ -1115,6 +1188,22 @@ impl SummaryReader {
     }
 }
 
+impl LimitEvidence {
+    /// The limit the evidence shows, when an error said one.
+    fn limit(&self, provider: &str) -> Option<crate::limit::Limit> {
+        let message = self.message.as_deref()?;
+        let now = self.at.unwrap_or_else(crate::limit::now);
+        let mut limit = crate::limit::Limit::from_message(provider, message, now);
+        limit.status = self.status;
+        if let Some((at, window)) = &self.reset {
+            limit.resets_at = Some(*at);
+            limit.reset_source = Some("rate_limit_event".to_string());
+            limit.window.clone_from(window);
+        }
+        Some(limit)
+    }
+}
+
 /// Codes for refusals the CLI declares in what it prints, matched on its
 /// words. A refusal is an answer: the executor ran and declined.
 const REFUSALS: &[(&str, &str)] = &[
@@ -1139,8 +1228,12 @@ const REFUSALS: &[(&str, &str)] = &[
         "is not supported when using Codex with a ChatGPT account",
     ),
     ("not_logged_in", "401 Unauthorized"),
-    ("usage_limit", "You've hit your usage limit"),
+    (USAGE_LIMIT, "You've hit your usage limit"),
+    (USAGE_LIMIT, "You've hit your session limit"),
 ];
+
+/// The refusal code a usage- or rate-limited session ends with.
+pub const USAGE_LIMIT: &str = "usage_limit";
 
 /// Classifies how a delegate run ended from the process ending, what its
 /// stream reported, and what it printed on standard error.
@@ -1153,6 +1246,9 @@ pub fn classify(ending: &supervise::Ending, summary: &Summary, stderr: &str) -> 
             let clean = *code == Some(0) && summary.is_error == Some(false);
             if clean && summary.has_result {
                 return Status::Answered;
+            }
+            if summary.limit.is_some() {
+                return Status::Refused(USAGE_LIMIT.to_string());
             }
             let said = format!(
                 "{}\n{stderr}",
@@ -1330,6 +1426,31 @@ impl Report {
             }
             (status, _) => status.to_string(),
         }
+    }
+
+    /// The usage or rate limit that ended the session, when one did: the
+    /// stream's own account, or, when the stream said nothing, a
+    /// `usage_limit` refusal read from what the CLI printed. `agent` names
+    /// the provider.
+    #[must_use]
+    pub fn limit(&self, agent: &str) -> Option<crate::limit::Limit> {
+        if let Some(limit) = &self.summary.limit {
+            return Some(limit.clone());
+        }
+        if self.status != Status::Refused(USAGE_LIMIT.to_string()) {
+            return None;
+        }
+        let said = [self.summary.result.as_deref(), Some(self.stderr.as_str())]
+            .into_iter()
+            .flatten()
+            .flat_map(str::lines)
+            .find(|line| crate::limit::says_limited(line))
+            .unwrap_or("the executor reported a usage limit");
+        Some(crate::limit::Limit::from_message(
+            crate::limit::provider_of(agent),
+            said,
+            crate::limit::now(),
+        ))
     }
 }
 
@@ -1918,6 +2039,9 @@ pub fn record<E: Executor>(
         json!(summary.input_per_call),
     );
     extra.insert("is_error".to_string(), json!(summary.is_error));
+    if let Some(limit) = report.limit(executor.agent()) {
+        extra.insert(crate::limit::KEY.to_string(), limit.record());
+    }
     extra.insert("subtype".to_string(), json!(summary.subtype));
     extra.insert(
         "usage".to_string(),
@@ -2762,6 +2886,152 @@ pub(crate) mod tests {
         );
         assert_eq!(Credential::OauthToken.cost_provenance(), "cli_list_price");
         assert_eq!(Credential::ApiKey.cost_provenance(), "cli_reported");
+    }
+
+    /// A retained Claude Code session the subscription limit throttled
+    /// before its first turn (Terminal-Bench 4.0, 2026-09-23).
+    pub(crate) const THROTTLED: &str =
+        include_str!("../fixtures/usage-limit/claude-session-limit.stream.jsonl");
+    /// A retained session throttled mid-run, after real work.
+    const THROTTLED_MID_RUN: &str =
+        include_str!("../fixtures/usage-limit/claude-mid-session-limit.stream.jsonl");
+
+    #[test]
+    fn a_throttled_claude_session_is_a_usage_limit_with_its_reset_time() {
+        use supervise::Ending;
+        for stream in [THROTTLED, THROTTLED_MID_RUN] {
+            let summary = Summary::parse(stream);
+            let limit = summary.limit.clone().expect("a limit");
+            assert_eq!(limit.provider, "anthropic");
+            assert_eq!(limit.status, Some(429));
+            assert_eq!(
+                limit.message,
+                "You've hit your session limit · resets 11:50am (UTC)"
+            );
+            // The rejected rate-limit event's `resetsAt` wins over the
+            // message's clock time, and they agree.
+            assert_eq!(limit.resets_at, Some(1_790_164_200));
+            assert_eq!(limit.reset_source.as_deref(), Some("rate_limit_event"));
+            assert_eq!(limit.window.as_deref(), Some("five_hour"));
+            assert_eq!(
+                crate::limit::reset_from_message(&limit.message, 1_790_163_058),
+                Some(1_790_164_200)
+            );
+            assert_eq!(
+                classify(&Ending::Exited(Some(1)), &summary, ""),
+                Status::Refused(USAGE_LIMIT.to_string())
+            );
+        }
+        // The mid-run session did billed work before the limit.
+        assert!(Summary::parse(THROTTLED_MID_RUN).total_cost_usd.unwrap() > 1.0);
+    }
+
+    #[test]
+    fn a_rejected_rate_limit_event_alone_is_not_a_limit() {
+        let recovered = format!(
+            "{}\n{RESULT}",
+            THROTTLED
+                .lines()
+                .find(|line| line.contains("rate_limit_event"))
+                .unwrap()
+        );
+        let summary = Summary::parse(&recovered);
+        assert_eq!(summary.limit, None);
+        assert_eq!(
+            classify(&supervise::Ending::Exited(Some(0)), &summary, ""),
+            Status::Answered
+        );
+        // A failed result that names no limit is not one either.
+        let failed = Summary::parse(
+            r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":"API Error: 500"}"#,
+        );
+        assert_eq!(failed.limit, None);
+    }
+
+    #[test]
+    fn a_codex_usage_limit_is_read_from_its_error_events() {
+        use supervise::Ending;
+        let said = "You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 3:04 PM.";
+        let stream = format!(
+            "{}\n{}\n{}\n{}\n",
+            r#"{"type":"thread.started","thread_id":"t-1"}"#,
+            r#"{"type":"turn.started"}"#,
+            json!({ "type": "error", "message": said }),
+            json!({ "type": "turn.failed", "error": { "message": said } }),
+        );
+        let summary = Summary::parse_codex(&stream, "gpt-6-luna");
+        let limit = summary.limit.clone().expect("a limit");
+        assert_eq!(limit.provider, "openai");
+        assert_eq!(limit.message, said);
+        assert_eq!(limit.reset_source.as_deref(), Some("message"));
+        let resets = limit.resets_at.unwrap();
+        assert_eq!(resets % 86_400, 15 * 3_600 + 4 * 60);
+        assert_eq!(
+            classify(&Ending::Exited(Some(1)), &summary, ""),
+            Status::Refused(USAGE_LIMIT.to_string())
+        );
+        // Codex's retry exhaustion on 429 is a rate limit too.
+        let retries = format!(
+            "{}\n{}\n",
+            r#"{"type":"thread.started","thread_id":"t-2"}"#,
+            json!({ "type": "turn.failed", "error": { "message": "exceeded retry limit, last status: 429 Too Many Requests" } }),
+        );
+        assert!(Summary::parse_codex(&retries, "gpt-6-luna").limit.is_some());
+        // A turn that failed for another reason is not.
+        let other = format!(
+            "{}\n{}\n",
+            r#"{"type":"thread.started","thread_id":"t-3"}"#,
+            json!({ "type": "turn.failed", "error": { "message": "stream disconnected" } }),
+        );
+        assert_eq!(Summary::parse_codex(&other, "gpt-6-luna").limit, None);
+    }
+
+    #[tokio::test]
+    async fn a_throttled_dispatch_records_the_limit_on_its_call() {
+        let recorder = Recorder::default();
+        let briefing = Briefing::build(&inputs(), BRIEFING_CAP);
+        let summary = Summary::parse(THROTTLED);
+        let status = classify(&supervise::Ending::Exited(Some(1)), &summary, "");
+        let mut executor = FakeExecutor {
+            reports: vec![Report {
+                status,
+                summary,
+                milliseconds: 500,
+                stderr: String::new(),
+                stream: None,
+            }],
+            sent: vec![],
+        };
+        let done = delegate(
+            &mut executor,
+            &briefing,
+            &Delegation {
+                mode: Mode::Always,
+                reason: &Reason::Always,
+                isolation: "none",
+            },
+            &recorder,
+            0,
+        )
+        .await;
+        assert_eq!(done.status.word(), "refused");
+        let steps = recorder.steps();
+        let recorded = crate::limit::from_steps(&steps).expect("a recorded limit");
+        assert_eq!(recorded["schema"], crate::limit::SCHEMA);
+        assert_eq!(recorded["resets_at"], 1_790_164_200);
+        assert_eq!(recorded["resets_at_iso"], "2026-09-23T11:50:00.000Z");
+        // A refusal read only from what the CLI printed still records one.
+        let bare = Report {
+            status: Status::Refused(USAGE_LIMIT.to_string()),
+            summary: Summary::default(),
+            milliseconds: 0,
+            stderr: "Error: You've hit your usage limit · resets 11:50am (UTC)".to_string(),
+            stream: None,
+        };
+        let limit = bare.limit("claude-code").unwrap();
+        assert_eq!(limit.provider, "anthropic");
+        assert!(limit.message.contains("usage limit"));
+        assert_eq!(report(Status::Answered).limit("claude-code"), None);
     }
 
     /// An executor that answers from a script and keeps what it was sent.

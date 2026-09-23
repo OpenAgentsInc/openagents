@@ -375,7 +375,7 @@ def cmd_materialize(args: argparse.Namespace) -> int:
 
 
 def _suite_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
-    from . import suite
+    from . import suite, usage_limit
 
     request = _load(args.profile, args.agent)
     assert request is not None
@@ -412,6 +412,8 @@ def _suite_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
         max_gpus=args.max_gpus,
         order=args.order,
         allow_oversize=args.allow_oversize,
+        max_claude_concurrent=args.max_claude_concurrent,
+        usage_backoff_sec=args.usage_backoff_min * 60,
     )
     launcher = suite.Launcher(
         profile=request.profile.id,
@@ -439,6 +441,7 @@ def _suite_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
         directory=directory,
         launcher=launcher,
         host_=host_,
+        providers=usage_limit.arm_providers(request.agent),
     )
 
 
@@ -467,6 +470,25 @@ def cmd_suite(args: argparse.Namespace) -> int:
                 "  host GPU slot: "
                 + (f"held by {holder.get('job')}" if holder else "free")
             )
+            slots = (status.get("budget") or {}).get("max_claude_concurrent") or 0
+            if slots:
+                holders = suite.claude_slot_holders(suite.claude_slot_dir(), slots)
+                print(
+                    f"  host Claude slots: {len(holders)}/{slots} held"
+                    + (
+                        " by " + ", ".join(h.get("job", "unknown") for h in holders)
+                        if holders
+                        else ""
+                    )
+                )
+            import time
+
+            for name, pause in sorted(suite.read_pauses(suite.pause_path()).items()):
+                if float(pause.get("until") or 0) > time.time():
+                    print(
+                        f"  host pause: {name} until {pause.get('until_iso')} "
+                        f"({pause.get('reason')})"
+                    )
         return 0
     if args.suite_command == "stop":
         lock = suite.suite_dir(args.profile, args.agent) / "lock"
@@ -767,6 +789,21 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="run a task larger than the whole budget alone; by default "
             "it is skipped with the reason recorded",
+        )
+        p.add_argument(
+            "--max-claude-concurrent",
+            type=int,
+            default=2,
+            help="trials at once whose arm runs Claude, across every suite on "
+            "the host, since they share one subscription (default 2); 0 turns "
+            "the cap off",
+        )
+        p.add_argument(
+            "--usage-backoff-min",
+            type=float,
+            default=30.0,
+            help="minutes a provider pauses after a usage limit that states no "
+            "reset time (default 30)",
         )
         p.add_argument(
             "--interval", type=float, default=15.0, help="seconds between polls"

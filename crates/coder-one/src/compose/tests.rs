@@ -1236,3 +1236,85 @@ fn the_v5_manifest_is_v4_plus_persist_and_v4_keeps_its_digest() {
         .alternate = vec![Tier::new("codex", "gpt-6-astra")];
     assert!(tiers(&alternating).iter().any(|t| t.model == "gpt-6-astra"));
 }
+
+/// A session the subscription limit throttled: a retained Claude Code
+/// stream replayed, then the CLI's exit 1.
+fn throttled(name: &str) -> Script {
+    let mut script = script(name, 0, 0);
+    script.format = Format::Claude;
+    script.opening = false;
+    script.events = crate::delegate::tests::THROTTLED
+        .lines()
+        .map(|line| {
+            at(
+                0,
+                Act::Raw {
+                    line: line.to_string(),
+                },
+            )
+        })
+        .chain([at(10, Act::Exit { code: 1 })])
+        .collect();
+    script
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_throttled_first_session_stops_the_composition() {
+    // v5 would repair, run a second executor, and persist; none of them
+    // runs on an exhausted quota.
+    let ran = compose(
+        "usage-limit-first",
+        &manifest("tunable-v5.json"),
+        vec![throttled("opus"), idle("never-1"), idle("never-2")],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    let record = &ran.record;
+    assert_eq!(ran.made.len(), 1, "{record:#}");
+    assert_eq!(roles(record), ["primary"]);
+    assert_eq!(record["branches"][0]["status"], "refused");
+    let limit = &record["usage_limited"];
+    assert_eq!(limit["provider"], "anthropic", "{record:#}");
+    assert_eq!(limit["resets_at"], 1_790_164_200);
+    assert_eq!(record["repair"], Value::Null);
+    assert_eq!(record["second"], Value::Null);
+    assert_eq!(record["persist"], Value::Null);
+    assert!(record["checks"].as_array().unwrap().is_empty());
+    assert_eq!(
+        crate::limit::from_steps(&ran.recorder.steps()).unwrap()["resets_at"],
+        1_790_164_200
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_throttled_persist_round_ends_persist_and_the_composition() {
+    if !python() {
+        return;
+    }
+    let task = log_task();
+    let ran = compose_task(
+        "usage-limit-persist",
+        &v5_unrouted(),
+        vec![
+            log_script("bad"),
+            log_script("bad"),
+            throttled("opus-persist"),
+            idle("never"),
+        ],
+        None,
+        EIGHT_HOURS,
+        Some(&task),
+    )
+    .await;
+    let record = &ran.record;
+    assert_eq!(ran.made.len(), 3, "{record:#}");
+    assert_eq!(roles(record), ["primary", "persist-1"]);
+    let persist = &record["persist"];
+    assert_eq!(persist["stopped"], "round 1's session hit a usage limit");
+    assert_eq!(
+        persist["rounds"][0]["usage_limit"]["resets_at"],
+        1_790_164_200
+    );
+    assert_eq!(record["usage_limited"]["provider"], "anthropic");
+}

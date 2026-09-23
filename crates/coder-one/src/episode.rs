@@ -348,8 +348,9 @@ pub struct RunArgs {
 
 /// `episode run`: one headless episode in the current directory. Returns
 /// the process exit code: 0 when the agent or its delegate finished, 3 when
-/// the step limit ran out, 4 when generation failed, and 5 when the
-/// delegate did not answer.
+/// the step limit ran out, 4 when generation failed, 5 when the delegate
+/// did not answer, and 6 when a delegate session hit a usage or rate
+/// limit.
 pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     if args.contract != CONTRACT {
         return Err(format!(
@@ -679,6 +680,23 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         Ended::StepLimit { .. } | Ended::Stopped { .. } => ("step_limit", 3),
         Ended::GenerationFailed { .. } => ("generation_failed", 4),
     };
+    // A delegate session the provider throttled did no work worth
+    // grading, whatever the rest of the episode did: the harness requeues
+    // the trial once the limit resets.
+    let limited = crate::limit::from_steps(&recorder.steps());
+    let (outcome, code) = match &limited {
+        Some(limit) => {
+            println!(
+                "\n  usage limit ▸ {} · resets {}",
+                limit["message"].as_str().unwrap_or("limited"),
+                limit["resets_at_iso"]
+                    .as_str()
+                    .unwrap_or("at an unknown time")
+            );
+            (crate::limit::OUTCOME, crate::limit::EXIT_CODE)
+        }
+        None => (outcome, code),
+    };
     println!("\n── {outcome} ──");
     recorder.end(
         &episode,
@@ -687,7 +705,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         } else {
             RecordOutcome::Failed
         })
-        .summary(json!({ "outcome": outcome, "exit_code": code })),
+        .summary(json!({ "outcome": outcome, "exit_code": code, "usage_limit": limited })),
     );
     // The log closes before the last snapshot, so the manifest digests the
     // log as it will stay.
@@ -1067,6 +1085,9 @@ impl Bundle {
         manifest["started_at"] = json!(atif::document::iso(self.started));
         manifest["updated_at"] = json!(atif::document::iso(now));
         manifest["outcome"] = json!(outcome);
+        if let Some(limit) = crate::limit::from_steps(steps) {
+            manifest[crate::limit::KEY] = limit;
+        }
         manifest["steps"] = json!(state.history.len());
         manifest["workdir"] = json!(self.workdir.to_string_lossy());
         manifest["git_base"] = json!(self.base);

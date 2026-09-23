@@ -34,6 +34,16 @@ Budgets:
 
 A setup timeout is never a result. The scheduler moves that job directory
 to ``failed/`` and runs the trial once more, as the runbook does by hand.
+
+A usage limit is never a result either. When a finished trial's Claude or
+Codex session was throttled by its provider (``tbench.usage_limit``), the
+scheduler moves the job directory to ``failed/`` with a ``-usage-limit-``
+suffix, queues the trial again, and pauses every arm on that provider until
+the limit resets: the reset time the session stated, or a backoff when it
+stated none. The pause is a host-wide file under the state directory, so
+every scheduler on the host honors it. Claude trials also take one of a few
+host-wide Claude slots (``--max-claude-concurrent``, 2 by default), lock
+files like the GPU slot, because every suite draws on one subscription.
 """
 
 from __future__ import annotations
@@ -52,11 +62,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import host, paths
+from . import host, paths, usage_limit
 from .panel import Task
 from .results import TrialPaths
 
 STATUS_SCHEMA = "openagents.tbench.suite-status.v1"
+PAUSES_SCHEMA = "openagents.tbench.usage-pauses.v1"
+
+# A usage limit's pause runs this long past the reset time it states, so a
+# trial doesn't start in the minute the quota comes back.
+RESET_MARGIN_SEC = 60
 
 # Exceptions that end a trial before the agent did any work. Harbor's
 # names; the trial is retried once after its job dir moves to failed/.
@@ -129,6 +144,79 @@ def acquire_gpu_slot(lock: Path, job: str) -> int | None:
     return fd
 
 
+def claude_slot_dir() -> Path:
+    """Where the host-wide Claude slots' lock files live."""
+    return paths.state_dir() / "claude-slots"
+
+
+def acquire_claude_slot(directory: Path, job: str, slots: int) -> int | None:
+    """Take one of ``slots`` host-wide Claude slots for ``job``, or ``None``.
+
+    Slot ``i`` is the lock file ``claude-<i>.lock``; like the GPU slot, the
+    trial's process keeps the descriptor, so the slot lasts as long as the
+    trial whether or not a scheduler still runs.
+    """
+    for index in range(slots):
+        fd = acquire_gpu_slot(directory / f"claude-{index}.lock", job)
+        if fd is not None:
+            return fd
+    return None
+
+
+def claude_slot_holders(directory: Path, slots: int) -> list[dict[str, Any]]:
+    """Who holds each busy host-wide Claude slot."""
+    held = []
+    for index in range(slots):
+        holder = gpu_slot_holder(directory / f"claude-{index}.lock")
+        if holder:
+            held.append(holder)
+    return held
+
+
+def pause_path() -> Path:
+    """The host-wide provider pauses every scheduler reads."""
+    return paths.state_dir() / "usage-pauses.json"
+
+
+def read_pauses(path: Path) -> dict[str, dict[str, Any]]:
+    """Each paused provider's pause: ``until`` (epoch seconds) and why."""
+    data = _read_json(path) or {}
+    providers = data.get("providers")
+    return providers if isinstance(providers, dict) else {}
+
+
+def record_pause(
+    path: Path,
+    provider: str,
+    until: float,
+    *,
+    reason: str,
+    job: str,
+) -> dict[str, Any]:
+    """Pause ``provider`` until ``until``, keeping a later pause already set."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with (path.parent / f".{path.name}.lock").open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        providers = read_pauses(path)
+        current = providers.get(provider) or {}
+        if float(current.get("until") or 0) < until:
+            providers[provider] = {
+                "until": int(until),
+                "until_iso": datetime.fromtimestamp(until, tz=timezone.utc).isoformat(
+                    timespec="seconds"
+                ),
+                "reason": reason,
+                "job": job,
+                "set_at": utc_now(),
+            }
+        staging = path.with_suffix(".json.tmp")
+        staging.write_text(
+            json.dumps({"schema": PAUSES_SCHEMA, "providers": providers}, indent=2) + "\n"
+        )
+        staging.replace(path)
+        return providers[provider]
+
+
 def gpu_slot_holder(lock: Path) -> dict[str, Any] | None:
     """Who holds the host-wide GPU slot, or ``None`` when it's free."""
     if not lock.exists():
@@ -164,6 +252,11 @@ class Budget:
     order: str = "largest"
     # Run a task larger than the whole budget alone, rather than skip it.
     allow_oversize: bool = False
+    # Trials at once, across every suite on the host, whose arm runs
+    # Claude: one subscription serves them all. 0 turns the cap off.
+    max_claude_concurrent: int = 2
+    # How long a provider pauses after a usage limit that states no reset.
+    usage_backoff_sec: float = usage_limit.DEFAULT_BACKOFF_SEC
 
     def __post_init__(self) -> None:
         if self.order not in ORDERS:
@@ -182,6 +275,8 @@ class Budget:
             "reserve_after_sec": self.reserve_after_sec,
             "order": self.order,
             "allow_oversize": self.allow_oversize,
+            "max_claude_concurrent": self.max_claude_concurrent,
+            "usage_backoff_sec": self.usage_backoff_sec,
         }
 
 
@@ -201,6 +296,7 @@ class Trial:
     exception: str | None = None
     waiting_since: float | None = None
     failed_moves: list[str] = field(default_factory=list)
+    usage_limits: int = 0
 
     @property
     def cpus(self) -> int:
@@ -232,6 +328,7 @@ class Trial:
             "memory_mb": self.task.peak_resources.memory_mb,
             "gpus": self.gpus,
             "failed_moves": self.failed_moves,
+            "usage_limits": self.usage_limits,
         }
 
 
@@ -239,16 +336,31 @@ class Trial:
 class JobState:
     """What a job directory says about its trial."""
 
-    kind: str  # new | finished | setup_timeout | interrupted | incomplete | refused
+    # new | finished | usage_limited | setup_timeout | interrupted |
+    # incomplete | refused
+    kind: str
     reward: float | None = None
     exception: str | None = None
     reason: str | None = None
+    usage_limit: dict[str, Any] | None = None
+    # When the trial finished, in epoch seconds, when its result says.
+    finished_at: float | None = None
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
     try:
         return json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _epoch(text: Any) -> float | None:
+    """Epoch seconds of an ISO 8601 timestamp, or ``None``."""
+    if not isinstance(text, str):
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except ValueError:
         return None
 
 
@@ -268,8 +380,22 @@ def inspect_job(job_dir: Path) -> JobState:
         exception = (result.get("exception_info") or {}).get("exception_type")
         rewards = (result.get("verifier_result") or {}).get("rewards") or {}
         reward = rewards.get("reward")
+        limit = (
+            usage_limit.trial_usage_limit(trial, result)
+            if exception not in SETUP_TIMEOUTS and exception != CANCELLED
+            else None
+        )
         if exception == CANCELLED:
             states.append(JobState("interrupted", exception=exception))
+        elif limit is not None:
+            states.append(
+                JobState(
+                    "usage_limited",
+                    exception=exception,
+                    usage_limit=limit,
+                    finished_at=_epoch(result.get("finished_at")),
+                )
+            )
         elif exception in SETUP_TIMEOUTS:
             states.append(JobState("setup_timeout", exception=exception))
         else:
@@ -280,7 +406,7 @@ def inspect_job(job_dir: Path) -> JobState:
                     exception=exception,
                 )
             )
-    for kind in ("finished", "setup_timeout", "interrupted", "incomplete"):
+    for kind in ("usage_limited", "finished", "setup_timeout", "interrupted", "incomplete"):
         for state in states:
             if state.kind == kind:
                 return state
@@ -348,6 +474,11 @@ class Host:
     # or None while another trial on the host holds it.
     gpu_slot: Callable[[str], int | None] = lambda job: acquire_gpu_slot(
         gpu_lock_path(), job
+    )
+    # Takes one of the host-wide Claude slots: a descriptor that holds it,
+    # or None while every slot is held.
+    claude_slot: Callable[[str, int], int | None] = lambda job, slots: acquire_claude_slot(
+        claude_slot_dir(), job, slots
     )
 
     @classmethod
@@ -436,8 +567,11 @@ class Launcher:
             *self.extra_args,
         ]
 
-    def start(self, trial: Trial, verb: str, hold: int | None = None) -> int:
-        """Start the job; ``hold`` is a descriptor the trial keeps open."""
+    def start(
+        self, trial: Trial, verb: str, hold: int | tuple[int, ...] | None = None
+    ) -> int:
+        """Start the job; ``hold`` is descriptors the trial keeps open."""
+        holds = (hold,) if isinstance(hold, int) else tuple(hold or ())
         self.logs.mkdir(parents=True, exist_ok=True)
         log = (self.logs / f"{trial.job}.log").open("ab")
         log.write(f"\n== {utc_now()} tbench {verb} {trial.job}\n".encode())
@@ -452,7 +586,7 @@ class Launcher:
             start_new_session=True,
             cwd=paths.PACKAGE_DIR,
             env=fresh_environment(os.environ),
-            pass_fds=() if hold is None else (hold,),
+            pass_fds=holds,
         )
         log.close()
         self.children[process.pid] = process
@@ -521,6 +655,9 @@ class Scheduler:
         clock: Callable[[], float] = time.monotonic,
         find_running: Callable[[str], int | None] = running_pid,
         failed: Path | None = None,
+        providers: frozenset[str] = frozenset(),
+        pauses: Path | None = None,
+        wall: Callable[[], float] = time.time,
     ) -> None:
         self.profile = profile
         self.arm = arm
@@ -533,6 +670,12 @@ class Scheduler:
         self.clock = clock
         self.find_running = find_running
         self.failed = failed or failed_dir()
+        # The providers this arm's sessions bill; a usage limit on one
+        # pauses the arm, and `anthropic` takes a host-wide Claude slot.
+        self.providers = frozenset(providers)
+        self.pauses = pauses or pause_path()
+        self.wall = wall
+        self.paused_note: str | None = None
         self.trials = [
             Trial(task, attempt, job_name(profile, arm, task.id, attempt))
             for task in tasks
@@ -587,6 +730,9 @@ class Scheduler:
                 "trials": len(running),
             },
             "free_disk_gb": None if self.free_gb is None else round(self.free_gb, 1),
+            "providers": sorted(self.providers),
+            "paused": self.paused(),
+            "usage_limited": sum(t.usage_limits for t in self.trials),
             "pruned": self.pruned,
             "trials": [t.to_json() for t in self.trials],
             "events": self.events[-50:],
@@ -633,6 +779,8 @@ class Scheduler:
                 self._apply(trial, state)
             elif state.kind == "setup_timeout":
                 self._move_aside(trial, state)
+            elif state.kind == "usage_limited":
+                self._usage_limited(trial, state)
             else:
                 # New, interrupted, incomplete, or refused on an earlier
                 # start: all run again now. A refusal is retried because
@@ -672,10 +820,10 @@ class Scheduler:
             )
         return None
 
-    def _move_aside(self, trial: Trial, state: JobState) -> None:
-        """Move a setup timeout to ``failed/`` and queue one retry."""
+    def _set_aside(self, trial: Trial, label: str) -> Path:
+        """Move the trial's job dir to ``failed/`` under ``label``."""
         job_dir = self.jobs_dir / trial.job
-        target = self.failed / f"{trial.job}-setup-timeout-{int(time.time())}"
+        target = self.failed / f"{trial.job}-{label}-{int(time.time())}"
         suffix = 1
         while target.exists():
             target = target.with_name(f"{target.name}-{suffix}")
@@ -687,8 +835,73 @@ class Scheduler:
         if held.exists():
             held.rename(target.with_name(target.name + "-held"))
         trial.failed_moves.append(str(target))
+        return target
+
+    def _usage_limited(self, trial: Trial, state: JobState) -> None:
+        """Set a throttled trial aside, queue it again, and pause its provider.
+
+        A usage limit says nothing about the agent, so the trial always runs
+        again; the pause keeps it, and every other trial on the provider,
+        from starting until the limit resets.
+        """
+        limit = state.usage_limit or {}
+        target = self._set_aside(trial, "usage-limit")
+        trial.usage_limits += 1
+        trial.state = PENDING
+        trial.reward = None
+        trial.exception = state.exception
+        provider = limit.get("provider")
+        providers = (
+            {provider} if provider in usage_limit.PROVIDERS.values() else set(self.providers)
+        )
+        now = self.wall()
+        resets = limit.get("resets_at")
+        if isinstance(resets, (int, float)):
+            until = float(resets) + RESET_MARGIN_SEC
+            why = f"resets at {limit.get('resets_at_iso') or int(resets)}"
+        else:
+            # Counted from when the trial ended, so a limit a restarted
+            # scheduler finds long after the fact doesn't pause anything.
+            until = (state.finished_at or now) + self.budget.usage_backoff_sec
+            why = (
+                "no reset time stated; backing off "
+                f"{self.budget.usage_backoff_sec / 60:g} min"
+            )
+        if until <= now:
+            why += ", already past"
+        else:
+            for name in sorted(providers):
+                record_pause(
+                    self.pauses,
+                    name,
+                    until,
+                    reason=f"{trial.job}: {limit.get('message') or 'usage limit'}",
+                    job=trial.job,
+                )
+        trial.reason = (
+            f"requeued after a {'/'.join(sorted(providers)) or 'provider'} usage "
+            f"limit ({why})"
+        )
+        self.event(f"{trial.job}: usage limit, moved to {target}; {trial.reason}")
+
+    def paused(self) -> dict[str, dict[str, Any]]:
+        """This arm's providers that are paused now, with each pause."""
+        now = self.wall()
+        return {
+            name: pause
+            for name, pause in read_pauses(self.pauses).items()
+            if name in self.providers and float(pause.get("until") or 0) > now
+        }
+
+    def _move_aside(self, trial: Trial, state: JobState) -> None:
+        """Move a setup timeout to ``failed/`` and queue one retry."""
+        self._set_aside(trial, "setup-timeout")
+        target = trial.failed_moves[-1]
         # Earlier moves count too, so a restart doesn't retry forever.
-        trial.retries = len(trial.failed_moves) + self._earlier_moves(trial)
+        trial.retries = (
+            sum(1 for move in trial.failed_moves if "-setup-timeout-" in Path(move).name)
+            + self._earlier_moves(trial)
+        )
         if trial.retries > 1:
             trial.state = FAILED
             trial.exception = state.exception
@@ -773,6 +986,19 @@ class Scheduler:
         """Start every pending trial that fits now, in the budget's order."""
         if self.stopping:
             return []
+        paused = self.paused()
+        if paused:
+            note = "; ".join(
+                f"{name} paused until {pause.get('until_iso')}"
+                for name, pause in sorted(paused.items())
+            )
+            if note != self.paused_note:
+                self.paused_note = note
+                self.event(f"not starting trials: {note}")
+            return []
+        if self.paused_note:
+            self.paused_note = None
+            self.event("usage-limit pause over; starting trials again")
         started: list[Trial] = []
         now = self.clock()
         pending = sorted(
@@ -791,10 +1017,27 @@ class Scheduler:
                 if not self._disk_ok():
                     self._disk_wait()
                     break
+            claude: int | None = None
+            slots = self.budget.max_claude_concurrent
+            if fits and slots > 0 and "anthropic" in self.providers:
+                claude = self.host.claude_slot(trial.job, slots)
+                if claude is None:
+                    reason = (
+                        f"waiting for a host-wide Claude slot ({slots} Claude "
+                        "trials at once across every suite)"
+                    )
+                    if trial.reason != reason:
+                        trial.reason = reason
+                        self.event(f"{trial.job}: {reason}")
+                    # Every pending trial of this arm needs a slot, so none
+                    # starts until one frees.
+                    break
             slot: int | None = None
             if fits and trial.gpus:
                 slot = self.host.gpu_slot(trial.job)
                 if slot is None:
+                    if claude is not None:
+                        os.close(claude)
                     reason = "waiting for the host-wide GPU slot another trial holds"
                     if trial.reason != reason:
                         trial.reason = reason
@@ -810,19 +1053,24 @@ class Scheduler:
             if not disk_checked:
                 disk_checked = True
                 if not self._disk_ok():
+                    if claude is not None:
+                        os.close(claude)
                     self._disk_wait()
                     break
             verb = "resume" if inspect_job(self.jobs_dir / trial.job).kind in (
                 "interrupted",
                 "incomplete",
             ) else "run"
+            holds = tuple(fd for fd in (slot, claude) if fd is not None)
             try:
-                trial.pid = self.launcher.start(trial, verb, hold=slot)
+                trial.pid = self.launcher.start(
+                    trial, verb, hold=holds[0] if len(holds) == 1 else (holds or None)
+                )
             finally:
-                # The trial's process holds its own copy of the slot now.
-                if slot is not None:
-                    os.close(slot)
-            if slot is not None:
+                # The trial's process holds its own copy of each slot now.
+                for fd in holds:
+                    os.close(fd)
+            if holds:
                 trial.reason = None
             trial.state = RUNNING
             trial.started_at = utc_now()
@@ -855,6 +1103,8 @@ class Scheduler:
                 )
             elif state.kind == "setup_timeout":
                 self._move_aside(trial, state)
+            elif state.kind == "usage_limited":
+                self._usage_limited(trial, state)
             elif state.kind == "refused":
                 self._apply(trial, state)
                 self.event(f"refused {trial.job}: {state.reason}")
@@ -977,6 +1227,16 @@ def status_lines(status: dict[str, Any]) -> list[str]:
             f"  order {budget['order']} · GPUs {in_use.get('gpus', 0)}/"
             f"{budget.get('max_gpus')} · oversize "
             + ("runs alone" if budget.get("allow_oversize") else "skipped")
+        )
+    if "max_claude_concurrent" in budget:
+        lines.append(
+            f"  providers {', '.join(status.get('providers') or []) or 'none'} · "
+            f"Claude slots {budget['max_claude_concurrent'] or 'uncapped'} · "
+            f"usage-limited {status.get('usage_limited', 0)}"
+        )
+    for name, pause in sorted((status.get("paused") or {}).items()):
+        lines.append(
+            f"  paused   {name} until {pause.get('until_iso')}: {pause.get('reason')}"
         )
     for trial in status.get("trials") or []:
         if trial["state"] in (RUNNING, SKIPPED, REFUSED, FAILED) or trial.get("reason"):

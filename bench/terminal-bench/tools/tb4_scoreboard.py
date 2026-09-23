@@ -4,7 +4,9 @@ Reads graded trials from the local jobs directory (and retained traces when
 the jobs are gone) and the per-task leaderboard reference, and prints a
 Markdown table per task plus totals. A trial counts when the verifier wrote a
 reward; setup, disk, and revoked-token failures are not results and are
-listed separately.
+listed separately. A trial whose Claude or Codex session hit its provider's
+usage or rate limit is not a result either, whatever the verifier wrote: it
+is left out of every cell and counted in the usage-limited column.
 
     python3 tools/tb4_scoreboard.py [--arms a,b,c] [--jobs DIR]
 """
@@ -15,9 +17,13 @@ import argparse
 import glob
 import json
 import os
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(HERE))
+
+from tbench.usage_limit import trial_usage_limit  # noqa: E402
 REFERENCE = HERE / "reference" / "tb4-leaderboard.json"
 DEFAULT_ARMS = [
     "coder-one-tunable-v5",
@@ -28,8 +34,14 @@ DEFAULT_ARMS = [
 ]
 
 
-def graded(jobs: Path, arm: str) -> dict[str, list[tuple[float, float | None]]]:
-    """Per task, the (reward, cost) of every graded trial of `arm`."""
+def graded(
+    jobs: Path, arm: str, limited: list[str] | None = None
+) -> dict[str, list[tuple[float, float | None]]]:
+    """Per task, the (reward, cost) of every graded trial of `arm`.
+
+    A usage-limited trial is left out, and its trial directory is appended
+    to `limited` when one is given.
+    """
     out: dict[str, list[tuple[float, float | None]]] = {}
     for job in sorted(glob.glob(str(jobs / f"tb4--{arm}--*"))):
         task = job.split("--")[-1]
@@ -39,6 +51,10 @@ def graded(jobs: Path, arm: str) -> dict[str, list[tuple[float, float | None]]]:
             try:
                 data = json.loads(Path(result).read_text())
             except (OSError, ValueError):
+                continue
+            if trial_usage_limit(Path(result).parent, data):
+                if limited is not None:
+                    limited.append(str(Path(result).parent))
                 continue
             reward = ((data.get("verifier_result") or {}).get("rewards") or {}).get("reward")
             if reward is None:
@@ -82,7 +98,8 @@ def main() -> None:
         (e for e in entries if e["model"] == "Opus 5" and e["reasoning_effort"] == "max"),
         None,
     )
-    results = {arm: graded(Path(args.jobs), arm) for arm in arms}
+    limited: dict[str, list[str]] = {arm: [] for arm in arms}
+    results = {arm: graded(Path(args.jobs), arm, limited[arm]) for arm in arms}
 
     head = ["Task", "Best any row", f"{best['model']} {best['reasoning_effort']}"]
     if opus5:
@@ -111,12 +128,18 @@ def main() -> None:
             row.append(f"{passed}/{len(cells)} · ${cost:.2f}")
         print("| " + " | ".join(row) + " |")
     print()
-    print("| Arm | Graded trials | Passed | Pass rate | Cost of graded trials |")
-    print("| --- | ---: | ---: | ---: | ---: |")
+    print(
+        "| Arm | Graded trials | Passed | Pass rate | Cost of graded trials "
+        "| Usage-limited (not graded) |"
+    )
+    print("| --- | ---: | ---: | ---: | ---: | ---: |")
     for arm in arms:
         passed, n, cost = totals[arm]
         share = f"{passed / n:.0%}" if n else "—"
-        print(f"| {arm} | {n} | {passed} | {share} | ${cost:.2f} |")
+        print(
+            f"| {arm} | {n} | {passed} | {share} | ${cost:.2f} "
+            f"| {len(limited[arm])} |"
+        )
 
 
 if __name__ == "__main__":
