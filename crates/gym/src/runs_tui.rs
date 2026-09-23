@@ -29,8 +29,10 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 
 use crate::runs::{self, Agent, Catalog, Filter, Outcome, Run, duration, when};
+use crate::runs_learning::{self as learning, Answer as Judged, Context, Judge, Report, Store};
 use crate::runs_story::{self, Detail, clock, margin_note};
 use crate::runs_transcript::{Block, Kind, first_line};
+use crate::terminal_bench_reference::Reference;
 use crate::tui::ladder_from_environment;
 
 /// A key the pane understands, whatever terminal it came from.
@@ -144,8 +146,67 @@ impl Open {
     }
 }
 
+/// Which order the list reads in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Order {
+    /// Running runs first, then newest first.
+    Newest,
+    /// The runs Jev judged most worth learning from first.
+    Learning,
+}
+
+impl Order {
+    fn word(self) -> &'static str {
+        match self {
+            Order::Newest => "newest",
+            Order::Learning => "learning",
+        }
+    }
+}
+
+/// Jev's rankings as the pane holds them: the store, where answers come
+/// from, and the ranking pass running in the background, if any.
+struct Learning {
+    store: Store,
+    judge: Judge,
+    reference: Option<Reference>,
+    /// Where the chosen order is remembered between sessions.
+    prefs: Option<std::path::PathBuf>,
+    context: Context,
+    answers: std::collections::HashMap<String, Judged>,
+    rarity: learning::Rarity,
+    job: Option<std::sync::mpsc::Receiver<Report>>,
+    /// How many runs the running pass asks about.
+    asking: usize,
+    /// What this session's passes asked and cost.
+    asked: usize,
+    spent_usd: f64,
+    last_error: Option<String>,
+}
+
+impl Learning {
+    fn off() -> Self {
+        Learning {
+            store: Store::open(None),
+            judge: Judge::Off("Jev isn't set up for this pane".to_owned()),
+            reference: None,
+            prefs: None,
+            context: Context::default(),
+            answers: std::collections::HashMap::new(),
+            rarity: learning::Rarity::none(),
+            job: None,
+            asking: 0,
+            asked: 0,
+            spent_usd: 0.0,
+            last_error: None,
+        }
+    }
+}
+
 /// The Runs pane.
 pub struct Pane {
+    order: Order,
+    learning: Learning,
     catalog: Catalog,
     filter: Filter,
     cursor: usize,
@@ -167,6 +228,8 @@ impl Pane {
     pub fn new(catalog: Catalog) -> Self {
         let now = runs::now_ms();
         Pane {
+            order: Order::Newest,
+            learning: Learning::off(),
             catalog,
             filter: Filter::default(),
             cursor: 0,
@@ -196,15 +259,171 @@ impl Pane {
         self
     }
 
-    /// The runs the filter admits, as indices into the catalog.
-    fn visible(&self) -> Vec<usize> {
+    /// The same pane with Jev's rankings: the answers in `store`, `judge`
+    /// to ask for more, the leaderboard to compare with, and `prefs`, the
+    /// file the chosen order is remembered in.
+    #[must_use]
+    pub fn with_learning(
+        mut self,
+        store: Store,
+        judge: Judge,
+        reference: Option<Reference>,
+        prefs: Option<std::path::PathBuf>,
+    ) -> Self {
+        let remembered = prefs
+            .as_deref()
+            .and_then(runs::read_json)
+            .and_then(|value| value.get("order")?.as_str().map(str::to_owned));
+        self.learning = Learning {
+            store,
+            judge,
+            reference,
+            prefs,
+            ..Learning::off()
+        };
+        self.recompute();
+        if remembered.as_deref() == Some("learning") {
+            self.order = Order::Learning;
+            self.rank_in_background();
+        }
+        self
+    }
+
+    /// The order the list reads in: the chosen one, unless the learning
+    /// order has nothing to go on.
+    #[must_use]
+    pub fn order(&self) -> Order {
+        match self.order {
+            Order::Learning
+                if self.learning.answers.is_empty()
+                    && self.learning.job.is_none()
+                    && self.learning.judge.unavailable().is_some() =>
+            {
+                Order::Newest
+            }
+            order => order,
+        }
+    }
+
+    /// Switches between the two orders and remembers the choice.
+    pub fn toggle_order(&mut self) {
+        self.order = match self.order {
+            Order::Newest => Order::Learning,
+            Order::Learning => Order::Newest,
+        };
+        self.cursor = 0;
+        if let Some(path) = &self.learning.prefs {
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            let _ = std::fs::write(path, format!("{{\"order\": \"{}\"}}\n", self.order.word()));
+        }
+        self.rank_in_background();
+    }
+
+    /// Reads the answers for the runs as they stand.
+    fn recompute(&mut self) {
+        let learning = &mut self.learning;
+        learning.context = Context::new(&self.catalog, learning.reference.clone());
+        learning.answers = learning::answers(&self.catalog, &learning.store, &learning.context)
+            .into_iter()
+            .map(|(id, answer)| (id, answer.clone()))
+            .collect();
+        learning.rarity = learning::Rarity::of(learning.answers.values());
+    }
+
+    /// Finished runs Jev hasn't judged yet.
+    fn unranked(&self) -> Vec<Run> {
         self.catalog
+            .runs
+            .iter()
+            .filter(|run| learning::rankable(run) && !self.learning.answers.contains_key(&run.id()))
+            .cloned()
+            .collect()
+    }
+
+    /// Starts a ranking pass for the unranked runs when the learning order
+    /// is chosen, Jev can answer, and no pass is running.
+    fn rank_in_background(&mut self) {
+        if self.order != Order::Learning
+            || self.learning.job.is_some()
+            || self.learning.judge.unavailable().is_some()
+        {
+            return;
+        }
+        let runs = self.unranked();
+        if runs.is_empty() {
+            return;
+        }
+        self.learning.asking = runs.len();
+        self.learning.job = Some(learning::spawn(
+            runs,
+            self.learning.context.clone(),
+            self.learning.judge.clone(),
+            self.learning.store.dir.clone(),
+        ));
+    }
+
+    /// Takes a finished ranking pass's answers, if one has finished.
+    /// Returns whether one had.
+    pub fn poll_ranking(&mut self) -> bool {
+        let Some(job) = &self.learning.job else {
+            return false;
+        };
+        let report = match job.try_recv() {
+            Ok(report) => report,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return false,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Report {
+                errors: vec!["the ranking pass stopped".to_owned()],
+                ..Report::default()
+            },
+        };
+        self.learning.job = None;
+        self.learning.asked += report.asked;
+        self.learning.spent_usd += report.cost_usd;
+        self.learning.last_error = report.errors.first().cloned();
+        self.learning.store = Store::open(self.learning.store.dir.clone());
+        self.recompute();
+        true
+    }
+
+    /// Whether a ranking pass is running.
+    #[must_use]
+    pub fn ranking(&self) -> bool {
+        self.learning.job.is_some()
+    }
+
+    /// The runs the filter admits, as indices into the catalog, in the
+    /// list's order.
+    fn visible(&self) -> Vec<usize> {
+        let admitted: Vec<usize> = self
+            .catalog
             .runs
             .iter()
             .enumerate()
             .filter(|(_, run)| self.filter.admits(run))
             .map(|(index, _)| index)
-            .collect()
+            .collect();
+        if self.order() == Order::Newest {
+            return admitted;
+        }
+        let value = |index: usize| {
+            self.learning
+                .answers
+                .get(&self.catalog.runs[index].id())
+                .map(|answer| answer.learning(&self.learning.rarity))
+        };
+        let mut ordered: Vec<(usize, Option<f64>)> = admitted
+            .into_iter()
+            .map(|index| (index, value(index)))
+            .collect();
+        ordered.sort_by(|a, b| match (a.1, b.1) {
+            (Some(x), Some(y)) => y.total_cmp(&x).then(a.0.cmp(&b.0)),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => a.0.cmp(&b.0),
+        });
+        ordered.into_iter().map(|(index, _)| index).collect()
     }
 
     fn selected_run(&self) -> Option<&Run> {
@@ -218,10 +437,17 @@ impl Pane {
     /// moved on. The list keeps its place by run, not by row.
     pub fn refresh(&mut self, now: i64) {
         let kept = self.selected_run().map(Run::id);
+        let before = self.shape();
         self.catalog.refresh(now);
         self.now = now;
         self.read_at = now;
         self.tick = self.tick.wrapping_add(1);
+        // New runs, or runs that finished: their answers may exist, and
+        // the finished ones can be ranked now.
+        if self.poll_ranking() || self.shape() != before {
+            self.recompute();
+            self.rank_in_background();
+        }
         if let Some(id) = kept
             && let Some(position) = self
                 .visible()
@@ -241,6 +467,49 @@ impl Pane {
             }
             open.invalidate();
         }
+    }
+
+    /// What the top rail says about the order: how many runs Jev ranked,
+    /// a pass in progress, or why the learning order isn't available.
+    fn order_hint(&self) -> String {
+        let learning = &self.learning;
+        let unavailable = learning.judge.unavailable();
+        match (self.order, self.order()) {
+            (Order::Learning, Order::Newest) => format!(
+                "learning order needs Jev: {}",
+                unavailable.unwrap_or("no answers yet")
+            ),
+            (_, Order::Learning) => {
+                let mut parts = vec![format!("Jev ranked {}", learning.answers.len())];
+                if learning.job.is_some() {
+                    parts.push(format!("ranking {} more…", learning.asking));
+                } else if let Some(why) = unavailable {
+                    let waiting = self.unranked().len();
+                    if waiting > 0 {
+                        parts.push(format!("{waiting} wait: {why}"));
+                    }
+                } else if let Some(error) = &learning.last_error {
+                    parts.push(runs::clip_words(error, 60));
+                }
+                if learning.asked > 0 {
+                    parts.push(format!(
+                        "{} asked this session, ${:.4}",
+                        learning.asked, learning.spent_usd
+                    ));
+                }
+                parts.join(" · ")
+            }
+            _ => "l orders by what's worth learning from".to_owned(),
+        }
+    }
+
+    /// Each run's id and outcome, to tell whether a refresh changed them.
+    fn shape(&self) -> Vec<(String, &'static str)> {
+        self.catalog
+            .runs
+            .iter()
+            .map(|run| (run.id(), run.outcome.word()))
+            .collect()
     }
 
     /// Whether the pane wants to be read again on a timer: always, since
@@ -327,6 +596,7 @@ impl Pane {
                 };
                 self.cursor = 0;
             }
+            Key::Char('l') => self.toggle_order(),
             Key::Char('c') | Key::Back => {
                 self.filter = Filter::default();
                 self.cursor = 0;
@@ -534,10 +804,19 @@ impl Pane {
             &[("Terminal-Bench runs".to_owned(), Intensity::Full)],
             &facts,
         );
-        let title = match self.filter.describe() {
-            Some(filter) => format!("Runs · showing {filter} · {}", visible.len()),
-            None => "Runs, newest first".to_owned(),
+        let order = self.order();
+        let order_words = match order {
+            Order::Newest => "newest first",
+            Order::Learning => "most worth learning from first",
         };
+        let title = match self.filter.describe() {
+            Some(filter) => format!(
+                "Runs · showing {filter} · {} · {order_words}",
+                visible.len()
+            ),
+            None => format!("Runs, {order_words}"),
+        };
+        let hint = self.order_hint();
         let search;
         let bottom = match &self.typing {
             Some(draft) => {
@@ -545,11 +824,11 @@ impl Pane {
                 (search.as_str(), search.as_str())
             }
             None => (
-                "↑↓ move · enter open · t transcript · / search · a agent · o outcome · c clear · 1-9 expert views · q quit",
-                "↑↓ enter t / a o c q",
+                "↑↓ move · enter open · t transcript · / search · a agent · o outcome · l order · c clear · 1-9 expert views · q quit",
+                "↑↓ enter t / a o l c q",
             ),
         };
-        let inner = self.framed(area, buf, (&title, ""), bottom);
+        let inner = self.framed(area, buf, (&title, &hint), bottom);
         if inner.height < 4 {
             return;
         }
@@ -562,7 +841,21 @@ impl Pane {
             inner.left(),
             inner.top(),
             widths.row([
-                "started", "outcome", "task", "agent", "tests", "cost", "time",
+                if order == Order::Learning {
+                    "worth"
+                } else {
+                    "started"
+                },
+                "outcome",
+                if order == Order::Learning {
+                    "task — why it's worth reading"
+                } else {
+                    "task"
+                },
+                "agent",
+                "tests",
+                "cost",
+                "time",
             ]),
             width,
             self.style(Intensity::Half),
@@ -615,6 +908,28 @@ impl Pane {
             if run.outcome == Outcome::Running {
                 columns[1] = columns[1].replacen('●', &frame_for(self.tick).to_string(), 1);
             }
+            if order == Order::Learning {
+                // The learning value replaces the start, and the reasons
+                // replace what the task asks.
+                match self.learning.answers.get(&run.id()) {
+                    Some(answer) => {
+                        columns[0] = format!("{:.2}", answer.learning(&self.learning.rarity));
+                        let tags = answer.tags(&self.learning.rarity, 3);
+                        columns[2] = if tags.is_empty() {
+                            format!("{} — nothing stands out", run.task)
+                        } else {
+                            format!("{} — {}", run.task, tags.join(" · "))
+                        };
+                    }
+                    None => {
+                        columns[0] = if run.outcome == Outcome::Running {
+                            "when done".to_owned()
+                        } else {
+                            "not yet".to_owned()
+                        };
+                    }
+                }
+            }
             buf.set_stringn(inner.left(), y, widths.row(columns), width, style);
         }
         // The preview: what the selected run asked, and how it ended.
@@ -627,9 +942,10 @@ impl Pane {
         if let Some(run) = self.selected_run() {
             let mut lines: Vec<(String, Intensity)> = Vec::new();
             let ask = run.ask.clone().unwrap_or_else(|| run.task.clone());
+            let answer = self.learning.answers.get(&run.id());
             for line in runs_story::wrap(&format!("{}: {ask}", run.task), width)
                 .into_iter()
-                .take(2)
+                .take(if answer.is_some() { 1 } else { 2 })
             {
                 lines.push((line, Intensity::ThreeQuarters));
             }
@@ -654,6 +970,26 @@ impl Pane {
                 ),
             };
             lines.push((status, Intensity::Half));
+            if let Some(answer) = answer {
+                let reasons: Vec<String> = answer
+                    .reasons(&self.learning.rarity)
+                    .iter()
+                    .take(4)
+                    .map(|(judgment, p)| format!("{} {p:.2}", judgment.tag))
+                    .collect();
+                lines.push((
+                    format!(
+                        "Worth learning from {:.2}{}",
+                        answer.learning(&self.learning.rarity),
+                        if reasons.is_empty() {
+                            ": nothing stands out".to_owned()
+                        } else {
+                            format!(": {}", reasons.join(" · "))
+                        }
+                    ),
+                    Intensity::ThreeQuarters,
+                ));
+            }
             lines.push((run.job.clone(), Intensity::Quarter));
             for (offset, (line, intensity)) in lines.iter().take(4).enumerate() {
                 buf.set_stringn(
@@ -718,6 +1054,44 @@ impl Pane {
             }
             lines.push((String::new(), Intensity::Half));
         }
+        lines.push(("Worth learning from".to_owned(), Intensity::Full));
+        match self.learning.answers.get(&open.id) {
+            Some(answer) => {
+                for (index, line) in learning::summary_lines(answer, &self.learning.rarity)
+                    .into_iter()
+                    .enumerate()
+                {
+                    let strong = index > 0
+                        && line
+                            .split_whitespace()
+                            .next()
+                            .and_then(|p| p.parse::<f64>().ok())
+                            .is_some_and(|p| p >= learning::REASON_AT);
+                    for wrapped in runs_story::wrap(&line, width) {
+                        lines.push((
+                            wrapped,
+                            if index == 0 || strong {
+                                Intensity::ThreeQuarters
+                            } else {
+                                Intensity::Half
+                            },
+                        ));
+                    }
+                }
+            }
+            None => lines.push((
+                match self.learning.judge.unavailable() {
+                    _ if open.detail.run.outcome == Outcome::Running => {
+                        "Jev judges this run once it finishes.".to_owned()
+                    }
+                    Some(why) => format!("Jev hasn't judged this run: {why}."),
+                    None => "Jev hasn't judged this run yet. Press l in the list to rank runs."
+                        .to_owned(),
+                },
+                Intensity::Half,
+            )),
+        }
+        lines.push((String::new(), Intensity::Half));
         lines.push((
             format!(
                 "The transcript has {}. Press t to read it.",
@@ -1454,7 +1828,115 @@ mod tests {
         let (_dir, pane) = pane();
         let text = pane.to_text(80, 20);
         assert!(text.contains("coq-block-bound"), "{text}");
-        assert!(text.contains("↑↓ enter t / a o c q"), "{text}");
+        assert!(text.contains("↑↓ enter t / a o l c q"), "{text}");
+    }
+
+    /// A pane that ranks with the recorded answers, keeping its store and
+    /// its remembered order in `dir`.
+    fn learning_pane(dir: &std::path::Path) -> (tempfile::TempDir, Pane) {
+        let (fixtures, pane) = pane();
+        let pane = pane.with_learning(
+            Store::open(Some(dir.join("learning"))),
+            Judge::Recorded(crate::runs_learning::tests::recorded()),
+            None,
+            Some(dir.join("runs-pane.json")),
+        );
+        (fixtures, pane)
+    }
+
+    /// Waits for the background ranking pass to finish.
+    fn settle(pane: &mut Pane) {
+        for _ in 0..500 {
+            if pane.poll_ranking() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("the ranking pass didn't finish");
+    }
+
+    #[test]
+    fn l_orders_the_list_by_what_is_worth_learning_from() {
+        let state = tempfile::tempdir().unwrap();
+        let (_fixtures, mut pane) = learning_pane(state.path());
+        assert_eq!(pane.order(), Order::Newest);
+        let text = pane.to_text(150, 30);
+        assert!(text.contains("Runs, newest first"), "{text}");
+        assert!(text.contains("l order"), "{text}");
+
+        pane.key(Key::Char('l'));
+        assert!(pane.ranking(), "switching starts a ranking pass");
+        settle(&mut pane);
+        assert_eq!(pane.order(), Order::Learning);
+        let text = pane.to_text(150, 30);
+        assert!(
+            text.contains("Runs, most worth learning from first"),
+            "{text}"
+        );
+        assert!(text.contains("Jev ranked 4"), "{text}");
+        assert!(text.contains("task — why it's worth reading"), "{text}");
+        // Each ranked row shows its reasons as tags; the running run waits
+        // at the bottom.
+        assert!(text.contains("wal-recovery-ordering — "), "{text}");
+        assert!(text.contains("near miss"), "{text}");
+        assert!(text.contains("when done"), "{text}");
+        let wal = text.find("wal-recovery-ordering —").unwrap();
+        let fin = text.find("fin-saccr-rwa").unwrap();
+        assert!(wal < fin, "{text}");
+        // The preview names the selected run's reasons with probabilities.
+        assert!(text.contains("Worth learning from 0."), "{text}");
+
+        // The summary shows every judgment's probability.
+        select(&mut pane, "wal-recovery-ordering");
+        pane.key(Key::Enter);
+        let text = pane.to_text(150, 120);
+        assert!(text.contains("Worth learning from"), "{text}");
+        assert!(text.contains("Learning value 0."), "{text}");
+        assert!(text.contains("near miss (low-hanging fruit)"), "{text}");
+        assert!(
+            text.contains("contradicts: checks catch failures"),
+            "{text}"
+        );
+        pane.key(Key::Back);
+
+        // The order is remembered: a new pane opens in it, from the store,
+        // with nothing left to ask.
+        let (_again, mut pane) = learning_pane(state.path());
+        assert_eq!(pane.order(), Order::Learning);
+        // A fresh copy of the fixtures has new file times, so the pass
+        // runs, but it finds every answer by its evidence and asks nothing.
+        if pane.ranking() {
+            settle(&mut pane);
+        }
+        assert_eq!(pane.learning.asked, 0, "unchanged evidence asks nothing");
+        let text = pane.to_text(150, 30);
+        assert!(text.contains("Jev ranked 4"), "{text}");
+
+        pane.key(Key::Char('l'));
+        assert_eq!(pane.order(), Order::Newest);
+        let saved = std::fs::read_to_string(state.path().join("runs-pane.json")).unwrap();
+        assert!(saved.contains("newest"), "{saved}");
+    }
+
+    #[test]
+    fn without_jev_the_list_stays_newest_first_and_says_why() {
+        let state = tempfile::tempdir().unwrap();
+        let (_fixtures, pane) = pane();
+        let mut pane = pane.with_learning(
+            Store::open(Some(state.path().to_path_buf())),
+            Judge::Off("no TypeSafe key".to_owned()),
+            None,
+            None,
+        );
+        pane.key(Key::Char('l'));
+        assert_eq!(pane.order(), Order::Newest);
+        assert!(!pane.ranking());
+        let text = pane.to_text(150, 30);
+        assert!(text.contains("Runs, newest first"), "{text}");
+        assert!(
+            text.contains("learning order needs Jev: no TypeSafe key"),
+            "{text}"
+        );
     }
 
     #[test]

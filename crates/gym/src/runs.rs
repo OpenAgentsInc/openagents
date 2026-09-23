@@ -1286,13 +1286,26 @@ const USAGE: &str = "\
 gym runs: Terminal-Bench runs in plain words.
 
 Usage:
-  gym runs [--agent NAME] [--outcome WORD] [--search TEXT] [--limit N] [--json]
-  gym runs show RUN [--transcript] [--expand] [--json]
+  gym runs [--order newest|learning] [--agent NAME] [--outcome WORD] [--search TEXT]
+           [--limit N] [--json]
+  gym runs show RUN [--transcript] [--expand] [--json | --evidence]
+  gym runs rank [--limit N] [--recorded FILE] [--record FILE] [--no-jev] [--json]
 
 RUN is a job name, job/trial, a trial name, or a piece of a job name that
 only one job has. --agent takes coder-one, claude-code, codex, or reference;
 --outcome takes passed, failed, running, or not-graded. --jobs-dir PATH and
---traces-dir PATH read other directories; --no-jobs and --no-traces skip one.";
+--traces-dir PATH read other directories; --no-jobs and --no-traces skip one,
+and --no-tasks skips reading the task definitions.
+
+--order learning lists the runs Jev judged most worth learning from first,
+with the reasons, from the answers `gym runs rank` keeps. `gym runs rank`
+asks Jev about each finished run whose evidence has no answer yet, and
+reports how many it asked and what that cost; `show RUN --evidence` prints
+the exact state Jev reads for a run. It reads the TypeSafe key from
+TYPESAFE_API_KEY or `api_key` in ~/.openagents/jev.json. --recorded FILE
+replays answers instead, --record FILE writes the answers used, and
+--learning-dir PATH keeps the answers somewhere other than
+~/.openagents/gym/learning. --no-reference leaves the leaderboard out.";
 
 /// `gym runs`: the list, or one run's summary and transcript.
 ///
@@ -1306,6 +1319,15 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     let mut limit = 40usize;
     let (mut json_out, mut transcript, mut expand) = (false, false, false);
     let mut show: Option<String> = None;
+    let mut learning_order = false;
+    let mut rank = false;
+    let mut rank_limit: Option<usize> = None;
+    let mut recorded: Option<PathBuf> = None;
+    let mut record: Option<PathBuf> = None;
+    let mut no_jev = false;
+    let mut evidence = false;
+    let mut learning_dir = crate::runs_learning::default_dir();
+    let mut reference = true;
     let mut index = 0;
     let value = |index: usize| args.get(index + 1).cloned().ok_or_else(|| USAGE.to_owned());
     while index < args.len() {
@@ -1314,7 +1336,31 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
                 show = Some(value(index)?);
                 index += 1;
             }
+            "rank" if index == 0 => rank = true,
             "--json" => json_out = true,
+            "--order" => {
+                learning_order = match value(index)?.as_str() {
+                    "learning" => true,
+                    "newest" => false,
+                    other => return Err(format!("unknown order {other}\n\n{USAGE}")),
+                };
+                index += 1;
+            }
+            "--recorded" => {
+                recorded = Some(PathBuf::from(value(index)?));
+                index += 1;
+            }
+            "--record" => {
+                record = Some(PathBuf::from(value(index)?));
+                index += 1;
+            }
+            "--learning-dir" => {
+                learning_dir = Some(PathBuf::from(value(index)?));
+                index += 1;
+            }
+            "--no-jev" => no_jev = true,
+            "--evidence" => evidence = true,
+            "--no-reference" => reference = false,
             "--transcript" => transcript = true,
             "--expand" => {
                 transcript = true;
@@ -1351,6 +1397,7 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
                 limit = value(index)?
                     .parse()
                     .map_err(|_| format!("--limit needs a number\n\n{USAGE}"))?;
+                rank_limit = Some(limit);
                 index += 1;
             }
             "--jobs-dir" => {
@@ -1363,6 +1410,7 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             }
             "--no-jobs" => sources.jobs = None,
             "--no-traces" => sources.traces = None,
+            "--no-tasks" => sources.tasks.clear(),
             "--help" | "-h" => {
                 writeln!(out, "{USAGE}").map_err(|e| e.to_string())?;
                 return Ok(0);
@@ -1375,37 +1423,172 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     let now = now_ms();
     let write =
         |out: &mut dyn Write, text: &str| writeln!(out, "{text}").map_err(|e| e.to_string());
-    if let Some(name) = show {
-        let run = catalog
-            .find(&name)
-            .ok_or_else(|| format!("no run matches {name}"))?;
-        let detail = crate::runs_story::Detail::load(run);
+    let context = crate::runs_learning::Context::new(
+        &catalog,
+        reference
+            .then(crate::terminal_bench_reference::Reference::checked)
+            .flatten(),
+    );
+    let mut store = crate::runs_learning::Store::open(learning_dir);
+    if rank {
+        let judge = match (&recorded, no_jev) {
+            (_, true) => crate::runs_learning::Judge::Off("--no-jev turns Jev off".to_owned()),
+            (Some(path), false) => {
+                crate::runs_learning::Judge::Recorded(crate::runs_learning::Recorded::load(path)?)
+            }
+            (None, false) => crate::runs_learning::Judge::from_environment(),
+        };
+        let mut recording = record
+            .as_ref()
+            .map(|_| crate::runs_learning::Recorded::empty());
+        let report = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| format!("cannot start a runtime: {error}"))?
+            .block_on(crate::runs_learning::rank(
+                &catalog.runs,
+                &context,
+                &mut store,
+                &judge,
+                rank_limit,
+                recording.as_mut(),
+            ));
+        if let (Some(path), Some(recording)) = (&record, &recording) {
+            recording.save(path)?;
+        }
         if json_out {
-            let value = crate::runs_story::detail_json(&detail, now);
+            let value = json!({
+                "schema": "openagents.gym.runs-rank.v1",
+                "jev": judge.word(),
+                "questions": crate::runs_learning::QUESTION_SET,
+                "questions_digest": crate::runs_learning::questions_digest(),
+                "usd_per_million_input": crate::runs_learning::USD_PER_MILLION_INPUT,
+                "report": report,
+            });
             write(
                 out,
                 &serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?,
             )?;
             return Ok(0);
         }
-        for line in crate::runs_story::text(&detail, now, 100, transcript, expand) {
+        for line in crate::runs_learning::report_lines(&report, &judge) {
             write(out, &line)?;
+        }
+        write(out, "")?;
+        write(out, "Most worth learning from:")?;
+        let answers = crate::runs_learning::answers(&catalog, &store, &context);
+        let rarity = crate::runs_learning::Rarity::of(answers.values().copied());
+        let ordered = crate::runs_learning::order(catalog.runs.iter().collect(), &answers, &rarity);
+        for run in ordered
+            .into_iter()
+            .filter(|run| answers.contains_key(&run.id()))
+            .take(10)
+        {
+            let answer = answers[&run.id()];
+            write(
+                out,
+                &format!(
+                    "  {:.2}  {:<32} {:<30} {}",
+                    answer.learning(&rarity),
+                    clip_words(&run.task, 32),
+                    run.agent_label(),
+                    run.outcome.word()
+                ),
+            )?;
+            let tags = answer.tags(&rarity, 3);
+            if !tags.is_empty() {
+                write(out, &format!("{:8}{}", "", tags.join(" · ")))?;
+            }
+        }
+        return Ok(i32::from(report.asked > 0 && report.answered == 0));
+    }
+    let answers = crate::runs_learning::answers(&catalog, &store, &context);
+    let rarity = crate::runs_learning::Rarity::of(answers.values().copied());
+    if let Some(name) = show {
+        let run = catalog
+            .find(&name)
+            .ok_or_else(|| format!("no run matches {name}"))?;
+        let detail = crate::runs_story::Detail::load(run);
+        let answer = answers.get(&run.id()).copied();
+        if evidence {
+            let state = crate::runs_learning::evidence(&detail, &context);
+            write(
+                out,
+                &serde_json::to_string_pretty(&json!({
+                    "key": crate::runs_learning::key(&state),
+                    "state": state,
+                }))
+                .map_err(|e| e.to_string())?,
+            )?;
+            return Ok(0);
+        }
+        if json_out {
+            let mut value = crate::runs_story::detail_json(&detail, now);
+            value["learning"] = answer.map_or(Value::Null, |answer| answer.to_json(&rarity));
+            write(
+                out,
+                &serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?,
+            )?;
+            return Ok(0);
+        }
+        let lines = crate::runs_story::text(&detail, now, 100, transcript, expand);
+        let details = lines
+            .iter()
+            .position(|line| line == "Details")
+            .unwrap_or(lines.len());
+        for line in &lines[..details] {
+            write(out, line)?;
+        }
+        write(out, "Worth learning from")?;
+        match answer {
+            Some(answer) => {
+                for line in crate::runs_learning::summary_lines(answer, &rarity) {
+                    write(out, &format!("  {line}"))?;
+                }
+            }
+            None => write(
+                out,
+                "  Jev hasn't judged this run yet; `gym runs rank` asks.",
+            )?,
+        }
+        write(out, "")?;
+        for line in &lines[details..] {
+            write(out, line)?;
         }
         return Ok(0);
     }
-    let runs: Vec<&Run> = catalog
+    let admitted: Vec<&Run> = catalog
         .runs
         .iter()
         .filter(|run| filter.admits(run))
-        .take(limit)
         .collect();
+    let ordered = if learning_order {
+        crate::runs_learning::order(admitted, &answers, &rarity)
+    } else {
+        admitted
+    };
+    let runs: Vec<&Run> = ordered.into_iter().take(limit).collect();
+    let unranked = catalog
+        .runs
+        .iter()
+        .filter(|run| crate::runs_learning::rankable(run) && !answers.contains_key(&run.id()))
+        .count();
     if json_out {
         let value = json!({
             "schema": "openagents.gym.runs.v1",
+            "order": if learning_order { "learning" } else { "newest" },
             "running": catalog.running(),
             "total": catalog.runs.len(),
+            "ranked": answers.len(),
+            "unranked": unranked,
             "shown": runs.len(),
-            "runs": runs.iter().map(|run| run_json(run, now)).collect::<Vec<_>>(),
+            "runs": runs.iter().map(|run| {
+                let mut value = run_json(run, now);
+                value["learning"] = answers
+                    .get(&run.id())
+                    .map_or(Value::Null, |answer| answer.to_json(&rarity));
+                value
+            }).collect::<Vec<_>>(),
         });
         write(
             out,
@@ -1416,7 +1599,12 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     write(
         out,
         &format!(
-            "Terminal-Bench runs, newest first: {} shown of {}{}",
+            "Terminal-Bench runs, {}: {} shown of {}{}",
+            if learning_order {
+                "most worth learning from first"
+            } else {
+                "newest first"
+            },
             runs.len(),
             catalog.runs.len(),
             match catalog.running() {
@@ -1425,6 +1613,21 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
             }
         ),
     )?;
+    if learning_order {
+        write(
+            out,
+            &format!(
+                "Jev ranked {} runs{}.",
+                answers.len(),
+                match unranked {
+                    0 => String::new(),
+                    n => format!(
+                        "; {n} finished runs have no judgment yet, and `gym runs rank` asks about them"
+                    ),
+                }
+            ),
+        )?;
+    }
     if let Some(filter) = filter.describe() {
         write(out, &format!("Showing: {filter}"))?;
     }
@@ -1440,6 +1643,22 @@ pub fn command(args: &[String], out: &mut impl Write) -> Result<i32, String> {
         )?;
         if let Outcome::NotGraded(why) = &run.outcome {
             write(out, &format!("{:<15}not graded: {why}", ""))?;
+        }
+        if learning_order && let Some(answer) = answers.get(&run.id()) {
+            let tags = answer.tags(&rarity, 3);
+            write(
+                out,
+                &format!(
+                    "{:<15}worth learning from {:.2}{}",
+                    "",
+                    answer.learning(&rarity),
+                    if tags.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", tags.join(" · "))
+                    }
+                ),
+            )?;
         }
     }
     write(out, "")?;
@@ -1648,6 +1867,66 @@ mod tests {
                 .unwrap()
                 .iter()
                 .all(|run| run["outcome"] == "failed")
+        );
+    }
+
+    #[test]
+    fn gym_runs_rank_fills_the_cache_once_and_the_learning_order_reads_it() {
+        let (dir, _) = fixture_sources();
+        let store = tempfile::tempdir().unwrap();
+        let recorded = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/runs-learning/recorded.json");
+        let base = [
+            "--jobs-dir".to_owned(),
+            dir.path().join("jobs").display().to_string(),
+            "--traces-dir".to_owned(),
+            dir.path().join("traces").display().to_string(),
+            "--no-tasks".to_owned(),
+            "--no-reference".to_owned(),
+            "--learning-dir".to_owned(),
+            store.path().display().to_string(),
+        ];
+        let run = |extra: &[&str]| {
+            let mut args: Vec<String> = extra.iter().map(|s| (*s).to_owned()).collect();
+            args.extend(base.iter().cloned());
+            let mut out = Vec::new();
+            let code = command(&args, &mut out).unwrap();
+            (code, String::from_utf8(out).unwrap())
+        };
+        let recorded = recorded.display().to_string();
+        let (code, text) = run(&["rank", "--recorded", &recorded]);
+        assert_eq!(code, 0, "{text}");
+        assert!(text.contains("about 4, 4 answered, 0 failed"), "{text}");
+        assert!(text.contains("1 running runs wait"), "{text}");
+        assert!(text.contains("Most worth learning from:"), "{text}");
+
+        // Unchanged evidence: a second pass makes no request.
+        let (_, text) = run(&["rank", "--recorded", &recorded, "--json"]);
+        let value: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["report"]["asked"], 0, "{value}");
+        assert_eq!(value["report"]["cached"], 4, "{value}");
+
+        // The learning order reads the cache with no Jev at all.
+        let (_, text) = run(&["--order", "learning"]);
+        assert!(text.contains("most worth learning from first"), "{text}");
+        assert!(text.contains("Jev ranked 4 runs."), "{text}");
+        assert!(text.contains("worth learning from 0."), "{text}");
+        let (_, text) = run(&["--order", "learning", "--json"]);
+        let value: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["order"], "learning");
+        let runs = value["runs"].as_array().unwrap();
+        let learning: Vec<f64> = runs
+            .iter()
+            .filter_map(|run| run["learning"]["learning"].as_f64())
+            .collect();
+        assert_eq!(learning.len(), 4);
+        assert!(learning.windows(2).all(|w| w[0] >= w[1]), "{learning:?}");
+        assert_eq!(runs.last().unwrap()["outcome"], "running");
+
+        let (_, text) = run(&["show", "wal-recovery-ordering"]);
+        assert!(
+            text.contains("Worth learning from\n  Learning value"),
+            "{text}"
         );
     }
 

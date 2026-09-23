@@ -244,7 +244,9 @@ gym build    turn a caller's labelled JSONL into a suite and question set
 gym regress  compare a door with its own last recorded run
 gym admit    judge a frozen admission plan against recorded evidence and
              write the decision a registry activates
-gym runs     Terminal-Bench runs in plain words; `gym runs show <job>` reads one
+gym runs     Terminal-Bench runs in plain words; `gym runs show <job>` reads one,
+             `gym runs rank` asks Jev which are most worth learning from, and
+             `gym runs --order learning` lists them that way
 gym terminal-bench  inspect evidence or run the pinned Harbor harness
 gym coder policy    list, show, and diff Coder One policy manifests
 gym coder requirements  Coder One requirement maps from suites and episodes

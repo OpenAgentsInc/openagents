@@ -4,9 +4,12 @@
 //! mode, the alternate screen, the cursor — and it gives all three back on
 //! every way out, including a panic. Everything else is the module's.
 //!
-//! It reads records and runs nothing. There are no doors, no network, and no
-//! credentials: this build opens the built-in fixture, and reading a real
-//! receipt chain from disk arrives with the store.
+//! It reads records and runs nothing. The decision views have no doors, no
+//! network, and no credentials: this build opens the built-in fixture, and
+//! reading a real receipt chain from disk arrives with the store. The one
+//! exception is the Runs pane's learning order: when you choose it, the
+//! pane asks Jev about finished runs it hasn't judged yet, with the key in
+//! `TYPESAFE_API_KEY` or `~/.openagents/jev.json`. `--no-jev` turns that off.
 //!
 //! ```text
 //! gym-terminal            # read the fixture in the terminal
@@ -62,12 +65,13 @@ Usage:
   gym-terminal --terminal-bench [--print] [--jobs-dir PATH] [--traces-dir PATH] [--samples-dir PATH]
                             [--runs-dir PATH] [--minitasks-dir PATH] [--no-jobs] [--no-traces]
                             [--checks-dir PATH] [--no-samples] [--no-runs] [--no-minitasks]
-                            [--no-checks]
+                            [--no-checks] [--no-jev]
   gym-terminal --help     Print this message.
 
 The default decision-model views open a built-in fixture. Terminal-Bench
 views read local Harbor jobs and retained evidence. Neither mode runs a
-door or opens a network connection.
+door; the Runs pane asks Jev only in the learning order, and --no-jev
+stops that too.
 
 Terminal-Bench opens on the Runs pane: recent runs in plain words.
   arrows, j, k   Move.
@@ -78,6 +82,9 @@ Terminal-Bench opens on the Runs pane: recent runs in plain words.
   d              In a summary, show the details experts use.
   /              Search by task, agent, or batch.
   a, o, c        Filter by agent, filter by outcome, clear the filters.
+  l              Switch between newest first and most worth learning from
+                 first. Jev judges each finished run once; the choice is
+                 remembered in ~/.openagents/gym/runs-pane.json.
   esc            Go back.
   q              Leave.
 
@@ -108,6 +115,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let mut minitasks = gym::coder_minitasks::default_runs_dir();
     let mut checks = gym::coder_coverage::default_dir();
     let mut print_only = false;
+    let mut jev = true;
     let mut index = 0;
     while index < arguments.len() {
         match arguments[index].as_str() {
@@ -119,6 +127,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
             "--no-runs" => runs = None,
             "--no-minitasks" => minitasks = None,
             "--no-checks" => checks = None,
+            "--no-jev" => jev = false,
             "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--runs-dir" | "--minitasks-dir"
             | "--checks-dir" => {
                 let Some(path) = arguments.get(index + 1) else {
@@ -175,7 +184,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         )
         .with_live(live)
         .with_studies(studies, study_errors)
-        .with_runs(terminal_bench_tui_runs(runs));
+        .with_runs(terminal_bench_tui_runs(runs, jev && !print_only));
     if print_only {
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {
@@ -187,9 +196,23 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     run_tbench(app)
 }
 
-/// The Runs pane over `catalog`.
-fn terminal_bench_tui_runs(catalog: gym::runs::Catalog) -> gym::runs_tui::Pane {
-    gym::runs_tui::Pane::new(catalog)
+/// The Runs pane over `catalog`, with the rankings kept under
+/// `~/.openagents/gym/learning` and, when `jev` holds, hosted Jev to rank
+/// what isn't ranked yet.
+fn terminal_bench_tui_runs(catalog: gym::runs::Catalog, jev: bool) -> gym::runs_tui::Pane {
+    use gym::runs_learning::{Judge, Store, default_dir};
+    let judge = if jev {
+        Judge::from_environment()
+    } else {
+        Judge::Off("--no-jev turns Jev off".to_owned())
+    };
+    let prefs = default_dir().and_then(|dir| dir.parent().map(|gym| gym.join("runs-pane.json")));
+    gym::runs_tui::Pane::new(catalog).with_learning(
+        Store::open(default_dir()),
+        judge,
+        gym::terminal_bench_reference::Reference::checked(),
+        prefs,
+    )
 }
 
 /// A terminal key as the Runs pane reads it.

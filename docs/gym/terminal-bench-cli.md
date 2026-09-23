@@ -81,6 +81,58 @@ print the same words, and a missing record prints as missing rather than as
 zero. `--jobs-dir PATH` and `--traces-dir PATH` read other directories, and
 `--no-jobs` and `--no-traces` skip one.
 
+## Rank runs by what's worth learning from
+
+`gym runs rank` asks Jev, once per finished run, whether the run's records
+show something worth reading: low-hanging fruit (a near miss, an output
+slip, a check that should have fired), flagrant misbehavior (ignoring the
+task, looping, stopping early, claiming success it didn't earn, repairing
+correct work, extra rounds for nothing, wasted money, a harness fault),
+evidence against a design choice (that the briefing gives the executor what
+it needs, that checks catch failures, that effort and persistence help, that
+routing picks well, that Jev's judgments are right, that the controller adds
+value), or a surprise against the leaderboard and this host's other runs of
+the task. Each is its own Noul, and a Score rates the run's overall learning
+value. The question set is `runs-learning-v1`.
+
+```sh
+gym runs rank                          # ask about every run that has no answer yet
+gym runs rank --json                   # the same report as JSON
+gym runs --order learning              # the list, most worth learning from first
+gym runs --order learning --json       # with every judgment's probability
+gym runs show roy-polymorph-cn         # the summary ends with each judgment
+gym runs show roy-polymorph-cn --evidence   # the exact state Jev reads
+```
+
+The state is built from the run's records by fixed rules: the task and its
+instruction, the outcome and the failing tests as the verifier printed
+them, the run's summary, Coder One's sessions, checks, support, repair, and
+persistence rounds, the transcript's activity, the leaderboard's pass rate
+on the task, and this host's other runs of it. It's clipped to 6,000
+characters. Answers are kept in `~/.openagents/gym/learning/answers/`, one
+file per digest of the state and the question set, with the state itself,
+so an answer can always be explained. `index.json` maps a cheap fingerprint
+of each run's record files to its answer, so a second `gym runs rank` on
+unchanged evidence makes no requests. A run is asked again only when its
+records, the other runs of its task, the leaderboard, or the questions
+change. Running trials are ranked once they finish.
+
+The order is a fixed rule over the stored probabilities: half Jev's Score,
+half the strongest reason, each reason weighed by one minus the share of
+ranked runs that give it. A reason nearly every failure gives, such as an
+agent reporting success it didn't earn, says less about one run than a
+reason few runs give. Changing the rule needs no new request.
+
+`gym runs rank` reads the TypeSafe key from `TYPESAFE_API_KEY` or `api_key`
+in `~/.openagents/jev.json` and never prints it. It reports how many runs it
+asked about, how many came from the cache, and the cost at Jev's $0.042 per
+million input tokens: ranking all 588 finished runs retained on
+2026-09-23 took 588 requests and $0.083, about $0.00014 a request.
+`--no-jev` asks nothing, `--recorded FILE` replays recorded answers,
+`--record FILE` writes the answers it used, `--learning-dir PATH` keeps the
+answers elsewhere, `--no-reference` leaves the leaderboard out, and
+`--no-tasks` skips reading task definitions.
+
 ## Read a Terminal-Bench 4.0 suite
 
 Attempts of the `tb4` profile ran Terminal-Bench 4.0 at tag `v4.0.0`. Some

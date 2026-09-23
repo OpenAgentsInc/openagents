@@ -71,12 +71,32 @@ copy of the episode log or the native output.
 | `d` | Show the details experts use in a summary. |
 | `/` | Search by task, what it asks, agent, or batch. |
 | `a`, `o`, `c` | Filter by agent, filter by outcome, or clear the filters. |
+| `l` | Switch between newest first and most worth learning from first. |
 | `Esc` | Go back. |
 | `q` | Leave. |
 
+Press `l` to order the list by what's most worth learning from, as Jev
+judges each finished run. The first column shows each run's learning value
+from 0 to 1, and the task column shows its strongest reasons as tags, such
+as `near miss`, `stopped early`, or `contradicts: checks catch failures`.
+The preview under the list names the reasons with their probabilities, and
+a run's summary ends with every judgment's probability. The top rail says
+how many runs Jev ranked and whether a ranking pass is running. The choice
+is remembered in `~/.openagents/gym/runs-pane.json`.
+
+In the learning order, the pane asks Jev about finished runs it hasn't
+judged yet in the background, with the key in `TYPESAFE_API_KEY` or
+`~/.openagents/jev.json`, and keeps the answers where `gym runs rank` keeps
+them. A run is judged once and asked again only when its records change;
+running trials wait until they finish. With no key, or with
+`gym-terminal --terminal-bench --no-jev`, the pane asks nothing: runs
+already judged still show in the learning order, and with none judged the
+list stays newest first and the top rail says why.
+
 The expert views below stay behind their keys; `Esc` in any of them returns
 to the Runs pane. `gym runs` prints the same list and summaries as text; see
-the [Gym CLI](terminal-bench-cli.md#read-recent-runs).
+the [Gym CLI](terminal-bench-cli.md#read-recent-runs) and
+[Rank runs by what's worth learning from](terminal-bench-cli.md#rank-runs-by-whats-worth-learning-from).
 
 ## Navigate the views
 

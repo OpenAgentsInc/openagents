@@ -1,0 +1,377 @@
+{
+  "schema": "openagents.gym.runs-learning.recorded.v1",
+  "entries": {
+    "3eedeb6cbe6fa95d94835cd926e8409fe47d9f9bc899f0abac681b181087e239": {
+      "near_miss": {
+        "type": "noul",
+        "noul": 0.06
+      },
+      "output_slip": {
+        "type": "noul",
+        "noul": 0.32
+      },
+      "missed_check": {
+        "type": "noul",
+        "noul": 0.76
+      },
+      "ignored_task": {
+        "type": "noul",
+        "noul": 0.58
+      },
+      "looped": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "stopped_early": {
+        "type": "noul",
+        "noul": 0.62
+      },
+      "unearned_success": {
+        "type": "noul",
+        "noul": 0.96
+      },
+      "needless_repair": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "wasted_rounds": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "wasted_money": {
+        "type": "noul",
+        "noul": 0.32
+      },
+      "harness_fault": {
+        "type": "noul",
+        "noul": 0.41
+      },
+      "h_briefing": {
+        "type": "noul",
+        "noul": 0.24
+      },
+      "h_checks": {
+        "type": "noul",
+        "noul": 0.23
+      },
+      "h_effort": {
+        "type": "noul",
+        "noul": 0.19
+      },
+      "h_routing": {
+        "type": "noul",
+        "noul": 0.23
+      },
+      "h_jev": {
+        "type": "noul",
+        "noul": 0.44
+      },
+      "h_controller": {
+        "type": "noul",
+        "noul": 0.16
+      },
+      "surprise": {
+        "type": "noul",
+        "noul": 0.11
+      },
+      "value": {
+        "type": "score",
+        "score": 1.82,
+        "confidence": 0.22,
+        "legend": {
+          "0": "Nothing new: a routine pass, a failure that repeats what other runs already show, or a run that never really started.",
+          "1": "A little: a detail worth a glance, but no clear change to the agent follows from it.",
+          "2": "Some: it points at a specific weakness or cost worth noting.",
+          "3": "A lot: it shows a concrete, fixable problem, or a clear counterexample to a design assumption.",
+          "4": "The most: a flagrant failure, or a result that should change what gets built next."
+        },
+        "probabilities": {
+          "0": 0.19,
+          "1": 0.18,
+          "2": 0.36,
+          "3": 0.15,
+          "4": 0.12
+        }
+      }
+    },
+    "b38f2c262ba54057303eca5586eb95e971cdc3e8c5617ff3335ff9dbf3c75b28": {
+      "near_miss": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "output_slip": {
+        "type": "noul",
+        "noul": 0.07
+      },
+      "missed_check": {
+        "type": "noul",
+        "noul": 0.34
+      },
+      "ignored_task": {
+        "type": "noul",
+        "noul": 0.38
+      },
+      "looped": {
+        "type": "noul",
+        "noul": 0.1
+      },
+      "stopped_early": {
+        "type": "noul",
+        "noul": 0.39
+      },
+      "unearned_success": {
+        "type": "noul",
+        "noul": 0.13
+      },
+      "needless_repair": {
+        "type": "noul",
+        "noul": 0.07
+      },
+      "wasted_rounds": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "wasted_money": {
+        "type": "noul",
+        "noul": 0.37
+      },
+      "harness_fault": {
+        "type": "noul",
+        "noul": 0.94
+      },
+      "h_briefing": {
+        "type": "noul",
+        "noul": 0.1
+      },
+      "h_checks": {
+        "type": "noul",
+        "noul": 0.1
+      },
+      "h_effort": {
+        "type": "noul",
+        "noul": 0.18
+      },
+      "h_routing": {
+        "type": "noul",
+        "noul": 0.19
+      },
+      "h_jev": {
+        "type": "noul",
+        "noul": 0.11
+      },
+      "h_controller": {
+        "type": "noul",
+        "noul": 0.18
+      },
+      "surprise": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "value": {
+        "type": "score",
+        "score": 0.77,
+        "confidence": 0.36,
+        "legend": {
+          "0": "Nothing new: a routine pass, a failure that repeats what other runs already show, or a run that never really started.",
+          "1": "A little: a detail worth a glance, but no clear change to the agent follows from it.",
+          "2": "Some: it points at a specific weakness or cost worth noting.",
+          "3": "A lot: it shows a concrete, fixable problem, or a clear counterexample to a design assumption.",
+          "4": "The most: a flagrant failure, or a result that should change what gets built next."
+        },
+        "probabilities": {
+          "0": 0.64,
+          "1": 0.07,
+          "2": 0.18,
+          "3": 0.08,
+          "4": 0.03
+        }
+      }
+    },
+    "d4756a2de406d71690c219c2dcbdba4c32826193d8aa1a901521937cbb736b7f": {
+      "near_miss": {
+        "type": "noul",
+        "noul": 0.91
+      },
+      "output_slip": {
+        "type": "noul",
+        "noul": 0.07
+      },
+      "missed_check": {
+        "type": "noul",
+        "noul": 0.72
+      },
+      "ignored_task": {
+        "type": "noul",
+        "noul": 0.37
+      },
+      "looped": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "stopped_early": {
+        "type": "noul",
+        "noul": 0.93
+      },
+      "unearned_success": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "needless_repair": {
+        "type": "noul",
+        "noul": 0.19
+      },
+      "wasted_rounds": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "wasted_money": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "harness_fault": {
+        "type": "noul",
+        "noul": 0.18
+      },
+      "h_briefing": {
+        "type": "noul",
+        "noul": 0.18
+      },
+      "h_checks": {
+        "type": "noul",
+        "noul": 0.46
+      },
+      "h_effort": {
+        "type": "noul",
+        "noul": 0.16
+      },
+      "h_routing": {
+        "type": "noul",
+        "noul": 0.17
+      },
+      "h_jev": {
+        "type": "noul",
+        "noul": 0.44
+      },
+      "h_controller": {
+        "type": "noul",
+        "noul": 0.15
+      },
+      "surprise": {
+        "type": "noul",
+        "noul": 0.13
+      },
+      "value": {
+        "type": "score",
+        "score": 2.59,
+        "confidence": 0.62,
+        "legend": {
+          "0": "Nothing new: a routine pass, a failure that repeats what other runs already show, or a run that never really started.",
+          "1": "A little: a detail worth a glance, but no clear change to the agent follows from it.",
+          "2": "Some: it points at a specific weakness or cost worth noting.",
+          "3": "A lot: it shows a concrete, fixable problem, or a clear counterexample to a design assumption.",
+          "4": "The most: a flagrant failure, or a result that should change what gets built next."
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.03,
+          "2": 0.31,
+          "3": 0.62,
+          "4": 0.02
+        }
+      }
+    },
+    "eca83c1868e50c4c292111da5f485225120146e0f1c45afc5cd2b12054cfeb75": {
+      "near_miss": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "output_slip": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "missed_check": {
+        "type": "noul",
+        "noul": 0.05
+      },
+      "ignored_task": {
+        "type": "noul",
+        "noul": 0.12
+      },
+      "looped": {
+        "type": "noul",
+        "noul": 0.57
+      },
+      "stopped_early": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "unearned_success": {
+        "type": "noul",
+        "noul": 0.06
+      },
+      "needless_repair": {
+        "type": "noul",
+        "noul": 0.05
+      },
+      "wasted_rounds": {
+        "type": "noul",
+        "noul": 0.9
+      },
+      "wasted_money": {
+        "type": "noul",
+        "noul": 0.17
+      },
+      "harness_fault": {
+        "type": "noul",
+        "noul": 0.18
+      },
+      "h_briefing": {
+        "type": "noul",
+        "noul": 0.15
+      },
+      "h_checks": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "h_effort": {
+        "type": "noul",
+        "noul": 0.43
+      },
+      "h_routing": {
+        "type": "noul",
+        "noul": 0.2
+      },
+      "h_jev": {
+        "type": "noul",
+        "noul": 0.23
+      },
+      "h_controller": {
+        "type": "noul",
+        "noul": 0.55
+      },
+      "surprise": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "value": {
+        "type": "score",
+        "score": 2.04,
+        "confidence": 0.59,
+        "legend": {
+          "0": "Nothing new: a routine pass, a failure that repeats what other runs already show, or a run that never really started.",
+          "1": "A little: a detail worth a glance, but no clear change to the agent follows from it.",
+          "2": "Some: it points at a specific weakness or cost worth noting.",
+          "3": "A lot: it shows a concrete, fixable problem, or a clear counterexample to a design assumption.",
+          "4": "The most: a flagrant failure, or a result that should change what gets built next."
+        },
+        "probabilities": {
+          "0": 0.05,
+          "1": 0.11,
+          "2": 0.59,
+          "3": 0.24,
+          "4": 0.01
+        }
+      }
+    }
+  }
+}
