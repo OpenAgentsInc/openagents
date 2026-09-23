@@ -1272,6 +1272,25 @@ impl JevJudge {
     /// Asks Jev once more, after a delegate ran, whether the task and each
     /// requirement now look satisfied. `delegate` is the delegate's final
     /// report and `changes` is what changed in the working directory.
+    /// `exec.system`: Jev's answer for each optional system prompt section
+    /// in `ids`, whether the task needs its guidance. Without Jev, every
+    /// answer is unknown and nothing is selected.
+    pub async fn select_sections(
+        &mut self,
+        state: &State,
+        ids: &[String],
+    ) -> Vec<(String, Option<f64>)> {
+        let Some(client) = self.client.clone() else {
+            return ids.iter().map(|id| (id.clone(), None)).collect();
+        };
+        let issue = issue_state(&state.issue.title, &state.issue.body);
+        let (jev_state, questions) = crate::system::selection_request(&issue, ids);
+        let asked = self
+            .ask_jev(&client, "exec.system", "jev_system", jev_state, questions)
+            .await;
+        crate::system::selection_answers(ids, |id| asked.noul(id))
+    }
+
     pub async fn close(&mut self, state: &State, delegate: &str, changes: &str) -> Close {
         let unanswered = |criteria: &[String], why: String| Close {
             done: None,

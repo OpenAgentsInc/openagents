@@ -69,9 +69,10 @@ door or opens a network connection.
 
 Keys:
   1-5            Open the decision scoreboard, families, ladder, row, or chain.
-  1-9            Open the Terminal-Bench overview, comparison, attempt,
+  1-9, 0         Open the Terminal-Bench overview, comparison, attempt,
                  evidence, history, runbooks, Coder One components,
-                 requirement maps, or mini-task runs.
+                 requirement maps, mini-task runs, or the selected
+                 attempt's executor system prompt.
   tab, h, l      Walk the views.
   j, k, arrows   Move the cursor.
   g, G           Jump to the first or last item.

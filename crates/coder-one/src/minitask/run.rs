@@ -129,6 +129,12 @@ impl Executor for Bounded {
         );
         extra
     }
+    fn system_options(&self) -> Vec<String> {
+        self.cli.system_options()
+    }
+    fn select_system(&mut self, answers: Vec<(String, Option<f64>)>) {
+        self.cli.select_system(answers);
+    }
     async fn execute(&mut self, briefing: &delegate::Briefing) -> delegate::Report {
         let boundary = &self.boundary;
         let wrap = |command: std::process::Command| wrap(boundary, &command);
@@ -382,6 +388,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
                     effort: None,
                     tools: None,
                     prompt_cache_ttl: None,
+                    system: None,
                     runs: 0,
                     episode: crate::deadline::Deadline::unbounded(),
                     gate: None,

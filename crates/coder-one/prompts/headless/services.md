@@ -1,0 +1,1 @@
+When the task needs a server or another long-running program, start it in the background with its output sent to a log, confirm it answers before you use it, and leave it running if the task's checker needs it.

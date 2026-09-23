@@ -1,0 +1,985 @@
+{
+  "schema": "openagents.coder-one.prompt-captures.v1",
+  "cli_versions": {
+    "claude-code": "2.1.280",
+    "codex": "0.155.1"
+  },
+  "briefing": "<the Coder One briefing, written to briefing.md and piped to standard input>\n",
+  "note": "First-request sizes and cache markers from a local capture server; no inference ran. estimated_tokens is characters / 4.",
+  "captures": [
+    {
+      "schema": "openagents.coder-one.prompt-capture.v1",
+      "agent": "claude-code",
+      "parts": [
+        {
+          "part": "tools",
+          "count": 6,
+          "chars": 9688,
+          "cache": null
+        },
+        {
+          "part": "system[0]",
+          "chars": 74,
+          "cache": null
+        },
+        {
+          "part": "system[1]",
+          "chars": 62,
+          "cache": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "part": "system[2]",
+          "chars": 5453,
+          "cache": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "part": "messages[0].user[0]",
+          "chars": 580,
+          "cache": null
+        },
+        {
+          "part": "messages[0].user[1]",
+          "chars": 77,
+          "cache": null
+        },
+        {
+          "part": "messages[1].system[0]",
+          "chars": 898,
+          "cache": {
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "markers": [
+        {
+          "at": "system[1]",
+          "type": "ephemeral",
+          "ttl": null
+        },
+        {
+          "at": "system[2]",
+          "type": "ephemeral",
+          "ttl": null
+        },
+        {
+          "at": "messages[1].system[0]",
+          "type": "ephemeral",
+          "ttl": null
+        }
+      ],
+      "totals": {
+        "text_chars": 16832,
+        "tools": 6,
+        "tools_chars": 9688,
+        "estimated_tokens": 4208
+      },
+      "checks": {
+        "protected_present": true,
+        "default_main_prompt_present": true,
+        "variant_sections": 0,
+        "variant_sections_missing": []
+      },
+      "label": "default",
+      "model": "claude-opus-5-5",
+      "effort": "low",
+      "tools": "Bash,Read,Edit,Write,Glob,Grep",
+      "prompt_cache_ttl": "5m",
+      "path": "/v1/messages?beta=true",
+      "body_bytes": 17841,
+      "catalog": null,
+      "variant": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "default",
+        "agent": "claude-code",
+        "mode": "default",
+        "setting": null,
+        "digest": null,
+        "chars": 5453,
+        "default": "claude-code 2.1.280",
+        "default_chars": 5453,
+        "protected": true,
+        "sections": [
+          {
+            "id": "default:role",
+            "status": "tune",
+            "chars": 81,
+            "by": "cli"
+          },
+          {
+            "id": "default:security",
+            "status": "protected",
+            "chars": 461,
+            "by": "cli"
+          },
+          {
+            "id": "default:harness",
+            "status": "remove",
+            "chars": 670,
+            "by": "cli"
+          },
+          {
+            "id": "default:code-style",
+            "status": "keep",
+            "chars": 96,
+            "by": "cli"
+          },
+          {
+            "id": "default:pronouns",
+            "status": "remove",
+            "chars": 359,
+            "by": "cli"
+          },
+          {
+            "id": "default:confirm-actions",
+            "status": "replace",
+            "chars": 350,
+            "by": "cli"
+          },
+          {
+            "id": "default:report-faithfully",
+            "status": "keep",
+            "chars": 172,
+            "by": "cli"
+          },
+          {
+            "id": "default:memory",
+            "status": "remove",
+            "chars": 2054,
+            "by": "cli"
+          },
+          {
+            "id": "default:environment-catalog",
+            "status": "remove",
+            "chars": 600,
+            "by": "cli"
+          },
+          {
+            "id": "default:context-management",
+            "status": "tune",
+            "chars": 282,
+            "by": "cli"
+          },
+          {
+            "id": "default:act-when-ready",
+            "status": "keep",
+            "chars": 277,
+            "by": "cli"
+          },
+          {
+            "id": "default:token-budget",
+            "status": "tune",
+            "chars": 51,
+            "by": "cli"
+          }
+        ],
+        "asked": []
+      }
+    },
+    {
+      "schema": "openagents.coder-one.prompt-capture.v1",
+      "agent": "claude-code",
+      "parts": [
+        {
+          "part": "tools",
+          "count": 6,
+          "chars": 9688,
+          "cache": null
+        },
+        {
+          "part": "system[0]",
+          "chars": 74,
+          "cache": null
+        },
+        {
+          "part": "system[1]",
+          "chars": 62,
+          "cache": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "part": "system[2]",
+          "chars": 1542,
+          "cache": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "part": "messages[0].user[0]",
+          "chars": 580,
+          "cache": null
+        },
+        {
+          "part": "messages[0].user[1]",
+          "chars": 77,
+          "cache": null
+        },
+        {
+          "part": "messages[1].system[0]",
+          "chars": 898,
+          "cache": {
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "markers": [
+        {
+          "at": "system[1]",
+          "type": "ephemeral",
+          "ttl": null
+        },
+        {
+          "at": "system[2]",
+          "type": "ephemeral",
+          "ttl": null
+        },
+        {
+          "at": "messages[1].system[0]",
+          "type": "ephemeral",
+          "ttl": null
+        }
+      ],
+      "totals": {
+        "text_chars": 12921,
+        "tools": 6,
+        "tools_chars": 9688,
+        "estimated_tokens": 3231
+      },
+      "checks": {
+        "protected_present": true,
+        "default_main_prompt_present": false,
+        "variant_sections": 6,
+        "variant_sections_missing": []
+      },
+      "label": "core",
+      "model": "claude-opus-5-5",
+      "effort": "low",
+      "tools": "Bash,Read,Edit,Write,Glob,Grep",
+      "prompt_cache_ttl": "5m",
+      "path": "/v1/messages?beta=true",
+      "body_bytes": 13808,
+      "catalog": null,
+      "variant": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "claude-code",
+        "mode": "replace",
+        "setting": "--system-prompt-file",
+        "digest": "f347d1fb28b8c4537827e96be6cbaf2376db548c43599bc41a059635f5791da9",
+        "chars": 1542,
+        "default": "claude-code 2.1.280",
+        "default_chars": 5453,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      }
+    },
+    {
+      "schema": "openagents.coder-one.prompt-capture.v1",
+      "agent": "claude-code",
+      "parts": [
+        {
+          "part": "tools",
+          "count": 6,
+          "chars": 9688,
+          "cache": null
+        },
+        {
+          "part": "system[0]",
+          "chars": 74,
+          "cache": null
+        },
+        {
+          "part": "system[1]",
+          "chars": 62,
+          "cache": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "part": "system[2]",
+          "chars": 3058,
+          "cache": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "part": "messages[0].user[0]",
+          "chars": 580,
+          "cache": null
+        },
+        {
+          "part": "messages[0].user[1]",
+          "chars": 77,
+          "cache": null
+        },
+        {
+          "part": "messages[1].system[0]",
+          "chars": 898,
+          "cache": {
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "markers": [
+        {
+          "at": "system[1]",
+          "type": "ephemeral",
+          "ttl": null
+        },
+        {
+          "at": "system[2]",
+          "type": "ephemeral",
+          "ttl": null
+        },
+        {
+          "at": "messages[1].system[0]",
+          "type": "ephemeral",
+          "ttl": null
+        }
+      ],
+      "totals": {
+        "text_chars": 14437,
+        "tools": 6,
+        "tools_chars": 9688,
+        "estimated_tokens": 3610
+      },
+      "checks": {
+        "protected_present": true,
+        "default_main_prompt_present": false,
+        "variant_sections": 12,
+        "variant_sections_missing": []
+      },
+      "label": "core+optional",
+      "model": "claude-opus-5-5",
+      "effort": "low",
+      "tools": "Bash,Read,Edit,Write,Glob,Grep",
+      "prompt_cache_ttl": "5m",
+      "path": "/v1/messages?beta=true",
+      "body_bytes": 15336,
+      "catalog": null,
+      "variant": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "claude-code",
+        "mode": "replace",
+        "setting": "--system-prompt-file",
+        "digest": "7afdf9bd867305ba644e326670903ad75671f6307fb5db2fee6d3d3f0786a3df",
+        "chars": 3058,
+        "default": "claude-code 2.1.280",
+        "default_chars": 5453,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          },
+          {
+            "id": "long-builds",
+            "status": "optional",
+            "chars": 234,
+            "by": "jev"
+          },
+          {
+            "id": "packages",
+            "status": "optional",
+            "chars": 257,
+            "by": "jev"
+          },
+          {
+            "id": "data-parsing",
+            "status": "optional",
+            "chars": 264,
+            "by": "jev"
+          },
+          {
+            "id": "git-recovery",
+            "status": "optional",
+            "chars": 248,
+            "by": "jev"
+          },
+          {
+            "id": "concurrency",
+            "status": "optional",
+            "chars": 296,
+            "by": "jev"
+          },
+          {
+            "id": "services",
+            "status": "optional",
+            "chars": 211,
+            "by": "jev"
+          }
+        ],
+        "asked": [
+          {
+            "id": "long-builds",
+            "p": 1.0
+          },
+          {
+            "id": "packages",
+            "p": 1.0
+          },
+          {
+            "id": "data-parsing",
+            "p": 1.0
+          },
+          {
+            "id": "git-recovery",
+            "p": 1.0
+          },
+          {
+            "id": "concurrency",
+            "p": 1.0
+          },
+          {
+            "id": "services",
+            "p": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "schema": "openagents.coder-one.prompt-capture.v1",
+      "agent": "codex",
+      "parts": [
+        {
+          "part": "input[0].additional_tools.tools",
+          "count": 3,
+          "chars": 21384,
+          "cache": null
+        },
+        {
+          "part": "input[1].developer[0]",
+          "chars": 18037,
+          "cache": null
+        },
+        {
+          "part": "input[2].developer[0]",
+          "chars": 2475,
+          "cache": null
+        },
+        {
+          "part": "input[2].developer[1]",
+          "chars": 362,
+          "cache": null
+        },
+        {
+          "part": "input[2].developer[2]",
+          "chars": 920,
+          "cache": null
+        },
+        {
+          "part": "input[3].developer[0]",
+          "chars": 2429,
+          "cache": null
+        },
+        {
+          "part": "input[4].developer[0]",
+          "chars": 271,
+          "cache": null
+        },
+        {
+          "part": "input[5].user[0]",
+          "chars": 337,
+          "cache": null
+        },
+        {
+          "part": "input[6].user[0]",
+          "chars": 77,
+          "cache": null
+        }
+      ],
+      "markers": [
+        {
+          "at": "prompt_cache_key",
+          "type": "automatic prefix cache",
+          "ttl": null
+        }
+      ],
+      "totals": {
+        "text_chars": 46292,
+        "tools": 3,
+        "tools_chars": 21384,
+        "estimated_tokens": 11573
+      },
+      "checks": {
+        "protected_present": false,
+        "default_main_prompt_present": true,
+        "variant_sections": 0,
+        "variant_sections_missing": []
+      },
+      "label": "default",
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "path": "/v1/responses",
+      "body_bytes": 48990,
+      "catalog": "codex models cache",
+      "variant": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "default",
+        "agent": "codex",
+        "mode": "default",
+        "setting": null,
+        "digest": null,
+        "chars": 18037,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": false,
+        "sections": [
+          {
+            "id": "default:role",
+            "status": "tune",
+            "chars": 169,
+            "by": "cli"
+          },
+          {
+            "id": "default:personality",
+            "status": "remove",
+            "chars": 1869,
+            "by": "cli"
+          },
+          {
+            "id": "default:permission",
+            "status": "replace",
+            "chars": 1700,
+            "by": "cli"
+          },
+          {
+            "id": "default:autonomy",
+            "status": "keep",
+            "chars": 1446,
+            "by": "cli"
+          },
+          {
+            "id": "default:working-with-user",
+            "status": "tune",
+            "chars": 6317,
+            "by": "cli"
+          },
+          {
+            "id": "default:rules",
+            "status": "tune",
+            "chars": 2280,
+            "by": "cli"
+          },
+          {
+            "id": "default:skills",
+            "status": "remove",
+            "chars": 2682,
+            "by": "cli"
+          },
+          {
+            "id": "default:apps",
+            "status": "remove",
+            "chars": 609,
+            "by": "cli"
+          },
+          {
+            "id": "default:plugins",
+            "status": "remove",
+            "chars": 965,
+            "by": "cli"
+          }
+        ],
+        "asked": []
+      }
+    },
+    {
+      "schema": "openagents.coder-one.prompt-capture.v1",
+      "agent": "codex",
+      "parts": [
+        {
+          "part": "input[0].additional_tools.tools",
+          "count": 3,
+          "chars": 21384,
+          "cache": null
+        },
+        {
+          "part": "input[1].developer[0]",
+          "chars": 1541,
+          "cache": null
+        },
+        {
+          "part": "input[2].developer[0]",
+          "chars": 2475,
+          "cache": null
+        },
+        {
+          "part": "input[2].developer[1]",
+          "chars": 362,
+          "cache": null
+        },
+        {
+          "part": "input[2].developer[2]",
+          "chars": 920,
+          "cache": null
+        },
+        {
+          "part": "input[3].developer[0]",
+          "chars": 2429,
+          "cache": null
+        },
+        {
+          "part": "input[4].developer[0]",
+          "chars": 271,
+          "cache": null
+        },
+        {
+          "part": "input[5].user[0]",
+          "chars": 337,
+          "cache": null
+        },
+        {
+          "part": "input[6].user[0]",
+          "chars": 77,
+          "cache": null
+        }
+      ],
+      "markers": [
+        {
+          "at": "prompt_cache_key",
+          "type": "automatic prefix cache",
+          "ttl": null
+        }
+      ],
+      "totals": {
+        "text_chars": 29796,
+        "tools": 3,
+        "tools_chars": 21384,
+        "estimated_tokens": 7449
+      },
+      "checks": {
+        "protected_present": true,
+        "default_main_prompt_present": false,
+        "variant_sections": 6,
+        "variant_sections_missing": []
+      },
+      "label": "core",
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "path": "/v1/responses",
+      "body_bytes": 32294,
+      "catalog": "codex models cache",
+      "variant": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "codex",
+        "mode": "replace",
+        "setting": "model_instructions_file",
+        "digest": "295d575f2830763a5663487ddbb04b7f0b6dd2ea852926122eef893a6edc3607",
+        "chars": 1542,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      }
+    },
+    {
+      "schema": "openagents.coder-one.prompt-capture.v1",
+      "agent": "codex",
+      "parts": [
+        {
+          "part": "input[0].additional_tools.tools",
+          "count": 3,
+          "chars": 21384,
+          "cache": null
+        },
+        {
+          "part": "input[1].developer[0]",
+          "chars": 3057,
+          "cache": null
+        },
+        {
+          "part": "input[2].developer[0]",
+          "chars": 2475,
+          "cache": null
+        },
+        {
+          "part": "input[2].developer[1]",
+          "chars": 362,
+          "cache": null
+        },
+        {
+          "part": "input[2].developer[2]",
+          "chars": 920,
+          "cache": null
+        },
+        {
+          "part": "input[3].developer[0]",
+          "chars": 2429,
+          "cache": null
+        },
+        {
+          "part": "input[4].developer[0]",
+          "chars": 271,
+          "cache": null
+        },
+        {
+          "part": "input[5].user[0]",
+          "chars": 337,
+          "cache": null
+        },
+        {
+          "part": "input[6].user[0]",
+          "chars": 77,
+          "cache": null
+        }
+      ],
+      "markers": [
+        {
+          "at": "prompt_cache_key",
+          "type": "automatic prefix cache",
+          "ttl": null
+        }
+      ],
+      "totals": {
+        "text_chars": 31312,
+        "tools": 3,
+        "tools_chars": 21384,
+        "estimated_tokens": 7828
+      },
+      "checks": {
+        "protected_present": true,
+        "default_main_prompt_present": false,
+        "variant_sections": 12,
+        "variant_sections_missing": []
+      },
+      "label": "core+optional",
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "path": "/v1/responses",
+      "body_bytes": 33822,
+      "catalog": "codex models cache",
+      "variant": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "codex",
+        "mode": "replace",
+        "setting": "model_instructions_file",
+        "digest": "73b8ecd66486d7956afcabe887fb20ef29a2ed513ae858400cd9759a6ce4931a",
+        "chars": 3058,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          },
+          {
+            "id": "long-builds",
+            "status": "optional",
+            "chars": 234,
+            "by": "jev"
+          },
+          {
+            "id": "packages",
+            "status": "optional",
+            "chars": 257,
+            "by": "jev"
+          },
+          {
+            "id": "data-parsing",
+            "status": "optional",
+            "chars": 264,
+            "by": "jev"
+          },
+          {
+            "id": "git-recovery",
+            "status": "optional",
+            "chars": 248,
+            "by": "jev"
+          },
+          {
+            "id": "concurrency",
+            "status": "optional",
+            "chars": 296,
+            "by": "jev"
+          },
+          {
+            "id": "services",
+            "status": "optional",
+            "chars": 211,
+            "by": "jev"
+          }
+        ],
+        "asked": [
+          {
+            "id": "long-builds",
+            "p": 1.0
+          },
+          {
+            "id": "packages",
+            "p": 1.0
+          },
+          {
+            "id": "data-parsing",
+            "p": 1.0
+          },
+          {
+            "id": "git-recovery",
+            "p": 1.0
+          },
+          {
+            "id": "concurrency",
+            "p": 1.0
+          },
+          {
+            "id": "services",
+            "p": 1.0
+          }
+        ]
+      }
+    }
+  ]
+}

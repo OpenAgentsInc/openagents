@@ -33,6 +33,40 @@
       "milliseconds": 242,
       "source": "headless-terminal__tr384w7#jev-3"
     },
+    "85ffe71453883e8d5e1798a877137ce14b49b1efaf138e9f8a85dc3bc040fdc1": {
+      "name": "jev_system",
+      "model": "jev-1.13.0",
+      "answers": {
+        "section_long_builds": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "section_packages": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "section_data_parsing": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "section_git_recovery": {
+          "type": "noul",
+          "noul": 0.01
+        },
+        "section_concurrency": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "section_services": {
+          "type": "noul",
+          "noul": 0.36
+        }
+      },
+      "input_tokens": 691,
+      "output_tokens": 116,
+      "milliseconds": 175,
+      "source": "live component run of exec.system#jev_system-1"
+    },
     "a46690ae9a20fdb788f5cb5ad2dad366e867eae9d721d4c3d2136e30c9a5ddd0": {
       "name": "jev_probe",
       "model": "jev-1.13.0",

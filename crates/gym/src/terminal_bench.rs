@@ -89,6 +89,15 @@ pub struct Attempt {
     pub ledger: Vec<Value>,
     /// The episode deadline's record from the episode manifest.
     pub deadline: Option<Value>,
+    /// The delegate's agent (`claude-code` or `codex`) from the episode
+    /// manifest.
+    pub delegate_agent: Option<String>,
+    /// The delegate session's native turns and model calls.
+    pub delegate_turns: Option<u64>,
+    pub delegate_calls: Option<u64>,
+    /// The system prompt the delegate was sent (`exec.system`), when the
+    /// episode recorded it.
+    pub system: Option<Value>,
 }
 
 impl Attempt {
@@ -708,6 +717,10 @@ fn empty_attempt(source: &str, job: &str, trial: &str) -> Attempt {
         policy: None,
         ledger: Vec::new(),
         deadline: None,
+        delegate_agent: None,
+        delegate_turns: None,
+        delegate_calls: None,
+        system: None,
     }
 }
 
@@ -880,7 +893,11 @@ fn attach_episode(attempt: &mut Attempt, path: &Path, episode: &Path, records: &
                     });
                 }
             }
+            attempt.delegate_agent = string(&value, "/delegate/agent");
             if let Some(delegate) = value.pointer("/delegate/delegation") {
+                attempt.delegate_turns = delegate.get("num_turns").and_then(Value::as_u64);
+                attempt.delegate_calls = delegate.get("api_calls").and_then(Value::as_u64);
+                attempt.system = delegate.get("system").filter(|v| !v.is_null()).cloned();
                 attempt.notes.push(format!(
                     "Delegate: {} {} · {} turns · briefing {} characters",
                     string(&value, "/delegate/agent").unwrap_or_default(),

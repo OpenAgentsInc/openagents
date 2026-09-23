@@ -355,6 +355,40 @@
       "milliseconds": 501,
       "source": "log-summary-date-ranges__XWSKgz5#jev-survey-3"
     },
+    "a049bd78f78997fed1b50b2c6f8edbb0d0f9732ce2fb6fbfc21d8b32310d6ec6": {
+      "name": "jev_system",
+      "model": "jev-1.13.0",
+      "answers": {
+        "section_long_builds": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "section_packages": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "section_data_parsing": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "section_git_recovery": {
+          "type": "noul",
+          "noul": 0.01
+        },
+        "section_concurrency": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "section_services": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 900,
+      "output_tokens": 116,
+      "milliseconds": 243,
+      "source": "live component run of exec.system#jev_system-1"
+    },
     "d94e93ae6e756146ca48d66b41d1016b58a8372599c97bd7a6cebcc0b331274e": {
       "name": "jev_probe",
       "model": "jev-1.13.0",

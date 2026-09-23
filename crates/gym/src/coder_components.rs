@@ -32,6 +32,7 @@ pub const KNOWN: &[&str] = &[
     "evidence.select",
     "evidence.pack",
     "exec.explore",
+    "exec.system",
     "exec.session",
     "verify.close",
 ];
@@ -701,13 +702,26 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
     {
         return Err(format!("no component {id} in the runs or episodes"));
     }
+    // `exec.system` variants compare on their captured first request and
+    // the attempts that ran them.
+    let prompts = matches!(component.as_deref(), None | Some("exec.system"))
+        .then(|| crate::coder_prompt::comparison(&records));
     if json_output {
-        serde_json::to_writer_pretty(&mut *out, &report.to_json(component.as_deref()))
-            .map_err(|error| error.to_string())?;
+        let mut value = report.to_json(component.as_deref());
+        if let Some(prompts) = &prompts {
+            value["system_variants"] = prompts.to_json();
+        }
+        serde_json::to_writer_pretty(&mut *out, &value).map_err(|error| error.to_string())?;
         writeln!(out).map_err(|error| error.to_string())?;
     } else {
         for line in report.lines(component.as_deref()) {
             writeln!(out, "{line}").map_err(|error| error.to_string())?;
+        }
+        if let Some(prompts) = &prompts {
+            writeln!(out).map_err(|error| error.to_string())?;
+            for line in prompts.lines() {
+                writeln!(out, "{line}").map_err(|error| error.to_string())?;
+            }
         }
     }
     Ok(0)

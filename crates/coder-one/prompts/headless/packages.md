@@ -1,0 +1,1 @@
+When you install packages, install the versions the task or the project pins, and confirm each one imports or runs before you build on it. If an install fails, read the error: a missing system library or compiler is a different fix from a version conflict.

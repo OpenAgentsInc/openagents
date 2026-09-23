@@ -133,6 +133,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(Select),
         Box::new(Pack),
         Box::new(scripted::ScriptedAdapter),
+        Box::new(SystemSelect),
         Box::new(Close),
         Box::new(scripted::MiniTaskRun),
     ]
@@ -611,6 +612,90 @@ impl Component for Pack {
             );
             Ok(Ran {
                 output: briefing.record(),
+                metrics,
+            })
+        })
+    }
+}
+
+/// `exec.system`: the executor's system prompt, with the optional sections
+/// Jev reads the task as needing.
+struct SystemSelect;
+
+#[derive(Deserialize)]
+struct SystemInput {
+    task: Task,
+    /// `claude-code` or `codex`.
+    agent: String,
+    system: crate::system::Policy,
+}
+
+impl Component for SystemSelect {
+    fn id(&self) -> &'static str {
+        "exec.system"
+    }
+    fn implementation(&self) -> Implementation {
+        crate::system::implementation()
+    }
+    fn about(&self) -> &'static str {
+        "Jev picks the optional system prompt sections the task needs; the protected section stays."
+    }
+    fn run<'a>(
+        &'a self,
+        fixture: &'a Fixture,
+        jev: &'a JevMode,
+        recorder: &'a Recorder,
+    ) -> LocalBoxFuture<'a, Result<Ran, String>> {
+        Box::pin(async move {
+            let input: SystemInput = input(fixture)?;
+            let agent = crate::delegate::Agent::parse(&input.agent)?;
+            let problems = input.system.validate(agent);
+            if !problems.is_empty() {
+                return Err(problems.join("; "));
+            }
+            let mut variant = crate::system::Variant::new(agent, input.system);
+            if !variant.options().is_empty() {
+                let request =
+                    crate::system::selection_request(&input.task.state(), variant.options());
+                let asked = ask_one(jev, recorder, self.id(), "jev_system", request).await;
+                let answers =
+                    crate::system::selection_answers(variant.options(), |id| asked.noul(id));
+                variant.select(answers);
+            }
+            let record = variant.record();
+            let selected: Vec<String> = variant
+                .sections()
+                .iter()
+                .filter(|(_, by)| *by == "jev")
+                .map(|(section, _)| section.id.to_string())
+                .collect();
+            let default_chars = crate::system::default_text(agent).chars().count();
+            let chars = variant.text().chars().count();
+            let mut metrics = Map::new();
+            metrics.insert("chars".to_string(), json!(chars));
+            metrics.insert("default_chars".to_string(), json!(default_chars));
+            metrics.insert(
+                "saved_chars".to_string(),
+                json!(
+                    i64::try_from(default_chars).unwrap_or(0) - i64::try_from(chars).unwrap_or(0)
+                ),
+            );
+            metrics.insert("sections".to_string(), json!(variant.sections().len()));
+            metrics.insert("selected".to_string(), json!(selected.len()));
+            metrics.insert(
+                "unknown".to_string(),
+                json!(variant.asked.iter().filter(|(_, p)| p.is_none()).count()),
+            );
+            metrics.insert(
+                "protected_present".to_string(),
+                json!(variant.policy.protected(agent)),
+            );
+            metrics.insert(
+                "matches_retained".to_string(),
+                same_set(&selected, fixture.retained.get("selected")),
+            );
+            Ok(Ran {
+                output: json!({ "variant": record, "selected": selected }),
                 metrics,
             })
         })

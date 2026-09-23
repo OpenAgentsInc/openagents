@@ -1,0 +1,320 @@
+{
+  "schema": "openagents.coder-one.system-library.v1",
+  "protected": [
+    "security"
+  ],
+  "core": [
+    "role",
+    "security",
+    "authority",
+    "verify",
+    "report",
+    "code-style"
+  ],
+  "optional": [
+    "long-builds",
+    "packages",
+    "data-parsing",
+    "git-recovery",
+    "concurrency",
+    "services"
+  ],
+  "select_threshold": 0.5,
+  "defaults": [
+    {
+      "agent": "claude-code",
+      "default": "claude-code 2.1.280",
+      "chars": 5453,
+      "protected": true,
+      "sections": [
+        {
+          "id": "default:role",
+          "status": "tune",
+          "chars": 81,
+          "note": "Role line; interactive framing.",
+          "question": null
+        },
+        {
+          "id": "default:security",
+          "status": "protected",
+          "chars": 461,
+          "note": "A safety boundary.",
+          "question": null
+        },
+        {
+          "id": "default:harness",
+          "status": "remove",
+          "chars": 670,
+          "note": "Markdown display, permission modes, hooks, clickable references: no reader.",
+          "question": null
+        },
+        {
+          "id": "default:code-style",
+          "status": "keep",
+          "chars": 96,
+          "note": "Relevant to edits.",
+          "question": null
+        },
+        {
+          "id": "default:pronouns",
+          "status": "remove",
+          "chars": 359,
+          "note": "No reader.",
+          "question": null
+        },
+        {
+          "id": "default:confirm-actions",
+          "status": "replace",
+          "chars": 350,
+          "note": "Conflicts with headless work, where nobody answers; the core's authority statement replaces it.",
+          "question": null
+        },
+        {
+          "id": "default:report-faithfully",
+          "status": "keep",
+          "chars": 172,
+          "note": "Relevant to the final report.",
+          "question": null
+        },
+        {
+          "id": "default:memory",
+          "status": "remove",
+          "chars": 2054,
+          "note": "Writes files outside the task.",
+          "question": null
+        },
+        {
+          "id": "default:environment-catalog",
+          "status": "remove",
+          "chars": 600,
+          "note": "Model catalog, Claude Code surfaces, fast mode: irrelevant.",
+          "question": null
+        },
+        {
+          "id": "default:context-management",
+          "status": "tune",
+          "chars": 282,
+          "note": "Rarely relevant to a short task.",
+          "question": null
+        },
+        {
+          "id": "default:act-when-ready",
+          "status": "keep",
+          "chars": 277,
+          "note": "Discourages re-deriving established facts.",
+          "question": null
+        },
+        {
+          "id": "default:token-budget",
+          "status": "tune",
+          "chars": 51,
+          "note": "The context budget line.",
+          "question": null
+        }
+      ]
+    },
+    {
+      "agent": "codex",
+      "default": "codex 0.155.1 (gpt-6-luna)",
+      "chars": 18037,
+      "protected": false,
+      "sections": [
+        {
+          "id": "default:role",
+          "status": "tune",
+          "chars": 169,
+          "note": "Identity; collaborative framing.",
+          "question": null
+        },
+        {
+          "id": "default:personality",
+          "status": "remove",
+          "chars": 1869,
+          "note": "Personality and writing style: no reader.",
+          "question": null
+        },
+        {
+          "id": "default:permission",
+          "status": "replace",
+          "chars": 1700,
+          "note": "When to ask the user; nobody answers headless.",
+          "question": null
+        },
+        {
+          "id": "default:autonomy",
+          "status": "keep",
+          "chars": 1446,
+          "note": "Persistence until the goal is met.",
+          "question": null
+        },
+        {
+          "id": "default:working-with-user",
+          "status": "tune",
+          "chars": 6317,
+          "note": "Commentary and final channels, formatting, visualizations: mostly for a reader.",
+          "question": null
+        },
+        {
+          "id": "default:rules",
+          "status": "tune",
+          "chars": 2280,
+          "note": "Search and shell rules; includes a rule against running tests unasked.",
+          "question": null
+        },
+        {
+          "id": "default:skills",
+          "status": "remove",
+          "chars": 2682,
+          "note": "No skills are installed in a task container.",
+          "question": null
+        },
+        {
+          "id": "default:apps",
+          "status": "remove",
+          "chars": 609,
+          "note": "No connectors.",
+          "question": null
+        },
+        {
+          "id": "default:plugins",
+          "status": "remove",
+          "chars": 965,
+          "note": "No plugins.",
+          "question": null
+        }
+      ]
+    }
+  ],
+  "library": [
+    {
+      "id": "role",
+      "status": "core",
+      "chars": 214,
+      "note": "Headless identity: no reader, no answers.",
+      "question": null
+    },
+    {
+      "id": "security",
+      "status": "protected",
+      "chars": 461,
+      "note": "Claude Code's security policy, verbatim. Never removed or edited by a study.",
+      "question": null
+    },
+    {
+      "id": "authority",
+      "status": "core",
+      "chars": 334,
+      "note": "Replaces the rule to confirm hard-to-reverse actions, which nobody answers headless.",
+      "question": null
+    },
+    {
+      "id": "verify",
+      "status": "core",
+      "chars": 258,
+      "note": "The checker grades the final state; replaces Codex's rule against running tests unasked.",
+      "question": null
+    },
+    {
+      "id": "report",
+      "status": "core",
+      "chars": 176,
+      "note": "Faithful final report.",
+      "question": null
+    },
+    {
+      "id": "code-style",
+      "status": "core",
+      "chars": 95,
+      "note": "Claude Code's code-style line, kept.",
+      "question": null
+    },
+    {
+      "id": "long-builds",
+      "status": "optional",
+      "chars": 234,
+      "note": "Long builds and compilations.",
+      "question": "Does the task in `issue` require building or compiling code, such as a C extension, a native library, or a project with a build system, that may take minutes?"
+    },
+    {
+      "id": "packages",
+      "status": "optional",
+      "chars": 257,
+      "note": "Package installation.",
+      "question": "Does the task in `issue` require installing packages or libraries, with pip, npm, apt, or another package manager, before the work can be done?"
+    },
+    {
+      "id": "data-parsing",
+      "status": "optional",
+      "chars": 264,
+      "note": "Parsing logs and data by field.",
+      "question": "Does the task in `issue` require reading and parsing logs, data files, or a database to compute or extract results?"
+    },
+    {
+      "id": "git-recovery",
+      "status": "optional",
+      "chars": 248,
+      "note": "Recovering lost Git work.",
+      "question": "Does the task in `issue` involve recovering, repairing, or inspecting Git history, such as lost commits, a detached HEAD, or leaked secrets in past commits?"
+    },
+    {
+      "id": "concurrency",
+      "status": "optional",
+      "chars": 296,
+      "note": "Cancellation and cleanup in concurrent code.",
+      "question": "Does the task in `issue` involve concurrent or asynchronous code, where cancellation, interruption, or cleanup of running tasks matters?"
+    },
+    {
+      "id": "services",
+      "status": "optional",
+      "chars": 211,
+      "note": "Servers and other long-running programs.",
+      "question": "Does the task in `issue` require starting a server, a daemon, or another program that keeps running while the task is checked?"
+    }
+  ],
+  "presets": [
+    {
+      "name": "core",
+      "policy": {
+        "mode": "replace",
+        "sections": [
+          "role",
+          "security",
+          "authority",
+          "verify",
+          "report",
+          "code-style"
+        ]
+      },
+      "chars": {
+        "claude-code": 1542,
+        "codex": 1542
+      }
+    },
+    {
+      "name": "core-select",
+      "policy": {
+        "mode": "replace",
+        "sections": [
+          "role",
+          "security",
+          "authority",
+          "verify",
+          "report",
+          "code-style"
+        ],
+        "select": [
+          "long-builds",
+          "packages",
+          "data-parsing",
+          "git-recovery",
+          "concurrency",
+          "services"
+        ]
+      },
+      "chars": {
+        "claude-code": 1542,
+        "codex": 1542
+      }
+    }
+  ]
+}

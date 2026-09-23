@@ -1,0 +1,1 @@
+When you read logs or data files, parse each record by its format and fields instead of searching whole lines for a word. Check your result against the real input, including its edge cases: empty and malformed records, time zones, date boundaries, and duplicates.

@@ -73,6 +73,7 @@ pub const SEARCHABLE: &[&str] = &[
     "policy.executor.tools",
     "policy.executor.prompt_cache_ttl",
     "policy.executor.deadline_sec",
+    "policy.executor.system",
 ];
 
 /// A policy manifest.
@@ -249,6 +250,12 @@ pub struct ExecutorPolicy {
     pub prompt_cache_ttl: Option<String>,
     /// Seconds one dispatch may run.
     pub deadline_sec: u64,
+    /// The system prompt the executor is sent (`exec.system`): sections
+    /// from the library and how they reach the CLI. Absent, the executor
+    /// runs its own default prompt, and the manifest's digest is what it
+    /// was before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<crate::system::Policy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -368,6 +375,7 @@ impl Manifest {
                     tools: None,
                     prompt_cache_ttl: None,
                     deadline_sec: 600,
+                    system: None,
                 },
             },
             protected: Protected {
@@ -485,6 +493,9 @@ impl Manifest {
                 "executor.version must be a dotted version, not {version}"
             ));
         }
+        if let Some(system) = &executor.system {
+            problems.extend(system.validate(executor.agent.agent()));
+        }
         let protected = &self.protected;
         for (field, value, expected) in [
             ("isolation", &protected.isolation, ISOLATION),
@@ -599,6 +610,10 @@ impl Manifest {
             effort: executor.effort.clone(),
             tools: executor.tools.clone(),
             prompt_cache_ttl: executor.prompt_cache_ttl.clone(),
+            system: executor
+                .system
+                .clone()
+                .map(|system| crate::system::Variant::new(executor.agent.agent(), system)),
             episode: crate::deadline::Deadline::unbounded(),
             gate: None,
             granted: None,
@@ -687,6 +702,10 @@ impl Resolution {
                 "directions": sha(self.manifest.policy.brief.directions.text()),
                 "episode_instructions": sha(crate::agent::EPISODE_INSTRUCTIONS),
                 "explore_prompt": sha(delegate::EXPLORE_PROMPT),
+                "system": self.manifest.policy.executor.system.clone().map(|system| {
+                    crate::system::Variant::new(self.manifest.policy.executor.agent.agent(), system)
+                        .digest()
+                }),
             },
         })
     }
@@ -928,6 +947,24 @@ impl Resolution {
                         .to_string(),
                 );
             }
+        }
+        if let Some(value) = env("CODER_ONE_SYSTEM") {
+            let system = if value == "default" {
+                None
+            } else if value.starts_with('{') {
+                Some(
+                    serde_json::from_str::<crate::system::Policy>(&value)
+                        .map_err(|error| format!("CODER_ONE_SYSTEM is invalid: {error}"))?,
+                )
+            } else {
+                Some(crate::system::Policy::preset(&value).ok_or_else(|| {
+                    format!(
+                        "CODER_ONE_SYSTEM must be default, core, core-select, or JSON, not {value}"
+                    )
+                })?)
+            };
+            self.manifest.policy.executor.system = system;
+            self.set("CODER_ONE_SYSTEM", "policy.executor.system", value);
         }
         if let Some(seconds) = number("CODER_ONE_DELEGATE_TIMEOUT")? {
             self.manifest.policy.executor.deadline_sec = seconds;
@@ -1362,6 +1399,7 @@ mod tests {
         "policy.executor.tools",
         "policy.executor.prompt_cache_ttl",
         "policy.executor.deadline_sec",
+        "policy.executor.system",
     ];
 
     #[test]
@@ -1375,6 +1413,12 @@ mod tests {
 printf '%s\n' "$@" > "$CANARY_DIR/args"
 env > "$CANARY_DIR/env"
 cat > "$CANARY_DIR/stdin"
+for a in "$@"; do
+  case "$a" in
+    *.system.md) cp "$a" "$CANARY_DIR/system" ;;
+    model_instructions_file=*) f=${a#model_instructions_file=\"}; cp "${f%\"}" "$CANARY_DIR/system" ;;
+  esac
+done
 [ -n "$CANARY_SLEEP" ] && sleep "$CANARY_SLEEP"
 echo '{"type":"thread.started","thread_id":"t-canary"}'
 echo '{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"done"}}'
@@ -1387,6 +1431,8 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
         args: Vec<String>,
         env: BTreeMap<String, String>,
         stdin: String,
+        /// The system prompt file the executor was pointed at, if any.
+        system: String,
         generations: usize,
         status: Option<String>,
         switches: (bool, bool, bool, bool, usize),
@@ -1511,6 +1557,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
             stdin: read("stdin"),
+            system: read("system"),
             generations: generator.0,
             status: delegated.map(|d| d.report.status.word().to_string()),
             switches,
@@ -1616,6 +1663,67 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
         assert_eq!(seen.status.as_deref(), Some("timed_out"));
         let seen = observe(&opus(), &[]).await;
         assert_eq!(seen.status.as_deref(), Some("answered"));
+    }
+
+    #[tokio::test]
+    async fn canary_policy_executor_system() {
+        use crate::system::{Mode as SystemMode, Policy as SystemPolicy};
+        let security = crate::system::section(Agent::ClaudeCode, "security")
+            .unwrap()
+            .text
+            .trim();
+        let seen = observe(
+            &with(|m| m.policy.executor.system = SystemPolicy::preset("core")),
+            &[],
+        )
+        .await;
+        assert!(follows(&seen.args, "--system-prompt-file").is_some());
+        assert!(seen.system.contains(security));
+        assert!(seen.system.contains("working headless on one task"));
+        let seen = observe(&opus(), &[]).await;
+        assert!(!seen.args.iter().any(|arg| arg.contains("system-prompt")));
+        assert!(seen.system.is_empty());
+        let seen = observe(
+            &with(|m| {
+                m.policy.executor.system = Some(SystemPolicy {
+                    mode: SystemMode::Append,
+                    sections: vec!["authority".into()],
+                    select: Vec::new(),
+                });
+            }),
+            &[],
+        )
+        .await;
+        assert!(follows(&seen.args, "--append-system-prompt-file").is_some());
+        assert!(seen.system.contains("You are authorized"));
+
+        let mut codex = luna();
+        codex.policy.executor.system = SystemPolicy::preset("core-select");
+        codex.validate().unwrap();
+        let seen = observe(&codex, &[]).await;
+        assert!(
+            seen.args
+                .iter()
+                .any(|arg| arg.starts_with("model_instructions_file=\"")),
+            "{:?}",
+            seen.args
+        );
+        assert!(seen.system.contains(security));
+        codex.policy.executor.system = Some(SystemPolicy {
+            mode: SystemMode::Append,
+            sections: vec!["security".into(), "verify".into()],
+            select: Vec::new(),
+        });
+        codex.validate().unwrap();
+        let seen = observe(&codex, &[]).await;
+        let developer = seen
+            .args
+            .iter()
+            .find_map(|arg| arg.strip_prefix("developer_instructions="))
+            .expect("developer_instructions reaches codex");
+        let text: String = serde_json::from_str(developer).unwrap();
+        assert!(text.contains(security));
+        assert!(text.contains("An automated checker grades"));
     }
 
     #[tokio::test]

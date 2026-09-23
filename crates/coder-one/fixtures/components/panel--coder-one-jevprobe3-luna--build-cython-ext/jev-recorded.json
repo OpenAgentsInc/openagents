@@ -249,6 +249,40 @@
       "milliseconds": 156,
       "source": "build-cython-ext__jFQbtoW#jev-survey-3"
     },
+    "74ed21d07fdb04c0f61443af91cad0f0681960818aa81acb7e47ee36949c51e4": {
+      "name": "jev_system",
+      "model": "jev-1.13.0",
+      "answers": {
+        "section_long_builds": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "section_packages": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "section_data_parsing": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "section_git_recovery": {
+          "type": "noul",
+          "noul": 0.01
+        },
+        "section_concurrency": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "section_services": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 932,
+      "output_tokens": 116,
+      "milliseconds": 168,
+      "source": "live component run of exec.system#jev_system-1"
+    },
     "c42e023005106229991c1ae4300b858e2bbe95d7b45b1c3ff4cc60baa70fdd66": {
       "name": "jev_survey",
       "model": "jev-1.13.0",

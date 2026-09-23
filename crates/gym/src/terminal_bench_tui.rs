@@ -20,10 +20,11 @@ pub enum View {
     Components,
     Requirements,
     MiniTasks,
+    Prompt,
 }
 
 impl View {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
@@ -33,6 +34,7 @@ impl View {
         Self::Components,
         Self::Requirements,
         Self::MiniTasks,
+        Self::Prompt,
     ];
     pub fn title(self) -> &'static str {
         match self {
@@ -45,6 +47,7 @@ impl View {
             Self::Components => "components",
             Self::Requirements => "requirements",
             Self::MiniTasks => "mini-tasks",
+            Self::Prompt => "prompt",
         }
     }
     fn index(self) -> usize {
@@ -58,12 +61,18 @@ impl View {
             Self::Components => 6,
             Self::Requirements => 7,
             Self::MiniTasks => 8,
+            Self::Prompt => 9,
         }
     }
+    /// The view a digit opens: `1` to `9` open the first nine, `0` the
+    /// tenth.
     pub fn from_digit(digit: char) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|view| (b'1' + view.index() as u8) as char == digit)
+        let index = match digit {
+            '1'..='9' => digit as usize - '1' as usize,
+            '0' => 9,
+            _ => return None,
+        };
+        Self::ALL.get(index).copied()
     }
 }
 
@@ -71,7 +80,7 @@ pub struct App {
     records: Records,
     groups: Vec<ComparisonGroup>,
     view: View,
-    cursor: [usize; 9],
+    cursor: [usize; View::ALL.len()],
     selected_group: usize,
     selected_attempt: usize,
     history_order: Vec<usize>,
@@ -82,6 +91,10 @@ pub struct App {
     requirements: Option<crate::coder_requirements::Report>,
     /// Coder One's mini-task runs, newest first, and unreadable ones.
     minitasks: (Vec<crate::coder_minitasks::Run>, Vec<String>),
+    /// `exec.system`: the checked-in prompt library and each variant's
+    /// comparison.
+    library: crate::coder_prompt::Library,
+    prompts: crate::coder_prompt::Comparison,
 }
 
 impl App {
@@ -93,11 +106,16 @@ impl App {
                 .started_at
                 .cmp(&records.attempts[left].started_at)
         });
+        let library = crate::coder_prompt::Library::load(&crate::coder_prompt::default_paths().0)
+            .unwrap_or_default();
+        let prompts = crate::coder_prompt::comparison(&records);
         Self {
+            library,
+            prompts,
             records,
             groups,
             view: View::Overview,
-            cursor: [0; 9],
+            cursor: [0; View::ALL.len()],
             selected_group: 0,
             selected_attempt: 0,
             history_order,
@@ -175,6 +193,7 @@ impl App {
             View::Components => self.components().len(),
             View::Requirements => self.requirements().len(),
             View::MiniTasks => self.minitasks.0.len(),
+            View::Prompt => self.prompt().len(),
         }
     }
     pub fn inspect(&mut self) {
@@ -204,7 +223,11 @@ impl App {
                 self.view = View::Evidence;
             }
             View::Evidence => {}
-            View::Guide | View::Components | View::Requirements | View::MiniTasks => {}
+            View::Guide
+            | View::Components
+            | View::Requirements
+            | View::MiniTasks
+            | View::Prompt => {}
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -275,7 +298,7 @@ impl App {
                 self.ladder.style(Intensity::Half),
             )),
         );
-        let keys = "1-9 view  tab/h/l switch  j/k move  enter inspect  q quit";
+        let keys = "1-9,0 view  tab/h/l switch  j/k move  enter inspect  q quit";
         rail(
             box_area,
             buf,
@@ -328,7 +351,7 @@ impl App {
             View::History => Some(3 + self.cursor()),
             View::Evidence => Some(2 + self.cursor()),
             View::Attempt | View::Guide => None,
-            View::Components | View::Requirements => Some(self.cursor()),
+            View::Components | View::Requirements | View::Prompt => Some(self.cursor()),
             View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 2 + self.cursor()),
         }
     }
@@ -348,6 +371,7 @@ impl App {
                 &self.minitasks.1,
                 Some(self.cursor()),
             ),
+            View::Prompt => self.prompt(),
         }
     }
 
@@ -743,7 +767,7 @@ impl App {
     }
 
     fn components(&self) -> Vec<String> {
-        self.components.as_ref().map_or_else(
+        let mut lines = self.components.as_ref().map_or_else(
             || {
                 vec![
                     "No component report loaded. Record isolated runs with `coder-one component suite ID`."
@@ -751,7 +775,34 @@ impl App {
                 ]
             },
             |report| report.lines(None),
-        )
+        );
+        lines.push(String::new());
+        lines.extend(self.prompts.lines());
+        lines
+    }
+
+    /// The selected attempt's system prompt, then every variant.
+    fn prompt(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        match self.current() {
+            Some(attempt) => {
+                lines.push(format!(
+                    "{} / {} · {} · {}",
+                    attempt.task, attempt.arm, attempt.job, attempt.trial
+                ));
+                match crate::coder_prompt::view(attempt, &self.library) {
+                    Some(view) => lines.extend(view.lines()),
+                    None => lines.push(
+                        "No executor system prompt: the attempt ran no delegate the library covers."
+                            .to_owned(),
+                    ),
+                }
+            }
+            None => lines.push("No attempt selected.".to_owned()),
+        }
+        lines.push(String::new());
+        lines.extend(self.prompts.lines());
+        lines
     }
 
     fn requirements(&self) -> Vec<String> {
@@ -872,6 +923,24 @@ mod tests {
         assert!(text.contains("Grade: failed"), "{text}");
         assert!(text.contains("Episode timeline"), "{text}");
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn the_prompt_view_shows_the_attempts_sections_and_every_variant() {
+        let mut attempt = crate::terminal_bench::test_attempt();
+        attempt.arm = "coder-one-jevprobe3-luna".to_owned();
+        let records = Records {
+            attempts: vec![attempt],
+            ..Records::default()
+        };
+        let mut app = App::new(records);
+        app.open(View::Prompt);
+        let text = app.to_text(150, 60);
+        assert!(text.contains("codex default"), "{text}");
+        assert!(text.contains("default:working-with-user"), "{text}");
+        assert!(text.contains("exec.system variants"), "{text}");
+        assert!(text.contains("(core)"), "{text}");
+        assert_eq!(View::from_digit('0'), Some(View::Prompt));
     }
 
     #[test]

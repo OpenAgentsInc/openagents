@@ -1,0 +1,1 @@
+Builds and compilations can take minutes. Run a long build with its output sent to a log file, check the log instead of rerunning the build, and fix the first error before the later ones. Reuse what a previous build already produced.

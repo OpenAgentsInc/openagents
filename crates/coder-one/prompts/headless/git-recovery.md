@@ -1,0 +1,1 @@
+To recover lost Git work, look before you change anything: `git reflog`, `git fsck --lost-found`, dangling commits, and stashes. Don't rewrite or discard history unless the task says to, and confirm the recovered content is what the task asks for.

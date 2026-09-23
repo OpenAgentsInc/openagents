@@ -1,0 +1,1 @@
+An automated checker grades the final state of the environment against the task. Before you stop, run the checks the task names and exercise every requirement, including exact paths, names, and output formats. Test your change even when nobody asked you to.

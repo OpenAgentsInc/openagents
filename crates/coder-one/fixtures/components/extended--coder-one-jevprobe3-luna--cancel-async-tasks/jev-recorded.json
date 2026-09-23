@@ -36,6 +36,40 @@
       "output_tokens": 20,
       "milliseconds": 178,
       "source": "cancel-async-tasks__Eu23An4#jev-2"
+    },
+    "80dab3d987e0bcc96339b3bc1ff0199342a00e3291f30b1dfb41551d016ba82e": {
+      "name": "jev_system",
+      "model": "jev-1.13.0",
+      "answers": {
+        "section_long_builds": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "section_packages": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "section_data_parsing": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "section_git_recovery": {
+          "type": "noul",
+          "noul": 0.01
+        },
+        "section_concurrency": {
+          "type": "noul",
+          "noul": 0.99
+        },
+        "section_services": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 661,
+      "output_tokens": 116,
+      "milliseconds": 399,
+      "source": "live component run of exec.system#jev_system-1"
     }
   }
 }

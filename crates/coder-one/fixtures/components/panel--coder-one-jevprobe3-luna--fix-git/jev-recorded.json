@@ -171,6 +171,40 @@
       "milliseconds": 430,
       "source": "fix-git__c2MR9Lx#jev-survey-3"
     },
+    "1973288a3101ecbbf22804be01707bd520af269c1bcc519af11a133a6fab33c8": {
+      "name": "jev_system",
+      "model": "jev-1.13.0",
+      "answers": {
+        "section_long_builds": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "section_packages": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "section_data_parsing": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "section_git_recovery": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "section_concurrency": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "section_services": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 561,
+      "output_tokens": 116,
+      "milliseconds": 129,
+      "source": "live component run of exec.system#jev_system-1"
+    },
     "2bff08bc82095622aa5335bed6d2548ccd947a149990f78102890e47c5d0c001": {
       "name": "jev_close",
       "model": "jev-1.13.0",

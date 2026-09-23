@@ -1,0 +1,1 @@
+For concurrent or asynchronous code, handle cancellation and interruption explicitly: every started task is awaited or cancelled, cleanup runs even when a task fails or is cancelled, and nothing is left running. Test the interrupted and failing paths, not only the one where everything succeeds.

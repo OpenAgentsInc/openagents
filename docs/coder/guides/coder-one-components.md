@@ -19,6 +19,7 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | `evidence.select` | Which candidate files the survey reads into the briefing. | One request per 20 files |
 | `evidence.pack` | The briefing within its character budget, with every omission named. | None |
 | `exec.scripted` | How the host starts, observes, steers, stops, and resumes a scripted session. | None |
+| `exec.system` | The executor's system prompt: the manifest's sections, plus the optional sections the task needs. | One request |
 | `verify.close` | Whether the delegate's report and the changes show the task done. | One request |
 | `task.mini` | A whole mini-task episode with the scripted executor, graded. | None |
 
@@ -174,3 +175,61 @@ Each component shows its latest isolated suite (Jev mode, fixtures, errors,
 latency, Jev cost, and metric summary), each fixture's output digest and
 metrics, and its invocations across Terminal-Bench episodes, whether read
 from invocation logs or derived from retained trajectories.
+
+## Tune the executor's system prompt
+
+`exec.system` treats each executor's system prompt as a library of
+sections. `coder-one prompt list` shows them: Claude Code's and Codex's
+defaults split verbatim, each with a status (`keep`, `tune`, `replace`, or
+`remove` for a headless run), and the headless library:
+
+- `security`, **protected**: Claude Code's own security policy, byte for
+  byte. Every variant must carry it, and manifest validation refuses one
+  that doesn't. Codex's default has no security policy, so a Codex variant
+  always adds it.
+- The **core**: `role`, `security`, `authority` (replaces the rule to
+  confirm hard-to-reverse actions), `verify` (replaces Codex's rule against
+  running tests unasked), `report`, and `code-style`. It's 1,542
+  characters, against 5,453 for Claude Code's default and 18,037 for
+  Codex's.
+- Six **optional** sections, each with one Jev Noul that selects it:
+  `long-builds`, `packages`, `data-parsing`, `git-recovery`,
+  `concurrency`, and `services`.
+
+A policy manifest names a variant in `executor.system`:
+
+```json
+"system": {
+  "mode": "replace",
+  "sections": ["role", "security", "authority", "verify", "report", "code-style"],
+  "select": ["long-builds", "packages", "data-parsing", "git-recovery", "concurrency", "services"]
+}
+```
+
+`replace` reaches Claude Code as `--system-prompt-file` and Codex as
+`model_instructions_file`; `append` reaches them as
+`--append-system-prompt-file` and `developer_instructions`. Before the
+dispatch, one Jev request asks about every section in `select`, and each
+section at p ≥ 0.5 is added. Without `executor.system`, the executor runs
+its own default, and the manifest's digest is unchanged.
+`CODER_ONE_SYSTEM=core` or `core-select` sets it from the environment.
+`policy.executor.system` is searchable: a canary shows each mode reaching
+both executors.
+
+```sh
+coder-one prompt show codex core-select --select long-builds
+coder-one component suite exec.system            # recorded Jev, 8 fixtures
+coder-one prompt capture --out /tmp/prompt-captures
+gym coder prompt                                 # every variant
+gym coder prompt log-summary-date-ranges__XWSKgz5
+gym-terminal --terminal-bench                    # press 0
+```
+
+`prompt capture` measures each variant's first request and cache markers
+through a local server, with no inference;
+[the measurements](../../terminal-bench/delegate-prompts/README.md) are
+checked in. The Gym's prompt view shows the selected attempt's sections,
+their sizes, the variant digest, and Jev's answers; an attempt that
+recorded no variant shows its executor's default, marked inferred. The
+Components view compares the variants on the captured first request, pass
+rate, mean cost, and delegate turns.

@@ -257,8 +257,8 @@ sent on every call, and never tuned.
 - **Parameters:** which sections to include, their wording, and the
   replacement mode (`--system-prompt-file` or `--append-system-prompt-file`
   for Claude Code; `model_instructions_file` or `developer_instructions` for
-  Codex, which the pinned 0.155.1 binary recognizes but we haven't
-  captured).
+  Codex, which [the capture](../terminal-bench/delegate-prompts/README.md)
+  shows replace or add to its base instructions).
 - **Today:** the default. [The captured request](../terminal-bench/claude-code-delegate-prompt/README.md)
   shows about 5,500 characters of system prompt plus 10,000 characters of
   tool definitions, cached for an hour on a subscription token.

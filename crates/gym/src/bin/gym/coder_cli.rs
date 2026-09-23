@@ -33,7 +33,10 @@ gym coder requirements [QUERY] [--json]
                            coverage, and recall and precision against labels
 gym coder minitasks [--run ID|latest] [--json]
                            mini-task runs with their grades and timelines;
-                           see gym coder minitasks --help";
+                           see gym coder minitasks --help
+gym coder prompt [ATTEMPT] [--json]
+                           executor system prompt variants, or one attempt's
+                           sections; see gym coder prompt --help";
 
 const SCHEMA: &str = "openagents.gym.coder-policy.v1";
 
@@ -117,6 +120,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("minitasks") {
         return gym::coder_minitasks::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("prompt") {
+        return gym::coder_prompt::command(&args[1..], out);
     }
     let (Some("policy"), Some(command)) = (
         args.first().map(String::as_str),

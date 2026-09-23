@@ -57,7 +57,8 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one episode doctor --contract openagents.coder.episode.v1
        coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
        coder-one component list|run|suite|extract   (coder-one component help)
-       coder-one minitask list|run                  (coder-one minitask help)";
+       coder-one minitask list|run                  (coder-one minitask help)
+       coder-one prompt list|show|capture           (coder-one prompt help)";
 
 const PROMPT: &str = "Solve this issue.";
 
@@ -72,6 +73,15 @@ async fn main() -> ExitCode {
         Some("episode") => return episode_command(&args[1..]).await,
         Some("component") => return component_command(&args[1..]).await,
         Some("minitask") => return minitask_command(&args[1..]).await,
+        Some("prompt") => {
+            return match coder_one::prompt::command(&args[1..]) {
+                Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+                Err(message) => {
+                    eprintln!("coder-one: {message}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Some("doctor") if args.len() == 1 => doctor(),
         Some(url) if url.starts_with("https://github.com/") && url.contains("/issues/") => {
             match Options::parse(&args[1..]) {
@@ -427,6 +437,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             prompt_cache_ttl: env("CLAUDE_CODE_PROMPT_CACHE_TTL")
                 .map(|ttl| ttl.trim().to_string())
                 .filter(|ttl| !ttl.is_empty()),
+            system: None,
             episode: coder_one::deadline::Deadline::unbounded(),
             gate: None,
             granted: None,

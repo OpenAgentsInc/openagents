@@ -1,6 +1,40 @@
 {
   "schema": "openagents.coder-one.jev-recorded.v1",
   "entries": {
+    "0143e05e9cd240ce6067bced0680f468b00a868749446898a181aad598aa71c5": {
+      "name": "jev_system",
+      "model": "jev-1.13.0",
+      "answers": {
+        "section_long_builds": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "section_packages": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "section_data_parsing": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "section_git_recovery": {
+          "type": "noul",
+          "noul": 0.99
+        },
+        "section_concurrency": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "section_services": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 630,
+      "output_tokens": 116,
+      "milliseconds": 207,
+      "source": "live component run of exec.system#jev_system-1"
+    },
     "2147393e965eda8ff65a3d3a63452861d26e32971784e69b926ccf3adf834c17": {
       "name": "jev_probe",
       "model": "jev-1.13.0",

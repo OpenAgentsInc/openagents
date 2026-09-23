@@ -1261,6 +1261,13 @@ pub trait Executor {
     fn describe(&self) -> Map<String, Value>;
     /// Runs one briefing to its end.
     fn execute(&mut self, briefing: &Briefing) -> impl Future<Output = Report>;
+    /// The optional system prompt sections Jev may select before the
+    /// dispatch; none by default.
+    fn system_options(&self) -> Vec<String> {
+        Vec::new()
+    }
+    /// Takes Jev's answers for the optional sections.
+    fn select_system(&mut self, _answers: Vec<(String, Option<f64>)>) {}
 }
 
 /// A delegate CLI, Claude Code in print mode or `codex exec`, run through
@@ -1293,6 +1300,9 @@ pub struct Cli {
     /// for the child. `None` removes any inherited value, so the child runs
     /// the CLI's default.
     pub prompt_cache_ttl: Option<String>,
+    /// The system prompt variant (`exec.system`); `None` runs the CLI's
+    /// own default prompt.
+    pub system: Option<crate::system::Variant>,
     /// The episode deadline each dispatch's own deadline is bounded by.
     pub episode: crate::deadline::Deadline,
     /// A check before each dispatch; a reason stops it before it starts.
@@ -1313,6 +1323,56 @@ impl Cli {
         )
     }
 
+    /// Where the next run's system prompt file goes, beside its briefing.
+    #[must_use]
+    pub fn system_path(&self) -> PathBuf {
+        self.artifacts
+            .join(format!("delegate-{}.system.md", self.runs.max(1)))
+    }
+
+    /// Writes the system prompt file the next run's command names, when
+    /// the variant is sent through a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the file can't be written.
+    pub fn prepare(&self) -> Result<(), String> {
+        let Some(variant) = &self.system else {
+            return Ok(());
+        };
+        if self.agent == Agent::Codex && variant.policy.mode == crate::system::Mode::Append {
+            return Ok(());
+        }
+        let path = self.system_path();
+        std::fs::write(&path, variant.text())
+            .map_err(|error| format!("cannot write {}: {error}", path.display()))
+    }
+
+    /// The two system prompt arguments the command script reads: the
+    /// replacing one and the appending one, empty when unused.
+    fn system_args(&self) -> (String, String) {
+        use crate::system::Mode as SystemMode;
+        let Some(variant) = &self.system else {
+            return (String::new(), String::new());
+        };
+        let path = self.system_path().to_string_lossy().into_owned();
+        // A JSON string is a TOML basic string, so Codex's `-c` reads the
+        // value as the string it is, whatever it holds.
+        let toml = |text: &str| serde_json::to_string(text).unwrap_or_default();
+        match (self.agent, variant.policy.mode) {
+            (Agent::ClaudeCode, SystemMode::Replace) => (path, String::new()),
+            (Agent::ClaudeCode, SystemMode::Append) => (String::new(), path),
+            (Agent::Codex, SystemMode::Replace) => (
+                format!("model_instructions_file={}", toml(&path)),
+                String::new(),
+            ),
+            (Agent::Codex, SystemMode::Append) => (
+                String::new(),
+                format!("developer_instructions={}", toml(&variant.text())),
+            ),
+        }
+    }
+
     /// The command one run invokes: `binary` through `sh`, with the
     /// briefing redirected in and the stream out, and the child's
     /// environment set from the resolved configuration.
@@ -1325,13 +1385,14 @@ impl Cli {
             Agent::ClaudeCode => {
                 "exec \"$0\" -p --output-format stream-json --verbose --model \"$1\" \
                  --permission-mode bypassPermissions ${4:+--tools \"$4\"} ${5:+--effort \"$5\"} \
+                 ${6:+--system-prompt-file \"$6\"} ${7:+--append-system-prompt-file \"$7\"} \
                  < \"$2\" > \"$3\""
             }
             // The task container or the fresh clone is the boundary, so
             // Codex runs without its own sandbox or approval prompts.
             Agent::Codex => {
                 "exec \"$0\" exec --json --skip-git-repo-check -m \"$1\" \
-                 ${5:+-c \"model_reasoning_effort=$5\"} \
+                 ${5:+-c \"model_reasoning_effort=$5\"} ${6:+-c \"$6\"} ${7:+-c \"$7\"} \
                  --dangerously-bypass-approvals-and-sandbox - < \"$2\" > \"$3\""
             }
         };
@@ -1344,7 +1405,11 @@ impl Cli {
             .arg(briefing)
             .arg(stream)
             .arg(self.tools.as_deref().unwrap_or_default())
-            .arg(self.effort.as_deref().unwrap_or_default())
+            .arg(self.effort.as_deref().unwrap_or_default());
+        let (replace, append) = self.system_args();
+        command
+            .arg(replace)
+            .arg(append)
             .current_dir(&self.workdir)
             // A parent Claude Code session's marker makes the CLI refuse to
             // start; the delegate is its own session.
@@ -1376,6 +1441,19 @@ impl Executor for Cli {
         self.agent.word()
     }
 
+    fn system_options(&self) -> Vec<String> {
+        self.system
+            .as_ref()
+            .map(|variant| variant.options().to_vec())
+            .unwrap_or_default()
+    }
+
+    fn select_system(&mut self, answers: Vec<(String, Option<f64>)>) {
+        if let Some(variant) = &mut self.system {
+            variant.select(answers);
+        }
+    }
+
     fn cost_provenance(&self) -> &'static str {
         match self.agent {
             Agent::ClaudeCode => self.credential.cost_provenance(),
@@ -1402,6 +1480,13 @@ impl Executor for Cli {
         extra.insert("effort".to_string(), json!(self.effort));
         extra.insert("tools".to_string(), json!(self.tools));
         extra.insert("prompt_cache_ttl".to_string(), json!(self.prompt_cache_ttl));
+        extra.insert(
+            "system".to_string(),
+            self.system.as_ref().map_or_else(
+                || crate::system::default_record(self.agent),
+                crate::system::Variant::record,
+            ),
+        );
         extra.insert(
             "deadline".to_string(),
             json!({
@@ -1458,6 +1543,9 @@ impl Cli {
         self.granted = Some(deadline);
         if let Err(error) = std::fs::write(&briefing_path, &briefing.text) {
             return harness(format!("cannot write {}: {error}", briefing_path.display()));
+        }
+        if let Err(why) = self.prepare() {
+            return harness(why);
         }
         let command = match wrap(self.command(&binary, &briefing_path, &stream_path)) {
             Ok(command) => command,
@@ -1809,6 +1897,8 @@ pub struct Delegated {
     pub briefing: Briefing,
     pub report: Report,
     pub close: crate::judge::Close,
+    /// The system prompt the executor was sent (`exec.system`).
+    pub system: Value,
 }
 
 impl Delegated {
@@ -1829,6 +1919,7 @@ impl Delegated {
                 .flatten(),
             "milliseconds": self.report.milliseconds,
             "stream": self.report.stream,
+            "system": self.system,
             "close": {
                 "done": self.close.done,
                 "criteria": self.close.criteria.iter().map(|(c, p)| json!({ "requirement": c, "p": p })).collect::<Vec<_>>(),
@@ -1921,6 +2012,13 @@ where
             briefing.omitted.len(),
             plan.cap
         );
+    }
+    // `exec.system`: Jev picks the optional prompt sections the task needs
+    // before the executor starts.
+    let options = executor.system_options();
+    if !options.is_empty() {
+        let answers = judge.jev_mut().select_sections(state, &options).await;
+        executor.select_system(answers);
     }
     // The intent is on disk before the executor starts, so a restarted
     // controller can tell a session that never started from one whose
@@ -2051,6 +2149,7 @@ where
             briefing,
             report,
             close,
+            system: executor.describe().remove("system").unwrap_or(Value::Null),
         }),
     )
 }

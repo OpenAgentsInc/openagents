@@ -575,12 +575,18 @@ mod tests {
             "evidence.select.json",
             "evidence.pack.json",
             "verify.close.json",
-            RECORDED_FILE,
             "source.json",
         ] {
             let fresh = std::fs::read_to_string(out.join(name).join(file)).unwrap();
             let kept = std::fs::read_to_string(checked_in.join(file)).unwrap();
             assert_eq!(fresh, kept, "{file} differs from the checked-in fixture");
+        }
+        // Components with no retained call, such as `exec.system`, add
+        // live answers of their own; every extracted answer is still kept.
+        let fresh = Recorded::load(&out.join(name).join(RECORDED_FILE)).unwrap();
+        let kept = Recorded::load(&checked_in.join(RECORDED_FILE)).unwrap();
+        for (key, answer) in &fresh.entries {
+            assert_eq!(kept.entries.get(key), Some(answer), "{key} differs");
         }
         let _ = std::fs::remove_dir_all(out);
     }

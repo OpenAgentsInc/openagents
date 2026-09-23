@@ -20,6 +20,7 @@
 
 pub mod action;
 pub mod agent;
+pub mod capture;
 pub mod collect;
 pub mod component;
 pub mod credentials;
@@ -32,6 +33,7 @@ pub mod minitask;
 pub mod ops;
 pub mod policy;
 pub mod probes;
+pub mod prompt;
 pub mod record;
 pub mod requirements;
 pub mod scripted;
@@ -39,6 +41,7 @@ pub mod session;
 pub mod shell;
 pub mod state;
 pub mod stream;
+pub mod system;
 
 pub use action::Action;
 pub use agent::{Bounds, Ended, Generate, Judge, Judgments, Shell, run};
