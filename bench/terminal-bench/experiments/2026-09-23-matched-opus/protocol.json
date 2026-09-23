@@ -1,0 +1,48 @@
+{
+  "schema": "openagents.tbench.matched.v1",
+  "id": "matched-20260923",
+  "tasks": [
+    "batched-eval-parity",
+    "nextjs-performance"
+  ],
+  "repetitions": 3,
+  "orders": [
+    [
+      "plain",
+      "coder"
+    ],
+    [
+      "coder",
+      "plain"
+    ],
+    [
+      "plain",
+      "coder"
+    ]
+  ],
+  "model": "claude-opus-5-5",
+  "effort": "medium",
+  "claude_version": "2.1.280",
+  "tools": "Bash,Read,Edit,Write,Glob,Grep",
+  "cache_ttl": "5m",
+  "harbor_agent_timeout_sec": 1800,
+  "episode_allowance_sec": 1680,
+  "max_claude_concurrent": 5,
+  "min_free_disk_gib": 55,
+  "artifact_commit": "756500c1f9",
+  "artifact_sha256": "178e3db41660e16e73d8904a69aab334640a481ac2de49eaf8f470a264260f03",
+  "source_commit": "7e3e1a1872",
+  "task_commit": "452bf305c6daa62fc59061d22133a7cbc7c1572e",
+  "stopping_rule": "Run all 12 trials once. No success-based stopping or automatic retries. Stop the remaining schedule on a provider usage limit or invalid matching; retain every started attempt.",
+  "cost_note": "Subscription list-price usage, not incremental subscription charges. Add all controller usage to the Coder arm. No dollar or token cap in either arm; equal finite wall-clock allowance.",
+  "treatment": "Coder v2 preparation, Jev monitoring, checks, support, and checked repair. Fixed Opus executor; no routing or cross-model handoff. Internal time allocation and additional controller calls are part of the treatment.",
+  "selection": "Two historical both-pass efficiency examples selected before new outcomes. Development tasks, not held out.",
+  "metrics": [
+    "verifier reward for all attempts",
+    "total agent execution seconds",
+    "full trial wall seconds",
+    "total reported/estimated USD including controller",
+    "native model turns and tool calls",
+    "controller calls and repair dispatches"
+  ]
+}
