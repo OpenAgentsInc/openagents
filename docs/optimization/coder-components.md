@@ -4,7 +4,10 @@ Status: design, 2026-09-22. It specializes the
 [optimization design](README.md) for Coder One on Terminal-Bench, using the
 measurements on [the results page](../terminal-bench/README.md). No new
 trial ran for this document. The only new numbers are the oracle portfolio
-figures below, computed from retained trials.
+figures below, computed from retained trials. The body incorporates the
+[implementation review](#implementation-review-2026-09-22) at the end and the
+[five-failure analysis](../terminal-bench/2026-09-22-luna-jevprobe-upgrade.md#detailed-analysis-of-the-five-v3-luna-failures);
+the review keeps the code-level detail.
 
 ## The goal
 
@@ -44,7 +47,8 @@ measures:
 The cheapest reliable choice is a Luna configuration on seven tasks (Luna
 direct on two of them) and lean Opus on `cancel-async-tasks`, where no Luna
 configuration passed all three trials. The oracle is an upper bound on routing over today's arms;
-it is not a result anyone can run yet. It shows where the headroom is:
+it is not a result anyone can run yet, and choosing among many 3/3 cells
+after seeing the outcomes makes it optimistic. It shows where the headroom is:
 **choosing the configuration per task is worth more than any single change
 we made today.**
 
@@ -54,7 +58,8 @@ $0.0001 and takes 0.2 to 0.8 seconds. One Luna turn costs about $0.0004
 and takes about 7 seconds; one low-effort Opus turn costs about $0.016 and
 takes about 10 seconds. A Jev question that saves a single Luna turn pays
 for itself about four times over, and one that saves an Opus turn, about 160
-times. Today an episode makes four to seven Jev requests, all before or
+times. A Jev request that prevents one failed attempt is worth far more
+than either. Today an episode makes four to seven Jev requests, all before or
 after the executor runs. **We use Jev at the two ends of the process and
 nowhere in the middle.**
 
@@ -104,6 +109,13 @@ the first lever.
 11. **Run before building.** Nine optimizer programs were built here, and
     one ran. Each step below runs on today's harness and data before any new
     framework exists.
+12. **Test each component alone, in seconds.** A component that can only be
+    judged by a 20-minute benchmark run can't be tuned. Every component gets
+    fixtures, a standalone runner, and a Gym view before it joins an
+    episode. See [Test each component in isolation](#test-each-component-in-isolation).
+13. **Observation must not change what it measures.** Reading the workspace,
+    a session's events, or an artifact leaves them unchanged, and every
+    observation names the revision it saw.
 
 ## Vocabulary
 
@@ -186,8 +198,14 @@ are the names the manifest, the trace, and the Gym dashboard use.
 - **Parameters:** the probe set, per-probe caps, conditional probes (git in
   named repositories, samples of data files), and the Jev keep question and
   threshold.
-- **Today:** up to twelve read-only probes, one Jev request, and a 0.5 keep
-  threshold.
+- **Today:** up to twelve probes, one Jev request, and a 0.5 keep
+  threshold. Task-derived paths are interpolated into strings such as
+  `head -200 {path}` and run through `bash -c`; typed read, list, and Git
+  operations with validated arguments should replace them.
+- **Split:** a **probe planner** chooses which operations to run; a
+  **capture selector** chooses which finished observations reach the
+  briefing. Measure them apart: a better selector can't recover the cost of
+  probes that already ran.
 - **Measured by:** evidence recall: whether the captures the executor went
   on to read or use were in the briefing.
 
@@ -209,13 +227,14 @@ are the names the manifest, the trace, and the Gym dashboard use.
   and files, space reserved for task text and data samples, and span
   trimming.
 - **Today:** probes first, then files, whole sections until 12,000
-  characters. In all three failed v3 `log-summary-date-ranges` runs, three
-  directory listings filled the budget and every log excerpt Jev selected
-  was dropped. A 16,038-character `bottle.py` was selected for a
+  characters. In all three failed v3 `log-summary-date-ranges` runs,
+  overlapping directory listings took 76% of the briefing and every log
+  excerpt Jev selected was dropped, so Luna never saw a record showing the
+  severity field. The directions still called the evidence complete. A 16,038-character `bottle.py` was selected for a
   12,000-character briefing and dropped every time.
-- **Measured by:** delivered recall (needed evidence that reached the
-  executor), omitted Jev-selected items, and duplicate bytes. All three can
-  be computed offline from retained manifests.
+- **Measured by:** selected-versus-delivered items, duplicate bytes, and
+  omissions, all computable offline from retained manifests. Delivered
+  recall of *needed* evidence also needs independent labels.
 
 ### Execute
 
@@ -287,13 +306,19 @@ change behavior in ways nobody predicts, so it is measured, never assumed.
 - **Parameters:** checkpoint interval, steering-message templates, and
   interrupt rules.
 - **Today:** one session per episode, start to finish.
-- **Available now:** Claude Code 2.1.280 has `--session-id`, `--resume`,
-  `--fork-session`, and `--input-format stream-json`, which accepts
-  messages into a running print-mode session. Codex 0.155.1 has
-  `codex exec resume`. Both stream every event as JSON, which the episode
-  already records. Both accept MCP servers (`--mcp-config`; Codex's `mcp`),
-  so a host server could expose Jev-backed evidence lookups inside a
-  session. Each needs a capture test before a policy relies on it.
+- **What the CLIs offer:** Claude Code 2.1.280 has `--session-id`,
+  `--resume`, `--fork-session`, and `--input-format stream-json`, which
+  accepts messages into a running print-mode session. Codex 0.155.1 has
+  `codex exec resume`. Both stream events as JSON and accept MCP servers
+  (`--mcp-config`; Codex's `mcp`), so a host server could expose Jev-backed
+  evidence lookups inside a session.
+- **What the host can do:** less. `Executor::execute` returns one report
+  after the session ends; the briefing is redirected from a file, and the
+  event file is parsed only afterward. Each adapter needs a demonstrated
+  **capability matrix**: start, observe incrementally, stop with cleanup,
+  resume, and steer. A policy may use only capabilities its adapter has
+  shown. A fresh repair session with a delta brief is a valid first step and
+  stays distinguishable from resuming.
 
 ### Control the episode
 
@@ -303,8 +328,10 @@ change behavior in ways nobody predicts, so it is measured, never assumed.
 - **Parameters:** the decision rule. Start with a lookup keyed by Jev
   features; move to a fitted model once there are enough tasks.
 - **Today:** a person picks the arm.
-- **Measured by:** regret, meaning the chosen configuration's effective cost
+- **Measured by:** regret, meaning the chosen configuration's objective
   (defined in [The objective](#the-objective)) minus the oracle's, per task.
+  Eight tasks are eight examples, however many trials each has; the router
+  needs a larger task pool before its regret means much.
 
 **`control.monitor` — concurrent monitor.**
 
@@ -314,10 +341,18 @@ change behavior in ways nobody predicts, so it is measured, never assumed.
   off task.
 - **Parameters:** trigger (every N events, every T seconds, on specific
   event types), the question set, and thresholds.
-- **Today:** absent. The streams exist: Codex's `--json` items and Claude
-  Code's `stream-json` events are already written to disk.
-- **Measured by:** replaying retained streams offline and scoring when the
-  monitor would have fired against what happened next. That costs only Jev.
+- **Input:** a small set of normalized events (command started, command
+  completed, artifact changed, assistant claim, usage update, session ended)
+  with the session ID, event sequence, and workspace revision, so a late
+  answer can't steer a replacement session or certify a changed artifact.
+- **Today:** absent. Both executors write event streams during a run, but
+  none of the Coder One streams were retained in the repository.
+- **Measured by:** first in **shadow mode**, recording judgments without
+  intervening, against deterministic triggers alone. Offline replay on
+  retained streams can score only the prefix available at each trigger;
+  whether an intervention helps needs a live run.
+- **Cost:** not a fixed fee per event. Resending a growing transcript grows
+  input quadratically, so send recent evidence plus open requirements.
 
 **`control.handoff` — handoff policy.**
 
@@ -334,20 +369,48 @@ change behavior in ways nobody predicts, so it is measured, never assumed.
 - **Signature:** spend and time so far → remaining allowance per component.
 - **Parameters:** cost and time ceilings, and the value of time (λ in [The
   objective](#the-objective)).
+- **Today:** the episode's deadline is the harness's exec timeout; setup
+  commands get 240 seconds each, and Jev calls use the SDK's default retry
+  policy with no overall budget. One monotonic episode deadline should pass
+  its remainder to every dispatch, retry, and check. A dollar ceiling is a
+  soft bound until an adapter can reserve a known maximum before a call.
 
 ### Verify and finish
 
-**`verify.checks` — artifact checker.**
+**`verify.checks` — behavioral checker.**
 
 - **Signature:** requirement map plus workspace → observations per
-  requirement: file exists, parses, has the named rows or keys; the named
-  test passes.
-- **Parameters:** the check catalog and how checks are chosen for each
-  requirement.
+  requirement, each naming the candidate revision it ran against.
+- **Suboperations:** build the eligible scenarios, select among them, run
+  them, and record coverage. A deterministic selector, Jev, or a stronger
+  planner can compete over the same admitted catalog.
+- **A scenario carries:** the public requirement and source spans that
+  justify it, when it applies, its bounds and effects, the candidate and
+  input identities, the expected relation and how it was derived ("changing
+  only a record's message leaves its severity count unchanged"; "started
+  workers finish awaited cleanup before return"), and its verdict with
+  coverage limits.
+- **Three failure families from the v3 Luna analysis**, each a reusable
+  scenario type rather than a task-specific branch:
+  - *Field meaning in data processing:* metamorphic checks, such as a
+    severity word placed in a message, plus date-boundary cases.
+  - *Interactive behavior:* start an interactive program through the
+    submitted interface, send staged input, observe the transition, and
+    check a scratch result. The failed `headless-terminal` run was missing
+    this, not a file: `/app/vim.txt` is created by the verifier's editor
+    test, not requested by the task.
+  - *Cancellation lifecycle:* a child process with a real interrupt and
+    recorded start and cleanup events, below, at, and above the
+    concurrency limit.
+- **Output on failure:** a diagnostic packet (requirement, candidate digest,
+  scenario, expected relation, observations, open hypotheses) that
+  `verify.repair` and `control.handoff` consume.
 - **Today:** absent. The close step sees `git diff` or a note that changes
-  aren't listed.
-- **Measured by:** false accepts and false rejects against the verifier's
-  reward on retained attempts.
+  aren't listed, and collecting that diff runs `git add -N .`, which changes
+  the index of the workspace being observed.
+- **Measured by:** detection and false alarms per requirement with repair
+  disabled, on failing and passing candidates alike. Protected test names,
+  counts, and fixture timings never enter a scenario.
 
 **`verify.support` — Jev support judge.**
 
@@ -355,6 +418,12 @@ change behavior in ways nobody predicts, so it is measured, never assumed.
   Nouls for "supports" and "contradicts".
 - **Today:** one broad "done" Noul. On v3's 24 trials, a 0.5 cutoff on that
   judgment would have accepted all five failures and rejected four passes.
+- **Semantics:** the two Nouls aren't complementary. Both low means
+  insufficient evidence; both high means conflicting evidence or a compound
+  requirement. Keep both with their evidence, and let a refusal or a clipped
+  source leave the requirement unresolved. A requirement's state records
+  what was observed, what that establishes, the checker, and the candidate
+  revision; a check on revision A says nothing about revision B.
 
 **`verify.repair` — repair.**
 
@@ -362,6 +431,10 @@ change behavior in ways nobody predicts, so it is measured, never assumed.
   delta brief and one more executor session, then a recheck.
 - **Parameters:** repair count, the brief's contents, and which executor
   repairs.
+- **Measured by:** a conditional recovery study: preserved failed
+  candidates, each repair arm on an isolated copy of the same state,
+  compared with a fresh session given no diagnostic packet. Passing
+  candidates are included to count repairs that break working code.
 
 **`verify.close` — closer.** Records the local outcome beside, and never in
 place of, Harbor's reward.
@@ -372,10 +445,22 @@ place of, Harbor's reward.
 v3 Luna trial's elapsed time and the cause of every setup timeout. Prebuilt
 install layers reused across fresh task environments would cut both.
 
-**`infra.record` — evidence retention.** Every component writes one trace
-step with its component ID, implementation digest, input digest, output,
-cost, and latency. The executor's native stream is retained with the
-episode.
+**`infra.record` — evidence retention.** Every component **invocation**
+writes a durable start and end event with an invocation ID, its parent, the
+component ID, the implementation digest, the evidence revision it read, its
+output, cost, and latency. Recording starts before setup. Today the recorder
+is in memory, the bundle is written with plain file writes at a few
+checkpoints, and the adapter downloads it only after the episode ends. The
+executor's native stream, raw ATIF, produced artifacts, and verifier
+diagnostics must be retained with the episode; none of the five failed v3
+Luna trials can be fully replayed from the repository today.
+
+Accounting gaps to close before cost becomes an objective: a failed Jev
+request has no usage record and can drop out of priced coverage; the
+delegate usage summary takes its model and provenance from the first
+dispatch only; a cancelled session's cost is unknown, not zero; and a Codex
+"turn" counts completed items (commands, file changes, messages), not model
+calls, so it isn't comparable to Claude Code's turns.
 
 ## How today's flow composes these
 
@@ -441,8 +526,8 @@ is a policy manifest, so each can be measured against the others:
 | Single pass | Today's line. | Tasks the router is sure about |
 | Escalate on stall | Luna starts. When the monitor judges no progress or a repeated failure, Opus continues from a handoff brief of requirement states, the diff, and the last errors. | `cancel-async-tasks`, where Luna is cheap but unreliable |
 | Planner and worker | Opus writes a plan and the checks in one short session; Luna implements; code runs the checks. | Build-heavy tasks where Luna takes 19 turns |
-| Race | Two cheap sessions start; the first to pass the checks wins and the other stops. | Unreliable cheap tasks where time matters |
-| Implement, check, repair | One session, host checks, and at most one targeted repair. | Missed deliverables like `/app/vim.txt` |
+| Race | Two cheap sessions start in isolated copies of the full task state; the first to pass the checks wins, the loser is stopped and reaped, and both are charged. | Unreliable cheap tasks where time matters, once the adapter can isolate state |
+| Implement, check, repair | One session, host checks, and at most one targeted repair from a diagnostic packet. | Claimed behavior nobody observed, such as interactive-program support in `headless-terminal` |
 | Evidence on demand | Sessions call a host MCP tool that asks Jev for evidence, or the monitor spots a missing capture and the host adds it with a steering message. | Data-parsing tasks like `log-summary-date-ranges` |
 | Steer in place | A message streamed into the running session, for example "the briefing's log sample shows the severity is the third field", without restarting. | Early drift the monitor catches |
 
@@ -471,9 +556,12 @@ battery, each question with a consumer in code:
 | `verify.support` | Does this artifact support requirement r? Does it contradict it? | Two Nouls | Repair or close |
 | `exec.system` | Does this task need optional section s? | Noul per section | Assemble the prompt |
 
-At about $0.0001 a request, a monitor asking four questions after every
-event of a 20-turn Luna session adds about $0.002. That is worth it if it
-saves two Luna turns or one failed attempt.
+At about $0.0001 a request, a monitor asking after each of 20 events adds
+about $0.002. That is more than the two Luna turns it might save ($0.0008),
+so on Luna a monitor pays for itself only by preventing failures or saving
+time; on Opus it pays in money too. Trigger it at completed operations,
+artifact changes, and long silences rather than on every event, and measure
+the episode-level difference.
 
 ## The objective
 
@@ -487,13 +575,33 @@ optimizer agree. For a policy π on task t:
   and time.
 - λ is the operator's price of a second, a setting, not a measurement.
 
-**Effective cost:** J(π, t) = c + λ·w + (1 − p)·(c_F + λ·w_F).
+**Offline accounting:** J(π, t) = c + λ·w + (1 − p)·(c_F + λ·w_F).
 
-A failure is charged the cost of finishing the task another way, so a cheap
-unreliable policy doesn't look better than it is. With λ = 0, J ranks by
-money alone; raising λ moves the choice toward faster executors. The goal
-"cheapest and best" becomes: minimize the sum of J over tasks, subject to
-the pass rate staying at the best any policy achieves on each task.
+This charges a failure the cost of finishing the task another way, so a
+cheap unreliable policy doesn't look better than it is. It's useful for
+comparing arms after the fact, but it uses the protected outcome to decide
+when the fallback runs. A deployed controller never sees that outcome; it
+sees its own checks, which can accept a failure or send working code to an
+unnecessary repair.
+
+**Runtime objective:** for a policy whose own trigger R decides whether a
+fallback runs, with c₀ and w₀ spent up to that decision and c_F and w_F the
+fallback's additional cost and time:
+
+J_runtime = E[c₀ + λ·w₀] + Pr(R)·E[c_F + λ·w_F | R]
+
+Measure the final pass rate separately and hold it to a frozen acceptance
+rule, and measure the trigger's false accepts, unnecessary fallbacks, and
+the fallback's conditional success. Don't substitute Opus's standalone mean
+for its cost after a failed Luna attempt; measure the handoff. The offline
+J is the special case of a perfect trigger.
+
+With λ = 0 the objective ranks by money alone; raising λ moves the choice
+toward faster executors. State the time boundary with every number (agent
+time, full trial time including setup, or campaign wall time) and the task
+weights (summing task means weights every task equally). The goal "cheapest
+and best" becomes: minimize the objective over tasks, subject to the pass
+rate staying at the best any policy achieves on each task.
 
 Report p with its denominator and Wilson interval, and J with its spread.
 Three trials can't separate 3/3 from 2/3 with confidence, so a promotion
@@ -519,13 +627,15 @@ configuration.
 
 | Tier | What runs | Cost per candidate | What it can score |
 | --- | --- | --- | --- |
-| 0. Replay | Jev and code over retained traces; no executor | Cents | Requirement recall, evidence and delivered recall, monitor timing on retained streams, check accuracy on retained artifacts, router regret on the outcome matrix |
+| 0. Isolation | One component on fixtures and retained evidence; no executor | Free to cents | Requirement recall, selected-versus-delivered evidence, check detection on known-good and known-bad candidates, monitor timing where streams exist, router regret on the outcome matrix |
 | 1. Screen | One trial per task, cheap executors, hardest tasks first | About $0.01–0.10 | Gross failures and large gains |
 | 2. Measure | Three trials per task on the development tasks | $0.09 for Luna, about $1.30 for Opus | J and pass rate with intervals |
 | 3. Confirm | Frozen candidate on held-out tasks | Same scale | The only evidence for promotion |
 
-Most search happens in tier 0, which exists because every episode keeps its
-trace. A candidate reaches tier 2 only after it earns it lower down
+Most search happens in tier 0. Its reach is set by what episodes retain:
+packing can be replayed from manifests today, but monitor replay needs the
+native streams and check replay needs the candidate's bytes, which the
+current retention doesn't keep. A candidate reaches tier 2 only after it earns it lower down
 (successive halving). Wall time, not money, limits tiers 1 to 3: at 273
 seconds of setup per trial, fixing `infra.setup` is the first speedup for
 the optimizer itself.
@@ -549,10 +659,15 @@ frontier. This is GEPA's selection rule applied across tasks, and it has a
 direct product meaning. The union of the frontiers is the portfolio, and
 **the router's job is to index it**: predict, from Jev's task features,
 which frontier entry has the lowest J for a new task. Router training data
-is the outcome matrix; its evaluation is leave-one-task-out regret. Once
-there are enough labeled tasks, the same labels can train a tenant decision
-model through `tenancy::training`, so routing becomes a single Jev-style
-call.
+is the outcome matrix; its evaluation is leave-one-task-out regret, with the
+held-out task also excluded from choosing feature questions, thresholds, and
+the portfolio. Repetitions of one task stay in one fold. Compare the router
+with fixed Luna, fixed Opus, and a small hand-written rule, and charge the
+profiling it costs even when it picks the cheapest route. A Choice that
+names an executor needs the executors' measured behavior in its state; task
+text alone doesn't carry it. Once routing headroom is shown on a larger task
+pool, `tenancy::training` can hold the labeled corpus and its partitions;
+fitting and serving a trained routing model are later integrations.
 
 ### Guardrails from nine earlier attempts
 
@@ -575,7 +690,7 @@ onto Coder:
 | Signature | A component's signature |
 | Module | A component's implementation |
 | Program | A policy manifest, run by the episode's controller |
-| Metric | Effective cost J, with Harbor's reward as the pass signal |
+| Metric | The runtime objective, with Harbor's reward as the pass signal |
 | Optimizer | The study: parameter search, swaps, reflective edits, router fits |
 | GEPA's Pareto frontier over examples | The per-task frontier that becomes the router |
 
@@ -612,42 +727,134 @@ keyed by policy and component rather than by arm name:
 | **Router** | Per task: Jev's feature answers, the router's pick, the oracle's pick, and regret. | `task.profile` answers in the trace |
 | **Episode timeline** | One attempt as a timeline: setup, every Jev request, each executor turn, monitor judgments, handoffs, checks, repairs, and cost accumulating. | Component ID, start, end, and cost on every trace step |
 | **Components** | Per component across attempts: calls, cost, latency, and its own metric (delivered recall, omitted items, check false accepts, monitor precision). | The same step records |
-| **Live** | In-progress attempts, refreshed: the current component, the executor's latest events, the monitor's latest judgments, spend so far. | The bundle the episode already rewrites before every step |
+| **Live** | In-progress attempts, refreshed: the current component, the executor's latest events, the monitor's latest judgments, spend so far, and how stale the view is. | A durable invocation event log and a container-to-host tail |
 | **Study** | Candidates by generation: tier reached, development and held-out results, frontier membership, promotions, and total study spend. | Study records per [NIP-OPT](../../nips/openagents/NIP-OPT.md) |
 
-The live view needs no new data source: Coder One rewrites its episode
-bundle before every step so a killed episode keeps its evidence, and the Gym
-can read that bundle while the trial runs.
+The live view needs a new data path. Today the recorder is in memory, the
+bundle is written at a few checkpoints with non-atomic writes, nothing is
+written while the executor runs, and Harbor's adapter copies the bundle
+only after the episode ends. The Gym's reader also loads attempts once. The
+event log in [`infra.record`](#infrastructure-inside-the-objective), atomic
+snapshots with a generation number, a tail from the container to the host,
+and a refreshing reader make it possible.
 
-## Plan
+## Test each component in isolation
 
-Each phase runs on today's harness and ends in a measurement.
+The fastest way to tune a component is to run it alone, on inputs that
+don't change, and see its output in seconds. A 20-minute benchmark sweep
+answers one question per run and can't say which component helped. Every
+component gets the same four things before it joins an episode.
 
-1. **Record components and fix setup.** Give every trace step a component ID
-   and implementation digest; retain executor streams; replace the arm's
-   environment variables with a policy manifest that reproduces v3 → Luna
-   and v2 → lean Opus exactly. Prebuild agent installation layers and report
-   setup time separately. Add the outcome-matrix and timeline views.
-2. **Replay studies, Jev only.** Build `task.requirements`, the joint packer,
-   and `task.profile`. Score requirement recall, delivered recall, and
-   router regret on the 216 retained trials. Screen the winners live on
-   Luna.
-3. **Close the loop on one task family.** Add `verify.checks`,
-   `verify.support`, and one repair. Measure on the failures we have:
-   `log-summary-date-ranges`, `cancel-async-tasks`, `headless-terminal`.
-4. **Interleave.** Add `control.monitor` (replayed on retained streams
-   first), then escalate-on-stall and planner-worker. Compare them against
-   single-pass policies in the outcome matrix.
-5. **Tune the system prompt.** Capture both executors' requests, build the
-   minimal headless core and the section library, and measure it against
-   the default on both executors.
-6. **Route.** Expand the task pool beyond the eight development tasks with
-   Terminal-Bench tasks we haven't used, keep a frozen held-out set, fit the
-   router on the frontier, and confirm on held-out tasks. The target is the
-   oracle's pass rate at a cost near the oracle's.
+**A standalone entry point.** Each component is a Rust function from a
+serializable input to an output plus an invocation record, callable without
+an episode:
 
-Phase 1's manifest and component records are prerequisites for everything
-after it; phases 2 to 5 can run in parallel once they exist.
+```sh
+coder-one component run evidence.pack --fixture fixtures/log-summary-v3 --json
+coder-one component suite verify.checks --jev recorded
+```
+
+The record is the same invocation record an episode writes, so isolated
+runs and full episodes land in the same Gym views.
+
+**Fixtures from three sources.**
+
+- *Extracted* from retained trials: task text, probe outputs, Jev states and
+  answers, survey candidates, briefings, and the executor's events. An
+  extractor turns a retained attempt into one fixture directory per
+  component input.
+- *Synthetic* candidates with a known answer, for the checkers and repair:
+  a log parser that reads the severity field and one that searches the
+  whole line; a terminal module that drives an interactive program and one
+  that only handles shell builtins; a cancellation coordinator that awaits
+  cleanup and one that returns early. A check scenario is tested by whether
+  it tells each pair apart.
+- *Captured* executor requests and streams, using the local capture server
+  for prompts and recorded sessions for monitors.
+
+**Jev in three modes.** `live` calls the service; `recorded` replays answers
+keyed by the digest of the state and the question set, so a suite reruns
+deterministically and free; `off` returns unknowns, to test the no-Jev
+fallback. A changed question set or state misses the cache, so a recorded
+run can never pass off an old answer for a new question.
+
+**A fake executor.** A scripted adapter that replays a recorded event stream
+and writes scripted files lets session control, the monitor, handoffs,
+budgets, and repair run end to end in seconds, with no model and no
+container.
+
+Composition then climbs a ladder, and each rung is visible in the Gym:
+
+| Rung | What runs | Time | Answers |
+| --- | --- | --- | --- |
+| 1. Component | One component on its fixtures | Seconds | Does it do its one job, and what does it cost? |
+| 2. Mini-task, fake executor | Components composed on a small local task in a scratch directory, scripted executor | Seconds | Does the composition route evidence, checks, and handoffs correctly? |
+| 3. Mini-task, real executor | The same, with Luna or Opus, bounded by `coder-boundary` | About a minute | Does a real executor use what the components give it? |
+| 4. One Terminal-Bench task | Harbor, one trial | Minutes | Does it hold in the real environment? |
+| 5. Sweep | The development tasks, three trials each | An hour or more | Is the policy better, with intervals? |
+
+Most iteration happens on rungs 1 and 2. A change reaches rung 5 only after
+it has shown an effect lower down, and rung 5 is never the first place a
+component is tested.
+
+## Roadmap
+
+Tracking issue: [#9537](https://github.com/OpenAgentsInc/openagents/issues/9537). Every issue delivers a component that runs alone
+on fixtures before it joins an episode, and a Gym TUI view with matching CLI
+output, so progress is visible as it lands. Each is verified with its
+crate's own checks and fixture suite.
+
+**Foundation.** These come first; most later work depends on
+[#9538](https://github.com/OpenAgentsInc/openagents/issues/9538) and [#9539](https://github.com/OpenAgentsInc/openagents/issues/9539).
+
+| Issue | Delivers | Visible as |
+| --- | --- | --- |
+| [#9538](https://github.com/OpenAgentsInc/openagents/issues/9538) | Durable invocation records from before setup (`infra.record`) | Episode timeline |
+| [#9539](https://github.com/OpenAgentsInc/openagents/issues/9539) | `coder-one component run` and `suite`, fixture extraction, recorded Jev | Components view |
+| [#9540](https://github.com/OpenAgentsInc/openagents/issues/9540) | Policy manifests resolved once; the two reference arms reproduced; canaries | Grouping by manifest; `policy show` and `diff` |
+| [#9541](https://github.com/OpenAgentsInc/openagents/issues/9541) | Complete evidence retention; the five v3 failures recovered | Evidence completeness |
+| [#9542](https://github.com/OpenAgentsInc/openagents/issues/9542) | Complete accounting, honest units, one episode deadline | Cost by call, deadline use |
+| [#9543](https://github.com/OpenAgentsInc/openagents/issues/9543) | Scripted executor and local mini-tasks | Mini-task episodes |
+| [#9544](https://github.com/OpenAgentsInc/openagents/issues/9544) | Prebuilt agent installs; setup reported separately | Setup beside agent time |
+
+**Evidence.**
+
+| Issue | Delivers | Visible as |
+| --- | --- | --- |
+| [#9545](https://github.com/OpenAgentsInc/openagents/issues/9545) | Nonmutating observation, typed operations, probe planner and capture selector | Operations with effect classes |
+| [#9546](https://github.com/OpenAgentsInc/openagents/issues/9546) | `task.requirements` from prose, with labeled fixtures | Requirement map |
+| [#9547](https://github.com/OpenAgentsInc/openagents/issues/9547) | `evidence.pack` by requirement coverage | Briefing contents and omissions |
+
+**Verification.**
+
+| Issue | Delivers | Visible as |
+| --- | --- | --- |
+| [#9548](https://github.com/OpenAgentsInc/openagents/issues/9548) | `verify.checks` scenarios for the three failure families; diagnostic packets | Requirement coverage |
+| [#9549](https://github.com/OpenAgentsInc/openagents/issues/9549) | `verify.support` paired judgments; requirement states | Support beside scenario results |
+| [#9550](https://github.com/OpenAgentsInc/openagents/issues/9550) | `verify.repair` from a packet; conditional recovery study | Repair invocations and recovery rates |
+
+**Control.**
+
+| Issue | Delivers | Visible as |
+| --- | --- | --- |
+| [#9551](https://github.com/OpenAgentsInc/openagents/issues/9551) | Executor capability matrix and normalized events | Executor events in the timeline |
+| [#9552](https://github.com/OpenAgentsInc/openagents/issues/9552) | Live episodes in the Gym | Live view |
+| [#9553](https://github.com/OpenAgentsInc/openagents/issues/9553) | `control.monitor` in shadow mode | Judgments over the timeline |
+| [#9554](https://github.com/OpenAgentsInc/openagents/issues/9554) | `control.handoff`: escalate, planner and worker, steer, race | Handoffs; patterns in the outcome matrix |
+
+**Tuning.**
+
+| Issue | Delivers | Visible as |
+| --- | --- | --- |
+| [#9555](https://github.com/OpenAgentsInc/openagents/issues/9555) | `exec.system` section library for both executors | Prompt sections per attempt |
+| [#9556](https://github.com/OpenAgentsInc/openagents/issues/9556) | `task.profile`, outcome matrix, router, larger task pool | Outcome matrix and router views |
+| [#9557](https://github.com/OpenAgentsInc/openagents/issues/9557) | The first hill-climbing study, on `evidence.pack` parameters | Study view |
+
+The first quality experiment stays small: reproduce the reference arms from
+manifests, deliver the evidence the log task needed, check the three failure
+families, and repair once. Routing, racing, monitoring interventions, and
+prompt search then compete against a baseline whose decisions and costs are
+visible.
 
 ## Related documents
 
@@ -663,7 +870,11 @@ after it; phases 2 to 5 can run in parallel once they exist.
 - [Gym Terminal-Bench views](../gym/terminal-bench-tui.md) and
   [CLI](../gym/terminal-bench-cli.md).
 
-## Additional implementation analysis (2026-09-22)
+## Implementation review (2026-09-22)
+
+This review was written against an earlier draft of this document. The body
+above has since incorporated its corrections; the review stays as written,
+as the record of what it found and for its code-level references.
 
 This appendix reviews the design against commit `284197072c`, including the
 new detailed analysis of all five v3 Luna failures pulled from `main`.
