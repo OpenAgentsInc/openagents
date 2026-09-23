@@ -165,7 +165,10 @@ lists per group; `--json` lists them all.
 
 `coder-one ask` reads these views to answer a question about runs with
 checked citations; [Ask Coder One about runs](../coder/guides/coder-one-ask.md)
-covers it, and `gym coder asks` lists what it answered.
+covers it, and `gym coder asks` lists what it answered. `gym coder
+proposals` lists the changes an ask proposed, records a person's decision
+on each, and shows what measuring it found; see
+[Turn a finding into a proposal](../coder/guides/coder-one-ask.md#turn-a-finding-into-a-proposal).
 
 `gym runs show RUN --json` carries every judgment's probability in
 `learning.every_judgment`, with its tag, category, and whether it's a

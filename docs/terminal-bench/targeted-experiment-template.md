@@ -31,7 +31,11 @@ uv run tbench experiment run --id v7-vs-cc-0924 --profile tb4 \
 ```
 
 - **Arms.** List the baseline first. The report compares every other arm
-  against it.
+  against it. `--arm NAME=PROFILE` runs an agent profile as a separately
+  named arm, so one profile can run with two policies:
+  `--arm coder-one-tunable-luna-v2 --arm trial=coder-one-tunable-luna-v2
+  --arm-kwarg trial:policy=/path/to/policy.json`. `coder-one proposal run
+  --live` starts its experiments this way.
 - **Attempts.** `--attempts` defaults to 3. Use more when the expected
   difference is small; don't use fewer for a published comparison.
 - **Interleaving.** The schedule runs attempt 1 of every task, then

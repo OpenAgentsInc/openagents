@@ -145,6 +145,13 @@ from the run returns to the answer, and `Esc` from the answer returns to
 the list. Press `?` and `Enter` with no question to see the last answer
 again.
 
+When the answer carries proposals, they follow the cited runs, each with
+its status: `proposed`, `refused`, `approved`, `rejected`, `measured`, or
+`live`. Move the cursor to one and press `a` to approve it or `x` to reject
+it, as `gym coder proposals approve|reject` does. A refused proposal can't be
+approved, and nothing runs until you approve one; see
+[Turn a finding into a proposal](../coder/guides/coder-one-ask.md#turn-a-finding-into-a-proposal).
+
 The pane stays a reader: `coder-one ask` only reads, inside a filesystem
 boundary, and writes its record under `~/.openagents/coder-one/asks`. The
 pane finds `coder-one` in `$CODER_ONE_BIN`, beside `gym-terminal`, or on

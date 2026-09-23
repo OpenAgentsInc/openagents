@@ -42,9 +42,11 @@ Issue #9574 holds the design.
    ranked them from, and the steps Jev chose, then the other candidates and
    the outcome matrix's frontier.
 4. **Answer.** The executor reads the briefing and finishes by calling its
-   `answer` tool with the answer, its claims, and an optional proposed
-   change for a person to decide on. `--executor luna`, the default, runs
-   Codex on GPT-6 Luna; `--executor opus` runs Claude Code on Opus 5.5.
+   `answer` tool with the answer, its claims, and optional typed
+   proposals for a person to approve; see
+   [Turn a finding into a proposal](#turn-a-finding-into-a-proposal).
+   `--executor luna`, the default, runs Codex on GPT-6 Luna;
+   `--executor opus` runs Claude Code on Opus 5.5.
 5. **Cite.** Code checks every citation against the Gym. A claim whose
    citation doesn't check, or that cites nothing, is marked unverified and
    kept, with the reason.
@@ -145,6 +147,117 @@ A refused draft is kept with its reasons. The text output marks each draft
 `draft`, `runs`, `status` (`passed` or `refused`), and `problems`. Nothing
 posts anywhere: a person picks, edits, and posts. The question is optional
 with this scope.
+## Turn a finding into a proposal
+
+An answer can end with typed proposals: changes the findings support, for a
+person to approve. A proposal names the runs it came from and the tasks it
+expects to change. Nothing runs until a person approves it, and then it
+runs on those tasks and no others. Issue #9576 holds the design.
+
+```sh
+coder-one ask "which failed Luna runs claimed success the checks should have caught?"
+gym coder proposals                          # every proposal, with its status
+gym coder proposals PROPOSAL_ID              # finding → change → result
+gym coder proposals approve PROPOSAL_ID --note "worth three attempts"
+coder-one proposal run PROPOSAL_ID           # the mini-task stage: seconds, no model
+coder-one proposal run PROPOSAL_ID --live --quota-usd 40 --artifact PATH
+gym terminal-bench experiment report PROPOSAL_ID --markdown
+```
+
+### Kinds
+
+| Kind | The change | What runs |
+| --- | --- | --- |
+| `policy` | A JSON merge patch (RFC 7386) on a manifest in `crates/coder-one/policies/` | The mini-task stage, then the live stage |
+| `check` | The same, confined to `policy.verify` | The mini-task stage, then the live stage |
+| `minitask` | A new mini-task: files, a grader command, and a good and a bad candidate | The mini-task stage: the grader on each candidate |
+| `questions` | A change to Jev's question set | Nothing. The set is pinned in code, so it's a drafted issue. |
+| `code` | Anything that needs Rust, such as a new check scenario | Nothing. It's a drafted issue for a person to file. |
+
+`coder-one proposal issue PROPOSAL_ID` prints a drafted issue. Nothing
+files or merges it on its own.
+
+### What code checks
+
+Code validates each proposal when the ask records it, and keeps a refused
+one with its reasons, as it keeps an unverified claim:
+
+- Every source run is a run the ask read, and every expected task is a
+  source run's task.
+- A policy or check patch applies to a checked-in manifest, sets only
+  fields under `policy`, parses under this build's manifest schema, passes
+  its validation, and changes the manifest's digest. A check patch sets
+  only `policy.verify`.
+- A mini-task parses, has a new ID, a grader, and two different
+  candidates, and keeps every path inside its directory.
+- A questions proposal names the pinned set, `builtin-v1`.
+
+A valid policy or check proposal materializes as `policy.json`, the base
+manifest with the patch applied and the name
+`<base>-<proposal ID>`. Each proposal records a digest of itself, and a
+decision names the digest it decided, so a proposal edited after its
+approval doesn't run.
+
+### Approve or reject
+
+`gym coder proposals approve PROPOSAL_ID` and `reject PROPOSAL_ID` record a
+decision with an optional `--note` and your user name. In the Gym
+terminal's answer view, move the cursor to a proposal and press `a` to
+approve or `x` to reject. A refused proposal can't be approved, and a
+decision stands once a stage ran.
+
+### Measure it
+
+`coder-one proposal run PROPOSAL_ID` refuses a proposal nobody approved.
+For an approved policy or check, it runs the mini-task stage first: the
+cited tasks' mini-tasks, each with its known-good and known-bad scripts,
+under the base manifest and then the proposal's, with the checks, the
+briefing, and the repair each manifest sets. A cited task maps to a
+mini-task when one reproduces its failure family: `log-summary-date-ranges`
+to `log-severity`, `headless-terminal` to `interactive-terminal`,
+`cancel-async-tasks` to `cancel-cleanup`, and `fix-git` to `git-recovery`.
+When none maps, the stage screens every mini-task for breakage and says so.
+
+The verdict is `regressed` when the proposal fails good work the base
+passed, flags good work the base didn't, or fails to run; `improved` when
+it repairs or flags bad work the base didn't; and `unchanged` otherwise. The
+scripted executor doesn't read the briefing, doesn't call Jev, and doesn't
+hand off, so the stage catches a change that breaks an episode, not one that
+helps a model; the result lists what it couldn't show. For a mini-task, the
+stage runs the grader on each candidate inside a `coder-boundary` boundary,
+and the mini-task reproduces the failure when the grader passes the good
+candidate and fails the bad one.
+
+With `--live`, a policy or check whose mini-task stage didn't regress then
+starts a targeted `tbench experiment` from `bench/terminal-bench`: the
+agent profile that runs the base manifest against the same profile with the
+proposal's `policy.json`, 3 attempts per task, interleaved. The proposal's
+arm is named by its ID, with `--arm PROPOSAL_ID=BASE_PROFILE`. It runs on
+the tasks the proposal expects to change; `--task` narrows them and never
+widens them. `--quota-usd` is required and budgets the Claude quota;
+`--artifact` names the Coder One build both arms run; `--plan` prints the
+schedule and checks credentials without starting a trial. The job profile
+is the one the source runs' job names share, such as `panel`, or `tb4`.
+
+### The record
+
+A proposal lives under `~/.openagents/coder-one/proposals/<id>/`, or the
+directory `coder-one ask --proposals DIR` names:
+
+- `proposal.json`: `openagents.coder-one.proposal.v1`, written once by the
+  ask, with the ask's ID and question, the source runs and tasks, the
+  change, what code found, and the digest.
+- `policy.json` or `minitask.json`: the materialized change.
+- `decision.json`: `openagents.coder-one.proposal-decision.v1`.
+- `result.json`: `openagents.coder-one.proposal-result.v1`, with the
+  mini-task stage and the live experiment's ID.
+
+The ask's own record lists its proposals, and `gym coder asks ID` shows
+them. `gym coder proposals PROPOSAL_ID` shows the loop: the finding (the
+ask, the rationale, and the runs), the change (the patch and the digests),
+the decision, and the result (the mini-task stage and each arm's passes
+from the experiment's status).
+
 ## What it costs
 
 Measured on 2026-09-23 against this machine's Gym (597 runs, 561 judged),
@@ -179,6 +292,7 @@ went over.
 | `--timeout SECONDS` | The executor's deadline, 240 by default. |
 | `--gym PATH` | The `gym` binary. By default, `$CODER_ONE_GYM_BIN`, the `gym` beside `coder-one`, or `gym` on `PATH`. |
 | `--no-jev`, `--jev-recorded FILE`, `--jev-record FILE` | Code's order instead of Jev, recorded answers, or a file of the answers used. |
+| `--proposals DIR`, `--no-proposals` | Where the answer's proposals are written, `~/.openagents/coder-one/proposals` by default, or none. |
 | `--answer-file FILE` | Replays an executor's answer instead of running one: the citation check and the record, with no model. |
 
 ## Ask from the terminals
