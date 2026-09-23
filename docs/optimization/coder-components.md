@@ -662,3 +662,489 @@ after it; phases 2 to 5 can run in parallel once they exist.
   before it builds.
 - [Gym Terminal-Bench views](../gym/terminal-bench-tui.md) and
   [CLI](../gym/terminal-bench-cli.md).
+
+## Additional implementation analysis (2026-09-22)
+
+This appendix reviews the design against commit `284197072c`, including the
+new detailed analysis of all five v3 Luna failures pulled from `main`.
+It follows the [Luna upgrade assessment](../terminal-bench/2026-09-22-luna-jevprobe-upgrade.md)
+and examines Coder One, the Harbor adapter, Gym's readers, ATIF, subprocess
+supervision, and related implementations in `crates/coder`. No model inference
+or Terminal-Bench trial ran for this review. The oracle calculations below
+are recomputations of retained results.
+
+**The component decomposition is useful, but its first implementation needs
+durable observations, explicit execution capabilities, and an objective that
+prices the controller's mistakes.** Several proposed facilities have working
+precedents elsewhere in the repository. Other facilities, especially live
+monitoring and replay of executor behavior, need more plumbing and evidence
+than the main design currently allows for.
+
+### Make failure diagnosis and recovery tunable components
+
+The [updated failure analysis](../terminal-bench/2026-09-22-luna-jevprobe-upgrade.md#detailed-analysis-of-the-five-v3-luna-failures)
+changes which intervention each failure supports. The log briefings omit
+record examples; the failed terminal and async briefings fit in full. More
+packing work cannot explain or fix every failure. All five delegates answered,
+and all five closing calls lacked artifact observations. Separate evidence
+delivery, implementation behavior, check coverage, and recovery when assigning
+the failure to a component.
+
+**Correction to the earlier example in this document:** `/app/vim.txt` is an
+artifact produced by the verifier's editor interaction, not a deliverable in
+the public task. The requested deliverable is `/app/headless_terminal.py` with
+interactive-program support. A policy that creates or checks `vim.txt` would
+target a verifier symptom. The local check must exercise the public interface
+and observe the requested behavior using its own scratch artifact.
+
+These are three reusable failure families, not three task-ID branches:
+
+| Failure family and strength of evidence | Tunable surfaces | Discriminating local observation | What the repair must change |
+| --- | --- | --- | --- |
+| **Field meaning lost in data processing.** Omitted records are observed. The postmortem reconstructs the reported whole-line severity-counting error, but does not recover each original parser. | `evidence.select` and `evidence.pack`: sample diversity, complementary evidence, span size, and omission directions. `verify.checks`: semantic counterexamples and date-boundary cases. | Preserve a record's severity field while changing only its message to include another severity word; counts should not change. Separately test boundaries derived from the public date rule. | Repair the parsing rule, regenerate the full requested output, and check the current output. Passing only the miniature parser case leaves a previously wrong CSV unresolved. |
+| **Interactive behavior lacks supporting observations.** The terminal briefing is complete. Missing editor output is reported, while the underlying PTY defect remains unknown. | `verify.checks`: an interactive application scenario, readiness observation, input staging, output capture, and cleanup. `exec.profile` and `verify.repair`: effort, repair executor, and diagnostic content. | Through the submitted interface, start an available interactive application, send staged input, observe the transition, and verify a scratch result. Separately interrupt a foreground process and establish that the shell remains usable. | Repair the observed input, terminal initialization, timing, output, or cleanup behavior. Select among those hypotheses only after collecting the relevant transcript and process state. |
+| **Cancellation cleanup is claimed without sufficient lifecycle evidence.** The async briefing is complete; the exact failed behavior remains unresolved. | `verify.checks`: real signal versus internal cancellation, work below/at/above the concurrency bound, readiness synchronization, and awaited cleanup. `verify.support`: whether observations cover the requested lifecycle. | Run a child process with recorded worker-start and cleanup events. After a real interrupt, require started workers to finish awaited cleanup before return; observe queued work and the concurrency limit independently. | Repair the lifecycle transition contradicted by the event sequence. Do not choose a blanket `shield`, `gather`, or `TaskGroup` rewrite from a binary reward alone. |
+
+Keep the existing component IDs, but split `verify.checks` into inspectable
+suboperations: build eligible scenarios, select scenarios, execute them, and
+record their coverage. This permits a deterministic selector, Jev selector,
+or stronger-model planner to compete over the same admitted scenario catalog.
+The execution adapter and the independently stated expectation stay explicit.
+A new catalog or expectation is a versioned candidate surface evaluated
+against fixed external acceptance, not an unrecorded adjustment after failure.
+
+Each scenario should carry the following information:
+
+- The public requirement and source spans that justify the behavior checked.
+- Its applicability conditions, required interface, effects, and bounds.
+- The candidate and input identities it runs against, its seed where used,
+  and the observation sequence it records.
+- Its expected relation and how that expectation was derived: for example,
+  message-only changes preserve severity, or cleanup finishes before return.
+- Its verdict and coverage limits, including unavailable programs, incomplete
+  output, ambiguous timing, or a candidate that has changed since the check.
+
+The host owns process creation, clocks, event ordering, parsing, arithmetic,
+and scope. Jev can judge whether the eligible scenario exercises the stated
+requirement and which unresolved distinction deserves another observation.
+A planner can propose a scenario within the same contract, with its cost and
+provenance recorded. This keeps the approach tunable across Luna, another
+executor, or a different reasoning effort without making the model its own
+unobserved verifier. For Python task artifacts, a host-authored task-language
+driver can exercise their public interfaces; the product controller and
+scenario admission remain Rust.
+
+Make a failed check's output a reusable diagnostic packet: requirement,
+candidate digest, admitted scenario, expected relation, actual observations,
+and unresolved hypotheses. `verify.repair` consumes that packet rather than
+a generic instruction to check more. `control.handoff` can then compare
+continuing with Luna, increasing effort, or switching executors on the same
+kind of evidence. A timeout, unsupported check, and observed contradiction
+are different inputs; none should silently become the same escalation reason.
+
+Use a staged study to determine which component actually helps:
+
+| Comparison | What it isolates | Required measurement |
+| --- | --- | --- |
+| Original briefing; honest omission directions; compact representative evidence | Instruction effect versus evidence-delivery effect | Delivered distinctions, expansions, reward, cost, and time with executor settings fixed |
+| Format/existence checks; deterministic behavioral scenarios; the same scenarios selected with Jev | Check coverage and Jev's added selection value | Requirement-level detection, false alarms, unavailable scenarios, and checking overhead, with repair disabled |
+| No repair; a fresh session without the diagnostic packet; diagnostic repair by the same Luna profile, under the same additional allowance | Extra sampling versus the value of a concrete counterexample | Final reward, failures recovered, passing candidates damaged, and all dispatch costs |
+| The same diagnostic packet given to alternative efforts or executors | Execution capability after evidence and detection are held fixed | Conditional recovery and incremental cost/time for each repair profile |
+
+For repair comparisons, preserve a failed candidate and the complete relevant
+task state, then give each repair arm an isolated copy of that same state.
+This is a conditional recovery study, not a fresh end-to-end trial. If the
+original candidate cannot be recovered, collect new failures with complete
+bundles and label them as new evidence. After selecting a repair policy,
+measure the complete episode from a fresh task environment, including the
+cost of finding and checking the failure. A rescue result alone does not
+establish that paying for the detector on every task is worthwhile.
+Include passing candidates as controls when measuring detector false alarms
+and regressions from unnecessary repair.
+
+The hypothesis catalog is development knowledge. Protected aggregate counts,
+test filenames, exact interaction scripts, and hidden fixture timings do not
+enter episode state, repair briefs, or tuned runtime prompts. Derive scenario
+parameters from public requirements and observed inputs. Confirm the frozen
+policy on new record formats, interactive applications, and cancellation
+tasks; all three analyzed families have already informed development.
+
+### Reuse the existing contracts without importing the whole agent
+
+Coder One's [dependencies](../../crates/coder-one/Cargo.toml) already include
+`atif`, `jev`, and `supervise`, but not `coder`. Preserve that separation.
+These are concrete reuse opportunities, with different integration costs:
+
+| Need | Existing implementation | Application to this design |
+| --- | --- | --- |
+| Durable observations | [`atif::log::Log`](../../crates/atif/src/log.rs) | Already available to Coder One. Appends and syncs steps; the recovery reader retains a valid prefix, while the whole-record reader rejects incomplete evidence. |
+| Evidence identity and omission | [`coder::evidence`](../../crates/coder/src/evidence.rs) | Reference for source spans, content digests, bounded reads, and explicit full, truncated, or refused observations. Its repository-relative read set needs adaptation for Terminal-Bench's absolute paths and non-Git tasks. |
+| Independent checks | [`coder::verification`](../../crates/coder/src/verification.rs) | Reference for host-owned check plans, bounded commands, input-bound suite results, and `passed`, `failed`, or `unverifiable` verdicts. It also detects a check that changes the candidate. |
+| Process ownership | [`supervise::Job`](../../crates/supervise/src/job.rs) | Already used. Preserve termination, reaping, and resource lifetime when adding interrupts or concurrent sessions. It currently replaces stdin with null and has no interactive input handle. |
+| Recovery after interruption | [`coder::runstate`](../../crates/coder/src/runstate.rs) and [`coder::reconcile`](../../crates/coder/src/reconcile.rs) | Reference for recording dispatch before effects and retaining ambiguous outcomes as unknown. Restarting a controller must not silently repeat a setup operation or delegation. |
+| Spend guarantees | [`coder::spend`](../../crates/coder/src/spend.rs) | Reference for distinguishing enforceable hard ceilings, soft reporting bounds, and unknown charges. This is not a ready-made concurrent reservation ledger. |
+| Confirmation exposure | [`gym::suite::LockedLedger`](../../crates/gym/src/suite.rs) | Reference for recording access to reserved evidence. The Terminal-Bench reader does not automatically give a new policy study this protection. |
+
+Extract a small shared type only when both consumers need it. The first
+requirement-and-repair experiment does not need the larger agent's program
+runtime, capability registry, or project scheduler.
+
+### The live view needs a durable event path through the container
+
+The claim that the live view can read the existing bundle needs qualification:
+
+- [`Recorder`](../../crates/coder-one/src/record.rs) is an in-memory
+  `Rc<RefCell<Vec<Step>>>`. Appending a step does not persist it.
+- [`run_episode`](../../crates/coder-one/src/episode.rs) runs the initial
+  survey before installing the snapshot wrapper. Setup and survey can
+  therefore perform work before the first bundle checkpoint.
+- `explore_then_delegate` checkpoints before dispatch, awaits the entire
+  executor run, and then asks the closing question. There is no bundle
+  update for each native executor event during that wait.
+- `Bundle::put` uses `std::fs::write`. A reader can encounter a partial file
+  or files from different checkpoint generations; writing the manifest last
+  does not make the collection an atomic snapshot.
+- The [Harbor adapter](../../bench/terminal-bench/tbench/coder_v05.py)
+  downloads the bundle in `finally`, after the episode exec returns or
+  raises. The host-side Gym does not receive a live copy through that path.
+- [Gym's local-job reader](../../crates/gym/src/terminal_bench.rs) starts
+  from `tbench/attempts/*.json`, then attaches episode files. The
+  [terminal entry point](../../crates/gym/src/bin/gym_terminal.rs) loads
+  those records once. It needs active-attempt discovery and refresh as well
+  as new timeline rendering.
+
+Start recording before setup. Give each invocation a durable start and end,
+an invocation ID, its parent invocation, and the evidence revision it reads.
+A component ID alone cannot distinguish two repairs or concurrent probes.
+Derive the bundle and timeline from that event history, and publish snapshots
+with a generation identifier and atomic replacement. Arrange an explicit
+container-to-host tail or bounded incremental collection path. A live view
+should show its last received event and whether its data is stale.
+
+ATIF's log is a useful persistence primitive, but an observation log alone
+does not make effects restartable. Record intent before dispatch and reconcile
+unfinished invocations against the retained process, session, and workspace
+identities before deciding whether another attempt may run.
+
+### Observation must not change the workspace it measures
+
+`Bundle::diff` in [`episode.rs`](../../crates/coder-one/src/episode.rs) runs
+`git add -N .` before collecting `git diff --binary`. This changes the index
+to expose untracked files. Calling the existing checkpoint more often would
+therefore change task state more often, which matters especially on Git
+recovery tasks and while an executor is writing.
+
+Make collection nonmutating before using it as the live monitor's input.
+Read tracked differences and capture untracked files separately under explicit
+bounds. Associate observations with a workspace revision; a concurrent file
+change makes the affected capture stale or incomplete, not an observation of
+one consistent candidate. Reuse the completeness discipline of
+[`coder-boundary` snapshots](../../crates/coder-boundary/src/snapshot.rs).
+Do not run a full recursive snapshot after every token or stream event.
+
+The operation contract also needs more than the label “read-only.” In
+[`JevJudge::probe`](../../crates/coder-one/src/judge.rs), task-derived paths
+are interpolated into strings such as `head -200 {token}` and executed through
+`bash -c`. The setup pack likewise executes extracted command strings. Use
+typed read, list, Git, clone, and install operations with validated arguments
+and explicit effects. Jev's relevance answer does not validate those arguments.
+
+There is a useful decomposition here: today's probe battery runs before Jev
+selects its outputs. A new **probe planner** would choose which operations
+to run; the existing **capture selector** chooses which completed observations
+to retain in the briefing. Measure those separately. An improved selector
+cannot retroactively save the cost of probes that already ran.
+
+### Session control is an adapter contract, not just a CLI flag
+
+[`Executor::execute`](../../crates/coder-one/src/delegate.rs) returns one
+`Report` after completion. The CLI reads its briefing from a file redirected
+to stdin and redirects its native events to another file. The host parses
+that file only after `supervise::Job::run` returns. Resume, steer, fork, and
+interrupt are therefore new host capabilities even if the pinned CLI offers
+related commands.
+
+Define a capability matrix for each tested executor adapter: start, observe,
+stop with cleanup acknowledgement, resume, and steer. A policy can use only
+the capabilities demonstrated by that adapter. A fresh repair session with a
+delta brief is a valid first implementation; it must remain distinguishable
+from resuming an existing session.
+
+Normalize a small set of events before calling Jev: command started,
+command completed, artifact changed, assistant claim, usage update, and
+session ended. Preserve native event references beside the normalized events.
+Include session ID, invocation ID, event sequence, and workspace revision so
+a late monitor answer cannot steer a replacement session or certify an
+artifact that has since changed. Keep one controller responsible for state
+transitions; concurrent observers can submit versioned observations to it.
+
+There is also an output-bound issue: the native stream bypasses the
+supervisor's captured stdout cap. `Cli::execute` reads the whole file into
+memory before `retain` reduces it to the first and last portions under the
+8 MiB retention limit. That is a retention limit, not a live disk or memory
+limit. Incremental parsing needs bounded records, explicit gaps, and a
+declared retention policy while the process runs.
+
+For a race, two sessions cannot safely write the same task directory.
+[`coder::worktree`](../../crates/coder/src/worktree.rs) is a useful Git
+precedent, but Terminal-Bench can require `/app` files, databases, repository
+metadata, or installed dependencies outside one worktree. Race only when the
+adapter can isolate the complete relevant task state and materialize the
+winning state for grading. Stop and reap the losing writer before selecting
+the final candidate, and charge both branches. Two trials started in separate
+containers are not automatically one valid raced episode.
+
+### Budget enforcement and accounting need separate contracts
+
+Today's episode reports its overall deadline as “owned by the harness's exec
+timeout.” Setup commands receive individual 240-second limits, the delegate
+receives its configured limit, and the Jev client uses the SDK defaults.
+[`RetryPolicy`](../../crates/jev/src/retry.rs) already supports a whole-call
+budget, including retries and waits, but its default is `None`, and
+[Coder One's client constructor](../../crates/coder-one/src/credentials.rs)
+does not set it.
+
+Give the controller one monotonic episode deadline and pass the remaining
+allowance to each dispatch, retry, wait, and check. Reserve time for final
+checks, process cleanup, and recording. The harness deadline remains an outer
+limit; it should not be the normal mechanism for interrupting a repair before
+the host records what happened.
+
+A dollar ceiling needs a different assurance. Claude's parser reads total
+cost from the final result event. Codex's parser estimates cost from reported
+usage. Neither current adapter reserves a known maximum charge before each
+model call. A timer and a final cost field cannot enforce a strict spend cap.
+Expose hard and soft bounds honestly, following `coder::spend`; require a
+demonstrated reservation or executor-enforced ceiling before promising a hard
+cap. Concurrent branches also need one owner of the outstanding reservations.
+
+Before using costs as the optimizer's objective, address these concrete
+accounting cases in [`episode::usage`](../../crates/coder-one/src/episode.rs):
+
+- Failed Jev steps have no `jev_usage` extension. The aggregation filters for
+  that extension before summing, so a failed request can disappear from the
+  priced coverage while still appearing in the failed-call count. Distinguish
+  known zero work, a priced response, and a request with unknown charge.
+- `delegate_usage` already sums multiple dispatches, but its displayed model,
+  agent, credential, and cost provenance come from the first dispatch. A
+  Luna-to-Opus episode needs per-dispatch identities and mixed provenance.
+- A cancelled session without final usage leaves outstanding work whose cost
+  is unknown. Do not make a policy look cheaper because it interrupts the
+  event that would have reported the charge.
+
+### Price monitoring by actual work and measure its added value
+
+The unit called a “turn” is not currently comparable across executors.
+[`Summary::parse_codex`](../../crates/coder-one/src/delegate.rs) assigns
+completed items to `num_turns`; it keeps native completed-turn counts under
+`usage.codex_turns` and leaves API-call count unknown. Claude's parser reads
+`num_turns` and separately counts unique assistant message IDs. The generic
+[trajectory counter](../../bench/terminal-bench/tbench/counts.py) also labels
+agent steps with a model name or message as `model_invocations`; that is not
+proof of a provider request.
+
+Consequently, use measured episode deltas to value the monitor. The arithmetic
+in the main proposal also needs correction: at its illustrative rates,
+20 requests cost $0.002, while two Luna turns cost $0.0008. Saving two would
+not repay that monitor in money alone. Time savings or prevented failures
+could repay it, but that needs measurement with correctly named units.
+
+Monitor cost is not a fixed fee per event. It depends on the state and
+questions sent. Repeatedly resending an expanding transcript can make total
+input grow quadratically with session length. Start with deterministic
+triggers at completed operations, material artifact changes, or prolonged
+inactivity. Send bounded recent evidence plus unresolved requirements, batch
+independent judgments, and retain an expansion route. Measure total monitor
+tokens, waits, trigger precision, stale answers, unnecessary interventions,
+and changes in task completion.
+
+The [TypeSafe state contract](https://docs.typesafe.ai/concepts/state)
+supports independent questions over shared state. Its
+[confidence guidance](https://docs.typesafe.ai/confidence) requires thresholds
+to be evaluated for the application. Neither establishes that an added
+judgment saves work here. Compare no monitor, deterministic triggers alone,
+and those triggers with Jev. Include a shadow mode that records judgments
+without intervening before measuring interventions live.
+
+### Requirements need coverage and freshness, not only a status word
+
+The requirement map's `observed` state needs a precise meaning. Observing that
+a CSV exists does not establish its totals; a passing check against revision A
+does not establish the same claim after revision B. Record the observation,
+what it establishes, which requirement it covers, the checker identity, and
+the candidate identity separately. Define local completion from that coverage.
+
+Likewise, two Nouls for support and contradiction are not complementary by
+construction. Low support and low contradiction can mean insufficient
+evidence. High values for both can identify conflicting excerpts or a
+compound requirement. Preserve both answers and their evidence instead of
+averaging them into “done.” A refusal, missing answer, or clipped source span
+must leave the requirement unresolved. Jev's span judgment indexes the public
+instruction; it cannot authorize dropping the unselected text.
+
+Keep the three decision layers distinct: requirements derived from the public
+task, local checks selected by the controller, and protected Harbor grading.
+An artifact check's agreement with whole-task reward is only a coarse metric:
+a correct file-existence check can pass while a different requirement fails.
+Label check accuracy at the requirement level, then measure how its trigger
+affects repair and whole-task outcomes. Record repairs that damage a candidate
+which would otherwise have passed.
+
+### Replay has useful but narrower coverage than tier 0 implies
+
+The checked-in trace tree at the reviewed commit contains **300 Harbor result
+sidecars, 252 episode manifests, and zero `*.stream.jsonl` native delegate
+files**. Those are inventory counts, not one homogeneous trial cohort. The
+existing [retention procedure](../terminal-bench/runbook.md#retain-the-evidence)
+copies trajectories, manifests, usage, and trimmed results; it does not copy
+the full artifact closure named by the manifests. Some direct-agent
+trajectories contain their own tool history, but that does not restore the
+missing Coder One delegate streams.
+
+| Replay target | What the retained evidence permits |
+| --- | --- |
+| Requirement extraction | Replay public instructions and compare with newly authored source-span labels. The labels must be retained separately. |
+| Briefing packing | Recompute from captured candidates; establish selected-versus-delivered items and size omissions. “Needed evidence” recall still needs independent labels. |
+| Executor rereads and monitor timing | Use only trajectories with the required event sequence. A final report or an aggregate item count cannot reconstruct the missing stream. |
+| Artifact checks | Score only where the candidate bytes and required inputs were retained. A path, digest, or final summary cannot be parsed as the artifact. |
+| Steering, escalation, or repair | Replay whether a trigger would fire. Its effect on later behavior, cost, and reward requires a live intervention. |
+
+Name the exact 216-trial subset used by phase 2, its exclusions, and which
+evidence each replay metric requires. Report missing coverage rather than
+silently shrinking the denominator. A monitor replay must see only the prefix
+available at its trigger; later outcomes can supply labels, not monitor input.
+Unchosen actions have no observed outcome, so offline trigger accuracy is not
+an estimate of the new policy's success rate.
+
+The omitted log examples are strong evidence of a packing defect. They are
+still a causal hypothesis for the parser failure, as the earlier assessment
+states. Supplying them and holding the rest of the arm fixed is the experiment
+that can strengthen that attribution.
+
+### The oracle totals reproduce, but routing has eight task examples
+
+Recomputing the cheapest oracle reproduces **$0.071615749 and 430.0735 seconds**.
+The fastest oracle reproduces **$0.513684957 and 174.5200 seconds**. The
+calculation groups retained results by task and arm, requires exactly three
+graded successes and known cost and agent time, and selects the lowest mean
+cost or mean agent time. It uses episode usage where available and the
+retained operator-supplied Luna rates for direct Codex trials. It does not
+measure current prices or include setup in agent time.
+
+For reproducibility, these are the cheapest oracle's selections:
+
+| Task | Selected arm | Mean cost | Mean agent time |
+| --- | --- | ---: | ---: |
+| `build-cython-ext` | `coder-one-jevprobe-luna` | $0.011939 | 185.8 s |
+| `cancel-async-tasks` | `coder-one-jevprobe2-opus-lean-low-5m` | $0.045266 | 16.6 s |
+| `fix-code-vulnerability` | `coder-one-jevprobe2-luna` | $0.003013 | 25.1 s |
+| `fix-git` | `coder-one-jevprobe2-luna` | $0.002762 | 30.9 s |
+| `git-leak-recovery` | `coder-one-jevprobe3-luna` | $0.001454 | 26.6 s |
+| `headless-terminal` | `coder-one-jevprobe2-luna` | $0.002092 | 51.0 s |
+| `log-summary-date-ranges` | `codex-gpt-6-luna` | $0.001582 | 26.3 s |
+| `sqlite-db-truncate` | `codex-gpt-6-luna` | $0.003507 | 67.9 s |
+
+This is an empirical portfolio selected after seeing the outcomes, not a
+reliability bound for future tasks. Choosing among many 3/3 cells introduces
+selection optimism. Repeated trials improve estimates for those eight tasks;
+they do not create 216 independent task descriptions for training a router.
+
+Keep all repetitions and near-duplicate task variants in the same evaluation
+group. Leave-one-task-out evaluation must also exclude that task from feature
+question selection, threshold tuning, and portfolio selection within the
+fold. Otherwise only the final router fit is held out. An independently
+reserved task-family confirmation remains necessary after all eight tasks
+have informed the design.
+
+Use semantic task features and empirical arm outcomes to route. A Choice that
+asks for the cheapest capable model by name needs evidence about the admitted
+profiles, their cost, and their measured behavior; task text alone does not
+supply it. Include an uncertainty path and compare the router with fixed Luna,
+fixed Opus, and a small deterministic feature rule. Charge profiling and
+evidence gathering even when the chosen route is “direct Luna.”
+
+[`tenancy::training`](../../crates/tenancy/src/training.rs) can validate corpus
+provenance, partition groups, recipes, and sealed candidates. It does not
+itself fit this router or serve a trained door. Training and admission would
+be later integrations, after routing headroom is demonstrated.
+
+### The objective must price an imperfect fallback trigger
+
+The proposed `J` is a useful offline accounting scenario, but `(1 − p)` uses
+the protected outcome to decide when fallback runs. The deployed controller
+does not observe that outcome. Its local checks can accept failures or send
+already successful work for unnecessary repair. Fallback behavior also
+depends on the particular failures and partial workspace it receives.
+
+For a policy with at most one fallback, define `R` as the actual host trigger,
+`c₀` and `w₀` as cost and elapsed time through that decision, and `c_F` and
+`w_F` as the additional cost and time if fallback runs. Its expected resource
+objective is:
+
+```text
+J_runtime = E[c₀ + λ·w₀] + Pr(R) · E[c_F + λ·w_F | R]
+```
+
+Measure final pass rate separately and constrain it with a frozen acceptance
+rule, or add an explicit penalty for unresolved final failure. In either
+case, measure false accepts, unnecessary fallback, conditional fallback
+success, and regressions caused by repair. Do not substitute standalone
+Opus's mean for its cost or reliability after a failed Luna attempt without
+measuring that handoff. The original formula is recovered as a special
+resource-accounting case when failure detection is perfect and the stated
+fallback means apply to the triggered cases.
+
+State the time boundary as part of the metric: agent elapsed time, complete
+trial time, or campaign makespan. They answer different questions. Concurrent
+component durations sum to work, not elapsed time. Installation caching
+affects trial time, while a faster delegate affects only part of it. Report
+scheduled setup failures and their overhead beside graded attempts. Freeze
+task weights as well: summing task means gives each task equal weight, not
+the workload frequency a deployed router necessarily encounters.
+
+### Resolve the policy once, then measure one small composition
+
+The policy manifest should bind the configuration actually consumed, not just
+rename environment variables. `delegate_tools` and `delegate_effort` read the
+environment at dispatch; probe switches and direction switches are resolved
+in separate paths; cache TTL is inherited by the child. Resolve these once
+into an immutable episode configuration and record the rendered briefing,
+question sets, executor version and digest, and effective settings. Reject
+unsupported combinations. A canary must demonstrate that changing a manifest
+field reaches the invoked executor before that field becomes searchable.
+
+Keep admitted resource ceilings, effect policy, and the external acceptance
+rule outside the candidate's writable fields. Candidates can allocate within
+those ceilings and tune a local repair trigger under a fixed evaluation.
+The architecture's [protected transitions](architecture.md#stable-meaning-and-replaceable-implementation)
+already provide this distinction. System-prompt replacement needs the same
+separation: required instructions and host enforcement are fixed; optional
+guidance is the experimental surface.
+
+For installation reuse, cache a pinned toolchain layer by platform, base
+image, and executor identity. The [current installer](../../bench/terminal-bench/tbench/coder_one.py)
+pins the Codex package but selects Node with `nvm install 22`; the resolved
+Node build is another environment input. Keep credentials and mutated task
+state out of reusable layers, and compare cold and warm installation as a
+separate infrastructure intervention.
+
+The first measured slice can stay smaller than the full event loop:
+
+1. Resolve and record the current two reference configurations, preserving
+   their behavior. Persist invocation events and collect one complete,
+   sanitized diagnostic bundle per failure family.
+2. Fix nonmutating evidence collection and task coverage. Compare
+   deterministic compact packing with the same packer plus Jev selection,
+   using the unchanged Luna executor.
+3. Add source-bound local checks and one fresh Luna repair session under
+   the remaining episode allowance. Record unknown cost and evidence
+   explicitly, and retain every dispatch.
+4. Run monitor judgments in shadow mode on newly retained native streams.
+   Add active steering or escalation only after demonstrating event freshness,
+   adapter control, cleanup, and measurable improvement over deterministic
+   triggers.
+
+This sequence makes the proposed components measurable while keeping the
+first quality experiment focused on evidence delivery and behavioral coverage.
+Routing, racing, and prompt search can then compete against a baseline whose
+control decisions and costs are inspectable.
