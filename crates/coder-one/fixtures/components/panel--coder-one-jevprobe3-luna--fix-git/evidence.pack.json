@@ -1,0 +1,68 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.pack",
+  "source": {
+    "trace": {
+      "trace": "panel--coder-one-jevprobe3-luna--fix-git",
+      "trial": "fix-git__c2MR9Lx",
+      "task": "fix-git",
+      "reward": 1.0
+    },
+    "call": "delegate-1"
+  },
+  "input": {
+    "inputs": {
+      "instruction": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.",
+      "requirements": [],
+      "files": [
+        [
+          "$ git log --oneline --graph --all -n 40",
+          0.92,
+          "* d7d3e4b off the job market woo\n* c4e38a1 Add code link for BLADE\n* 6f46fa0 CV Update\n* dd7e395 Adds BLADE to bib\n* 2cd355a n+1 (for the last time???)\n* 8eaf505 Add BLADE\n* cc2ec78 Underline\n* d71094e Underline Conferences\n* 232b279 Remove posters\n* 3fdf5f5 Add NeurIPS\n* 8c4731d Add EMNLP acceptance\n* f54f66b Add GR link\n* 18d2430 Add other links\n* 1dd055e Ignore Gemfile, etc\n* 5c77a6d Dont overwrite\n* c7d2f95 Delete unsused files\n* 20b05d9 Remove more unused files\n* 2d144f7 Add yamls for new papers\n* 7882f2d Don't track _site\n* cd2b8de Add new papers\n* 26dc65c Fix author\n* bc1962c Interests update\n* 257eba8 More space for interests\n* ff6a94a Bib update\n* 97c4a55 Underline bold\n* a320806 Other fixes, new paper\n* 2cb7243 New PDFs\n* 7321328 PDF update\n* f1e3860 Deletions\n* 7b4d171 Update Bio\n* 073117a Another update\n* cb63517 Another CV Updatee\n* 192ae7b update headshot\n* 7fb9365 Update about and contact\n* 54ef19d CV Update\n* b0fb76a Add GR\n* 6adfab9 n plus one\n* 8a5509d Needs to be a string\n* e2f686e Add Gemfile\n* fa098ef properly handle class"
+        ],
+        [
+          "$ git reflog -n 40",
+          0.9,
+          "d7d3e4b HEAD@{0}: checkout: moving from c499730ae050deb27e5d22972ea28daf778060f2 to master\nc499730 HEAD@{1}: commit: Move to Stanford\nc4e38a1 HEAD@{2}: checkout: moving from master to HEAD~1\nd7d3e4b HEAD@{3}: reset: moving to d7d3e4b\n19b5d10 HEAD@{4}: clone: from https://github.com/TheMikeMerrill/personal-site.git"
+        ],
+        [
+          "$ git branch -a -vv",
+          0.87,
+          "* master d7d3e4b off the job market woo"
+        ],
+        [
+          "$ git status",
+          0.85,
+          "On branch master\nnothing to commit, working tree clean"
+        ],
+        [
+          "$ pwd && ls -la",
+          0.58,
+          "/app/personal-site\ntotal 92\ndrwxr-xr-x 12 root root  4096 Apr  3 07:47 .\ndrwxr-xr-x  1 root root  4096 Apr  3 07:47 ..\ndrwxr-xr-x  8 root root  4096 Apr  3 07:47 .git\n-rw-r--r--  1 root root   100 Apr  3 07:47 .gitignore\n-rw-r--r--  1 root root    14 Apr  3 07:47 CNAME\n-rw-r--r--  1 root root    42 Apr  3 07:47 Gemfile\n-rw-r--r--  1 root root   152 Apr  3 07:47 _config.yml\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _includes\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _layouts\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _posters\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 _publications\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 biblib\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 css\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 fonts\n-rw-r--r--  1 root root    47 Apr  3 07:47 index.md\ndrwxr-xr-x  2 root root  4096 Apr  3 07:47 js\n-rw-r--r--  1 root root  2382 Apr  3 07:47 make_pubs.py\n-rw-r--r--  1 root root 19618 Apr  3 07:47 me.bib\ndrwxr-xr-x  4 root root  4096 Apr  3 07:47 resources"
+        ]
+      ],
+      "spans": [],
+      "commands": [],
+      "last_output": null,
+      "conclusion": "The explorer reached its 0-step bound without a conclusion.",
+      "directions": "Complete the task in the current working directory. Nobody answers questions, so decide from the task and the environment. An automated checker grades the final state of the environment against the task, so verify every requirement, including exact paths, names, and formats, before you stop. The files, command outputs, and setup results in this briefing were gathered just before you started and are complete and current: do not list, read, or run them again. Work in few, large steps: write each file whole in one command, and chain related commands (installs, builds) with && in one call. Before you stop, run the checks the task names and exercise every code path you changed, not only the example the task gives. After a bulk find-and-replace, search the result for occurrences it missed or changed twice. End with a short summary of what you changed and how you checked it."
+    },
+    "cap": 12000
+  },
+  "retained": {
+    "sha256": "222e4f272dc6b840d3714232a827a4c6f15643d75d15f64b0be2ea24f265e181",
+    "chars": 4046,
+    "bytes": 4046,
+    "cap": 12000,
+    "included": [
+      "instruction",
+      "explorer conclusion",
+      "file $ git log --oneline --graph --all -n 40",
+      "file $ git reflog -n 40",
+      "file $ git branch -a -vv",
+      "file $ git status",
+      "file $ pwd && ls -la"
+    ],
+    "omitted": []
+  }
+}

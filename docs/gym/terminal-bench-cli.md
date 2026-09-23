@@ -58,6 +58,29 @@ from `bench/terminal-bench/samples/`. Use `--jobs-dir`, `--traces-dir`, or
 `--no-samples` to omit one. Nested resilience samples and resumed trials
 are included. Read errors stay visible in text and JSON output.
 
+## Compare Coder One components
+
+`gym coder components` lists each Coder One component with its isolated
+fixture runs beside its invocations across episodes. Isolated runs come from
+the logs `coder-one component suite` records under
+`~/.openagents/coder-one/components/`; episodes come from the same local
+jobs and retained traces as the commands above.
+
+```sh
+gym coder components
+gym coder components --component evidence.pack --json
+```
+
+For each component, it shows the latest suite's Jev mode, fixture count,
+errors, latency per fixture, Jev cost, and metric summary, each fixture's
+output digest and metrics, and the episode invocation count, latency, cost,
+and whether each came from an invocation log or was derived from a
+trajectory. `--runs-dir PATH` reads runs from elsewhere, and `--no-runs`,
+`--no-jobs`, or `--no-traces` omits one source. With `--json`, the schema is
+`openagents.gym.coder-components.v1`. The
+[component guide](../coder/guides/coder-one-components.md) covers the
+runner, fixtures, and Jev modes.
+
 ## Compare Coder One policy manifests
 
 `gym coder policy` reads the policy manifest every Coder One episode

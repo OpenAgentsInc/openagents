@@ -14,7 +14,7 @@ CARGO_TARGET_DIR=~/.cache/openagents/gym-target \
   cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 ```
 
-For a noninteractive record, add `--print`. The six views print to standard
+For a noninteractive record, add `--print`. The seven views print to standard
 output. The same command works while a job is running; it reads the attempts
 that the harness has already collected.
 
@@ -37,7 +37,7 @@ condition; it does not silently substitute a sample.
 
 | Key | Action |
 | --- | --- |
-| `1` to `6` | Open overview, comparison, attempt, evidence, history, or runbooks. |
+| `1` to `7` | Open overview, comparison, attempt, evidence, history, runbooks, or components. |
 | `Tab`, `h`, `l` | Move between views. |
 | `j`, `k`, arrow keys, `g`, `G` | Move the selection. |
 | `Enter` | Open a selected group, attempt, or its evidence. |
@@ -83,6 +83,14 @@ instead of claiming the original file still verifies.
 
 **History** lists all attempts by start time, including failed, refused,
 timed-out, and unverifiable runs. Enter opens the selected attempt.
+
+**Components** (`7`) lists each Coder One component with its latest
+isolated suite from `~/.openagents/coder-one/components/` beside its
+invocations across episodes: Jev mode, fixtures, errors, latency, cost, the
+metric summary, each fixture's output digest and metrics, and the episode
+count, latency, cost, and timeline source. `--runs-dir PATH` reads runs
+from elsewhere and `--no-runs` omits them. The
+[component guide](../coder/guides/coder-one-components.md) records runs.
 
 **Runbooks** lists the harness, host, delegate, results, and episode-contract
 documents beside the operating sequence and the rules for reading a number.

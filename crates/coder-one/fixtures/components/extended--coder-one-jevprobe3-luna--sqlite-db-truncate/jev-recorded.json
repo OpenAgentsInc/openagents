@@ -1,0 +1,63 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "642caa1cdc37a2788f0f716c0b2d9cc22fe303e9dffba6e590245c5d7d48b33c": {
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "answers": {
+        "done": {
+          "type": "noul",
+          "noul": 0.61
+        }
+      },
+      "input_tokens": 507,
+      "output_tokens": 20,
+      "milliseconds": 150,
+      "source": "sqlite-db-truncate__rgzhtVQ#jev-3"
+    },
+    "b0fb4c0b07c367b0430b8aecff6fac6b37a946713dd690d48bb0e1617b5a0167": {
+      "name": "jev_probe",
+      "model": "jev-1.13.0",
+      "answers": {
+        "probe_0": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "probe_1": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "probe_2": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "probe_3": {
+          "type": "noul",
+          "noul": 0.88
+        }
+      },
+      "input_tokens": 2368,
+      "output_tokens": 76,
+      "milliseconds": 657,
+      "source": "sqlite-db-truncate__rgzhtVQ#jev-probe-1"
+    },
+    "b319b078f49266efe5e2a5aaba852285519c416f1be89f4d83f142a81ba082c9": {
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "answers": {
+        "rel_0": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "edit_0": {
+          "type": "noul",
+          "noul": 0.29
+        }
+      },
+      "input_tokens": 465,
+      "output_tokens": 40,
+      "milliseconds": 229,
+      "source": "sqlite-db-truncate__rgzhtVQ#jev-survey-2"
+    }
+  }
+}

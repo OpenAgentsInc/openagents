@@ -10,10 +10,13 @@
 //! coder-one --version
 //! coder-one episode doctor --contract openagents.coder.episode.v1
 //! coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
+//! coder-one component list|run|suite|extract …
 //! ```
 //!
 //! The `episode` commands implement the Terminal-Bench harness's headless
-//! contract; `coder_one::episode` documents them.
+//! contract; `coder_one::episode` documents them. The `component` commands
+//! run one component alone on fixtures; `coder_one::component` documents
+//! them.
 //!
 //! A run clones the issue's repository fresh under
 //! `~/.openagents/coder-one/runs/`, works on a new branch there, and
@@ -51,7 +54,8 @@ const USAGE: &str = "usage: coder-one doctor
                  [--delegate-model MODEL] [--delegate-timeout SECONDS]
        coder-one --version
        coder-one episode doctor --contract openagents.coder.episode.v1
-       coder-one episode run --instruction-file F --output-dir D --contract C [--model M]";
+       coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
+       coder-one component list|run|suite|extract   (coder-one component help)";
 
 const PROMPT: &str = "Solve this issue.";
 
@@ -64,6 +68,7 @@ async fn main() -> ExitCode {
             Ok(())
         }
         Some("episode") => return episode_command(&args[1..]).await,
+        Some("component") => return component_command(&args[1..]).await,
         Some("doctor") if args.len() == 1 => doctor(),
         Some(url) if url.starts_with("https://github.com/") && url.contains("/issues/") => {
             match Options::parse(&args[1..]) {
@@ -110,6 +115,24 @@ async fn episode_command(args: &[String]) -> ExitCode {
         _ => Err(USAGE.to_string()),
     };
     match result {
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Err(message) => {
+            eprintln!("coder-one: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `coder-one component …`: 0 when every fixture ran, 1 when one failed.
+async fn component_command(args: &[String]) -> ExitCode {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h") | None
+    ) {
+        println!("{}", coder_one::component::cli::USAGE);
+        return ExitCode::SUCCESS;
+    }
+    match coder_one::component::cli::command(args).await {
         Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
         Err(message) => {
             eprintln!("coder-one: {message}");

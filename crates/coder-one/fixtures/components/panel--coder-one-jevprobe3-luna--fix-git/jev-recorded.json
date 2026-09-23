@@ -1,0 +1,397 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "07ba3c3ca465c89828f484bc07de576b9f5127950230298feec40cdc5946e06f": {
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "answers": {
+        "rel_0": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "edit_0": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rel_1": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "edit_1": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rel_2": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "edit_2": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rel_3": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_3": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rel_4": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "edit_4": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "rel_5": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "edit_5": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "rel_6": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "edit_6": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rel_7": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "edit_7": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "rel_8": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "edit_8": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "rel_9": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "edit_9": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rel_10": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "edit_10": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "rel_11": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "edit_11": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rel_12": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "edit_12": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rel_13": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "edit_13": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "rel_14": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_14": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rel_15": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "edit_15": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rel_16": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_16": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rel_17": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_17": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rel_18": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_18": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rel_19": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "edit_19": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "input_tokens": 2562,
+      "output_tokens": 744,
+      "milliseconds": 430,
+      "source": "fix-git__c2MR9Lx#jev-survey-3"
+    },
+    "2bff08bc82095622aa5335bed6d2548ccd947a149990f78102890e47c5d0c001": {
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "answers": {
+        "done": {
+          "type": "noul",
+          "noul": 0.89
+        }
+      },
+      "input_tokens": 1473,
+      "output_tokens": 20,
+      "milliseconds": 230,
+      "source": "fix-git__c2MR9Lx#jev-4"
+    },
+    "578ca1300cf4e934292671f0a00ac9fe48d3379e6f30335a2ce08575b99e50a2": {
+      "name": "jev_probe",
+      "model": "jev-1.13.0",
+      "answers": {
+        "probe_0": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "probe_1": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "probe_2": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "probe_3": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "probe_4": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "probe_5": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "probe_6": {
+          "type": "noul",
+          "noul": 0.9
+        }
+      },
+      "input_tokens": 3308,
+      "output_tokens": 130,
+      "milliseconds": 674,
+      "source": "fix-git__c2MR9Lx#jev-probe-1"
+    },
+    "e6a1d7080e506ecf953cbdfa2aad76e89f1f53d9deae19779a8b15fb46073a9a": {
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "answers": {
+        "rel_0": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "edit_0": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "rel_1": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "edit_1": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "rel_2": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "edit_2": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rel_3": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "edit_3": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rel_4": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "edit_4": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "rel_5": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "edit_5": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rel_6": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "edit_6": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rel_7": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "edit_7": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "rel_8": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "edit_8": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rel_9": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "edit_9": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rel_10": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "edit_10": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rel_11": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_11": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rel_12": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "edit_12": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rel_13": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "edit_13": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "rel_14": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "edit_14": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "rel_15": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "edit_15": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rel_16": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "edit_16": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rel_17": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_17": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rel_18": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_18": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rel_19": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_19": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "input_tokens": 2957,
+      "output_tokens": 744,
+      "milliseconds": 246,
+      "source": "fix-git__c2MR9Lx#jev-survey-2"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.close",
+  "source": {
+    "trace": {
+      "trace": "extended--coder-one-jevprobe3-luna--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__rgzhtVQ",
+      "task": "sqlite-db-truncate",
+      "reward": 1.0
+    },
+    "call": "jev-3"
+  },
+  "input": {
+    "task": {
+      "title": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as many of the rows as p…",
+      "body": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as many of the rows as possible, and create a JSON file in /app/recover.json. The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]\n"
+    },
+    "criteria": [],
+    "report": "Recovered all 10 rows and saved them in [recover.json](/app/recover.json). I validated that it parses as JSON and each row has the requested `word` and `value` fields.",
+    "changes": "The working directory is not a Git work tree, so its changes are not listed."
+  },
+  "retained": {
+    "done": 0.61
+  }
+}

@@ -7,6 +7,7 @@ Configure Coder, run work, and verify retained artifacts.
 | Document | Topic |
 | --- | --- |
 | [artifact-verification](artifact-verification.md) | Verify a retained artifact |
+| [coder-one-components](coder-one-components.md) | Run a Coder One component alone on fixtures |
 | [decision-profiles](decision-profiles.md) | Configure Coder's decision client |
 | [devin-delegation-runbook](devin-delegation-runbook.md) | Delegate work to Devin with Coder |
 | [headless](headless.md) | Headless mode |

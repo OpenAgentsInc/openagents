@@ -1,0 +1,83 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "2147393e965eda8ff65a3d3a63452861d26e32971784e69b926ccf3adf834c17": {
+      "name": "jev_probe",
+      "model": "jev-1.13.0",
+      "answers": {
+        "probe_0": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "probe_1": {
+          "type": "noul",
+          "noul": 0.77
+        },
+        "probe_2": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "probe_3": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "probe_4": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "probe_5": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "probe_6": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "probe_7": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "probe_8": {
+          "type": "noul",
+          "noul": 0.62
+        }
+      },
+      "input_tokens": 1755,
+      "output_tokens": 166,
+      "milliseconds": 660,
+      "source": "git-leak-recovery__dh8ZX77#jev-probe-1"
+    },
+    "d8ab8d6ca6777b6d1346b7ed978cdeb73f3c1476fc3939292b3779696e13a942": {
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "answers": {
+        "rel_0": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_0": {
+          "type": "noul",
+          "noul": 0.09
+        }
+      },
+      "input_tokens": 502,
+      "output_tokens": 40,
+      "milliseconds": 265,
+      "source": "git-leak-recovery__dh8ZX77#jev-survey-2"
+    },
+    "e91a8af0a5df0e80b11984bb8376db198a313fa2810ba6fa2b596827fd53f714": {
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "answers": {
+        "done": {
+          "type": "noul",
+          "noul": 0.65
+        }
+      },
+      "input_tokens": 546,
+      "output_tokens": 20,
+      "milliseconds": 277,
+      "source": "git-leak-recovery__dh8ZX77#jev-3"
+    }
+  }
+}

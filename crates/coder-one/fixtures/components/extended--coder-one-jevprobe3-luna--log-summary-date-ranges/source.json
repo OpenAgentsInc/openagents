@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.coder-one.fixture-source.v1",
+  "source": {
+    "trace": "extended--coder-one-jevprobe3-luna--log-summary-date-ranges",
+    "trial": "log-summary-date-ranges__XWSKgz5",
+    "task": "log-summary-date-ranges",
+    "reward": 0.0
+  },
+  "trajectory_sha256": "fb0a0a552ffc4baa0e7aef24f88f8c35aed4229712ecb4f380bbc65cbe9228bb",
+  "components": [
+    "evidence.probes",
+    "evidence.select",
+    "evidence.pack",
+    "verify.close"
+  ],
+  "recorded_answers": 4,
+  "briefing_reproduces": true,
+  "notes": [
+    "Probe outputs are what Jev read: each is clipped to 3,000 characters, so the keep budget counts at most that much per probe.",
+    "The briefing omitted 3 items; each keeps its name and size, and its content is placeholder text."
+  ]
+}

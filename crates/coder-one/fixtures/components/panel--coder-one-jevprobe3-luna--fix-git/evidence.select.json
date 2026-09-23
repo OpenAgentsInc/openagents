@@ -1,0 +1,184 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.select",
+  "source": {
+    "trace": {
+      "trace": "panel--coder-one-jevprobe3-luna--fix-git",
+      "trial": "fix-git__c2MR9Lx",
+      "task": "fix-git",
+      "reward": 1.0
+    },
+    "call": "jev-survey-2"
+  },
+  "input": {
+    "task": {
+      "title": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me …",
+      "body": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.\n"
+    },
+    "candidates": [
+      {
+        "path": "me.bib",
+        "excerpt": "2: title={Sensing depression: Using smartphone sensors to predict changes in depression severity},\n24: title = {Assessing Mental Health Issues on College Campuses: Preliminary Findings from a Pilot Study},\n53: Participants had unique digital indicators of their psychotic relapse. For some, self-reports provided clear and potentially actionable description of symptom e…"
+      },
+      {
+        "path": "_publications/merrillTransformingWearableData2024a.md",
+        "excerpt": "3: of sleep and exercise to health, deriving actionable personalized insights from\n7: opportunity to enable such personalized analysis at scale. Yet, the application\n8: of LLM agents in analyzing personal health is still largely untapped. In this paper,"
+      },
+      {
+        "path": "js/popper.min.js",
+        "excerpt": "11: function findIndex(a,b,c){var d=a.filter(function(e){return e[b]===c})[0];return a.indexOf(d)}\n47: function runModifiers(a,b,c){var d=void 0===c?a:a.slice(0,findIndex(a,'name',c));return d.forEach(function(e){e.enabled&&isFunction(e.function)&&(b=e.function(b…\n51: var Utils = {findIndex:findIndex,getBoundaries:getBoundaries,getBoundingClientRect:getBoundingClientRect,getOffsetParent:getOffsetParent,getOffsetRectRelativeTo…"
+      },
+      {
+        "path": "css/bootstrap.css",
+        "excerpt": "5: * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)\n268: a:visited {\n364: cursor: help;"
+      },
+      {
+        "path": "_publications/wang_crosscheck_2016.md",
+        "excerpt": "2: abstract: Early detection of mental health changes in individuals with serious mental\n14: range. Finally, we discuss results on the level of personalization that is needed\n16: from a population with schizophrenia, it is possible to train accurate personalized"
+      },
+      {
+        "path": "biblib/algo.py",
+        "excerpt": "48: for m in regexp.finditer(data):\n133: # Found beginning; now find the end\n138: # No von tokens.  Find hyphen-connected last name"
+      },
+      {
+        "path": "js/bootstrap.min.js",
+        "excerpt": "4: * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)\n6: if(\"undefined\"==typeof jQuery)throw new Error(\"Bootstrap's JavaScript requires jQuery. jQuery must be included before Bootstrap's JavaScript.\");+function(t){var…\n7: if(n||(n=new h(this,o),t(this).data(a,n)),\"string\"==typeof e){if(void 0===n[e])throw new Error('No method named \"'+e+'\"');n[e]()}})},o(h,null,[{key:\"VERSION\",ge…"
+      },
+      {
+        "path": "_layouts/default.html",
+        "excerpt": "6: <!-- Global site tag (gtag.js) - Google Analytics -->\n91: {% assign sorted_pubs = site.publications | sort: 'year' | reverse %}"
+      },
+      {
+        "path": "_publications/ben-zeev_crosscheck_2017.md",
+        "excerpt": "17: use) that reflected the changes they experienced more effectively. Conclusion Advancements\n22: identify changes within an individual over time (i.e. unique relapse signatures)"
+      },
+      {
+        "path": "_publications/tanAreLanguageModels2024.md",
+        "excerpt": "5: forecasting methods, we find that removing the LLM component or replacing it with\n7: the results even improved. We also find that despite their significant computational"
+      },
+      {
+        "path": "biblib/bib.py",
+        "excerpt": "185: # Helpers\n396: entries must be the database in which to find any crossref-ed"
+      },
+      {
+        "path": "css/bootstrap.min.css",
+        "excerpt": "5: * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)\n6: *//*! normalize.css v5.0.0 | MIT License | github.com/necolas/normalize.css */html{font-family:sans-serif;line-height:1.15;-ms-text-size-adjust:100%;-webkit-tex…"
+      },
+      {
+        "path": ".gitignore",
+        "excerpt": "4: _site/*"
+      },
+      {
+        "path": "_posters/frank2017sensing.md",
+        "excerpt": "9: title: '  Sensing depression: Using smartphone sensors to predict changes in depression"
+      },
+      {
+        "path": "_publications/merrillLanguageModelsStill2024.md",
+        "excerpt": "14: We find that otherwise highly-capable language models demonstrate surprisingly limited"
+      },
+      {
+        "path": "_publications/tseng2016ubicomp.md",
+        "excerpt": "19: title: '  Assessing mental health issues on college campuses: Preliminary findings"
+      },
+      {
+        "path": "biblib/messages.py",
+        "excerpt": "46: lastnl = self.__string.rfind('\\n', last_off, offset)"
+      },
+      {
+        "path": "css/bootstrap-reboot.css",
+        "excerpt": "291: cursor: help;"
+      },
+      {
+        "path": "css/bootstrap-reboot.css.map",
+        "excerpt": "1: {\"version\":3,\"sources\":[\"../../scss/_normalize.scss\",\"bootstrap-reboot.css\",\"../../scss/_reboot.scss\",\"../../scss/_variables.scss\",\"../../scss/mixins/_hover.scs…"
+      },
+      {
+        "path": "css/bootstrap-reboot.min.css",
+        "excerpt": "1: /*! normalize.css v5.0.0 | MIT License | github.com/necolas/normalize.css */html{font-family:sans-serif;line-height:1.15;-ms-text-size-adjust:100%;-webkit-text-…"
+      },
+      {
+        "path": "css/bootstrap.css.map",
+        "excerpt": "1: {\"version\":3,\"sources\":[\"../../scss/bootstrap.scss\",\"../../scss/_normalize.scss\",\"bootstrap.css\",\"../../scss/_print.scss\",\"../../scss/_reboot.scss\",\"../../scss/…"
+      },
+      {
+        "path": "js/jquery.min.js",
+        "excerpt": "2: !function(e,t){\"use strict\";\"object\"==typeof module&&\"object\"==typeof module.exports?module.exports=e.document?t(e,!0):function(e){if(!e.document)throw new Erro…"
+      },
+      {
+        "path": "CNAME",
+        "excerpt": "1: mikemerrill.io"
+      },
+      {
+        "path": "Gemfile",
+        "excerpt": "1: gem 'github-pages', group: :jekyll_plugins"
+      },
+      {
+        "path": "index.md",
+        "excerpt": "1: ---\n2: title: Mike A. Merrill\n3: layout: default"
+      },
+      {
+        "path": "_config.yml",
+        "excerpt": "1: name: Mike A. Merrill\n2: collections:\n3: - publications"
+      },
+      {
+        "path": "make_pubs.py",
+        "excerpt": "1: import biblib.bib\n2: import biblib.messages\n3: import biblib.algo"
+      },
+      {
+        "path": "css/style.css",
+        "excerpt": "1: @font-face {\n2: font-family: proximaNova;\n3: src: url(../fonts/Proxima-Nova-Thin.otf);"
+      },
+      {
+        "path": "js/scripts.js",
+        "excerpt": "1: // Empty JS for your own code to be here"
+      },
+      {
+        "path": "biblib/test.py",
+        "excerpt": "1: import unittest\n2: import collections\n3: import io"
+      },
+      {
+        "path": "_includes/about.md",
+        "excerpt": "1: I am a sixth PhD candidate at the [Paul G. Allen School of Computer Science & Engineering](https://www.cs.washington.edu/) at The University of Washington, wher…\n2: \n3: Previously, I was a Student Researcher at [Google Research](https://research.google/), an ML Research Intern at [Apple Health AI](https://machinelearning.apple.…"
+      },
+      {
+        "path": "biblib/__init__.py",
+        "excerpt": "1: __all__ = 'bib algo messages'.split()"
+      },
+      {
+        "path": "_includes/contact.md",
+        "excerpt": "1: - Email: mikeam@cs.washington.edu\n2: - [📚 Google Scholar](https://scholar.google.com/citations?user=lK6SO9IAAAAJ&hl=en)\n3: - [🐦 Twitter](https://twitter.com/Mike_A_Merrill)"
+      },
+      {
+        "path": "_includes/interests.md",
+        "excerpt": "1: My work focuses on methods, datasets, and benchmarks for training and evaluating large models (including language models) on __time series data__ and __code__.\n2: Recently I have been teaching __multimodal language models__ to reason about time series, and building __LLM agents__ that can make decisions and take actions b…"
+      },
+      {
+        "path": "css/bootstrap-grid.css",
+        "excerpt": "1: @-ms-viewport {\n2: width: device-width;\n3: }"
+      },
+      {
+        "path": "resources/headshot.jpeg",
+        "excerpt": ""
+      },
+      {
+        "path": "css/bootstrap.min.css.map",
+        "excerpt": "1: {\"version\":3,\"sources\":[\"../../scss/_normalize.scss\",\"bootstrap.css\",\"../../scss/_print.scss\",\"../../scss/_reboot.scss\",\"../../scss/_variables.scss\",\"../../scss…"
+      },
+      {
+        "path": "css/bootstrap-grid.css.map",
+        "excerpt": "1: {\"version\":3,\"sources\":[\"../../scss/bootstrap-grid.scss\",\"bootstrap-grid.css\",\"../../scss/_grid.scss\",\"../../scss/mixins/_grid.scss\",\"../../scss/mixins/_breakpo…"
+      },
+      {
+        "path": "css/bootstrap-grid.min.css",
+        "excerpt": "1: @-ms-viewport{width:device-width}html{-webkit-box-sizing:border-box;box-sizing:border-box;-ms-overflow-style:scrollbar}*,::after,::before{-webkit-box-sizing:inh…"
+      },
+      {
+        "path": "fonts/Proxima-Nova-Thin.otf",
+        "excerpt": ""
+      }
+    ]
+  },
+  "retained": {
+    "read": []
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.coder-one.fixture-source.v1",
+  "source": {
+    "trace": "panel--coder-one-jevprobe3-luna--headless-terminal",
+    "trial": "headless-terminal__tr384w7",
+    "task": "headless-terminal",
+    "reward": 0.0
+  },
+  "trajectory_sha256": "131ed002822d8a4b90198e4f568ba4464f452bae3bc582fc24f0e4b1e6a4170d",
+  "components": [
+    "evidence.probes",
+    "evidence.select",
+    "evidence.pack",
+    "verify.close"
+  ],
+  "recorded_answers": 3,
+  "briefing_reproduces": true,
+  "notes": [
+    "Probe outputs are what Jev read: each is clipped to 3,000 characters, so the keep budget counts at most that much per probe."
+  ]
+}

@@ -78,6 +78,10 @@ pub struct Entry {
     pub accumulated_usd: Option<f64>,
     /// The end event's output summary, when one was recorded.
     pub output: Value,
+    /// The digest of the output, when the end event recorded one.
+    pub output_digest: Option<String>,
+    /// When it started, in milliseconds since the epoch.
+    pub started_at: Option<u64>,
 }
 
 /// An episode's timeline.
@@ -304,6 +308,8 @@ fn build(source: Source, path: &Path, events: &[Event]) -> Timeline {
                     effects: record.get("effects").and_then(Value::as_bool) == Some(true),
                     accumulated_usd: None,
                     output: Value::Null,
+                    output_digest: None,
+                    started_at: Some(at),
                 });
             }
             Some("end") => {
@@ -331,6 +337,10 @@ fn build(source: Source, path: &Path, events: &[Event]) -> Timeline {
                 .pointer("/output/summary")
                 .cloned()
                 .unwrap_or(Value::Null);
+            entry.output_digest = end
+                .pointer("/output/digest")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
         }
     }
     finish(source, path, entries)
@@ -440,6 +450,8 @@ fn derive(path: &Path, steps: &[Value]) -> Timeline {
         effects: true,
         accumulated_usd: None,
         output: Value::Null,
+        output_digest: None,
+        started_at: Some(first),
     }];
     let mut add = |component: &str,
                    name: String,
@@ -465,6 +477,8 @@ fn derive(path: &Path, steps: &[Value]) -> Timeline {
             effects: component == "exec.session",
             accumulated_usd: None,
             output: Value::Null,
+            output_digest: None,
+            started_at: Some(end.saturating_sub(duration.unwrap_or(0))),
         });
     };
     for step in steps {

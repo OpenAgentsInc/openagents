@@ -1,0 +1,385 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "2a0a03c5047d6cf2b0ec66209d5c24a4c2cbd749ee24cfff41091bf4ce799883": {
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "answers": {
+        "done": {
+          "type": "noul",
+          "noul": 0.52
+        }
+      },
+      "input_tokens": 798,
+      "output_tokens": 20,
+      "milliseconds": 208,
+      "source": "log-summary-date-ranges__XWSKgz5#jev-4"
+    },
+    "61c3aa5dea5478d44edc482bf91865068117c8b2eef8463914a2152505e819c4": {
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "answers": {
+        "rel_0": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "edit_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_1": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "edit_1": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_2": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "edit_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_3": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "edit_3": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_4": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "edit_4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_5": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "edit_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_6": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "edit_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_7": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "edit_7": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_8": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "edit_8": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_9": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "edit_9": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_10": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "edit_10": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_11": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "edit_11": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_12": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "edit_12": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_13": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "edit_13": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_14": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "edit_14": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_15": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "edit_15": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_16": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "edit_16": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_17": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "edit_17": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_18": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "edit_18": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_19": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "edit_19": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 4393,
+      "output_tokens": 744,
+      "milliseconds": 291,
+      "source": "log-summary-date-ranges__XWSKgz5#jev-survey-2"
+    },
+    "919db8d469d7508a6db267b883ed550c1554e0ad055993fa6fdef27f76854164": {
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "answers": {
+        "rel_0": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "edit_0": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_1": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "edit_1": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_2": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "edit_2": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_3": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "edit_3": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_4": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "edit_4": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_5": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "edit_5": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_6": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "edit_6": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_7": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "edit_7": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_8": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "edit_8": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_9": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "edit_9": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_10": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "edit_10": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_11": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "edit_11": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_12": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "edit_12": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_13": {
+          "type": "noul",
+          "noul": 0.81
+        },
+        "edit_13": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_14": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "edit_14": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_15": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "edit_15": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_16": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "edit_16": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_17": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "edit_17": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_18": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "edit_18": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "rel_19": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "edit_19": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 4349,
+      "output_tokens": 744,
+      "milliseconds": 501,
+      "source": "log-summary-date-ranges__XWSKgz5#jev-survey-3"
+    },
+    "d94e93ae6e756146ca48d66b41d1016b58a8372599c97bd7a6cebcc0b331274e": {
+      "name": "jev_probe",
+      "model": "jev-1.13.0",
+      "answers": {
+        "probe_0": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "probe_1": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "probe_2": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "probe_3": {
+          "type": "noul",
+          "noul": 0.9
+        }
+      },
+      "input_tokens": 4947,
+      "output_tokens": 76,
+      "milliseconds": 919,
+      "source": "log-summary-date-ranges__XWSKgz5#jev-probe-1"
+    }
+  }
+}

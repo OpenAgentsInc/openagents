@@ -1,0 +1,23 @@
+{
+  "schema": "openagents.coder-one.fixture-source.v1",
+  "source": {
+    "trace": "panel--coder-one-jevprobe3-luna--build-cython-ext",
+    "trial": "build-cython-ext__jFQbtoW",
+    "task": "build-cython-ext",
+    "reward": 1.0
+  },
+  "trajectory_sha256": "1a4ca1a46144b8465635de2c49480916e899a930090677d65af5d0b82924b965",
+  "components": [
+    "evidence.setup",
+    "evidence.probes",
+    "evidence.select",
+    "evidence.pack",
+    "verify.close"
+  ],
+  "recorded_answers": 5,
+  "briefing_reproduces": true,
+  "notes": [
+    "Probe outputs are what Jev read: each is clipped to 3,000 characters, so the keep budget counts at most that much per probe.",
+    "The briefing omitted 1 items; each keeps its name and size, and its content is placeholder text."
+  ]
+}

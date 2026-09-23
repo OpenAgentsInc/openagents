@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.coder-one.fixture-source.v1",
+  "source": {
+    "trace": "panel--coder-one-jevprobe3-luna--fix-git",
+    "trial": "fix-git__c2MR9Lx",
+    "task": "fix-git",
+    "reward": 1.0
+  },
+  "trajectory_sha256": "ac1fd7d27d760f062f50da64647d3622c35db888fdcac1295e2114643c1f4d3d",
+  "components": [
+    "evidence.probes",
+    "evidence.select",
+    "evidence.pack",
+    "verify.close"
+  ],
+  "recorded_answers": 4,
+  "briefing_reproduces": true,
+  "notes": [
+    "Probe outputs are what Jev read: each is clipped to 3,000 characters, so the keep budget counts at most that much per probe."
+  ]
+}

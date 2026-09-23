@@ -17,16 +17,18 @@ pub enum View {
     Evidence,
     History,
     Guide,
+    Components,
 }
 
 impl View {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
         Self::Evidence,
         Self::History,
         Self::Guide,
+        Self::Components,
     ];
     pub fn title(self) -> &'static str {
         match self {
@@ -36,6 +38,7 @@ impl View {
             Self::Evidence => "evidence",
             Self::History => "history",
             Self::Guide => "runbooks",
+            Self::Components => "components",
         }
     }
     fn index(self) -> usize {
@@ -46,6 +49,7 @@ impl View {
             Self::Evidence => 3,
             Self::History => 4,
             Self::Guide => 5,
+            Self::Components => 6,
         }
     }
     pub fn from_digit(digit: char) -> Option<Self> {
@@ -59,11 +63,13 @@ pub struct App {
     records: Records,
     groups: Vec<ComparisonGroup>,
     view: View,
-    cursor: [usize; 6],
+    cursor: [usize; 7],
     selected_group: usize,
     selected_attempt: usize,
     history_order: Vec<usize>,
     ladder: Ladder,
+    /// Coder One's components: isolated runs beside episode invocations.
+    components: Option<crate::coder_components::Report>,
 }
 
 impl App {
@@ -79,12 +85,20 @@ impl App {
             records,
             groups,
             view: View::Overview,
-            cursor: [0; 6],
+            cursor: [0; 7],
             selected_group: 0,
             selected_attempt: 0,
             history_order,
             ladder: ladder_from_environment(),
+            components: None,
         }
+    }
+
+    /// Adds the Components view's report.
+    #[must_use]
+    pub fn with_components(mut self, report: crate::coder_components::Report) -> Self {
+        self.components = Some(report);
+        self
     }
 
     pub fn view(&self) -> View {
@@ -125,6 +139,8 @@ impl App {
             View::Evidence => self.current().map_or(0, |a| a.evidence.len()),
             View::History => self.records.attempts.len(),
             View::Guide => 0,
+            // The components report scrolls line by line.
+            View::Components => self.components().len(),
         }
     }
     pub fn inspect(&mut self) {
@@ -154,7 +170,7 @@ impl App {
                 self.view = View::Evidence;
             }
             View::Evidence => {}
-            View::Guide => {}
+            View::Guide | View::Components => {}
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -225,7 +241,7 @@ impl App {
                 self.ladder.style(Intensity::Half),
             )),
         );
-        let keys = "1-6 view  tab/h/l switch  j/k move  enter inspect  q quit";
+        let keys = "1-7 view  tab/h/l switch  j/k move  enter inspect  q quit";
         rail(
             box_area,
             buf,
@@ -277,8 +293,8 @@ impl App {
             View::Comparison => Some(4 + self.cursor()),
             View::History => Some(3 + self.cursor()),
             View::Evidence => Some(2 + self.cursor()),
-            View::Attempt => None,
-            View::Guide => None,
+            View::Attempt | View::Guide => None,
+            View::Components => Some(self.cursor()),
         }
     }
 
@@ -290,6 +306,7 @@ impl App {
             View::Evidence => self.evidence(),
             View::History => self.history(),
             View::Guide => self.guide(),
+            View::Components => self.components(),
         }
     }
 
@@ -683,6 +700,18 @@ impl App {
         lines
     }
 
+    fn components(&self) -> Vec<String> {
+        self.components.as_ref().map_or_else(
+            || {
+                vec![
+                    "No component report loaded. Record isolated runs with `coder-one component suite ID`."
+                        .to_owned(),
+                ]
+            },
+            |report| report.lines(None),
+        )
+    }
+
     fn guide(&self) -> Vec<String> {
         vec![
             "Runbooks and records".to_owned(),
@@ -761,6 +790,19 @@ fn wilson_95(successes: usize, trials: usize) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_components_view_shows_isolated_runs_and_episodes() {
+        let records = Records::default();
+        let report = crate::coder_components::report(None, &records);
+        let mut app = App::new(records).with_components(report);
+        app.open(View::Components);
+        let text = app.to_text(150, 40);
+        assert!(text.contains("Coder One components"), "{text}");
+        assert!(text.contains("evidence.pack"), "{text}");
+        assert!(text.contains("isolated: no recorded runs"), "{text}");
+        assert_eq!(View::from_digit('7'), Some(View::Components));
+    }
 
     #[test]
     fn unknown_and_zero_are_distinct_in_the_screen() {

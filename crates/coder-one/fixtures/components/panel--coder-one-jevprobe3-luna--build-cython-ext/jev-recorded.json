@@ -1,0 +1,423 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "09061c022e791ddbf2101efe3fc4991fcb5508500fe201f82e334e08b1751a7a": {
+      "name": "jev_setup",
+      "model": "jev-1.13.0",
+      "answers": {
+        "setup_0": {
+          "type": "noul",
+          "noul": 0.9
+        }
+      },
+      "input_tokens": 790,
+      "output_tokens": 22,
+      "milliseconds": 660,
+      "source": "build-cython-ext__jFQbtoW#jev_setup-1"
+    },
+    "1dec6474c4c6b5b29d05e1c5ce383506c3c235de13ca9b95ab15dd331c51b776": {
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "answers": {
+        "done": {
+          "type": "noul",
+          "noul": 0.78
+        }
+      },
+      "input_tokens": 942,
+      "output_tokens": 20,
+      "milliseconds": 812,
+      "source": "build-cython-ext__jFQbtoW#jev-5"
+    },
+    "23cc9fd3fc33f614c87ad63a22ef64af932e91b6b001b85615d59ce2458520da": {
+      "name": "jev_probe",
+      "model": "jev-1.13.0",
+      "answers": {
+        "probe_0": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "probe_1": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "probe_2": {
+          "type": "noul",
+          "noul": 0.75
+        },
+        "probe_3": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "probe_4": {
+          "type": "noul",
+          "noul": 0.67
+        },
+        "probe_5": {
+          "type": "noul",
+          "noul": 0.63
+        },
+        "probe_6": {
+          "type": "noul",
+          "noul": 0.59
+        },
+        "probe_7": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "probe_8": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "probe_9": {
+          "type": "noul",
+          "noul": 0.67
+        }
+      },
+      "input_tokens": 2756,
+      "output_tokens": 184,
+      "milliseconds": 243,
+      "source": "build-cython-ext__jFQbtoW#jev-probe-2"
+    },
+    "37381d8ab00a04905f16c8f6c1692a32b99a86b323304f9da624619bec5ebd9c": {
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "answers": {
+        "rel_0": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "edit_0": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rel_1": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "edit_1": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "rel_2": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "edit_2": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "rel_3": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "edit_3": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rel_4": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "edit_4": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "rel_5": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "edit_5": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "rel_6": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "edit_6": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "rel_7": {
+          "type": "noul",
+          "noul": 0.59
+        },
+        "edit_7": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "rel_8": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "edit_8": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "rel_9": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "edit_9": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rel_10": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "edit_10": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rel_11": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "edit_11": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "rel_12": {
+          "type": "noul",
+          "noul": 0.56
+        },
+        "edit_12": {
+          "type": "noul",
+          "noul": 0.6
+        },
+        "rel_13": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "edit_13": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "rel_14": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "edit_14": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "rel_15": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "edit_15": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "rel_16": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "edit_16": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "rel_17": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "edit_17": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "rel_18": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "edit_18": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "rel_19": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "edit_19": {
+          "type": "noul",
+          "noul": 0.21
+        }
+      },
+      "input_tokens": 3520,
+      "output_tokens": 744,
+      "milliseconds": 156,
+      "source": "build-cython-ext__jFQbtoW#jev-survey-3"
+    },
+    "c42e023005106229991c1ae4300b858e2bbe95d7b45b1c3ff4cc60baa70fdd66": {
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "answers": {
+        "rel_0": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "edit_0": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rel_1": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "edit_1": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rel_2": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "edit_2": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rel_3": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "edit_3": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rel_4": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "edit_4": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "rel_5": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "edit_5": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "rel_6": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "edit_6": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_7": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "edit_7": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rel_8": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "edit_8": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rel_9": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "edit_9": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rel_10": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "edit_10": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "rel_11": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "edit_11": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "rel_12": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "edit_12": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rel_13": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "edit_13": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rel_14": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "edit_14": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rel_15": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "edit_15": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rel_16": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "edit_16": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "rel_17": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "edit_17": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "rel_18": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "edit_18": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "rel_19": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "edit_19": {
+          "type": "noul",
+          "noul": 0.18
+        }
+      },
+      "input_tokens": 3463,
+      "output_tokens": 744,
+      "milliseconds": 311,
+      "source": "build-cython-ext__jFQbtoW#jev-survey-4"
+    }
+  }
+}

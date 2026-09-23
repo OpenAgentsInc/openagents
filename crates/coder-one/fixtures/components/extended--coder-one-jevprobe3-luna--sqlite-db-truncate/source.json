@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.coder-one.fixture-source.v1",
+  "source": {
+    "trace": "extended--coder-one-jevprobe3-luna--sqlite-db-truncate",
+    "trial": "sqlite-db-truncate__rgzhtVQ",
+    "task": "sqlite-db-truncate",
+    "reward": 1.0
+  },
+  "trajectory_sha256": "5ae5a2255ddcbb8b3fee5cf5da175529a6ff9b31ec8c912c22fdb9f7a95ea53c",
+  "components": [
+    "evidence.probes",
+    "evidence.select",
+    "evidence.pack",
+    "verify.close"
+  ],
+  "recorded_answers": 3,
+  "briefing_reproduces": true,
+  "notes": [
+    "Probe outputs are what Jev read: each is clipped to 3,000 characters, so the keep budget counts at most that much per probe."
+  ]
+}

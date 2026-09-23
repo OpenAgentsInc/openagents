@@ -1,0 +1,25 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.close",
+  "source": {
+    "trace": {
+      "trace": "panel--coder-one-jevprobe3-luna--fix-git",
+      "trial": "fix-git__c2MR9Lx",
+      "task": "fix-git",
+      "reward": 1.0
+    },
+    "call": "jev-4"
+  },
+  "input": {
+    "task": {
+      "title": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me …",
+      "body": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.\n"
+    },
+    "criteria": [],
+    "report": "Recovered and merged commit `c499730` (“Move to Stanford”) into `master` as merge commit `e50d68c`. The about page now has the Stanford role, and the layout updates are included.\n\nVerified the merge history and confirmed the working tree is clean.",
+    "changes": "git status --short:\n\ngit diff d7d3e4ba9350f634d92d39ace2b471433ee57d50:\ndiff --git a/_includes/about.md b/_includes/about.md\nindex ebf11b4..2a817c0 100644\n--- a/_includes/about.md\n+++ b/_includes/about.md\n@@ -1,3 +1,3 @@\n-I am a sixth PhD candidate at the [Paul G. Allen School of Computer Science & Engineering](https://www.cs.washington.edu/) at The University of Washington, where I am advised by [Tim Althoff](http://www.timalthoff.com/). I am affiliated with [UW NLP](https://twitter.com/uwnlp).\n+I am a Postdoctoral Researcher at Stanford CS.\n \n- Previously, I was a Student Researcher at [Google Research](https://research.google/), an ML Research Intern at [Apple Health AI](https://machinelearning.apple.com/work-with-us) and a data scientist and the second full-time employee at [HealthRhythms](https://www.healthrhythms.com). \n\\ No newline at end of file\n+Previously, I was a Student Researcher at [Google Research](https://research.google/), an ML Research Intern at [Apple Health AI](https://machinelearning.apple.com/work-with-us) and a data scientist and the second full-time employee at [HealthRhythms](https://www.healthrhythms.com). \ndiff --git a/_layouts/default.html b/_layouts/default.html\nindex 3fe07ee..cff5b5e 100644\n--- a/_layouts/default.html\n+++ b/_layouts/default.html\n@@ -27,7 +27,9 @@\n     <link href=\"css/bootstrap.min.css\" rel=\"stylesheet\">\n     <link href=\"css/style.css\" rel=\"stylesheet\">\n \n-    <link href=\"https://fonts.googleapis.com/css?family=Noto+Sans+HK:100,300|Barlow+Condensed|PT+Mono|PT+Serif&display=swap\" rel=\"stylesheet\">\n+    <link\n+        href=\"https://fonts.googleapis.com/css?family=Noto+Sans+HK:100,300|Barlow+Condensed|PT+Mono|PT+Serif&display=swap\"\n+        rel=\"stylesheet\">\n \n </head>\n \n@@ -38,7 +40,7 @@\n             <div class=\"jumbotron\">\n                 <div class=\"row\">\n                     <h3>\n-                        PhD Student @ UW CSE\n+                        Postdoc @ Stanford\n                     </h3>\n                 </div>\n                 <div class=\"row\">\n@@ -88,7 +90,7 @@\n         <div class=\"row\">\n             <div class=\"col-md-12\">\n                 <h2>Publications</h2>\n-                {% assign sorted_pubs = site.publications | sort: 'year' | reverse %} \n+                {% assign sorted_pubs = site.publications | sort: 'year' | reverse %}\n                 {% for pub in sorted_pubs %}\n                 <div class=\"row\">\n                     <div class=\"col-md-3 hide-on-small\">\n@@ -99,22 +101,22 @@\n                     <div class=\"col-md-9\">\n                         <p><b>{{pub.title}}</b></p>\n                         <p>\n-                            {% if pub.author contains \"Michael Merrill\" %} \n-                                {% assign a = pub.author | split: 'Michael Merrill' %} \n-                                {{a[0]}}<span class=\"author\">Michael Merrill</span>{{a[1]}} \n-                            {% elsif pub.author contains \"Mike A. Merrill*\" %} \n-                                {% assign a = pub.author | split: 'Mike A. Merrill' %} \n-                                {{a[0]}}<span class=\"author\">Mike A. Merrill*</span>{{a[1]}} \n-                            {% elsif pub.author contains \"Mike A. Merrill\" %} \n-                                {% assign a = pub.author | split: 'Mike A. Merrill' %} \n-                                {{a[0]}}<span class=\"author\">Mike A. Merrill</span>{{a[1]}} \n+                            {% if pub.author contains \"Michael Merrill\" %}\n+                            {% assign a = pub.author | split: 'Michael Merrill' %}\n+     …"
+  },
+  "retained": {
+    "done": 0.89
+  }
+}

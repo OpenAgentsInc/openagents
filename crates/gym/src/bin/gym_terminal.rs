@@ -59,7 +59,7 @@ Usage:
   gym-terminal            Read the records in the terminal.
   gym-terminal --print    Write all five decision views to stdout and exit.
   gym-terminal --terminal-bench [--print] [--jobs-dir PATH] [--traces-dir PATH] [--samples-dir PATH]
-                            [--no-jobs] [--no-traces] [--no-samples]
+                            [--runs-dir PATH] [--no-jobs] [--no-traces] [--no-samples] [--no-runs]
   gym-terminal --help     Print this message.
 
 The default decision-model views open a built-in fixture. Terminal-Bench
@@ -68,8 +68,8 @@ door or opens a network connection.
 
 Keys:
   1-5            Open the decision scoreboard, families, ladder, row, or chain.
-  1-6            Open the Terminal-Bench overview, comparison, attempt,
-                 evidence, history, or runbooks.
+  1-7            Open the Terminal-Bench overview, comparison, attempt,
+                 evidence, history, runbooks, or Coder One components.
   tab, h, l      Walk the views.
   j, k, arrows   Move the cursor.
   g, G           Jump to the first or last item.
@@ -83,6 +83,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let mut jobs = home.map(|path| path.join(".openagents/terminal-bench/jobs"));
     let mut traces = Some(repo.join("traces"));
     let mut samples = Some(repo.join("samples"));
+    let mut runs = gym::coder_components::default_runs_dir();
     let mut print_only = false;
     let mut index = 0;
     while index < arguments.len() {
@@ -92,7 +93,8 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
             "--no-jobs" => jobs = None,
             "--no-traces" => traces = None,
             "--no-samples" => samples = None,
-            "--jobs-dir" | "--traces-dir" | "--samples-dir" => {
+            "--no-runs" => runs = None,
+            "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--runs-dir" => {
                 let Some(path) = arguments.get(index + 1) else {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
@@ -102,6 +104,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
                 match arguments[index].as_str() {
                     "--jobs-dir" => jobs = Some(path.into()),
                     "--traces-dir" => traces = Some(path.into()),
+                    "--runs-dir" => runs = Some(path.into()),
                     _ => samples = Some(path.into()),
                 }
                 index += 1;
@@ -112,8 +115,9 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     }
     let records =
         terminal_bench::Records::load(jobs.as_deref(), traces.as_deref(), samples.as_deref());
+    let components = gym::coder_components::report(runs.as_deref(), &records);
+    let mut app = terminal_bench_tui::App::new(records).with_components(components);
     if print_only {
-        let mut app = terminal_bench_tui::App::new(records);
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {
             app.open(view);
@@ -121,10 +125,10 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         }
         return Ok(());
     }
-    run_tbench(records)
+    run_tbench(app)
 }
 
-fn run_tbench(records: terminal_bench::Records) -> io::Result<()> {
+fn run_tbench(app: terminal_bench_tui::App) -> io::Result<()> {
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         restore();
@@ -134,7 +138,7 @@ fn run_tbench(records: terminal_bench::Records) -> io::Result<()> {
     let mut out = stdout();
     execute!(out, EnterAlternateScreen, cursor::Hide)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(out))?;
-    let result = draw_tbench(&mut terminal, records);
+    let result = draw_tbench(&mut terminal, app);
     restore();
     let _ = std::panic::take_hook();
     result
@@ -142,9 +146,8 @@ fn run_tbench(records: terminal_bench::Records) -> io::Result<()> {
 
 fn draw_tbench(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    records: terminal_bench::Records,
+    mut app: terminal_bench_tui::App,
 ) -> io::Result<()> {
-    let mut app = terminal_bench_tui::App::new(records);
     loop {
         terminal.draw(|frame| app.render(frame.area(), frame.buffer_mut()))?;
         if let Event::Key(key) = event::read()? {

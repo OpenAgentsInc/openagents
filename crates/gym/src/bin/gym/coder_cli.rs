@@ -23,7 +23,11 @@ an arm, or a manifest file name or path.
   --traces-dir PATH        retained checkout traces
   --policies-dir PATH      manifest files (default crates/coder-one/policies)
   --no-jobs | --no-traces  omit one source
-  --json                   print versioned JSON instead of text";
+  --json                   print versioned JSON instead of text
+
+gym coder components [--component ID] [--json]
+                           each component's isolated fixture runs beside its
+                           episode invocations; see gym coder components --help";
 
 const SCHEMA: &str = "openagents.gym.coder-policy.v1";
 
@@ -99,6 +103,9 @@ pub fn run(args: Vec<String>) -> i32 {
 }
 
 fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
+    if args.first().map(String::as_str) == Some("components") {
+        return gym::coder_components::command(&args[1..], out);
+    }
     let (Some("policy"), Some(command)) = (
         args.first().map(String::as_str),
         args.get(1).map(String::as_str),

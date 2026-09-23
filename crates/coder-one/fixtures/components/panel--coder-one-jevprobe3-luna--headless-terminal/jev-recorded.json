@@ -1,0 +1,59 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "00a1f3a5727d66ca5e0c1fb4f276b85891108a542b53f843c324fd1c951322f0": {
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "answers": {
+        "rel_0": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "edit_0": {
+          "type": "noul",
+          "noul": 0.14
+        }
+      },
+      "input_tokens": 602,
+      "output_tokens": 40,
+      "milliseconds": 173,
+      "source": "headless-terminal__tr384w7#jev-survey-2"
+    },
+    "60235dd3b789ea7f45a3b6726e5676a1c06533366ef9a751f8cdf0d34fd4b98d": {
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "answers": {
+        "done": {
+          "type": "noul",
+          "noul": 0.53
+        }
+      },
+      "input_tokens": 657,
+      "output_tokens": 20,
+      "milliseconds": 242,
+      "source": "headless-terminal__tr384w7#jev-3"
+    },
+    "a46690ae9a20fdb788f5cb5ad2dad366e867eae9d721d4c3d2136e30c9a5ddd0": {
+      "name": "jev_probe",
+      "model": "jev-1.13.0",
+      "answers": {
+        "probe_0": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "probe_1": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "probe_2": {
+          "type": "noul",
+          "noul": 0.66
+        }
+      },
+      "input_tokens": 864,
+      "output_tokens": 58,
+      "milliseconds": 479,
+      "source": "headless-terminal__tr384w7#jev-probe-1"
+    }
+  }
+}
