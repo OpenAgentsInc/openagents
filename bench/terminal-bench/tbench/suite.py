@@ -76,6 +76,20 @@ RESET_MARGIN_SEC = 60
 # Exceptions that end a trial before the agent did any work. Harbor's
 # names; the trial is retried once after its job dir moves to failed/.
 SETUP_TIMEOUTS = frozenset({"AgentSetupTimeoutError", "EnvironmentStartTimeoutError"})
+
+
+def setup_failed(result: dict[str, Any], exception: str | None) -> bool:
+    """Whether a trial ended before its agent ran: a setup timeout, or any
+    exception, such as a registry reset while the environment built, in a
+    result whose agent execution Harbor recorded as never started."""
+    if exception in SETUP_TIMEOUTS:
+        return True
+    return bool(
+        exception
+        and "agent_execution" in result
+        and result["agent_execution"] is None
+        and not (result.get("verifier_result") or {}).get("rewards")
+    )
 CANCELLED = "CancelledError"
 
 # A trial whose process exited without a finished result is resumed this
@@ -388,7 +402,7 @@ def inspect_job(job_dir: Path) -> JobState:
         reward = rewards.get("reward")
         limit = (
             usage_limit.trial_usage_limit(trial, result)
-            if exception not in SETUP_TIMEOUTS and exception != CANCELLED
+            if not setup_failed(result, exception) and exception != CANCELLED
             else None
         )
         if exception == CANCELLED:
@@ -402,7 +416,7 @@ def inspect_job(job_dir: Path) -> JobState:
                     finished_at=_epoch(result.get("finished_at")),
                 )
             )
-        elif exception in SETUP_TIMEOUTS:
+        elif setup_failed(result, exception):
             states.append(JobState("setup_timeout", exception=exception))
         elif (
             failure := credentials.trial_credential_failure(trial, result)

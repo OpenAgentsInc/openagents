@@ -22,7 +22,8 @@ the Claude quota it drew, and the trial runs again:
   and restarts the experiment.
 - **Quota**: a session a provider's usage limit stopped. Every arm on the
   provider pauses until the limit resets.
-- **Infrastructure**: a setup timeout.
+- **Infrastructure**: a setup timeout, or an environment that failed
+  before the agent started, such as a registry reset during its build.
 
 Claude trials use the long-lived token in
 ``~/.openagents/claude-setup-token``. An experiment that has a Claude arm

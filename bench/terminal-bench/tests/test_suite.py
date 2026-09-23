@@ -342,6 +342,35 @@ def test_a_setup_timeout_moves_aside_and_retries_once(tmp_path):
     assert "twice" in trial.reason
 
 
+def test_an_environment_that_failed_before_the_agent_ran_is_retried(tmp_path):
+    job = tmp_path / "jobs" / "tb4--arm--flaky"
+    trial = job / "trial__abc"
+    trial.mkdir(parents=True)
+    (trial / "result.json").write_text(json.dumps({
+        "exception_info": {"exception_type": "RuntimeError"},
+        "verifier_result": None,
+        "agent_execution": None,
+    }))
+    scheduler, _, _ = _scheduler(tmp_path, [_task("flaky")])
+    scheduler.reconcile()
+    assert scheduler.trials[0].state == PENDING and scheduler.trials[0].retries == 1
+    assert not job.exists()
+
+
+def test_an_agent_that_ran_and_raised_is_still_a_result(tmp_path):
+    trial = tmp_path / "jobs" / "tb4--arm--ran" / "trial__abc"
+    trial.mkdir(parents=True)
+    (trial / "result.json").write_text(json.dumps({
+        "exception_info": {"exception_type": "AgentTimeoutError"},
+        "verifier_result": {"rewards": {"reward": 0.0}},
+        "agent_execution": {"started_at": "2026-09-23T00:00:00Z",
+                            "finished_at": "2026-09-23T01:00:00Z"},
+    }))
+    scheduler, _, _ = _scheduler(tmp_path, [_task("ran")])
+    scheduler.reconcile()
+    assert scheduler.trials[0].state == FINISHED
+
+
 def test_a_restart_counts_earlier_setup_timeout_moves(tmp_path):
     failed = tmp_path / "failed" / "tb4--arm--flaky-setup-timeout-1"
     failed.mkdir(parents=True)
