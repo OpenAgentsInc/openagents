@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "task.mini",
+  "source": {
+    "kind": "synthetic",
+    "note": "the mini-task's bad script"
+  },
+  "input": {
+    "task": "interactive-terminal",
+    "variant": "bad",
+    "expect": "failed"
+  },
+  "retained": null
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "exec.scripted",
+  "source": {
+    "kind": "synthetic",
+    "note": "authored to exercise one session-control capability"
+  },
+  "input": {
+    "script": {
+      "schema": "openagents.coder-one.executor-script.v1",
+      "name": "hang",
+      "events": [
+        {
+          "at_ms": 0,
+          "do": "claim",
+          "text": "Thinking."
+        },
+        {
+          "at_ms": 10,
+          "do": "hang"
+        }
+      ]
+    },
+    "controls": {
+      "deadline_ms": 200,
+      "tick_ms": 10
+    },
+    "expect": {
+      "status": "timed_out",
+      "actions": [
+        "start:done",
+        "stop:done"
+      ]
+    }
+  },
+  "retained": null
+}

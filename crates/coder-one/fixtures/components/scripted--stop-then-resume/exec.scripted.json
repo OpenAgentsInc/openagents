@@ -1,0 +1,58 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "exec.scripted",
+  "source": {
+    "kind": "synthetic",
+    "note": "authored to exercise one session-control capability"
+  },
+  "input": {
+    "script": {
+      "schema": "openagents.coder-one.executor-script.v1",
+      "name": "resume",
+      "events": [
+        {
+          "at_ms": 0,
+          "do": "claim",
+          "text": "Wrote a draft."
+        },
+        {
+          "at_ms": 10,
+          "do": "hang"
+        }
+      ],
+      "on_resume": [
+        {
+          "at_ms": 5,
+          "do": "write",
+          "path": "final.txt",
+          "content": "done\n"
+        },
+        {
+          "at_ms": 5,
+          "do": "end"
+        }
+      ]
+    },
+    "controls": {
+      "deadline_ms": 5000,
+      "tick_ms": 10,
+      "stop_when": {
+        "on": "claim",
+        "contains": "draft"
+      },
+      "resume": "Continue from the draft."
+    },
+    "expect": {
+      "status": "answered",
+      "files": [
+        "final.txt"
+      ],
+      "actions": [
+        "start:done",
+        "stop:done",
+        "resume:done"
+      ]
+    }
+  },
+  "retained": null
+}

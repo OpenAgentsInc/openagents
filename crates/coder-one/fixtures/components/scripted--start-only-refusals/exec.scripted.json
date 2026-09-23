@@ -1,0 +1,61 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "exec.scripted",
+  "source": {
+    "kind": "synthetic",
+    "note": "authored to exercise one session-control capability"
+  },
+  "input": {
+    "script": {
+      "schema": "openagents.coder-one.executor-script.v1",
+      "name": "start-only",
+      "events": [
+        {
+          "at_ms": 0,
+          "do": "command",
+          "command": "make",
+          "output": "error",
+          "exit_code": 2
+        },
+        {
+          "at_ms": 10,
+          "do": "hang"
+        }
+      ],
+      "capabilities": {
+        "start": true,
+        "observe": false,
+        "stop": false,
+        "resume": false,
+        "steer": false
+      },
+      "on_steer": [
+        {
+          "at_ms": 0,
+          "do": "end"
+        }
+      ]
+    },
+    "controls": {
+      "deadline_ms": 100,
+      "tick_ms": 10,
+      "steer": {
+        "when": {
+          "on": "after",
+          "ms": 50
+        },
+        "message": "hurry"
+      }
+    },
+    "expect": {
+      "status": "timed_out",
+      "actions": [
+        "start:done",
+        "observe:refused",
+        "steer:refused",
+        "stop:refused"
+      ]
+    }
+  },
+  "retained": null
+}

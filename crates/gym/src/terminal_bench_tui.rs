@@ -19,10 +19,11 @@ pub enum View {
     Guide,
     Components,
     Requirements,
+    MiniTasks,
 }
 
 impl View {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
@@ -31,6 +32,7 @@ impl View {
         Self::Guide,
         Self::Components,
         Self::Requirements,
+        Self::MiniTasks,
     ];
     pub fn title(self) -> &'static str {
         match self {
@@ -42,6 +44,7 @@ impl View {
             Self::Guide => "runbooks",
             Self::Components => "components",
             Self::Requirements => "requirements",
+            Self::MiniTasks => "mini-tasks",
         }
     }
     fn index(self) -> usize {
@@ -54,6 +57,7 @@ impl View {
             Self::Guide => 5,
             Self::Components => 6,
             Self::Requirements => 7,
+            Self::MiniTasks => 8,
         }
     }
     pub fn from_digit(digit: char) -> Option<Self> {
@@ -67,7 +71,7 @@ pub struct App {
     records: Records,
     groups: Vec<ComparisonGroup>,
     view: View,
-    cursor: [usize; 8],
+    cursor: [usize; 9],
     selected_group: usize,
     selected_attempt: usize,
     history_order: Vec<usize>,
@@ -76,6 +80,8 @@ pub struct App {
     components: Option<crate::coder_components::Report>,
     /// Coder One's requirement maps.
     requirements: Option<crate::coder_requirements::Report>,
+    /// Coder One's mini-task runs, newest first, and unreadable ones.
+    minitasks: (Vec<crate::coder_minitasks::Run>, Vec<String>),
 }
 
 impl App {
@@ -91,13 +97,14 @@ impl App {
             records,
             groups,
             view: View::Overview,
-            cursor: [0; 8],
+            cursor: [0; 9],
             selected_group: 0,
             selected_attempt: 0,
             history_order,
             ladder: ladder_from_environment(),
             components: None,
             requirements: None,
+            minitasks: (Vec::new(), Vec::new()),
         }
     }
 
@@ -105,6 +112,17 @@ impl App {
     #[must_use]
     pub fn with_requirements(mut self, report: crate::coder_requirements::Report) -> Self {
         self.requirements = Some(report);
+        self
+    }
+
+    /// Adds the mini-task view's runs.
+    #[must_use]
+    pub fn with_minitasks(
+        mut self,
+        runs: Vec<crate::coder_minitasks::Run>,
+        errors: Vec<String>,
+    ) -> Self {
+        self.minitasks = (runs, errors);
         self
     }
 
@@ -156,6 +174,7 @@ impl App {
             // The components report scrolls line by line.
             View::Components => self.components().len(),
             View::Requirements => self.requirements().len(),
+            View::MiniTasks => self.minitasks.0.len(),
         }
     }
     pub fn inspect(&mut self) {
@@ -185,7 +204,7 @@ impl App {
                 self.view = View::Evidence;
             }
             View::Evidence => {}
-            View::Guide | View::Components | View::Requirements => {}
+            View::Guide | View::Components | View::Requirements | View::MiniTasks => {}
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -256,7 +275,7 @@ impl App {
                 self.ladder.style(Intensity::Half),
             )),
         );
-        let keys = "1-8 view  tab/h/l switch  j/k move  enter inspect  q quit";
+        let keys = "1-9 view  tab/h/l switch  j/k move  enter inspect  q quit";
         rail(
             box_area,
             buf,
@@ -310,6 +329,7 @@ impl App {
             View::Evidence => Some(2 + self.cursor()),
             View::Attempt | View::Guide => None,
             View::Components | View::Requirements => Some(self.cursor()),
+            View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 2 + self.cursor()),
         }
     }
 
@@ -323,6 +343,11 @@ impl App {
             View::Guide => self.guide(),
             View::Components => self.components(),
             View::Requirements => self.requirements(),
+            View::MiniTasks => crate::coder_minitasks::lines(
+                &self.minitasks.0,
+                &self.minitasks.1,
+                Some(self.cursor()),
+            ),
         }
     }
 
@@ -831,6 +856,22 @@ mod tests {
         assert!(text.contains("evidence.pack"), "{text}");
         assert!(text.contains("isolated: no recorded runs"), "{text}");
         assert_eq!(View::from_digit('7'), Some(View::Components));
+    }
+
+    #[test]
+    fn the_mini_task_view_lists_runs_and_shows_the_selected_one() {
+        let root = std::env::temp_dir().join(format!("gym-tui-minitasks-{}", std::process::id()));
+        crate::coder_minitasks::tests::fixture_run(&root, "minitask-a-1", "failed");
+        let (runs, errors) = crate::coder_minitasks::load(&root);
+        let mut app = App::new(Records::default()).with_minitasks(runs, errors);
+        assert_eq!(View::from_digit('9'), Some(View::MiniTasks));
+        app.open(View::MiniTasks);
+        let text = app.to_text(150, 40);
+        assert!(text.contains("mini-task runs"), "{text}");
+        assert!(text.contains("log-severity"), "{text}");
+        assert!(text.contains("Grade: failed"), "{text}");
+        assert!(text.contains("Episode timeline"), "{text}");
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

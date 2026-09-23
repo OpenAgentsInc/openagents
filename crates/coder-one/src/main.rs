@@ -11,6 +11,7 @@
 //! coder-one episode doctor --contract openagents.coder.episode.v1
 //! coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
 //! coder-one component list|run|suite|extract …
+//! coder-one minitask list|run …
 //! ```
 //!
 //! The `episode` commands implement the Terminal-Bench harness's headless
@@ -55,7 +56,8 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one --version
        coder-one episode doctor --contract openagents.coder.episode.v1
        coder-one episode run --instruction-file F --output-dir D --contract C [--model M]
-       coder-one component list|run|suite|extract   (coder-one component help)";
+       coder-one component list|run|suite|extract   (coder-one component help)
+       coder-one minitask list|run                  (coder-one minitask help)";
 
 const PROMPT: &str = "Solve this issue.";
 
@@ -69,6 +71,7 @@ async fn main() -> ExitCode {
         }
         Some("episode") => return episode_command(&args[1..]).await,
         Some("component") => return component_command(&args[1..]).await,
+        Some("minitask") => return minitask_command(&args[1..]).await,
         Some("doctor") if args.len() == 1 => doctor(),
         Some(url) if url.starts_with("https://github.com/") && url.contains("/issues/") => {
             match Options::parse(&args[1..]) {
@@ -133,6 +136,24 @@ async fn component_command(args: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match coder_one::component::cli::command(args).await {
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Err(message) => {
+            eprintln!("coder-one: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `coder-one minitask …`: 0 when the grader passed.
+async fn minitask_command(args: &[String]) -> ExitCode {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h") | None
+    ) {
+        println!("{}", coder_one::minitask::cli::USAGE);
+        return ExitCode::SUCCESS;
+    }
+    match coder_one::minitask::cli::command(args).await {
         Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
         Err(message) => {
             eprintln!("coder-one: {message}");

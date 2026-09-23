@@ -37,7 +37,7 @@ condition; it does not silently substitute a sample.
 
 | Key | Action |
 | --- | --- |
-| `1` to `7` | Open overview, comparison, attempt, evidence, history, runbooks, or components. |
+| `1` to `9` | Open overview, comparison, attempt, evidence, history, runbooks, components, requirements, or mini-tasks. |
 | `Tab`, `h`, `l` | Move between views. |
 | `j`, `k`, arrow keys, `g`, `G` | Move the selection. |
 | `Enter` | Open a selected group, attempt, or its evidence. |
@@ -91,6 +91,15 @@ metric summary, each fixture's output digest and metrics, and the episode
 count, latency, cost, and timeline source. `--runs-dir PATH` reads runs
 from elsewhere and `--no-runs` omits them. The
 [component guide](../coder/guides/coder-one-components.md) records runs.
+
+**Mini-tasks** (`9`) lists Coder One's mini-task runs from
+`~/.openagents/coder-one/minitasks/`, labeled as mini-tasks rather than
+Terminal-Bench attempts, with each run's task, executor, outcome, and grade.
+Below the list, the selected run shows its session-control actions, its
+executor events by kind, and its invocation timeline.
+`--minitasks-dir PATH` reads runs from elsewhere and `--no-minitasks` omits
+them. The [mini-task guide](../coder/guides/coder-one-minitasks.md) records
+runs.
 
 **Runbooks** lists the harness, host, delegate, results, and episode-contract
 documents beside the operating sequence and the rules for reading a number.

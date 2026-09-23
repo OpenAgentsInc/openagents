@@ -1,0 +1,65 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "exec.scripted",
+  "source": {
+    "kind": "synthetic",
+    "note": "authored to exercise one session-control capability"
+  },
+  "input": {
+    "script": {
+      "schema": "openagents.coder-one.executor-script.v1",
+      "name": "steer",
+      "events": [
+        {
+          "at_ms": 0,
+          "do": "command",
+          "command": "pytest -q",
+          "output": "1 failed",
+          "exit_code": 1
+        },
+        {
+          "at_ms": 10,
+          "do": "hang"
+        }
+      ],
+      "on_steer": [
+        {
+          "at_ms": 30,
+          "do": "write",
+          "path": "fixed.txt",
+          "content": "ok\n"
+        },
+        {
+          "at_ms": 40,
+          "do": "claim",
+          "text": "Fixed after the steer."
+        },
+        {
+          "at_ms": 40,
+          "do": "end"
+        }
+      ]
+    },
+    "controls": {
+      "deadline_ms": 5000,
+      "tick_ms": 10,
+      "steer": {
+        "when": {
+          "on": "command_failed"
+        },
+        "message": "A command failed; fix it before finishing."
+      }
+    },
+    "expect": {
+      "status": "answered",
+      "files": [
+        "fixed.txt"
+      ],
+      "actions": [
+        "start:done",
+        "steer:done"
+      ]
+    }
+  },
+  "retained": null
+}

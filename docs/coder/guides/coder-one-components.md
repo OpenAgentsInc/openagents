@@ -18,7 +18,12 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | `evidence.probes.selector` | Which finished probe outputs the briefing carries. | One request |
 | `evidence.select` | Which candidate files the survey reads into the briefing. | One request per 20 files |
 | `evidence.pack` | The briefing within its character budget, with every omission named. | None |
+| `exec.scripted` | How the host starts, observes, steers, stops, and resumes a scripted session. | None |
 | `verify.close` | Whether the delegate's report and the changes show the task done. | One request |
+| `task.mini` | A whole mini-task episode with the scripted executor, graded. | None |
+
+`exec.scripted` and `task.mini` are covered in
+[Run Coder One on a mini-task](coder-one-minitasks.md).
 
 Each component is a function from a serializable input to an output and
 named metrics. To add one, implement `coder_one::component::Component`

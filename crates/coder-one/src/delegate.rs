@@ -1414,6 +1414,19 @@ impl Executor for Cli {
     }
 
     async fn execute(&mut self, briefing: &Briefing) -> Report {
+        self.execute_wrapped(briefing, &Ok).await
+    }
+}
+
+/// Wraps the delegate's command before it runs, such as inside a
+/// filesystem boundary, or says why it can't.
+pub type Wrap<'a> = dyn Fn(std::process::Command) -> Result<std::process::Command, String> + 'a;
+
+impl Cli {
+    /// Runs one briefing like [`Executor::execute`], with the command
+    /// passed through `wrap` first. A wrap that fails is a harness status:
+    /// the delegate never starts unbounded instead.
+    pub async fn execute_wrapped(&mut self, briefing: &Briefing, wrap: &Wrap<'_>) -> Report {
         self.runs += 1;
         let (briefing_name, stream_name) = self.names();
         let briefing_path = self.artifacts.join(&briefing_name);
@@ -1446,7 +1459,10 @@ impl Executor for Cli {
         if let Err(error) = std::fs::write(&briefing_path, &briefing.text) {
             return harness(format!("cannot write {}: {error}", briefing_path.display()));
         }
-        let command = self.command(&binary, &briefing_path, &stream_path);
+        let command = match wrap(self.command(&binary, &briefing_path, &stream_path)) {
+            Ok(command) => command,
+            Err(why) => return harness(why),
+        };
         println!(
             "  delegate ▸ {} ({}) · deadline {}s · briefing {} characters",
             self.agent(),

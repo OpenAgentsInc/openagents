@@ -81,6 +81,26 @@ trajectory. `--runs-dir PATH` reads runs from elsewhere, and `--no-runs`,
 [component guide](../coder/guides/coder-one-components.md) covers the
 runner, fixtures, and Jev modes.
 
+## Read Coder One mini-task runs
+
+`gym coder minitasks` lists the runs `coder-one minitask run` records under
+`~/.openagents/coder-one/minitasks/`, newest first: task, executor, how the
+episode ended, and the grader's verdict. It labels them as mini-tasks, not
+Terminal-Bench attempts.
+
+```sh
+gym coder minitasks
+gym coder minitasks --run latest
+gym coder minitasks --task cancel-cleanup --json
+```
+
+`--run ID` or `--run latest` shows one run's grade, its session-control
+actions, its executor events by kind, and its invocation timeline.
+`--runs-dir PATH` reads runs from elsewhere. With `--json`, the schema is
+`openagents.gym.coder-minitasks.v1`. The
+[mini-task guide](../coder/guides/coder-one-minitasks.md) covers recording
+runs.
+
 ## Compare Coder One policy manifests
 
 `gym coder policy` reads the policy manifest every Coder One episode

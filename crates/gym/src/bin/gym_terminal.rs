@@ -59,7 +59,8 @@ Usage:
   gym-terminal            Read the records in the terminal.
   gym-terminal --print    Write all five decision views to stdout and exit.
   gym-terminal --terminal-bench [--print] [--jobs-dir PATH] [--traces-dir PATH] [--samples-dir PATH]
-                            [--runs-dir PATH] [--no-jobs] [--no-traces] [--no-samples] [--no-runs]
+                            [--runs-dir PATH] [--minitasks-dir PATH] [--no-jobs] [--no-traces]
+                            [--no-samples] [--no-runs] [--no-minitasks]
   gym-terminal --help     Print this message.
 
 The default decision-model views open a built-in fixture. Terminal-Bench
@@ -68,8 +69,9 @@ door or opens a network connection.
 
 Keys:
   1-5            Open the decision scoreboard, families, ladder, row, or chain.
-  1-7            Open the Terminal-Bench overview, comparison, attempt,
-                 evidence, history, runbooks, or Coder One components.
+  1-9            Open the Terminal-Bench overview, comparison, attempt,
+                 evidence, history, runbooks, Coder One components,
+                 requirement maps, or mini-task runs.
   tab, h, l      Walk the views.
   j, k, arrows   Move the cursor.
   g, G           Jump to the first or last item.
@@ -84,6 +86,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let mut traces = Some(repo.join("traces"));
     let mut samples = Some(repo.join("samples"));
     let mut runs = gym::coder_components::default_runs_dir();
+    let mut minitasks = gym::coder_minitasks::default_runs_dir();
     let mut print_only = false;
     let mut index = 0;
     while index < arguments.len() {
@@ -94,7 +97,8 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
             "--no-traces" => traces = None,
             "--no-samples" => samples = None,
             "--no-runs" => runs = None,
-            "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--runs-dir" => {
+            "--no-minitasks" => minitasks = None,
+            "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--runs-dir" | "--minitasks-dir" => {
                 let Some(path) = arguments.get(index + 1) else {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
@@ -105,6 +109,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
                     "--jobs-dir" => jobs = Some(path.into()),
                     "--traces-dir" => traces = Some(path.into()),
                     "--runs-dir" => runs = Some(path.into()),
+                    "--minitasks-dir" => minitasks = Some(path.into()),
                     _ => samples = Some(path.into()),
                 }
                 index += 1;
@@ -117,9 +122,14 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         terminal_bench::Records::load(jobs.as_deref(), traces.as_deref(), samples.as_deref());
     let components = gym::coder_components::report(runs.as_deref(), &records);
     let requirements = gym::coder_requirements::report(runs.as_deref(), &records);
+    let (minitask_runs, minitask_errors) = minitasks
+        .as_deref()
+        .map(gym::coder_minitasks::load)
+        .unwrap_or_default();
     let mut app = terminal_bench_tui::App::new(records)
         .with_components(components)
-        .with_requirements(requirements);
+        .with_requirements(requirements)
+        .with_minitasks(minitask_runs, minitask_errors);
     if print_only {
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {

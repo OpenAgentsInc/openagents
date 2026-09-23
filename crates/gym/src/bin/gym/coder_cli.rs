@@ -30,7 +30,10 @@ gym coder components [--component ID] [--json]
                            episode invocations; see gym coder components --help
 gym coder requirements [QUERY] [--json]
                            task.requirements maps: spans, kinds, bindings,
-                           coverage, and recall and precision against labels";
+                           coverage, and recall and precision against labels
+gym coder minitasks [--run ID|latest] [--json]
+                           mini-task runs with their grades and timelines;
+                           see gym coder minitasks --help";
 
 const SCHEMA: &str = "openagents.gym.coder-policy.v1";
 
@@ -111,6 +114,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("requirements") {
         return gym::coder_requirements::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("minitasks") {
+        return gym::coder_minitasks::command(&args[1..], out);
     }
     let (Some("policy"), Some(command)) = (
         args.first().map(String::as_str),

@@ -1,0 +1,58 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "exec.scripted",
+  "source": {
+    "kind": "synthetic",
+    "note": "authored to exercise one session-control capability"
+  },
+  "input": {
+    "script": {
+      "schema": "openagents.coder-one.executor-script.v1",
+      "name": "claude",
+      "events": [
+        {
+          "at_ms": 0,
+          "do": "claim",
+          "text": "Writing run.py."
+        },
+        {
+          "at_ms": 20,
+          "do": "write",
+          "path": "run.py",
+          "content": "print('hi')\n"
+        },
+        {
+          "at_ms": 30,
+          "do": "command",
+          "command": "python3 run.py",
+          "output": "hi\n",
+          "exit_code": 0
+        },
+        {
+          "at_ms": 40,
+          "do": "claim",
+          "text": "run.py prints hi."
+        },
+        {
+          "at_ms": 40,
+          "do": "end"
+        }
+      ],
+      "format": "claude"
+    },
+    "controls": {
+      "deadline_ms": 5000,
+      "tick_ms": 10
+    },
+    "expect": {
+      "status": "answered",
+      "files": [
+        "run.py"
+      ],
+      "actions": [
+        "start:done"
+      ]
+    }
+  },
+  "retained": null
+}

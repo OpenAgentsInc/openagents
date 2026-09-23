@@ -1,0 +1,55 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "exec.scripted",
+  "source": {
+    "kind": "synthetic",
+    "note": "authored to exercise one session-control capability"
+  },
+  "input": {
+    "script": {
+      "schema": "openagents.coder-one.executor-script.v1",
+      "name": "write-run-answer",
+      "events": [
+        {
+          "at_ms": 0,
+          "do": "claim",
+          "text": "Writing the file."
+        },
+        {
+          "at_ms": 50,
+          "do": "write",
+          "path": "out/a.txt",
+          "content": "hello\n"
+        },
+        {
+          "at_ms": 60,
+          "do": "run",
+          "command": "cat out/a.txt"
+        },
+        {
+          "at_ms": 100,
+          "do": "claim",
+          "text": "Done."
+        },
+        {
+          "at_ms": 100,
+          "do": "end"
+        }
+      ]
+    },
+    "controls": {
+      "deadline_ms": 5000,
+      "tick_ms": 10
+    },
+    "expect": {
+      "status": "answered",
+      "files": [
+        "out/a.txt"
+      ],
+      "actions": [
+        "start:done"
+      ]
+    }
+  },
+  "retained": null
+}

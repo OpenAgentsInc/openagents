@@ -22,6 +22,7 @@ pub mod evidence;
 pub mod extract;
 pub mod jev;
 pub mod pack;
+pub mod scripted;
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -131,7 +132,9 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(ProbeKeep),
         Box::new(Select),
         Box::new(Pack),
+        Box::new(scripted::ScriptedAdapter),
         Box::new(Close),
+        Box::new(scripted::MiniTaskRun),
     ]
 }
 
@@ -803,10 +806,11 @@ pub async fn run_fixture(
         .filter(|child| child.parent.as_deref() == Some(invocation.as_str()))
     {
         let Some(end) = &child.ended else { continue };
-        let how = end
-            .pointer("/output/summary/how")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
+        // Only a Jev request records how it was answered; a component's
+        // other children, such as session control, aren't Jev's.
+        let Some(how) = end.pointer("/output/summary/how").and_then(Value::as_str) else {
+            continue;
+        };
         let count = jev.get(how).and_then(Value::as_u64).unwrap_or(0) + 1;
         jev.insert(how.to_string(), json!(count));
         costs.push(end.pointer("/cost/usd").and_then(Value::as_f64));
