@@ -196,6 +196,12 @@ script fails it, and each episode finishes in under 10 seconds.
 
 ## See runs in the Gym
 
+To follow a run while it goes, give the scripted executor real time with
+`--speed 1` and read it from another terminal with `gym coder live
+--follow`, or open the Gym terminal's live view with `f`. The run's log
+grows as each event arrives, and `manifest.json` appears only when the run
+ends.
+
 The episode timeline shows the executor's normalized events inline, marked
 `▸`, between the invocations they happened during. The runbooks view and
 `gym coder capabilities` show the capability matrix.

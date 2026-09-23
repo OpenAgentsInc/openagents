@@ -37,6 +37,10 @@ gym coder minitasks [--run ID|latest] [--json]
 gym coder prompt [ATTEMPT] [--json]
                            executor system prompt variants, or one attempt's
                            sections; see gym coder prompt --help
+gym coder live [--follow] [--json]
+                           attempts in progress: current component, latest
+                           executor events and judgments, spend, and staleness;
+                           see gym coder live --help
 gym coder capabilities [--json]
                            each executor adapter's capability matrix: start,
                            observe, stop, resume, and steer, with the tests and
@@ -139,6 +143,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("minitasks") {
         return gym::coder_minitasks::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("live") {
+        return gym::coder_live::command(&args[1..], out);
     }
     if args.first().map(String::as_str) == Some("capabilities") {
         return gym::coder_capabilities::command(&args[1..], out);

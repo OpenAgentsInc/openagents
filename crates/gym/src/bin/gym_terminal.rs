@@ -75,6 +75,8 @@ Keys:
                  requirement maps, mini-task runs, or the selected
                  attempt's executor system prompt.
   b, m, r        Open the briefings, the outcome matrix, or the router.
+  f              Open the live view: attempts in progress, read again every
+                 two seconds while it is open.
   tab, h, l      Walk the views.
   j, k, arrows   Move the cursor.
   g, G           Jump to the first or last item.
@@ -134,6 +136,11 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         .map(gym::coder_minitasks::load)
         .unwrap_or_default();
     let briefing = gym::coder_briefing::report(runs.as_deref(), &records);
+    let live = gym::coder_live::Sources {
+        minitasks: minitasks.clone(),
+        jobs: jobs.clone(),
+        ..gym::coder_live::Sources::default()
+    };
     let mut app = terminal_bench_tui::App::new(records)
         .with_components(components)
         .with_requirements(requirements)
@@ -144,7 +151,8 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
                 .as_deref()
                 .map(gym::coder_coverage::load_dir)
                 .unwrap_or_default(),
-        );
+        )
+        .with_live(live);
     if print_only {
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {
@@ -178,6 +186,12 @@ fn draw_tbench(
 ) -> io::Result<()> {
     loop {
         terminal.draw(|frame| app.render(frame.area(), frame.buffer_mut()))?;
+        // The live view reads its attempts again every two seconds; every
+        // other view waits for a key.
+        if app.follows() && !event::poll(std::time::Duration::from_secs(2))? {
+            app.refresh_live();
+            continue;
+        }
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;

@@ -26,10 +26,16 @@ Contract summary (the normative text lives in
   ``artifacts/``, ``verification/``, ``evaluation/``) under ``D``.
 - Accounting: ``evaluation/usage.json`` carries per-model usage with
   provenance; absent usage is ``unknown``, never zero.
+- Live tail: while the episode runs, ``tbench.live.LiveTail`` copies the
+  new lines of ``episode.atif.jsonl`` to ``live/`` beside the logs every
+  ``live_interval_sec`` seconds (10 by default; 0 turns it off), so the
+  Gym can follow the trial before the bundle is collected.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hashlib
 import json
 import os
@@ -45,6 +51,8 @@ from harbor.agents.installed.base import (
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 from harbor.models.trajectories import Trajectory
+
+from tbench.live import DEFAULT_INTERVAL_SEC, LOG_NAME, LiveTail
 
 CONTRACT_ID = "openagents.coder.episode.v1"
 INSTALL_ROOT = PurePosixPath("/opt/openagents")
@@ -105,6 +113,9 @@ class CoderV05(BaseInstalledAgent):
         self._contract = kwargs.pop("contract", CONTRACT_ID)
         self._episode_timeout_sec = int(
             kwargs.pop("episode_timeout_sec", 0) or 0
+        )
+        self._live_interval_sec = float(
+            kwargs.pop("live_interval_sec", DEFAULT_INTERVAL_SEC) or 0
         )
         super().__init__(*args, **kwargs)
         self._preflight()
@@ -274,6 +285,16 @@ class CoderV05(BaseInstalledAgent):
         if self.model_name:
             command += f" --model {shlex.quote(self.model_name)}"
 
+        tail = None
+        follower = None
+        if self._live_interval_sec > 0:
+            tail = LiveTail(
+                environment,
+                str(EPISODE_DIR / LOG_NAME),
+                self.logs_dir / "live",
+                self._live_interval_sec,
+            )
+            follower = asyncio.create_task(tail.follow())
         try:
             result = await environment.exec(
                 command=command,
@@ -285,6 +306,13 @@ class CoderV05(BaseInstalledAgent):
                 raise EpisodeTimeoutError(str(exc)) from exc
             raise
         finally:
+            if follower is not None:
+                follower.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await follower
+            if tail is not None:
+                with contextlib.suppress(Exception):
+                    await tail.finish()
             await self._collect_bundle(environment)
 
         if result.return_code != 0:

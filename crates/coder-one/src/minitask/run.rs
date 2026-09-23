@@ -557,6 +557,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_running_episode_streams_its_executor_events_to_the_log_before_it_ends() {
+        let out = out("live");
+        let script = Script::parse(
+            &json!({
+                "schema": crate::scripted::SCRIPT_SCHEMA,
+                "name": "slow",
+                "events": [
+                    { "at_ms": 0, "do": "claim", "text": "Reading the logs." },
+                    { "at_ms": 150, "do": "command", "command": "ls logs", "output": "a.log" },
+                    { "at_ms": 300, "do": "claim", "text": "Writing the summary." },
+                    { "at_ms": 900, "do": "end" }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut options = options("log-severity", "slow", &out);
+        options.executor = ExecutorChoice::Scripted {
+            variant: "slow".to_string(),
+            script: Some(script),
+        };
+        options.speed = 1.0;
+        // A reader on the host follows the log while the run goes on, as
+        // `gym coder live` does: the log grows, and the manifest is absent.
+        let watch = async {
+            let mut seen_while_running = 0usize;
+            for _ in 0..200 {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+                let Some(dir) = std::fs::read_dir(&out)
+                    .ok()
+                    .and_then(|mut entries| entries.next())
+                    .and_then(Result::ok)
+                    .map(|entry| entry.path())
+                else {
+                    continue;
+                };
+                if dir.join("manifest.json").exists() {
+                    break;
+                }
+                let log = std::fs::read_to_string(dir.join(crate::episode::INVOCATION_LOG))
+                    .unwrap_or_default();
+                seen_while_running =
+                    seen_while_running.max(log.matches("\"executor_event\"").count());
+            }
+            seen_while_running
+        };
+        let (ran, seen) = tokio::join!(run(options), watch);
+        let ran = ran.unwrap();
+        assert!(
+            seen >= 2,
+            "a reader saw {seen} executor events before the run ended"
+        );
+        let log = atif::log::read_whole(&ran.dir.join(crate::episode::INVOCATION_LOG)).unwrap();
+        let total = log
+            .steps
+            .iter()
+            .filter(|step| step.extensions.contains_key(crate::session::EVENT_KEY))
+            .count();
+        assert!(total > seen, "{total} events in all, {seen} while running");
+        let _ = std::fs::remove_dir_all(out);
+    }
+
+    #[tokio::test]
     async fn a_scripted_episode_on_every_mini_task_grades_good_and_bad_apart_in_seconds() {
         let out = out("all");
         let python = crate::minitask::process::python().is_some();

@@ -59,6 +59,7 @@ pub mod coder_calls;
 pub mod coder_capabilities;
 pub mod coder_components;
 pub mod coder_coverage;
+pub mod coder_live;
 pub mod coder_matrix;
 pub mod coder_minitasks;
 pub mod coder_policy;

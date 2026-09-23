@@ -38,6 +38,7 @@ condition; it does not silently substitute a sample.
 | Key | Action |
 | --- | --- |
 | `1` to `9` | Open overview, comparison, attempt, evidence, history, runbooks, components, requirements, or mini-tasks. |
+| `f` | Open the live view, which reads attempts in progress again every two seconds while it is open. |
 | `Tab`, `h`, `l` | Move between views. |
 | `j`, `k`, arrow keys, `g`, `G` | Move the selection. |
 | `Enter` | Open a selected group, attempt, or its evidence. |
@@ -108,6 +109,36 @@ runs.
 
 **Runbooks** lists the harness, host, delegate, results, and episode-contract
 documents beside the operating sequence and the rules for reading a number.
+Below them, the executor capability matrix shows which session capabilities
+each adapter demonstrated: start, observe, stop, resume, and steer. It reads
+`~/.openagents/coder-one/capabilities.json`, which `coder-one capabilities`
+writes; `gym coder capabilities` prints the same matrix with the tests behind
+each cell.
+
+**Live** (`f`) follows Coder One attempts while they run. It lists mini-task
+runs whose log has no manifest yet and Terminal-Bench trials whose host tail
+is still following, then attempts that ended in the last 15 minutes. Each
+in-progress attempt shows its current component, the executor's latest
+events, the latest judgments, spend so far, and the time since its last
+event. An attempt with no event for two minutes reads as `STALE`. A trial
+also shows when the host last polled the container, so a quiet executor
+reads differently from a stalled tail. The view reads again every two
+seconds while it is open and says how old the current read is.
+
+The CLI prints the same view:
+
+```sh
+gym coder live                      # one read
+gym coder live --follow             # read again every 2 seconds
+gym coder live --follow --json      # one JSON line per read
+```
+
+For a trial, the Harbor adapter copies the new lines of the container's
+episode log to `<trial>/agent/live/episode.atif.jsonl` every
+`live_interval_sec` seconds (10 by default; 0 turns it off). Each poll is
+one exec that reads at most 256 KiB past the copy's offset, and the copy
+keeps whole lines only and stops at 64 MiB. `live/status.json` records the
+tail's state, offset, poll count, and last poll.
 
 ## Read the numbers
 

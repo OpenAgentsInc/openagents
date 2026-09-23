@@ -24,10 +24,11 @@ pub enum View {
     Briefing,
     Matrix,
     Router,
+    Live,
 }
 
 impl View {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Overview,
         Self::Comparison,
         Self::Attempt,
@@ -41,6 +42,7 @@ impl View {
         Self::Briefing,
         Self::Matrix,
         Self::Router,
+        Self::Live,
     ];
     pub fn title(self) -> &'static str {
         match self {
@@ -57,6 +59,7 @@ impl View {
             Self::Briefing => "briefing",
             Self::Matrix => "outcome matrix",
             Self::Router => "router",
+            Self::Live => "live",
         }
     }
     fn index(self) -> usize {
@@ -74,10 +77,11 @@ impl View {
             Self::Briefing => 10,
             Self::Matrix => 11,
             Self::Router => 12,
+            Self::Live => 13,
         }
     }
     /// The view a key opens: `1` to `9` open the first nine, `0` the
-    /// tenth, `b` the briefings, `m` the outcome matrix, and `r` the router.
+    /// tenth, `b` the briefings, `m` the outcome matrix, `r` the router, and `f` the live view, which follows attempts in progress.
     pub fn from_digit(digit: char) -> Option<Self> {
         let index = match digit {
             '1'..='9' => digit as usize - '1' as usize,
@@ -85,6 +89,7 @@ impl View {
             'b' => 10,
             'm' => 11,
             'r' => 12,
+            'f' => 13,
             _ => return None,
         };
         Self::ALL.get(index).copied()
@@ -92,6 +97,9 @@ impl View {
 }
 
 pub struct App {
+    /// Where the Live view looks, and what it last read and when.
+    live: Option<crate::coder_live::Sources>,
+    live_attempts: (Vec<crate::coder_live::Attempt>, u64),
     records: Records,
     groups: Vec<ComparisonGroup>,
     view: View,
@@ -143,6 +151,8 @@ impl App {
         );
         let router = crate::coder_router::from_checkout(&matrix);
         Self {
+            live: None,
+            live_attempts: (Vec::new(), 0),
             matrix,
             router,
             library,
@@ -205,6 +215,47 @@ impl App {
         self
     }
 
+    /// Adds the Live view's sources and reads them once.
+    #[must_use]
+    pub fn with_live(mut self, sources: crate::coder_live::Sources) -> Self {
+        self.live = Some(sources);
+        self.refresh_live();
+        self
+    }
+
+    /// Reads the live view's attempts again.
+    pub fn refresh_live(&mut self) {
+        if let Some(sources) = &self.live {
+            let now = crate::coder_live::now_ms();
+            self.live_attempts = (crate::coder_live::discover(sources, now), now);
+        }
+    }
+
+    /// Whether the open view follows attempts as they run.
+    #[must_use]
+    pub fn follows(&self) -> bool {
+        self.view == View::Live && self.live.is_some()
+    }
+
+    fn live(&self) -> Vec<String> {
+        match &self.live {
+            None => vec!["The live view has no sources.".to_owned()],
+            Some(sources) => {
+                let (attempts, read_at) = &self.live_attempts;
+                let mut lines = crate::coder_live::lines(attempts, sources, *read_at);
+                let now = crate::coder_live::now_ms();
+                lines.insert(
+                    1,
+                    format!(
+                        "  refreshes every 2 seconds while open · this read is {:.1}s old",
+                        now.saturating_sub(*read_at) as f64 / 1000.0
+                    ),
+                );
+                lines
+            }
+        }
+    }
+
     pub fn view(&self) -> View {
         self.view
     }
@@ -251,6 +302,7 @@ impl App {
             View::Briefing => self.briefing().len(),
             View::Matrix => self.matrix.lines().len(),
             View::Router => self.router.lines().len(),
+            View::Live => self.live().len(),
         }
     }
     pub fn inspect(&mut self) {
@@ -287,7 +339,8 @@ impl App {
             | View::Prompt
             | View::Briefing
             | View::Matrix
-            | View::Router => {}
+            | View::Router
+            | View::Live => {}
         }
     }
     fn current(&self) -> Option<&Attempt> {
@@ -416,7 +469,8 @@ impl App {
             | View::Prompt
             | View::Briefing
             | View::Matrix
-            | View::Router => Some(self.cursor()),
+            | View::Router
+            | View::Live => Some(self.cursor()),
             View::MiniTasks => (!self.minitasks.0.is_empty()).then(|| 2 + self.cursor()),
         }
     }
@@ -440,6 +494,7 @@ impl App {
             View::Briefing => self.briefing(),
             View::Matrix => self.matrix.lines(),
             View::Router => self.router.lines(),
+            View::Live => self.live(),
         }
     }
 
@@ -1063,6 +1118,34 @@ mod tests {
         assert!(text.contains("(core)"), "{text}");
         assert_eq!(View::from_digit('0'), Some(View::Prompt));
         assert_eq!(View::from_digit('b'), Some(View::Briefing));
+    }
+
+    #[test]
+    fn the_live_view_follows_a_run_in_progress_and_reads_again() {
+        let root = std::env::temp_dir().join(format!("gym-tui-live-{}", std::process::id()));
+        let now = crate::coder_live::now_ms();
+        crate::coder_live::tests::running_run(&root, "minitask-live-scripted-good-1", now - 1_000);
+        let mut app = App::new(Records::default()).with_live(crate::coder_live::Sources {
+            minitasks: Some(root.clone()),
+            jobs: None,
+            ..crate::coder_live::Sources::default()
+        });
+        app.open(View::from_digit('f').unwrap());
+        assert_eq!(app.view(), View::Live);
+        assert!(app.follows());
+        let text = app.lines().join("\n");
+        assert!(text.contains("1 in progress"), "{text}");
+        assert!(text.contains("minitask-live-scripted-good-1"), "{text}");
+        assert!(text.contains("refreshes every 2 seconds"), "{text}");
+        std::fs::write(
+            root.join("minitask-live-scripted-good-1/manifest.json"),
+            "{}",
+        )
+        .unwrap();
+        app.refresh_live();
+        let text = app.lines().join("\n");
+        assert!(text.contains("0 in progress, 1 recently ended"), "{text}");
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

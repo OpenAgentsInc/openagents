@@ -171,6 +171,12 @@ known either way. Each dispatch keeps its own agent, model, credential,
 provenance, and units: native turns, model calls, and completed items,
 which Codex reports instead of model calls.
 
+While an episode runs, the adapter copies the new lines of its episode log
+to `agent/live/` under the trial every `live_interval_sec` seconds (10 by
+default; set it to 0 to turn the copy off). `gym coder live --follow` and the
+Gym terminal's live view read that copy, so you can follow a trial before
+its bundle is collected.
+
 When the adapter has an exec timeout (`episode_timeout_sec`), it sets
 `CODER_ONE_EPISODE_DEADLINE` 60 seconds inside it. The episode then gives
 each dispatch, Jev request, retry, wait, setup command, probe, and command
