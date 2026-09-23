@@ -79,6 +79,10 @@ plain prose in short paragraphs, real paths, and no headers.";
 pub const CLARIFY: &str = " The host's router marked this request ambiguous: \
 reply with one short clarifying question and nothing else.";
 
+/// The variable and value that keep Claude Code from attaching the
+/// account's claude.ai connectors to a delegated turn.
+pub const NO_CONNECTORS: (&str, &str) = ("ENABLE_CLAUDEAI_MCP_SERVERS", "false");
+
 /// The briefing's account of what came before it, since no explorer ran.
 const CONCLUSION: &str = "No explorer ran for this request. The evidence \
 below comes from the host's read-only probes and Jev's file survey.";
@@ -377,6 +381,13 @@ pub async fn answer(request: &Request, on: Rc<dyn Fn(Progress)>) -> Answer {
     if let Some(model) = &request.model {
         cli.model.clone_from(model);
     }
+    // A signed-in Claude Code attaches the account's claude.ai connectors
+    // partway through a session, and their tool lists alone are about
+    // 115,000 tokens of prompt: on 2026-09-23 one two-command session cost
+    // $1.00 with them and $0.044 without. A terminal turn uses none of
+    // them.
+    cli.env
+        .push((NO_CONNECTORS.0.to_string(), NO_CONNECTORS.1.to_string()));
     cli.control.recorder = Some(recorder.clone());
 
     let boundary_words = if request.read_only {
@@ -621,6 +632,24 @@ mod tests {
             assert_eq!(answer.session_id.as_deref(), Some(id), "{}", agent.word());
             assert!(answer.briefing.text.starts_with(RESUMED_HEAD));
         }
+    }
+
+    #[test]
+    fn a_turn_keeps_the_accounts_connectors_out_of_the_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = r#"#!/bin/sh
+cat >/dev/null
+echo '{"type":"system","subtype":"init","session_id":"s","model":"stand-in"}'
+echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turns\":1,\"result\":\"connectors=$ENABLE_CLAUDEAI_MCP_SERVERS\",\"session_id\":\"s\",\"total_cost_usd\":0.01}"
+"#;
+        let Some(request) = stand_in(dir.path(), Agent::ClaudeCode, script, None) else {
+            return;
+        };
+        let (answer, _) = run(&request);
+        assert_eq!(
+            answer.report.summary.result.as_deref(),
+            Some("connectors=false")
+        );
     }
 
     #[test]
