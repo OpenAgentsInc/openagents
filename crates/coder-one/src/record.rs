@@ -142,6 +142,9 @@ pub struct Start {
     /// Whether the invocation runs a process, an executor, or anything
     /// else that changes the world.
     pub effects: bool,
+    /// The declared effect class of a typed host operation: `observe`,
+    /// `write`, or `install`.
+    pub effect_class: Option<String>,
     /// The parent invocation; the innermost open one when `None`.
     pub parent: Option<String>,
 }
@@ -156,6 +159,7 @@ impl Start {
             implementation,
             input_digest: None,
             effects: false,
+            effect_class: None,
             parent: None,
         }
     }
@@ -185,6 +189,15 @@ impl Start {
     #[must_use]
     pub fn with_effects(mut self) -> Self {
         self.effects = true;
+        self
+    }
+
+    /// Declares a typed host operation's effect class. Any class but
+    /// `observe` also marks the invocation as one with effects.
+    #[must_use]
+    pub fn effect(mut self, class: &str) -> Self {
+        self.effects = class != "observe";
+        self.effect_class = Some(class.to_string());
         self
     }
 
@@ -332,6 +345,7 @@ impl Recorder {
             "input_digest": start.input_digest,
             "evidence_revision": inner.revision,
             "effects": start.effects,
+            "effect_class": start.effect_class,
             "at": at,
         });
         let mut step = Step::said(

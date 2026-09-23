@@ -8,7 +8,8 @@
   },
   "trajectory_sha256": "131ed002822d8a4b90198e4f568ba4464f452bae3bc582fc24f0e4b1e6a4170d",
   "components": [
-    "evidence.probes",
+    "evidence.probes.planner",
+    "evidence.probes.selector",
     "evidence.select",
     "evidence.pack",
     "verify.close"
@@ -16,6 +17,7 @@
   "recorded_answers": 3,
   "briefing_reproduces": true,
   "notes": [
-    "Probe outputs are what Jev read: each is clipped to 3,000 characters, so the keep budget counts at most that much per probe."
+    "Probe outputs are what Jev read: each is clipped to 3,000 characters, so the keep budget counts at most that much per probe.",
+    "The planner's facts are inferred from the retained battery: a named path it neither listed nor read reads as missing, and a README probe that printed reads as one README."
   ]
 }

@@ -1,0 +1,44 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.probes.planner",
+  "source": {
+    "trace": {
+      "trace": "extended--coder-one-jevprobe3-luna--sqlite-db-truncate",
+      "trial": "sqlite-db-truncate__rgzhtVQ",
+      "task": "sqlite-db-truncate",
+      "reward": 1.0
+    },
+    "call": "jev-probe-1"
+  },
+  "input": {
+    "facts": {
+      "workdir": "/app",
+      "is_git": false,
+      "readmes": [],
+      "named": [
+        {
+          "path": "/app/trunc.db",
+          "kind": "file",
+          "repo": false
+        },
+        {
+          "path": "/app/recover.json",
+          "kind": "missing",
+          "repo": false
+        }
+      ]
+    },
+    "params": {
+      "v2": true,
+      "shallow_listing": false
+    }
+  },
+  "retained": {
+    "commands": [
+      "pwd && ls -la",
+      "find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+      "python3 --version 2>&1; pip list 2>/dev/null | head -60",
+      "head -200 /app/trunc.db"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 {
   "schema": "openagents.coder-one.component-fixture.v1",
-  "component": "evidence.probes",
+  "component": "evidence.probes.selector",
   "source": {
     "trace": {
       "trace": "panel--coder-one-jevprobe3-luna--build-cython-ext",

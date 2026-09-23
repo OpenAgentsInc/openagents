@@ -1,0 +1,38 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.probes.planner",
+  "source": {
+    "trace": {
+      "trace": "panel--coder-one-jevprobe3-luna--headless-terminal",
+      "trial": "headless-terminal__tr384w7",
+      "task": "headless-terminal",
+      "reward": 0.0
+    },
+    "call": "jev-probe-1"
+  },
+  "input": {
+    "facts": {
+      "workdir": "/app",
+      "is_git": false,
+      "readmes": [],
+      "named": [
+        {
+          "path": "/app/headless_terminal.py",
+          "kind": "missing",
+          "repo": false
+        }
+      ]
+    },
+    "params": {
+      "v2": true,
+      "shallow_listing": false
+    }
+  },
+  "retained": {
+    "commands": [
+      "pwd && ls -la",
+      "find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+      "python3 --version 2>&1; pip list 2>/dev/null | head -60"
+    ]
+  }
+}

@@ -18,5 +18,9 @@ sha2 = "0.10"
 supervise = { path = "../supervise" }
 tokio = { version = "1", features = ["macros", "rt", "time"] }
 
+[dev-dependencies]
+coder-boundary = { path = "../coder-boundary" }
+tempfile = "3"
+
 [lints]
 workspace = true

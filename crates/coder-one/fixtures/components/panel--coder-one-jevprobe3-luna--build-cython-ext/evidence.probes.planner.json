@@ -1,0 +1,55 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.probes.planner",
+  "source": {
+    "trace": {
+      "trace": "panel--coder-one-jevprobe3-luna--build-cython-ext",
+      "trial": "build-cython-ext__jFQbtoW",
+      "task": "build-cython-ext",
+      "reward": 1.0
+    },
+    "call": "jev-probe-2"
+  },
+  "input": {
+    "facts": {
+      "workdir": "/app",
+      "is_git": false,
+      "readmes": [],
+      "named": [
+        {
+          "path": "/app/pyknotid",
+          "kind": "dir",
+          "repo": true
+        },
+        {
+          "path": "/app/pyknotid/tests/test_random_curves.py",
+          "kind": "file",
+          "repo": false
+        },
+        {
+          "path": "/app/pyknotid/tests/test_catalogue.py",
+          "kind": "missing",
+          "repo": false
+        }
+      ]
+    },
+    "params": {
+      "v2": true,
+      "shallow_listing": false
+    }
+  },
+  "retained": {
+    "commands": [
+      "pwd && ls -la",
+      "find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+      "find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' -o -name tests -o -name '*.test.*' \\) -not -path '*/.git/*' | head -40",
+      "python3 --version 2>&1; pip list 2>/dev/null | head -60",
+      "git -C /app/pyknotid branch -a -vv",
+      "git -C /app/pyknotid log --oneline --graph --all -n 40",
+      "git -C /app/pyknotid reflog -n 40",
+      "git -C /app/pyknotid status",
+      "head -200 /app/pyknotid/tests/test_random_curves.py",
+      "ls -la /app/pyknotid"
+    ]
+  }
+}

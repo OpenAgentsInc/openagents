@@ -13,7 +13,8 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | ID | What it decides | Jev |
 | --- | --- | --- |
 | `evidence.setup` | Which setup commands the task names should run first. The isolated run judges only; it never runs a command. | One request |
-| `evidence.probes` | Which finished probe outputs the briefing carries. | One request |
+| `evidence.probes.planner` | Which typed, read-only operations the host runs before the work. The isolated run plans only; it never runs an operation. | None |
+| `evidence.probes.selector` | Which finished probe outputs the briefing carries. | One request |
 | `evidence.select` | Which candidate files the survey reads into the briefing. | One request per 20 files |
 | `evidence.pack` | The briefing within its character budget, with every omission named. | None |
 | `verify.close` | Whether the delegate's report and the changes show the task done. | One request |
@@ -29,7 +30,7 @@ fixture directory.
 coder-one component list
 coder-one component run evidence.pack \
   --fixture crates/coder-one/fixtures/components/extended--coder-one-jevprobe3-luna--log-summary-date-ranges
-coder-one component suite evidence.probes
+coder-one component suite evidence.probes.selector
 coder-one component suite verify.close --json
 ```
 
@@ -39,6 +40,32 @@ Every run records a suite invocation with one child per fixture in an ATIF
 session log under `~/.openagents/coder-one/components/`. Use `--out DIR` to
 record somewhere else, or `--no-record` to record nothing. The exit code is
 1 when a fixture failed.
+
+## Observe without changing the workspace
+
+The host runs only typed operations on its own behalf: list a directory,
+read the head of a file, ask Git a read-only question, report the Python
+version and packages, clone a repository, or install packages. Each
+operation declares its effect class before it runs: `observe`, `write`, or
+`install`. No task-derived text reaches a shell. A path argument must
+resolve inside the operation's scope, the working directory plus the paths
+the task names for reading, and the working directory alone for writing; a
+`..` that climbs out, a symbolic link that points out, a credential store,
+or an argument that reads as an option is refused. A setup command the task
+names becomes a typed clone or install, or a refusal when it uses shell
+syntax or an option the host does not pass through.
+
+Git runs with `--no-optional-locks` and `diff.autoRefreshIndex=false`, so a
+status or a diff never rewrites the index. The episode collects its changes
+the same way: tracked differences with `git diff --binary`, and each
+untracked file, within bounds, with `git diff --no-index`, instead of
+`git add -N .`. `artifacts/collection.json` names each untracked file that
+was left out and why, and the workspace revision before and after the read;
+a revision that changed means something wrote during collection.
+
+A test runs every planned probe, every Git query, and change collection on
+a fixture repository and checks that a descriptor-level snapshot of the
+workspace, `.git` included, is unchanged.
 
 ## Choose where Jev's answers come from
 
@@ -74,6 +101,11 @@ trajectory doesn't hold stays out:
 
 - A probe output is what Jev read, clipped to 3,000 characters, so the keep
   budget counts at most that much per probe.
+- The planner's facts are inferred from the retained battery: a named path
+  the battery neither listed nor read reads as missing. Its
+  `matches_retained` metric checks that every retained probe command has an
+  equivalent typed operation, or was dropped on purpose because another
+  operation covers it, as the one-level listing is by the three-level one.
 - A file the briefing omitted keeps its name and size, and its content is
   placeholder text of that size.
 
@@ -89,6 +121,11 @@ gym coder components
 gym coder components --component evidence.pack --json
 gym-terminal --terminal-bench        # press 7
 ```
+
+The episode timeline (`gym terminal-bench attempt JOB TRIAL --timeline`)
+shows every host operation as a `host.operation` invocation with its effect
+class, such as `[observe] host.operation · git status`, under the
+`evidence.probes.planner` invocation that planned it.
 
 Each component shows its latest isolated suite (Jev mode, fixtures, errors,
 latency, Jev cost, and metric summary), each fixture's output digest and

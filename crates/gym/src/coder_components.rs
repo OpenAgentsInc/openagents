@@ -25,6 +25,9 @@ pub const SCHEMA: &str = "openagents.gym.coder-components.v1";
 pub const KNOWN: &[&str] = &[
     "evidence.setup",
     "evidence.probes",
+    "evidence.probes.planner",
+    "host.operation",
+    "evidence.probes.selector",
     "evidence.select",
     "evidence.pack",
     "exec.explore",

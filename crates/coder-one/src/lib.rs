@@ -20,6 +20,7 @@
 
 pub mod action;
 pub mod agent;
+pub mod collect;
 pub mod component;
 pub mod credentials;
 pub mod deadline;
@@ -27,7 +28,9 @@ pub mod delegate;
 pub mod episode;
 pub mod generate;
 pub mod judge;
+pub mod ops;
 pub mod policy;
+pub mod probes;
 pub mod record;
 pub mod shell;
 pub mod state;

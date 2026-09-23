@@ -564,6 +564,7 @@ name = "coder-one"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "coder-boundary",
  "futures-util",
  "indexmap",
  "jev",
@@ -572,6 +573,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "supervise",
+ "tempfile",
  "tokio",
 ]
 

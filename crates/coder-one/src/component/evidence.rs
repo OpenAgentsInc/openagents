@@ -108,7 +108,7 @@ pub fn setup_decide(commands: &[String], noul: impl Fn(&str) -> Option<f64>) -> 
 }
 
 // ---------------------------------------------------------------------------
-// evidence.probes: the probe keep question
+// evidence.probes.selector: the probe keep question
 // ---------------------------------------------------------------------------
 
 /// The most characters of one probe's output Jev reads.
@@ -129,7 +129,7 @@ pub fn probe_question(i: usize) -> String {
 #[must_use]
 pub fn probe_implementation() -> Implementation {
     Implementation::new(
-        "evidence.probes",
+        "evidence.probes.selector",
         "probe keep question",
         &json!({
             "threshold": YES,

@@ -73,6 +73,9 @@ pub struct Entry {
     /// recorded.
     pub outcome: String,
     pub effects: bool,
+    /// A typed host operation's declared effect class: `observe`, `write`,
+    /// or `install`.
+    pub effect_class: Option<String>,
     /// Spend accumulated over every entry up to and including this one;
     /// `None` once an unknown cost has been passed.
     pub accumulated_usd: Option<f64>,
@@ -129,6 +132,7 @@ impl Timeline {
                 "cost_provenance": entry.cost_provenance,
                 "outcome": entry.outcome,
                 "effects": entry.effects,
+                "effect_class": entry.effect_class,
                 "accumulated_usd": entry.accumulated_usd,
             })).collect::<Vec<_>>(),
         })
@@ -155,8 +159,12 @@ impl Timeline {
         );
         for entry in &self.entries {
             let label = format!(
-                "{}{}{}",
+                "{}{}{}{}",
                 "  ".repeat(entry.depth),
+                entry
+                    .effect_class
+                    .as_deref()
+                    .map_or(String::new(), |class| format!("[{class}] ")),
                 entry.component,
                 entry
                     .name
@@ -306,6 +314,7 @@ fn build(source: Source, path: &Path, events: &[Event]) -> Timeline {
                     cost_provenance: None,
                     outcome: "unknown".to_owned(),
                     effects: record.get("effects").and_then(Value::as_bool) == Some(true),
+                    effect_class: text("effect_class"),
                     accumulated_usd: None,
                     output: Value::Null,
                     output_digest: None,
@@ -448,6 +457,7 @@ fn derive(path: &Path, steps: &[Value]) -> Timeline {
         cost_provenance: None,
         outcome: "completed".to_owned(),
         effects: true,
+        effect_class: None,
         accumulated_usd: None,
         output: Value::Null,
         output_digest: None,
@@ -475,6 +485,7 @@ fn derive(path: &Path, steps: &[Value]) -> Timeline {
             cost_provenance: cost.map(|(_, provenance)| provenance),
             outcome: outcome.to_owned(),
             effects: component == "exec.session",
+            effect_class: None,
             accumulated_usd: None,
             output: Value::Null,
             output_digest: None,
@@ -726,6 +737,14 @@ mod tests {
                 1500,
                 json!({}),
             ),
+            event(
+                "start",
+                "inv-5",
+                Some("inv-1"),
+                "host.operation",
+                1501,
+                json!({ "name": "git status", "effect_class": "observe" }),
+            ),
         ];
         let mut text = std::fs::read_to_string(&path).unwrap();
         text.push_str(&lines.join("\n"));
@@ -734,7 +753,14 @@ mod tests {
         let timeline = read_log(&path).unwrap();
         assert!(!timeline.complete);
         assert_eq!(timeline.faults, 1);
-        assert_eq!(timeline.entries.len(), 4);
+        assert_eq!(timeline.entries.len(), 5);
+        assert_eq!(timeline.entries[4].effect_class.as_deref(), Some("observe"));
+        assert!(
+            timeline
+                .lines()
+                .iter()
+                .any(|line| line.contains("[observe] host.operation · git status"))
+        );
         // Two concurrent requests of one component differ by ID.
         assert_ne!(timeline.entries[1].id, timeline.entries[2].id);
         assert_eq!(timeline.entries[3].outcome, "unknown");

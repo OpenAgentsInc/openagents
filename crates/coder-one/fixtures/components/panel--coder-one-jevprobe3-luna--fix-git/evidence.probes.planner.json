@@ -1,0 +1,36 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "evidence.probes.planner",
+  "source": {
+    "trace": {
+      "trace": "panel--coder-one-jevprobe3-luna--fix-git",
+      "trial": "fix-git__c2MR9Lx",
+      "task": "fix-git",
+      "reward": 1.0
+    },
+    "call": "jev-probe-1"
+  },
+  "input": {
+    "facts": {
+      "workdir": "/app/personal-site",
+      "is_git": true,
+      "readmes": [],
+      "named": []
+    },
+    "params": {
+      "v2": true,
+      "shallow_listing": false
+    }
+  },
+  "retained": {
+    "commands": [
+      "pwd && ls -la",
+      "find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150",
+      "python3 --version 2>&1; pip list 2>/dev/null | head -60",
+      "git status",
+      "git branch -a -vv",
+      "git log --oneline --graph --all -n 40",
+      "git reflog -n 40"
+    ]
+  }
+}

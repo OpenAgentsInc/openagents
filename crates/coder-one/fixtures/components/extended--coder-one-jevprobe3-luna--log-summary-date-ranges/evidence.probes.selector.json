@@ -1,6 +1,6 @@
 {
   "schema": "openagents.coder-one.component-fixture.v1",
-  "component": "evidence.probes",
+  "component": "evidence.probes.selector",
   "source": {
     "trace": {
       "trace": "extended--coder-one-jevprobe3-luna--log-summary-date-ranges",

@@ -220,7 +220,9 @@ impl JevJudge {
             return;
         }
         let gated = evidence::setup_decide(&commands, |id| asked.noul(id));
+        let scope = crate::ops::Scope::new(&self.workdir);
         let mut ran = Vec::new();
+        let mut refused = Vec::new();
         for gate in &gated {
             let command = &gate.command;
             let p = gate.p.unwrap_or(0.0);
@@ -228,12 +230,15 @@ impl JevJudge {
                 println!("  setup ▸ skipped `{command}` p={p:.2}");
                 continue;
             }
-            if let Some(destination) = clone_destination(command)
-                && std::path::Path::new(&destination).exists()
-            {
-                println!("  setup ▸ `{command}`: {destination} already exists");
+            // The command becomes a typed operation or a refusal; its text
+            // never reaches a shell.
+            let proposed = crate::ops::parse_setup(command, &self.workdir);
+            let Some(operation) = proposed.operation else {
+                let why = proposed.refused.unwrap_or_default();
+                println!("  setup ▸ refused `{command}`: {why}");
+                refused.push(json!({ "command": command, "reason": why }));
                 continue;
-            }
+            };
             let Some(limit) = self
                 .deadline
                 .grant("setup", std::time::Duration::from_secs(240))
@@ -241,66 +246,38 @@ impl JevJudge {
                 println!("  setup ▸ skipped `{command}`: the episode deadline left no time");
                 continue;
             };
-            let mut prepared = std::process::Command::new("bash");
-            prepared
-                .arg("-c")
-                .arg(command)
-                .current_dir(&self.workdir)
-                .env("GIT_TERMINAL_PROMPT", "0")
-                .env("PYTHONDONTWRITEBYTECODE", "1");
-            for (name, _) in std::env::vars_os() {
-                if name.to_str().is_some_and(crate::shell::is_credential) {
-                    prepared.env_remove(&name);
-                }
-            }
-            // The intent is on disk before the command can change anything.
-            let run = self.recorder.begin(
-                Start::new("evidence.setup", evidence::setup_implementation())
-                    .named(&format!("run `{}`", clip(command, 80)))
-                    .reading(&json!(command))
-                    .with_effects(),
-            );
-            let started = Instant::now();
-            let ended = supervise::Job::from_command(prepared)
-                .bounded(supervise::Limits::within(limit).keeping(16 * 1024))
-                .run()
+            let capture = self
+                .operate(&operation, "evidence.setup", &scope, limit)
                 .await;
-            let mut output = ended.stdout.marked();
-            if !ended.stderr.is_empty() {
-                output.push('\n');
-                output.push_str(&ended.stderr.marked());
+            if let Some(refusal) = &capture.refused {
+                println!("  setup ▸ refused `{command}`: {refusal}");
+                refused.push(json!({ "command": command, "reason": refusal.to_string() }));
+                continue;
             }
+            let ending = capture
+                .exit
+                .map_or("no exit code".to_string(), |code| format!("exit {code}"));
             println!(
-                "  setup ▸ ran `{command}` p={p:.2}: {} in {:.1}s",
-                ended.ending,
-                started.elapsed().as_secs_f64()
+                "  setup ▸ ran {} p={p:.2}: {ending} in {:.1}s",
+                capture.label,
+                capture.milliseconds as f64 / 1000.0
             );
-            let output = clip_tail(output.trim(), 2_000);
-            self.recorder.end(
-                &run,
-                Finish::new(if ended.ending.success() {
-                    Outcome::Completed
-                } else {
-                    Outcome::Failed
-                })
-                .output(json!({ "ending": ended.ending.to_string(), "output": output }))
-                .cost(Cost::none()),
-            );
-            ran.push(command.clone());
+            ran.push(capture.label.clone());
             state.survey.push(Surveyed {
                 path: format!(
-                    "$ {command}   (setup the host already ran: {})",
-                    ended.ending
+                    "$ {}   (setup the host already ran: {ending})",
+                    capture.label
                 ),
                 relevance: p,
                 edit: 0.0,
-                content: output,
+                content: clip_tail(capture.output.trim(), 2_000),
             });
             self.recorder.revise();
         }
         self.recorder.end(
             &invocation,
-            Finish::new(Outcome::Completed).output(json!({ "gated": gated, "ran": ran })),
+            Finish::new(Outcome::Completed)
+                .output(json!({ "gated": gated, "ran": ran, "refused": refused })),
         );
     }
 
@@ -350,109 +327,122 @@ impl JevJudge {
         self
     }
 
-    /// The probe battery: cheap, read-only commands a delegate would
-    /// otherwise spend its first turns on, run in parallel. Jev judges
-    /// which outputs carry information the task needs, and the chosen
+    /// Runs one typed host operation as its own invocation, declaring its
+    /// effect class before it runs, and records its output as a step.
+    async fn operate(
+        &mut self,
+        operation: &crate::ops::Operation,
+        component: &str,
+        scope: &crate::ops::Scope,
+        limit: std::time::Duration,
+    ) -> crate::ops::Capture {
+        let label = operation.label();
+        let invocation = self.recorder.begin(
+            Start::new(component, crate::ops::implementation())
+                .named(&label)
+                .reading(&json!(operation))
+                .effect(operation.effects().class.word()),
+        );
+        let capture = crate::ops::run_within(&invocation, operation, scope, Some(limit)).await;
+        self.finish_operation(&invocation, &capture);
+        capture
+    }
+
+    /// Ends an operation's invocation with its record.
+    fn finish_operation(&self, invocation: &str, capture: &crate::ops::Capture) {
+        let outcome = if capture.refused.is_some() {
+            Outcome::Skipped
+        } else if capture.succeeded() {
+            Outcome::Completed
+        } else {
+            Outcome::Failed
+        };
+        self.recorder.end(
+            invocation,
+            Finish::new(outcome)
+                .output(capture.record())
+                .cost(Cost::none()),
+        );
+    }
+
+    /// The probe battery, as two components. The probe planner chooses
+    /// typed, read-only operations from what the workspace and the task
+    /// name, and they run in parallel under the plan's scope; no
+    /// task-derived text reaches a shell. The capture selector then asks
+    /// Jev which outputs carry information the task needs, and the chosen
     /// outputs join `state.survey`, so the briefing carries them.
     async fn probe(&mut self, client: &jev::Client, state: &mut State) {
         let started = Instant::now();
-        let mut battery: Vec<String> = vec![
-            "pwd && ls -la".to_string(),
-            "find . -maxdepth 3 -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' | head -150".to_string(),
-            "for f in README* readme*; do [ -f \"$f\" ] && head -120 \"$f\"; done".to_string(),
-            "find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' -o -name tests -o -name '*.test.*' \\) -not -path '*/.git/*' | head -40".to_string(),
-            "python3 --version 2>&1; pip list 2>/dev/null | head -60".to_string(),
-        ];
-        if self.is_git {
-            for command in [
-                "git status",
-                "git branch -a -vv",
-                "git log --oneline --graph --all -n 40",
-                "git reflog -n 40",
-                "git stash list",
-            ] {
-                battery.push(command.to_string());
-            }
-        }
-        // Absolute paths the instruction names: list a directory, read the
-        // head of a file.
         let text = format!("{}\n{}", state.issue.title, state.issue.body);
-        let mut named = BTreeSet::new();
-        for token in text.split(|c: char| c.is_whitespace() || "`'\"(),".contains(c)) {
-            let token = token.trim_end_matches(['.', ':', ';']);
-            if token.starts_with('/') && token.len() > 1 && named.len() < 6 {
-                let path = std::path::Path::new(token);
-                if path.is_dir() {
-                    named.insert(format!("ls -la {token}"));
-                    // A repository the task names, outside the workdir.
-                    if self.v2
-                        && git(path, &["rev-parse", "--is-inside-work-tree"]).trim() == "true"
-                        && !self.is_git
-                    {
-                        for sub in [
-                            "status",
-                            "log --oneline --graph --all -n 40",
-                            "reflog -n 40",
-                            "branch -a -vv",
-                        ] {
-                            named.insert(format!("git -C {token} {sub}"));
-                        }
-                    }
-                } else if path.is_file() {
-                    named.insert(format!("head -200 {token}"));
-                }
-            }
-        }
-        battery.extend(named);
+        let facts = crate::probes::facts(&self.workdir, &text);
+        let params = crate::probes::PlanParams {
+            v2: self.v2,
+            shallow_listing: false,
+        };
+        let planned = crate::probes::plan(&facts, params);
+        let scope = crate::probes::scope(&facts, &self.workdir);
 
-        // The intent is on disk before any probe runs.
-        let invocation = self.recorder.enter(
-            Start::new("evidence.probes", evidence::probe_implementation())
-                .named("probe battery")
-                .reading(&json!(battery))
-                .with_effects(),
+        // The plan is on disk before any operation runs.
+        let planner = self.recorder.enter(
+            Start::new(
+                "evidence.probes.planner",
+                crate::probes::implementation(params),
+            )
+            .named("probe plan")
+            .reading(&json!(facts))
+            .effect("observe"),
         );
         let Some(limit) = self
             .deadline
             .grant("probes", std::time::Duration::from_secs(10))
         else {
             println!("  probe ▸ skipped: the episode deadline left no time");
+            self.recorder.end(
+                &planner,
+                Finish::new(Outcome::Skipped).summary(json!({ "reason": "episode deadline" })),
+            );
             return;
         };
-        let runs = battery.iter().map(|command| {
-            let mut prepared = std::process::Command::new("bash");
-            prepared
-                .arg("-c")
-                .arg(command)
-                .current_dir(&self.workdir)
-                .env("GIT_PAGER", "cat")
-                .env("PAGER", "cat");
-            for (name, _) in std::env::vars_os() {
-                if name.to_str().is_some_and(crate::shell::is_credential) {
-                    prepared.env_remove(&name);
-                }
-            }
-            supervise::Job::from_command(prepared)
-                .bounded(supervise::Limits::within(limit).keeping(16 * 1024))
-                .run()
-        });
-        let ended = futures_util::future::join_all(runs).await;
-        let outputs: Vec<Probe> = battery
+        let started_ops: Vec<(String, crate::ops::Operation)> = planned
             .iter()
-            .zip(ended)
-            .filter_map(|(command, ended)| {
-                let mut output = ended.stdout.marked();
-                if !ended.stderr.is_empty() {
-                    output.push('\n');
-                    output.push_str(&ended.stderr.marked());
-                }
-                let output = output.trim().to_string();
-                (!output.is_empty()).then(|| Probe {
-                    command: command.clone(),
-                    output: clip(&output, PROBE_OUTPUT_CHARS),
-                })
+            .map(|p| {
+                let id = self.recorder.begin(
+                    Start::new("host.operation", crate::ops::implementation())
+                        .named(&p.operation.label())
+                        .reading(&json!(p.operation))
+                        .effect(p.operation.effects().class.word()),
+                );
+                (id, p.operation.clone())
             })
             .collect();
+        let captures = crate::ops::run_all(&started_ops, &scope, Some(limit)).await;
+        for capture in &captures {
+            self.finish_operation(&capture.id, capture);
+        }
+        self.recorder.end(
+            &planner,
+            Finish::new(Outcome::Completed).output(json!({
+                "planned": planned.iter().map(|p| json!({
+                    "operation": p.operation.label(),
+                    "effect": p.operation.effects().class.word(),
+                    "reason": p.reason,
+                })).collect::<Vec<_>>(),
+                "refused": captures.iter().filter(|c| c.refused.is_some()).count(),
+            })),
+        );
+        let outputs: Vec<Probe> = captures
+            .iter()
+            .filter(|capture| capture.refused.is_none() && !capture.output.trim().is_empty())
+            .map(|capture| Probe {
+                command: capture.label.clone(),
+                output: clip(capture.output.trim(), PROBE_OUTPUT_CHARS),
+            })
+            .collect();
+        let invocation = self.recorder.enter(
+            Start::new("evidence.probes.selector", evidence::probe_implementation())
+                .named("probe keep question")
+                .reading(&json!(outputs)),
+        );
         if outputs.is_empty() {
             self.recorder.end(
                 &invocation,
@@ -464,7 +454,13 @@ impl JevJudge {
         let issue = issue_state(&state.issue.title, &state.issue.body);
         let (jev_state, questions) = evidence::probe_request(&issue, &outputs);
         let asked = self
-            .ask_jev(client, "evidence.probes", "jev_probe", jev_state, questions)
+            .ask_jev(
+                client,
+                "evidence.probes.selector",
+                "jev_probe",
+                jev_state,
+                questions,
+            )
             .await;
         if !asked.answered() {
             println!(
@@ -485,7 +481,7 @@ impl JevJudge {
             };
             let p = choice.p.unwrap_or(0.0);
             total += choice.chars;
-            println!("  probe ▸ kept `{}` p={p:.2}", probe.command);
+            println!("  probe ▸ kept {} p={p:.2}", probe.command);
             state.survey.push(Surveyed {
                 path: format!("$ {}", probe.command),
                 relevance: p,
@@ -495,7 +491,8 @@ impl JevJudge {
         }
         self.recorder.revise();
         println!(
-            "  probe ▸ {} probes run and judged in {} ms; {} chars kept",
+            "  probe ▸ {} operations run and {} outputs judged in {} ms; {} chars kept",
+            captures.len(),
             outputs.len(),
             started.elapsed().as_millis(),
             total
@@ -1410,10 +1407,16 @@ pub(crate) fn walk(root: &std::path::Path) -> Vec<String> {
     files
 }
 
+/// Runs Git read-only: no optional locks and no index refresh, so even
+/// `git status` leaves the index alone, and with no prompt or pager.
 pub(crate) fn git(workdir: &std::path::Path, args: &[&str]) -> String {
-    Command::new("git")
+    let mut command = Command::new("git");
+    command
+        .args(crate::ops::READ_ONLY_GIT)
         .args(args)
-        .current_dir(workdir)
+        .current_dir(workdir);
+    crate::ops::quiet_environment(&mut command);
+    command
         .output()
         .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
         .unwrap_or_default()

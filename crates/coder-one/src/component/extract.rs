@@ -268,8 +268,40 @@ pub fn extract(trajectory: &Path, source: &Value, out: &Path) -> Result<Extracte
             .filter(|command| commands.iter().any(|c| c == command))
             .collect();
         notes.push("Probe outputs are what Jev read: each is clipped to 3,000 characters, so the keep budget counts at most that much per probe.".to_string());
+        let battery: Vec<(String, String)> = probes
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|probe| {
+                Some((
+                    probe.get("command")?.as_str()?.to_string(),
+                    probe.get("output")?.as_str()?.to_string(),
+                ))
+            })
+            .collect();
+        let instruction = format!(
+            "{}\n{}",
+            state
+                .pointer("/issue/title")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            state
+                .pointer("/issue/body")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        );
+        notes.push("The planner's facts are inferred from the retained battery: a named path it neither listed nor read reads as missing, and a README probe that printed reads as one README.".to_string());
         write(
-            "evidence.probes",
+            "evidence.probes.planner",
+            call,
+            json!({
+                "facts": crate::probes::facts_from_battery(&instruction, &battery),
+                "params": crate::probes::PlanParams::default(),
+            }),
+            json!({ "commands": commands }),
+        )?;
+        write(
+            "evidence.probes.selector",
             call,
             json!({ "task": task(state), "probes": probes }),
             if briefing_record.is_some() {
@@ -480,7 +512,12 @@ mod tests {
         assert_eq!(extracted.len(), 24);
         for one in &extracted {
             assert_eq!(one.reproduces, Some(true), "{}", one.dir.display());
-            for component in ["evidence.probes", "evidence.pack", "verify.close"] {
+            for component in [
+                "evidence.probes.planner",
+                "evidence.probes.selector",
+                "evidence.pack",
+                "verify.close",
+            ] {
                 assert!(
                     one.components.iter().any(|c| c == component),
                     "{} has no {component}",
@@ -496,7 +533,11 @@ mod tests {
         );
         // The pack and the keep question rerun on all 24 with recorded Jev
         // and reproduce the retained runs.
-        for id in ["evidence.probes", "evidence.pack"] {
+        for id in [
+            "evidence.probes.planner",
+            "evidence.probes.selector",
+            "evidence.pack",
+        ] {
             let component = super::super::find(id).unwrap();
             let dirs = super::super::fixtures_for(&out, id);
             assert_eq!(dirs.len(), 24);
@@ -529,7 +570,8 @@ mod tests {
         assert_eq!(extracted.len(), 1);
         let checked_in = super::super::default_fixtures().join(name);
         for file in [
-            "evidence.probes.json",
+            "evidence.probes.planner.json",
+            "evidence.probes.selector.json",
             "evidence.select.json",
             "evidence.pack.json",
             "verify.close.json",

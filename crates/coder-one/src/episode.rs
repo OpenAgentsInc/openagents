@@ -768,10 +768,16 @@ impl Bundle {
             let text = serde_json::to_string_pretty(value).map_err(|error| error.to_string())?;
             files.insert(key.to_string(), self.put(relative, text.as_bytes())?);
         }
-        if let Some(diff) = diff {
+        if let Some(collection) = diff {
             files.insert(
                 "diff".to_string(),
-                self.put("artifacts/diff.patch", diff.as_bytes())?,
+                self.put("artifacts/diff.patch", collection.patch.as_bytes())?,
+            );
+            let text = serde_json::to_string_pretty(&collection.record())
+                .map_err(|error| error.to_string())?;
+            files.insert(
+                "collection".to_string(),
+                self.put("artifacts/collection.json", text.as_bytes())?,
             );
         }
         // The delegate writes its briefing and stream itself; the manifest
@@ -879,22 +885,12 @@ impl Bundle {
     }
 
     /// The working tree's change against the base commit, untracked files
-    /// included, when the workdir is a Git work tree.
-    fn diff(&self) -> Option<String> {
+    /// included within bounds, when the workdir is a Git work tree. It
+    /// reads only: the index is never written, and the collection names
+    /// the workspace revision before and after it read.
+    fn diff(&self) -> Option<crate::collect::Collection> {
         let base = self.base.as_deref()?;
-        let git = |args: &[&str]| {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(&self.workdir)
-                .output()
-                .ok()
-                .filter(|output| output.status.success())
-                .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
-        };
-        // Intent-to-add makes untracked files show in the diff without
-        // staging their content.
-        let _ = git(&["add", "-N", "."]);
-        git(&["diff", "--binary", base])
+        crate::collect::collect(&self.workdir, base, crate::collect::Limits::default())
     }
 }
 

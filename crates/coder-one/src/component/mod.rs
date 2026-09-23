@@ -126,6 +126,7 @@ pub trait Component {
 pub fn registry() -> Vec<Box<dyn Component>> {
     vec![
         Box::new(SetupGate),
+        Box::new(Planner),
         Box::new(ProbeKeep),
         Box::new(Select),
         Box::new(Pack),
@@ -250,7 +251,88 @@ impl Component for SetupGate {
     }
 }
 
-/// `evidence.probes`: which finished probe outputs reach the briefing.
+/// `evidence.probes.planner`: which typed, read-only operations the host
+/// runs. The isolated run plans only; it never runs an operation.
+struct Planner;
+
+impl Component for Planner {
+    fn id(&self) -> &'static str {
+        "evidence.probes.planner"
+    }
+    fn implementation(&self) -> Implementation {
+        crate::probes::implementation(crate::probes::PlanParams::default())
+    }
+    fn about(&self) -> &'static str {
+        "Code plans the typed, read-only operations the host runs before the work."
+    }
+    fn run<'a>(
+        &'a self,
+        fixture: &'a Fixture,
+        _jev: &'a JevMode,
+        _recorder: &'a Recorder,
+    ) -> LocalBoxFuture<'a, Result<Ran, String>> {
+        Box::pin(async move {
+            let input: crate::probes::PlanInput = input(fixture)?;
+            let planned = crate::probes::plan(&input.facts, input.params);
+            let labels: Vec<String> = planned.iter().map(|p| p.operation.label()).collect();
+            let mut metrics = Map::new();
+            metrics.insert("operations".to_string(), json!(planned.len()));
+            metrics.insert(
+                "not_observe".to_string(),
+                json!(
+                    planned
+                        .iter()
+                        .filter(|p| p.operation.effects().class != crate::ops::EffectClass::Observe)
+                        .count()
+                ),
+            );
+            // The retained battery's commands, each covered by an
+            // equivalent operation or dropped on purpose.
+            let mut uncovered = Vec::new();
+            if let Some(commands) = fixture.retained.get("commands").and_then(Value::as_array) {
+                let mut covered = 0;
+                let mut subsumed = 0;
+                let mut missing = Vec::new();
+                for command in commands.iter().filter_map(Value::as_str) {
+                    match crate::probes::equivalent(command, &input.facts.workdir) {
+                        None => subsumed += 1,
+                        Some(wanted) => {
+                            let found = wanted.iter().all(|want| {
+                                labels.iter().any(|label| label.starts_with(want.as_str()))
+                            });
+                            if found {
+                                covered += 1;
+                            } else {
+                                missing.push(command.to_string());
+                            }
+                        }
+                    }
+                }
+                metrics.insert("retained_covered".to_string(), json!(covered));
+                metrics.insert("retained_subsumed".to_string(), json!(subsumed));
+                metrics.insert("matches_retained".to_string(), json!(missing.is_empty()));
+                metrics.insert("retained_missing".to_string(), json!(missing.len()));
+                uncovered = missing;
+            }
+            Ok(Ran {
+                output: json!({
+                    "planned": planned.iter().map(|p| json!({
+                        "id": p.id,
+                        "operation": p.operation,
+                        "label": p.operation.label(),
+                        "effect": p.operation.effects().class.word(),
+                        "reason": p.reason,
+                    })).collect::<Vec<_>>(),
+                    "retained_missing": uncovered,
+                }),
+                metrics,
+            })
+        })
+    }
+}
+
+/// `evidence.probes.selector`: which finished probe outputs reach the
+/// briefing.
 struct ProbeKeep;
 
 #[derive(Deserialize)]
@@ -261,7 +343,7 @@ struct ProbeInput {
 
 impl Component for ProbeKeep {
     fn id(&self) -> &'static str {
-        "evidence.probes"
+        "evidence.probes.selector"
     }
     fn implementation(&self) -> Implementation {
         evidence::probe_implementation()
@@ -947,7 +1029,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_recorded_suite_reruns_byte_identically() {
-        let component = find("evidence.probes").unwrap();
+        let component = find("evidence.probes.selector").unwrap();
         let dirs = fixtures_for(&fixtures(), component.id());
         let first = suite(
             component.as_ref(),
@@ -975,7 +1057,7 @@ mod tests {
 
     #[tokio::test]
     async fn off_leaves_every_judgment_unknown() {
-        let component = find("evidence.probes").unwrap();
+        let component = find("evidence.probes.selector").unwrap();
         let dirs = fixtures_for(&fixtures(), component.id());
         let suite = suite(
             component.as_ref(),
