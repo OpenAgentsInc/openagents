@@ -1,0 +1,111 @@
+{
+  "schema": "openagents.tbench.attempt.v1",
+  "attempt": {
+    "id": "3cd79d6a-4be1-4ca3-812f-6f356766eb87",
+    "job": "extended--coder-one-tunable--sqlite-db-truncate-3",
+    "trial": "sqlite-db-truncate__JfCXuyo",
+    "arm": "coder-one-tunable",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/sqlite-db-truncate",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/sqlite-db-truncate",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "149c8061043d593a987eea4a61d9d24a772957a7ddee70414574b70dafbe4b30",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T05:39:39.076189Z",
+    "finished_at": "2026-09-23T05:40:30.769356Z",
+    "environment_setup_ms": 871,
+    "agent_setup_ms": 3622,
+    "agent_execution_ms": 25458,
+    "verifier_ms": 10835,
+    "total_ms": 51693
+  },
+  "setup": {
+    "mode": "prebuilt",
+    "cache": "warm",
+    "install_ms": 2193,
+    "agent_setup_ms": 3622,
+    "layers": [
+      "node-22.23.2-linux-x64",
+      "claude-code-2.1.280-linux-x64",
+      "node-22.23.2-linux-x64",
+      "codex-0.155.1-linux-x64"
+    ],
+    "failed": false,
+    "boundaries": {
+      "agent_setup_ms": "Harbor's agent_setup phase: the toolchain install, the artifact upload, and the episode doctor",
+      "install_ms": "the toolchain alone, from the adapter's toolchain-setup.json",
+      "agent_execution_ms": "Harbor's agent_execution phase",
+      "total_ms": "the trial's started_at to finished_at"
+    }
+  },
+  "environment": {
+    "image": "alexgshaw/sqlite-db-truncate:20251031",
+    "image_source": "prebuilt",
+    "image_state": "warm",
+    "image_action": "reused",
+    "image_state_method": "trial.log: Harbor's docker inspect before compose up found the image in the local cache"
+  },
+  "usage": {
+    "input_tokens": 59712,
+    "cache_tokens": 37604,
+    "output_tokens": 1697,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.07965357999999999,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "counts": {
+    "semantics": "atif-v1-steps-and-calls",
+    "atif_steps": 122,
+    "model_invocations": 15,
+    "typed_decisions": 0,
+    "tool_calls": 14,
+    "shell_commands": 0,
+    "retries": 0,
+    "subagent_steps": 0
+  },
+  "evidence": {
+    "trial_result": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--sqlite-db-truncate-3/sqlite-db-truncate__JfCXuyo/result.json",
+    "trial_dir": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--sqlite-db-truncate-3/sqlite-db-truncate__JfCXuyo",
+    "manifest": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--sqlite-db-truncate-3/tbench/manifests/sqlite-db-truncate__JfCXuyo.json"
+  },
+  "completeness": {
+    "trace": "present",
+    "usage": "full",
+    "cost": "reported",
+    "artifacts": "present",
+    "bundle": "present"
+  }
+}

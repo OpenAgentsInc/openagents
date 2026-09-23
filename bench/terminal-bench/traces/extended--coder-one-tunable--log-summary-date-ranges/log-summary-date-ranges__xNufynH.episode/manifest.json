@@ -1,0 +1,512 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable",
+    "digest": "42daee0672670f6ecfed0094630471f9ebb5caa3eb5afea640fdee32f6e731e9",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable",
+      "note": "The whole tunable composition in a Terminal-Bench episode: task.profile routes the start (Codex on GPT-6 Luna for cheap, likely-easy tasks; lean Claude Code on Opus 5.5 for hard or long ones), deep Jev briefs it, control.monitor watches, verify.checks and verify.support judge the result, control.handoff escalates Luna to lean Opus on a stall, a failed check, a contradicted requirement, or no answer, and verify.repair runs once from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout. Both executors run the headless core system prompt with its protected sections, and Claude Code writes the five-minute prompt cache.",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [
+              "stalled",
+              "repeating"
+            ],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "route": {
+            "rule": "profile-v1",
+            "cheap": {
+              "agent": "codex",
+              "model": "gpt-6-luna",
+              "version": "0.155.1"
+            },
+            "strong": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "hard_at": 0.5,
+            "hard_features": [
+              "builds_code",
+              "concurrency"
+            ],
+            "feature_at": 0.7,
+            "long_after_sec": 3600
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked"
+        },
+        "executor": {
+          "agent": "claude-code",
+          "version": "2.1.280",
+          "model": "claude-opus-5-5",
+          "effort": "low",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": true,
+          "repair": {
+            "brief": "packet",
+            "trigger": "detected"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "f347d1fb28b8c4537827e96be6cbaf2376db548c43599bc41a059635f5791da9"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "version": "2.1.280",
+    "effort": "low",
+    "tools": "Bash,Read,Edit,Write,Glob,Grep",
+    "prompt_cache_ttl": "5m",
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/opt/openagents/toolchain/claude-code-2.1.280-linux-x64/bin/claude",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "08813ee7b500e5217606179096826290d9e6ecffbd522ff1a2dec136f8f41b86",
+        "chars": 11874,
+        "bytes": 11880,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "requirement 1",
+          "requirement 2",
+          "requirement 3",
+          "requirement 4",
+          "requirement 5",
+          "requirement 6",
+          "requirement 7",
+          "requirement 8",
+          "requirement 9",
+          "requirement 10",
+          "requirement 11",
+          "requirement 12",
+          "explorer conclusion",
+          "file $ list /app (depth 3)",
+          "file $ list /app/logs"
+        ],
+        "omitted": [
+          "file logs/2025-07-07_api.log (4052 characters)",
+          "file logs/2025-07-12_db.log (4051 characters)",
+          "file logs/2025-08-10_db.log (4051 characters)"
+        ]
+      },
+      "packer": "sections",
+      "uncovered_requirements": null,
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": 3,
+      "completed_items": null,
+      "charge": "priced",
+      "total_cost_usd": 0.0651326,
+      "milliseconds": 12595,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 13593,
+        "kept_bytes": 13593,
+        "truncated": false,
+        "sha256": "10d3d78e900e17d93a626804159d66af2b07acc89831d9e63251e61bbb5dc26e",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "claude-code",
+        "mode": "replace",
+        "setting": "--system-prompt-file",
+        "digest": "f347d1fb28b8c4537827e96be6cbaf2376db548c43599bc41a059635f5791da9",
+        "chars": 1542,
+        "default": "claude-code 2.1.280",
+        "default_chars": 5453,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.73,
+        "criteria": [
+          {
+            "requirement": "Your task is to analyze all logs and count how many times each severity appears within the following date ranges:",
+            "p": 0.84
+          },
+          {
+            "requirement": "Today (the current date)",
+            "p": 0.83
+          },
+          {
+            "requirement": "Last 7 days (including today)",
+            "p": 0.76
+          },
+          {
+            "requirement": "Last 30 days (including today)",
+            "p": 0.79
+          },
+          {
+            "requirement": "Current month to date (from the 1st date of the current month up to and including today)",
+            "p": 0.85
+          },
+          {
+            "requirement": "Total (all log files combined, regardless of date)",
+            "p": 0.8
+          },
+          {
+            "requirement": "The severity levels to count are exactly: ERROR, WARNING, and INFO.",
+            "p": 0.68
+          },
+          {
+            "requirement": "Write a CSV file /app/summary.csv with the following structure (including the header):",
+            "p": 0.72
+          },
+          {
+            "requirement": "period,severity,count today,ERROR,<count> today,WARNING,<count> today,INFO,<count> last_7_days,ERROR,<count> last_7_days,WARNING,<count> last_7_days,INFO,<count> last_30_days,ERROR,<count> last_30_days,WARNING,<count> last_30_days,INFO,<count> month_to_date,ERROR,<count> month_to_date,WARNING,<count…",
+            "p": 0.79
+          },
+          {
+            "requirement": "Each row should report the total count of each severity for the corresponding date range.",
+            "p": 0.74
+          },
+          {
+            "requirement": "The current date is 2025-08-12.",
+            "p": 0.69
+          },
+          {
+            "requirement": "Use this as the reference date for all calculations.",
+            "p": 0.63
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a035cebe6e6)",
+    "sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.06738023,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T05:35:23.160Z",
+  "updated_at": "2026-09-23T05:35:39.079Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 397603,
+      "sha256": "68eef15804b321199ed9059fb2291723e4b1cb184fa34700ffff2004e097d212"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 9237,
+      "sha256": "9a68aaf333ca033377f0205576686cb614efa7b37e4916aef8b2aed004286af9"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 36650,
+      "sha256": "74ba6944c53130069ee2eff2153ba6cfd4ea9273b0e0d42c0d9430dfc468377a"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 3151,
+      "sha256": "ccb05de7604b634873c04d495e505d679a05a0d79a25ebcf0005f90332d50c81"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 11511,
+      "sha256": "3af4853dbb6a4ef115d126be8b42a87ed72a845642309c32e2c3325220817c90"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 11880,
+      "sha256": "08813ee7b500e5217606179096826290d9e6ecffbd522ff1a2dec136f8f41b86"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 13593,
+      "sha256": "10d3d78e900e17d93a626804159d66af2b07acc89831d9e63251e61bbb5dc26e"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 251751,
+      "sha256": "db646c4d014e0f65958672382bfae44cda35ccbe1203c7c989b59491248c1851",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 15951,
+    "remaining_ms": 764048,
+    "used_fraction": 0.0204511709525641,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "107e9583ad6b63fd50f383bf15b43c2484365167f18c28a2f9ead2f43832c648",
+          "scenarios": 2,
+          "verdicts": {
+            "passed": 2
+          },
+          "requirements": {
+            "observed": 1,
+            "unobserved": 12
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": {
+      "candidate": "107e9583ad6b63fd50f383bf15b43c2484365167f18c28a2f9ead2f43832c648",
+      "judged": 3,
+      "supported": 1,
+      "contradicted": 0,
+      "unresolved": 2,
+      "skipped": 10
+    },
+    "repair": {
+      "tier": {
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "low",
+        "tools": "Bash,Read,Edit,Write,Glob,Grep",
+        "prompt_cache_ttl": "5m",
+        "version": "2.1.280"
+      },
+      "triggered": false,
+      "ran": false,
+      "changed": false,
+      "skipped": "no check contradicted a requirement",
+      "session": null,
+      "recheck": null,
+      "cost_usd": 0.0
+    }
+  },
+  "result": {
+    "title": "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM…",
+    "summary": "I wrote `/app/summary.csv` with the required header and all 15 rows, in the order the task lists them. I checked the output by reading it back.\n\n| period | ERROR | WARNING | INFO |\n|---|---|---|---|\n| today (2025-08-12) | 370 | 463 | 1433 |\n| last_7_days (08-06 to 08-12) | 2969 | 4020 | 12203 |\n| last_30_days (07-14 to 08-12) | 9594 | 12847 | 38702 |\n| month_to_date (08-01 to 08-12) | 4682 | 6327 | 19420 |\n| total | 14160 | 18772 | 56621 |\n\n- **How lines were counted:** I only counted the bracketed severity tag, such as `[ERROR]`. Some message text also contains these words, for example \"Next attempt will ERROR\". A plain word search found 16,774 ERRORs overall, but 14,160 lines actually carry an `[ERROR]` tag. The WARNING and INFO totals are the same either way.\n- **How dates were assigned:** each line was dated by its file name, not by the timestamp inside the line.\n\nThere's no separate script file: I ran the Python inline.",
+    "delegate_status": "answered"
+  }
+}

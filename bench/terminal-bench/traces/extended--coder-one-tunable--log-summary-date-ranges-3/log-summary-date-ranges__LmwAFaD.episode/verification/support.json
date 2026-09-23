@@ -1,0 +1,2525 @@
+{
+  "schema": "openagents.coder-one.support.v1",
+  "implementation": {
+    "name": "paired supports and contradicts nouls per requirement",
+    "digest": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054"
+  },
+  "params": {
+    "supports": 0.5,
+    "contradicts": 0.3,
+    "max_requirements": 3,
+    "artifact_chars": 6000,
+    "observation_chars": 2500
+  },
+  "candidate": "107e9583ad6b63fd50f383bf15b43c2484365167f18c28a2f9ead2f43832c648",
+  "states": [
+    {
+      "id": "R8",
+      "text": "Write a CSV file /app/summary.csv with the following structure (including the header):",
+      "state": "supported",
+      "why": "the evidence supports it and doesn't contradict it",
+      "observed": [
+        "scenario generic.output:/app/summary.csv passed",
+        "scenario generic.parse:/app/summary.csv passed",
+        "read summary.csv (350 of 350 characters)"
+      ],
+      "establishes": "R8 is met by candidate 107e9583ad6b",
+      "checker": {
+        "scenarios": [
+          "generic.output:/app/summary.csv",
+          "generic.parse:/app/summary.csv"
+        ],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "107e9583ad6b63fd50f383bf15b43c2484365167f18c28a2f9ead2f43832c648",
+      "evidence_digest": "875d86070f46d1746287e84614bee781b38524513a9aea5a7da63a8131d0f237",
+      "scenario_state": "observed",
+      "judgment": {
+        "supports": 0.85,
+        "contradicts": 0.07,
+        "how": "live",
+        "key": "6944dd161a3712dbac0a30aa11868a102a3d253cd01167fff0a69bf22703ffca",
+        "input_tokens": 1407
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R8",
+          "text": "Write a CSV file /app/summary.csv with the following structure (including the header):",
+          "kind": "deliverable"
+        },
+        "artifact": [
+          {
+            "path": "summary.csv",
+            "text": "period,severity,count\ntoday,ERROR,370\ntoday,WARNING,463\ntoday,INFO,1433\nlast_7_days,ERROR,2969\nlast_7_days,WARNING,4020\nlast_7_days,INFO,12203\nlast_30_days,ERROR,9594\nlast_30_days,WARNING,12847\nlast_30_days,INFO,38702\nmonth_to_date,ERROR,4682\nmonth_to_date,WARNING,6327\nmonth_to_date,INFO,19420\ntotal,ERROR,14160\ntotal,WARNING,18772\ntotal,INFO,56621\n",
+            "chars": 350,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "generic.output:/app/summary.csv",
+            "verdict": "passed",
+            "expected": "/app/summary.csv exists and isn't empty.",
+            "observed": [
+              {
+                "path": "/app/summary.csv",
+                "exists": true,
+                "bytes": 350
+              }
+            ],
+            "limits": [
+              "checks that the file is there, not what it holds"
+            ]
+          },
+          {
+            "scenario": "generic.parse:/app/summary.csv",
+            "verdict": "passed",
+            "expected": "/app/summary.csv parses as csv and starts with the header period,severity,count.",
+            "observed": [
+              {
+                "path": "/app/summary.csv",
+                "format": "csv",
+                "problem": null
+              }
+            ],
+            "limits": [
+              "checks the format, not the values"
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      }
+    },
+    {
+      "id": "R1",
+      "text": "Your task is to analyze all logs and count how many times each severity appears within the following date ranges:",
+      "state": "unresolved",
+      "why": "the artifact excerpt was clipped, so the judgment didn't read the whole source",
+      "observed": [
+        "no scenario observed it",
+        "read logs/2025-07-03_api.log (36 of 39171 characters)",
+        "read logs/2025-07-03_app.log (36 of 19494 characters)",
+        "read logs/2025-07-03_auth.log (36 of 39495 characters)",
+        "read logs/2025-07-03_db.log (36 of 33616 characters)",
+        "read logs/2025-07-04_api.log (36 of 37149 characters)",
+        "read logs/2025-07-04_app.log (36 of 39495 characters)",
+        "read logs/2025-07-04_auth.log (36 of 39171 characters)",
+        "read logs/2025-07-04_db.log (36 of 19494 characters)",
+        "read logs/2025-07-05_api.log (36 of 42580 characters)",
+        "read logs/2025-07-05_app.log (36 of 39171 characters)",
+        "read logs/2025-07-05_auth.log (36 of 37149 characters)",
+        "read logs/2025-07-05_db.log (36 of 39495 characters)",
+        "read logs/2025-07-06_api.log (36 of 38074 characters)",
+        "read logs/2025-07-06_app.log (36 of 37149 characters)",
+        "read logs/2025-07-06_auth.log (36 of 42580 characters)",
+        "read logs/2025-07-06_db.log (36 of 39171 characters)",
+        "read logs/2025-07-07_api.log (36 of 58725 characters)",
+        "read logs/2025-07-07_app.log (36 of 42580 characters)",
+        "read logs/2025-07-07_auth.log (36 of 38074 characters)",
+        "read logs/2025-07-07_db.log (36 of 37149 characters)",
+        "read logs/2025-07-08_api.log (36 of 58039 characters)",
+        "read logs/2025-07-08_app.log (36 of 38074 characters)",
+        "read logs/2025-07-08_auth.log (36 of 58725 characters)",
+        "read logs/2025-07-08_db.log (36 of 42580 characters)",
+        "read logs/2025-07-09_api.log (36 of 48372 characters)",
+        "read logs/2025-07-09_app.log (36 of 58725 characters)",
+        "read logs/2025-07-09_auth.log (36 of 58039 characters)",
+        "read logs/2025-07-09_db.log (36 of 38074 characters)",
+        "read logs/2025-07-10_api.log (36 of 58521 characters)",
+        "read logs/2025-07-10_app.log (36 of 58039 characters)",
+        "read logs/2025-07-10_auth.log (36 of 48372 characters)",
+        "read logs/2025-07-10_db.log (36 of 58725 characters)",
+        "read logs/2025-07-11_api.log (36 of 18235 characters)",
+        "read logs/2025-07-11_app.log (36 of 48372 characters)",
+        "read logs/2025-07-11_auth.log (36 of 58521 characters)",
+        "read logs/2025-07-11_db.log (36 of 58039 characters)",
+        "read logs/2025-07-12_api.log (36 of 44763 characters)",
+        "read logs/2025-07-12_app.log (36 of 58521 characters)",
+        "read logs/2025-07-12_auth.log (36 of 18235 characters)",
+        "read logs/2025-07-12_db.log (36 of 48372 characters)",
+        "read logs/2025-07-13_api.log (36 of 20592 characters)",
+        "read logs/2025-07-13_app.log (36 of 18235 characters)",
+        "read logs/2025-07-13_auth.log (36 of 44763 characters)",
+        "read logs/2025-07-13_db.log (36 of 58521 characters)",
+        "read logs/2025-07-14_api.log (36 of 19498 characters)",
+        "read logs/2025-07-14_app.log (36 of 44763 characters)",
+        "read logs/2025-07-14_auth.log (36 of 20592 characters)",
+        "read logs/2025-07-14_db.log (36 of 18235 characters)",
+        "read logs/2025-07-15_api.log (36 of 35684 characters)",
+        "read logs/2025-07-15_app.log (36 of 20592 characters)",
+        "read logs/2025-07-15_auth.log (36 of 19498 characters)",
+        "read logs/2025-07-15_db.log (36 of 44763 characters)",
+        "read logs/2025-07-16_api.log (36 of 14496 characters)",
+        "read logs/2025-07-16_app.log (36 of 19498 characters)",
+        "read logs/2025-07-16_auth.log (36 of 35684 characters)",
+        "read logs/2025-07-16_db.log (36 of 20592 characters)",
+        "read logs/2025-07-17_api.log (36 of 36980 characters)",
+        "read logs/2025-07-17_app.log (36 of 35684 characters)",
+        "read logs/2025-07-17_auth.log (36 of 14496 characters)",
+        "read logs/2025-07-17_db.log (36 of 19498 characters)",
+        "read logs/2025-07-18_api.log (36 of 47497 characters)",
+        "read logs/2025-07-18_app.log (36 of 14496 characters)",
+        "read logs/2025-07-18_auth.log (36 of 36980 characters)",
+        "read logs/2025-07-18_db.log (36 of 35684 characters)",
+        "read logs/2025-07-19_api.log (36 of 15682 characters)",
+        "read logs/2025-07-19_app.log (36 of 36980 characters)",
+        "read logs/2025-07-19_auth.log (36 of 47497 characters)",
+        "read logs/2025-07-19_db.log (36 of 14496 characters)",
+        "read logs/2025-07-20_api.log (36 of 16747 characters)",
+        "read logs/2025-07-20_app.log (36 of 47497 characters)",
+        "read logs/2025-07-20_auth.log (36 of 15682 characters)",
+        "read logs/2025-07-20_db.log (36 of 36980 characters)",
+        "read logs/2025-07-21_api.log (36 of 20343 characters)",
+        "read logs/2025-07-21_app.log (36 of 15682 characters)",
+        "read logs/2025-07-21_auth.log (36 of 16747 characters)",
+        "read logs/2025-07-21_db.log (36 of 47497 characters)",
+        "read logs/2025-07-22_api.log (36 of 54841 characters)",
+        "read logs/2025-07-22_app.log (36 of 16747 characters)",
+        "read logs/2025-07-22_auth.log (36 of 20343 characters)",
+        "read logs/2025-07-22_db.log (36 of 15682 characters)",
+        "read logs/2025-07-23_api.log (36 of 23674 characters)",
+        "read logs/2025-07-23_app.log (36 of 20343 characters)",
+        "read logs/2025-07-23_auth.log (36 of 54841 characters)",
+        "read logs/2025-07-23_db.log (36 of 16747 characters)",
+        "read logs/2025-07-24_api.log (36 of 19610 characters)",
+        "read logs/2025-07-24_app.log (36 of 54841 characters)",
+        "read logs/2025-07-24_auth.log (36 of 23674 characters)",
+        "read logs/2025-07-24_db.log (36 of 20343 characters)",
+        "read logs/2025-07-25_api.log (36 of 35388 characters)",
+        "read logs/2025-07-25_app.log (36 of 23674 characters)",
+        "read logs/2025-07-25_auth.log (36 of 19610 characters)",
+        "read logs/2025-07-25_db.log (36 of 54841 characters)",
+        "read logs/2025-07-26_api.log (36 of 40404 characters)",
+        "read logs/2025-07-26_app.log (36 of 19610 characters)",
+        "read logs/2025-07-26_auth.log (36 of 35388 characters)",
+        "read logs/2025-07-26_db.log (36 of 23674 characters)",
+        "read logs/2025-07-27_api.log (36 of 35195 characters)",
+        "read logs/2025-07-27_app.log (36 of 35388 characters)",
+        "read logs/2025-07-27_auth.log (36 of 40404 characters)",
+        "read logs/2025-07-27_db.log (36 of 19610 characters)",
+        "read logs/2025-07-28_api.log (36 of 14433 characters)",
+        "read logs/2025-07-28_app.log (36 of 40404 characters)",
+        "read logs/2025-07-28_auth.log (36 of 35195 characters)",
+        "read logs/2025-07-28_db.log (36 of 35388 characters)",
+        "read logs/2025-07-29_api.log (36 of 17715 characters)",
+        "read logs/2025-07-29_app.log (36 of 35195 characters)",
+        "read logs/2025-07-29_auth.log (36 of 14433 characters)",
+        "read logs/2025-07-29_db.log (36 of 40404 characters)",
+        "read logs/2025-07-30_api.log (36 of 13720 characters)",
+        "read logs/2025-07-30_app.log (36 of 14433 characters)",
+        "read logs/2025-07-30_auth.log (36 of 17715 characters)",
+        "read logs/2025-07-30_db.log (36 of 35195 characters)",
+        "read logs/2025-07-31_api.log (36 of 57568 characters)",
+        "read logs/2025-07-31_app.log (36 of 17715 characters)",
+        "read logs/2025-07-31_auth.log (36 of 13720 characters)",
+        "read logs/2025-07-31_db.log (36 of 14433 characters)",
+        "read logs/2025-08-01_api.log (36 of 22557 characters)",
+        "read logs/2025-08-01_app.log (36 of 13555 characters)",
+        "read logs/2025-08-01_auth.log (36 of 55357 characters)",
+        "read logs/2025-08-01_db.log (36 of 53023 characters)",
+        "read logs/2025-08-02_api.log (36 of 43173 characters)",
+        "read logs/2025-08-02_app.log (36 of 55357 characters)",
+        "read logs/2025-08-02_auth.log (36 of 22557 characters)",
+        "read logs/2025-08-02_db.log (36 of 13555 characters)",
+        "read logs/2025-08-03_api.log (36 of 33121 characters)",
+        "read logs/2025-08-03_app.log (36 of 22557 characters)",
+        "read logs/2025-08-03_auth.log (36 of 43173 characters)",
+        "read logs/2025-08-03_db.log (36 of 55357 characters)",
+        "read logs/2025-08-04_api.log (36 of 45524 characters)",
+        "read logs/2025-08-04_app.log (36 of 43173 characters)",
+        "read logs/2025-08-04_auth.log (36 of 33121 characters)",
+        "read logs/2025-08-04_db.log (36 of 22557 characters)",
+        "read logs/2025-08-05_api.log (36 of 40349 characters)",
+        "read logs/2025-08-05_app.log (36 of 33121 characters)",
+        "read logs/2025-08-05_auth.log (36 of 45524 characters)",
+        "read logs/2025-08-05_db.log (36 of 43173 characters)",
+        "read logs/2025-08-06_api.log (36 of 61638 characters)",
+        "read logs/2025-08-06_app.log (36 of 45524 characters)",
+        "read logs/2025-08-06_auth.log (36 of 40349 characters)",
+        "read logs/2025-08-06_db.log (36 of 33121 characters)",
+        "read logs/2025-08-07_api.log (36 of 61186 characters)",
+        "read logs/2025-08-07_app.log (36 of 40349 characters)",
+        "read logs/2025-08-07_auth.log (36 of 61638 characters)",
+        "read logs/2025-08-07_db.log (36 of 45524 characters)",
+        "read logs/2025-08-08_api.log (36 of 46577 characters)",
+        "read logs/2025-08-08_app.log (36 of 61638 characters)",
+        "read logs/2025-08-08_auth.log (36 of 61186 characters)",
+        "read logs/2025-08-08_db.log (36 of 40349 characters)",
+        "read logs/2025-08-09_api.log (36 of 33131 characters)",
+        "read logs/2025-08-09_app.log (36 of 61186 characters)",
+        "read logs/2025-08-09_auth.log (36 of 46577 characters)",
+        "read logs/2025-08-09_db.log (36 of 61638 characters)",
+        "read logs/2025-08-10_api.log (36 of 30313 characters)",
+        "read logs/2025-08-10_app.log (36 of 46577 characters)",
+        "read logs/2025-08-10_auth.log (36 of 33131 characters)",
+        "read logs/2025-08-10_db.log (36 of 61186 characters)",
+        "read logs/2025-08-11_api.log (36 of 34678 characters)",
+        "read logs/2025-08-11_app.log (36 of 33131 characters)",
+        "read logs/2025-08-11_auth.log (36 of 30313 characters)",
+        "read logs/2025-08-11_db.log (36 of 46577 characters)",
+        "read logs/2025-08-12_api.log (36 of 50268 characters)",
+        "read logs/2025-08-12_app.log (36 of 30313 characters)",
+        "read logs/2025-08-12_auth.log (36 of 34678 characters)",
+        "read logs/2025-08-12_db.log (36 of 33131 characters)",
+        "read summary.csv (36 of 350 characters)"
+      ],
+      "establishes": "nothing yet about R1 for candidate 107e9583ad6b",
+      "checker": {
+        "scenarios": [],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "107e9583ad6b63fd50f383bf15b43c2484365167f18c28a2f9ead2f43832c648",
+      "evidence_digest": "510bd341ce4991a3bfd1761d72756fdf17e7c36f6cc049df034084da39778ec2",
+      "scenario_state": "unobserved",
+      "judgment": {
+        "supports": 0.04,
+        "contradicts": 0.84,
+        "how": "live",
+        "key": "a32f926490cca9f9a907fedec0704411c66eac419abfaa3475b23800e058f09a",
+        "input_tokens": 10876
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R1",
+          "text": "Your task is to analyze all logs and count how many times each severity appears within the following date ranges:",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "logs/2025-07-03_api.log",
+            "text": "2025-07-03 09:24:57 [ERROR] Unhandle",
+            "chars": 39171,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-03_app.log",
+            "text": "2025-07-03 12:55:35 [INFO] Scheduled",
+            "chars": 19494,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-03_auth.log",
+            "text": "2025-07-03 06:13:03 [INFO] Scheduled",
+            "chars": 39495,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-03_db.log",
+            "text": "2025-07-03 17:21:33 [INFO] Service p",
+            "chars": 33616,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-04_api.log",
+            "text": "2025-07-04 21:16:59 [INFO] Service p",
+            "chars": 37149,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-04_app.log",
+            "text": "2025-07-04 06:13:03 [INFO] Scheduled",
+            "chars": 39495,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-04_auth.log",
+            "text": "2025-07-04 09:24:57 [ERROR] Unhandle",
+            "chars": 39171,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-04_db.log",
+            "text": "2025-07-04 12:55:35 [INFO] Scheduled",
+            "chars": 19494,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-05_api.log",
+            "text": "2025-07-05 01:13:45 [INFO] Cache cle",
+            "chars": 42580,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-05_app.log",
+            "text": "2025-07-05 09:24:57 [ERROR] Unhandle",
+            "chars": 39171,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-05_auth.log",
+            "text": "2025-07-05 21:16:59 [INFO] Service p",
+            "chars": 37149,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-05_db.log",
+            "text": "2025-07-05 06:13:03 [INFO] Scheduled",
+            "chars": 39495,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-06_api.log",
+            "text": "2025-07-06 14:49:15 [DEBUG] Variable",
+            "chars": 38074,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-06_app.log",
+            "text": "2025-07-06 21:16:59 [INFO] Service p",
+            "chars": 37149,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-06_auth.log",
+            "text": "2025-07-06 01:13:45 [INFO] Cache cle",
+            "chars": 42580,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-06_db.log",
+            "text": "2025-07-06 09:24:57 [ERROR] Unhandle",
+            "chars": 39171,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-07_api.log",
+            "text": "2025-07-07 21:02:26 [INFO] Scheduled",
+            "chars": 58725,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-07_app.log",
+            "text": "2025-07-07 01:13:45 [INFO] Cache cle",
+            "chars": 42580,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-07_auth.log",
+            "text": "2025-07-07 14:49:15 [DEBUG] Variable",
+            "chars": 38074,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-07_db.log",
+            "text": "2025-07-07 21:16:59 [INFO] Service p",
+            "chars": 37149,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-08_api.log",
+            "text": "2025-07-08 22:46:31 [INFO] File uplo",
+            "chars": 58039,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-08_app.log",
+            "text": "2025-07-08 14:49:15 [DEBUG] Variable",
+            "chars": 38074,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-08_auth.log",
+            "text": "2025-07-08 21:02:26 [INFO] Scheduled",
+            "chars": 58725,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-08_db.log",
+            "text": "2025-07-08 01:13:45 [INFO] Cache cle",
+            "chars": 42580,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-09_api.log",
+            "text": "2025-07-09 06:11:14 [INFO] Service a",
+            "chars": 48372,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-09_app.log",
+            "text": "2025-07-09 21:02:26 [INFO] Scheduled",
+            "chars": 58725,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-09_auth.log",
+            "text": "2025-07-09 22:46:31 [INFO] File uplo",
+            "chars": 58039,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-09_db.log",
+            "text": "2025-07-09 14:49:15 [DEBUG] Variable",
+            "chars": 38074,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-10_api.log",
+            "text": "2025-07-10 07:56:45 [ERROR] Unhandle",
+            "chars": 58521,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-10_app.log",
+            "text": "2025-07-10 22:46:31 [INFO] File uplo",
+            "chars": 58039,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-10_auth.log",
+            "text": "2025-07-10 06:11:14 [INFO] Service a",
+            "chars": 48372,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-10_db.log",
+            "text": "2025-07-10 21:02:26 [INFO] Scheduled",
+            "chars": 58725,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-11_api.log",
+            "text": "2025-07-11 14:44:15 [INFO] Cache cle",
+            "chars": 18235,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-11_app.log",
+            "text": "2025-07-11 06:11:14 [INFO] Service a",
+            "chars": 48372,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-11_auth.log",
+            "text": "2025-07-11 07:56:45 [ERROR] Unhandle",
+            "chars": 58521,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-11_db.log",
+            "text": "2025-07-11 22:46:31 [INFO] File uplo",
+            "chars": 58039,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-12_api.log",
+            "text": "2025-07-12 18:23:53 [INFO] Scheduled",
+            "chars": 44763,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-12_app.log",
+            "text": "2025-07-12 07:56:45 [ERROR] Unhandle",
+            "chars": 58521,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-12_auth.log",
+            "text": "2025-07-12 14:44:15 [INFO] Cache cle",
+            "chars": 18235,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-12_db.log",
+            "text": "2025-07-12 06:11:14 [INFO] Service a",
+            "chars": 48372,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-13_api.log",
+            "text": "2025-07-13 03:36:44 [INFO] Scheduled",
+            "chars": 20592,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-13_app.log",
+            "text": "2025-07-13 14:44:15 [INFO] Cache cle",
+            "chars": 18235,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-13_auth.log",
+            "text": "2025-07-13 18:23:53 [INFO] Scheduled",
+            "chars": 44763,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-13_db.log",
+            "text": "2025-07-13 07:56:45 [ERROR] Unhandle",
+            "chars": 58521,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-14_api.log",
+            "text": "2025-07-14 23:23:17 [INFO] Service p",
+            "chars": 19498,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-14_app.log",
+            "text": "2025-07-14 18:23:53 [INFO] Scheduled",
+            "chars": 44763,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-14_auth.log",
+            "text": "2025-07-14 03:36:44 [INFO] Scheduled",
+            "chars": 20592,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-14_db.log",
+            "text": "2025-07-14 14:44:15 [INFO] Cache cle",
+            "chars": 18235,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-15_api.log",
+            "text": "2025-07-15 09:47:09 [ERROR] Email se",
+            "chars": 35684,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-15_app.log",
+            "text": "2025-07-15 03:36:44 [INFO] Scheduled",
+            "chars": 20592,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-15_auth.log",
+            "text": "2025-07-15 23:23:17 [INFO] Service p",
+            "chars": 19498,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-15_db.log",
+            "text": "2025-07-15 18:23:53 [INFO] Scheduled",
+            "chars": 44763,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-16_api.log",
+            "text": "2025-07-16 20:40:31 [INFO] Database ",
+            "chars": 14496,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-16_app.log",
+            "text": "2025-07-16 23:23:17 [INFO] Service p",
+            "chars": 19498,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-16_auth.log",
+            "text": "2025-07-16 09:47:09 [ERROR] Email se",
+            "chars": 35684,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-16_db.log",
+            "text": "2025-07-16 03:36:44 [INFO] Scheduled",
+            "chars": 20592,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-17_api.log",
+            "text": "2025-07-17 03:58:40 [WARNING] High m",
+            "chars": 36980,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-17_app.log",
+            "text": "2025-07-17 09:47:09 [ERROR] Email se",
+            "chars": 35684,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-17_auth.log",
+            "text": "2025-07-17 20:40:31 [INFO] Database ",
+            "chars": 14496,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-17_db.log",
+            "text": "2025-07-17 23:23:17 [INFO] Service p",
+            "chars": 19498,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-18_api.log",
+            "text": "2025-07-18 08:09:19 [INFO] User logi",
+            "chars": 47497,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-18_app.log",
+            "text": "2025-07-18 20:40:31 [INFO] Database ",
+            "chars": 14496,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-18_auth.log",
+            "text": "2025-07-18 03:58:40 [WARNING] High m",
+            "chars": 36980,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-18_db.log",
+            "text": "2025-07-18 09:47:09 [ERROR] Email se",
+            "chars": 35684,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-19_api.log",
+            "text": "2025-07-19 05:56:17 [INFO] Scheduled",
+            "chars": 15682,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-19_app.log",
+            "text": "2025-07-19 03:58:40 [WARNING] High m",
+            "chars": 36980,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-19_auth.log",
+            "text": "2025-07-19 08:09:19 [INFO] User logi",
+            "chars": 47497,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-19_db.log",
+            "text": "2025-07-19 20:40:31 [INFO] Database ",
+            "chars": 14496,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-20_api.log",
+            "text": "2025-07-20 19:32:50 [INFO] Cache cle",
+            "chars": 16747,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-20_app.log",
+            "text": "2025-07-20 08:09:19 [INFO] User logi",
+            "chars": 47497,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-20_auth.log",
+            "text": "2025-07-20 05:56:17 [INFO] Scheduled",
+            "chars": 15682,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-20_db.log",
+            "text": "2025-07-20 03:58:40 [WARNING] High m",
+            "chars": 36980,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-21_api.log",
+            "text": "2025-07-21 02:43:10 [WARNING] High m",
+            "chars": 20343,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-21_app.log",
+            "text": "2025-07-21 05:56:17 [INFO] Scheduled",
+            "chars": 15682,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-21_auth.log",
+            "text": "2025-07-21 19:32:50 [INFO] Cache cle",
+            "chars": 16747,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-21_db.log",
+            "text": "2025-07-21 08:09:19 [INFO] User logi",
+            "chars": 47497,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-22_api.log",
+            "text": "2025-07-22 19:18:30 [INFO] Service i",
+            "chars": 54841,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-22_app.log",
+            "text": "2025-07-22 19:32:50 [INFO] Cache cle",
+            "chars": 16747,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-22_auth.log",
+            "text": "2025-07-22 02:43:10 [WARNING] High m",
+            "chars": 20343,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-22_db.log",
+            "text": "2025-07-22 05:56:17 [INFO] Scheduled",
+            "chars": 15682,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-23_api.log",
+            "text": "2025-07-23 13:04:54 [INFO] File uplo",
+            "chars": 23674,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-23_app.log",
+            "text": "2025-07-23 02:43:10 [WARNING] High m",
+            "chars": 20343,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-23_auth.log",
+            "text": "2025-07-23 19:18:30 [INFO] Service i",
+            "chars": 54841,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-23_db.log",
+            "text": "2025-07-23 19:32:50 [INFO] Cache cle",
+            "chars": 16747,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-24_api.log",
+            "text": "2025-07-24 07:57:00 [ERROR] Database",
+            "chars": 19610,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-24_app.log",
+            "text": "2025-07-24 19:18:30 [INFO] Service i",
+            "chars": 54841,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-24_auth.log",
+            "text": "2025-07-24 13:04:54 [INFO] File uplo",
+            "chars": 23674,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-24_db.log",
+            "text": "2025-07-24 02:43:10 [WARNING] High m",
+            "chars": 20343,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-25_api.log",
+            "text": "2025-07-25 22:54:32 [INFO] User logi",
+            "chars": 35388,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-25_app.log",
+            "text": "2025-07-25 13:04:54 [INFO] File uplo",
+            "chars": 23674,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-25_auth.log",
+            "text": "2025-07-25 07:57:00 [ERROR] Database",
+            "chars": 19610,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-25_db.log",
+            "text": "2025-07-25 19:18:30 [INFO] Service i",
+            "chars": 54841,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-26_api.log",
+            "text": "2025-07-26 16:43:44 [DEBUG] Variable",
+            "chars": 40404,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-26_app.log",
+            "text": "2025-07-26 07:57:00 [ERROR] Database",
+            "chars": 19610,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-26_auth.log",
+            "text": "2025-07-26 22:54:32 [INFO] User logi",
+            "chars": 35388,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-26_db.log",
+            "text": "2025-07-26 13:04:54 [INFO] File uplo",
+            "chars": 23674,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-27_api.log",
+            "text": "2025-07-27 07:10:56 [ERROR] File wri",
+            "chars": 35195,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-27_app.log",
+            "text": "2025-07-27 22:54:32 [INFO] User logi",
+            "chars": 35388,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-27_auth.log",
+            "text": "2025-07-27 16:43:44 [DEBUG] Variable",
+            "chars": 40404,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-27_db.log",
+            "text": "2025-07-27 07:57:00 [ERROR] Database",
+            "chars": 19610,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-28_api.log",
+            "text": "2025-07-28 16:28:15 [WARNING] Slow q",
+            "chars": 14433,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-28_app.log",
+            "text": "2025-07-28 16:43:44 [DEBUG] Variable",
+            "chars": 40404,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-28_auth.log",
+            "text": "2025-07-28 07:10:56 [ERROR] File wri",
+            "chars": 35195,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-28_db.log",
+            "text": "2025-07-28 22:54:32 [INFO] User logi",
+            "chars": 35388,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-29_api.log",
+            "text": "2025-07-29 11:42:04 [INFO] User logi",
+            "chars": 17715,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-29_app.log",
+            "text": "2025-07-29 07:10:56 [ERROR] File wri",
+            "chars": 35195,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-29_auth.log",
+            "text": "2025-07-29 16:28:15 [WARNING] Slow q",
+            "chars": 14433,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-29_db.log",
+            "text": "2025-07-29 16:43:44 [DEBUG] Variable",
+            "chars": 40404,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-30_api.log",
+            "text": "2025-07-30 08:46:36 [INFO] Cache cle",
+            "chars": 13720,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-30_app.log",
+            "text": "2025-07-30 16:28:15 [WARNING] Slow q",
+            "chars": 14433,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-30_auth.log",
+            "text": "2025-07-30 11:42:04 [INFO] User logi",
+            "chars": 17715,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-30_db.log",
+            "text": "2025-07-30 07:10:56 [ERROR] File wri",
+            "chars": 35195,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-31_api.log",
+            "text": "2025-07-31 23:02:00 [INFO] Database ",
+            "chars": 57568,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-31_app.log",
+            "text": "2025-07-31 11:42:04 [INFO] User logi",
+            "chars": 17715,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-31_auth.log",
+            "text": "2025-07-31 08:46:36 [INFO] Cache cle",
+            "chars": 13720,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-31_db.log",
+            "text": "2025-07-31 16:28:15 [WARNING] Slow q",
+            "chars": 14433,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-01_api.log",
+            "text": "2025-08-01 15:12:36 [INFO] Scheduled",
+            "chars": 22557,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-01_app.log",
+            "text": "2025-08-01 04:18:26 [INFO] Cache cle",
+            "chars": 13555,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-01_auth.log",
+            "text": "2025-08-01 11:55:53 [INFO] Database ",
+            "chars": 55357,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-01_db.log",
+            "text": "2025-08-01 12:50:44 [ERROR] Deadlock",
+            "chars": 53023,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-02_api.log",
+            "text": "2025-08-02 18:54:11 [WARNING] API re",
+            "chars": 43173,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-02_app.log",
+            "text": "2025-08-02 11:55:53 [INFO] Database ",
+            "chars": 55357,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-02_auth.log",
+            "text": "2025-08-02 15:12:36 [INFO] Scheduled",
+            "chars": 22557,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-02_db.log",
+            "text": "2025-08-02 04:18:26 [INFO] Cache cle",
+            "chars": 13555,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-03_api.log",
+            "text": "2025-08-03 13:58:11 [INFO] Scheduled",
+            "chars": 33121,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-03_app.log",
+            "text": "2025-08-03 15:12:36 [INFO] Scheduled",
+            "chars": 22557,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-03_auth.log",
+            "text": "2025-08-03 18:54:11 [WARNING] API re",
+            "chars": 43173,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-03_db.log",
+            "text": "2025-08-03 11:55:53 [INFO] Database ",
+            "chars": 55357,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-04_api.log",
+            "text": "2025-08-04 04:08:50 [ERROR] Deadlock",
+            "chars": 45524,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-04_app.log",
+            "text": "2025-08-04 18:54:11 [WARNING] API re",
+            "chars": 43173,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-04_auth.log",
+            "text": "2025-08-04 13:58:11 [INFO] Scheduled",
+            "chars": 33121,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-04_db.log",
+            "text": "2025-08-04 15:12:36 [INFO] Scheduled",
+            "chars": 22557,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-05_api.log",
+            "text": "2025-08-05 23:38:20 [INFO] Database ",
+            "chars": 40349,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-05_app.log",
+            "text": "2025-08-05 13:58:11 [INFO] Scheduled",
+            "chars": 33121,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-05_auth.log",
+            "text": "2025-08-05 04:08:50 [ERROR] Deadlock",
+            "chars": 45524,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-05_db.log",
+            "text": "2025-08-05 18:54:11 [WARNING] API re",
+            "chars": 43173,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-06_api.log",
+            "text": "2025-08-06 14:06:34 [INFO] Service i",
+            "chars": 61638,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-06_app.log",
+            "text": "2025-08-06 04:08:50 [ERROR] Deadlock",
+            "chars": 45524,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-06_auth.log",
+            "text": "2025-08-06 23:38:20 [INFO] Database ",
+            "chars": 40349,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-06_db.log",
+            "text": "2025-08-06 13:58:11 [INFO] Scheduled",
+            "chars": 33121,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-07_api.log",
+            "text": "2025-08-07 11:06:57 [INFO] User logi",
+            "chars": 61186,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-07_app.log",
+            "text": "2025-08-07 23:38:20 [INFO] Database ",
+            "chars": 40349,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-07_auth.log",
+            "text": "2025-08-07 14:06:34 [INFO] Service i",
+            "chars": 61638,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-07_db.log",
+            "text": "2025-08-07 04:08:50 [ERROR] Deadlock",
+            "chars": 45524,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-08_api.log",
+            "text": "2025-08-08 05:26:47 [WARNING] API re",
+            "chars": 46577,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-08_app.log",
+            "text": "2025-08-08 14:06:34 [INFO] Service i",
+            "chars": 61638,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-08_auth.log",
+            "text": "2025-08-08 11:06:57 [INFO] User logi",
+            "chars": 61186,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-08_db.log",
+            "text": "2025-08-08 23:38:20 [INFO] Database ",
+            "chars": 40349,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-09_api.log",
+            "text": "2025-08-09 05:46:38 [INFO] Cache cle",
+            "chars": 33131,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-09_app.log",
+            "text": "2025-08-09 11:06:57 [INFO] User logi",
+            "chars": 61186,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-09_auth.log",
+            "text": "2025-08-09 05:26:47 [WARNING] API re",
+            "chars": 46577,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-09_db.log",
+            "text": "2025-08-09 14:06:34 [INFO] Service i",
+            "chars": 61638,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-10_api.log",
+            "text": "2025-08-10 22:23:45 [ERROR] Database",
+            "chars": 30313,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-10_app.log",
+            "text": "2025-08-10 05:26:47 [WARNING] API re",
+            "chars": 46577,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-10_auth.log",
+            "text": "2025-08-10 05:46:38 [INFO] Cache cle",
+            "chars": 33131,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-10_db.log",
+            "text": "2025-08-10 11:06:57 [INFO] User logi",
+            "chars": 61186,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-11_api.log",
+            "text": "2025-08-11 12:21:15 [INFO] Database ",
+            "chars": 34678,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-11_app.log",
+            "text": "2025-08-11 05:46:38 [INFO] Cache cle",
+            "chars": 33131,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-11_auth.log",
+            "text": "2025-08-11 22:23:45 [ERROR] Database",
+            "chars": 30313,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-11_db.log",
+            "text": "2025-08-11 05:26:47 [WARNING] API re",
+            "chars": 46577,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-12_api.log",
+            "text": "2025-08-12 14:19:56 [WARNING] Disk s",
+            "chars": 50268,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-12_app.log",
+            "text": "2025-08-12 22:23:45 [ERROR] Database",
+            "chars": 30313,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-12_auth.log",
+            "text": "2025-08-12 12:21:15 [INFO] Database ",
+            "chars": 34678,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-12_db.log",
+            "text": "2025-08-12 05:46:38 [INFO] Cache cle",
+            "chars": 33131,
+            "clipped": true
+          },
+          {
+            "path": "summary.csv",
+            "text": "period,severity,count\ntoday,ERROR,37",
+            "chars": 350,
+            "clipped": true
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    },
+    {
+      "id": "R2",
+      "text": "Today (the current date)",
+      "state": "unresolved",
+      "why": "the artifact excerpt was clipped, so the judgment didn't read the whole source",
+      "observed": [
+        "no scenario observed it",
+        "read logs/2025-07-03_api.log (36 of 39171 characters)",
+        "read logs/2025-07-03_app.log (36 of 19494 characters)",
+        "read logs/2025-07-03_auth.log (36 of 39495 characters)",
+        "read logs/2025-07-03_db.log (36 of 33616 characters)",
+        "read logs/2025-07-04_api.log (36 of 37149 characters)",
+        "read logs/2025-07-04_app.log (36 of 39495 characters)",
+        "read logs/2025-07-04_auth.log (36 of 39171 characters)",
+        "read logs/2025-07-04_db.log (36 of 19494 characters)",
+        "read logs/2025-07-05_api.log (36 of 42580 characters)",
+        "read logs/2025-07-05_app.log (36 of 39171 characters)",
+        "read logs/2025-07-05_auth.log (36 of 37149 characters)",
+        "read logs/2025-07-05_db.log (36 of 39495 characters)",
+        "read logs/2025-07-06_api.log (36 of 38074 characters)",
+        "read logs/2025-07-06_app.log (36 of 37149 characters)",
+        "read logs/2025-07-06_auth.log (36 of 42580 characters)",
+        "read logs/2025-07-06_db.log (36 of 39171 characters)",
+        "read logs/2025-07-07_api.log (36 of 58725 characters)",
+        "read logs/2025-07-07_app.log (36 of 42580 characters)",
+        "read logs/2025-07-07_auth.log (36 of 38074 characters)",
+        "read logs/2025-07-07_db.log (36 of 37149 characters)",
+        "read logs/2025-07-08_api.log (36 of 58039 characters)",
+        "read logs/2025-07-08_app.log (36 of 38074 characters)",
+        "read logs/2025-07-08_auth.log (36 of 58725 characters)",
+        "read logs/2025-07-08_db.log (36 of 42580 characters)",
+        "read logs/2025-07-09_api.log (36 of 48372 characters)",
+        "read logs/2025-07-09_app.log (36 of 58725 characters)",
+        "read logs/2025-07-09_auth.log (36 of 58039 characters)",
+        "read logs/2025-07-09_db.log (36 of 38074 characters)",
+        "read logs/2025-07-10_api.log (36 of 58521 characters)",
+        "read logs/2025-07-10_app.log (36 of 58039 characters)",
+        "read logs/2025-07-10_auth.log (36 of 48372 characters)",
+        "read logs/2025-07-10_db.log (36 of 58725 characters)",
+        "read logs/2025-07-11_api.log (36 of 18235 characters)",
+        "read logs/2025-07-11_app.log (36 of 48372 characters)",
+        "read logs/2025-07-11_auth.log (36 of 58521 characters)",
+        "read logs/2025-07-11_db.log (36 of 58039 characters)",
+        "read logs/2025-07-12_api.log (36 of 44763 characters)",
+        "read logs/2025-07-12_app.log (36 of 58521 characters)",
+        "read logs/2025-07-12_auth.log (36 of 18235 characters)",
+        "read logs/2025-07-12_db.log (36 of 48372 characters)",
+        "read logs/2025-07-13_api.log (36 of 20592 characters)",
+        "read logs/2025-07-13_app.log (36 of 18235 characters)",
+        "read logs/2025-07-13_auth.log (36 of 44763 characters)",
+        "read logs/2025-07-13_db.log (36 of 58521 characters)",
+        "read logs/2025-07-14_api.log (36 of 19498 characters)",
+        "read logs/2025-07-14_app.log (36 of 44763 characters)",
+        "read logs/2025-07-14_auth.log (36 of 20592 characters)",
+        "read logs/2025-07-14_db.log (36 of 18235 characters)",
+        "read logs/2025-07-15_api.log (36 of 35684 characters)",
+        "read logs/2025-07-15_app.log (36 of 20592 characters)",
+        "read logs/2025-07-15_auth.log (36 of 19498 characters)",
+        "read logs/2025-07-15_db.log (36 of 44763 characters)",
+        "read logs/2025-07-16_api.log (36 of 14496 characters)",
+        "read logs/2025-07-16_app.log (36 of 19498 characters)",
+        "read logs/2025-07-16_auth.log (36 of 35684 characters)",
+        "read logs/2025-07-16_db.log (36 of 20592 characters)",
+        "read logs/2025-07-17_api.log (36 of 36980 characters)",
+        "read logs/2025-07-17_app.log (36 of 35684 characters)",
+        "read logs/2025-07-17_auth.log (36 of 14496 characters)",
+        "read logs/2025-07-17_db.log (36 of 19498 characters)",
+        "read logs/2025-07-18_api.log (36 of 47497 characters)",
+        "read logs/2025-07-18_app.log (36 of 14496 characters)",
+        "read logs/2025-07-18_auth.log (36 of 36980 characters)",
+        "read logs/2025-07-18_db.log (36 of 35684 characters)",
+        "read logs/2025-07-19_api.log (36 of 15682 characters)",
+        "read logs/2025-07-19_app.log (36 of 36980 characters)",
+        "read logs/2025-07-19_auth.log (36 of 47497 characters)",
+        "read logs/2025-07-19_db.log (36 of 14496 characters)",
+        "read logs/2025-07-20_api.log (36 of 16747 characters)",
+        "read logs/2025-07-20_app.log (36 of 47497 characters)",
+        "read logs/2025-07-20_auth.log (36 of 15682 characters)",
+        "read logs/2025-07-20_db.log (36 of 36980 characters)",
+        "read logs/2025-07-21_api.log (36 of 20343 characters)",
+        "read logs/2025-07-21_app.log (36 of 15682 characters)",
+        "read logs/2025-07-21_auth.log (36 of 16747 characters)",
+        "read logs/2025-07-21_db.log (36 of 47497 characters)",
+        "read logs/2025-07-22_api.log (36 of 54841 characters)",
+        "read logs/2025-07-22_app.log (36 of 16747 characters)",
+        "read logs/2025-07-22_auth.log (36 of 20343 characters)",
+        "read logs/2025-07-22_db.log (36 of 15682 characters)",
+        "read logs/2025-07-23_api.log (36 of 23674 characters)",
+        "read logs/2025-07-23_app.log (36 of 20343 characters)",
+        "read logs/2025-07-23_auth.log (36 of 54841 characters)",
+        "read logs/2025-07-23_db.log (36 of 16747 characters)",
+        "read logs/2025-07-24_api.log (36 of 19610 characters)",
+        "read logs/2025-07-24_app.log (36 of 54841 characters)",
+        "read logs/2025-07-24_auth.log (36 of 23674 characters)",
+        "read logs/2025-07-24_db.log (36 of 20343 characters)",
+        "read logs/2025-07-25_api.log (36 of 35388 characters)",
+        "read logs/2025-07-25_app.log (36 of 23674 characters)",
+        "read logs/2025-07-25_auth.log (36 of 19610 characters)",
+        "read logs/2025-07-25_db.log (36 of 54841 characters)",
+        "read logs/2025-07-26_api.log (36 of 40404 characters)",
+        "read logs/2025-07-26_app.log (36 of 19610 characters)",
+        "read logs/2025-07-26_auth.log (36 of 35388 characters)",
+        "read logs/2025-07-26_db.log (36 of 23674 characters)",
+        "read logs/2025-07-27_api.log (36 of 35195 characters)",
+        "read logs/2025-07-27_app.log (36 of 35388 characters)",
+        "read logs/2025-07-27_auth.log (36 of 40404 characters)",
+        "read logs/2025-07-27_db.log (36 of 19610 characters)",
+        "read logs/2025-07-28_api.log (36 of 14433 characters)",
+        "read logs/2025-07-28_app.log (36 of 40404 characters)",
+        "read logs/2025-07-28_auth.log (36 of 35195 characters)",
+        "read logs/2025-07-28_db.log (36 of 35388 characters)",
+        "read logs/2025-07-29_api.log (36 of 17715 characters)",
+        "read logs/2025-07-29_app.log (36 of 35195 characters)",
+        "read logs/2025-07-29_auth.log (36 of 14433 characters)",
+        "read logs/2025-07-29_db.log (36 of 40404 characters)",
+        "read logs/2025-07-30_api.log (36 of 13720 characters)",
+        "read logs/2025-07-30_app.log (36 of 14433 characters)",
+        "read logs/2025-07-30_auth.log (36 of 17715 characters)",
+        "read logs/2025-07-30_db.log (36 of 35195 characters)",
+        "read logs/2025-07-31_api.log (36 of 57568 characters)",
+        "read logs/2025-07-31_app.log (36 of 17715 characters)",
+        "read logs/2025-07-31_auth.log (36 of 13720 characters)",
+        "read logs/2025-07-31_db.log (36 of 14433 characters)",
+        "read logs/2025-08-01_api.log (36 of 22557 characters)",
+        "read logs/2025-08-01_app.log (36 of 13555 characters)",
+        "read logs/2025-08-01_auth.log (36 of 55357 characters)",
+        "read logs/2025-08-01_db.log (36 of 53023 characters)",
+        "read logs/2025-08-02_api.log (36 of 43173 characters)",
+        "read logs/2025-08-02_app.log (36 of 55357 characters)",
+        "read logs/2025-08-02_auth.log (36 of 22557 characters)",
+        "read logs/2025-08-02_db.log (36 of 13555 characters)",
+        "read logs/2025-08-03_api.log (36 of 33121 characters)",
+        "read logs/2025-08-03_app.log (36 of 22557 characters)",
+        "read logs/2025-08-03_auth.log (36 of 43173 characters)",
+        "read logs/2025-08-03_db.log (36 of 55357 characters)",
+        "read logs/2025-08-04_api.log (36 of 45524 characters)",
+        "read logs/2025-08-04_app.log (36 of 43173 characters)",
+        "read logs/2025-08-04_auth.log (36 of 33121 characters)",
+        "read logs/2025-08-04_db.log (36 of 22557 characters)",
+        "read logs/2025-08-05_api.log (36 of 40349 characters)",
+        "read logs/2025-08-05_app.log (36 of 33121 characters)",
+        "read logs/2025-08-05_auth.log (36 of 45524 characters)",
+        "read logs/2025-08-05_db.log (36 of 43173 characters)",
+        "read logs/2025-08-06_api.log (36 of 61638 characters)",
+        "read logs/2025-08-06_app.log (36 of 45524 characters)",
+        "read logs/2025-08-06_auth.log (36 of 40349 characters)",
+        "read logs/2025-08-06_db.log (36 of 33121 characters)",
+        "read logs/2025-08-07_api.log (36 of 61186 characters)",
+        "read logs/2025-08-07_app.log (36 of 40349 characters)",
+        "read logs/2025-08-07_auth.log (36 of 61638 characters)",
+        "read logs/2025-08-07_db.log (36 of 45524 characters)",
+        "read logs/2025-08-08_api.log (36 of 46577 characters)",
+        "read logs/2025-08-08_app.log (36 of 61638 characters)",
+        "read logs/2025-08-08_auth.log (36 of 61186 characters)",
+        "read logs/2025-08-08_db.log (36 of 40349 characters)",
+        "read logs/2025-08-09_api.log (36 of 33131 characters)",
+        "read logs/2025-08-09_app.log (36 of 61186 characters)",
+        "read logs/2025-08-09_auth.log (36 of 46577 characters)",
+        "read logs/2025-08-09_db.log (36 of 61638 characters)",
+        "read logs/2025-08-10_api.log (36 of 30313 characters)",
+        "read logs/2025-08-10_app.log (36 of 46577 characters)",
+        "read logs/2025-08-10_auth.log (36 of 33131 characters)",
+        "read logs/2025-08-10_db.log (36 of 61186 characters)",
+        "read logs/2025-08-11_api.log (36 of 34678 characters)",
+        "read logs/2025-08-11_app.log (36 of 33131 characters)",
+        "read logs/2025-08-11_auth.log (36 of 30313 characters)",
+        "read logs/2025-08-11_db.log (36 of 46577 characters)",
+        "read logs/2025-08-12_api.log (36 of 50268 characters)",
+        "read logs/2025-08-12_app.log (36 of 30313 characters)",
+        "read logs/2025-08-12_auth.log (36 of 34678 characters)",
+        "read logs/2025-08-12_db.log (36 of 33131 characters)",
+        "read summary.csv (36 of 350 characters)"
+      ],
+      "establishes": "nothing yet about R2 for candidate 107e9583ad6b",
+      "checker": {
+        "scenarios": [],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "107e9583ad6b63fd50f383bf15b43c2484365167f18c28a2f9ead2f43832c648",
+      "evidence_digest": "4a703a613c11b489a5372afde8cc5e2ffde71eb6e42cc342f4852e20ba615663",
+      "scenario_state": "unobserved",
+      "judgment": {
+        "supports": 0.06,
+        "contradicts": 0.87,
+        "how": "live",
+        "key": "edad73b3c4fa7ac95a8899192593293980ec7a79542449b58e977e7371ede9bd",
+        "input_tokens": 10861
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R2",
+          "text": "Today (the current date)",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "logs/2025-07-03_api.log",
+            "text": "2025-07-03 09:24:57 [ERROR] Unhandle",
+            "chars": 39171,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-03_app.log",
+            "text": "2025-07-03 12:55:35 [INFO] Scheduled",
+            "chars": 19494,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-03_auth.log",
+            "text": "2025-07-03 06:13:03 [INFO] Scheduled",
+            "chars": 39495,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-03_db.log",
+            "text": "2025-07-03 17:21:33 [INFO] Service p",
+            "chars": 33616,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-04_api.log",
+            "text": "2025-07-04 21:16:59 [INFO] Service p",
+            "chars": 37149,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-04_app.log",
+            "text": "2025-07-04 06:13:03 [INFO] Scheduled",
+            "chars": 39495,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-04_auth.log",
+            "text": "2025-07-04 09:24:57 [ERROR] Unhandle",
+            "chars": 39171,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-04_db.log",
+            "text": "2025-07-04 12:55:35 [INFO] Scheduled",
+            "chars": 19494,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-05_api.log",
+            "text": "2025-07-05 01:13:45 [INFO] Cache cle",
+            "chars": 42580,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-05_app.log",
+            "text": "2025-07-05 09:24:57 [ERROR] Unhandle",
+            "chars": 39171,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-05_auth.log",
+            "text": "2025-07-05 21:16:59 [INFO] Service p",
+            "chars": 37149,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-05_db.log",
+            "text": "2025-07-05 06:13:03 [INFO] Scheduled",
+            "chars": 39495,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-06_api.log",
+            "text": "2025-07-06 14:49:15 [DEBUG] Variable",
+            "chars": 38074,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-06_app.log",
+            "text": "2025-07-06 21:16:59 [INFO] Service p",
+            "chars": 37149,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-06_auth.log",
+            "text": "2025-07-06 01:13:45 [INFO] Cache cle",
+            "chars": 42580,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-06_db.log",
+            "text": "2025-07-06 09:24:57 [ERROR] Unhandle",
+            "chars": 39171,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-07_api.log",
+            "text": "2025-07-07 21:02:26 [INFO] Scheduled",
+            "chars": 58725,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-07_app.log",
+            "text": "2025-07-07 01:13:45 [INFO] Cache cle",
+            "chars": 42580,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-07_auth.log",
+            "text": "2025-07-07 14:49:15 [DEBUG] Variable",
+            "chars": 38074,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-07_db.log",
+            "text": "2025-07-07 21:16:59 [INFO] Service p",
+            "chars": 37149,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-08_api.log",
+            "text": "2025-07-08 22:46:31 [INFO] File uplo",
+            "chars": 58039,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-08_app.log",
+            "text": "2025-07-08 14:49:15 [DEBUG] Variable",
+            "chars": 38074,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-08_auth.log",
+            "text": "2025-07-08 21:02:26 [INFO] Scheduled",
+            "chars": 58725,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-08_db.log",
+            "text": "2025-07-08 01:13:45 [INFO] Cache cle",
+            "chars": 42580,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-09_api.log",
+            "text": "2025-07-09 06:11:14 [INFO] Service a",
+            "chars": 48372,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-09_app.log",
+            "text": "2025-07-09 21:02:26 [INFO] Scheduled",
+            "chars": 58725,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-09_auth.log",
+            "text": "2025-07-09 22:46:31 [INFO] File uplo",
+            "chars": 58039,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-09_db.log",
+            "text": "2025-07-09 14:49:15 [DEBUG] Variable",
+            "chars": 38074,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-10_api.log",
+            "text": "2025-07-10 07:56:45 [ERROR] Unhandle",
+            "chars": 58521,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-10_app.log",
+            "text": "2025-07-10 22:46:31 [INFO] File uplo",
+            "chars": 58039,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-10_auth.log",
+            "text": "2025-07-10 06:11:14 [INFO] Service a",
+            "chars": 48372,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-10_db.log",
+            "text": "2025-07-10 21:02:26 [INFO] Scheduled",
+            "chars": 58725,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-11_api.log",
+            "text": "2025-07-11 14:44:15 [INFO] Cache cle",
+            "chars": 18235,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-11_app.log",
+            "text": "2025-07-11 06:11:14 [INFO] Service a",
+            "chars": 48372,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-11_auth.log",
+            "text": "2025-07-11 07:56:45 [ERROR] Unhandle",
+            "chars": 58521,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-11_db.log",
+            "text": "2025-07-11 22:46:31 [INFO] File uplo",
+            "chars": 58039,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-12_api.log",
+            "text": "2025-07-12 18:23:53 [INFO] Scheduled",
+            "chars": 44763,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-12_app.log",
+            "text": "2025-07-12 07:56:45 [ERROR] Unhandle",
+            "chars": 58521,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-12_auth.log",
+            "text": "2025-07-12 14:44:15 [INFO] Cache cle",
+            "chars": 18235,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-12_db.log",
+            "text": "2025-07-12 06:11:14 [INFO] Service a",
+            "chars": 48372,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-13_api.log",
+            "text": "2025-07-13 03:36:44 [INFO] Scheduled",
+            "chars": 20592,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-13_app.log",
+            "text": "2025-07-13 14:44:15 [INFO] Cache cle",
+            "chars": 18235,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-13_auth.log",
+            "text": "2025-07-13 18:23:53 [INFO] Scheduled",
+            "chars": 44763,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-13_db.log",
+            "text": "2025-07-13 07:56:45 [ERROR] Unhandle",
+            "chars": 58521,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-14_api.log",
+            "text": "2025-07-14 23:23:17 [INFO] Service p",
+            "chars": 19498,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-14_app.log",
+            "text": "2025-07-14 18:23:53 [INFO] Scheduled",
+            "chars": 44763,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-14_auth.log",
+            "text": "2025-07-14 03:36:44 [INFO] Scheduled",
+            "chars": 20592,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-14_db.log",
+            "text": "2025-07-14 14:44:15 [INFO] Cache cle",
+            "chars": 18235,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-15_api.log",
+            "text": "2025-07-15 09:47:09 [ERROR] Email se",
+            "chars": 35684,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-15_app.log",
+            "text": "2025-07-15 03:36:44 [INFO] Scheduled",
+            "chars": 20592,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-15_auth.log",
+            "text": "2025-07-15 23:23:17 [INFO] Service p",
+            "chars": 19498,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-15_db.log",
+            "text": "2025-07-15 18:23:53 [INFO] Scheduled",
+            "chars": 44763,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-16_api.log",
+            "text": "2025-07-16 20:40:31 [INFO] Database ",
+            "chars": 14496,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-16_app.log",
+            "text": "2025-07-16 23:23:17 [INFO] Service p",
+            "chars": 19498,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-16_auth.log",
+            "text": "2025-07-16 09:47:09 [ERROR] Email se",
+            "chars": 35684,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-16_db.log",
+            "text": "2025-07-16 03:36:44 [INFO] Scheduled",
+            "chars": 20592,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-17_api.log",
+            "text": "2025-07-17 03:58:40 [WARNING] High m",
+            "chars": 36980,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-17_app.log",
+            "text": "2025-07-17 09:47:09 [ERROR] Email se",
+            "chars": 35684,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-17_auth.log",
+            "text": "2025-07-17 20:40:31 [INFO] Database ",
+            "chars": 14496,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-17_db.log",
+            "text": "2025-07-17 23:23:17 [INFO] Service p",
+            "chars": 19498,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-18_api.log",
+            "text": "2025-07-18 08:09:19 [INFO] User logi",
+            "chars": 47497,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-18_app.log",
+            "text": "2025-07-18 20:40:31 [INFO] Database ",
+            "chars": 14496,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-18_auth.log",
+            "text": "2025-07-18 03:58:40 [WARNING] High m",
+            "chars": 36980,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-18_db.log",
+            "text": "2025-07-18 09:47:09 [ERROR] Email se",
+            "chars": 35684,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-19_api.log",
+            "text": "2025-07-19 05:56:17 [INFO] Scheduled",
+            "chars": 15682,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-19_app.log",
+            "text": "2025-07-19 03:58:40 [WARNING] High m",
+            "chars": 36980,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-19_auth.log",
+            "text": "2025-07-19 08:09:19 [INFO] User logi",
+            "chars": 47497,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-19_db.log",
+            "text": "2025-07-19 20:40:31 [INFO] Database ",
+            "chars": 14496,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-20_api.log",
+            "text": "2025-07-20 19:32:50 [INFO] Cache cle",
+            "chars": 16747,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-20_app.log",
+            "text": "2025-07-20 08:09:19 [INFO] User logi",
+            "chars": 47497,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-20_auth.log",
+            "text": "2025-07-20 05:56:17 [INFO] Scheduled",
+            "chars": 15682,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-20_db.log",
+            "text": "2025-07-20 03:58:40 [WARNING] High m",
+            "chars": 36980,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-21_api.log",
+            "text": "2025-07-21 02:43:10 [WARNING] High m",
+            "chars": 20343,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-21_app.log",
+            "text": "2025-07-21 05:56:17 [INFO] Scheduled",
+            "chars": 15682,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-21_auth.log",
+            "text": "2025-07-21 19:32:50 [INFO] Cache cle",
+            "chars": 16747,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-21_db.log",
+            "text": "2025-07-21 08:09:19 [INFO] User logi",
+            "chars": 47497,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-22_api.log",
+            "text": "2025-07-22 19:18:30 [INFO] Service i",
+            "chars": 54841,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-22_app.log",
+            "text": "2025-07-22 19:32:50 [INFO] Cache cle",
+            "chars": 16747,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-22_auth.log",
+            "text": "2025-07-22 02:43:10 [WARNING] High m",
+            "chars": 20343,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-22_db.log",
+            "text": "2025-07-22 05:56:17 [INFO] Scheduled",
+            "chars": 15682,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-23_api.log",
+            "text": "2025-07-23 13:04:54 [INFO] File uplo",
+            "chars": 23674,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-23_app.log",
+            "text": "2025-07-23 02:43:10 [WARNING] High m",
+            "chars": 20343,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-23_auth.log",
+            "text": "2025-07-23 19:18:30 [INFO] Service i",
+            "chars": 54841,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-23_db.log",
+            "text": "2025-07-23 19:32:50 [INFO] Cache cle",
+            "chars": 16747,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-24_api.log",
+            "text": "2025-07-24 07:57:00 [ERROR] Database",
+            "chars": 19610,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-24_app.log",
+            "text": "2025-07-24 19:18:30 [INFO] Service i",
+            "chars": 54841,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-24_auth.log",
+            "text": "2025-07-24 13:04:54 [INFO] File uplo",
+            "chars": 23674,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-24_db.log",
+            "text": "2025-07-24 02:43:10 [WARNING] High m",
+            "chars": 20343,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-25_api.log",
+            "text": "2025-07-25 22:54:32 [INFO] User logi",
+            "chars": 35388,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-25_app.log",
+            "text": "2025-07-25 13:04:54 [INFO] File uplo",
+            "chars": 23674,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-25_auth.log",
+            "text": "2025-07-25 07:57:00 [ERROR] Database",
+            "chars": 19610,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-25_db.log",
+            "text": "2025-07-25 19:18:30 [INFO] Service i",
+            "chars": 54841,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-26_api.log",
+            "text": "2025-07-26 16:43:44 [DEBUG] Variable",
+            "chars": 40404,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-26_app.log",
+            "text": "2025-07-26 07:57:00 [ERROR] Database",
+            "chars": 19610,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-26_auth.log",
+            "text": "2025-07-26 22:54:32 [INFO] User logi",
+            "chars": 35388,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-26_db.log",
+            "text": "2025-07-26 13:04:54 [INFO] File uplo",
+            "chars": 23674,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-27_api.log",
+            "text": "2025-07-27 07:10:56 [ERROR] File wri",
+            "chars": 35195,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-27_app.log",
+            "text": "2025-07-27 22:54:32 [INFO] User logi",
+            "chars": 35388,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-27_auth.log",
+            "text": "2025-07-27 16:43:44 [DEBUG] Variable",
+            "chars": 40404,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-27_db.log",
+            "text": "2025-07-27 07:57:00 [ERROR] Database",
+            "chars": 19610,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-28_api.log",
+            "text": "2025-07-28 16:28:15 [WARNING] Slow q",
+            "chars": 14433,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-28_app.log",
+            "text": "2025-07-28 16:43:44 [DEBUG] Variable",
+            "chars": 40404,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-28_auth.log",
+            "text": "2025-07-28 07:10:56 [ERROR] File wri",
+            "chars": 35195,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-28_db.log",
+            "text": "2025-07-28 22:54:32 [INFO] User logi",
+            "chars": 35388,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-29_api.log",
+            "text": "2025-07-29 11:42:04 [INFO] User logi",
+            "chars": 17715,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-29_app.log",
+            "text": "2025-07-29 07:10:56 [ERROR] File wri",
+            "chars": 35195,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-29_auth.log",
+            "text": "2025-07-29 16:28:15 [WARNING] Slow q",
+            "chars": 14433,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-29_db.log",
+            "text": "2025-07-29 16:43:44 [DEBUG] Variable",
+            "chars": 40404,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-30_api.log",
+            "text": "2025-07-30 08:46:36 [INFO] Cache cle",
+            "chars": 13720,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-30_app.log",
+            "text": "2025-07-30 16:28:15 [WARNING] Slow q",
+            "chars": 14433,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-30_auth.log",
+            "text": "2025-07-30 11:42:04 [INFO] User logi",
+            "chars": 17715,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-30_db.log",
+            "text": "2025-07-30 07:10:56 [ERROR] File wri",
+            "chars": 35195,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-31_api.log",
+            "text": "2025-07-31 23:02:00 [INFO] Database ",
+            "chars": 57568,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-31_app.log",
+            "text": "2025-07-31 11:42:04 [INFO] User logi",
+            "chars": 17715,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-31_auth.log",
+            "text": "2025-07-31 08:46:36 [INFO] Cache cle",
+            "chars": 13720,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-07-31_db.log",
+            "text": "2025-07-31 16:28:15 [WARNING] Slow q",
+            "chars": 14433,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-01_api.log",
+            "text": "2025-08-01 15:12:36 [INFO] Scheduled",
+            "chars": 22557,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-01_app.log",
+            "text": "2025-08-01 04:18:26 [INFO] Cache cle",
+            "chars": 13555,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-01_auth.log",
+            "text": "2025-08-01 11:55:53 [INFO] Database ",
+            "chars": 55357,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-01_db.log",
+            "text": "2025-08-01 12:50:44 [ERROR] Deadlock",
+            "chars": 53023,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-02_api.log",
+            "text": "2025-08-02 18:54:11 [WARNING] API re",
+            "chars": 43173,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-02_app.log",
+            "text": "2025-08-02 11:55:53 [INFO] Database ",
+            "chars": 55357,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-02_auth.log",
+            "text": "2025-08-02 15:12:36 [INFO] Scheduled",
+            "chars": 22557,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-02_db.log",
+            "text": "2025-08-02 04:18:26 [INFO] Cache cle",
+            "chars": 13555,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-03_api.log",
+            "text": "2025-08-03 13:58:11 [INFO] Scheduled",
+            "chars": 33121,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-03_app.log",
+            "text": "2025-08-03 15:12:36 [INFO] Scheduled",
+            "chars": 22557,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-03_auth.log",
+            "text": "2025-08-03 18:54:11 [WARNING] API re",
+            "chars": 43173,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-03_db.log",
+            "text": "2025-08-03 11:55:53 [INFO] Database ",
+            "chars": 55357,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-04_api.log",
+            "text": "2025-08-04 04:08:50 [ERROR] Deadlock",
+            "chars": 45524,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-04_app.log",
+            "text": "2025-08-04 18:54:11 [WARNING] API re",
+            "chars": 43173,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-04_auth.log",
+            "text": "2025-08-04 13:58:11 [INFO] Scheduled",
+            "chars": 33121,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-04_db.log",
+            "text": "2025-08-04 15:12:36 [INFO] Scheduled",
+            "chars": 22557,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-05_api.log",
+            "text": "2025-08-05 23:38:20 [INFO] Database ",
+            "chars": 40349,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-05_app.log",
+            "text": "2025-08-05 13:58:11 [INFO] Scheduled",
+            "chars": 33121,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-05_auth.log",
+            "text": "2025-08-05 04:08:50 [ERROR] Deadlock",
+            "chars": 45524,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-05_db.log",
+            "text": "2025-08-05 18:54:11 [WARNING] API re",
+            "chars": 43173,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-06_api.log",
+            "text": "2025-08-06 14:06:34 [INFO] Service i",
+            "chars": 61638,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-06_app.log",
+            "text": "2025-08-06 04:08:50 [ERROR] Deadlock",
+            "chars": 45524,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-06_auth.log",
+            "text": "2025-08-06 23:38:20 [INFO] Database ",
+            "chars": 40349,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-06_db.log",
+            "text": "2025-08-06 13:58:11 [INFO] Scheduled",
+            "chars": 33121,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-07_api.log",
+            "text": "2025-08-07 11:06:57 [INFO] User logi",
+            "chars": 61186,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-07_app.log",
+            "text": "2025-08-07 23:38:20 [INFO] Database ",
+            "chars": 40349,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-07_auth.log",
+            "text": "2025-08-07 14:06:34 [INFO] Service i",
+            "chars": 61638,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-07_db.log",
+            "text": "2025-08-07 04:08:50 [ERROR] Deadlock",
+            "chars": 45524,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-08_api.log",
+            "text": "2025-08-08 05:26:47 [WARNING] API re",
+            "chars": 46577,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-08_app.log",
+            "text": "2025-08-08 14:06:34 [INFO] Service i",
+            "chars": 61638,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-08_auth.log",
+            "text": "2025-08-08 11:06:57 [INFO] User logi",
+            "chars": 61186,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-08_db.log",
+            "text": "2025-08-08 23:38:20 [INFO] Database ",
+            "chars": 40349,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-09_api.log",
+            "text": "2025-08-09 05:46:38 [INFO] Cache cle",
+            "chars": 33131,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-09_app.log",
+            "text": "2025-08-09 11:06:57 [INFO] User logi",
+            "chars": 61186,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-09_auth.log",
+            "text": "2025-08-09 05:26:47 [WARNING] API re",
+            "chars": 46577,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-09_db.log",
+            "text": "2025-08-09 14:06:34 [INFO] Service i",
+            "chars": 61638,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-10_api.log",
+            "text": "2025-08-10 22:23:45 [ERROR] Database",
+            "chars": 30313,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-10_app.log",
+            "text": "2025-08-10 05:26:47 [WARNING] API re",
+            "chars": 46577,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-10_auth.log",
+            "text": "2025-08-10 05:46:38 [INFO] Cache cle",
+            "chars": 33131,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-10_db.log",
+            "text": "2025-08-10 11:06:57 [INFO] User logi",
+            "chars": 61186,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-11_api.log",
+            "text": "2025-08-11 12:21:15 [INFO] Database ",
+            "chars": 34678,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-11_app.log",
+            "text": "2025-08-11 05:46:38 [INFO] Cache cle",
+            "chars": 33131,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-11_auth.log",
+            "text": "2025-08-11 22:23:45 [ERROR] Database",
+            "chars": 30313,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-11_db.log",
+            "text": "2025-08-11 05:26:47 [WARNING] API re",
+            "chars": 46577,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-12_api.log",
+            "text": "2025-08-12 14:19:56 [WARNING] Disk s",
+            "chars": 50268,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-12_app.log",
+            "text": "2025-08-12 22:23:45 [ERROR] Database",
+            "chars": 30313,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-12_auth.log",
+            "text": "2025-08-12 12:21:15 [INFO] Database ",
+            "chars": 34678,
+            "clipped": true
+          },
+          {
+            "path": "logs/2025-08-12_db.log",
+            "text": "2025-08-12 05:46:38 [INFO] Cache cle",
+            "chars": 33131,
+            "clipped": true
+          },
+          {
+            "path": "summary.csv",
+            "text": "period,severity,count\ntoday,ERROR,37",
+            "chars": 350,
+            "clipped": true
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "id": "R3",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R4",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R5",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R6",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R9",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R10",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R7",
+      "why": "a constraint or context no scenario observed"
+    },
+    {
+      "id": "R11",
+      "why": "a constraint or context no scenario observed"
+    },
+    {
+      "id": "R12",
+      "why": "a constraint or context no scenario observed"
+    },
+    {
+      "id": "R13",
+      "why": "a constraint or context no scenario observed"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "schema": "openagents.coder-one.repair.v1",
+  "implementation": {
+    "name": "one fresh session from a delta brief",
+    "digest": "0210b6bf9204ae1c5b10847f3b2cf9f00efd5330780e8a1284a2f708d110faf7"
+  },
+  "trigger": "detected",
+  "triggered": true,
+  "gaps": [
+    {
+      "requirement": "R1",
+      "scenarios": [],
+      "support": [
+        0.24,
+        0.37
+      ]
+    },
+    {
+      "requirement": "R3",
+      "scenarios": [],
+      "support": [
+        0.05,
+        0.5
+      ]
+    }
+  ],
+  "candidate_before": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+  "brief": {
+    "kind": "packet",
+    "sha256": "ce930eb83d1c05d98b94cd17106a392a16f031414d2d7489cc1caeb8ded7eab6",
+    "chars": 1535,
+    "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+    "requirements": [
+      "R1",
+      "R3"
+    ],
+    "scenarios": [],
+    "path": "artifacts/repair-1.brief.md"
+  },
+  "granted_ms": 739000,
+  "session": {
+    "fresh": true,
+    "resumes": null,
+    "previous_session": "17d8d98d-ff0f-4da3-ad5e-a29f8b844cd9",
+    "session_id": "23383503-6bc3-4339-b3e1-f9dac60e52df",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "status": "answered",
+    "turns": 4,
+    "milliseconds": 15447,
+    "cost_usd": 0.0379738,
+    "cost_provenance": "provider_reported",
+    "result": "I checked the repo again and found nothing to fix. The secret was already recovered and removed before this round, so I made no changes.\n\n- **Recovered secret:** `/app/secret.txt` contains `secret[lost_and_found_in_git]`.\n- **R3 (secret gone from the repo):** I searched every commit, every stored object including unreachable ones (checked with `git fsck --unreachable --no-reflogs`), the files on disk, the reflogs, the stash, `ORIG_HEAD` and `packed-refs`. None contain the secret. The reflogs are…"
+  },
+  "candidate_after": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+  "changed": false,
+  "invalidated": [],
+  "recheck": {
+    "skipped": "the candidate didn't change, so the earlier observations still hold"
+  }
+}

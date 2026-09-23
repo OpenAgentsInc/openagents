@@ -1,0 +1,392 @@
+{
+  "schema": "openagents.coder-one.support.v1",
+  "implementation": {
+    "name": "paired supports and contradicts nouls per requirement",
+    "digest": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054"
+  },
+  "params": {
+    "supports": 0.5,
+    "contradicts": 0.3,
+    "max_requirements": 3,
+    "artifact_chars": 6000,
+    "observation_chars": 2500
+  },
+  "candidate": "c95413d53f964cb03e8673a76fc5a778e55b2438a689a8eeac5aa2fed3a99750",
+  "states": [
+    {
+      "id": "R1",
+      "text": "Please help me find them and merge them into master.",
+      "state": "unresolved",
+      "why": "the artifact excerpt was clipped, so the judgment didn't read the whole source",
+      "observed": [
+        "no scenario observed it",
+        "read .gitignore (100 of 100 characters)",
+        "read CNAME (14 of 14 characters)",
+        "read Gemfile (42 of 42 characters)",
+        "read _config.yml (125 of 152 characters)",
+        "read _includes/about.md (125 of 332 characters)",
+        "read _includes/contact.md (125 of 208 characters)",
+        "read _includes/interests.md (125 of 346 characters)",
+        "read _layouts/default.html (125 of 4875 characters)",
+        "read _posters/frank2016sensing.md (125 of 485 characters)",
+        "read _posters/frank2017sensing.md (125 of 542 characters)",
+        "read _publications/ben-zeev_crosscheck_2017.md (125 of 2925 characters)",
+        "read _publications/guBLADEBenchmarkingLanguage2024a.md (125 of 2531 characters)",
+        "read _publications/merrill2021multiverse.md (125 of 416 characters)",
+        "read _publications/merrill2023selfsupervised.md (125 of 619 characters)",
+        "read _publications/merrillHomekit2020BenchmarkTime2023.md (125 of 1739 characters)",
+        "read _publications/merrillLanguageModelsStill2024.md (125 of 2297 characters)",
+        "read _publications/merrillTransformingWearableData2024a.md (125 of 2531 characters)",
+        "read _publications/tanAreLanguageModels2024.md (125 of 1608 characters)",
+        "read _publications/tseng2016ubicomp.md (125 of 858 characters)",
+        "read _publications/wang_crosscheck_2016.md (125 of 2448 characters)",
+        "read _publications/xu2022GLOBEM.md (125 of 862 characters)",
+        "read _publications/zhang2022coral.md (125 of 416 characters)",
+        "read biblib/__init__.py (38 of 38 characters)",
+        "read biblib/algo.py (125 of 17775 characters)",
+        "read biblib/bib.py (125 of 18667 characters)",
+        "read biblib/messages.py (125 of 4154 characters)",
+        "read biblib/test.py (125 of 13955 characters)",
+        "read css/bootstrap-grid.css (125 of 25510 characters)",
+        "read css/bootstrap-grid.css.map (125 of 31527 characters)",
+        "read css/bootstrap-grid.min.css (125 of 18528 characters)",
+        "read css/bootstrap-grid.min.css.map (125 of 12300 characters)",
+        "read css/bootstrap-reboot.css (125 of 5916 characters)",
+        "read css/bootstrap-reboot.css.map (125 of 9322 characters)",
+        "read css/bootstrap-reboot.min.css (125 of 4707 characters)",
+        "read css/bootstrap-reboot.min.css.map (125 of 2668 characters)",
+        "read css/bootstrap.css (125 of 191738 characters)",
+        "read css/bootstrap.css.map (125 of 235595 characters)",
+        "read css/bootstrap.min.css (125 of 150996 characters)",
+        "read css/bootstrap.min.css.map (125 of 68044 characters)",
+        "read css/style.css (125 of 1745 characters)",
+        "read fonts/glyphicons-halflings-regular.svg (125 of 108738 characters)",
+        "read index.md (47 of 47 characters)",
+        "read js/bootstrap.min.js (125 of 46653 characters)",
+        "read js/jquery.min.js (125 of 86927 characters)",
+        "read js/popper.min.js (125 of 20560 characters)",
+        "read js/scripts.js (40 of 40 characters)",
+        "read make_pubs.py (125 of 2382 characters)",
+        "read me.bib (125 of 19596 characters)"
+      ],
+      "establishes": "nothing yet about R1 for candidate c95413d53f96",
+      "checker": {
+        "scenarios": [],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "c95413d53f964cb03e8673a76fc5a778e55b2438a689a8eeac5aa2fed3a99750",
+      "evidence_digest": "291c85be94f96af5e37f33d82cc64b5a2714d358b27c31bbfefb2f8d5fc3e519",
+      "scenario_state": "unobserved",
+      "judgment": {
+        "supports": 0.02,
+        "contradicts": 0.48,
+        "how": "live",
+        "key": "7107078232a97a4b723b89095203cdae7dd4538052b2d2ad4324108976f02dd3",
+        "input_tokens": 3629
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R1",
+          "text": "Please help me find them and merge them into master.",
+          "kind": "deliverable"
+        },
+        "artifact": [
+          {
+            "path": ".gitignore",
+            "text": "*.pyc\n.jekyll-cache/\n.jekyll-cache/*\n_site/*\n.gitignore\nbiblib/__pycache__/\nGemfile.lock\n.DS_Store\n\n",
+            "chars": 100,
+            "clipped": false
+          },
+          {
+            "path": "CNAME",
+            "text": "mikemerrill.io",
+            "chars": 14,
+            "clipped": false
+          },
+          {
+            "path": "Gemfile",
+            "text": "gem 'github-pages', group: :jekyll_plugins",
+            "chars": 42,
+            "clipped": false
+          },
+          {
+            "path": "_config.yml",
+            "text": "name: Mike A. Merrill\ncollections:\n  - publications\n  - posters\n  - pubpdfs\n\n# Could add individual pages for each pub pretty",
+            "chars": 152,
+            "clipped": true
+          },
+          {
+            "path": "_includes/about.md",
+            "text": "I am a Postdoctoral Researcher at Stanford CS.\n\nPreviously, I was a Student Researcher at [Google Research](https://research.",
+            "chars": 332,
+            "clipped": true
+          },
+          {
+            "path": "_includes/contact.md",
+            "text": "- Email: mikeam@cs.washington.edu\n- [📚 Google Scholar](https://scholar.google.com/citations?user=lK6SO9IAAAAJ&hl=en)\n- [🐦 Twi",
+            "chars": 208,
+            "clipped": true
+          },
+          {
+            "path": "_includes/interests.md",
+            "text": "My work focuses on methods, datasets, and benchmarks for training and evaluating large models (including language models) on ",
+            "chars": 346,
+            "clipped": true
+          },
+          {
+            "path": "_layouts/default.html",
+            "text": "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\n    <!-- Global site tag (gtag.js) - Google Analytics -->\n    <script async src=\"ht",
+            "chars": 4875,
+            "clipped": true
+          },
+          {
+            "path": "_posters/frank2016sensing.md",
+            "text": "---\nauthor: Ellen Frank, Michael Merrill, Hane Aung, Claudio Soares, Sidney Kennedy, Mark\n  Matthews, David Kupfer, Aleksandr",
+            "chars": 485,
+            "clipped": true
+          },
+          {
+            "path": "_posters/frank2017sensing.md",
+            "text": "---\nauthor: Ellen Frank, Michael Merrill, Hane Aung, Claudio Soares, Sidney Kennedy, Mark\n  Matthews, David Kupfer, Aleksandr",
+            "chars": 542,
+            "clipped": true
+          },
+          {
+            "path": "_publications/ben-zeev_crosscheck_2017.md",
+            "text": "---\nabstract: Objective This purpose of this study was to describe and demonstrate CrossCheck,\n  a multimodal data collection",
+            "chars": 2925,
+            "clipped": true
+          },
+          {
+            "path": "_publications/guBLADEBenchmarkingLanguage2024a.md",
+            "text": "---\nabstract: Data-driven scientific discovery requires the iterative integration of scientific\n  domain knowledge, statistic",
+            "chars": 2531,
+            "clipped": true
+          },
+          {
+            "path": "_publications/merrill2021multiverse.md",
+            "text": "---\nauthor: Mike A. Merrill, Ge Zhang, and Tim Althoff\njournal: KDD\nkey: merrill2021multiverse\npdf_path: resources/pubpdfs/me",
+            "chars": 416,
+            "clipped": true
+          },
+          {
+            "path": "_publications/merrill2023selfsupervised.md",
+            "text": "---\nauthor: Mike A. Merrill and Tim Althoff\ncopyright: Creative Commons Attribution 4.0 International\ndoi: 10.48550/ARXIV.220",
+            "chars": 619,
+            "clipped": true
+          },
+          {
+            "path": "_publications/merrillHomekit2020BenchmarkTime2023.md",
+            "text": "---\nabstract: 'Despite increased interest in wearables as tools for detecting various\n  health conditions, there are not as o",
+            "chars": 1739,
+            "clipped": true
+          },
+          {
+            "path": "_publications/merrillLanguageModelsStill2024.md",
+            "text": "---\nabstract: 'Time series are critical for decision-making in fields like finance and\n  healthcare. Their importance has dri",
+            "chars": 2297,
+            "clipped": true
+          },
+          {
+            "path": "_publications/merrillTransformingWearableData2024a.md",
+            "text": "---\nabstract: Despite the proliferation of wearable health trackers and the importance\n  of sleep and exercise to health, der",
+            "chars": 2531,
+            "clipped": true
+          },
+          {
+            "path": "_publications/tanAreLanguageModels2024.md",
+            "text": "---\nabstract: Large language models (LLMs) are being applied to time series tasks, particularly\n  time series forecasting. Ho",
+            "chars": 1608,
+            "clipped": true
+          },
+          {
+            "path": "_publications/tseng2016ubicomp.md",
+            "text": "---\naddress: New York, NY, USA\nauthor: Vincent W. S. Tseng, Michael Merrill, Franziska Wittleder, Saeed Abdullah,\n  Min Hane ",
+            "chars": 858,
+            "clipped": true
+          },
+          {
+            "path": "_publications/wang_crosscheck_2016.md",
+            "text": "---\nabstract: Early detection of mental health changes in individuals with serious mental\n  illness is critical for effective",
+            "chars": 2448,
+            "clipped": true
+          },
+          {
+            "path": "_publications/xu2022GLOBEM.md",
+            "text": "---\nauthor: Xuhai Xu, Han Zhang, Yasaman Sefidgar, Yiyi Ren, Xin Liu, Woosuk Seo, Jennifer\n  Brown, Kevin Kuehn, Mike A. Merr",
+            "chars": 862,
+            "clipped": true
+          },
+          {
+            "path": "_publications/zhang2022coral.md",
+            "text": "---\nauthor: Ge Zhang, Mike A. Merrill, Yang Liu, Jeffrey Heer, and Tim Althoff\nkey: zhang2022coral\nnotes: '*Co-First Author'\n",
+            "chars": 416,
+            "clipped": true
+          },
+          {
+            "path": "biblib/__init__.py",
+            "text": "__all__ = 'bib algo messages'.split()\n",
+            "chars": 38,
+            "clipped": false
+          },
+          {
+            "path": "biblib/algo.py",
+            "text": "\"\"\"Algorithms for manipulating BibTeX data.\n\nThis module implements various algorithms supplied by BibTeX to style\nfiles, as ",
+            "chars": 17775,
+            "clipped": true
+          },
+          {
+            "path": "biblib/bib.py",
+            "text": "\"\"\"Parser and representation for BibTeX .bib databases.\n\nThis parser is derived directly from the WEB source code for BibTeX ",
+            "chars": 18667,
+            "clipped": true
+          },
+          {
+            "path": "biblib/messages.py",
+            "text": "import collections\nimport threading\nimport warnings\n\nclass Pos(collections.namedtuple('Pos', 'fname line col log_fp')):\n    \"",
+            "chars": 4154,
+            "clipped": true
+          },
+          {
+            "path": "biblib/test.py",
+            "text": "import unittest\nimport collections\nimport io\nfrom .bib import *\nfrom .algo import *\nfrom .messages import *\nfrom . import alg",
+            "chars": 13955,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap-grid.css",
+            "text": "@-ms-viewport {\n  width: device-width;\n}\n\nhtml {\n  -webkit-box-sizing: border-box;\n          box-sizing: border-box;\n  -ms-ov",
+            "chars": 25510,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap-grid.css.map",
+            "text": "{\"version\":3,\"sources\":[\"../../scss/bootstrap-grid.scss\",\"bootstrap-grid.css\",\"../../scss/_grid.scss\",\"../../scss/mixins/_gri",
+            "chars": 31527,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap-grid.min.css",
+            "text": "@-ms-viewport{width:device-width}html{-webkit-box-sizing:border-box;box-sizing:border-box;-ms-overflow-style:scrollbar}*,::af",
+            "chars": 18528,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap-grid.min.css.map",
+            "text": "{\"version\":3,\"sources\":[\"../../scss/bootstrap-grid.scss\",\"../../scss/_grid.scss\",\"../../scss/mixins/_grid.scss\",\"../../scss/m",
+            "chars": 12300,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap-reboot.css",
+            "text": "/*! normalize.css v5.0.0 | MIT License | github.com/necolas/normalize.css */\nhtml {\n  font-family: sans-serif;\n  line-height:",
+            "chars": 5916,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap-reboot.css.map",
+            "text": "{\"version\":3,\"sources\":[\"../../scss/_normalize.scss\",\"bootstrap-reboot.css\",\"../../scss/_reboot.scss\",\"../../scss/_variables.",
+            "chars": 9322,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap-reboot.min.css",
+            "text": "/*! normalize.css v5.0.0 | MIT License | github.com/necolas/normalize.css */html{font-family:sans-serif;line-height:1.15;-ms-",
+            "chars": 4707,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap-reboot.min.css.map",
+            "text": "{\"version\":3,\"sources\":[\"../../scss/_normalize.scss\",\"bootstrap-reboot.css\",\"../../scss/_reboot.scss\",\"../../scss/_variables.",
+            "chars": 2668,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap.css",
+            "text": "/*!\n * Bootstrap v4.0.0-alpha.6 (https://getbootstrap.com)\n * Copyright 2011-2017 The Bootstrap Authors\n * Copyright 2011-201",
+            "chars": 191738,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap.css.map",
+            "text": "{\"version\":3,\"sources\":[\"../../scss/bootstrap.scss\",\"../../scss/_normalize.scss\",\"bootstrap.css\",\"../../scss/_print.scss\",\"..",
+            "chars": 235595,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap.min.css",
+            "text": "/*!\n * Bootstrap v4.0.0-alpha.6 (https://getbootstrap.com)\n * Copyright 2011-2017 The Bootstrap Authors\n * Copyright 2011-201",
+            "chars": 150996,
+            "clipped": true
+          },
+          {
+            "path": "css/bootstrap.min.css.map",
+            "text": "{\"version\":3,\"sources\":[\"../../scss/_normalize.scss\",\"bootstrap.css\",\"../../scss/_print.scss\",\"../../scss/_reboot.scss\",\"../.",
+            "chars": 68044,
+            "clipped": true
+          },
+          {
+            "path": "css/style.css",
+            "text": "@font-face {\n    font-family: proximaNova;\n    src: url(../fonts/Proxima-Nova-Thin.otf);\n  }\n\n\n/* @font-face {\n    font-famil",
+            "chars": 1745,
+            "clipped": true
+          },
+          {
+            "path": "fonts/glyphicons-halflings-regular.svg",
+            "text": "<?xml version=\"1.0\" standalone=\"no\"?>\n<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/",
+            "chars": 108738,
+            "clipped": true
+          },
+          {
+            "path": "index.md",
+            "text": "---\ntitle: Mike A. Merrill\nlayout: default\n---\n",
+            "chars": 47,
+            "clipped": false
+          },
+          {
+            "path": "js/bootstrap.min.js",
+            "text": "/*!\n * Bootstrap v4.0.0-alpha.6 (https://getbootstrap.com)\n * Copyright 2011-2017 The Bootstrap Authors (https://github.com/t",
+            "chars": 46653,
+            "clipped": true
+          },
+          {
+            "path": "js/jquery.min.js",
+            "text": "/*! jQuery v3.3.1 | (c) JS Foundation and other contributors | jquery.org/license */\n!function(e,t){\"use strict\";\"object\"==ty",
+            "chars": 86927,
+            "clipped": true
+          },
+          {
+            "path": "js/popper.min.js",
+            "text": "(function (global, factory) {\n  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :\n ",
+            "chars": 20560,
+            "clipped": true
+          },
+          {
+            "path": "js/scripts.js",
+            "text": "// Empty JS for your own code to be here",
+            "chars": 40,
+            "clipped": false
+          },
+          {
+            "path": "make_pubs.py",
+            "text": "import biblib.bib\nimport biblib.messages\nimport biblib.algo\nimport sys\nimport yaml\nimport os.path\nfrom os import path\nimport ",
+            "chars": 2382,
+            "clipped": true
+          },
+          {
+            "path": "me.bib",
+            "text": "@poster{frank2017sensing,\n  title={Sensing depression: Using smartphone sensors to predict changes in depression severity},\n ",
+            "chars": 19596,
+            "clipped": true
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    }
+  ],
+  "skipped": []
+}

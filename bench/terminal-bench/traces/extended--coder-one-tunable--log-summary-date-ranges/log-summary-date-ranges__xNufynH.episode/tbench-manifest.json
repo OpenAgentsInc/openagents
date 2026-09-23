@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "03a0a92c-533b-4749-8b92-237de2d21283",
+    "job": "extended--coder-one-tunable--log-summary-date-ranges",
+    "trial": "log-summary-date-ranges__xNufynH",
+    "arm": "coder-one-tunable",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/log-summary-date-ranges",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/log-summary-date-ranges",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "f661ef345f023ef5a2dcdd056c353a1a2bbce29a70b04765c615c25e91b6b662",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T05:35:18.420951Z",
+    "finished_at": "2026-09-23T05:36:02.531210Z",
+    "environment_setup_ms": 881,
+    "agent_setup_ms": 3706,
+    "agent_execution_ms": 16292,
+    "verifier_ms": 12181,
+    "total_ms": 44110
+  },
+  "usage": {
+    "input_tokens": 88396,
+    "cache_tokens": 27068,
+    "output_tokens": 1033,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.06738023,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Runs natively on the x86_64 Linux host."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--log-summary-date-ranges/log-summary-date-ranges__xNufynH/result.json",
+      "sha256": "6a07ac041ed46d0729f73e6ded0b2deb1c721e5b8eecb105925f5c7ebaabf3dc",
+      "bytes": 5115
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--log-summary-date-ranges/log-summary-date-ranges__xNufynH/agent/trajectory.json",
+      "sha256": "405a7a1a0fdb30eb10a8d083f725f3eab3b5f883de0bfbceb64d0a9ecc832cee",
+      "bytes": 397585
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--log-summary-date-ranges/log-summary-date-ranges__xNufynH/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--log-summary-date-ranges/log-summary-date-ranges__xNufynH/verifier/ctrf.json",
+      "sha256": "c74046f0fb1a69d435bd9e348439c783df5ae45bba96cd6cd68b610bfc42b251",
+      "bytes": 1118
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--log-summary-date-ranges/log-summary-date-ranges__xNufynH/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--log-summary-date-ranges/tbench/attempts/log-summary-date-ranges__xNufynH.json",
+      "sha256": "8b3d8af697ffdba0b06540ae18111078579974205552110fa671244fbf5f1bdf"
+    }
+  },
+  "collected_at": "2026-09-23T05:36:03.277+00:00"
+}

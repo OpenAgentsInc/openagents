@@ -1,0 +1,457 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable",
+    "digest": "42daee0672670f6ecfed0094630471f9ebb5caa3eb5afea640fdee32f6e731e9",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable",
+      "note": "The whole tunable composition in a Terminal-Bench episode: task.profile routes the start (Codex on GPT-6 Luna for cheap, likely-easy tasks; lean Claude Code on Opus 5.5 for hard or long ones), deep Jev briefs it, control.monitor watches, verify.checks and verify.support judge the result, control.handoff escalates Luna to lean Opus on a stall, a failed check, a contradicted requirement, or no answer, and verify.repair runs once from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout. Both executors run the headless core system prompt with its protected sections, and Claude Code writes the five-minute prompt cache.",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [
+              "stalled",
+              "repeating"
+            ],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "route": {
+            "rule": "profile-v1",
+            "cheap": {
+              "agent": "codex",
+              "model": "gpt-6-luna",
+              "version": "0.155.1"
+            },
+            "strong": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "hard_at": 0.5,
+            "hard_features": [
+              "builds_code",
+              "concurrency"
+            ],
+            "feature_at": 0.7,
+            "long_after_sec": 3600
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked"
+        },
+        "executor": {
+          "agent": "claude-code",
+          "version": "2.1.280",
+          "model": "claude-opus-5-5",
+          "effort": "low",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": true,
+          "repair": {
+            "brief": "packet",
+            "trigger": "detected"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "f347d1fb28b8c4537827e96be6cbaf2376db548c43599bc41a059635f5791da9"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "version": "2.1.280",
+    "effort": "low",
+    "tools": "Bash,Read,Edit,Write,Glob,Grep",
+    "prompt_cache_ttl": "5m",
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/opt/openagents/toolchain/claude-code-2.1.280-linux-x64/bin/claude",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "bb61e706fb550c6034b2583b9c4adaccadb5f4f8a694fc0d0a0e8259eb03023e",
+        "chars": 1819,
+        "bytes": 1819,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "requirement 1",
+          "requirement 2",
+          "explorer conclusion",
+          "file $ list /app (depth 3)"
+        ],
+        "omitted": []
+      },
+      "packer": "sections",
+      "uncovered_requirements": null,
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 5,
+      "api_calls": 5,
+      "completed_items": null,
+      "charge": "priced",
+      "total_cost_usd": 0.05808579999999999,
+      "milliseconds": 23371,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 20555,
+        "kept_bytes": 20555,
+        "truncated": false,
+        "sha256": "6f1d53a318e989772992d2de3fdbb7c56d18c9a60bf0856001f1dd399cd2dc9a",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "claude-code",
+        "mode": "replace",
+        "setting": "--system-prompt-file",
+        "digest": "f347d1fb28b8c4537827e96be6cbaf2376db548c43599bc41a059635f5791da9",
+        "chars": 1542,
+        "default": "claude-code 2.1.280",
+        "default_chars": 5453,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.66,
+        "criteria": [
+          {
+            "requirement": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json.",
+            "p": 0.78
+          },
+          {
+            "requirement": "The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+            "p": 0.82
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a035cebe6e6)",
+    "sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.05874519999999999,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T05:37:42.966Z",
+  "updated_at": "2026-09-23T05:38:08.589Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 224777,
+      "sha256": "8115e972d650aed959fd57b63494de9544e69ef45ef8e778fc06167b77d47bf7"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 9388,
+      "sha256": "5001504f8a90831b19313292930aa4641ca8e9a412a2a9c247b82f4878155001"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 766,
+      "sha256": "ef8fd25cb53bb826ef26ed0c4ed0dfa23866b156af95d14cfe4e196c12e16691"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 3158,
+      "sha256": "f46ca584044dc70f55f81eed936ab3df5a2e01c74309650b42c2a89cfc24dac8"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 2703,
+      "sha256": "ff60fb06b425716464d83412ee9e062a6c41696f32fe65436a5856a165596d3d"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 1819,
+      "sha256": "bb61e706fb550c6034b2583b9c4adaccadb5f4f8a694fc0d0a0e8259eb03023e"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 20555,
+      "sha256": "6f1d53a318e989772992d2de3fdbb7c56d18c9a60bf0856001f1dd399cd2dc9a"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 143790,
+      "sha256": "032d78afaf043924f66a7dc7dba4e2db3eea434bc1be6810d76ec24371347bf7",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 25632,
+    "remaining_ms": 754367,
+    "used_fraction": 0.03286211873846154,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "ea5c9785791f8fcb659fd1998128ae4650c345db34d5468760e810001df255e4",
+          "scenarios": 2,
+          "verdicts": {
+            "passed": 2
+          },
+          "requirements": {
+            "observed": 1,
+            "unobserved": 1
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": {
+      "candidate": "ea5c9785791f8fcb659fd1998128ae4650c345db34d5468760e810001df255e4",
+      "judged": 1,
+      "supported": 0,
+      "contradicted": 0,
+      "unresolved": 1,
+      "skipped": 1
+    },
+    "repair": {
+      "tier": {
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "low",
+        "tools": "Bash,Read,Edit,Write,Glob,Grep",
+        "prompt_cache_ttl": "5m",
+        "version": "2.1.280"
+      },
+      "triggered": false,
+      "ran": false,
+      "changed": false,
+      "skipped": "no check contradicted a requirement",
+      "session": null,
+      "recheck": null,
+      "cost_usd": 0.0
+    }
+  },
+  "result": {
+    "title": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as m…",
+    "summary": "I recovered 10 rows, `testword00` through `testword09`, and wrote them to `/app/recover.json` in the requested format.\n\n**What was wrong with the file:** `trunc.db` is only 4096 bytes. What's left isn't the start of a normal database: the first page, which normally holds the SQLite header, is gone. The 4 KB that survived is a single page of table data. The standard SQLite tools can't open it, so I read that page byte by byte with a Python script instead.\n\n**How I got the rows:** The page says it holds 10 records, and I decoded all of them. Each record has an empty first column, which is normal when the table's ID is stored separately from the row. The other two columns are the word and the value, and I mapped those into the JSON. Nothing else in the file looks like row data, so as far as I can tell these 10 are all that survived. Any rows stored in the part that was cut off are lost.\n\n**Recovered values:**\n| Word | Value |\n|---|---|\n| testword00 | 1 |\n| testword01 | 2 |\n| testword02 | 10 |\n| testword03 | 25 |\n| testword04 | 42 |\n| testword05 | 50 |\n| testword06 | 75 |\n| testword07 | 99 |\n| testword08 | 99.99 |\n| testword09 | 0.5 |\n\nThe last two values are decimals in the database, so they stay decimals in the JSON rather than being rounded.\n\n**Checks:** I printed `/app/recover.json` after writing it and confirmed it is a list of `{\"word\": ..., \"value\": ...}` objects with the values above. There was no checker for me to run, so beyond that the file hasn't been tested.",
+    "delegate_status": "answered"
+  }
+}

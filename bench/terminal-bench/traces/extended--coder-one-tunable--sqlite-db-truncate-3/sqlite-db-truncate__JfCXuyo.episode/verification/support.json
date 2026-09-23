@@ -1,0 +1,103 @@
+{
+  "schema": "openagents.coder-one.support.v1",
+  "implementation": {
+    "name": "paired supports and contradicts nouls per requirement",
+    "digest": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054"
+  },
+  "params": {
+    "supports": 0.5,
+    "contradicts": 0.3,
+    "max_requirements": 3,
+    "artifact_chars": 6000,
+    "observation_chars": 2500
+  },
+  "candidate": "ea5c9785791f8fcb659fd1998128ae4650c345db34d5468760e810001df255e4",
+  "states": [
+    {
+      "id": "R1",
+      "text": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json.",
+      "state": "unresolved",
+      "why": "the evidence neither supports nor contradicts it: insufficient evidence",
+      "observed": [
+        "scenario generic.output:/app/recover.json passed",
+        "scenario generic.parse:/app/recover.json passed",
+        "read recover.json (372 of 372 characters)"
+      ],
+      "establishes": "nothing yet about R1 for candidate ea5c9785791f",
+      "checker": {
+        "scenarios": [
+          "generic.output:/app/recover.json",
+          "generic.parse:/app/recover.json"
+        ],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "ea5c9785791f8fcb659fd1998128ae4650c345db34d5468760e810001df255e4",
+      "evidence_digest": "0a73a5c8fbf9b20f920a48a2198611a22d9516455a728b13c87faf89727e612c",
+      "scenario_state": "observed",
+      "judgment": {
+        "supports": 0.42,
+        "contradicts": 0.2,
+        "how": "live",
+        "key": "a7dd047cb7175112a05f8ed40f24b62f0f03ee7aaaaebe7c8debafea3077bd91",
+        "input_tokens": 1085
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R1",
+          "text": "Recover as many of the rows as possible, and create a JSON file in /app/recover.json.",
+          "kind": "deliverable"
+        },
+        "artifact": [
+          {
+            "path": "recover.json",
+            "text": "[{\"word\": \"testword00\", \"value\": 1}, {\"word\": \"testword01\", \"value\": 2}, {\"word\": \"testword02\", \"value\": 10}, {\"word\": \"testword03\", \"value\": 25}, {\"word\": \"testword04\", \"value\": 42}, {\"word\": \"testword05\", \"value\": 50}, {\"word\": \"testword06\", \"value\": 75}, {\"word\": \"testword07\", \"value\": 99}, {\"word\": \"testword08\", \"value\": 99.99}, {\"word\": \"testword09\", \"value\": 0.5}]",
+            "chars": 372,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "generic.output:/app/recover.json",
+            "verdict": "passed",
+            "expected": "/app/recover.json exists and isn't empty.",
+            "observed": [
+              {
+                "path": "/app/recover.json",
+                "exists": true,
+                "bytes": 372
+              }
+            ],
+            "limits": [
+              "checks that the file is there, not what it holds"
+            ]
+          },
+          {
+            "scenario": "generic.parse:/app/recover.json",
+            "verdict": "passed",
+            "expected": "/app/recover.json parses as json.",
+            "observed": [
+              {
+                "path": "/app/recover.json",
+                "format": "json",
+                "problem": null
+              }
+            ],
+            "limits": [
+              "checks the format, not the values"
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "id": "R2",
+      "why": "a constraint or context no scenario observed"
+    }
+  ]
+}

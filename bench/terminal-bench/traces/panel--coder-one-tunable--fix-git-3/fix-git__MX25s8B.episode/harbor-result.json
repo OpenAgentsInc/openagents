@@ -1,0 +1,36 @@
+{
+  "trial_name": "fix-git__MX25s8B",
+  "task_name": "terminal-bench/fix-git",
+  "started_at": "2026-09-23T05:37:55.810045Z",
+  "finished_at": "2026-09-23T05:38:37.382140Z",
+  "environment_setup": {
+    "started_at": "2026-09-23T05:37:55.854819Z",
+    "finished_at": "2026-09-23T05:37:56.870548Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-23T05:37:56.870585Z",
+    "finished_at": "2026-09-23T05:38:00.293467Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-23T05:38:00.293586Z",
+    "finished_at": "2026-09-23T05:38:17.274405Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-23T05:38:17.496020Z",
+    "finished_at": "2026-09-23T05:38:26.645492Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 55947,
+    "n_cache_tokens": 30468,
+    "n_output_tokens": 717,
+    "cost_usd": 0.046593114,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

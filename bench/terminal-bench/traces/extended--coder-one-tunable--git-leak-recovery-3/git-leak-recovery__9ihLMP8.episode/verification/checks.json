@@ -1,0 +1,148 @@
+{
+  "schema": "openagents.coder-one.checks.v1",
+  "implementation": {
+    "name": "admitted scenario catalog, deterministic selector",
+    "digest": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32"
+  },
+  "candidate": {
+    "label": "terminal-bench task",
+    "origin": "workspace",
+    "digest": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+    "files": [
+      "repo/README.md",
+      "secret.txt"
+    ],
+    "programs": 0
+  },
+  "requirements_method": "jev",
+  "ineligible": [
+    {
+      "kind": "data",
+      "why": "the instruction shows no CSV rows to fill"
+    },
+    {
+      "kind": "interactive",
+      "why": "the instruction asks for no interactive behavior"
+    },
+    {
+      "kind": "cancellation",
+      "why": "the instruction asks for no cleanup on cancellation"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "generic.output:/app/secret.txt",
+      "kind": "generic.output",
+      "requirements": [
+        "R2"
+      ],
+      "spans": [
+        {
+          "requirement": "R2",
+          "span": "s3",
+          "start": 111,
+          "end": 172,
+          "text": "1. recover the secret and write it to a /app/secret.txt file."
+        }
+      ],
+      "applies": [
+        "R2 names the output /app/secret.txt"
+      ],
+      "interface": "the file /app/secret.txt",
+      "bounds": {
+        "seconds": 1,
+        "processes": 1
+      },
+      "effects": [
+        "reads the file in the task's working directory"
+      ],
+      "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+      "input": "65b24f3692d88cfe20b330fc8ece42e3ad07ece61789dcd9400f341ea0aac175",
+      "expected": {
+        "statement": "/app/secret.txt exists and isn't empty.",
+        "derivation": "R2 asks for /app/secret.txt to be written."
+      },
+      "params": {
+        "path": "/app/secret.txt",
+        "resolved": "/app/secret.txt"
+      }
+    }
+  ],
+  "selection": {
+    "selector": "deterministic",
+    "admitted": 1,
+    "selected": [
+      "generic.output:/app/secret.txt"
+    ],
+    "skipped": [],
+    "bound_seconds": 1,
+    "budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    }
+  },
+  "verdicts": [
+    {
+      "scenario": "generic.output:/app/secret.txt",
+      "verdict": "passed",
+      "observations": [
+        {
+          "path": "/app/secret.txt",
+          "exists": true,
+          "bytes": 30
+        }
+      ],
+      "coverage": [
+        "checks that the file is there, not what it holds"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "id": "R1",
+      "text": "Please",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R2",
+      "text": "1. recover the secret and write it to a /app/secret.txt file.",
+      "kind": "deliverable",
+      "state": "observed",
+      "scenarios": [
+        {
+          "id": "generic.output:/app/secret.txt",
+          "verdict": "passed",
+          "scenario_verdict": "passed",
+          "coverage": [
+            "checks that the file is there, not what it holds"
+          ],
+          "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26"
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "text": "2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo.",
+      "kind": "behavior",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R4",
+      "text": "3. make sure irrelevant files and commit messages remain untouched.",
+      "kind": "constraint",
+      "state": "unobserved",
+      "scenarios": []
+    },
+    {
+      "id": "R5",
+      "text": "- The secret format is secret[...].",
+      "kind": "constraint",
+      "state": "unobserved",
+      "scenarios": []
+    }
+  ],
+  "packets": []
+}

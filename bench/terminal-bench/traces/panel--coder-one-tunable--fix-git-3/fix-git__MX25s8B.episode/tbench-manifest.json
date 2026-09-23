@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "bcab829c-fc79-4010-b4c5-e4986f32e233",
+    "job": "panel--coder-one-tunable--fix-git-3",
+    "trial": "fix-git__MX25s8B",
+    "arm": "coder-one-tunable",
+    "profile": "panel",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/fix-git",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/fix-git",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "e89f54f2fc73ac576f976c1cd09758e4c9ccf152e53c2dcd91da0c178b89abc7",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T05:37:55.810045Z",
+    "finished_at": "2026-09-23T05:38:37.382140Z",
+    "environment_setup_ms": 1015,
+    "agent_setup_ms": 3422,
+    "agent_execution_ms": 16980,
+    "verifier_ms": 9149,
+    "total_ms": 41572
+  },
+  "usage": {
+    "input_tokens": 55947,
+    "cache_tokens": 30468,
+    "output_tokens": 717,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.046593114,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "The published image is linux/amd64; on this arm64 Mac it runs under emulation. Record that condition on every run."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable--fix-git-3/fix-git__MX25s8B/result.json",
+      "sha256": "d8f28949ba6ab48172ab115a154b45d4904466ad47ede39c82fede9e924205b7",
+      "bytes": 4985
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable--fix-git-3/fix-git__MX25s8B/agent/trajectory.json",
+      "sha256": "42860fb8c539f43746ea68f2d15674f659a413985b46f08653523356ed6bf494",
+      "bytes": 272255
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable--fix-git-3/fix-git__MX25s8B/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable--fix-git-3/fix-git__MX25s8B/verifier/ctrf.json",
+      "sha256": "c0e89fb37d21e05362cf1031ff8acd56279c7ed13ef6912964010066a85c2193",
+      "bytes": 1088
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable--fix-git-3/fix-git__MX25s8B/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/panel--coder-one-tunable--fix-git-3/tbench/attempts/fix-git__MX25s8B.json",
+      "sha256": "5843ea55b530c2b3b733ca20a41f5501f12feb4128c84eba930499d72bf76cca"
+    }
+  },
+  "collected_at": "2026-09-23T05:38:38.204+00:00"
+}

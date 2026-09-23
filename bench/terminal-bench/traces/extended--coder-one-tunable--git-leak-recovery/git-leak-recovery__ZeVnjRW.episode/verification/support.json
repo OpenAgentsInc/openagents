@@ -1,0 +1,194 @@
+{
+  "schema": "openagents.coder-one.support.v1",
+  "implementation": {
+    "name": "paired supports and contradicts nouls per requirement",
+    "digest": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054"
+  },
+  "params": {
+    "supports": 0.5,
+    "contradicts": 0.3,
+    "max_requirements": 3,
+    "artifact_chars": 6000,
+    "observation_chars": 2500
+  },
+  "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+  "states": [
+    {
+      "id": "R2",
+      "text": "1. recover the secret and write it to a /app/secret.txt file.",
+      "state": "supported",
+      "why": "the evidence supports it and doesn't contradict it",
+      "observed": [
+        "scenario generic.output:/app/secret.txt passed",
+        "read secret.txt (30 of 30 characters)"
+      ],
+      "establishes": "R2 is met by candidate 346554cf4bc3",
+      "checker": {
+        "scenarios": [
+          "generic.output:/app/secret.txt"
+        ],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+      "evidence_digest": "a51ca645ad2f5fc744ac058da5a25ca066f5779f412be27541bc02abfbc2fd13",
+      "scenario_state": "observed",
+      "judgment": {
+        "supports": 0.73,
+        "contradicts": 0.07,
+        "how": "live",
+        "key": "a7df4103b464ad724272fcf198a6642957293c1ed87a5b4adec252d32ed23685",
+        "input_tokens": 852
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R2",
+          "text": "1. recover the secret and write it to a /app/secret.txt file.",
+          "kind": "deliverable"
+        },
+        "artifact": [
+          {
+            "path": "secret.txt",
+            "text": "secret[lost_and_found_in_git]\n",
+            "chars": 30,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "generic.output:/app/secret.txt",
+            "verdict": "passed",
+            "expected": "/app/secret.txt exists and isn't empty.",
+            "observed": [
+              {
+                "path": "/app/secret.txt",
+                "exists": true,
+                "bytes": 30
+              }
+            ],
+            "limits": [
+              "checks that the file is there, not what it holds"
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      }
+    },
+    {
+      "id": "R1",
+      "text": "Please",
+      "state": "contradicted",
+      "why": "the evidence contradicts it",
+      "observed": [
+        "no scenario observed it",
+        "read repo/README.md (26 of 26 characters)",
+        "read secret.txt (30 of 30 characters)"
+      ],
+      "establishes": "R1 is not met by candidate 346554cf4bc3",
+      "checker": {
+        "scenarios": [],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+      "evidence_digest": "c6d48681d3dc1b79b9659e6e8d9545af72737bec2445c00a98dace17f01c4696",
+      "scenario_state": "unobserved",
+      "judgment": {
+        "supports": 0.24,
+        "contradicts": 0.37,
+        "how": "live",
+        "key": "a6d55c558843ce5495ff1664fe5eaddd523d1e6c78d60aba54fe0b33dfbffc4a",
+        "input_tokens": 780
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R1",
+          "text": "Please",
+          "kind": "deliverable"
+        },
+        "artifact": [
+          {
+            "path": "repo/README.md",
+            "text": "demo project\nsome changes\n",
+            "chars": 26,
+            "clipped": false
+          },
+          {
+            "path": "secret.txt",
+            "text": "secret[lost_and_found_in_git]\n",
+            "chars": 30,
+            "clipped": false
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    },
+    {
+      "id": "R3",
+      "text": "2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo.",
+      "state": "contradicted",
+      "why": "the evidence contradicts it",
+      "observed": [
+        "no scenario observed it",
+        "read repo/README.md (26 of 26 characters)",
+        "read secret.txt (30 of 30 characters)"
+      ],
+      "establishes": "R3 is not met by candidate 346554cf4bc3",
+      "checker": {
+        "scenarios": [],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+      "evidence_digest": "1ae3c9497a19632a3b6117f6465c694a5cb85c1199a1df6cd3008f2fe17a242b",
+      "scenario_state": "unobserved",
+      "judgment": {
+        "supports": 0.05,
+        "contradicts": 0.5,
+        "how": "live",
+        "key": "44095383438529473ce2dd8a878027ea01904a8691ba1fbf13fd6c23260d99d3",
+        "input_tokens": 798
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R3",
+          "text": "2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "repo/README.md",
+            "text": "demo project\nsome changes\n",
+            "chars": 26,
+            "clipped": false
+          },
+          {
+            "path": "secret.txt",
+            "text": "secret[lost_and_found_in_git]\n",
+            "chars": 30,
+            "clipped": false
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "id": "R4",
+      "why": "a constraint or context no scenario observed"
+    },
+    {
+      "id": "R5",
+      "why": "a constraint or context no scenario observed"
+    }
+  ]
+}

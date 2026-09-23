@@ -1,0 +1,134 @@
+{
+  "schema": "openagents.coder-one.composition.v1",
+  "route": {
+    "rule": "profile-v1",
+    "profile": {
+      "features": {
+        "builds_code": 0.09,
+        "concurrency": 0.9,
+        "installs_packages": 0.84,
+        "parses_data": 0.03,
+        "recovers_git": 0.01
+      },
+      "difficulty": 0.805,
+      "executor": null
+    },
+    "start": "strong",
+    "tier": {
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "effort": "low",
+      "tools": "Bash,Read,Edit,Write,Glob,Grep",
+      "prompt_cache_ttl": "5m",
+      "version": "2.1.280"
+    },
+    "reason": "difficulty 0.81 is at least 0.50",
+    "episode_deadline_sec": 778
+  },
+  "first": {
+    "start": "strong",
+    "tier": {
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "effort": "low",
+      "tools": "Bash,Read,Edit,Write,Glob,Grep",
+      "prompt_cache_ttl": "5m",
+      "version": "2.1.280"
+    },
+    "reason": "difficulty 0.81 is at least 0.50"
+  },
+  "horizon": {
+    "policy": {
+      "first_share": 0.55,
+      "later_share": 0.75,
+      "min_dispatch_sec": 300,
+      "check_share": 0.05,
+      "long_after_sec": 3600,
+      "long_effort": "medium",
+      "long_command_sec": 3600
+    },
+    "episode_deadline_sec": 778,
+    "long": false,
+    "first_dispatch_sec": 561,
+    "check_budget": {
+      "max_scenarios": 12,
+      "seconds": 180
+    },
+    "command_sec": 60
+  },
+  "planner": null,
+  "handoffs": [],
+  "escalated": false,
+  "branches": [
+    {
+      "role": "primary",
+      "tier": {
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "low",
+        "tools": "Bash,Read,Edit,Write,Glob,Grep",
+        "prompt_cache_ttl": "5m",
+        "version": "2.1.280"
+      },
+      "status": "answered",
+      "milliseconds": 19788,
+      "requested_sec": 561,
+      "usd": 0.0469936,
+      "charge": "priced",
+      "turns": 2,
+      "stopped_by": null,
+      "session_id": "dd7e9422-baaf-49c9-aa41-d6be2bd31b9b"
+    }
+  ],
+  "checks": [
+    {
+      "after": "primary",
+      "file": "verification/checks.json",
+      "summary": {
+        "candidate": "e3cf31a3b785a1f37a628d60fc765bcec6f8c66bb525ad29dceca88247a0f900",
+        "scenarios": 4,
+        "verdicts": {
+          "passed": 4
+        },
+        "requirements": {
+          "observed": 3,
+          "unobserved": 6
+        },
+        "packets": 0
+      }
+    }
+  ],
+  "support": {
+    "candidate": "e3cf31a3b785a1f37a628d60fc765bcec6f8c66bb525ad29dceca88247a0f900",
+    "judged": 3,
+    "supported": 3,
+    "contradicted": 0,
+    "unresolved": 0,
+    "skipped": 6
+  },
+  "repair": {
+    "tier": {
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "effort": "low",
+      "tools": "Bash,Read,Edit,Write,Glob,Grep",
+      "prompt_cache_ttl": "5m",
+      "version": "2.1.280"
+    },
+    "triggered": false,
+    "ran": false,
+    "changed": false,
+    "skipped": "no check contradicted a requirement",
+    "session": null,
+    "recheck": null,
+    "cost_usd": 0.0
+  },
+  "verify": {
+    "checks": true,
+    "support": true,
+    "repair": {
+      "brief": "packet",
+      "trigger": "detected"
+    }
+  }
+}

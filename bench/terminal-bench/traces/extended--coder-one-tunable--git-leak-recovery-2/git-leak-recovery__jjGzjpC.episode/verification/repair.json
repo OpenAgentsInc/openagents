@@ -1,0 +1,52 @@
+{
+  "schema": "openagents.coder-one.repair.v1",
+  "implementation": {
+    "name": "one fresh session from a delta brief",
+    "digest": "0210b6bf9204ae1c5b10847f3b2cf9f00efd5330780e8a1284a2f708d110faf7"
+  },
+  "trigger": "detected",
+  "triggered": true,
+  "gaps": [
+    {
+      "requirement": "R3",
+      "scenarios": [],
+      "support": [
+        0.05,
+        0.53
+      ]
+    }
+  ],
+  "candidate_before": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+  "brief": {
+    "kind": "packet",
+    "sha256": "782027937c111551517d0c77e137e6444f437d951a57a0f3763f3d18e7bb3800",
+    "chars": 1305,
+    "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+    "requirements": [
+      "R3"
+    ],
+    "scenarios": [],
+    "path": "artifacts/repair-1.brief.md"
+  },
+  "granted_ms": 739000,
+  "session": {
+    "fresh": true,
+    "resumes": null,
+    "previous_session": "4cf21bc7-dc59-40f7-ba1f-a653eadc7247",
+    "session_id": "6188265e-02a2-4692-8121-3b218801162e",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "status": "answered",
+    "turns": 7,
+    "milliseconds": 25854,
+    "cost_usd": 0.0652548,
+    "cost_provenance": "provider_reported",
+    "result": "I found no copy of the secret anywhere in the repo's history or objects. The only leftover trace of the removed commit was a stale pointer, and I've deleted it.\n\n**What I checked:** I searched for `secret[` in every object in the repo, including unreachable ones, and in every commit's files. I also checked the reflog, the stash, the refs and the working tree. None of these turned up the secret.\n\n**What I found:** `.git/ORIG_HEAD` still pointed to `6b4c75ca…`. That is the commit removed by the hi…"
+  },
+  "candidate_after": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+  "changed": false,
+  "invalidated": [],
+  "recheck": {
+    "skipped": "the candidate didn't change, so the earlier observations still hold"
+  }
+}

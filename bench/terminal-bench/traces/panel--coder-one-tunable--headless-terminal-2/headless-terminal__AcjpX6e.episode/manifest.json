@@ -1,0 +1,494 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable",
+    "digest": "42daee0672670f6ecfed0094630471f9ebb5caa3eb5afea640fdee32f6e731e9",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable",
+      "note": "The whole tunable composition in a Terminal-Bench episode: task.profile routes the start (Codex on GPT-6 Luna for cheap, likely-easy tasks; lean Claude Code on Opus 5.5 for hard or long ones), deep Jev briefs it, control.monitor watches, verify.checks and verify.support judge the result, control.handoff escalates Luna to lean Opus on a stall, a failed check, a contradicted requirement, or no answer, and verify.repair runs once from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout. Both executors run the headless core system prompt with its protected sections, and Claude Code writes the five-minute prompt cache.",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [
+              "stalled",
+              "repeating"
+            ],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "route": {
+            "rule": "profile-v1",
+            "cheap": {
+              "agent": "codex",
+              "model": "gpt-6-luna",
+              "version": "0.155.1"
+            },
+            "strong": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "hard_at": 0.5,
+            "hard_features": [
+              "builds_code",
+              "concurrency"
+            ],
+            "feature_at": 0.7,
+            "long_after_sec": 3600
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked"
+        },
+        "executor": {
+          "agent": "claude-code",
+          "version": "2.1.280",
+          "model": "claude-opus-5-5",
+          "effort": "low",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": true,
+          "repair": {
+            "brief": "packet",
+            "trigger": "detected"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "f347d1fb28b8c4537827e96be6cbaf2376db548c43599bc41a059635f5791da9"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "version": "2.1.280",
+    "effort": "low",
+    "tools": "Bash,Read,Edit,Write,Glob,Grep",
+    "prompt_cache_ttl": "5m",
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/opt/openagents/toolchain/claude-code-2.1.280-linux-x64/bin/claude",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "1b59d856ce129589f0141d98eb77b92467d7ed023df471da1c782ec9237a48f4",
+        "chars": 3482,
+        "bytes": 3482,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "requirement 1",
+          "requirement 2",
+          "requirement 3",
+          "requirement 4",
+          "requirement 5",
+          "requirement 6",
+          "requirement 7",
+          "requirement 8",
+          "requirement 9",
+          "explorer conclusion",
+          "file $ list /app (depth 3)",
+          "file $ pip list",
+          "file base_terminal.py"
+        ],
+        "omitted": []
+      },
+      "packer": "sections",
+      "uncovered_requirements": null,
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 2,
+      "api_calls": 2,
+      "completed_items": null,
+      "charge": "priced",
+      "total_cost_usd": 0.0469936,
+      "milliseconds": 19788,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 17508,
+        "kept_bytes": 17508,
+        "truncated": false,
+        "sha256": "50f9ae76fd4ac13430d72e219c82987eb1759f955f26fc2737b9af29aa1ae3f9",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "claude-code",
+        "mode": "replace",
+        "setting": "--system-prompt-file",
+        "digest": "f347d1fb28b8c4537827e96be6cbaf2376db548c43599bc41a059635f5791da9",
+        "chars": 1542,
+        "default": "claude-code 2.1.280",
+        "default_chars": 5453,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.41,
+        "criteria": [
+          {
+            "requirement": "Implement the provided `BaseTerminal` interface.",
+            "p": 0.63
+          },
+          {
+            "requirement": "It provides a simple python interface to send keys to a headless terminal.",
+            "p": 0.79
+          },
+          {
+            "requirement": "Make sure it supports the following functionality.",
+            "p": 0.6
+          },
+          {
+            "requirement": "- Mimics a terminal, where the process starts as an interactive bash shell and commands are typically executed by typing characters and hitting Enter.",
+            "p": 0.83
+          },
+          {
+            "requirement": "- Supports interactive programs",
+            "p": 0.67
+          },
+          {
+            "requirement": "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+            "p": 0.72
+          },
+          {
+            "requirement": "- Because the shell is interactive, it should source the startup files (e.g. ~/.bashrc)",
+            "p": 0.63
+          },
+          {
+            "requirement": "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called `/app/headless_terminal.py` so that it can be imported as `from headless_terminal import HeadlessTerminal`.",
+            "p": 0.45
+          },
+          {
+            "requirement": "Install dependencies into the system python.",
+            "p": 0.51
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a035cebe6e6)",
+    "sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.04761961000000001,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T05:36:23.254Z",
+  "updated_at": "2026-09-23T05:36:52.040Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 213357,
+      "sha256": "befa90c8318af6f0ae46e82c6f3b7fe6fc5c29cdbd3b931b7504dfc4f8cf39d6"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 8158,
+      "sha256": "89001ce7a9782dd3722ad552f192691ed86bcece65659f73a96bf2b4b39fb340"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 1926,
+      "sha256": "e65d76e7aa47fd3f12d770519e08f0466e1fe058ca061b03fcdc0ade3fc56ddb"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 3149,
+      "sha256": "8355c24c8497a3cbe531b2e05eb11bf2414341738326a888affa03fcc16f85f3"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 7122,
+      "sha256": "f0207ad357905f555bc2792a04f8b65086b27ca79697ffc091e580c4d17e2c85"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 3482,
+      "sha256": "1b59d856ce129589f0141d98eb77b92467d7ed023df471da1c782ec9237a48f4"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 17508,
+      "sha256": "50f9ae76fd4ac13430d72e219c82987eb1759f955f26fc2737b9af29aa1ae3f9"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 139675,
+      "sha256": "a7e9d923604b5cc3de2b0b869d6a2f7722d519281cddb65af695f414da1e7c39",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 28817,
+    "remaining_ms": 751182,
+    "used_fraction": 0.03694583695769231,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "e3cf31a3b785a1f37a628d60fc765bcec6f8c66bb525ad29dceca88247a0f900",
+          "scenarios": 4,
+          "verdicts": {
+            "passed": 4
+          },
+          "requirements": {
+            "observed": 3,
+            "unobserved": 6
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": {
+      "candidate": "e3cf31a3b785a1f37a628d60fc765bcec6f8c66bb525ad29dceca88247a0f900",
+      "judged": 3,
+      "supported": 3,
+      "contradicted": 0,
+      "unresolved": 0,
+      "skipped": 6
+    },
+    "repair": {
+      "tier": {
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "low",
+        "tools": "Bash,Read,Edit,Write,Glob,Grep",
+        "prompt_cache_ttl": "5m",
+        "version": "2.1.280"
+      },
+      "triggered": false,
+      "ran": false,
+      "changed": false,
+      "skipped": "no check contradicted a requirement",
+      "session": null,
+      "recheck": null,
+      "cost_usd": 0.0
+    }
+  },
+  "result": {
+    "title": "Implement the provided `BaseTerminal` interface. It provides a simple python interface to send keys …",
+    "summary": "I added `/app/headless_terminal.py` with a `HeadlessTerminal(BaseTerminal)` class. It starts `/bin/bash -i` in a pseudo-terminal, so bash runs as an interactive shell and reads `~/.bashrc` on startup.\n\n- **`send_keystrokes(keystrokes, wait_sec)`** writes the raw characters to the terminal. Enter (`\"\\n\"`) and control keys such as `\"\\x03\"` for Ctrl-C are passed through unchanged, then it waits `wait_sec` seconds.\n- **Two extra methods:** `read_output()` returns everything the terminal has printed so far, and `close()` kills the shell and everything started from it.\n- **Dependencies:** it only uses the Python standard library, so there was nothing to install.\n\n**Test:** I ran one script covering all four requirements, and it passed:\n- **Startup file:** I added a temporary variable to `~/.bashrc`, and the shell saw its value.\n- **Ctrl-C:** it stopped a running `sleep 100`, and the shell kept accepting commands afterwards.\n- **Interactive program:** a command typed into an interactive `python3` session ran.\n\nAfterwards I removed the test line from `~/.bashrc`; `/tmp/o`, which the test wrote to, is still there. The test only checked side effects in that file; it didn't check `read_output()`.",
+    "delegate_status": "answered"
+  }
+}

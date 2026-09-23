@@ -1,0 +1,2597 @@
+{
+  "schema": "openagents.coder-one.support.v1",
+  "implementation": {
+    "name": "paired supports and contradicts nouls per requirement",
+    "digest": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054"
+  },
+  "params": {
+    "supports": 0.5,
+    "contradicts": 0.3,
+    "max_requirements": 3,
+    "artifact_chars": 6000,
+    "observation_chars": 2500
+  },
+  "candidate": "f3bda9a2e9e34734d13a55536f0ee8d8121ae3ef29f4f2ada508f0b7dd20b61e",
+  "states": [
+    {
+      "id": "R1",
+      "text": "Can you help me compile extensions, install pyknotid from source to system's global python environment, while fixing any Numpy compatibility issues so it works with my existing Numpy (2.3.0) versions?",
+      "state": "unresolved",
+      "why": "the artifact excerpt was clipped, so the judgment didn't read the whole source",
+      "observed": [
+        "no scenario observed it",
+        "read pyknotid/.gitignore (19 of 19 characters)",
+        "read pyknotid/.projectile (12 of 12 characters)",
+        "read pyknotid/LICENSE.txt (33 of 1079 characters)",
+        "read pyknotid/README.rst (33 of 2666 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/__init__.py (33 of 87 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/__init__.py (33 of 3120 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/build.py (33 of 6105 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/converters.py (33 of 6688 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/database.py (33 of 7929 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/getdb.py (33 of 4161 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/identify.py (33 of 9978 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/improve.py (33 of 15515 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cinvariants.pyx (33 of 2121 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/__init__.py (0 of 0 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/analyse_knot_file.py (33 of 4412 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/plot_knot.py (33 of 2711 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/invariants.py (33 of 53329 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/io.py (33 of 1840 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/__init__.py (33 of 488 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/named.py (33 of 2463 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/periodic_knot.py (33 of 17533 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/torus.py (33 of 5696 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/__init__.py (33 of 3317 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/dtnotation.py (33 of 3040 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gausscode.py (33 of 16296 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gaussdiagram.py (33 of 3065 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/planardiagram.py (33 of 13581 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/representation.py (33 of 23207 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/__init__.py (0 of 0 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/coctree.pyx (33 of 7699 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/octree.py (33 of 31381 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/__init__.py (33 of 2978 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/ccomplexity.pyx (33 of 6322 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/chelpers.pyx (33 of 5817 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/complexity.py (33 of 20115 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/geometry.py (33 of 1434 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/helpers.py (33 of 5007 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/knot.py (33 of 28229 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/link.py (33 of 18178 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/openknot.py (33 of 49568 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodic.py (33 of 62010 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodiccell.py (33 of 18844 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodicline.py (33 of 39 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/rotation.py (33 of 2275 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/setup.py (33 of 359 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/smooth.py (33 of 1975 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/spacecurve.py (33 of 43512 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/utils.py (33 of 1904 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualcollection.py (33 of 1170 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualise.py (33 of 41763 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/writhes.py (33 of 15846 characters)",
+        "read pyknotid/doc/Makefile (33 of 6772 characters)",
+        "read pyknotid/doc/conf.py (33 of 8692 characters)",
+        "read pyknotid/doc/ext/docscrape.py (33 of 15366 characters)",
+        "read pyknotid/doc/ext/docscrape_sphinx.py (33 of 7741 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/.gitignore (33 of 136 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/Gemfile (33 of 64 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/Gemfile.lock (33 of 235 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/Gruntfile.js (33 of 2948 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/LICENSE (33 of 1078 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/MANIFEST.in (33 of 360 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/README.rst (33 of 6150 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/bower.json (33 of 570 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/Makefile (33 of 5621 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/__init__.py (0 of 0 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/conf.py (33 of 8213 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/demo.rst (33 of 15469 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/index.rst (33 of 7776 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/list.rst (33 of 1341 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/__init__.py (0 of 0 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/test.py (33 of 2855 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/package.json (33 of 446 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/requirements.txt (12 of 12 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge.sass (33 of 1991 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge_fa.sass (33 of 1195 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_breadcrumbs.sass (33 of 469 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_font_awesome_compatability.sass (33 of 404 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_layout.sass (33 of 7473 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_mathjax.sass (33 of 77 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_rst.sass (33 of 9459 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_variables.sass (33 of 875 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/badge_only.sass (33 of 573 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/theme.sass (33 of 1486 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/setup.py (33 of 1313 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/__init__.py (33 of 371 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/breadcrumbs.html (33 of 1035 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/footer.html (33 of 1263 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout.html (33 of 5355 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout_old.html (33 of 7341 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/search.html (33 of 1530 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/searchbox.html (33 of 308 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/badge_only.css (33 of 3381 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/theme.css (33 of 87846 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/fonts/fontawesome-webfont.svg (33 of 202148 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/js/theme.js (33 of 1675 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/theme.conf (33 of 125 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/versions.html (33 of 1219 characters)",
+        "read pyknotid/doc/index.rst (33 of 936 characters)",
+        "read pyknotid/doc/make.bat (33 of 6708 characters)",
+        "read pyknotid/doc/sources/about.rst (33 of 1080 characters)",
+        "read pyknotid/doc/sources/catalogue/database.rst (33 of 58 characters)",
+        "read pyknotid/doc/sources/catalogue/getdb.rst (33 of 55 characters)",
+        "read pyknotid/doc/sources/catalogue/identify.rst (33 of 59 characters)",
+        "read pyknotid/doc/sources/catalogue/index.rst (33 of 130 characters)",
+        "read pyknotid/doc/sources/invariants.rst (33 of 50 characters)",
+        "read pyknotid/doc/sources/overview.rst (33 of 4280 characters)",
+        "read pyknotid/doc/sources/representations/dtnotation.rst (33 of 66 characters)",
+        "read pyknotid/doc/sources/representations/gausscode.rst (33 of 65 characters)",
+        "read pyknotid/doc/sources/representations/gaussdiagram.rst (33 of 68 characters)",
+        "read pyknotid/doc/sources/representations/index.rst (33 of 229 characters)",
+        "read pyknotid/doc/sources/representations/planardiagram.rst (33 of 69 characters)",
+        "read pyknotid/doc/sources/representations/representation.rst (33 of 70 characters)",
+        "read pyknotid/doc/sources/spacecurves/index.rst (33 of 195 characters)",
+        "read pyknotid/doc/sources/spacecurves/knot.rst (33 of 56 characters)",
+        "read pyknotid/doc/sources/spacecurves/link.rst (33 of 55 characters)",
+        "read pyknotid/doc/sources/spacecurves/openknot.rst (33 of 60 characters)",
+        "read pyknotid/doc/sources/spacecurves/periodiccell.rst (33 of 63 characters)",
+        "read pyknotid/doc/sources/spacecurves/spacecurve.rst (33 of 62 characters)",
+        "read pyknotid/doc/sources/visualise.rst (33 of 92 characters)",
+        "read pyknotid/pyknotid.egg-info/PKG-INFO (33 of 1625 characters)",
+        "read pyknotid/pyknotid.egg-info/SOURCES.txt (33 of 1871 characters)",
+        "read pyknotid/pyknotid.egg-info/dependency_links.txt (1 of 1 characters)",
+        "read pyknotid/pyknotid.egg-info/entry_points.txt (33 of 114 characters)",
+        "read pyknotid/pyknotid.egg-info/requires.txt (33 of 66 characters)",
+        "read pyknotid/pyknotid.egg-info/top_level.txt (9 of 9 characters)",
+        "read pyknotid/pyknotid/__init__.py (33 of 87 characters)",
+        "read pyknotid/pyknotid/catalogue/__init__.py (33 of 3120 characters)",
+        "read pyknotid/pyknotid/catalogue/build.py (33 of 6105 characters)",
+        "read pyknotid/pyknotid/catalogue/converters.py (33 of 6688 characters)",
+        "read pyknotid/pyknotid/catalogue/database.py (33 of 7929 characters)",
+        "read pyknotid/pyknotid/catalogue/getdb.py (33 of 4161 characters)",
+        "read pyknotid/pyknotid/catalogue/identify.py (33 of 9978 characters)",
+        "read pyknotid/pyknotid/catalogue/improve.py (33 of 15515 characters)",
+        "read pyknotid/pyknotid/cinvariants.pyx (33 of 2121 characters)",
+        "read pyknotid/pyknotid/cli/__init__.py (0 of 0 characters)",
+        "read pyknotid/pyknotid/cli/analyse_knot_file.py (33 of 4412 characters)",
+        "read pyknotid/pyknotid/cli/plot_knot.py (33 of 2711 characters)",
+        "read pyknotid/pyknotid/invariants.py (33 of 53329 characters)",
+        "read pyknotid/pyknotid/io.py (33 of 1840 characters)",
+        "read pyknotid/pyknotid/make/__init__.py (33 of 488 characters)",
+        "read pyknotid/pyknotid/make/named.py (33 of 2463 characters)",
+        "read pyknotid/pyknotid/make/periodic_knot.py (33 of 17533 characters)",
+        "read pyknotid/pyknotid/make/torus.py (33 of 5696 characters)",
+        "read pyknotid/pyknotid/representations/__init__.py (33 of 3317 characters)",
+        "read pyknotid/pyknotid/representations/dtnotation.py (33 of 3040 characters)",
+        "read pyknotid/pyknotid/representations/gausscode.py (33 of 16296 characters)",
+        "read pyknotid/pyknotid/representations/gaussdiagram.py (33 of 3065 characters)",
+        "read pyknotid/pyknotid/representations/planardiagram.py (33 of 13581 characters)",
+        "read pyknotid/pyknotid/representations/representation.py (33 of 23207 characters)",
+        "read pyknotid/pyknotid/simplify/__init__.py (0 of 0 characters)",
+        "read pyknotid/pyknotid/simplify/coctree.pyx (33 of 7699 characters)",
+        "read pyknotid/pyknotid/simplify/octree.py (33 of 31381 characters)",
+        "read pyknotid/pyknotid/spacecurves/__init__.py (33 of 2978 characters)",
+        "read pyknotid/pyknotid/spacecurves/ccomplexity.pyx (33 of 6322 characters)",
+        "read pyknotid/pyknotid/spacecurves/chelpers.pyx (33 of 5817 characters)",
+        "read pyknotid/pyknotid/spacecurves/complexity.py (33 of 20115 characters)",
+        "read pyknotid/pyknotid/spacecurves/geometry.py (33 of 1434 characters)",
+        "read pyknotid/pyknotid/spacecurves/helpers.py (33 of 5007 characters)",
+        "read pyknotid/pyknotid/spacecurves/knot.py (33 of 28229 characters)",
+        "read pyknotid/pyknotid/spacecurves/link.py (33 of 18178 characters)",
+        "read pyknotid/pyknotid/spacecurves/openknot.py (33 of 49568 characters)",
+        "read pyknotid/pyknotid/spacecurves/periodic.py (33 of 62010 characters)",
+        "read pyknotid/pyknotid/spacecurves/periodiccell.py (33 of 18844 characters)",
+        "read pyknotid/pyknotid/spacecurves/periodicline.py (33 of 39 characters)",
+        "read pyknotid/pyknotid/spacecurves/rotation.py (33 of 2275 characters)",
+        "read pyknotid/pyknotid/spacecurves/setup.py (33 of 359 characters)",
+        "read pyknotid/pyknotid/spacecurves/smooth.py (33 of 1975 characters)",
+        "read pyknotid/pyknotid/spacecurves/spacecurve.py (33 of 43512 characters)",
+        "read pyknotid/pyknotid/utils.py (33 of 1904 characters)",
+        "read pyknotid/pyknotid/visualcollection.py (33 of 1170 characters)",
+        "read pyknotid/pyknotid/visualise.py (33 of 41763 characters)",
+        "read pyknotid/pyknotid/writhes.py (33 of 15846 characters)",
+        "read pyknotid/setup.py (33 of 4600 characters)",
+        "read pyknotid/tests/test_catalogue.py (33 of 1040 characters)",
+        "read pyknotid/tests/test_knot.py (33 of 637 characters)",
+        "read pyknotid/tests/test_random_curves.py (33 of 383 characters)",
+        "read pyknotid/tests/test_spacecurve.py (33 of 2318 characters)"
+      ],
+      "establishes": "nothing yet about R1 for candidate f3bda9a2e9e3",
+      "checker": {
+        "scenarios": [],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "f3bda9a2e9e34734d13a55536f0ee8d8121ae3ef29f4f2ada508f0b7dd20b61e",
+      "evidence_digest": "ee58b8cb340ac75cfc38b89140b0a85fd99e1fd9974ba37d942411b63caf51f4",
+      "scenario_state": "unobserved",
+      "judgment": {
+        "supports": 0.04,
+        "contradicts": 0.55,
+        "how": "live",
+        "key": "ee0130bbbdaba492957c2e93a491743877cf8a3d0f6ec49b36566740c74ab3fa",
+        "input_tokens": 10195
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R1",
+          "text": "Can you help me compile extensions, install pyknotid from source to system's global python environment, while fixing any Numpy compatibility issues so it works with my existing Numpy (2.3.0) versions?",
+          "kind": "deliverable"
+        },
+        "artifact": [
+          {
+            "path": "pyknotid/.gitignore",
+            "text": "*.pyc\n*.so\n*.c\n*.db",
+            "chars": 19,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/.projectile",
+            "text": "-/doc\n-*.png",
+            "chars": 12,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/LICENSE.txt",
+            "text": "Copyright 2018 Alexander Taylor a",
+            "chars": 1079,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/README.rst",
+            "text": "Pyknotid\n========\n\nPython (and op",
+            "chars": 2666,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/__init__.py",
+            "text": "\n# If updating the version, also ",
+            "chars": 87,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/__init__.py",
+            "text": "'''pyknotid provides knot lookup ",
+            "chars": 3120,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/build.py",
+            "text": "'''\nBuilding a knot database\n====",
+            "chars": 6105,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/converters.py",
+            "text": "'''Functions for converting betwe",
+            "chars": 6688,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/database.py",
+            "text": "'''Database module\n--------------",
+            "chars": 7929,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/getdb.py",
+            "text": "'''\nDatabase download module\n====",
+            "chars": 4161,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/identify.py",
+            "text": "'''\nIdentify module\n-------------",
+            "chars": 9978,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/improve.py",
+            "text": "'''\nBuilding the database\n=======",
+            "chars": 15515,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cinvariants.pyx",
+            "text": "\nimport numpy as n\ncimport numpy ",
+            "chars": 2121,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/analyse_knot_file.py",
+            "text": "#!/usr/bin/env python2\n\nfrom __fu",
+            "chars": 4412,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/plot_knot.py",
+            "text": "#!/usr/bin/env python2\n\nfrom __fu",
+            "chars": 2711,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/invariants.py",
+            "text": "'''Invariants\n==========\n\nFunctio",
+            "chars": 53329,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/io.py",
+            "text": "'''\nIO\n==\n\nFunctions for saving a",
+            "chars": 1840,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/__init__.py",
+            "text": "'''\nThis module provides function",
+            "chars": 488,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/named.py",
+            "text": "'''Named knots and links\n========",
+            "chars": 2463,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/periodic_knot.py",
+            "text": "'''Making periodic knots\n========",
+            "chars": 17533,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/torus.py",
+            "text": "'''\nTorus knots\n===========\n\nFunc",
+            "chars": 5696,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/__init__.py",
+            "text": "'''\nKnots and links can be encode",
+            "chars": 3317,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/dtnotation.py",
+            "text": "'''\nDTNotation\n==========\n\nClasse",
+            "chars": 3040,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gausscode.py",
+            "text": "'''\nGaussCode\n=========\n\nClasses ",
+            "chars": 16296,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gaussdiagram.py",
+            "text": "'''\nGaussDiagram\n============\n\n..",
+            "chars": 3065,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/planardiagram.py",
+            "text": "'''\nPlanarDiagram\n=============\n\n",
+            "chars": 13581,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/representation.py",
+            "text": "'''\nRepresentation\n==============",
+            "chars": 23207,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/coctree.pyx",
+            "text": "'''\nCython functions for octree c",
+            "chars": 7699,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/octree.py",
+            "text": "'''\nOctree space curve simplifica",
+            "chars": 31381,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/__init__.py",
+            "text": "'''.. image:: random_walk_length_",
+            "chars": 2978,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/ccomplexity.pyx",
+            "text": "from __future__ import print_func",
+            "chars": 6322,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/chelpers.pyx",
+            "text": "'''\nCython functions for space cu",
+            "chars": 5817,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/complexity.py",
+            "text": "'''\nSpace curve complexity\n======",
+            "chars": 20115,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/geometry.py",
+            "text": "'''\nSpace curve geometry\n========",
+            "chars": 1434,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/helpers.py",
+            "text": "'''\nPython version of cython func",
+            "chars": 5007,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/knot.py",
+            "text": "'''\nKnot\n----\n\nClass for dealing ",
+            "chars": 28229,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/link.py",
+            "text": "'''\nLink\n====\n\n.. image:: torus_h",
+            "chars": 18178,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/openknot.py",
+            "text": "'''\nOpenKnot\n========\n\nClass for ",
+            "chars": 49568,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodic.py",
+            "text": "from __future__ import print_func",
+            "chars": 62010,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodiccell.py",
+            "text": "'''\nPeriodicCell\n------------\n\nTo",
+            "chars": 18844,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodicline.py",
+            "text": "\nimport numpy as n\n\nclass Periodi",
+            "chars": 39,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/rotation.py",
+            "text": "import numpy as n\n\n\ndef get_rotat",
+            "chars": 2275,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/setup.py",
+            "text": "from distutils.core import setup\n",
+            "chars": 359,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/smooth.py",
+            "text": "\"\"\"\n\nModified version of code fro",
+            "chars": 1975,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/spacecurve.py",
+            "text": "'''\nSpaceCurve\n----------\n\nThe :c",
+            "chars": 43512,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/utils.py",
+            "text": "'''\nUtility functions\n===========",
+            "chars": 1904,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualcollection.py",
+            "text": "\nfrom vispy.scene import Mesh\n\nfr",
+            "chars": 1170,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualise.py",
+            "text": "'''Visualise\n=========\n\nFunctions",
+            "chars": 41763,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/writhes.py",
+            "text": "from __future__ import division, ",
+            "chars": 15846,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/Makefile",
+            "text": "# Makefile for Sphinx documentati",
+            "chars": 6772,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/conf.py",
+            "text": "# -*- coding: utf-8 -*-\n#\n# pykno",
+            "chars": 8692,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/docscrape.py",
+            "text": "\"\"\"Extract reference documentatio",
+            "chars": 15366,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/docscrape_sphinx.py",
+            "text": "import re\nimport inspect\nimport t",
+            "chars": 7741,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/.gitignore",
+            "text": "*.pyc\n*.egg-info\n*.egg\n*build/\n.t",
+            "chars": 136,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/Gemfile",
+            "text": "# A sample Gemfile\nsource \"https:",
+            "chars": 64,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/Gemfile.lock",
+            "text": "GEM\n  remote: https://rubygems.or",
+            "chars": 235,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/Gruntfile.js",
+            "text": "module.exports = function(grunt) ",
+            "chars": 2948,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/LICENSE",
+            "text": "The MIT License (MIT)\n\nCopyright ",
+            "chars": 1078,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/MANIFEST.in",
+            "text": "include *.txt\ninclude LICENSE\nrec",
+            "chars": 360,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/README.rst",
+            "text": ".. _readthedocs.org: http://www.r",
+            "chars": 6150,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/bower.json",
+            "text": "{\n  \"name\": \"sphinx-rtd-theme\",\n ",
+            "chars": 570,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/Makefile",
+            "text": "# Makefile for Sphinx documentati",
+            "chars": 5621,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/conf.py",
+            "text": "# -*- coding: utf-8 -*-\n#\n# Sphin",
+            "chars": 8213,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/demo.rst",
+            "text": ".. This is a comment. Note how an",
+            "chars": 15469,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/index.rst",
+            "text": ".. Sphinx RTD theme demo document",
+            "chars": 7776,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/list.rst",
+            "text": ".. important::\n\n    wanna play a ",
+            "chars": 1341,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/test.py",
+            "text": "# -*- coding: utf-8 -*-\n\"\"\"Test M",
+            "chars": 2855,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/package.json",
+            "text": "{\n  \"name\": \"sphinx_rtd_theme\",\n ",
+            "chars": 446,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/requirements.txt",
+            "text": "sphinx>=1.1\n",
+            "chars": 12,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge.sass",
+            "text": ".rst-versions\n  position: fixed\n ",
+            "chars": 1991,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge_fa.sass",
+            "text": "// Slimmer version of FA for use ",
+            "chars": 1195,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_breadcrumbs.sass",
+            "text": ".wy-breadcrumbs li\n  display: inl",
+            "chars": 469,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_font_awesome_compatability.sass",
+            "text": ".icon\n  @extend .fa\n.icon-home\n  ",
+            "chars": 404,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_layout.sass",
+            "text": ".wy-affix\n  position: fixed\n  top",
+            "chars": 7473,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_mathjax.sass",
+            "text": "span[id*='MathJax-Span']\n  color:",
+            "chars": 77,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_rst.sass",
+            "text": "// ------------------------------",
+            "chars": 9459,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_variables.sass",
+            "text": "// In here are varibles used for ",
+            "chars": 875,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/badge_only.sass",
+            "text": "// ------------------------------",
+            "chars": 573,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/theme.sass",
+            "text": "// ------------------------------",
+            "chars": 1486,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/setup.py",
+            "text": "# -*- coding: utf-8 -*-\n\"\"\"`sphin",
+            "chars": 1313,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/__init__.py",
+            "text": "\"\"\"Sphinx ReadTheDocs theme.\n\nFro",
+            "chars": 371,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/breadcrumbs.html",
+            "text": "<div role=\"navigation\" aria-label",
+            "chars": 1035,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/footer.html",
+            "text": "<footer>\n  {% if next or prev %}\n",
+            "chars": 1263,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout.html",
+            "text": "{# TEMPLATE VAR SETTINGS #}\n{%- s",
+            "chars": 5355,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout_old.html",
+            "text": "{#\n    basic/layout.html\n    ~~~~",
+            "chars": 7341,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/search.html",
+            "text": "{#\n    basic/search.html\n    ~~~~",
+            "chars": 1530,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/searchbox.html",
+            "text": "<div role=\"search\">\n  <form id =\"",
+            "chars": 308,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/badge_only.css",
+            "text": "﻿.fa:before{-webkit-font-smoothin",
+            "chars": 3381,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/theme.css",
+            "text": "﻿*{-webkit-box-sizing:border-box;",
+            "chars": 87846,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/fonts/fontawesome-webfont.svg",
+            "text": "<?xml version=\"1.0\" standalone=\"n",
+            "chars": 202148,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/js/theme.js",
+            "text": "$( document ).ready(function() {\n",
+            "chars": 1675,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/theme.conf",
+            "text": "[theme]\ninherit = basic\nstyleshee",
+            "chars": 125,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/versions.html",
+            "text": "{% if READTHEDOCS %}\n{# Add rst-b",
+            "chars": 1219,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/index.rst",
+            "text": "pyknotid\n=======\n\n.. image:: k10_",
+            "chars": 936,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/make.bat",
+            "text": "@ECHO OFF\r\n\r\nREM Command file for",
+            "chars": 6708,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/about.rst",
+            "text": "\nAbout pyknotid\n==============\n\np",
+            "chars": 1080,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/catalogue/database.rst",
+            "text": "\n.. automodule:: pyknotid.catalog",
+            "chars": 58,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/catalogue/getdb.rst",
+            "text": "\n.. automodule:: pyknotid.catalog",
+            "chars": 55,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/catalogue/identify.rst",
+            "text": "\n\n.. automodule:: pyknotid.catalo",
+            "chars": 59,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/catalogue/index.rst",
+            "text": "Knot catalogue\n==============\n\n..",
+            "chars": 130,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/invariants.rst",
+            "text": "\n.. automodule:: pyknotid.invaria",
+            "chars": 50,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/overview.rst",
+            "text": "Overview\n========\n\n.. image:: k10",
+            "chars": 4280,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/dtnotation.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 66,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/gausscode.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 65,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/gaussdiagram.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 68,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/index.rst",
+            "text": "Topological representations\n=====",
+            "chars": 229,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/planardiagram.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 69,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/representation.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 70,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/index.rst",
+            "text": "Space curve analysis\n============",
+            "chars": 195,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/knot.rst",
+            "text": "\n.. automodule:: pyknotid.spacecu",
+            "chars": 56,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/link.rst",
+            "text": ".. automodule:: pyknotid.spacecur",
+            "chars": 55,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/openknot.rst",
+            "text": "\n.. automodule:: pyknotid.spacecu",
+            "chars": 60,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/periodiccell.rst",
+            "text": ".. automodule:: pyknotid.spacecur",
+            "chars": 63,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/spacecurve.rst",
+            "text": "\n.. automodule:: pyknotid.spacecu",
+            "chars": 62,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/visualise.rst",
+            "text": "\n\n.. automodule:: pyknotid.visual",
+            "chars": 92,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/PKG-INFO",
+            "text": "Metadata-Version: 2.4\nName: pykno",
+            "chars": 1625,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/SOURCES.txt",
+            "text": "LICENSE.txt\nREADME.rst\nsetup.py\np",
+            "chars": 1871,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/dependency_links.txt",
+            "text": "\n",
+            "chars": 1,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/entry_points.txt",
+            "text": "[console_scripts]\nanalyse-knot-fi",
+            "chars": 114,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/requires.txt",
+            "text": "numpy\nnetworkx\nplanarity\npeewee\nv",
+            "chars": 66,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/top_level.txt",
+            "text": "pyknotid\n",
+            "chars": 9,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/pyknotid/__init__.py",
+            "text": "\n# If updating the version, also ",
+            "chars": 87,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/__init__.py",
+            "text": "'''pyknotid provides knot lookup ",
+            "chars": 3120,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/build.py",
+            "text": "'''\nBuilding a knot database\n====",
+            "chars": 6105,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/converters.py",
+            "text": "'''Functions for converting betwe",
+            "chars": 6688,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/database.py",
+            "text": "'''Database module\n--------------",
+            "chars": 7929,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/getdb.py",
+            "text": "'''\nDatabase download module\n====",
+            "chars": 4161,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/identify.py",
+            "text": "'''\nIdentify module\n-------------",
+            "chars": 9978,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/improve.py",
+            "text": "'''\nBuilding the database\n=======",
+            "chars": 15515,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/cinvariants.pyx",
+            "text": "\nimport numpy as n\ncimport numpy ",
+            "chars": 2121,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/cli/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/pyknotid/cli/analyse_knot_file.py",
+            "text": "#!/usr/bin/env python2\n\nfrom __fu",
+            "chars": 4412,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/cli/plot_knot.py",
+            "text": "#!/usr/bin/env python2\n\nfrom __fu",
+            "chars": 2711,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/invariants.py",
+            "text": "'''Invariants\n==========\n\nFunctio",
+            "chars": 53329,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/io.py",
+            "text": "'''\nIO\n==\n\nFunctions for saving a",
+            "chars": 1840,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/make/__init__.py",
+            "text": "'''\nThis module provides function",
+            "chars": 488,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/make/named.py",
+            "text": "'''Named knots and links\n========",
+            "chars": 2463,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/make/periodic_knot.py",
+            "text": "'''Making periodic knots\n========",
+            "chars": 17533,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/make/torus.py",
+            "text": "'''\nTorus knots\n===========\n\nFunc",
+            "chars": 5696,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/__init__.py",
+            "text": "'''\nKnots and links can be encode",
+            "chars": 3317,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/dtnotation.py",
+            "text": "'''\nDTNotation\n==========\n\nClasse",
+            "chars": 3040,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/gausscode.py",
+            "text": "'''\nGaussCode\n=========\n\nClasses ",
+            "chars": 16296,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/gaussdiagram.py",
+            "text": "'''\nGaussDiagram\n============\n\n..",
+            "chars": 3065,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/planardiagram.py",
+            "text": "'''\nPlanarDiagram\n=============\n\n",
+            "chars": 13581,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/representation.py",
+            "text": "'''\nRepresentation\n==============",
+            "chars": 23207,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/simplify/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/pyknotid/simplify/coctree.pyx",
+            "text": "'''\nCython functions for octree c",
+            "chars": 7699,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/simplify/octree.py",
+            "text": "'''\nOctree space curve simplifica",
+            "chars": 31381,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/__init__.py",
+            "text": "'''.. image:: random_walk_length_",
+            "chars": 2978,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/ccomplexity.pyx",
+            "text": "from __future__ import print_func",
+            "chars": 6322,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/chelpers.pyx",
+            "text": "'''\nCython functions for space cu",
+            "chars": 5817,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/complexity.py",
+            "text": "'''\nSpace curve complexity\n======",
+            "chars": 20115,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/geometry.py",
+            "text": "'''\nSpace curve geometry\n========",
+            "chars": 1434,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/helpers.py",
+            "text": "'''\nPython version of cython func",
+            "chars": 5007,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/knot.py",
+            "text": "'''\nKnot\n----\n\nClass for dealing ",
+            "chars": 28229,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/link.py",
+            "text": "'''\nLink\n====\n\n.. image:: torus_h",
+            "chars": 18178,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/openknot.py",
+            "text": "'''\nOpenKnot\n========\n\nClass for ",
+            "chars": 49568,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/periodic.py",
+            "text": "from __future__ import print_func",
+            "chars": 62010,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/periodiccell.py",
+            "text": "'''\nPeriodicCell\n------------\n\nTo",
+            "chars": 18844,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/periodicline.py",
+            "text": "\nimport numpy as n\n\nclass Periodi",
+            "chars": 39,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/rotation.py",
+            "text": "import numpy as n\n\n\ndef get_rotat",
+            "chars": 2275,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/setup.py",
+            "text": "from distutils.core import setup\n",
+            "chars": 359,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/smooth.py",
+            "text": "\"\"\"\n\nModified version of code fro",
+            "chars": 1975,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/spacecurve.py",
+            "text": "'''\nSpaceCurve\n----------\n\nThe :c",
+            "chars": 43512,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/utils.py",
+            "text": "'''\nUtility functions\n===========",
+            "chars": 1904,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/visualcollection.py",
+            "text": "\nfrom vispy.scene import Mesh\n\nfr",
+            "chars": 1170,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/visualise.py",
+            "text": "'''Visualise\n=========\n\nFunctions",
+            "chars": 41763,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/writhes.py",
+            "text": "from __future__ import division, ",
+            "chars": 15846,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/setup.py",
+            "text": "from setuptools import setup, fin",
+            "chars": 4600,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/tests/test_catalogue.py",
+            "text": "\n\nimport pyknotid.spacecurves.spa",
+            "chars": 1040,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/tests/test_knot.py",
+            "text": "\nimport pyknotid.spacecurves.knot",
+            "chars": 637,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/tests/test_random_curves.py",
+            "text": "\n\nimport pyknotid.spacecurves.kno",
+            "chars": 383,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/tests/test_spacecurve.py",
+            "text": "\n\nimport pyknotid.spacecurves.spa",
+            "chars": 2318,
+            "clipped": true
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    },
+    {
+      "id": "R8",
+      "text": "The compiled extensions (chelpers, ccomplexity, and cinvariants) should work in their original context from Python side.",
+      "state": "unresolved",
+      "why": "the artifact excerpt was clipped, so the judgment didn't read the whole source",
+      "observed": [
+        "no scenario observed it",
+        "read pyknotid/.gitignore (19 of 19 characters)",
+        "read pyknotid/.projectile (12 of 12 characters)",
+        "read pyknotid/LICENSE.txt (33 of 1079 characters)",
+        "read pyknotid/README.rst (33 of 2666 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/__init__.py (33 of 87 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/__init__.py (33 of 3120 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/build.py (33 of 6105 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/converters.py (33 of 6688 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/database.py (33 of 7929 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/getdb.py (33 of 4161 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/identify.py (33 of 9978 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/improve.py (33 of 15515 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cinvariants.pyx (33 of 2121 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/__init__.py (0 of 0 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/analyse_knot_file.py (33 of 4412 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/plot_knot.py (33 of 2711 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/invariants.py (33 of 53329 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/io.py (33 of 1840 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/__init__.py (33 of 488 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/named.py (33 of 2463 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/periodic_knot.py (33 of 17533 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/torus.py (33 of 5696 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/__init__.py (33 of 3317 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/dtnotation.py (33 of 3040 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gausscode.py (33 of 16296 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gaussdiagram.py (33 of 3065 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/planardiagram.py (33 of 13581 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/representation.py (33 of 23207 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/__init__.py (0 of 0 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/coctree.pyx (33 of 7699 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/octree.py (33 of 31381 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/__init__.py (33 of 2978 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/ccomplexity.pyx (33 of 6322 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/chelpers.pyx (33 of 5817 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/complexity.py (33 of 20115 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/geometry.py (33 of 1434 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/helpers.py (33 of 5007 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/knot.py (33 of 28229 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/link.py (33 of 18178 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/openknot.py (33 of 49568 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodic.py (33 of 62010 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodiccell.py (33 of 18844 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodicline.py (33 of 39 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/rotation.py (33 of 2275 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/setup.py (33 of 359 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/smooth.py (33 of 1975 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/spacecurve.py (33 of 43512 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/utils.py (33 of 1904 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualcollection.py (33 of 1170 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualise.py (33 of 41763 characters)",
+        "read pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/writhes.py (33 of 15846 characters)",
+        "read pyknotid/doc/Makefile (33 of 6772 characters)",
+        "read pyknotid/doc/conf.py (33 of 8692 characters)",
+        "read pyknotid/doc/ext/docscrape.py (33 of 15366 characters)",
+        "read pyknotid/doc/ext/docscrape_sphinx.py (33 of 7741 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/.gitignore (33 of 136 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/Gemfile (33 of 64 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/Gemfile.lock (33 of 235 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/Gruntfile.js (33 of 2948 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/LICENSE (33 of 1078 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/MANIFEST.in (33 of 360 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/README.rst (33 of 6150 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/bower.json (33 of 570 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/Makefile (33 of 5621 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/__init__.py (0 of 0 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/conf.py (33 of 8213 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/demo.rst (33 of 15469 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/index.rst (33 of 7776 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/list.rst (33 of 1341 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/__init__.py (0 of 0 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/test.py (33 of 2855 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/package.json (33 of 446 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/requirements.txt (12 of 12 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge.sass (33 of 1991 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge_fa.sass (33 of 1195 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_breadcrumbs.sass (33 of 469 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_font_awesome_compatability.sass (33 of 404 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_layout.sass (33 of 7473 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_mathjax.sass (33 of 77 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_rst.sass (33 of 9459 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_variables.sass (33 of 875 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/badge_only.sass (33 of 573 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sass/theme.sass (33 of 1486 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/setup.py (33 of 1313 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/__init__.py (33 of 371 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/breadcrumbs.html (33 of 1035 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/footer.html (33 of 1263 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout.html (33 of 5355 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout_old.html (33 of 7341 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/search.html (33 of 1530 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/searchbox.html (33 of 308 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/badge_only.css (33 of 3381 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/theme.css (33 of 87846 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/fonts/fontawesome-webfont.svg (33 of 202148 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/js/theme.js (33 of 1675 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/theme.conf (33 of 125 characters)",
+        "read pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/versions.html (33 of 1219 characters)",
+        "read pyknotid/doc/index.rst (33 of 936 characters)",
+        "read pyknotid/doc/make.bat (33 of 6708 characters)",
+        "read pyknotid/doc/sources/about.rst (33 of 1080 characters)",
+        "read pyknotid/doc/sources/catalogue/database.rst (33 of 58 characters)",
+        "read pyknotid/doc/sources/catalogue/getdb.rst (33 of 55 characters)",
+        "read pyknotid/doc/sources/catalogue/identify.rst (33 of 59 characters)",
+        "read pyknotid/doc/sources/catalogue/index.rst (33 of 130 characters)",
+        "read pyknotid/doc/sources/invariants.rst (33 of 50 characters)",
+        "read pyknotid/doc/sources/overview.rst (33 of 4280 characters)",
+        "read pyknotid/doc/sources/representations/dtnotation.rst (33 of 66 characters)",
+        "read pyknotid/doc/sources/representations/gausscode.rst (33 of 65 characters)",
+        "read pyknotid/doc/sources/representations/gaussdiagram.rst (33 of 68 characters)",
+        "read pyknotid/doc/sources/representations/index.rst (33 of 229 characters)",
+        "read pyknotid/doc/sources/representations/planardiagram.rst (33 of 69 characters)",
+        "read pyknotid/doc/sources/representations/representation.rst (33 of 70 characters)",
+        "read pyknotid/doc/sources/spacecurves/index.rst (33 of 195 characters)",
+        "read pyknotid/doc/sources/spacecurves/knot.rst (33 of 56 characters)",
+        "read pyknotid/doc/sources/spacecurves/link.rst (33 of 55 characters)",
+        "read pyknotid/doc/sources/spacecurves/openknot.rst (33 of 60 characters)",
+        "read pyknotid/doc/sources/spacecurves/periodiccell.rst (33 of 63 characters)",
+        "read pyknotid/doc/sources/spacecurves/spacecurve.rst (33 of 62 characters)",
+        "read pyknotid/doc/sources/visualise.rst (33 of 92 characters)",
+        "read pyknotid/pyknotid.egg-info/PKG-INFO (33 of 1625 characters)",
+        "read pyknotid/pyknotid.egg-info/SOURCES.txt (33 of 1871 characters)",
+        "read pyknotid/pyknotid.egg-info/dependency_links.txt (1 of 1 characters)",
+        "read pyknotid/pyknotid.egg-info/entry_points.txt (33 of 114 characters)",
+        "read pyknotid/pyknotid.egg-info/requires.txt (33 of 66 characters)",
+        "read pyknotid/pyknotid.egg-info/top_level.txt (9 of 9 characters)",
+        "read pyknotid/pyknotid/__init__.py (33 of 87 characters)",
+        "read pyknotid/pyknotid/catalogue/__init__.py (33 of 3120 characters)",
+        "read pyknotid/pyknotid/catalogue/build.py (33 of 6105 characters)",
+        "read pyknotid/pyknotid/catalogue/converters.py (33 of 6688 characters)",
+        "read pyknotid/pyknotid/catalogue/database.py (33 of 7929 characters)",
+        "read pyknotid/pyknotid/catalogue/getdb.py (33 of 4161 characters)",
+        "read pyknotid/pyknotid/catalogue/identify.py (33 of 9978 characters)",
+        "read pyknotid/pyknotid/catalogue/improve.py (33 of 15515 characters)",
+        "read pyknotid/pyknotid/cinvariants.pyx (33 of 2121 characters)",
+        "read pyknotid/pyknotid/cli/__init__.py (0 of 0 characters)",
+        "read pyknotid/pyknotid/cli/analyse_knot_file.py (33 of 4412 characters)",
+        "read pyknotid/pyknotid/cli/plot_knot.py (33 of 2711 characters)",
+        "read pyknotid/pyknotid/invariants.py (33 of 53329 characters)",
+        "read pyknotid/pyknotid/io.py (33 of 1840 characters)",
+        "read pyknotid/pyknotid/make/__init__.py (33 of 488 characters)",
+        "read pyknotid/pyknotid/make/named.py (33 of 2463 characters)",
+        "read pyknotid/pyknotid/make/periodic_knot.py (33 of 17533 characters)",
+        "read pyknotid/pyknotid/make/torus.py (33 of 5696 characters)",
+        "read pyknotid/pyknotid/representations/__init__.py (33 of 3317 characters)",
+        "read pyknotid/pyknotid/representations/dtnotation.py (33 of 3040 characters)",
+        "read pyknotid/pyknotid/representations/gausscode.py (33 of 16296 characters)",
+        "read pyknotid/pyknotid/representations/gaussdiagram.py (33 of 3065 characters)",
+        "read pyknotid/pyknotid/representations/planardiagram.py (33 of 13581 characters)",
+        "read pyknotid/pyknotid/representations/representation.py (33 of 23207 characters)",
+        "read pyknotid/pyknotid/simplify/__init__.py (0 of 0 characters)",
+        "read pyknotid/pyknotid/simplify/coctree.pyx (33 of 7699 characters)",
+        "read pyknotid/pyknotid/simplify/octree.py (33 of 31381 characters)",
+        "read pyknotid/pyknotid/spacecurves/__init__.py (33 of 2978 characters)",
+        "read pyknotid/pyknotid/spacecurves/ccomplexity.pyx (33 of 6322 characters)",
+        "read pyknotid/pyknotid/spacecurves/chelpers.pyx (33 of 5817 characters)",
+        "read pyknotid/pyknotid/spacecurves/complexity.py (33 of 20115 characters)",
+        "read pyknotid/pyknotid/spacecurves/geometry.py (33 of 1434 characters)",
+        "read pyknotid/pyknotid/spacecurves/helpers.py (33 of 5007 characters)",
+        "read pyknotid/pyknotid/spacecurves/knot.py (33 of 28229 characters)",
+        "read pyknotid/pyknotid/spacecurves/link.py (33 of 18178 characters)",
+        "read pyknotid/pyknotid/spacecurves/openknot.py (33 of 49568 characters)",
+        "read pyknotid/pyknotid/spacecurves/periodic.py (33 of 62010 characters)",
+        "read pyknotid/pyknotid/spacecurves/periodiccell.py (33 of 18844 characters)",
+        "read pyknotid/pyknotid/spacecurves/periodicline.py (33 of 39 characters)",
+        "read pyknotid/pyknotid/spacecurves/rotation.py (33 of 2275 characters)",
+        "read pyknotid/pyknotid/spacecurves/setup.py (33 of 359 characters)",
+        "read pyknotid/pyknotid/spacecurves/smooth.py (33 of 1975 characters)",
+        "read pyknotid/pyknotid/spacecurves/spacecurve.py (33 of 43512 characters)",
+        "read pyknotid/pyknotid/utils.py (33 of 1904 characters)",
+        "read pyknotid/pyknotid/visualcollection.py (33 of 1170 characters)",
+        "read pyknotid/pyknotid/visualise.py (33 of 41763 characters)",
+        "read pyknotid/pyknotid/writhes.py (33 of 15846 characters)",
+        "read pyknotid/setup.py (33 of 4600 characters)",
+        "read pyknotid/tests/test_catalogue.py (33 of 1040 characters)",
+        "read pyknotid/tests/test_knot.py (33 of 637 characters)",
+        "read pyknotid/tests/test_random_curves.py (33 of 383 characters)",
+        "read pyknotid/tests/test_spacecurve.py (33 of 2318 characters)"
+      ],
+      "establishes": "nothing yet about R8 for candidate f3bda9a2e9e3",
+      "checker": {
+        "scenarios": [],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "f3bda9a2e9e34734d13a55536f0ee8d8121ae3ef29f4f2ada508f0b7dd20b61e",
+      "evidence_digest": "791058d72b8a8af722f787ab0f8342212c4f79d3247522b413cab086f1050f08",
+      "scenario_state": "unobserved",
+      "judgment": {
+        "supports": 0.04,
+        "contradicts": 0.28,
+        "how": "live",
+        "key": "c21fbc73b15bd4206b4cf5fe78309bdf4e562591f58c1591df6ad1c830b40b5c",
+        "input_tokens": 10176
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R8",
+          "text": "The compiled extensions (chelpers, ccomplexity, and cinvariants) should work in their original context from Python side.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "pyknotid/.gitignore",
+            "text": "*.pyc\n*.so\n*.c\n*.db",
+            "chars": 19,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/.projectile",
+            "text": "-/doc\n-*.png",
+            "chars": 12,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/LICENSE.txt",
+            "text": "Copyright 2018 Alexander Taylor a",
+            "chars": 1079,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/README.rst",
+            "text": "Pyknotid\n========\n\nPython (and op",
+            "chars": 2666,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/__init__.py",
+            "text": "\n# If updating the version, also ",
+            "chars": 87,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/__init__.py",
+            "text": "'''pyknotid provides knot lookup ",
+            "chars": 3120,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/build.py",
+            "text": "'''\nBuilding a knot database\n====",
+            "chars": 6105,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/converters.py",
+            "text": "'''Functions for converting betwe",
+            "chars": 6688,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/database.py",
+            "text": "'''Database module\n--------------",
+            "chars": 7929,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/getdb.py",
+            "text": "'''\nDatabase download module\n====",
+            "chars": 4161,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/identify.py",
+            "text": "'''\nIdentify module\n-------------",
+            "chars": 9978,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/catalogue/improve.py",
+            "text": "'''\nBuilding the database\n=======",
+            "chars": 15515,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cinvariants.pyx",
+            "text": "\nimport numpy as n\ncimport numpy ",
+            "chars": 2121,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/analyse_knot_file.py",
+            "text": "#!/usr/bin/env python2\n\nfrom __fu",
+            "chars": 4412,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/cli/plot_knot.py",
+            "text": "#!/usr/bin/env python2\n\nfrom __fu",
+            "chars": 2711,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/invariants.py",
+            "text": "'''Invariants\n==========\n\nFunctio",
+            "chars": 53329,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/io.py",
+            "text": "'''\nIO\n==\n\nFunctions for saving a",
+            "chars": 1840,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/__init__.py",
+            "text": "'''\nThis module provides function",
+            "chars": 488,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/named.py",
+            "text": "'''Named knots and links\n========",
+            "chars": 2463,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/periodic_knot.py",
+            "text": "'''Making periodic knots\n========",
+            "chars": 17533,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/make/torus.py",
+            "text": "'''\nTorus knots\n===========\n\nFunc",
+            "chars": 5696,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/__init__.py",
+            "text": "'''\nKnots and links can be encode",
+            "chars": 3317,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/dtnotation.py",
+            "text": "'''\nDTNotation\n==========\n\nClasse",
+            "chars": 3040,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gausscode.py",
+            "text": "'''\nGaussCode\n=========\n\nClasses ",
+            "chars": 16296,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/gaussdiagram.py",
+            "text": "'''\nGaussDiagram\n============\n\n..",
+            "chars": 3065,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/planardiagram.py",
+            "text": "'''\nPlanarDiagram\n=============\n\n",
+            "chars": 13581,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/representations/representation.py",
+            "text": "'''\nRepresentation\n==============",
+            "chars": 23207,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/coctree.pyx",
+            "text": "'''\nCython functions for octree c",
+            "chars": 7699,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/simplify/octree.py",
+            "text": "'''\nOctree space curve simplifica",
+            "chars": 31381,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/__init__.py",
+            "text": "'''.. image:: random_walk_length_",
+            "chars": 2978,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/ccomplexity.pyx",
+            "text": "from __future__ import print_func",
+            "chars": 6322,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/chelpers.pyx",
+            "text": "'''\nCython functions for space cu",
+            "chars": 5817,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/complexity.py",
+            "text": "'''\nSpace curve complexity\n======",
+            "chars": 20115,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/geometry.py",
+            "text": "'''\nSpace curve geometry\n========",
+            "chars": 1434,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/helpers.py",
+            "text": "'''\nPython version of cython func",
+            "chars": 5007,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/knot.py",
+            "text": "'''\nKnot\n----\n\nClass for dealing ",
+            "chars": 28229,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/link.py",
+            "text": "'''\nLink\n====\n\n.. image:: torus_h",
+            "chars": 18178,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/openknot.py",
+            "text": "'''\nOpenKnot\n========\n\nClass for ",
+            "chars": 49568,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodic.py",
+            "text": "from __future__ import print_func",
+            "chars": 62010,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodiccell.py",
+            "text": "'''\nPeriodicCell\n------------\n\nTo",
+            "chars": 18844,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/periodicline.py",
+            "text": "\nimport numpy as n\n\nclass Periodi",
+            "chars": 39,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/rotation.py",
+            "text": "import numpy as n\n\n\ndef get_rotat",
+            "chars": 2275,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/setup.py",
+            "text": "from distutils.core import setup\n",
+            "chars": 359,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/smooth.py",
+            "text": "\"\"\"\n\nModified version of code fro",
+            "chars": 1975,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/spacecurves/spacecurve.py",
+            "text": "'''\nSpaceCurve\n----------\n\nThe :c",
+            "chars": 43512,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/utils.py",
+            "text": "'''\nUtility functions\n===========",
+            "chars": 1904,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualcollection.py",
+            "text": "\nfrom vispy.scene import Mesh\n\nfr",
+            "chars": 1170,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/visualise.py",
+            "text": "'''Visualise\n=========\n\nFunctions",
+            "chars": 41763,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/build/lib.linux-x86_64-cpython-313/pyknotid/writhes.py",
+            "text": "from __future__ import division, ",
+            "chars": 15846,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/Makefile",
+            "text": "# Makefile for Sphinx documentati",
+            "chars": 6772,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/conf.py",
+            "text": "# -*- coding: utf-8 -*-\n#\n# pykno",
+            "chars": 8692,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/docscrape.py",
+            "text": "\"\"\"Extract reference documentatio",
+            "chars": 15366,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/docscrape_sphinx.py",
+            "text": "import re\nimport inspect\nimport t",
+            "chars": 7741,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/.gitignore",
+            "text": "*.pyc\n*.egg-info\n*.egg\n*build/\n.t",
+            "chars": 136,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/Gemfile",
+            "text": "# A sample Gemfile\nsource \"https:",
+            "chars": 64,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/Gemfile.lock",
+            "text": "GEM\n  remote: https://rubygems.or",
+            "chars": 235,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/Gruntfile.js",
+            "text": "module.exports = function(grunt) ",
+            "chars": 2948,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/LICENSE",
+            "text": "The MIT License (MIT)\n\nCopyright ",
+            "chars": 1078,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/MANIFEST.in",
+            "text": "include *.txt\ninclude LICENSE\nrec",
+            "chars": 360,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/README.rst",
+            "text": ".. _readthedocs.org: http://www.r",
+            "chars": 6150,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/bower.json",
+            "text": "{\n  \"name\": \"sphinx-rtd-theme\",\n ",
+            "chars": 570,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/Makefile",
+            "text": "# Makefile for Sphinx documentati",
+            "chars": 5621,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/conf.py",
+            "text": "# -*- coding: utf-8 -*-\n#\n# Sphin",
+            "chars": 8213,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/demo.rst",
+            "text": ".. This is a comment. Note how an",
+            "chars": 15469,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/index.rst",
+            "text": ".. Sphinx RTD theme demo document",
+            "chars": 7776,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/list.rst",
+            "text": ".. important::\n\n    wanna play a ",
+            "chars": 1341,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/demo_docs/source/test_py_module/test.py",
+            "text": "# -*- coding: utf-8 -*-\n\"\"\"Test M",
+            "chars": 2855,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/package.json",
+            "text": "{\n  \"name\": \"sphinx_rtd_theme\",\n ",
+            "chars": 446,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/requirements.txt",
+            "text": "sphinx>=1.1\n",
+            "chars": 12,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge.sass",
+            "text": ".rst-versions\n  position: fixed\n ",
+            "chars": 1991,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_badge_fa.sass",
+            "text": "// Slimmer version of FA for use ",
+            "chars": 1195,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_breadcrumbs.sass",
+            "text": ".wy-breadcrumbs li\n  display: inl",
+            "chars": 469,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_font_awesome_compatability.sass",
+            "text": ".icon\n  @extend .fa\n.icon-home\n  ",
+            "chars": 404,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_layout.sass",
+            "text": ".wy-affix\n  position: fixed\n  top",
+            "chars": 7473,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_mathjax.sass",
+            "text": "span[id*='MathJax-Span']\n  color:",
+            "chars": 77,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_rst.sass",
+            "text": "// ------------------------------",
+            "chars": 9459,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/_theme_variables.sass",
+            "text": "// In here are varibles used for ",
+            "chars": 875,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/badge_only.sass",
+            "text": "// ------------------------------",
+            "chars": 573,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sass/theme.sass",
+            "text": "// ------------------------------",
+            "chars": 1486,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/setup.py",
+            "text": "# -*- coding: utf-8 -*-\n\"\"\"`sphin",
+            "chars": 1313,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/__init__.py",
+            "text": "\"\"\"Sphinx ReadTheDocs theme.\n\nFro",
+            "chars": 371,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/breadcrumbs.html",
+            "text": "<div role=\"navigation\" aria-label",
+            "chars": 1035,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/footer.html",
+            "text": "<footer>\n  {% if next or prev %}\n",
+            "chars": 1263,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout.html",
+            "text": "{# TEMPLATE VAR SETTINGS #}\n{%- s",
+            "chars": 5355,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/layout_old.html",
+            "text": "{#\n    basic/layout.html\n    ~~~~",
+            "chars": 7341,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/search.html",
+            "text": "{#\n    basic/search.html\n    ~~~~",
+            "chars": 1530,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/searchbox.html",
+            "text": "<div role=\"search\">\n  <form id =\"",
+            "chars": 308,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/badge_only.css",
+            "text": "﻿.fa:before{-webkit-font-smoothin",
+            "chars": 3381,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/css/theme.css",
+            "text": "﻿*{-webkit-box-sizing:border-box;",
+            "chars": 87846,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/fonts/fontawesome-webfont.svg",
+            "text": "<?xml version=\"1.0\" standalone=\"n",
+            "chars": 202148,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/static/js/theme.js",
+            "text": "$( document ).ready(function() {\n",
+            "chars": 1675,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/theme.conf",
+            "text": "[theme]\ninherit = basic\nstyleshee",
+            "chars": 125,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/ext/sphinx_rtd_theme/sphinx_rtd_theme/versions.html",
+            "text": "{% if READTHEDOCS %}\n{# Add rst-b",
+            "chars": 1219,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/index.rst",
+            "text": "pyknotid\n=======\n\n.. image:: k10_",
+            "chars": 936,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/make.bat",
+            "text": "@ECHO OFF\r\n\r\nREM Command file for",
+            "chars": 6708,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/about.rst",
+            "text": "\nAbout pyknotid\n==============\n\np",
+            "chars": 1080,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/catalogue/database.rst",
+            "text": "\n.. automodule:: pyknotid.catalog",
+            "chars": 58,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/catalogue/getdb.rst",
+            "text": "\n.. automodule:: pyknotid.catalog",
+            "chars": 55,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/catalogue/identify.rst",
+            "text": "\n\n.. automodule:: pyknotid.catalo",
+            "chars": 59,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/catalogue/index.rst",
+            "text": "Knot catalogue\n==============\n\n..",
+            "chars": 130,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/invariants.rst",
+            "text": "\n.. automodule:: pyknotid.invaria",
+            "chars": 50,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/overview.rst",
+            "text": "Overview\n========\n\n.. image:: k10",
+            "chars": 4280,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/dtnotation.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 66,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/gausscode.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 65,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/gaussdiagram.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 68,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/index.rst",
+            "text": "Topological representations\n=====",
+            "chars": 229,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/planardiagram.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 69,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/representations/representation.rst",
+            "text": "\n.. automodule:: pyknotid.represe",
+            "chars": 70,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/index.rst",
+            "text": "Space curve analysis\n============",
+            "chars": 195,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/knot.rst",
+            "text": "\n.. automodule:: pyknotid.spacecu",
+            "chars": 56,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/link.rst",
+            "text": ".. automodule:: pyknotid.spacecur",
+            "chars": 55,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/openknot.rst",
+            "text": "\n.. automodule:: pyknotid.spacecu",
+            "chars": 60,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/periodiccell.rst",
+            "text": ".. automodule:: pyknotid.spacecur",
+            "chars": 63,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/spacecurves/spacecurve.rst",
+            "text": "\n.. automodule:: pyknotid.spacecu",
+            "chars": 62,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/doc/sources/visualise.rst",
+            "text": "\n\n.. automodule:: pyknotid.visual",
+            "chars": 92,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/PKG-INFO",
+            "text": "Metadata-Version: 2.4\nName: pykno",
+            "chars": 1625,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/SOURCES.txt",
+            "text": "LICENSE.txt\nREADME.rst\nsetup.py\np",
+            "chars": 1871,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/dependency_links.txt",
+            "text": "\n",
+            "chars": 1,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/entry_points.txt",
+            "text": "[console_scripts]\nanalyse-knot-fi",
+            "chars": 114,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/requires.txt",
+            "text": "numpy\nnetworkx\nplanarity\npeewee\nv",
+            "chars": 66,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid.egg-info/top_level.txt",
+            "text": "pyknotid\n",
+            "chars": 9,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/pyknotid/__init__.py",
+            "text": "\n# If updating the version, also ",
+            "chars": 87,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/__init__.py",
+            "text": "'''pyknotid provides knot lookup ",
+            "chars": 3120,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/build.py",
+            "text": "'''\nBuilding a knot database\n====",
+            "chars": 6105,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/converters.py",
+            "text": "'''Functions for converting betwe",
+            "chars": 6688,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/database.py",
+            "text": "'''Database module\n--------------",
+            "chars": 7929,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/getdb.py",
+            "text": "'''\nDatabase download module\n====",
+            "chars": 4161,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/identify.py",
+            "text": "'''\nIdentify module\n-------------",
+            "chars": 9978,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/catalogue/improve.py",
+            "text": "'''\nBuilding the database\n=======",
+            "chars": 15515,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/cinvariants.pyx",
+            "text": "\nimport numpy as n\ncimport numpy ",
+            "chars": 2121,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/cli/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/pyknotid/cli/analyse_knot_file.py",
+            "text": "#!/usr/bin/env python2\n\nfrom __fu",
+            "chars": 4412,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/cli/plot_knot.py",
+            "text": "#!/usr/bin/env python2\n\nfrom __fu",
+            "chars": 2711,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/invariants.py",
+            "text": "'''Invariants\n==========\n\nFunctio",
+            "chars": 53329,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/io.py",
+            "text": "'''\nIO\n==\n\nFunctions for saving a",
+            "chars": 1840,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/make/__init__.py",
+            "text": "'''\nThis module provides function",
+            "chars": 488,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/make/named.py",
+            "text": "'''Named knots and links\n========",
+            "chars": 2463,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/make/periodic_knot.py",
+            "text": "'''Making periodic knots\n========",
+            "chars": 17533,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/make/torus.py",
+            "text": "'''\nTorus knots\n===========\n\nFunc",
+            "chars": 5696,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/__init__.py",
+            "text": "'''\nKnots and links can be encode",
+            "chars": 3317,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/dtnotation.py",
+            "text": "'''\nDTNotation\n==========\n\nClasse",
+            "chars": 3040,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/gausscode.py",
+            "text": "'''\nGaussCode\n=========\n\nClasses ",
+            "chars": 16296,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/gaussdiagram.py",
+            "text": "'''\nGaussDiagram\n============\n\n..",
+            "chars": 3065,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/planardiagram.py",
+            "text": "'''\nPlanarDiagram\n=============\n\n",
+            "chars": 13581,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/representations/representation.py",
+            "text": "'''\nRepresentation\n==============",
+            "chars": 23207,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/simplify/__init__.py",
+            "text": "",
+            "chars": 0,
+            "clipped": false
+          },
+          {
+            "path": "pyknotid/pyknotid/simplify/coctree.pyx",
+            "text": "'''\nCython functions for octree c",
+            "chars": 7699,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/simplify/octree.py",
+            "text": "'''\nOctree space curve simplifica",
+            "chars": 31381,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/__init__.py",
+            "text": "'''.. image:: random_walk_length_",
+            "chars": 2978,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/ccomplexity.pyx",
+            "text": "from __future__ import print_func",
+            "chars": 6322,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/chelpers.pyx",
+            "text": "'''\nCython functions for space cu",
+            "chars": 5817,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/complexity.py",
+            "text": "'''\nSpace curve complexity\n======",
+            "chars": 20115,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/geometry.py",
+            "text": "'''\nSpace curve geometry\n========",
+            "chars": 1434,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/helpers.py",
+            "text": "'''\nPython version of cython func",
+            "chars": 5007,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/knot.py",
+            "text": "'''\nKnot\n----\n\nClass for dealing ",
+            "chars": 28229,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/link.py",
+            "text": "'''\nLink\n====\n\n.. image:: torus_h",
+            "chars": 18178,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/openknot.py",
+            "text": "'''\nOpenKnot\n========\n\nClass for ",
+            "chars": 49568,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/periodic.py",
+            "text": "from __future__ import print_func",
+            "chars": 62010,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/periodiccell.py",
+            "text": "'''\nPeriodicCell\n------------\n\nTo",
+            "chars": 18844,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/periodicline.py",
+            "text": "\nimport numpy as n\n\nclass Periodi",
+            "chars": 39,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/rotation.py",
+            "text": "import numpy as n\n\n\ndef get_rotat",
+            "chars": 2275,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/setup.py",
+            "text": "from distutils.core import setup\n",
+            "chars": 359,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/smooth.py",
+            "text": "\"\"\"\n\nModified version of code fro",
+            "chars": 1975,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/spacecurves/spacecurve.py",
+            "text": "'''\nSpaceCurve\n----------\n\nThe :c",
+            "chars": 43512,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/utils.py",
+            "text": "'''\nUtility functions\n===========",
+            "chars": 1904,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/visualcollection.py",
+            "text": "\nfrom vispy.scene import Mesh\n\nfr",
+            "chars": 1170,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/visualise.py",
+            "text": "'''Visualise\n=========\n\nFunctions",
+            "chars": 41763,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/pyknotid/writhes.py",
+            "text": "from __future__ import division, ",
+            "chars": 15846,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/setup.py",
+            "text": "from setuptools import setup, fin",
+            "chars": 4600,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/tests/test_catalogue.py",
+            "text": "\n\nimport pyknotid.spacecurves.spa",
+            "chars": 1040,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/tests/test_knot.py",
+            "text": "\nimport pyknotid.spacecurves.knot",
+            "chars": 637,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/tests/test_random_curves.py",
+            "text": "\n\nimport pyknotid.spacecurves.kno",
+            "chars": 383,
+            "clipped": true
+          },
+          {
+            "path": "pyknotid/tests/test_spacecurve.py",
+            "text": "\n\nimport pyknotid.spacecurves.spa",
+            "chars": 2318,
+            "clipped": true
+          }
+        ],
+        "observations": [],
+        "scenario_state": "unobserved",
+        "observations_clipped": false
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "id": "R2",
+      "why": "a constraint or context no scenario observed"
+    },
+    {
+      "id": "R3",
+      "why": "a constraint or context no scenario observed"
+    },
+    {
+      "id": "R4",
+      "why": "a constraint or context no scenario observed"
+    },
+    {
+      "id": "R5",
+      "why": "a constraint or context no scenario observed"
+    },
+    {
+      "id": "R6",
+      "why": "a constraint or context no scenario observed"
+    },
+    {
+      "id": "R7",
+      "why": "a constraint or context no scenario observed"
+    }
+  ]
+}

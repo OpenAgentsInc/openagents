@@ -1,0 +1,347 @@
+{
+  "tokens": {
+    "input": 64363,
+    "cache": 46527,
+    "output": 1925,
+    "note": "input sums generation, Jev, and delegate input tokens, the delegate's cache reads and writes included; cache is the delegate's cache reads when a delegation ran, and generation's reported cached input otherwise"
+  },
+  "cost": {
+    "amount_usd": 0.07356153800000001,
+    "lower_bound_usd": 0.07356153800000001,
+    "unknown_calls": 0,
+    "provenance": "mixed",
+    "covers": "generation (provider_reported), jev (price_estimate), and delegate (cli_list_price or cli_reported for Claude Code, price_estimate for Codex); each is under components, and ledger lists every call"
+  },
+  "calls": {
+    "generation": 0,
+    "decisions": 11,
+    "decisions_skipped": 0,
+    "delegates": 2,
+    "failed": 0,
+    "retries": 0
+  },
+  "components": {
+    "generation": {
+      "input_tokens": 0,
+      "cached_input_tokens": null,
+      "output_tokens": 0,
+      "cost_usd": 0.0,
+      "cost_lower_bound_usd": 0.0,
+      "cost_provenance": "provider_reported",
+      "unpriced_calls": 0,
+      "failed_calls_unknown_charge": 0
+    },
+    "jev": {
+      "model": "jev-1.13.0",
+      "requests": 11,
+      "priced": 11,
+      "known_zero": 0,
+      "unknown": 0,
+      "skipped": 0,
+      "input_tokens": 12789,
+      "input_tokens_priced": 12789,
+      "output_tokens_billed": false,
+      "cost_usd": 0.000537138,
+      "cost_lower_bound_usd": 0.000537138,
+      "cost_provenance": "price_estimate",
+      "rate": "$0.042 per million input tokens, retrieved 2026-09-22"
+    },
+    "delegate": {
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "credential": "subscription_oauth",
+      "agents": [
+        "claude-code",
+        "claude-code"
+      ],
+      "models": [
+        "claude-opus-5-5",
+        "claude-opus-5-5"
+      ],
+      "delegations": 2,
+      "turns": 8,
+      "api_calls": 8,
+      "units": {
+        "native_turns": 8,
+        "model_calls": 8,
+        "completed_items": null
+      },
+      "input_tokens": 16,
+      "cache_read_input_tokens": 46527,
+      "cache_creation_input_tokens": 5031,
+      "total_input_tokens": 51574,
+      "output_tokens": 1925,
+      "input_tokens_per_call": [
+        6242,
+        6522,
+        6795,
+        5592,
+        6070,
+        6397,
+        6794,
+        7162
+      ],
+      "max_input_tokens_per_call": 7162,
+      "cost_usd": 0.0730244,
+      "cost_lower_bound_usd": 0.0730244,
+      "cost_provenance": "cli_list_price",
+      "unknown_dispatches": 0,
+      "cost_note": "Claude Code's own total_cost_usd. On a subscription token it is a list-price figure, not a bill.",
+      "dispatches": [
+        {
+          "component": "delegate",
+          "id": "delegate-1",
+          "name": "delegate",
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "model_requested": "claude-opus-5-5",
+          "credential": "subscription_oauth",
+          "status": "answered",
+          "outcome": "Completed",
+          "charge": "priced",
+          "cost_usd": 0.0270482,
+          "cost_lower_bound_usd": 0.0270482,
+          "provenance": "cli_list_price",
+          "basis": "the session reported its usage",
+          "milliseconds": 9308,
+          "units": {
+            "native_turns": 3,
+            "model_calls": 3,
+            "completed_items": null
+          },
+          "deadline": {
+            "requested_sec": 562,
+            "granted_ms": 562000,
+            "cut": false
+          }
+        },
+        {
+          "component": "delegate",
+          "id": "delegate-2",
+          "name": "delegate",
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "model_requested": "claude-opus-5-5",
+          "credential": "subscription_oauth",
+          "status": "answered",
+          "outcome": "Completed",
+          "charge": "priced",
+          "cost_usd": 0.0459762,
+          "cost_lower_bound_usd": 0.0459762,
+          "provenance": "cli_list_price",
+          "basis": "the session reported its usage",
+          "milliseconds": 19892,
+          "units": {
+            "native_turns": 5,
+            "model_calls": 5,
+            "completed_items": null
+          },
+          "deadline": {
+            "requested_sec": 739,
+            "granted_ms": 739000,
+            "cut": false
+          }
+        }
+      ]
+    }
+  },
+  "ledger": [
+    {
+      "component": "jev",
+      "id": "jev_requirements-1",
+      "name": "jev_requirements",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000116508,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 273,
+      "input_tokens": 2774
+    },
+    {
+      "component": "jev",
+      "id": "jev_probe-2",
+      "name": "jev_probe",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000064764,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 165,
+      "input_tokens": 1542
+    },
+    {
+      "component": "jev",
+      "id": "jev-survey-3",
+      "name": "jev_survey",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000021084,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 187,
+      "input_tokens": 502
+    },
+    {
+      "component": "jev",
+      "id": "jev-profile",
+      "name": "jev_profile",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000031542000000000004,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 243,
+      "input_tokens": 751
+    },
+    {
+      "component": "jev",
+      "id": "jev_monitor-1",
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000043764,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 221,
+      "input_tokens": 1042
+    },
+    {
+      "component": "jev",
+      "id": "jev_monitor-2",
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.00005376000000000001,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 158,
+      "input_tokens": 1280
+    },
+    {
+      "component": "jev",
+      "id": "jev_monitor-3",
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000062832,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 150,
+      "input_tokens": 1496
+    },
+    {
+      "component": "delegate",
+      "id": "delegate-1",
+      "name": "delegate",
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "model_requested": "claude-opus-5-5",
+      "credential": "subscription_oauth",
+      "status": "answered",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.0270482,
+      "cost_lower_bound_usd": 0.0270482,
+      "provenance": "cli_list_price",
+      "basis": "the session reported its usage",
+      "milliseconds": 9308,
+      "units": {
+        "native_turns": 3,
+        "model_calls": 3,
+        "completed_items": null
+      },
+      "deadline": {
+        "requested_sec": 562,
+        "granted_ms": 562000,
+        "cut": false
+      }
+    },
+    {
+      "component": "jev",
+      "id": "jev_close-4",
+      "name": "jev_close",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000040908,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 175,
+      "input_tokens": 974
+    },
+    {
+      "component": "jev",
+      "id": "jev-support-1",
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000035784,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 144,
+      "input_tokens": 852
+    },
+    {
+      "component": "jev",
+      "id": "jev-support-2",
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000032676000000000004,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 219,
+      "input_tokens": 778
+    },
+    {
+      "component": "jev",
+      "id": "jev-support-3",
+      "name": "jev_support",
+      "model": "jev-1.13.0",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.000033516,
+      "provenance": "price_estimate",
+      "basis": "the response reported its input tokens",
+      "milliseconds": 158,
+      "input_tokens": 798
+    },
+    {
+      "component": "delegate",
+      "id": "delegate-2",
+      "name": "delegate",
+      "agent": "claude-code",
+      "model": "claude-opus-5-5",
+      "model_requested": "claude-opus-5-5",
+      "credential": "subscription_oauth",
+      "status": "answered",
+      "outcome": "Completed",
+      "charge": "priced",
+      "cost_usd": 0.0459762,
+      "cost_lower_bound_usd": 0.0459762,
+      "provenance": "cli_list_price",
+      "basis": "the session reported its usage",
+      "milliseconds": 19892,
+      "units": {
+        "native_turns": 5,
+        "model_calls": 5,
+        "completed_items": null
+      },
+      "deadline": {
+        "requested_sec": 739,
+        "granted_ms": 739000,
+        "cut": false
+      }
+    }
+  ]
+}

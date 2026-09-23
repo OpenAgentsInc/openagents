@@ -1,0 +1,36 @@
+{
+  "trial_name": "build-cython-ext__iAGyfZv",
+  "task_name": "terminal-bench/build-cython-ext",
+  "started_at": "2026-09-23T05:33:52.879454Z",
+  "finished_at": "2026-09-23T05:36:01.020067Z",
+  "environment_setup": {
+    "started_at": "2026-09-23T05:33:52.939264Z",
+    "finished_at": "2026-09-23T05:34:10.871070Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-23T05:34:10.871131Z",
+    "finished_at": "2026-09-23T05:34:14.361365Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-23T05:34:14.361492Z",
+    "finished_at": "2026-09-23T05:35:44.035916Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-23T05:35:44.279376Z",
+    "finished_at": "2026-09-23T05:35:49.007138Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 184913,
+    "n_cache_tokens": 119341,
+    "n_output_tokens": 3453,
+    "cost_usd": 0.15228754200000003,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

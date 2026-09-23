@@ -1,0 +1,119 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "71165647-6e05-463d-a479-c187e5befc92",
+    "job": "extended--coder-one-tunable--git-leak-recovery-2",
+    "trial": "git-leak-recovery__jjGzjpC",
+    "arm": "coder-one-tunable",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/git-leak-recovery",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/git-leak-recovery",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "285cc112a989ee2d0aee8db362c34d82340d6f4797488be88a42fd785cfea346",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T05:37:06.046483Z",
+    "finished_at": "2026-09-23T05:38:10.044356Z",
+    "environment_setup_ms": 839,
+    "agent_setup_ms": 3360,
+    "agent_execution_ms": 37007,
+    "verifier_ms": 11007,
+    "total_ms": 63997
+  },
+  "usage": {
+    "input_tokens": 80628,
+    "cache_tokens": 61240,
+    "output_tokens": 2342,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.092699298,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [
+    "Runs natively on the x86_64 Linux host."
+  ],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--git-leak-recovery-2/git-leak-recovery__jjGzjpC/result.json",
+      "sha256": "125c1ebec3c5551846799eb95abc486fb4959dd18964537d20aee801f9cb65bc",
+      "bytes": 5072
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--git-leak-recovery-2/git-leak-recovery__jjGzjpC/agent/trajectory.json",
+      "sha256": "73a6ca13ebb5d0a7f08600a37bf901209472eee0930d8570dd0d1320cf3694ed",
+      "bytes": 257608
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--git-leak-recovery-2/git-leak-recovery__jjGzjpC/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--git-leak-recovery-2/git-leak-recovery__jjGzjpC/verifier/ctrf.json",
+      "sha256": "f7f0ab02ff5aec1ffd8e42d1d0e71ee6be623e984f73a981ee168fec123a0550",
+      "bytes": 2195
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--git-leak-recovery-2/git-leak-recovery__jjGzjpC/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--git-leak-recovery-2/tbench/attempts/git-leak-recovery__jjGzjpC.json",
+      "sha256": "5cdf580f503efa459e3a1ed9a4b01f035b8671184faf466e002e0dc35786619d"
+    }
+  },
+  "collected_at": "2026-09-23T05:38:10.831+00:00"
+}

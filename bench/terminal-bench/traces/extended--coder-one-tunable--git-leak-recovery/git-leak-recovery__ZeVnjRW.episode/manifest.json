@@ -1,0 +1,507 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-tunable",
+    "digest": "42daee0672670f6ecfed0094630471f9ebb5caa3eb5afea640fdee32f6e731e9",
+    "source": "inline",
+    "overrides": [
+      {
+        "source": "CODER_ONE_EPISODE_DEADLINE",
+        "field": "protected.ceilings.episode_deadline_sec",
+        "value": "780"
+      }
+    ],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-tunable",
+      "note": "The whole tunable composition in a Terminal-Bench episode: task.profile routes the start (Codex on GPT-6 Luna for cheap, likely-easy tasks; lean Claude Code on Opus 5.5 for hard or long ones), deep Jev briefs it, control.monitor watches, verify.checks and verify.support judge the result, control.handoff escalates Luna to lean Opus on a stall, a failed check, a contradicted requirement, or no answer, and verify.repair runs once from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout. Both executors run the headless core system prompt with its protected sections, and Claude Code writes the five-minute prompt cache.",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6,
+          "monitor": {
+            "on_operation": true,
+            "on_artifact": true,
+            "on_claim": true,
+            "silence_ms": 300000,
+            "window": 8,
+            "event_chars": 300,
+            "requirements": 10,
+            "threshold": 0.5,
+            "jev": true,
+            "stall_commands": 12,
+            "latency_ms": 800
+          },
+          "handoff": {
+            "pattern": "escalate",
+            "to": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "on": [
+              "stalled",
+              "repeating"
+            ],
+            "after": 3,
+            "max_handoffs": 1,
+            "brief": {
+              "requirements": true,
+              "diff": true,
+              "errors": true,
+              "packets": true
+            },
+            "monitor": {
+              "on_operation": true,
+              "on_artifact": true,
+              "on_claim": true,
+              "silence_ms": 300000,
+              "window": 8,
+              "event_chars": 300,
+              "requirements": 10,
+              "threshold": 0.5,
+              "jev": true,
+              "stall_commands": 12,
+              "latency_ms": 800
+            }
+          },
+          "route": {
+            "rule": "profile-v1",
+            "cheap": {
+              "agent": "codex",
+              "model": "gpt-6-luna",
+              "version": "0.155.1"
+            },
+            "strong": {
+              "agent": "claude-code",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "tools": "Bash,Read,Edit,Write,Glob,Grep",
+              "prompt_cache_ttl": "5m",
+              "version": "2.1.280"
+            },
+            "hard_at": 0.5,
+            "hard_features": [
+              "builds_code",
+              "concurrency"
+            ],
+            "feature_at": 0.7,
+            "long_after_sec": 3600
+          },
+          "horizon": {
+            "first_share": 0.55,
+            "later_share": 0.75,
+            "min_dispatch_sec": 300,
+            "check_share": 0.05,
+            "long_after_sec": 3600,
+            "long_effort": "medium",
+            "long_command_sec": 3600
+          }
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked"
+        },
+        "executor": {
+          "agent": "claude-code",
+          "version": "2.1.280",
+          "model": "claude-opus-5-5",
+          "effort": "low",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "deadline_sec": 600,
+          "system": {
+            "mode": "replace",
+            "sections": [
+              "role",
+              "security",
+              "authority",
+              "verify",
+              "report",
+              "code-style"
+            ]
+          }
+        },
+        "verify": {
+          "checks": true,
+          "support": true,
+          "repair": {
+            "brief": "packet",
+            "trigger": "detected"
+          }
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": 780,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": "f347d1fb28b8c4537827e96be6cbaf2376db548c43599bc41a059635f5791da9"
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "claude-code",
+    "model": "claude-opus-5-5",
+    "version": "2.1.280",
+    "effort": "low",
+    "tools": "Bash,Read,Edit,Write,Glob,Grep",
+    "prompt_cache_ttl": "5m",
+    "system": {
+      "mode": "replace",
+      "sections": [
+        "role",
+        "security",
+        "authority",
+        "verify",
+        "report",
+        "code-style"
+      ]
+    },
+    "executor_path": "/opt/openagents/toolchain/claude-code-2.1.280-linux-x64/bin/claude",
+    "credential": "subscription_oauth",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "a8f0c63e0c196b3907a4e28b2dd9180364fae86eb3341e3ee7c8797d481f8f66",
+        "chars": 2956,
+        "bytes": 2956,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "requirement 1",
+          "requirement 2",
+          "requirement 3",
+          "requirement 4",
+          "requirement 5",
+          "explorer conclusion",
+          "file $ list /app (depth 3)",
+          "file $ git -C /app/repo log --oneline --graph --all -n 40",
+          "file $ git -C /app/repo reflog -n 40",
+          "file $ git -C /app/repo branch -a -vv",
+          "file $ git -C /app/repo status",
+          "file $ list /app/repo"
+        ],
+        "omitted": []
+      },
+      "packer": "sections",
+      "uncovered_requirements": null,
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 3,
+      "api_calls": 3,
+      "completed_items": null,
+      "charge": "priced",
+      "total_cost_usd": 0.025646400000000003,
+      "milliseconds": 8545,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 9843,
+        "kept_bytes": 9843,
+        "truncated": false,
+        "sha256": "b569a518ef750b9815a309d8b0a0dca9886f71c406f6fbd961e8ac517c9b251c",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "manifest",
+        "agent": "claude-code",
+        "mode": "replace",
+        "setting": "--system-prompt-file",
+        "digest": "f347d1fb28b8c4537827e96be6cbaf2376db548c43599bc41a059635f5791da9",
+        "chars": 1542,
+        "default": "claude-code 2.1.280",
+        "default_chars": 5453,
+        "protected": true,
+        "sections": [
+          {
+            "id": "role",
+            "status": "core",
+            "chars": 214,
+            "by": "manifest"
+          },
+          {
+            "id": "security",
+            "status": "protected",
+            "chars": 461,
+            "by": "manifest"
+          },
+          {
+            "id": "authority",
+            "status": "core",
+            "chars": 334,
+            "by": "manifest"
+          },
+          {
+            "id": "verify",
+            "status": "core",
+            "chars": 258,
+            "by": "manifest"
+          },
+          {
+            "id": "report",
+            "status": "core",
+            "chars": 176,
+            "by": "manifest"
+          },
+          {
+            "id": "code-style",
+            "status": "core",
+            "chars": 95,
+            "by": "manifest"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.71,
+        "criteria": [
+          {
+            "requirement": "Please",
+            "p": 0.61
+          },
+          {
+            "requirement": "1. recover the secret and write it to a /app/secret.txt file.",
+            "p": 0.89
+          },
+          {
+            "requirement": "2. clean up the secret in that repo to make sure it cannot be found anywhere in that repo.",
+            "p": 0.74
+          },
+          {
+            "requirement": "3. make sure irrelevant files and commit messages remain untouched.",
+            "p": 0.6
+          },
+          {
+            "requirement": "- The secret format is secret[...].",
+            "p": 0.63
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (1a035cebe6e6)",
+    "sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": 780,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.064160194,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T05:34:52.153Z",
+  "updated_at": "2026-09-23T05:35:18.363Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 242837,
+      "sha256": "975f04f7873c434d86ca838038c1c4932c6891678a06bf7eab3e709ec7ea75da"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 9885,
+      "sha256": "ae32cad36231f60dfee2873de6f182fc86a76e1209a117d150dd5187666b7f89"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 2110,
+      "sha256": "771814faefb7bf7b96f145b5c8209e9ffe79eb800f34815aea82e3ba53d76900"
+    },
+    "composition": {
+      "path": "artifacts/composition.json",
+      "bytes": 4133,
+      "sha256": "61ef020e47e380cc9e0666b6616c4f7b6fdea57ded04e740e2509e46d3b27470"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 5221,
+      "sha256": "0faa3458db0d3e6e9783df6d6c167759ff8a057c5e9b1f8d35f80ff0499bedec"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 2956,
+      "sha256": "a8f0c63e0c196b3907a4e28b2dd9180364fae86eb3341e3ee7c8797d481f8f66"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 9843,
+      "sha256": "b569a518ef750b9815a309d8b0a0dca9886f71c406f6fbd961e8ac517c9b251c"
+    },
+    "delegate-1_system_md": {
+      "path": "artifacts/delegate-1.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "delegate-2_briefing_md": {
+      "path": "artifacts/delegate-2.briefing.md",
+      "bytes": 1535,
+      "sha256": "ce930eb83d1c05d98b94cd17106a392a16f031414d2d7489cc1caeb8ded7eab6"
+    },
+    "delegate-2_stream_jsonl": {
+      "path": "artifacts/delegate-2.stream.jsonl",
+      "bytes": 20329,
+      "sha256": "0d44135ef85435765e40b7ea9cdc6dc400b0edb09efae564ae808b5bb307f4a7"
+    },
+    "delegate-2_system_md": {
+      "path": "artifacts/delegate-2.system.md",
+      "bytes": 1542,
+      "sha256": "d2ccda88e4b9fc3119b2db881f7eb463cf86e6557cef6cc4f75a0aca389b9aec"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 154404,
+      "sha256": "81ea048d66b3f376613177c98cb1ce2bf39c9861683a6ffeb56c810f50a25aa6",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "hard",
+    "total_ms": 780000,
+    "reserve_ms": 30000,
+    "elapsed_ms": 26221,
+    "remaining_ms": 753778,
+    "used_fraction": 0.033617794416666666,
+    "cuts": [],
+    "note": "one monotonic deadline from the episode's start; every dispatch, Jev request, retry, wait, setup command, probe, and check is granted at most what is left after the reserve"
+  },
+  "verification": {
+    "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+    "checks": [
+      {
+        "after": "primary",
+        "file": "verification/checks.json",
+        "summary": {
+          "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+          "scenarios": 1,
+          "verdicts": {
+            "passed": 1
+          },
+          "requirements": {
+            "observed": 1,
+            "unobserved": 4
+          },
+          "packets": 0
+        }
+      }
+    ],
+    "support": {
+      "candidate": "346554cf4bc3090243797430c2be9edb9847a8edc63c8593f5024fda2d4e4e26",
+      "judged": 3,
+      "supported": 1,
+      "contradicted": 2,
+      "unresolved": 0,
+      "skipped": 2
+    },
+    "repair": {
+      "tier": {
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "effort": "low",
+        "tools": "Bash,Read,Edit,Write,Glob,Grep",
+        "prompt_cache_ttl": "5m",
+        "version": "2.1.280"
+      },
+      "triggered": true,
+      "ran": true,
+      "changed": false,
+      "skipped": null,
+      "session": {
+        "fresh": true,
+        "resumes": null,
+        "previous_session": "17d8d98d-ff0f-4da3-ad5e-a29f8b844cd9",
+        "session_id": "23383503-6bc3-4339-b3e1-f9dac60e52df",
+        "agent": "claude-code",
+        "model": "claude-opus-5-5",
+        "status": "answered",
+        "turns": 4,
+        "milliseconds": 15447,
+        "cost_usd": 0.0379738,
+        "cost_provenance": "provider_reported",
+        "result": "I checked the repo again and found nothing to fix. The secret was already recovered and removed before this round, so I made no changes.\n\n- **Recovered secret:** `/app/secret.txt` contains `secret[lost_and_found_in_git]`.\n- **R3 (secret gone from the repo):** I searched every commit, every stored object including unreachable ones (checked with `git fsck --unreachable --no-reflogs`), the files on disk, the reflogs, the stash, `ORIG_HEAD` and `packed-refs`. None contain the secret. The reflogs are…"
+      },
+      "recheck": {
+        "skipped": "the candidate didn't change, so the earlier observations still hold"
+      },
+      "cost_usd": 0.0379738
+    }
+  },
+  "result": {
+    "title": "A secret was accidentally committed to this repository in /app and then removed by rewriting history…",
+    "summary": "I recovered the secret, `secret[lost_and_found_in_git]`, and wrote it to `/app/secret.txt`.\n\n- **Where it was:** a `secret.txt` file added by commit `6b4c75c` (\"feat: add scratch notes\"). A reset had already removed that commit from the branch, but the reflog still pointed to it.\n- **Cleanup:** I cleared all reflog entries and ran `git gc --prune=now` so the unreachable objects were deleted.\n- **Checks:** `6b4c75c` is no longer a valid object, and searching the working tree and `.git` for the secret's text finds nothing. The two remaining commits (`c6d9997`, `7a2420e`), their messages and `README.md` are unchanged.\n\nThe secret's text does exist outside the repo, in `/app/secret.txt`, as the task asked.",
+    "delegate_status": "answered"
+  }
+}

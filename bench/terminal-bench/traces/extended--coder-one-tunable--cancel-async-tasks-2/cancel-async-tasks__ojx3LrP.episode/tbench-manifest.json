@@ -1,0 +1,117 @@
+{
+  "schema": "openagents.tbench.episode-manifest.v1",
+  "attempt": {
+    "id": "96011abf-8aca-4eb9-ba19-6ade7212452f",
+    "job": "extended--coder-one-tunable--cancel-async-tasks-2",
+    "trial": "cancel-async-tasks__ojx3LrP",
+    "arm": "coder-one-tunable",
+    "profile": "extended",
+    "auth_mode": "subscription-oauth",
+    "kind": "fresh"
+  },
+  "task": {
+    "name": "terminal-bench/cancel-async-tasks",
+    "path": "/home/christopherdavid/.openagents/terminal-bench/upstream/terminal-bench/archive/cancel-async-tasks",
+    "git_url": null,
+    "git_commit_id": null,
+    "checksum": "1566331f6913b8a4f9af6779e90cabbb79edf1b15c126b6bc544912df3f14de5",
+    "source": null,
+    "pin": {
+      "git_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "git_commit_id": "3b5caaa4863d64dda7f0957bf4fc2d4f019202d4"
+    }
+  },
+  "agent": {
+    "selector": "tbench.coder_one:CoderOneTunable",
+    "requested_model": "free",
+    "observed_name": "coder-one-tunable",
+    "observed_version": "pinned-artifact",
+    "observed_model": "free",
+    "observed_provider": null,
+    "artifact_sha256": "dd50175fe396bc3ddd702fc9f7ac3aa9a03c510ac8ec29e1c26a218876c753bd"
+  },
+  "outcome": {
+    "reward": 1.0,
+    "verifier_rewards": {
+      "reward": 1.0
+    },
+    "terminal_status": "completed",
+    "exception": null,
+    "verifier_environment_mode": "shared"
+  },
+  "timing": {
+    "started_at": "2026-09-23T05:36:47.763966Z",
+    "finished_at": "2026-09-23T05:37:54.432469Z",
+    "environment_setup_ms": 1324,
+    "agent_setup_ms": 3634,
+    "agent_execution_ms": 27253,
+    "verifier_ms": 23147,
+    "total_ms": 66668
+  },
+  "usage": {
+    "input_tokens": 26019,
+    "cache_tokens": 10339,
+    "output_tokens": 1528,
+    "input_includes_cache": true,
+    "coverage": "full"
+  },
+  "cost": {
+    "amount_usd": 0.048632328,
+    "provenance": "mixed",
+    "note": "A subscription reference price or a pricing-registry estimate is not an observed incremental bill."
+  },
+  "task_notes": [],
+  "evidence": {
+    "trial_result": {
+      "kind": "trial-result",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--cancel-async-tasks-2/cancel-async-tasks__ojx3LrP/result.json",
+      "sha256": "5c069ac88b4d3cddfe53c249a60371572ed2304bc443665a237fafedebd2de26",
+      "bytes": 5080
+    },
+    "trajectory": {
+      "kind": "trajectory",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--cancel-async-tasks-2/cancel-async-tasks__ojx3LrP/agent/trajectory.json",
+      "sha256": "a74bbe200b4be3f2dbc00b135866879e8ff7b0e605c65c199ebcd9b204352bf0",
+      "bytes": 191516
+    },
+    "native_traces": [],
+    "collection_failure": {
+      "kind": "collection-failure",
+      "resolved": false,
+      "path": null,
+      "sha256": null
+    },
+    "verifier_reward": {
+      "kind": "verifier-reward",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--cancel-async-tasks-2/cancel-async-tasks__ojx3LrP/verifier/reward.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    "verifier_report": {
+      "kind": "verifier-report",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--cancel-async-tasks-2/cancel-async-tasks__ojx3LrP/verifier/ctrf.json",
+      "sha256": "995f85b4f7e0c31cd28836cca8334433dd725658afbe2dadcc1203283a69f764",
+      "bytes": 2539
+    },
+    "artifacts": [
+      {
+        "kind": "artifact",
+        "resolved": true,
+        "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--cancel-async-tasks-2/cancel-async-tasks__ojx3LrP/artifacts/manifest.json",
+        "sha256": "c1db653f487fb773c4f9247162ab3314e7f0584a486914b9874c4b3d6949e42d",
+        "bytes": 159
+      }
+    ],
+    "attempt_record": {
+      "kind": "attempt-record",
+      "resolved": true,
+      "path": "/home/christopherdavid/.openagents/terminal-bench/jobs/extended--coder-one-tunable--cancel-async-tasks-2/tbench/attempts/cancel-async-tasks__ojx3LrP.json",
+      "sha256": "e5f686e260a25c370a969a0d7534a78feb10abe629d16be1510b3d54c924df79"
+    }
+  },
+  "collected_at": "2026-09-23T05:37:55.192+00:00"
+}

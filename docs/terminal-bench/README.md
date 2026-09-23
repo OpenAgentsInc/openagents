@@ -452,6 +452,43 @@ questions fixed, so the gain belongs to the packer. Traces:
 [`extended--coder-one-pack-luna--log-summary-date-ranges`](../../bench/terminal-bench/traces/extended--coder-one-pack-luna--log-summary-date-ranges/)
 and `-2`, `-3`.
 
+### Tunable Coder One on the eight development tasks, 2026-09-23
+
+`coder-one-tunable` runs the whole tunable composition in Terminal-Bench
+episodes ([#9560](https://github.com/OpenAgentsInc/openagents/issues/9560)):
+routing from `task.profile`, the briefing, a delegate, `verify.checks`,
+`verify.support`, one `verify.repair`, and escalation from Luna to lean
+Opus 5.5. Artifact `coder-one 0.1.0 (1a035cebe6e6)`, tagged
+`coder-one-tunable-1a035cebe6`; policy `crates/coder-one/policies/tunable.json`.
+Three trials per task.
+
+| Arm | Passed | Eight-task mean cost | Eight-task mean agent time |
+| --- | --- | ---: | ---: |
+| Claude Code on Opus 5.5 alone | 24/24 | $1.0863 | 306.4 s |
+| **Coder One tunable** | **24/24** | **$0.5219** | **253.4 s** |
+| Jev-probe v2 → lean Opus, five-minute cache | 24/24 | $0.4282 | 191.6 s |
+
+The tunable arm passed every trial at 52% lower cost and 17% less agent
+time than Claude Code on Opus alone. It didn't beat the best hand-tuned arm,
+and the traces say why:
+
+- **The router sent all 24 trials to Opus.** Jev scored every task's
+  difficulty at 0.5 or more (0.59 to 0.90), so the difficulty rule never
+  chose Luna. The arm ran as Opus plus checks and repair. The difficulty
+  Score doesn't discriminate these tasks; routing needs the outcome matrix,
+  not a single threshold.
+- **A check saved one trial.** On `cancel-async-tasks`, one scenario failed
+  after the first answer; the repair changed the candidate and the trial
+  passed.
+- **The support judge triggered three needless repairs.** On
+  `git-leak-recovery`, every check passed, Jev's support judgments
+  contradicted two requirements, and a repair ran and changed nothing, at
+  $0.038 against $0.026 for the answer. A new `checked` repair trigger
+  (commit `6d1c2f7a72`) repairs only on an observed scenario failure.
+- **The tunable policies used the old briefing packer.** They left
+  `brief.packer` unset. `coder-one-tunable-luna-pack` adds the coverage
+  packer.
+
 ### The `extended` tasks, cheapest first
 
 Arm means over three trials each, from the Jev-probe runs above.

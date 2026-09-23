@@ -1,0 +1,367 @@
+{
+  "schema": "openagents.coder-one.support.v1",
+  "implementation": {
+    "name": "paired supports and contradicts nouls per requirement",
+    "digest": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054"
+  },
+  "params": {
+    "supports": 0.5,
+    "contradicts": 0.3,
+    "max_requirements": 3,
+    "artifact_chars": 6000,
+    "observation_chars": 2500
+  },
+  "candidate": "e3cf31a3b785a1f37a628d60fc765bcec6f8c66bb525ad29dceca88247a0f900",
+  "states": [
+    {
+      "id": "R5",
+      "text": "- Supports interactive programs",
+      "state": "supported",
+      "why": "the evidence supports it and doesn't contradict it",
+      "observed": [
+        "scenario interactive.program passed",
+        "read headless_terminal.py (1935 of 1935 characters)"
+      ],
+      "establishes": "R5 is met by candidate e3cf31a3b785",
+      "checker": {
+        "scenarios": [
+          "interactive.program"
+        ],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "e3cf31a3b785a1f37a628d60fc765bcec6f8c66bb525ad29dceca88247a0f900",
+      "evidence_digest": "9b0eddb55dd4ecadf360efd841f178daf99e65e3fc3cfa3f74bab78a8822c9a1",
+      "scenario_state": "observed",
+      "judgment": {
+        "supports": 0.93,
+        "contradicts": 0.06,
+        "how": "live",
+        "key": "6b413f737198df03a0781fc5445ed6d53f06c52a2d72dd5cb3f1b3d91c8b8232",
+        "input_tokens": 1588
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R5",
+          "text": "- Supports interactive programs",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "headless_terminal.py",
+            "text": "import os\nimport pty\nimport select\nimport signal\nimport subprocess\nimport threading\nimport time\n\nfrom base_terminal import BaseTerminal\n\n\nclass HeadlessTerminal(BaseTerminal):\n    def __init__(self, shell: str = \"/bin/bash\"):\n        self._master, slave = pty.openpty()\n        env = dict(os.environ, TERM=os.environ.get(\"TERM\", \"xterm\"))\n        self._proc = subprocess.Popen(\n            [shell, \"-i\"],\n            stdin=slave, stdout=slave, stderr=slave,\n            start_new_session=True, env=env, close_fds=True,\n            cwd=os.path.expanduser(\"~\"),\n            preexec_fn=None,\n        )\n        os.close(slave)\n        self._output = bytearray()\n        self._lock = threading.Lock()\n        self._reader = threading.Thread(target=self._read_loop, daemon=True)\n        self._reader.start()\n\n    def _read_loop(self):\n        while True:\n            try:\n                r, _, _ = select.select([self._master], [], [], 0.1)\n                if r:\n                    data = os.read(self._master, 4096)\n                    if not data:\n                        break\n                    with self._lock:\n                        self._output.extend(data)\n            except OSError:\n                break\n\n    def send_keystrokes(self, keystrokes: str, wait_sec: float = 0.0) -> None:\n        os.write(self._master, keystrokes.encode())\n        if wait_sec > 0:\n            time.sleep(wait_sec)\n\n    def read_output(self) -> str:\n        with self._lock:\n            return self._output.decode(errors=\"replace\")\n\n    def close(self) -> None:\n        if self._proc.poll() is None:\n            try:\n                os.killpg(self._proc.pid, signal.SIGKILL)\n            except OSError:\n                pass\n            self._proc.wait()\n        try:\n            os.close(self._master)\n        except OSError:\n            pass\n\n    def __del__(self):\n        try:\n            self.close()\n        except Exception:\n            pass\n",
+            "chars": 1935,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "interactive.program",
+            "verdict": "passed",
+            "expected": "A program started through the interface gets a terminal in raw mode, reads the staged keys up to Enter, and writes them reversed to a scratch file.",
+            "observed": [
+              {
+                "step": "construct",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo ready > <scratch>/interactive.program/result.txt.canary\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "canary",
+                "seen": true
+              },
+              {
+                "step": "send",
+                "keys": "python3 <scratch>/interactive.program/interact.py <scratch>/interactive.program/result.txt\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "ready",
+                "seen": true
+              },
+              {
+                "step": "send",
+                "keys": "q7Zk2x",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "content": "x2kZ7q"
+              }
+            ],
+            "limits": [
+              "One raw-mode program and one token; full-screen programs that query the terminal are untested."
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      }
+    },
+    {
+      "id": "R6",
+      "text": "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+      "state": "supported",
+      "why": "the evidence supports it and doesn't contradict it",
+      "observed": [
+        "scenario interactive.interrupt passed",
+        "read headless_terminal.py (1935 of 1935 characters)"
+      ],
+      "establishes": "R6 is met by candidate e3cf31a3b785",
+      "checker": {
+        "scenarios": [
+          "interactive.interrupt"
+        ],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "e3cf31a3b785a1f37a628d60fc765bcec6f8c66bb525ad29dceca88247a0f900",
+      "evidence_digest": "2d88e04b2bd4cf93d2857f78770130010adc2a28e0d43fbaf7fa7062b24a80b5",
+      "scenario_state": "observed",
+      "judgment": {
+        "supports": 0.91,
+        "contradicts": 0.07,
+        "how": "live",
+        "key": "1531710bfae4d9d4cdef8de5a549ab8e81dfe412ea83ad56fc76fa0effe87472",
+        "input_tokens": 1931
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R6",
+          "text": "- Has support for modifier keys like `\"\\x03\"` for control C, etc.",
+          "kind": "behavior"
+        },
+        "artifact": [
+          {
+            "path": "headless_terminal.py",
+            "text": "import os\nimport pty\nimport select\nimport signal\nimport subprocess\nimport threading\nimport time\n\nfrom base_terminal import BaseTerminal\n\n\nclass HeadlessTerminal(BaseTerminal):\n    def __init__(self, shell: str = \"/bin/bash\"):\n        self._master, slave = pty.openpty()\n        env = dict(os.environ, TERM=os.environ.get(\"TERM\", \"xterm\"))\n        self._proc = subprocess.Popen(\n            [shell, \"-i\"],\n            stdin=slave, stdout=slave, stderr=slave,\n            start_new_session=True, env=env, close_fds=True,\n            cwd=os.path.expanduser(\"~\"),\n            preexec_fn=None,\n        )\n        os.close(slave)\n        self._output = bytearray()\n        self._lock = threading.Lock()\n        self._reader = threading.Thread(target=self._read_loop, daemon=True)\n        self._reader.start()\n\n    def _read_loop(self):\n        while True:\n            try:\n                r, _, _ = select.select([self._master], [], [], 0.1)\n                if r:\n                    data = os.read(self._master, 4096)\n                    if not data:\n                        break\n                    with self._lock:\n                        self._output.extend(data)\n            except OSError:\n                break\n\n    def send_keystrokes(self, keystrokes: str, wait_sec: float = 0.0) -> None:\n        os.write(self._master, keystrokes.encode())\n        if wait_sec > 0:\n            time.sleep(wait_sec)\n\n    def read_output(self) -> str:\n        with self._lock:\n            return self._output.decode(errors=\"replace\")\n\n    def close(self) -> None:\n        if self._proc.poll() is None:\n            try:\n                os.killpg(self._proc.pid, signal.SIGKILL)\n            except OSError:\n                pass\n            self._proc.wait()\n        try:\n            os.close(self._master)\n        except OSError:\n            pass\n\n    def __del__(self):\n        try:\n            self.close()\n        except Exception:\n            pass\n",
+            "chars": 1935,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "interactive.interrupt",
+            "verdict": "passed",
+            "expected": "After control C interrupts a foreground command, the shell runs the next command typed.",
+            "observed": [
+              {
+                "step": "construct",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo ready > <scratch>/interactive.interrupt/result.txt.canary\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "canary",
+                "seen": true
+              },
+              {
+                "step": "send",
+                "keys": "sleep 30\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "\u0003",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo still-usable-4821 > <scratch>/interactive.interrupt/result.txt.0\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "round": 0,
+                "delay": 0.05,
+                "content": "still-usable-4821\n"
+              },
+              {
+                "step": "send",
+                "keys": "sleep 30\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "\u0003",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo still-usable-4821 > <scratch>/interactive.interrupt/result.txt.1\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "round": 1,
+                "delay": 0.3,
+                "content": "still-usable-4821\n"
+              },
+              {
+                "step": "send",
+                "keys": "sleep 30\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "\u0003",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "send",
+                "keys": "echo still-usable-4821 > <scratch>/interactive.interrupt/result.txt.2\n",
+                "status": "ok",
+                "detail": null
+              },
+              {
+                "step": "result",
+                "round": 2,
+                "delay": 1.0,
+                "content": "still-usable-4821\n"
+              }
+            ],
+            "limits": [
+              "One control key, sent 0.05, 0.3, 1 s after the command; other modifiers and delays are untested."
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      }
+    },
+    {
+      "id": "R8",
+      "text": "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called `/app/headless_terminal.py` so that it can be imported as `from headless_terminal import HeadlessTerminal`.",
+      "state": "supported",
+      "why": "the evidence supports it and doesn't contradict it",
+      "observed": [
+        "scenario generic.output:/app/headless_terminal.py passed",
+        "scenario generic.parse:/app/headless_terminal.py passed",
+        "read headless_terminal.py (1935 of 1935 characters)"
+      ],
+      "establishes": "R8 is met by candidate e3cf31a3b785",
+      "checker": {
+        "scenarios": [
+          "generic.output:/app/headless_terminal.py",
+          "generic.parse:/app/headless_terminal.py"
+        ],
+        "checks": "b81f1d8b5c4ccef58702fffbdf222f8543355c36adf06fe66208be128cf5ac32",
+        "support": "876d7879c50afbab0d4af7fd7a9987740ee6aec8605feabb7bf4bc483ff13054",
+        "model": "jev-1.13.0"
+      },
+      "candidate": "e3cf31a3b785a1f37a628d60fc765bcec6f8c66bb525ad29dceca88247a0f900",
+      "evidence_digest": "98c75ac6654c200200a2c6d667627fb392d83799ebdc306114a96c367dae4507",
+      "scenario_state": "observed",
+      "judgment": {
+        "supports": 0.89,
+        "contradicts": 0.12,
+        "how": "live",
+        "key": "6c76a3928cb16620d98f53bbfa8958a2b1bb999e1cfeceafc291307374717a1d",
+        "input_tokens": 1498
+      },
+      "evidence": {
+        "requirement": {
+          "id": "R8",
+          "text": "Call your implementation `HeadlessTerminal(BaseTerminal)` and put it in a file called `/app/headless_terminal.py` so that it can be imported as `from headless_terminal import HeadlessTerminal`.",
+          "kind": "constraint"
+        },
+        "artifact": [
+          {
+            "path": "headless_terminal.py",
+            "text": "import os\nimport pty\nimport select\nimport signal\nimport subprocess\nimport threading\nimport time\n\nfrom base_terminal import BaseTerminal\n\n\nclass HeadlessTerminal(BaseTerminal):\n    def __init__(self, shell: str = \"/bin/bash\"):\n        self._master, slave = pty.openpty()\n        env = dict(os.environ, TERM=os.environ.get(\"TERM\", \"xterm\"))\n        self._proc = subprocess.Popen(\n            [shell, \"-i\"],\n            stdin=slave, stdout=slave, stderr=slave,\n            start_new_session=True, env=env, close_fds=True,\n            cwd=os.path.expanduser(\"~\"),\n            preexec_fn=None,\n        )\n        os.close(slave)\n        self._output = bytearray()\n        self._lock = threading.Lock()\n        self._reader = threading.Thread(target=self._read_loop, daemon=True)\n        self._reader.start()\n\n    def _read_loop(self):\n        while True:\n            try:\n                r, _, _ = select.select([self._master], [], [], 0.1)\n                if r:\n                    data = os.read(self._master, 4096)\n                    if not data:\n                        break\n                    with self._lock:\n                        self._output.extend(data)\n            except OSError:\n                break\n\n    def send_keystrokes(self, keystrokes: str, wait_sec: float = 0.0) -> None:\n        os.write(self._master, keystrokes.encode())\n        if wait_sec > 0:\n            time.sleep(wait_sec)\n\n    def read_output(self) -> str:\n        with self._lock:\n            return self._output.decode(errors=\"replace\")\n\n    def close(self) -> None:\n        if self._proc.poll() is None:\n            try:\n                os.killpg(self._proc.pid, signal.SIGKILL)\n            except OSError:\n                pass\n            self._proc.wait()\n        try:\n            os.close(self._master)\n        except OSError:\n            pass\n\n    def __del__(self):\n        try:\n            self.close()\n        except Exception:\n            pass\n",
+            "chars": 1935,
+            "clipped": false
+          }
+        ],
+        "observations": [
+          {
+            "scenario": "generic.output:/app/headless_terminal.py",
+            "verdict": "passed",
+            "expected": "/app/headless_terminal.py exists and isn't empty.",
+            "observed": [
+              {
+                "path": "/app/headless_terminal.py",
+                "exists": true,
+                "bytes": 1935
+              }
+            ],
+            "limits": [
+              "checks that the file is there, not what it holds"
+            ]
+          },
+          {
+            "scenario": "generic.parse:/app/headless_terminal.py",
+            "verdict": "passed",
+            "expected": "/app/headless_terminal.py parses as py.",
+            "observed": [
+              {
+                "path": "/app/headless_terminal.py",
+                "format": "py",
+                "problem": null
+              }
+            ],
+            "limits": [
+              "checks the format, not the values"
+            ]
+          }
+        ],
+        "scenario_state": "observed",
+        "observations_clipped": false
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "id": "R1",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R2",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R3",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R4",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R7",
+      "why": "over the budget of 3 requirements per run"
+    },
+    {
+      "id": "R9",
+      "why": "over the budget of 3 requirements per run"
+    }
+  ]
+}
