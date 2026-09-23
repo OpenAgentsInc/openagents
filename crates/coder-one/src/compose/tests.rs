@@ -1318,3 +1318,257 @@ async fn a_throttled_persist_round_ends_persist_and_the_composition() {
     );
     assert_eq!(record["usage_limited"]["provider"], "anthropic");
 }
+
+// ---------------------------------------------------------------------------
+// v8: persistence that stops when it stops helping, and runs cheaper.
+// ---------------------------------------------------------------------------
+
+/// A runner path outside the workspace, as `/tmp/persist-tests/run.sh` is
+/// in a task container.
+fn runner_path(label: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "coder-one-persist-tests-{label}-{}-{}",
+        std::process::id(),
+        atif::now_ms()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.join("run.sh")
+}
+
+/// v8 without its route or its second executor, with its runner at
+/// `runner` and the confirmation gate off, so the ladder alone decides.
+fn v8_unrouted(runner: &Path) -> Manifest {
+    let mut manifest = manifest("tunable-v8.json");
+    manifest.policy.control.route = None;
+    manifest.policy.verify.as_mut().unwrap().second = None;
+    let persist = manifest.policy.control.persist.as_mut().unwrap();
+    persist.own_tests.as_mut().unwrap().runner = runner.display().to_string();
+    persist.stop_when_confirmed = false;
+    manifest
+}
+
+/// The runner the sessions keep: `sum` passes when answer.json holds 6,
+/// and `notes` when notes.txt says ok.
+const RUNNER: &str = "if grep -q '\"sum\": 6' answer.json; then echo 'PASS sum'; else echo 'FAIL sum'; fi\n\
+if grep -q ok notes.txt 2>/dev/null; then echo 'PASS notes'; else echo 'FAIL notes'; fi\n";
+
+/// `script` that also writes the runner first, as a persist round's
+/// executor would.
+fn with_runner(mut script: Script, runner: &Path) -> Script {
+    let dir = runner.parent().unwrap().display().to_string();
+    script.events.insert(
+        0,
+        at(
+            100,
+            Act::Run {
+                command: format!(
+                    "mkdir -p '{dir}' && cat > '{}' <<'RUNNER'\n{RUNNER}RUNNER",
+                    runner.display()
+                ),
+            },
+        ),
+    );
+    script
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_cheap_round_without_progress_escalates_and_opus_finishes() {
+    if !python() {
+        return;
+    }
+    let runner = runner_path("ladder");
+    let ran = compose(
+        "persist-ladder",
+        &v8_unrouted(&runner),
+        vec![
+            script_saying("opus", 7, &[], "Done."),
+            script_saying("opus-repair", 7, &[], "Done."),
+            // Round 1, Opus: writes its tests and a still-wrong answer.
+            with_runner(script_saying("opus-persist", 8, &[], "Done."), &runner),
+            // Round 2, Sol: another wrong answer, no test fixed.
+            script_saying("sol-persist", 9, &[], "Done."),
+            // Round 3, Opus again: fixes it.
+            script_saying("opus-escalated", 6, &[], "Done."),
+            // Round 4, Sol: changes nothing, and no escalation is left.
+            idle("sol-idle"),
+        ],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    let record = &ran.record;
+    let labels: Vec<String> = ran.made.iter().map(|(tier, _)| tier.label()).collect();
+    assert_eq!(
+        labels,
+        [
+            "claude-code/claude-opus-5-5",
+            "claude-code/claude-opus-5-5",
+            "claude-code/claude-opus-5-5",
+            "codex/gpt-6-sol",
+            "claude-code/claude-opus-5-5",
+            "codex/gpt-6-sol",
+        ],
+        "{record:#}"
+    );
+    assert_eq!(sum_in(&ran.work), 6);
+    let persist = &record["persist"];
+    assert_eq!(
+        persist["stopped"],
+        "round 4 changed nothing; round 4 on a cheap executor made no progress, and no escalation is left",
+        "{record:#}"
+    );
+    let rounds = persist["rounds"].as_array().unwrap();
+    let classes: Vec<&str> = rounds
+        .iter()
+        .map(|r| r["class"].as_str().unwrap())
+        .collect();
+    assert_eq!(classes, ["strong", "cheap", "escalated", "cheap"]);
+    // Round 1 set the tests' baseline; round 2 fixed none and escalated;
+    // round 3 fixed the sum.
+    assert_eq!(rounds[0]["delta"]["tests_added"], 2);
+    assert_eq!(rounds[0]["delta"]["progress"], Value::Null);
+    assert_eq!(rounds[0]["tests"]["failing"], json!(["notes", "sum"]));
+    assert_eq!(rounds[1]["delta"]["tests_fixed"], 0);
+    assert_eq!(rounds[1]["delta"]["progress"], false);
+    assert_eq!(rounds[1]["next"], "escalate");
+    assert_eq!(rounds[1]["executor"], "codex/gpt-6-sol");
+    // The cheap tier keeps its own effort; Opus runs at the long effort.
+    assert_eq!(rounds[1]["tier"]["effort"], "high");
+    assert_eq!(rounds[2]["tier"]["effort"], "xhigh");
+    assert_eq!(rounds[2]["delta"]["tests_fixed"], 1);
+    assert_eq!(rounds[2]["delta"]["progress"], true);
+    assert_eq!(rounds[2]["after"]["failed"], 0);
+    assert!(rounds.iter().all(|r| r.get("cost_usd").is_some()));
+    assert_eq!(persist["totals"]["tests_fixed"], 1);
+    assert_eq!(persist["totals"]["escalations"], 1);
+    // A scripted session costs nothing, so the cap never binds here.
+    assert_eq!(persist["spend"]["cap_usd"], 5.0);
+    // Round 2's brief lists the failing tests and the runner's contract.
+    let brief = std::fs::read_to_string(ran.out.join(persist::brief_path(2))).unwrap();
+    for part in [
+        "## The earlier sessions' own tests",
+        "0 passed, 2 failed",
+        "- failing: sum",
+        "`PASS <name>` or `FAIL <name>`",
+    ] {
+        assert!(brief.contains(part), "{part} missing from\n{brief}");
+    }
+    assert_eq!(record["schema"], SCHEMA);
+    let _ = std::fs::remove_dir_all(runner.parent().unwrap());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_round_that_moves_no_test_or_check_ends_the_rounds() {
+    if !python() {
+        return;
+    }
+    let runner = runner_path("no-progress");
+    let mut manifest = v8_unrouted(&runner);
+    manifest.policy.control.persist.as_mut().unwrap().cheap = None;
+    let ran = compose(
+        "persist-no-progress",
+        &manifest,
+        vec![
+            script_saying("opus", 7, &[], "Done."),
+            script_saying("opus-repair", 7, &[], "Done."),
+            with_runner(script_saying("opus-persist-1", 8, &[], "Done."), &runner),
+            // Changes the answer, but fixes no test and no check.
+            script_saying("opus-persist-2", 9, &[], "Done."),
+            script_saying("never", 6, &[], "Done."),
+        ],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    let record = &ran.record;
+    assert_eq!(ran.made.len(), 4, "{record:#}");
+    let persist = &record["persist"];
+    assert_eq!(
+        persist["stopped"], "round 2 changed no test or check outcome",
+        "{record:#}"
+    );
+    assert_eq!(persist["rounds"][1]["changed"], true);
+    assert_eq!(persist["rounds"][1]["delta"]["progress"], false);
+    let _ = std::fs::remove_dir_all(runner.parent().unwrap());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_round_that_breaks_its_own_tests_is_put_back() {
+    if !python() {
+        return;
+    }
+    let runner = runner_path("broken");
+    let ran = compose(
+        "persist-broken",
+        &v8_unrouted(&runner),
+        vec![
+            script_saying("opus", 6, &[], "Done."),
+            // Round 1: notes.txt says ok, and every own test passes.
+            with_runner(script_saying("ok", 6, &["notes.txt"], "Done."), &runner),
+            // Round 2: breaks the notes test, which no check reads.
+            script_saying("sol-persist", 6, &["notes.txt"], "Done."),
+            // Round 3, escalated: changes nothing.
+            idle("opus-idle"),
+        ],
+        None,
+        EIGHT_HOURS,
+    )
+    .await;
+    let record = &ran.record;
+    let rounds = record["persist"]["rounds"].as_array().unwrap();
+    assert_eq!(rounds.len(), 3, "{record:#}");
+    assert_eq!(rounds[0]["tests"]["failed"], 0, "{record:#}");
+    assert_eq!(rounds[1]["kept"], false, "{record:#}");
+    assert_eq!(rounds[1]["delta"]["tests_broken"], 1);
+    assert!(
+        rounds[1]["why"]
+            .as_str()
+            .unwrap()
+            .contains("broke 1 of its own tests and fixed 0")
+    );
+    assert_eq!(rounds[1]["next"], "escalate");
+    assert_eq!(
+        std::fs::read_to_string(ran.work.join("notes.txt")).unwrap(),
+        "ok\n"
+    );
+    assert_eq!(
+        record["persist"]["stopped"],
+        "round 3 changed nothing; round 3 on the strong executor made no progress"
+    );
+    let _ = std::fs::remove_dir_all(runner.parent().unwrap());
+}
+
+#[test]
+fn the_v8_manifest_is_v7_with_a_cheaper_ladder() {
+    let v8 = manifest("tunable-v8.json");
+    v8.validate().unwrap();
+    let persist = v8.policy.control.persist.as_ref().unwrap();
+    assert_eq!(persist.max_rounds, 4);
+    assert!(persist.stop_when_no_progress);
+    assert_eq!(
+        persist.own_tests.as_ref().unwrap().runner,
+        "/tmp/persist-tests/run.sh"
+    );
+    let cheap = persist.cheap.as_ref().unwrap();
+    assert_eq!(cheap.tiers[0].label(), "codex/gpt-6-sol");
+    assert_eq!((cheap.from_round, cheap.max_escalations), (2, 1));
+    assert_eq!(persist.spend.as_ref().unwrap().budget_usd, Some(10.0));
+    // Everything else is v7's.
+    let v7 = Manifest::parse(include_str!("../../policies/tunable-v7.json")).unwrap();
+    let mut stripped = v8.policy.clone();
+    let p = stripped.control.persist.as_mut().unwrap();
+    p.max_rounds = 2;
+    p.own_tests = None;
+    p.stop_when_no_progress = false;
+    p.cheap = None;
+    p.spend = None;
+    assert_eq!(stripped, v7.policy);
+    // v7 serializes without the new fields, so its digest is what it was.
+    let raw: Value = serde_json::from_str(include_str!("../../policies/tunable-v7.json")).unwrap();
+    assert_eq!(
+        serde_json::to_value(&v7.policy.control).unwrap(),
+        raw["policy"]["control"]
+    );
+    // The doctor sees the cheap tier.
+    assert!(tiers(&v8).iter().any(|t| t.model == "gpt-6-sol"));
+}

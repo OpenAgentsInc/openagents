@@ -16,6 +16,20 @@
 //! floor is left of the one episode deadline. Every round is a child
 //! invocation of one `control.persist` invocation, and every session is a
 //! delegate call in the episode's one usage ledger.
+//!
+//! v8 adds three options, each off unless the manifest sets it. With
+//! `own_tests`, the brief asks the executor to keep its tests behind one
+//! runner, and the host runs it after each round. With
+//! `stop_when_no_progress`, a round whose own tests and checks show no
+//! change in outcome ends the rounds. With `cheap`, later rounds run a
+//! cheaper executor from the same brief and candidate, and a cheap round
+//! that makes no progress hands the next round back to the strong one.
+//! `spend` caps what the rounds spend together at a share of what the
+//! task's budget has left when they start. Every round records its delta:
+//! own tests fixed and broken, check failures before and after, cost, and
+//! executor. [`progress`] holds the rules.
+
+pub mod progress;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -33,6 +47,7 @@ use crate::delegate::{self, Briefing, Delegation, Executor, Mode, Reason, Report
 use crate::handoff::Tier;
 use crate::record::{Finish, Implementation, Outcome, Start};
 use crate::requirements::{Binding, RequirementMap};
+use progress::{CheapRounds, Class, Delta, Ladder, Next, OwnTests, SpendCap, TestRun};
 
 /// The component's ID.
 pub const COMPONENT: &str = "control.persist";
@@ -95,6 +110,20 @@ pub struct PersistPolicy {
     /// the same executor.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub alternate: Vec<Tier>,
+    /// v8: the executor keeps its own tests behind one runner, and the
+    /// host runs it after each round.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own_tests: Option<OwnTests>,
+    /// v8: stop when a round's own tests and checks show no change in
+    /// outcome. Under `cheap`, the ladder decides instead.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stop_when_no_progress: bool,
+    /// v8: later rounds on a cheaper executor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cheap: Option<CheapRounds>,
+    /// v8: what the rounds may spend together.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spend: Option<SpendCap>,
 }
 
 impl Default for PersistPolicy {
@@ -109,6 +138,10 @@ impl Default for PersistPolicy {
             guard: true,
             max_copy_mb: max_copy_mb(),
             alternate: Vec::new(),
+            own_tests: None,
+            stop_when_no_progress: false,
+            cheap: None,
+            spend: None,
         }
     }
 }
@@ -127,7 +160,27 @@ impl PersistPolicy {
         for (i, tier) in self.alternate.iter().enumerate() {
             problems.extend(tier.validate(&format!("control.persist.alternate[{i}]")));
         }
+        if let Some(own) = &self.own_tests {
+            problems.extend(own.validate());
+        }
+        if let Some(cheap) = &self.cheap {
+            problems.extend(cheap.validate());
+        }
+        if let Some(spend) = &self.spend {
+            problems.extend(spend.validate());
+        }
         problems
+    }
+
+    /// Every executor the rounds may run besides the candidate's.
+    #[must_use]
+    pub fn tiers(&self) -> Vec<Tier> {
+        let mut out = self.alternate.clone();
+        if let Some(cheap) = &self.cheap {
+            out.extend(cheap.tiers.iter().cloned());
+            out.extend(cheap.strong.iter().cloned());
+        }
+        out
     }
 
     /// The executor round `n` (from 1) runs, given the one that produced
@@ -308,6 +361,22 @@ pub struct BriefInputs<'a> {
     pub previous: &'a str,
     pub round: u32,
     pub max_rounds: u32,
+    /// v8: the runner the executor keeps its tests behind.
+    pub own_tests: Option<&'a OwnTests>,
+    /// v8: the host's last run of that runner.
+    pub tests: Option<&'a TestRun>,
+}
+
+/// The runner's contract, under `own_tests`.
+#[must_use]
+pub fn runner_directions(runner: &str) -> String {
+    format!(
+        "Keep your tests behind one runner at `{runner}`: `bash {runner}`, started in the \
+working directory, runs every test and prints one line per test, `PASS <name>` or \
+`FAIL <name>`, with a stable name for each. Keep the tests an earlier session left there, \
+and add yours. The host runs the runner after your session and counts a round that fixes \
+none of them, and changes no check, as a round without progress."
+    )
 }
 
 /// The directions every persist round reads.
@@ -447,7 +516,21 @@ pub fn brief(inputs: &BriefInputs<'_>) -> Briefing {
             crate::judge::clip(inputs.previous.trim(), 3_000)
         ));
     }
+    if let Some(tests) = inputs.tests {
+        included.push("own tests".to_string());
+        text.push_str(&format!(
+            "\n## The earlier sessions' own tests\n\nThe host's last run of the runner: {} passed, {} failed.\n",
+            tests.passed(),
+            tests.failed()
+        ));
+        for name in tests.failing().iter().take(20) {
+            text.push_str(&format!("- failing: {}\n", crate::judge::clip(name, 200)));
+        }
+    }
     text.push_str(&format!("\n## What to do\n\n{DIRECTIONS}\n"));
+    if let Some(own) = inputs.own_tests {
+        text.push_str(&format!("\n{}\n", runner_directions(&own.runner)));
+    }
     included.push("directions".to_string());
     Briefing {
         cap: text.chars().count(),
@@ -522,6 +605,21 @@ fn gate(
     None
 }
 
+/// What the episode has spent so far, as far as it is known.
+fn spent(recorder: &crate::record::Recorder) -> f64 {
+    crate::episode::usage(&recorder.steps(), true)["cost"]["lower_bound_usd"]
+        .as_f64()
+        .unwrap_or(0.0)
+}
+
+/// The key a round's cost is remembered under, for the next estimate.
+fn cost_key(class: Class) -> &'static str {
+    match class {
+        Class::Cheap => "cheap",
+        Class::Strong | Class::Escalated => "strong",
+    }
+}
+
 /// Runs the rounds.
 ///
 /// # Errors
@@ -565,6 +663,27 @@ pub(super) async fn run<F: Factory>(
         .named("persist")
         .with_effects(),
     );
+    let cheap = policy.cheap.as_ref();
+    let strong = cheap
+        .and_then(|c| c.strong.clone())
+        .unwrap_or_else(|| current.tier.clone());
+    let mut ladder = Ladder::default();
+    let spent_before = spent(recorder);
+    let cap = policy.spend.as_ref().and_then(|s| {
+        s.cap(
+            setup.manifest.protected.ceilings.spend_soft_usd,
+            spent_before,
+        )
+    });
+    let mut spent_rounds = 0.0;
+    let mut last_cost: BTreeMap<&'static str, f64> = BTreeMap::new();
+    let (mut fixed, mut broken) = (0, 0);
+    // A runner an earlier session left is the first baseline.
+    let mut tests: Option<TestRun> = match &policy.own_tests {
+        Some(own) => progress::run_own(own, setup.workdir).await,
+        None => None,
+    };
+    let baseline = tests.as_ref().map(TestRun::record);
     let mut n = 1;
     let stopped = loop {
         if super::limited(recorder).is_some() {
@@ -573,9 +692,22 @@ pub(super) async fn run<F: Factory>(
         if let Some(why) = gate(context, policy, n, &current) {
             break why;
         }
-        let mut tier = policy.tier_for(n, &current.tier);
+        let class = ladder.class_for(n, cheap);
+        if let Some(why) =
+            progress::over_cap(cap, spent_rounds, last_cost.get(cost_key(class)).copied())
+        {
+            break why;
+        }
+        let mut tier = match (class, cheap) {
+            (Class::Cheap, Some(c)) => ladder.cheap_tier(c),
+            (Class::Escalated, _) => strong.clone(),
+            _ => policy.tier_for(n, &current.tier),
+        };
+        // A long task runs at the long effort, except on a cheap tier that
+        // names its own.
         if context.long
             && let Some(effort) = &context.horizon.long_effort
+            && (class != Class::Cheap || tier.effort.is_none())
         {
             tier.effort = Some(effort.clone());
         }
@@ -595,6 +727,8 @@ pub(super) async fn run<F: Factory>(
             previous: &current.previous,
             round: n,
             max_rounds: policy.max_rounds,
+            own_tests: policy.own_tests.as_ref(),
+            tests: tests.as_ref(),
         });
         let path = setup.dir.join(brief_path(n));
         crate::record::write_atomic(&path, briefing.text.as_bytes())?;
@@ -615,7 +749,11 @@ pub(super) async fn run<F: Factory>(
         let round = recorder.enter(
             Start::new(
                 COMPONENT,
-                Implementation::new(COMPONENT, "round", &json!({ "round": n, "tier": tier })),
+                Implementation::new(
+                    COMPONENT,
+                    "round",
+                    &json!({ "round": n, "tier": tier, "class": class }),
+                ),
             )
             .named(&format!("round {n} · {}", tier.label()))
             .reading_digest(briefing.sha256())
@@ -667,6 +805,11 @@ pub(super) async fn run<F: Factory>(
         *runs = exec.runs();
         let last = exec.last();
         drop(exec);
+        ladder.ran(class);
+        if let Some(usd) = cost.usd {
+            spent_rounds += usd;
+            last_cost.insert(cost_key(class), usd);
+        }
         branches.push(row(&format!("persist-{n}"), &tier, &report, &last, sec));
         if let Some(limit) = report.limit(&tier.agent) {
             if let Some(g) = &guard {
@@ -675,9 +818,12 @@ pub(super) async fn run<F: Factory>(
             let entry = json!({
                 "round": n,
                 "tier": tier,
+                "class": class,
+                "executor": tier.label(),
                 "requested_sec": sec,
                 "status": report.status.word(),
                 "milliseconds": report.milliseconds,
+                "cost_usd": cost.usd,
                 "session_id": report.summary.session_id,
                 "usage_limit": limit.record(),
             });
@@ -700,9 +846,15 @@ pub(super) async fn run<F: Factory>(
             )
             .collect();
         let changed = !files_changed.is_empty();
+        let now = match &policy.own_tests {
+            Some(own) => progress::run_own(own, setup.workdir).await,
+            None => None,
+        };
         let mut entry = json!({
             "round": n,
             "tier": tier,
+            "class": class,
+            "executor": tier.label(),
             "requested_sec": sec,
             "status": report.status.word(),
             "milliseconds": report.milliseconds,
@@ -714,23 +866,49 @@ pub(super) async fn run<F: Factory>(
             "brief_chars": briefing.text.chars().count(),
             "changed": changed,
             "files_changed": files_changed,
+            "tests": now.as_ref().map(TestRun::record),
         });
         if !changed {
             if let Some(g) = &guard {
                 g.discard();
             }
+            let delta = Delta::of(tests.as_ref(), now.as_ref(), None, None, false);
+            fixed += delta.tests_fixed;
+            broken += delta.tests_broken;
             entry["kept"] = json!(true);
+            entry["delta"] = json!(delta);
+            if report.status == Status::Answered {
+                current.previous = report.output();
+                last_report = Some(report);
+            }
+            if now.is_some() {
+                tests = now;
+            }
+            let next = cheap.is_some().then(|| {
+                progress::after_round(
+                    n,
+                    class,
+                    delta.progress,
+                    policy.stop_when_no_progress,
+                    cheap,
+                    &mut ladder,
+                )
+            });
+            if next == Some(Next::Escalate) {
+                entry["next"] = json!("escalate");
+            }
             recorder.end(
                 &round,
                 Finish::new(Outcome::Completed).output(entry.clone()),
             );
             rounds.push(entry);
-            if report.status == Status::Answered {
-                current.previous = report.output();
-                last_report = Some(report);
-            }
-            if policy.stop_when_unchanged {
-                break format!("round {n} changed nothing");
+            match next {
+                Some(Next::Stop(why)) => break format!("round {n} changed nothing; {why}"),
+                Some(_) => {}
+                None if policy.stop_when_unchanged || policy.stop_when_no_progress => {
+                    break format!("round {n} changed nothing");
+                }
+                None => {}
             }
             n += 1;
             continue;
@@ -759,7 +937,16 @@ pub(super) async fn run<F: Factory>(
             .map(|(_, r)| Standing::of(r, current.support.as_ref()));
         let after = Standing::of(&rechecked.1, resupport.as_ref());
         let bad = |s: &Standing| s.failed + s.contradicted;
-        let worse = before.is_some_and(|b| bad(&after) > bad(&b));
+        let mut delta = Delta::of(
+            tests.as_ref(),
+            now.as_ref(),
+            before.as_ref(),
+            Some(&after),
+            true,
+        );
+        let checks_worse = before.is_some_and(|b| bad(&after) > bad(&b));
+        let tests_worse = policy.own_tests.is_some() && delta.tests_worse();
+        let worse = checks_worse || tests_worse;
         entry["checks_file"] = json!(file);
         entry["before"] = json!(before);
         entry["after"] = json!(after);
@@ -768,14 +955,22 @@ pub(super) async fn run<F: Factory>(
             (Some(g), true) if g.refused.is_none() => Some(g.restore(setup.workdir)),
             _ => None,
         };
+        let worse_why = if checks_worse {
+            format!(
+                "the round's checks came out worse ({} failures against {})",
+                bad(&after),
+                before.map_or(0, |b| bad(&b))
+            )
+        } else {
+            format!(
+                "the round broke {} of its own tests and fixed {}",
+                delta.tests_broken, delta.tests_fixed
+            )
+        };
         match &restored {
             Some(Ok(())) => {
                 entry["kept"] = json!(false);
-                entry["why"] = json!(format!(
-                    "the round's checks came out worse ({} failures against {}), so the host put the workspace back",
-                    bad(&after),
-                    before.map_or(0, |b| bad(&b))
-                ));
+                entry["why"] = json!(format!("{worse_why}, so the host put the workspace back"));
             }
             Some(Err(error)) => {
                 entry["kept"] = json!(true);
@@ -784,9 +979,7 @@ pub(super) async fn run<F: Factory>(
             None => {
                 entry["kept"] = json!(true);
                 if worse {
-                    entry["why"] = json!(
-                        "the round's checks came out worse, and no copy was kept to put back"
-                    );
+                    entry["why"] = json!(format!("{worse_why}, and no copy was kept to put back"));
                 }
             }
         }
@@ -797,6 +990,27 @@ pub(super) async fn run<F: Factory>(
             g.discard();
         }
         let kept = entry["kept"] == true;
+        if !kept {
+            // A round that was put back left nothing behind.
+            delta.progress = Some(false);
+        } else {
+            fixed += delta.tests_fixed;
+            broken += delta.tests_broken;
+        }
+        entry["delta"] = json!(delta);
+        let next = (cheap.is_some() || policy.stop_when_no_progress).then(|| {
+            progress::after_round(
+                n,
+                class,
+                delta.progress,
+                policy.stop_when_no_progress,
+                cheap,
+                &mut ladder,
+            )
+        });
+        if next == Some(Next::Escalate) {
+            entry["next"] = json!("escalate");
+        }
         recorder.end(
             &round,
             Finish::new(if kept && !rechecked.1.detected() {
@@ -807,10 +1021,12 @@ pub(super) async fn run<F: Factory>(
             .output(entry.clone()),
         );
         println!(
-            "  persist ▸ round {n} {} · {} files changed · {} failed after",
+            "  persist ▸ round {n} {} · {} files changed · {} failed after · own tests +{} −{}",
             if kept { "kept" } else { "put back" },
             entry["files_changed"].as_array().map_or(0, Vec::len),
-            after.failed
+            after.failed,
+            delta.tests_fixed,
+            delta.tests_broken
         );
         rounds.push(entry);
         if kept {
@@ -819,6 +1035,12 @@ pub(super) async fn run<F: Factory>(
             current.checked = Some(rechecked);
             current.support = resupport;
             last_report = Some(report);
+            if now.is_some() {
+                tests = now;
+            }
+        }
+        if let Some(Next::Stop(why)) = next {
+            break why;
         }
         n += 1;
     };
@@ -828,6 +1050,17 @@ pub(super) async fn run<F: Factory>(
         "rounds": rounds,
         "stopped": stopped,
         "final_tier": current.tier,
+        "baseline_tests": baseline,
+        "totals": {
+            "tests_fixed": fixed,
+            "tests_broken": broken,
+            "cost_usd": spent_rounds,
+            "escalations": ladder.escalations,
+        },
+        "spend": {
+            "spent_before_usd": spent_before,
+            "cap_usd": cap,
+        },
     });
     recorder.end(
         &parent,

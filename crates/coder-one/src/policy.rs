@@ -1363,6 +1363,10 @@ pub const REFERENCE: &[(&str, &str)] = &[
         "tunable-luna-snapshot.json",
         include_str!("../policies/tunable-luna-snapshot.json"),
     ),
+    (
+        "tunable-v8.json",
+        include_str!("../policies/tunable-v8.json"),
+    ),
 ];
 
 /// Where the reference manifests live in the checkout.

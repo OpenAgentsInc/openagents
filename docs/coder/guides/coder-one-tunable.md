@@ -173,6 +173,34 @@ children of one `control.persist` invocation, each round's session is an
 `exec.session` under it with its own cost, and each session is a delegate
 call in `evaluation/usage.json`, against the one episode deadline.
 
+#### Stop rounds that change nothing, and run them cheaper (v8)
+
+v5 took `cargo-flight-dispatch` from 8 failing tests to 2 over seven
+sessions and about $12.75 without a pass, and most of its rounds moved no
+test. v8 adds four options, each off unless the manifest sets it:
+
+| Field | Default | Effect |
+| --- | --- | --- |
+| `own_tests` | none | The brief asks the executor to keep its tests behind one runner (`runner`, `/tmp/persist-tests/run.sh` by default) that prints `PASS <name>` or `FAIL <name>` per test. The host runs it with `bash` from the working directory after every round, for at most `timeout_sec` (600). |
+| `stop_when_no_progress` | false | Stop after a round whose own tests and checks show no change in outcome. |
+| `cheap` | none | Rounds from `from_round` (2) run the next of `tiers` from the same brief and candidate. A cheap round without progress hands the next round to `strong` (the executor that produced the candidate by default), at most `max_escalations` (1) times; a strong round without progress ends the rounds. |
+| `spend` | none | The rounds together may spend `share` (0.5) of what the budget has left when they start: the manifest's soft spend ceiling, or `budget_usd`. A round doesn't start when the last round on the same kind of executor cost more than what is left. |
+
+A round makes progress when it fixes more of the runner's tests than it
+breaks, when fewer scenarios fail or requirements are contradicted, or when
+more requirements are confirmed. The round that writes the first tests only
+sets a baseline. A round that changes no file, or that the guard puts back,
+makes none. Under `own_tests`, the guard also puts back a round that breaks
+more of its own tests than it fixes while the checks are no better. A
+cheap tier keeps its own effort; the others run at `horizon.long_effort`.
+
+Each round records its `class` (`strong`, `cheap`, or `escalated`), its
+`executor`, the runner's result in `tests`, and a `delta`: own tests fixed,
+broken, and added, failures and confirmed requirements before and after,
+and `progress`. The rounds record `totals` (tests fixed and broken, cost,
+and escalations) and `spend` (what the episode spent before them and the
+cap). `crates/coder-one/src/compose/persist/progress.rs` holds the rules.
+
 ### Escalate or split
 
 With `control.handoff` set to `escalate`, the first executor runs under
@@ -237,6 +265,7 @@ in `evaluation/usage.json`.
 | `crates/coder-one/policies/tunable-luna.json` | `coder-one-tunable-luna` | Luna, checks, escalation to lean Opus, and one repair. |
 | `crates/coder-one/policies/tunable-v4.json` | `coder-one-tunable-v4` | v3 (the coverage packer, the checked repair, and xhigh effort on long tasks), plus `self_report`, `optional_outputs`, an eight-requirement behavior-first support budget on long tasks, the `profile-v2` route with a family table that can start GPT-6 Astra through Codex, and `verify.second` with Astra or lean Opus. |
 | `crates/coder-one/policies/tunable-v5.json` | `coder-one-tunable-v5` | v4, plus `control.persist`: up to three fresh rounds on a long task while at least 30 minutes are left, each asking for half of the time left, guarded, without alternates. |
+| `crates/coder-one/policies/tunable-v8.json` | `coder-one-tunable-v8` | v7, with up to four persist rounds: the host runs the executor's own tests after each, stops on a round without progress, runs rounds from the second on Codex GPT-6 Sol at high effort with one escalation back to Opus, and caps the rounds at half of what a $10 task budget has left. |
 
 The v4 family table is fitted in sample: its rows are the leaderboard's
 Opus 5 and GPT-6 Astra rows at xhigh, summed over the Terminal-Bench 4.0
@@ -282,12 +311,12 @@ the whole trial 63 seconds.
 ## See it in the Gym
 
 The episode writes `artifacts/composition.json`
-(`openagents.coder-one.composition.v1`): the route and its profile, the
+(`openagents.coder-one.composition.v2`; v1 before the persist deltas): the route and its profile, the
 horizon, each dispatch with its tier, status, time, requested deadline,
 and cost, each handoff and its trigger, the checks after each dispatch,
 support, the repair, `verify.second`, and `control.persist`'s rounds with
 each one's executor, time, cost, changed files, checks before and after,
-and why the rounds stopped. Each checks entry carries what
+own tests fixed and broken, and why the rounds stopped. Each checks entry carries what
 `generic.self-report` found. The bundle's manifest names it, and its
 `verification` block carries the checks, support, and repair; the second
 candidate's checks and support are in `verification/checks-second.json`
@@ -363,7 +392,15 @@ wrong counts. Other tests cover alternating executors up to the round cap,
 a round the guard puts back, a short task, the deadline floor, and the
 confirmation gate:
 
+The v8 tests run the ladder on the sum task with a real runner: a Sol
+round that fixes no test escalates to Opus, which fixes the answer; a round
+that moves no test or check ends the rounds; and a round that breaks its own
+tests is put back. `progress.rs` unit-tests the delta, the ladder, and the
+spending cap without an executor:
+
 ```sh
 cargo test -p coder-one compose::tests::persist
+cargo test -p coder-one compose::tests::a_
+cargo test -p coder-one compose::persist::progress
 cargo test -p gym coder_composition
 ```

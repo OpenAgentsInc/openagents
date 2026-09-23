@@ -2,13 +2,15 @@
 //!
 //! A composed episode (`control.route`, `control.handoff`,
 //! `control.horizon`, and `verify` in its policy manifest) writes
-//! `artifacts/composition.json` (`openagents.coder-one.composition.v1`):
+//! `artifacts/composition.json` (`openagents.coder-one.composition.v2`, or
+//! v1 before persistence rounds recorded their deltas):
 //! where the route started and why, the deadline each dispatch asked for,
 //! every dispatch with its tier, status, time, and cost, each handoff and
 //! its trigger, the checks after each dispatch with what
 //! `generic.self-report` found, `verify.support`'s states, the repair, and
-//! `verify.second`'s second executor. This module reads it from each
-//! attempt and renders it.
+//! `verify.second`'s second executor, and each `control.persist` round with
+//! its executor, own tests fixed and broken, and cost. This module reads it
+//! from each attempt and renders it.
 
 use std::path::PathBuf;
 
@@ -27,7 +29,15 @@ fn short(text: &str, width: usize) -> String {
 }
 
 /// The schema a composition record carries.
-pub const SCHEMA: &str = "openagents.coder-one.composition.v1";
+pub const SCHEMA: &str = "openagents.coder-one.composition.v2";
+
+/// The schemas this module reads: v1 has no persistence deltas.
+pub const SCHEMAS: [&str; 2] = ["openagents.coder-one.composition.v1", SCHEMA];
+
+/// Whether a record carries a schema this module reads.
+fn readable(record: &Value) -> bool {
+    SCHEMAS.iter().any(|schema| record["schema"] == *schema)
+}
 
 /// The schema of this module's JSON.
 pub const VIEW_SCHEMA: &str = "openagents.gym.coder-composition.v1";
@@ -92,7 +102,7 @@ pub struct Row {
 impl Row {
     fn of(attempt: &Attempt) -> Option<Self> {
         let record = attempt.composition.clone()?;
-        (record["schema"] == SCHEMA).then(|| Row {
+        readable(&record).then(|| Row {
             job: attempt.job.clone(),
             trial: attempt.trial.clone(),
             task: attempt.task.clone(),
@@ -170,6 +180,7 @@ impl Row {
             "second_kept": self.record["second"]["kept"],
             "persist_rounds": self.record["persist"]["rounds"].as_array().map(Vec::len),
             "persist_stopped": self.record["persist"]["stopped"],
+            "persist_totals": self.record["persist"]["totals"],
             "last_checks": self.last_checks(),
             "composition": self.record,
         })
@@ -394,11 +405,27 @@ fn persist_lines(persist: &Value) -> Vec<String> {
         return vec![format!("  persist: skipped: {why}")];
     }
     let rounds = persist["rounds"].as_array().cloned().unwrap_or_default();
+    let totals = &persist["totals"];
     let mut lines = vec![format!(
-        "  persist: {} round{} · stopped: {}",
+        "  persist: {} round{} · stopped: {}{}",
         rounds.len(),
         if rounds.len() == 1 { "" } else { "s" },
-        persist["stopped"].as_str().unwrap_or("-")
+        persist["stopped"].as_str().unwrap_or("-"),
+        if totals.is_object() {
+            format!(
+                " · own tests +{} −{} · {} · {} escalation{}{}",
+                totals["tests_fixed"].as_u64().unwrap_or(0),
+                totals["tests_broken"].as_u64().unwrap_or(0),
+                money(&totals["cost_usd"]),
+                totals["escalations"].as_u64().unwrap_or(0),
+                if totals["escalations"] == 1 { "" } else { "s" },
+                persist["spend"]["cap_usd"]
+                    .as_f64()
+                    .map_or_else(String::new, |cap| format!(" · cap ${cap:.2}"))
+            )
+        } else {
+            String::new()
+        }
     )];
     for round in &rounds {
         let files = round["files_changed"].as_array().map_or(0, Vec::len);
@@ -411,10 +438,25 @@ fn persist_lines(persist: &Value) -> Vec<String> {
         } else {
             String::new()
         };
+        let delta = &round["delta"];
+        let tests = if delta.is_object() && round["tests"].is_object() {
+            format!(
+                " · own tests +{} −{} ({} failing)",
+                delta["tests_fixed"].as_u64().unwrap_or(0),
+                delta["tests_broken"].as_u64().unwrap_or(0),
+                round["tests"]["failed"].as_u64().unwrap_or(0)
+            )
+        } else {
+            String::new()
+        };
+        let class = match round["class"].as_str() {
+            Some(class) if class != "strong" => format!(" [{class}]"),
+            _ => String::new(),
+        };
         lines.push(format!(
-            "    round {} {:<42} {:<10} {:>6} · {} · {}{}{}",
+            "    round {} {:<42} {:<10} {:>6} · {} · {}{}{}{}{}",
             round["round"],
-            tier(&round["tier"]),
+            format!("{}{class}", tier(&round["tier"])),
             words(&round["status"]),
             seconds(&round["milliseconds"]),
             money(&round["cost_usd"]),
@@ -424,8 +466,14 @@ fn persist_lines(persist: &Value) -> Vec<String> {
                 "no change".to_owned()
             },
             checks,
+            tests,
             if round["kept"] == false {
                 " · put back"
+            } else {
+                ""
+            },
+            if round["next"] == "escalate" {
+                " · escalates"
             } else {
                 ""
             }
@@ -666,6 +714,40 @@ mod tests {
         value["persist"] = json!({ "skipped": "not a long task", "rounds": [] });
         let text = detail_lines(&value).join("\n");
         assert!(text.contains("persist: skipped: not a long task"), "{text}");
+    }
+
+    #[test]
+    fn a_v8_attempt_shows_each_rounds_delta_and_the_ladder() {
+        let mut value = record();
+        value["schema"] = json!("openagents.coder-one.composition.v2");
+        value["persist"] = json!({
+            "stopped": "round 3 on the strong executor made no progress",
+            "totals": { "tests_fixed": 3, "tests_broken": 1, "cost_usd": 1.25, "escalations": 1 },
+            "spend": { "spent_before_usd": 4.0, "cap_usd": 3.0 },
+            "rounds": [
+                { "round": 1, "class": "strong", "tier": { "agent": "claude-code", "model": "claude-opus-5-5", "effort": "xhigh" }, "status": "answered", "milliseconds": 412000, "cost_usd": 0.91, "changed": true, "files_changed": [{ "path": "src/main.rs", "change": "modified" }], "before": { "failed": 1 }, "after": { "failed": 1 }, "kept": true, "tests": { "passed": 19, "failed": 8 }, "delta": { "tests_fixed": 0, "tests_broken": 0, "tests_added": 27, "progress": null } },
+                { "round": 2, "class": "cheap", "tier": { "agent": "codex", "model": "gpt-6-sol", "effort": "high" }, "status": "answered", "milliseconds": 200000, "cost_usd": 0.2, "changed": true, "files_changed": [{ "path": "src/main.rs", "change": "modified" }], "before": { "failed": 1 }, "after": { "failed": 1 }, "kept": true, "tests": { "passed": 19, "failed": 8 }, "delta": { "tests_fixed": 0, "tests_broken": 0, "progress": false }, "next": "escalate" },
+                { "round": 3, "class": "escalated", "tier": { "agent": "claude-code", "model": "claude-opus-5-5", "effort": "xhigh" }, "status": "answered", "milliseconds": 300000, "cost_usd": 0.14, "changed": true, "files_changed": [], "before": { "failed": 1 }, "after": { "failed": 1 }, "kept": true, "tests": { "passed": 21, "failed": 6 }, "delta": { "tests_fixed": 3, "tests_broken": 1, "progress": true } },
+            ],
+        });
+        assert!(readable(&value), "a v2 record is read");
+        assert!(readable(
+            &json!({ "schema": "openagents.coder-one.composition.v1" })
+        ));
+        assert!(!readable(
+            &json!({ "schema": "openagents.coder-one.composition.v3" })
+        ));
+        let text = detail_lines(&value).join("\n");
+        assert!(
+            text.contains("own tests +3 −1 · $1.2500 · 1 escalation · cap $3.00"),
+            "{text}"
+        );
+        assert!(text.contains("codex/gpt-6-sol (high) [cheap]"), "{text}");
+        assert!(
+            text.contains("own tests +0 −0 (8 failing) · escalates"),
+            "{text}"
+        );
+        assert!(text.contains("[escalated]"), "{text}");
     }
 
     #[test]

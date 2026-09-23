@@ -50,8 +50,10 @@ use crate::scripted::Scripted;
 use crate::session::Intent;
 use crate::state::State;
 
-/// The schema of `artifacts/composition.json`.
-pub const SCHEMA: &str = "openagents.coder-one.composition.v1";
+/// The schema of `artifacts/composition.json`. v2: each
+/// `control.persist` round records its class, executor, own-tests run, and
+/// delta, and the rounds record their totals and spending cap.
+pub const SCHEMA: &str = "openagents.coder-one.composition.v2";
 
 /// Where the episode keeps the composition's record.
 pub const FILE: &str = "artifacts/composition.json";
@@ -736,7 +738,7 @@ pub fn tiers(manifest: &crate::policy::Manifest) -> Vec<Tier> {
         out.extend(second.to.iter().cloned());
     }
     if let Some(persist) = &control.persist {
-        out.extend(persist.alternate.iter().cloned());
+        out.extend(persist.tiers());
     }
     out
 }
