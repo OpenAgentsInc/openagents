@@ -335,7 +335,7 @@ results and are listed under [Data problems](#data-problems).
 | `coq-block-bound` | 100% | 100% | 100% | · | · | · | 1/1 · $1.03 | 1/1 · $1.40 |
 | `ctr-optimization` | 80% | 60% | 20% | · | · | · | · | · |
 | `cumulative-layout-shift` | 100% | 100% | 100% | · | · | · | · | · |
-| `data-anonymization` | never solved | 0% | 0% | · | · | · | · | · |
+| `data-anonymization` | never solved | 0% | 0% | · | · | · | 0/1 · $1.42 | · |
 | `distributed-dedup` | 100% | 60% | 80% | · | · | · | · | · |
 | `embedding-drift-monitor` | 100% | 100% | 100% | · | · | · | 1/1 · $0.47 | 1/1 · $0.90 |
 | `fin-saccr-rwa` | 100% | 100% | 80% | · | · | · | 1/1 · $0.56 | · |
@@ -347,12 +347,12 @@ results and are listed under [Data problems](#data-problems).
 | `freecad-spring-clip` | 100% | 40% | 100% | · | · | · | · | · |
 | `freight-dispatch-shift` | never solved | 0% | 0% | · | · | · | · | 0/1 · $3.92 |
 | `glycan-ms2-elucidation` | never solved | 0% | 0% | · | · | · | 0/1 · $0.23 | 0/1 · $0.64 |
-| `gsea-proteomics` | 80% | 0% | 80% | · | · | · | · | · |
+| `gsea-proteomics` | 80% | 0% | 80% | · | · | 1/1 · $0.91 | · | · |
 | `heat-pump-warranty` | 100% | 100% | 40% | · | · | · | · | 0/1 · $2.97 |
 | `hof-topology-interpenetration` | 100% | 100% | 100% | · | · | · | 1/1 · $1.19 | · |
-| `html-js-filter` | 100% | 40% | 80% | · | · | 0/1 · $1.97 | · | · |
+| `html-js-filter` | 100% | 40% | 80% | · | · | 0/1 · $1.97 | 0/1 · $0.67 | · |
 | `interleaved-vigenere` | 100% | 100% | 100% | · | · | · | · | · |
-| `intrastat-meldung` | 100% | 20% | 20% | · | · | · | · | · |
+| `intrastat-meldung` | 100% | 20% | 20% | · | · | · | 1/1 · $1.38 | · |
 | `jax-speedrun-gpu` | 100% | 60% | 20% | · | · | · | · | · |
 | `ks-solver-cpp` | 100% | 80% | 60% | · | · | · | · | · |
 | `kv-live-surgery` | 100% | 100% | 80% | · | · | · | 1/1 · $3.07 | · |
@@ -365,9 +365,9 @@ results and are listed under [Data problems](#data-problems).
 | `medical-claims-processing` | 20% | 0% | 0% | · | · | · | · | · |
 | `mp-checkpoint-consolidation` | 100% | 100% | 100% | · | · | · | · | · |
 | `music-harmony` | 60% | 0% | 0% | · | · | · | 0/1 · $0.54 | 0/1 · $1.06 |
-| `mvcc-lsm-compaction` | 100% | 80% | 60% | · | · | · | 0/1 · $0.15 | · |
-| `nextjs-performance` | 100% | 100% | 0% | · | · | · | 1/1 · $0.72 | · |
-| `ontology-kg-querying` | never solved | 0% | 0% | · | · | · | 0/1 · $2.21 | · |
+| `mvcc-lsm-compaction` | 100% | 80% | 60% | · | 1/1 · $2.42 | · | 0/1 · $0.15 | 0/1 · $0.29 |
+| `nextjs-performance` | 100% | 100% | 0% | · | · | · | 1/1 · $0.72 | 1/1 · $2.73 |
+| `ontology-kg-querying` | never solved | 0% | 0% | · | · | · | 0/1 · $2.21 | 0/1 · $4.94 |
 | `payments-pipeline-fix` | 100% | 100% | 100% | · | · | · | 1/1 · $1.76 | · |
 | `photonic-waveguide-routing` | 100% | 100% | 0% | · | · | · | 1/1 · $3.20 | · |
 | `pretrain-shard-corruption` | 100% | 100% | 80% | · | · | · | · | · |
@@ -380,15 +380,15 @@ results and are listed under [Data problems](#data-problems).
 | `rs-archive-clone` | 100% | 100% | 80% | · | · | · | · | · |
 | `satb-audio-transcription` | 100% | 100% | 100% | · | · | · | · | · |
 | `session-window-debug` | 100% | 60% | 0% | · | · | · | 1/1 · $0.34 | · |
-| `sglang-qwen-burst` | 80% | 0% | 0% | · | · | · | · | · |
+| `sglang-qwen-burst` | 80% | 0% | 0% | · | · | · | 0/1 · $1.62 | · |
 | `shadow-relay` | 100% | 100% | 100% | · | · | · | · | · |
 | `sound-change-cascade` | 100% | 100% | 100% | · | · | · | 1/1 · $1.01 | · |
 | `takens-embedding-lean` | 100% | 100% | 0% | · | · | · | · | · |
 | `telecom-entity-resolution` | 100% | 80% | 100% | · | · | · | · | · |
 | `uefi-bootkit` | 100% | 100% | 80% | · | · | · | · | · |
-| `vba-userform-port` | 60% | 20% | 60% | · | · | · | · | · |
+| `vba-userform-port` | 60% | 20% | 60% | · | · | 1/1 · $8.16 | · | · |
 | `vf2-speedup-networkx` | 100% | 80% | 80% | · | · | · | · | · |
-| `vllm-deepseek-streaming` | 60% | 0% | 0% | · | · | · | · | · |
+| `vllm-deepseek-streaming` | 60% | 0% | 0% | · | · | · | 0/1 · $3.93 | · |
 | `vpp-loss-divergence` | 100% | 100% | 100% | · | · | · | · | · |
 | `wal-recovery-ordering` | 100% | 100% | 0% | · | · | · | 0/1 · $0.38 | · |
 | `wdm-design` | 100% | 100% | 100% | · | · | · | · | · |
@@ -398,10 +398,22 @@ results and are listed under [Data problems](#data-problems).
 | Arm | Graded trials | Passed | Pass rate | Cost of graded trials |
 | --- | ---: | ---: | ---: | ---: |
 | coder-one-tunable-v5 | 0 | 0 | — | $0.00 |
-| coder-one-tunable-v4 | 0 | 0 | — | $0.00 |
-| coder-one-tunable-v3 | 2 | 1 | 50% | $3.02 |
-| coder-one-tunable-v2 | 26 | 14 | 54% | $27.21 |
-| claude-code-opus | 9 | 3 | 33% | $14.56 |
+| coder-one-tunable-v4 | 1 | 1 | 100% | $2.42 |
+| coder-one-tunable-v3 | 4 | 3 | 75% | $12.09 |
+| coder-one-tunable-v2 | 31 | 15 | 48% | $36.22 |
+| claude-code-opus | 12 | 4 | 33% | $22
+
+**Where Coder One already beats the top row, per task.** Coder One v2
+passed `batched-eval-parity`, `intrastat-meldung`, `react-lead-form`, and
+`roy-polymorph-cn`, where GPT-6 Astra at max (the leaderboard's best row)
+passed 0% to 20% of its trials, and `nextjs-performance`,
+`photonic-waveguide-routing`, and `session-window-debug`, where Opus 5 at
+max passed none.
+v3 (xhigh) passed `cad-model`, `gsea-proteomics`, and `vba-userform-port`,
+and v4 passed `mvcc-lsm-compaction`, all of which v2 or the baseline
+failed. One attempt per task is not a pass rate; these are the tasks to
+repeat.
+.52 |
 
 [TB4 failure analysis, 2026-09-23](2026-09-23-tb4-failure-analysis.md)
 diagnoses the tunable Coder One arm's first graded failures and ranks the
