@@ -740,7 +740,12 @@ impl EscalationSummary {
     /// The escalations' reported cost, and how many reported none.
     #[must_use]
     pub fn cost(&self) -> (f64, usize) {
-        let known: f64 = self.escalations.iter().filter_map(|e| e.cost_usd).sum();
+        // A float sum of nothing is -0.0; start from 0.0 so it prints as $0.
+        let known: f64 = self
+            .escalations
+            .iter()
+            .filter_map(|e| e.cost_usd)
+            .fold(0.0, |sum, usd| sum + usd);
         let unknown = self
             .escalations
             .iter()
@@ -1307,5 +1312,9 @@ mod tests {
         let text = EscalationSummary::of(&[]).lines().join("\n");
         assert!(text.contains("No attempt ran a second executor."), "{text}");
         assert!(text.contains("0 of 0 graded escalations (—)"), "{text}");
+        assert!(
+            text.contains("escalation cost: $0.0000 over 0 priced"),
+            "{text}"
+        );
     }
 }

@@ -1721,7 +1721,9 @@ fn the_escalate_manifest_is_v9_with_v7s_checks_and_an_astra_second() {
             v7.support_budget
         )
     );
-    assert_eq!(verify.repair, v9.policy.verify.as_ref().unwrap().repair);
+    // Escalation, not a repair, answers a failed check.
+    assert!(v9.policy.verify.as_ref().unwrap().repair.is_some());
+    assert_eq!(verify.repair, None);
     let second = verify.second.as_ref().unwrap();
     let labels: Vec<String> = second.to.iter().map(Tier::label).collect();
     assert_eq!(labels, ["codex/gpt-6-astra"]);
@@ -1759,8 +1761,6 @@ async fn a_failed_check_escalates_to_astra_and_the_better_candidate_stays() {
         &escalate_unrouted(),
         vec![
             script_saying("opus", 7, &["first.txt"], "Done."),
-            // The repair changes nothing, so the check still fails.
-            script_saying("opus-repair", 7, &["first.txt"], "Done."),
             script_saying("astra", 6, &["second.txt"], "Done."),
         ],
         None,
@@ -1770,14 +1770,7 @@ async fn a_failed_check_escalates_to_astra_and_the_better_candidate_stays() {
     let record = &ran.record;
     assert_eq!(record["schema"], SCHEMA);
     let labels: Vec<String> = ran.made.iter().map(|(tier, _)| tier.label()).collect();
-    assert_eq!(
-        labels,
-        [
-            "claude-code/claude-opus-5-5",
-            "claude-code/claude-opus-5-5",
-            "codex/gpt-6-astra"
-        ]
-    );
+    assert_eq!(labels, ["claude-code/claude-opus-5-5", "codex/gpt-6-astra"]);
     let second = &record["second"];
     assert_eq!(second["fired"], json!(["check"]), "{record:#}");
     assert_eq!(second["outcome"], "kept_second");
@@ -1804,7 +1797,6 @@ async fn a_self_reported_failure_escalates_even_when_every_check_passes() {
         &escalate_unrouted(),
         vec![
             script_saying("opus", 6, &[], admits),
-            script_saying("opus-repair", 6, &[], admits),
             script_saying(
                 "astra",
                 6,
@@ -1835,7 +1827,6 @@ async fn an_escalation_that_checks_no_better_keeps_the_first_candidate() {
         &escalate_unrouted(),
         vec![
             script_saying("opus", 7, &["first.txt"], "Done."),
-            script_saying("opus-repair", 7, &["first.txt"], "Done."),
             script_saying("astra", 5, &["second.txt"], "Done."),
         ],
         None,
