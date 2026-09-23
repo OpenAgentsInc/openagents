@@ -1,0 +1,36 @@
+{
+  "trial_name": "log-summary-date-ranges__ipFSf3S",
+  "task_name": "terminal-bench/log-summary-date-ranges",
+  "started_at": "2026-09-23T05:06:35.250733Z",
+  "finished_at": "2026-09-23T05:07:27.513419Z",
+  "environment_setup": {
+    "started_at": "2026-09-23T05:06:35.301459Z",
+    "finished_at": "2026-09-23T05:06:36.221209Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-09-23T05:06:36.221261Z",
+    "finished_at": "2026-09-23T05:06:38.882084Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-09-23T05:06:38.882208Z",
+    "finished_at": "2026-09-23T05:07:05.198244Z"
+  },
+  "verifier": {
+    "started_at": "2026-09-23T05:07:05.511567Z",
+    "finished_at": "2026-09-23T05:07:16.745868Z"
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 91314,
+    "n_cache_tokens": 44288,
+    "n_output_tokens": 778,
+    "cost_usd": 0.003272306,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "exception_info": null
+}

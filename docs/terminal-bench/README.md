@@ -430,6 +430,28 @@ timing. A failed run's cost is still listed where it ranks, with its reward.
 | 2 | Claude Code 2.1.278 | Fable 5.1 | 1.0 | $0.5988 | 92.8 s† |
 | — | Devin 3000.11.1 | swe-2-high | No result | — | — |
 
+### Coverage packer on `log-summary-date-ranges`, 2026-09-23
+
+The first live screen of the tunable components ([#9547](https://github.com/OpenAgentsInc/openagents/issues/9547)).
+`coder-one-pack-luna` is Jev-probe v3 → Luna with one change: the briefing
+packer ranks probes and files together, removes duplicate listings, and
+keeps representative data records. Artifact `coder-one 0.1.0 (f5d525b600de)`,
+policy `crates/coder-one/policies/pack-luna.json`.
+
+| Arm | Passed | Mean cost | Mean agent time |
+| --- | --- | ---: | ---: |
+| Jev-probe v3 → Luna (old packer) | 0/3 | $0.0019 | 25.4 s |
+| **Coverage packer → Luna** | **3/3** | $0.0031 | 24.0 s |
+| Codex / GPT-6 Luna direct | 3/3 | $0.0016 | 26.3 s |
+
+v3's briefings spent 76% of their space on overlapping directory listings
+and dropped every log excerpt Jev selected, so Luna never saw a record's
+severity field. The new briefing delivers the records, and Luna counts the
+field instead of the word. The fix holds the executor, directions, and Jev
+questions fixed, so the gain belongs to the packer. Traces:
+[`extended--coder-one-pack-luna--log-summary-date-ranges`](../../bench/terminal-bench/traces/extended--coder-one-pack-luna--log-summary-date-ranges/)
+and `-2`, `-3`.
+
 ### The `extended` tasks, cheapest first
 
 Arm means over three trials each, from the Jev-probe runs above.

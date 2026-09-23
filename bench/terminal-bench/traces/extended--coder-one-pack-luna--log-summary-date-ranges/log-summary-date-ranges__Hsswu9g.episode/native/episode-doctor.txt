@@ -1,0 +1,10 @@
+exit 0
+version: coder-one 0.1.0 (f5d525b600de)
+contract: openagents.coder.episode.v1
+policy: coder-one-pack-luna 0541173d461604d90331103bd3ce239438787aa4badeaefc6034840407f48780 (inline, 0 overrides)
+generation door: https://openagents.com/v1/models answered 200 OK
+jev door: https://api.typesafe.ai answered with 2 models
+delegate: always to codex (gpt-6-luna), explore 0 steps, deadline 600s
+codex: codex-cli 0.155.1 at /usr/local/bin/codex
+codex credential: codex_auth_json
+ok

@@ -1,0 +1,352 @@
+{
+  "contract": "openagents.coder.episode.v1",
+  "policy": {
+    "schema": "openagents.coder-one.policy.v1",
+    "name": "coder-one-pack-luna",
+    "digest": "0541173d461604d90331103bd3ce239438787aa4badeaefc6034840407f48780",
+    "source": "inline",
+    "overrides": [],
+    "notes": [],
+    "manifest": {
+      "schema": "openagents.coder-one.policy.v1",
+      "name": "coder-one-pack-luna",
+      "note": "Jev probe v3 on Codex with GPT-6 Luna, with the briefing packed by requirement coverage and Jev's coverage judgments (#9547) in place of the first packer. Every other field matches jevprobe3-luna.json, so a screen against v3 isolates the packer.",
+      "policy": {
+        "jev": {
+          "mode": "deep",
+          "model": "jev-1.13.0",
+          "question_sets": "builtin-v1"
+        },
+        "evidence": {
+          "probes": "v2",
+          "survey_files": 40
+        },
+        "control": {
+          "delegate": "always",
+          "explore_steps": 0,
+          "max_steps": 50,
+          "command_timeout_sec": 300,
+          "lane": "free",
+          "error_streak": 3,
+          "unchanged_steps": 6
+        },
+        "brief": {
+          "cap": 12000,
+          "directions": "batch-checked",
+          "packer": "coverage-jev"
+        },
+        "executor": {
+          "agent": "codex",
+          "version": "0.155.1",
+          "model": "gpt-6-luna",
+          "effort": null,
+          "tools": null,
+          "prompt_cache_ttl": null,
+          "deadline_sec": 600
+        }
+      },
+      "protected": {
+        "isolation": "task-container",
+        "effect_policy": "executor-bypasses-its-own-sandbox",
+        "acceptance": "task-verifier",
+        "ceilings": {
+          "episode_deadline_sec": null,
+          "reserve_sec": 30,
+          "spend_soft_usd": null,
+          "spend_hard_usd": null
+        }
+      }
+    },
+    "text_digests": {
+      "directions": "fea432bfc839af266ebfde909c2c0d9240b05206b815c2254c4849fee9757a1e",
+      "episode_instructions": "968529ff8c30adc54aeed0ed420a6108c23cf9157cc9bc034a9bae2af1ce9a2f",
+      "explore_prompt": "e00d4aa84650903e0b9174be59e0f5118f89c56fa7c878b2717632c4ff3c9e24",
+      "system": null
+    }
+  },
+  "delegate": {
+    "mode": "always",
+    "agent": "codex",
+    "model": "gpt-6-luna",
+    "version": "0.155.1",
+    "effort": null,
+    "tools": null,
+    "prompt_cache_ttl": null,
+    "system": null,
+    "executor_path": "/usr/local/bin/codex",
+    "credential": "codex_auth_json",
+    "deadline_sec": 600,
+    "briefing_cap": 12000,
+    "directions": "batch-checked",
+    "policy": {
+      "explore_steps": 0,
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "provenance": "unmeasured development values"
+    },
+    "isolation": "none: the task container is the boundary",
+    "delegation": {
+      "escalation": {
+        "code": "always",
+        "reason": "the delegate mode is always"
+      },
+      "briefing": {
+        "sha256": "3207bfba2f6d0bd71d81b85309fb2de369599b9da64031b6ff5974c579fd610b",
+        "chars": 10497,
+        "bytes": 10507,
+        "cap": 12000,
+        "included": [
+          "instruction",
+          "file logs/2025-08-10_db.log",
+          "file logs/2025-07-07_api.log",
+          "file logs/2025-07-22_api.log",
+          "file $ list /app (depth 3)",
+          "file $ list /app/logs"
+        ],
+        "omitted": []
+      },
+      "packer": "coverage",
+      "uncovered_requirements": [
+        "R11",
+        "R12"
+      ],
+      "status": "answered",
+      "status_detail": "answered",
+      "num_turns": 1,
+      "api_calls": null,
+      "completed_items": 3,
+      "charge": "priced",
+      "total_cost_usd": 0.00139456,
+      "milliseconds": 19523,
+      "stream": {
+        "path": "artifacts/delegate-1.stream.jsonl",
+        "bytes": 5292,
+        "kept_bytes": 5292,
+        "truncated": false,
+        "sha256": "04bb998367fea14e2de05911ba8b2ae6c8150586a6be6838d699d2ebb37c2ac4",
+        "gaps": [],
+        "retention": "first 8388608 bytes written as they arrive; past that, the first and last halves"
+      },
+      "system": {
+        "schema": "openagents.coder-one.system-prompt.v1",
+        "variant": "default",
+        "agent": "codex",
+        "mode": "default",
+        "setting": null,
+        "digest": null,
+        "chars": 18037,
+        "default": "codex 0.155.1 (gpt-6-luna)",
+        "default_chars": 18037,
+        "protected": false,
+        "sections": [
+          {
+            "id": "default:role",
+            "status": "tune",
+            "chars": 169,
+            "by": "cli"
+          },
+          {
+            "id": "default:personality",
+            "status": "remove",
+            "chars": 1869,
+            "by": "cli"
+          },
+          {
+            "id": "default:permission",
+            "status": "replace",
+            "chars": 1700,
+            "by": "cli"
+          },
+          {
+            "id": "default:autonomy",
+            "status": "keep",
+            "chars": 1446,
+            "by": "cli"
+          },
+          {
+            "id": "default:working-with-user",
+            "status": "tune",
+            "chars": 6317,
+            "by": "cli"
+          },
+          {
+            "id": "default:rules",
+            "status": "tune",
+            "chars": 2280,
+            "by": "cli"
+          },
+          {
+            "id": "default:skills",
+            "status": "remove",
+            "chars": 2682,
+            "by": "cli"
+          },
+          {
+            "id": "default:apps",
+            "status": "remove",
+            "chars": 609,
+            "by": "cli"
+          },
+          {
+            "id": "default:plugins",
+            "status": "remove",
+            "chars": 965,
+            "by": "cli"
+          }
+        ],
+        "asked": []
+      },
+      "close": {
+        "done": 0.62,
+        "criteria": [
+          {
+            "requirement": "Your task is to analyze all logs and count how many times each severity appears within the following date ranges:",
+            "p": 0.67
+          },
+          {
+            "requirement": "Today (the current date)",
+            "p": 0.59
+          },
+          {
+            "requirement": "Last 7 days (including today)",
+            "p": 0.55
+          },
+          {
+            "requirement": "Last 30 days (including today)",
+            "p": 0.53
+          },
+          {
+            "requirement": "Current month to date (from the 1st date of the current month up to and including today)",
+            "p": 0.54
+          },
+          {
+            "requirement": "Total (all log files combined, regardless of date)",
+            "p": 0.47
+          },
+          {
+            "requirement": "The severity levels to count are exactly: ERROR, WARNING, and INFO.",
+            "p": 0.58
+          },
+          {
+            "requirement": "Write a CSV file /app/summary.csv with the following structure (including the header):",
+            "p": 0.58
+          },
+          {
+            "requirement": "period,severity,count today,ERROR,<count> today,WARNING,<count> today,INFO,<count> last_7_days,ERROR,<count> last_7_days,WARNING,<count> last_7_days,INFO,<count> last_30_days,ERROR,<count> last_30_days,WARNING,<count> last_30_days,INFO,<count> month_to_date,ERROR,<count> month_to_date,WARNING,<count…",
+            "p": 0.74
+          },
+          {
+            "requirement": "Each row should report the total count of each severity for the corresponding date range.",
+            "p": 0.72
+          },
+          {
+            "requirement": "The current date is 2025-08-12.",
+            "p": 0.54
+          },
+          {
+            "requirement": "Use this as the reference date for all calculations.",
+            "p": 0.51
+          }
+        ],
+        "unavailable": null
+      }
+    }
+  },
+  "artifact": {
+    "name": "coder-one",
+    "version": "coder-one 0.1.0 (f5d525b600de)",
+    "sha256": "426184bf0a669b52568dc39f91112b9892dc8b38274affed9893adb0ac5b83e3"
+  },
+  "doors": {
+    "generation": {
+      "url": "https://openagents.com",
+      "lane_requested": "free",
+      "models_served": []
+    },
+    "jev": {
+      "url": "https://api.typesafe.ai",
+      "model": "jev-1.13.0"
+    }
+  },
+  "jev_mode": "deep",
+  "prompt_layout": "cache-stable-prefix",
+  "bounds": {
+    "max_steps": 50,
+    "command_timeout_sec": 300,
+    "episode_deadline_sec": null,
+    "reserve_sec": 30
+  },
+  "spend": {
+    "soft_usd": null,
+    "hard_usd": null,
+    "enforcement": "soft: checked before each dispatch starts; a running dispatch can pass it",
+    "hard_note": "no hard dollar cap: no executor adapter reserves a known maximum charge before a model call",
+    "known_usd": 0.0030333580000000003,
+    "unknown_calls": 0
+  },
+  "generation": 2,
+  "started_at": "2026-09-23T05:06:38.978Z",
+  "updated_at": "2026-09-23T05:07:01.798Z",
+  "outcome": "delegated",
+  "steps": 0,
+  "workdir": "/app",
+  "git_base": null,
+  "files": {
+    "trajectory": {
+      "path": "trajectory.atif.json",
+      "bytes": 299666,
+      "sha256": "0d4984605345059739c8b9428b0232acf9867e0eafd45121dc269c3024470634"
+    },
+    "usage": {
+      "path": "evaluation/usage.json",
+      "bytes": 7815,
+      "sha256": "be0de1354d330ddd3dbd6d5602bebe16e5b764af15b638b1d9a313c15f5d958e"
+    },
+    "state": {
+      "path": "artifacts/state.json",
+      "bytes": 36654,
+      "sha256": "4b16c3a9dc580cc00aad25d38499ca555582d65041ef5aa30dc623078f3a87af"
+    },
+    "briefing_pack": {
+      "path": "artifacts/briefing-pack.json",
+      "bytes": 55942,
+      "sha256": "da1f730d526348a0cf1433c5f33cdd903f152c79534ebb7f7d680db841186a19"
+    },
+    "requirements": {
+      "path": "artifacts/requirements.json",
+      "bytes": 11513,
+      "sha256": "0db62b9429f3eb42f358aa6531a70639da83970a473130de32615f25162acddf"
+    },
+    "delegate-1_briefing_md": {
+      "path": "artifacts/delegate-1.briefing.md",
+      "bytes": 10507,
+      "sha256": "3207bfba2f6d0bd71d81b85309fb2de369599b9da64031b6ff5974c579fd610b"
+    },
+    "delegate-1_stream_jsonl": {
+      "path": "artifacts/delegate-1.stream.jsonl",
+      "bytes": 5292,
+      "sha256": "04bb998367fea14e2de05911ba8b2ae6c8150586a6be6838d699d2ebb37c2ac4"
+    },
+    "invocation_log": {
+      "path": "episode.atif.jsonl",
+      "bytes": 201922,
+      "sha256": "fc07937bc174108ec70a0e4a8760b117b99b924429c7526769008a67fd669dd7",
+      "ended": true,
+      "faults": 0
+    }
+  },
+  "deadline": {
+    "kind": "none",
+    "note": "no episode deadline: the harness's exec timeout is the only limit",
+    "elapsed_ms": 22842,
+    "cuts": []
+  },
+  "verification": {
+    "note": "Coder One runs no independent verification of its own; the task's verifier is the grader."
+  },
+  "result": {
+    "title": "You are given multiple log files stored in /app/logs. Each log file name follows the pattern YYYY-MM…",
+    "summary": "Created [summary.csv](/app/summary.csv) with severity counts for all requested periods, using 2025-08-12 as the reference date. Checked that it has the required header, 15 data rows, row order, and numeric counts.",
+    "delegate_status": "answered"
+  }
+}
