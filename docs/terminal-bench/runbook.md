@@ -52,16 +52,30 @@ before a commit (see [Retain the evidence](#retain-the-evidence)).
 | --- | --- | --- | --- |
 | Coder One generation | `OPENAGENTS_API_KEY` | `~/.openagents/bearer`, an openagents.com session token | Serves `https://openagents.com/v1/responses`. |
 | Coder One Jev | `TYPESAFE_API_KEY` | `api_key` in `~/.openagents/jev.json` | Hosted TypeSafe, `jev-1.13.0`. |
-| Claude Code, and Coder One's Opus delegate | `CLAUDE_CODE_OAUTH_TOKEN` | `claudeAiOauth.accessToken` in `~/.claude/.credentials.json` | Expires after about eight hours; check `expiresAt` and run `claude -p ok` to refresh it. Unset `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` for `--auth-mode subscription-oauth`. |
+| Claude Code, and Coder One's Opus delegate | `CLAUDE_CODE_OAUTH_TOKEN` | The long-lived token in `~/.openagents/claude-setup-token` (mode 0600); otherwise `claudeAiOauth.accessToken` in `~/.claude/.credentials.json` | Prefer the long-lived token: a login refresh revokes the login's access token in every running trial, and it expires after about eight hours. Suites and experiments read the long-lived token for each trial. Unset `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` for `--auth-mode subscription-oauth`. |
 | Codex | `CODEX_FORCE_AUTH_JSON=1` (host-side selector) | `~/.codex/auth.json` | Sign in once with `codex login --device-auth`; it needs a person at a browser. Use `--auth-mode auth-json`. The selector never reaches the container, because Harbor scrubs the values of credential-named variables from evidence, and a forwarded `1` once redacted every digit in a result file. |
 
 ```sh
 export OPENAGENTS_API_KEY="$(tr -d '\n' < ~/.openagents/bearer)"
 export TYPESAFE_API_KEY="$(jq -r .api_key ~/.openagents/jev.json)"
-export CLAUDE_CODE_OAUTH_TOKEN="$(jq -r .claudeAiOauth.accessToken ~/.claude/.credentials.json)"
+export CLAUDE_CODE_OAUTH_TOKEN="$(tr -d '\n' < ~/.openagents/claude-setup-token)"
 export CODEX_FORCE_AUTH_JSON=1
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN OPENAI_API_KEY
 ```
+
+Create the long-lived Claude token once, as the operator. `claude
+setup-token` opens a browser sign-in and prints a token that lasts about a
+year. Save it without echoing it:
+
+```sh
+claude setup-token
+install -m 600 /dev/null ~/.openagents/claude-setup-token
+$EDITOR ~/.openagents/claude-setup-token   # paste the token, save
+```
+
+`uv run tbench doctor` reports `claude-setup-token` as present, with its
+mode and age, and never prints it. A missing token is a warning; a token
+other users can read is a failure.
 
 A host login doesn't authenticate the container. Harbor installs each agent
 inside the task environment and forwards only what the arm's profile names.
@@ -272,8 +286,36 @@ result.
 ## Iterate on a few tasks
 
 Run targeted experiments, not suites, until a change shows a large gain on
-the tasks it targets (issue #9566). A targeted experiment is one arm on a
-few TB4 tasks with one or more attempts each, and it takes minutes.
+the tasks it targets (issue #9566). `tbench try` runs one arm on a few TB4
+tasks and takes minutes. A comparison you publish runs through
+`tbench experiment`, which repeats and interleaves the arms.
+
+### Run a targeted experiment
+
+`tbench experiment run` compares two or more arms on a few tasks, three
+attempts per task per arm by default, interleaved so that each arm goes
+first on half the task slots (issue #9572). It schedules through the
+suite scheduler, so the disk floor, the host-wide Claude slots, and the
+usage-limit pause apply. It refuses to start a Claude arm without the
+long-lived token, and `--quota-usd` stops new Claude trials once the
+experiment has used that much list-price Claude usage.
+
+```sh
+uv run tbench experiment plan --id v7-vs-cc-0924 --profile tb4 \
+  --arm claude-code-opus --arm coder-one-tunable-v7 \
+  --tasks risk-scorer-replay,wal-recovery-ordering --quota-usd 150
+uv run tbench experiment run --id v7-vs-cc-0924 --profile tb4 \
+  --arm claude-code-opus --arm coder-one-tunable-v7 \
+  --tasks risk-scorer-replay,wal-recovery-ordering --quota-usd 150 --detach
+uv run tbench experiment status --id v7-vs-cc-0924
+gym terminal-bench experiment report v7-vs-cc-0924 --markdown
+```
+
+A trial lost to credentials, a usage limit, or a setup timeout is set
+aside, recorded in the experiment's `ledger.jsonl`, and run again; it
+never counts as a graded attempt. The
+[targeted experiment template](targeted-experiment-template.md) covers
+the flags and how to publish the report.
 
 ### Try an arm
 

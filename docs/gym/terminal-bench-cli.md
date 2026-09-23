@@ -387,3 +387,35 @@ The [operating runbook](../terminal-bench/runbook.md) covers host setup,
 prices, retention, and comparison rules. The
 [resilience record](../terminal-bench/resilience.md) shows cancellations,
 timeouts, resume, and missing evidence.
+
+## Run and report a targeted experiment
+
+`gym terminal-bench experiment run|plan|status|stop` forwards to `tbench
+experiment`, which compares two or more arms on a few tasks, three
+interleaved attempts per task per arm by default, on the long-lived Claude
+token, with an optional Claude quota budget.
+
+```sh
+gym terminal-bench experiment plan --id v7-vs-cc-0924 --profile tb4 \
+  --arm claude-code-opus --arm coder-one-tunable-v7 \
+  --tasks risk-scorer-replay,wal-recovery-ordering --quota-usd 150
+gym terminal-bench experiment run --id v7-vs-cc-0924 --profile tb4 \
+  --arm claude-code-opus --arm coder-one-tunable-v7 \
+  --tasks risk-scorer-replay,wal-recovery-ordering --quota-usd 150 --detach
+gym terminal-bench experiment report v7-vs-cc-0924
+gym terminal-bench experiment report v7-vs-cc-0924 --markdown
+gym terminal-bench experiment report path/to/status.json --json
+```
+
+`experiment report` reads the experiment's `status.json` and needs no
+credential. It prints each arm's passes over graded attempts with a 95%
+Wilson interval, and compares every arm with the first one listed: an
+exact McNemar test on attempts paired by task and attempt number, and an
+exact sign test over tasks, by which arm passed a larger share of its
+attempts. It lists attempts lost to credentials, quota, or infrastructure,
+which ran again and never enter a denominator, and the Claude quota used
+against the budget. `--markdown` fills the results sections of the
+[targeted experiment template](../terminal-bench/targeted-experiment-template.md),
+and `--json` has schema `openagents.gym.terminal-bench-experiment.v1`.
+`--experiments-dir PATH` reads experiments from somewhere other than
+`~/.openagents/terminal-bench/experiments/`.

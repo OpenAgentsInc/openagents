@@ -98,6 +98,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 | [Check recall on retained TB4 trials](2026-09-23-check-recall.md) | The labeled set of 61 graded trials, how often each version of the checks flags the verifier's failures and passes, what flagged each failure, and a live confirmation on the target tasks. |
 | [What the TB4 runs so far show](2026-09-23-what-we-have-learned.md) | Where every arm stands, nine lessons (configuration over controller, blind checks, effort, headroom, persistence, cost, routing, infrastructure, evidence), and the ranked improvements. |
 | [Coder One against Claude Code on TB4](2026-09-23-coder-one-vs-claude-code-tb4.md) | The same-host, same-model comparison on 26 tasks: per-task results, where the two extra passes and the cost gap come from, and how strong each claim is. |
+| [Targeted experiment template](targeted-experiment-template.md) | How to run a repeated, interleaved comparison with `tbench experiment` and publish its Wilson intervals, paired test, losses, and quota use. |
 | [TB4 results](tb4-results.md) | Full matrix, arm versions, matched comparisons, harness checks, and refresh limits. |
 | [Coder One's task-level wins](2026-09-23-task-win-analysis.md) | Detailed reconstruction of ten wins, local and public failures, controller gaps, costs, conditional completion scenarios, and an upgrade plan. Includes a complete evidence index. |
 | [TB4 leaderboard](tb4-leaderboard.md) | Retained public reference: 27 rows, five trials per task, source inconsistencies. |
@@ -112,7 +113,7 @@ still need the quota audit. See [harness validation](tb4-results.md#harness-vali
 
 ## Run, inspect, and extend
 
-- Run: [operating notes](runbook.md), [harness guide](../coder/terminal-bench.md),
+- Run: [targeted experiments](targeted-experiment-template.md), [operating notes](runbook.md), [harness guide](../coder/terminal-bench.md),
   [delegate runbook](coder-one-delegate-runbook.md), and [resilience](resilience.md).
 - Inspect: [Gym TUI](../gym/terminal-bench-tui.md), [Gym CLI](../gym/terminal-bench-cli.md),
   [retained traces](../../bench/terminal-bench/traces/), and [evidence retention](runbook.md#retain-the-evidence).
