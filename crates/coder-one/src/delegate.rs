@@ -1405,6 +1405,8 @@ pub struct Control {
     pub controls: Option<crate::session::Controls>,
     /// The last session's host-loop record.
     pub last: Option<Value>,
+    /// A `control.monitor` to watch each session in shadow mode.
+    pub monitor: Option<crate::monitor::Setup>,
 }
 
 impl Cli {
@@ -1773,16 +1775,27 @@ impl Cli {
             // own deadline, so the host's stop is the one that acts.
             session.deadline = deadline + Duration::from_secs(5);
             session.steerable = controls.steer.is_some();
-            let driven = crate::session::drive(
+            let mut monitor = self
+                .control
+                .monitor
+                .as_ref()
+                .map(|setup| setup.start(&briefing.text));
+            let driven = crate::session::drive_watched(
                 &mut session,
                 briefing,
                 &controls,
                 &recorder,
                 &mut crate::session::virtual_time(),
+                monitor
+                    .as_mut()
+                    .map(|m| m as &mut dyn crate::session::Watch),
             )
             .await;
             session.shutdown().await;
-            let record = driven.record();
+            let mut record = driven.record();
+            if let Some(monitor) = &monitor {
+                record["monitor"] = crate::monitor::summary(&monitor.judgments);
+            }
             (driven.report, record)
         };
         self.control.last = Some(record);

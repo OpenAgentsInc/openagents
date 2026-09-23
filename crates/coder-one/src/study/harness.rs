@@ -64,6 +64,7 @@ pub async fn mini(brief: &BriefPolicy, out: &Path) -> MiniScreen {
             controls: crate::session::Controls::default(),
             checks: false,
             brief: Some(brief.clone()),
+            monitor: None,
         })
         .await;
         let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);

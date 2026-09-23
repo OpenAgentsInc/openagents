@@ -22,6 +22,7 @@ pub mod cli;
 pub mod evidence;
 pub mod extract;
 pub mod jev;
+pub mod monitor;
 pub mod pack;
 pub mod replay;
 pub mod scripted;
@@ -137,6 +138,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(Select),
         Box::new(Pack),
         Box::new(scripted::ScriptedAdapter),
+        Box::new(monitor::MonitorComponent),
         Box::new(SystemSelect),
         Box::new(checks::Checks),
         Box::new(support::Support),

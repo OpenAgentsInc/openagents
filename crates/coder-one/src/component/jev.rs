@@ -224,6 +224,9 @@ pub struct Asked {
     pub output_tokens: Option<u64>,
     /// The recorded-answer key of this request.
     pub key: String,
+    /// How long the answer took: measured for a live request, as recorded
+    /// for a replayed one.
+    pub milliseconds: Option<u64>,
 }
 
 impl Asked {
@@ -293,6 +296,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
             input_tokens: None,
             output_tokens: None,
             key,
+            milliseconds: None,
         },
         JevMode::Recorded(recorded) => match recorded.entries.get(&key) {
             Some(entry) => {
@@ -315,6 +319,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                     input_tokens: entry.input_tokens,
                     output_tokens: entry.output_tokens,
                     key,
+                    milliseconds: entry.milliseconds,
                 }
             }
             None => Asked {
@@ -325,6 +330,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                 input_tokens: None,
                 output_tokens: None,
                 key,
+                milliseconds: None,
             },
         },
         JevMode::Live(_)
@@ -346,6 +352,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                 input_tokens: None,
                 output_tokens: None,
                 key,
+                milliseconds: None,
             }
         }
         JevMode::Live(client) => {
@@ -389,6 +396,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                         input_tokens: response.usage.input_tokens,
                         output_tokens: response.usage.output_tokens,
                         key,
+                        milliseconds: Some(milliseconds),
                     }
                 }
                 Err(error) => {
@@ -411,6 +419,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                         input_tokens: None,
                         output_tokens: None,
                         key,
+                        milliseconds: Some(milliseconds),
                     }
                 }
             }
@@ -458,6 +467,10 @@ pub fn record_answers(steps: &[Step], source: &str, recorded: &mut Recorded) -> 
         let Some(call) = step.call.as_ref().filter(|call| call.is_decision()) else {
             continue;
         };
+        // A replayed answer is already recorded, with its provenance.
+        if step.extensions.contains_key("jev_recorded") {
+            continue;
+        }
         if call.extra.get("error").is_some() || call.extra.get("answers").is_none_or(Value::is_null)
         {
             continue;

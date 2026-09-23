@@ -171,6 +171,11 @@ pub struct ControlPolicy {
     pub error_streak: usize,
     /// Under `auto`, steps with an unchanged checkout that escalate.
     pub unchanged_steps: usize,
+    /// `control.monitor` over each executor session, in shadow mode: its
+    /// judgments are recorded and never acted on. Absent, nothing watches,
+    /// and the manifest's digest is what it was before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitor: Option<crate::monitor::Params>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -492,6 +497,7 @@ impl Manifest {
                     lane: "free".to_string(),
                     error_streak: 3,
                     unchanged_steps: 6,
+                    monitor: None,
                 },
                 brief: BriefPolicy {
                     cap: delegate::BRIEFING_CAP,

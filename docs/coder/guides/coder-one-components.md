@@ -20,6 +20,7 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | `evidence.select` | Which candidate files the survey reads into the briefing. | One request per 20 files |
 | `evidence.pack` | The briefing within its character budget, packed by requirement coverage, with every omission named. The suite measures the first packer beside it. | One request per item with Jev coverage judgments; none without |
 | `exec.scripted` | How the host starts, observes, steers, stops, and resumes a scripted session. | None |
+| `control.monitor` | Whether a running session is making progress, repeating a failed approach, re-reading briefed evidence, or claiming it is done. Shadow mode: it records, never acts. | One request per trigger |
 | `exec.system` | The executor's system prompt: the manifest's sections, plus the optional sections the task needs. | One request |
 | `verify.close` | Whether the delegate's report and the changes show the task done. | One request |
 | `verify.checks` | Which requirements admitted scenarios observe, contradict, or can't verify against the candidate. | None |
@@ -375,3 +376,122 @@ gym coder router       # features, picks, and leave-one-task-out regret
 [Route each task](../../terminal-bench/2026-09-22-routing.md) has the
 measured matrix, the router's regret against fixed Luna, fixed Opus, and a
 hand-written rule, and the frozen larger task pool.
+
+## Watch a session with `control.monitor`
+
+Every Jev request in an episode happens before the executor starts or
+after it ends. `control.monitor` watches the session while it runs. At
+each trigger it answers four questions, once by rule and, when Jev is on,
+once by Jev:
+
+| Question | The rule | Jev's Noul |
+| --- | --- | --- |
+| Stalled: no progress on an open requirement | Four completed commands since the last artifact change | Is the agent making progress on at least one open requirement? (flags below 0.5) |
+| Repeating a failing approach | The last failing command has failed twice since the last change | Is it repeating an approach that already failed? |
+| Re-reading briefed evidence | A command reads a path, or reruns a listing, the briefing holds | Is it re-reading evidence the briefing already holds? |
+| Claiming completion | A new claim uses a completion word, such as `done` or `tests pass` | Does its latest message claim the task is done? |
+
+A trigger is a completed command, an artifact change, an assistant claim,
+or a long silence (two minutes by default), never every event. A Jev
+request carries the task, up to 10 open requirements, what the briefing
+holds, the last eight events clipped to 300 characters each, and counts
+since the last judgment, never the whole transcript, so a request stays
+near 4,400 characters however long the session runs.
+
+The monitor runs in **shadow mode**. Each judgment becomes a versioned
+proposal, a steer for a flag that asks for intervention or a certify for a
+completion claim, that the session's controller records with whether it
+would have admitted it, and never acts on. A Jev answer arrives after its
+latency, and the judgment is **stale** when the workspace revision or the
+process generation moved before it arrived. Each judgment is a
+`monitor_judgment` step in the episode log.
+
+Turn it on for a mini-task with `--monitor`, or for an episode with
+`policy.control.monitor` in the policy manifest (`{}` takes the defaults;
+absent, the manifest's digest is unchanged):
+
+```sh
+coder-one minitask run log-severity --script bad --monitor
+coder-one component suite control.monitor           # five scripted streams, recorded Jev
+coder-one component replay control.monitor          # every retained stream
+gym coder monitor                                    # precision, stale answers, and cost
+```
+
+### Measure it on scripted and retained streams
+
+The five scripted fixtures, `monitor--scripted-*`, write in their stalls
+and loops: a test rerun five times after one edit, reads of briefed files
+followed by silence, a clean run, an early completion claim, and a
+five-second silence. Each fixture names when each flag becomes true, and a
+judgment is labeled by when its trigger arrived. With recorded answers,
+the 28 judgments score:
+
+| Question | Labels | Rules: flagged, precision, recall | Jev: flagged, precision, recall |
+| --- | --- | --- | --- |
+| Any intervention | 12 | 11, 1.00, 0.92 | 23, 0.52, 1.00 |
+| Stalled | 9 | 6, 1.00, 0.67 | 23, 0.39, 1.00 |
+| Repeating | 5 | 5, 1.00, 1.00 | 6, 0.83, 1.00 |
+| Re-reading | 3 | 3, 1.00, 1.00 | 5, 0.60, 1.00 |
+| Claims done | 2 | 2, 1.00, 1.00 | 2, 1.00, 1.00 |
+
+The scripts were written beside the rules, so the rules' precision there
+is an upper bound. Jev catches the silence the rules miss, and flags a
+stall at the first events of a session, before anything could progress.
+With the recorded latencies (median 200 ms) and events 100 ms apart, 12
+of the 28 answers arrive stale.
+
+The replay feeds each of the 234 retained native streams under
+`bench/terminal-bench/traces` through the same monitor one event at a
+time, so a judgment sees only the prefix up to its trigger, and labels it
+by hindsight: stalled when the attempt failed and nothing changed over at
+least two more commands, repeating when the same failing command failed
+again before any change, and a completion claim when it was the session's
+last. Re-reading is a fact of the prefix, so the rule defines its label.
+The streams carry no per-line times, so lines are paced evenly over the
+dispatch's duration, and silences never trigger.
+
+The 234 streams give 1,782 triggers: 1,062 completed commands, 612
+claims, and 108 artifact changes. The rules alone, over every stream:
+
+| Question | Labels | Flagged | Precision | Recall |
+| --- | --- | --- | --- | --- |
+| Any intervention | 92 | 566 | 0.12 | 0.76 |
+| Stalled | 38 | 533 | 0.04 | 0.55 |
+| Repeating | 20 | 18 | 0.17 | 0.15 |
+| Claims done | 234 | 112 | 0.83 | 0.40 |
+
+Jev answered 111 of those judgments live, from the first trial of each
+development task under the v3 Luna, v2 Luna, and v2 Opus arms, and the
+answers are recorded in `bench/terminal-bench/monitor/jev-recorded.json`.
+On those 111, Jev's stall flag was never right (22 flagged, 0 correct,
+against the rules' 13 flagged and 3 correct); Jev found half the repeated
+failures the rules missed (recall 0.50 against 0.00) and every final
+completion claim (recall 1.00 against 0.28). None of the 111 answers
+arrived stale at the retained streams' pace.
+
+Priced at Jev's published input rate, a judgment at every trigger of
+every stream costs $0.086, 0.6% of the $14.05 the executors spent on
+those attempts. By that measure the monitor is cheap; whether it repays
+itself depends on whether acting on it prevents failures or saves time,
+which only a live run measures. Deterministic triggers with the rules
+alone cost nothing and over-flag stalls; Jev at the same triggers adds
+completion claims and loops but not stalls.
+
+```sh
+coder-one component replay control.monitor --out bench/terminal-bench/monitor/replay.json
+coder-one component replay control.monitor --jev live --live-limit 40 --save-jev
+```
+
+A test replays every stream with the recorded answers and checks that the
+result is byte for byte the checked-in report.
+
+### See the monitor in the Gym
+
+The episode and mini-task timelines overlay each judgment, marked `◆`,
+between the executor events it followed: its trigger, the rules' flags,
+Jev's flags, the proposal it would have made, `STALE` when it arrived
+late, and the version it was asked at. The Components view and `gym coder
+monitor` report the replay's trigger precision, stale answers, and cost
+per question, for the rules alone and beside Jev; `--json` prints the
+same as versioned JSON.
+

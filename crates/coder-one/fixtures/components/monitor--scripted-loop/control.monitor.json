@@ -1,0 +1,96 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.monitor",
+  "source": {
+    "kind": "synthetic",
+    "note": "the same failing test reruns after one edit, five times"
+  },
+  "input": {
+    "task": "Fix `parse.py` so that `pytest -q` passes. The parser must read the severity field of each log line, not search the whole line. Write the counts to `summary.csv`.",
+    "briefing": "## The task\n\nFix `parse.py` so that `pytest -q` passes. The parser must read the severity field of each log line, not search the whole line. Write the counts to `summary.csv`.\n\n## Files by relevance\n\n### parse.py (Jev p=0.91)\n\n```\nimport sys\n```\n\n### test_parse.py (Jev p=0.80)\n\n```\ndef test(): ...\n```\n\n### $ pwd && ls -la (Jev p=0.75)\n\n```\n/app\nparse.py test_parse.py\n```\n",
+    "params": {
+      "silence_ms": 2000,
+      "stall_commands": 4
+    },
+    "script": {
+      "schema": "openagents.coder-one.executor-script.v1",
+      "name": "monitor-loop",
+      "events": [
+        {
+          "at_ms": 0,
+          "do": "claim",
+          "text": "I'll look at the failing test."
+        },
+        {
+          "at_ms": 100,
+          "do": "command",
+          "command": "pytest -q",
+          "output": "F\n1 failed: assert count('ERROR') == 3, got 5",
+          "exit_code": 1
+        },
+        {
+          "at_ms": 200,
+          "do": "write",
+          "path": "parse.py",
+          "content": "def count(): return 5\n"
+        },
+        {
+          "at_ms": 300,
+          "do": "command",
+          "command": "pytest -q",
+          "output": "F\n1 failed: assert count('ERROR') == 3, got 5",
+          "exit_code": 1
+        },
+        {
+          "at_ms": 400,
+          "do": "command",
+          "command": "pytest -q",
+          "output": "F\n1 failed: assert count('ERROR') == 3, got 5",
+          "exit_code": 1
+        },
+        {
+          "at_ms": 500,
+          "do": "command",
+          "command": "pytest -q",
+          "output": "F\n1 failed: assert count('ERROR') == 3, got 5",
+          "exit_code": 1
+        },
+        {
+          "at_ms": 600,
+          "do": "command",
+          "command": "pytest -q",
+          "output": "F\n1 failed: assert count('ERROR') == 3, got 5",
+          "exit_code": 1
+        },
+        {
+          "at_ms": 700,
+          "do": "claim",
+          "text": "Still failing; trying again."
+        },
+        {
+          "at_ms": 800,
+          "do": "command",
+          "command": "pytest -q",
+          "output": "F\n1 failed: assert count('ERROR') == 3, got 5",
+          "exit_code": 1
+        },
+        {
+          "at_ms": 900,
+          "do": "end"
+        }
+      ]
+    },
+    "onsets": [
+      {
+        "flag": "repeating",
+        "from_ms": 400
+      },
+      {
+        "flag": "stalled",
+        "from_ms": 400
+      }
+    ],
+    "passed": false
+  },
+  "retained": null
+}

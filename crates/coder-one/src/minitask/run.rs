@@ -79,6 +79,9 @@ pub struct Options {
     /// The briefing policy under test; `None` runs the built-in one. A
     /// study screens a candidate's briefing policy this way.
     pub brief: Option<crate::policy::BriefPolicy>,
+    /// A `control.monitor` in shadow mode over the executor's session:
+    /// the rules, and Jev when `jev` is given.
+    pub monitor: Option<crate::monitor::Params>,
 }
 
 /// What a run left.
@@ -335,6 +338,14 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         base: base.as_deref(),
     };
     let mut checkpoint = |_: &State| {};
+    let monitor = options.monitor.clone().map(|params| crate::monitor::Setup {
+        params,
+        jev: options.jev.clone().map_or(
+            crate::component::jev::JevMode::Off,
+            crate::component::jev::JevMode::Live,
+        ),
+        task: task.instruction.to_string(),
+    });
     let (ended, delegated, session_record) = match (&options.executor, script) {
         (ExecutorChoice::Scripted { .. }, Some(script)) => {
             let mut executor = Scripted::new(script, work.clone());
@@ -342,6 +353,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
             executor.deadline = options.deadline;
             executor.speed = options.speed;
             executor.controls = options.controls.clone();
+            executor.monitor = monitor.clone();
             executor.recorder = recorder.clone();
             let (ended, delegated) = delegate::explore_then_delegate(
                 &mut state,
@@ -409,6 +421,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
                         recorder: Some(recorder.clone()),
                         controls: Some(options.controls.clone()),
                         last: None,
+                        monitor: monitor.clone(),
                     },
                 },
                 boundary,
@@ -593,6 +606,7 @@ mod tests {
             controls: Controls::default(),
             checks: false,
             brief: None,
+            monitor: None,
         }
     }
 

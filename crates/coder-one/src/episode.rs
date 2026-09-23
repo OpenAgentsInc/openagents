@@ -334,6 +334,8 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     } else {
         None
     };
+    // The monitor asks Jev through its own handle, beside the judge's.
+    let monitor_jev = jev_client.clone();
     let instruction = std::fs::read_to_string(&args.instruction_file)
         .map_err(|error| format!("cannot read {}: {error}", args.instruction_file.display()))?;
     let workdir = std::env::current_dir().map_err(|error| error.to_string())?;
@@ -489,6 +491,16 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         // Each normalized executor event lands in the durable log as it
         // arrives, which is what a live reader follows.
         executor.control.recorder = Some(recorder.clone());
+        if let Some(params) = &policy.policy.control.monitor {
+            executor.control.monitor = Some(crate::monitor::Setup {
+                params: params.clone(),
+                jev: monitor_jev.clone().map_or(
+                    crate::component::jev::JevMode::Off,
+                    crate::component::jev::JevMode::Live,
+                ),
+                task: instruction.clone(),
+            });
+        }
         if let Some(soft) = policy.protected.ceilings.spend_soft_usd {
             // The soft bound is checked before a dispatch starts. A running
             // dispatch can pass it: no adapter reserves a known maximum.

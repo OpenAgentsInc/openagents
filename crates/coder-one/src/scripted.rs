@@ -244,6 +244,9 @@ pub struct Scripted {
     pub runs: u32,
     /// The last session's host-loop record.
     pub last: Option<Value>,
+    /// A `control.monitor` to watch each session, in shadow mode unless
+    /// its caller makes it act.
+    pub monitor: Option<crate::monitor::Setup>,
     queue: Vec<(u64, Act)>,
     hanging: bool,
     lines: Vec<String>,
@@ -270,6 +273,7 @@ impl Scripted {
             recorder: Recorder::default(),
             runs: 0,
             last: None,
+            monitor: None,
             queue: Vec::new(),
             hanging: false,
             lines: Vec::new(),
@@ -723,8 +727,24 @@ impl Executor for Scripted {
         } else {
             Box::new(session::virtual_time())
         };
-        let driven: Driven = session::drive(self, briefing, &controls, &recorder, &mut *pace).await;
-        self.last = Some(driven.record());
+        let mut monitor = self
+            .monitor
+            .as_ref()
+            .map(|setup| setup.start(&briefing.text));
+        let driven: Driven = session::drive_watched(
+            self,
+            briefing,
+            &controls,
+            &recorder,
+            &mut *pace,
+            monitor.as_mut().map(|m| m as &mut dyn session::Watch),
+        )
+        .await;
+        let mut record = driven.record();
+        if let Some(monitor) = &monitor {
+            record["monitor"] = crate::monitor::summary(&monitor.judgments);
+        }
+        self.last = Some(record);
         let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let mut report = self.build_report(milliseconds);
         report.milliseconds = milliseconds;

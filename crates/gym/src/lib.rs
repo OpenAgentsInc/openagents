@@ -62,6 +62,7 @@ pub mod coder_coverage;
 pub mod coder_live;
 pub mod coder_matrix;
 pub mod coder_minitasks;
+pub mod coder_monitor;
 pub mod coder_policy;
 pub mod coder_prompt;
 pub mod coder_requirements;

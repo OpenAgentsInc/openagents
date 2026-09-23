@@ -1,0 +1,161 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "02f689a5a0d3f4778d6025974c031ec6d72fab0f1686864d31d88d9fd52f3f7b": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 905,
+      "output_tokens": 73,
+      "milliseconds": 194,
+      "source": "live component run of control.monitor#jev_monitor-6"
+    },
+    "4518727ab08891c8059e4a49f5be84172e8f6e6510109cf90d163cc389d78210": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 828,
+      "output_tokens": 73,
+      "milliseconds": 162,
+      "source": "live component run of control.monitor#jev_monitor-3"
+    },
+    "525f29a9895cf0e495aec40bf3b0e6ad216b86acd70d5ba75bd4be6b6387fdfe": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 897,
+      "output_tokens": 73,
+      "milliseconds": 238,
+      "source": "live component run of control.monitor#jev_monitor-4"
+    },
+    "5b8685c6942034c6de7f54049a4416eb8d928d10839e8d82e3eed71d99c5e5ae": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 759,
+      "output_tokens": 73,
+      "milliseconds": 178,
+      "source": "live component run of control.monitor#jev_monitor-2"
+    },
+    "ad5d7a6d36eb54fb97bd7858bb39035aefd1d160aaa6a05fcc5094e8501624e9": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 694,
+      "output_tokens": 73,
+      "milliseconds": 280,
+      "source": "live component run of control.monitor#jev_monitor-1"
+    },
+    "b1a485b6a1b73baa6b3d36916890b13f624d8bf6d05625e81a075a336751c863": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 904,
+      "output_tokens": 73,
+      "milliseconds": 250,
+      "source": "live component run of control.monitor#jev_monitor-5"
+    }
+  }
+}

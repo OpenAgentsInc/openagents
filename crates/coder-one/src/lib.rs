@@ -33,6 +33,7 @@ pub mod episode;
 pub mod generate;
 pub mod judge;
 pub mod minitask;
+pub mod monitor;
 pub mod ops;
 pub mod pack;
 pub mod policy;

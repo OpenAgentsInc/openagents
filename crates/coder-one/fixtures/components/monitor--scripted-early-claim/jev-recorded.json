@@ -1,0 +1,83 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "93f6402b8d12b19068f926fd314d0f55b1450e37c76ba5c6c0314a3b67cb242c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 733,
+      "output_tokens": 73,
+      "milliseconds": 353,
+      "source": "live component run of control.monitor#jev_monitor-2"
+    },
+    "9540188b890fb99b4fce55fb44519c38aa3d6219b7efb19dec06d2565f5b8cf9": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.5
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.12
+        }
+      },
+      "input_tokens": 653,
+      "output_tokens": 73,
+      "milliseconds": 361,
+      "source": "live component run of control.monitor#jev_monitor-1"
+    },
+    "9754b0c873921fb033d34d68a1cedc3e8a214d1d431422791905a1cb49495f8a": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.98
+        }
+      },
+      "input_tokens": 771,
+      "output_tokens": 73,
+      "milliseconds": 201,
+      "source": "live component run of control.monitor#jev_monitor-3"
+    }
+  }
+}

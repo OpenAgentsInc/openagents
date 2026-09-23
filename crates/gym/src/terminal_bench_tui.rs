@@ -135,6 +135,8 @@ pub struct App {
     coverage: BTreeMap<(String, String), crate::coder_coverage::Attempt>,
     /// Hill-climbing studies over policy manifests, and unreadable ones.
     studies: (Vec<crate::coder_study::Study>, Vec<String>),
+    /// `control.monitor`'s replay over the retained streams.
+    monitor: Option<crate::coder_monitor::Report>,
 }
 
 impl App {
@@ -180,6 +182,7 @@ impl App {
             briefing: None,
             coverage: BTreeMap::new(),
             studies: (Vec::new(), Vec::new()),
+            monitor: crate::coder_monitor::load(&crate::coder_monitor::default_path()).ok(),
         }
     }
 
@@ -941,6 +944,10 @@ impl App {
         );
         lines.push(String::new());
         lines.extend(self.prompts.lines());
+        if let Some(monitor) = &self.monitor {
+            lines.push(String::new());
+            lines.extend(monitor.lines());
+        }
         lines
     }
 

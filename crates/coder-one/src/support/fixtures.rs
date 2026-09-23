@@ -312,6 +312,7 @@ pub async fn build(components: &Path, traces: &Path, out: &Path) -> Result<Vec<S
                 controls: crate::session::Controls::default(),
                 checks: true,
                 brief: None,
+                monitor: None,
             })
             .await?;
             let work = ran.dir.join("work");

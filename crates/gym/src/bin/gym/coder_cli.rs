@@ -51,6 +51,8 @@ gym coder briefing [QUERY] [--json]
 gym coder matrix [--json]  the outcome matrix: task by policy, frontiers, oracles
 gym coder router [--json]  task features, router picks, and leave-one-task-out
                            regret against fixed and hand-written baselines
+gym coder monitor [--json] control.monitor's replay over retained streams: trigger
+                           precision for the rules and Jev, stale answers, and cost
 gym coder coverage [--attempt JOB/TRIAL | --run ID] [--json]
                            verify.checks requirement coverage per attempt and
                            mini-task run; see gym coder coverage --help
@@ -164,6 +166,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("study") {
         return gym::coder_study::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("monitor") {
+        return gym::coder_monitor::command(&args[1..], out);
     }
     let (Some("policy"), Some(command)) = (
         args.first().map(String::as_str),

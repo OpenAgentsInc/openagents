@@ -251,6 +251,54 @@ pub struct Refusal {
     pub why: String,
 }
 
+/// A proposal an observer submitted in shadow mode: the controller records
+/// whether it would have admitted it, and never acts on it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ShadowNote {
+    pub at_ms: u64,
+    pub proposal: Proposal,
+    /// Whether the controller would have admitted it when it arrived.
+    pub admissible: bool,
+    /// Why it would have been refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+}
+
+/// What an observer hands the controller: a proposal, the message a steer
+/// would send, and whether it is only a shadow.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Submission {
+    pub proposal: Proposal,
+    /// The message a steer sends; ignored for other intents.
+    pub message: Option<String>,
+    /// A shadow submission is recorded, never acted on.
+    pub shadow: bool,
+}
+
+/// An observer the host loop consults at every tick, such as
+/// `control.monitor`. It sees each tick's new observations and the
+/// controller's state, and submits versioned proposals; the controller
+/// alone decides whether one acts.
+pub trait Watch {
+    /// Sees the observations that arrived at `now_ms` (none at a quiet
+    /// tick) and returns what it submits.
+    fn look<'a>(
+        &'a mut self,
+        now_ms: u64,
+        observed: &'a [Observation],
+        controller: &'a Controller,
+        recorder: &'a Recorder,
+    ) -> futures_util::future::LocalBoxFuture<'a, Vec<Submission>>;
+
+    /// The loop has ended at `now_ms`: delivers what is still pending.
+    fn finish(
+        &mut self,
+        now_ms: u64,
+        controller: &Controller,
+        recorder: &Recorder,
+    ) -> Vec<Submission>;
+}
+
 /// The one owner of a session's state. Observers, such as rules and
 /// monitors, read [`Observation`]s and submit [`Proposal`]s; only the
 /// controller changes the phase, and it refuses a proposal made from an
@@ -266,6 +314,8 @@ pub struct Controller {
     session_id: Option<String>,
     pub transitions: Vec<Transition>,
     pub refusals: Vec<Refusal>,
+    /// Shadow proposals, with whether each would have been admitted.
+    pub shadow: Vec<ShadowNote>,
 }
 
 impl Default for Controller {
@@ -278,6 +328,7 @@ impl Default for Controller {
             session_id: None,
             transitions: Vec::new(),
             refusals: Vec::new(),
+            shadow: Vec::new(),
         }
     }
 }
@@ -359,6 +410,37 @@ impl Controller {
     ///
     /// Returns why the proposal is stale or out of place.
     pub fn admit(&mut self, proposal: &Proposal) -> Result<(), String> {
+        let checked = self.check(proposal);
+        if let Err(why) = &checked {
+            self.refusals.push(Refusal {
+                proposal: proposal.clone(),
+                why: why.clone(),
+            });
+        }
+        checked
+    }
+
+    /// Records a shadow proposal with whether it would have been admitted,
+    /// and changes nothing else.
+    pub fn note(&mut self, at_ms: u64, proposal: &Proposal) -> ShadowNote {
+        let checked = self.check(proposal);
+        let note = ShadowNote {
+            at_ms,
+            proposal: proposal.clone(),
+            admissible: checked.is_ok(),
+            why: checked.err(),
+        };
+        self.shadow.push(note.clone());
+        note
+    }
+
+    /// Whether a proposal still describes the session, without recording
+    /// anything.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the proposal is stale or out of place.
+    pub fn check(&self, proposal: &Proposal) -> Result<(), String> {
         let basis = &proposal.basis;
         let why = if basis.generation != self.generation {
             Some(format!(
@@ -384,13 +466,7 @@ impl Controller {
         };
         match why {
             None => Ok(()),
-            Some(why) => {
-                self.refusals.push(Refusal {
-                    proposal: proposal.clone(),
-                    why: why.clone(),
-                });
-                Err(why)
-            }
+            Some(why) => Err(why),
         }
     }
 }
@@ -519,6 +595,11 @@ pub struct Driven {
     pub transitions: Vec<Transition>,
     /// Proposals the controller refused as stale.
     pub refusals: Vec<Refusal>,
+    /// Shadow proposals an observer submitted, with whether each would
+    /// have been admitted.
+    pub shadow: Vec<ShadowNote>,
+    /// Who proposed the stop that ended the session, when one did.
+    pub stopped_by: Option<String>,
     pub report: Report,
     /// The host clock when the loop ended.
     pub elapsed_ms: u64,
@@ -535,6 +616,9 @@ impl Driven {
             "stops": self.stops,
             "transitions": self.transitions,
             "refusals": self.refusals,
+            "shadow": self.shadow.len(),
+            "shadow_admissible": self.shadow.iter().filter(|note| note.admissible).count(),
+            "stopped_by": self.stopped_by,
             "status": self.report.status.word(),
             "elapsed_ms": self.elapsed_ms,
         })
@@ -616,6 +700,21 @@ pub async fn drive<S: Session>(
     recorder: &Recorder,
     pace: &mut dyn FnMut(u64) -> Tick,
 ) -> Driven {
+    drive_watched(session, briefing, controls, recorder, pace, None).await
+}
+
+/// [`drive`], with an observer such as `control.monitor` consulted at
+/// every tick. The observer's shadow submissions are recorded by the
+/// controller and never acted on; its other submissions steer or stop the
+/// session through the same admission a rule's proposal passes.
+pub async fn drive_watched<S: Session>(
+    session: &mut S,
+    briefing: &Briefing,
+    controls: &Controls,
+    recorder: &Recorder,
+    pace: &mut dyn FnMut(u64) -> Tick,
+    mut watch: Option<&mut dyn Watch>,
+) -> Driven {
     let capabilities = session.capabilities();
     let adapter = session.adapter().to_string();
     let mut controller = Controller::default();
@@ -644,6 +743,8 @@ pub async fn drive<S: Session>(
             stops,
             transitions: controller.transitions,
             refusals: controller.refusals,
+            shadow: controller.shadow,
+            stopped_by: None,
             report: session.report(),
             elapsed_ms: 0,
         };
@@ -661,6 +762,7 @@ pub async fn drive<S: Session>(
         )),
     );
     let mut steered = false;
+    let mut stopped_by: Option<String> = None;
     // A stop rule acts once: a resumed session isn't stopped again by the
     // rule that stopped it.
     let mut stop_ruled = false;
@@ -699,6 +801,7 @@ pub async fn drive<S: Session>(
         // proposes carries the version it saw.
         let mut fire_steer = None;
         let mut fire_stop = None;
+        let mut stop_by: Option<String> = None;
         let looks: Vec<(Option<&Event>, Version)> = observed
             .iter()
             .map(|o| (Some(&o.event), o.version.clone()))
@@ -720,11 +823,59 @@ pub async fn drive<S: Session>(
                 fire_stop = Some(("a stop rule fired".to_string(), version));
             }
         }
+        // An observer sees the same observations and submits versioned
+        // proposals; a shadow one is only recorded.
+        let mut watched_steer = None;
+        if let Some(watch) = watch.as_deref_mut() {
+            for submission in watch.look(now, &observed, &controller, recorder).await {
+                if submission.shadow {
+                    controller.note(now, &submission.proposal);
+                    continue;
+                }
+                match submission.proposal.intent {
+                    Intent::Steer if watched_steer.is_none() => {
+                        watched_steer = Some(submission);
+                    }
+                    Intent::Stop if fire_stop.is_none() => {
+                        fire_stop = Some((
+                            format!("{} proposed a stop", submission.proposal.by),
+                            submission.proposal.basis,
+                        ));
+                        stop_by = Some(submission.proposal.by);
+                    }
+                    _ => {
+                        controller.note(now, &submission.proposal);
+                    }
+                }
+            }
+        }
         events.extend(observed.into_iter().map(|o| o.event));
         if !running {
             controller.ended(now, "the session ended");
         }
+        if let Some(submission) = watched_steer.filter(|_| running) {
+            let message = submission.message.clone().unwrap_or_default();
+            let result = if !capabilities.steer {
+                Err(refusal(Capability::Steer, &adapter))
+            } else if let Err(why) = controller.admit(&submission.proposal) {
+                Err(("refused".to_string(), format!("stale: {why}")))
+            } else {
+                session
+                    .steer(now, &message)
+                    .await
+                    .map(|()| {
+                        format!(
+                            "{} sent a {}-character message",
+                            submission.proposal.by,
+                            message.chars().count()
+                        )
+                    })
+                    .map_err(|error| ("failed".to_string(), error))
+            };
+            act(recorder, &mut actions, now, Capability::Steer, result);
+        }
         if running && now >= controls.deadline_ms {
+            stop_by = None;
             fire_stop = Some((
                 format!("the host deadline of {} ms passed", controls.deadline_ms),
                 controller.version(),
@@ -760,12 +911,14 @@ pub async fn drive<S: Session>(
             let proposal = Proposal {
                 intent: Intent::Stop,
                 basis,
-                by: if reason.contains("deadline") {
-                    "host deadline"
-                } else {
-                    "stop rule"
-                }
-                .to_string(),
+                by: stop_by.clone().unwrap_or_else(|| {
+                    if reason.contains("deadline") {
+                        "host deadline"
+                    } else {
+                        "stop rule"
+                    }
+                    .to_string()
+                }),
             };
             if !capabilities.stop {
                 if !stop_refused {
@@ -801,6 +954,7 @@ pub async fn drive<S: Session>(
                         );
                         controller.stopped(now, &reason);
                         stop_ruled |= proposal.by == "stop rule";
+                        stopped_by = Some(proposal.by.clone());
                         stops.push(ack);
                         running = false;
                     }
@@ -850,6 +1004,11 @@ pub async fn drive<S: Session>(
             events.push(observation.event);
         }
     }
+    if let Some(watch) = watch {
+        for submission in watch.finish(now, &controller, recorder) {
+            controller.note(now, &submission.proposal);
+        }
+    }
     controller.ended(now, "the host loop ended");
     Driven {
         session_id: session.session_id(),
@@ -858,6 +1017,8 @@ pub async fn drive<S: Session>(
         stops,
         transitions: controller.transitions,
         refusals: controller.refusals,
+        shadow: controller.shadow,
+        stopped_by,
         report: session.report(),
         elapsed_ms: now,
     }

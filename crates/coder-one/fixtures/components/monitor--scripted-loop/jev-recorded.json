@@ -1,0 +1,239 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "1d4e4cb8f294821393261b0fb7b21826146371499272c873377420760032f63a": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 847,
+      "output_tokens": 73,
+      "milliseconds": 223,
+      "source": "live component run of control.monitor#jev_monitor-4"
+    },
+    "25f7937aa9eda938321fa8540bf6b268a4e53b371837cf3d99c023dbc154de2c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 946,
+      "output_tokens": 73,
+      "milliseconds": 181,
+      "source": "live component run of control.monitor#jev_monitor-6"
+    },
+    "26bfc992587f6930f9e076ea44484b384126ddc9dcc8553b487eb90663deccab": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 660,
+      "output_tokens": 73,
+      "milliseconds": 223,
+      "source": "live component run of control.monitor#jev_monitor-1"
+    },
+    "3d53ecc9eaa5594561685b185c3392ac70f1afc4344d905918aa80c0b29c28fd": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 950,
+      "output_tokens": 73,
+      "milliseconds": 180,
+      "source": "live component run of control.monitor#jev_monitor-7"
+    },
+    "4ec4e8a4b828aa4ea51366f0ec14ede6e8e460ff97f5e54c86c984c8ce98227b": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 927,
+      "output_tokens": 73,
+      "milliseconds": 189,
+      "source": "live component run of control.monitor#jev_monitor-5"
+    },
+    "4f54cc71f24b5900053c52368c31d2b1bfe380d7268ee90afb809d261ddf2d12": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 956,
+      "output_tokens": 73,
+      "milliseconds": 160,
+      "source": "live component run of control.monitor#jev_monitor-9"
+    },
+    "8203739e42cc41213c33cb04758d50f7c6c3a2750e181d38fab7afef1bee8ed7": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 954,
+      "output_tokens": 73,
+      "milliseconds": 211,
+      "source": "live component run of control.monitor#jev_monitor-8"
+    },
+    "e69ddd1abdc04b755a85111af2b1dd4bca00d0c722c383f22a4656baead2cab1": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 767,
+      "output_tokens": 73,
+      "milliseconds": 201,
+      "source": "live component run of control.monitor#jev_monitor-3"
+    },
+    "edfb389fc03d85bafc64d6b90dfcf126a09def2b719910d84c0e3fe9a219d7cc": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 740,
+      "output_tokens": 73,
+      "milliseconds": 253,
+      "source": "live component run of control.monitor#jev_monitor-2"
+    }
+  }
+}

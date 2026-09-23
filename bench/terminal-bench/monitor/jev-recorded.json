@@ -1,0 +1,2787 @@
+{
+  "schema": "openagents.coder-one.jev-recorded.v1",
+  "entries": {
+    "01fa111cd68ce000188b521bd63f5f6b27297cea400534dee8659135369b4038": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1697,
+      "output_tokens": 73,
+      "milliseconds": 330,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "0240d5a2af2af92a5eccd6685d0ecd28daecce14bbd2d2b6c99ca9b2941e2d6c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.97
+        }
+      },
+      "input_tokens": 1645,
+      "output_tokens": 73,
+      "milliseconds": 269,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "130cb45483629c60fba1363d1fc330112e947db11badcbaf61cd8a9a220312e4": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.97
+        }
+      },
+      "input_tokens": 1455,
+      "output_tokens": 73,
+      "milliseconds": 216,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "142e34ee9e1449375fa97120229be6caea44be9aec4522c4c92dffe10b148d12": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.12
+        }
+      },
+      "input_tokens": 1585,
+      "output_tokens": 73,
+      "milliseconds": 190,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "153580eea4dd876284be2597f5c7c4ec1211458c4e2953a9595234461cdbe0aa": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.16
+        }
+      },
+      "input_tokens": 1725,
+      "output_tokens": 73,
+      "milliseconds": 232,
+      "source": "live control.monitor replay#jev_monitor-7"
+    },
+    "195e3ff3f872b13939b2a34a059b118df8ed4c9d65f86ee7800c0ce127b72751": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1054,
+      "output_tokens": 73,
+      "milliseconds": 190,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "1bcb58d5e0e330eea7a62712219ccf7d3f73e9ad6140bcb3ce2f45985ef380e3": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.98
+        }
+      },
+      "input_tokens": 1824,
+      "output_tokens": 73,
+      "milliseconds": 182,
+      "source": "live control.monitor replay#jev_monitor-6"
+    },
+    "1e8d99e5452a7c91bb0b70310b87dae5faa095fbe5c57d81ba1b69bb2d9d9e51": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.98
+        }
+      },
+      "input_tokens": 1421,
+      "output_tokens": 73,
+      "milliseconds": 198,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "1e8edf3788ec28486c04fb98455d304b900c658543c166d10d4d36f2bda4d246": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.76
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.12
+        }
+      },
+      "input_tokens": 2371,
+      "output_tokens": 73,
+      "milliseconds": 159,
+      "source": "live control.monitor replay#jev_monitor-15"
+    },
+    "23ef66e0cee3411edd8a3462de0271c8e71879374d3c79ca1893a5b1aa24bc00": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 860,
+      "output_tokens": 73,
+      "milliseconds": 329,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "2829b7e8bf76ddbdfb4acc672d0ee10c4d7c3ddefe93e692fced3478a1dd5fc6": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.97
+        }
+      },
+      "input_tokens": 1958,
+      "output_tokens": 73,
+      "milliseconds": 161,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "2ba35d3539315b78d54b513f1c2fe8f31c167cbee8c97c2aa56d4dc232ee34a2": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 1703,
+      "output_tokens": 73,
+      "milliseconds": 168,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "2e6973c36e2b9422c864d563c73204832f6e5ff15d3d0b187125bddf47437be9": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 767,
+      "output_tokens": 73,
+      "milliseconds": 219,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "320962eff3310fecb488005fd05742067d3ecf6f7733d3a318d03b5f9b1ccfa3": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.3
+        }
+      },
+      "input_tokens": 1807,
+      "output_tokens": 73,
+      "milliseconds": 201,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "33397b133946fa76560224445ad5d8bfe8a590bd3bb28230b11a732f26ab5385": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 2553,
+      "output_tokens": 73,
+      "milliseconds": 200,
+      "source": "live control.monitor replay#jev_monitor-19"
+    },
+    "33ac219f8f0dc03c16b2a8d701fe558c086791684c2c21111ce42c0fc2aaede9": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1292,
+      "output_tokens": 73,
+      "milliseconds": 229,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "3896d1e402f5fcd892129fdf0da8930c87a4cdacbfe913bb31c88fc1254867fd": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.11
+        }
+      },
+      "input_tokens": 1029,
+      "output_tokens": 73,
+      "milliseconds": 206,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "3fc320b44057204d3d639efc731ad6dc1a0e7405ca242b3620b209de4f0b3483": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.74
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.98
+        }
+      },
+      "input_tokens": 1823,
+      "output_tokens": 73,
+      "milliseconds": 216,
+      "source": "live control.monitor replay#jev_monitor-8"
+    },
+    "40b4b40e2611eba56eac2f1aedcf0183ea136709ae1f89fb6d446a7eb69e32a7": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.15
+        }
+      },
+      "input_tokens": 2456,
+      "output_tokens": 73,
+      "milliseconds": 291,
+      "source": "live control.monitor replay#jev_monitor-17"
+    },
+    "42d8db34b1f6134a9176a73a1561f2e20d24efb37267226f92606e3ced12f3df": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.77
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.15
+        }
+      },
+      "input_tokens": 1364,
+      "output_tokens": 73,
+      "milliseconds": 212,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "44f4c0eb6169a89f279486eac36386644b48a19c6b798ccba53b1d5720f3d983": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 1346,
+      "output_tokens": 73,
+      "milliseconds": 207,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "47d2a6a30b1725cf0cd8352db1a500976105d1a832fe0f6140e31114e640bd2a": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.91
+        }
+      },
+      "input_tokens": 2528,
+      "output_tokens": 73,
+      "milliseconds": 305,
+      "source": "live control.monitor replay#jev_monitor-23"
+    },
+    "4be265f73917078e4b24ab554fc5c3b8c93013af96e21976d0a7f4ce7fe238ed": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1120,
+      "output_tokens": 73,
+      "milliseconds": 168,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "4c505dda5ed5c14c8e9508e2c44976ff437b8bdb62997d514b2fd74b8313dbad": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.51
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1251,
+      "output_tokens": 73,
+      "milliseconds": 200,
+      "source": "live control.monitor replay#jev_monitor-6"
+    },
+    "4df51818363293caaf5f9527fcc03e0c5eab6782aa7fa875ec137781090ad679": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.59
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1239,
+      "output_tokens": 73,
+      "milliseconds": 306,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "4e28cc45f8557377444d48f2c6d939378ef0392c2e7ff45d6a313b7f6e9842e1": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1828,
+      "output_tokens": 73,
+      "milliseconds": 160,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "4e9d8017f46c1bcf8ba63dd7bb42334509b35327f6fc57690fcf15404b92a8dd": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.97
+        }
+      },
+      "input_tokens": 1551,
+      "output_tokens": 73,
+      "milliseconds": 201,
+      "source": "live control.monitor replay#jev_monitor-6"
+    },
+    "4f4497274f74a5f44deec02d0c79c5d0b26984acaea154ac4a1fec1e6239474b": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 999,
+      "output_tokens": 73,
+      "milliseconds": 229,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "551330ff9286c8b7aade23b412800768bdb089d41605a07ccc8852dc2c890cf9": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.2
+        }
+      },
+      "input_tokens": 2238,
+      "output_tokens": 73,
+      "milliseconds": 201,
+      "source": "live control.monitor replay#jev_monitor-10"
+    },
+    "592afbae624c5d64afb5268756f4d66bfb79bff6ef328743c94eaa8079dd3dfb": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.14
+        }
+      },
+      "input_tokens": 1059,
+      "output_tokens": 73,
+      "milliseconds": 431,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "5b00aa8825318303298d3fddd3da552d179a21f3eb22d856af6c145bd3098893": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.11
+        }
+      },
+      "input_tokens": 1145,
+      "output_tokens": 73,
+      "milliseconds": 161,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "5c348f6be76ee564aace9c9c8a638a7ce9f9bd7999a5b603083a9af144e648b3": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.81
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1131,
+      "output_tokens": 73,
+      "milliseconds": 303,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "605a2600877f2a804afc9c4b2b14b3078bf988de13e1fa23b9a5296818dbfbc6": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.11
+        }
+      },
+      "input_tokens": 1578,
+      "output_tokens": 73,
+      "milliseconds": 194,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "609e9dbf9399c8eaa9703daf586c9ae3d1ebadd5528ad4564da7d3b4a0d15fbf": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 2255,
+      "output_tokens": 73,
+      "milliseconds": 208,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "623e97b5ab52ce12d6281edebfbecad2146dd29577666c83bf0e6113db26548c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 1523,
+      "output_tokens": 73,
+      "milliseconds": 196,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "696901dac233539acef5e742e759d96704d13aeb8f1ea160e2cfd9cfcb45f537": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.09
+        }
+      },
+      "input_tokens": 2217,
+      "output_tokens": 73,
+      "milliseconds": 293,
+      "source": "live control.monitor replay#jev_monitor-8"
+    },
+    "6fdfc15689eb6bc74a2e8fa195b56d37082a71f70df31d171a267e79a594d013": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.6
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 996,
+      "output_tokens": 73,
+      "milliseconds": 222,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "71a2c516dce548c9b4a4d189904ea45cc796a5afa7781a371f5f0ee63ef001a3": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.62
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 1291,
+      "output_tokens": 73,
+      "milliseconds": 217,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "7c03c7870f94d628e8304efa6cc31abee158586c4d4e98ac0bc43c8e9c84d3ad": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 895,
+      "output_tokens": 73,
+      "milliseconds": 345,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "7c0b1f1dae8d41cf08a39926eedab92451f7464ca684ae083abbe63e48ece4e9": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "input_tokens": 1564,
+      "output_tokens": 73,
+      "milliseconds": 336,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "8242b7833845853e9b82e8ad20a634f45b79d64efd044d09309fb83a334baa57": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.47
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.97
+        }
+      },
+      "input_tokens": 1200,
+      "output_tokens": 73,
+      "milliseconds": 225,
+      "source": "live control.monitor replay#jev_monitor-8"
+    },
+    "824ce0daf16aef5e3902a235245572720581282edb28a8b3fc78b2f6b1b07b6c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.14
+        }
+      },
+      "input_tokens": 1600,
+      "output_tokens": 73,
+      "milliseconds": 200,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "829989084904bcd04910542cf461684456f4ec3730cd2449b4d2cb1839d9aa7f": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.67
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1386,
+      "output_tokens": 73,
+      "milliseconds": 256,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "84c57240f4b9e5c1dd714005097f7ee73db63c13ddfca9b54f890b93d810f543": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.11
+        }
+      },
+      "input_tokens": 1599,
+      "output_tokens": 73,
+      "milliseconds": 318,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "8816450a4882e8e429aaa32d58870c1e68e4399a0ad1effe42225a190802cbdc": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.73
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1204,
+      "output_tokens": 73,
+      "milliseconds": 313,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "8842a1810464963d17436121cfeaadb72ff87d3c695de7fd16eff75ce44fe031": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.09
+        }
+      },
+      "input_tokens": 2205,
+      "output_tokens": 73,
+      "milliseconds": 305,
+      "source": "live control.monitor replay#jev_monitor-9"
+    },
+    "89b92d89cd2d11e822b3caf46eec0534941826984eafa048a30e0696a19961e5": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.14
+        }
+      },
+      "input_tokens": 1313,
+      "output_tokens": 73,
+      "milliseconds": 270,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "8c011b6df1450c67ea4f8dcefcb878d37bf1205cbff72d3eaf2f8443c98018b9": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.48
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.07
+        }
+      },
+      "input_tokens": 1372,
+      "output_tokens": 73,
+      "milliseconds": 295,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "8c9af1e8d3bf4027d0adbb70a085e4b40355ded500284db2e08d1582bc3ff327": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.67
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "input_tokens": 1900,
+      "output_tokens": 73,
+      "milliseconds": 227,
+      "source": "live control.monitor replay#jev_monitor-7"
+    },
+    "8d16cfb49b689a6b1ca03cd41b567a94e1bb93ef3be515e5eb50ce5a96cb2c95": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.64
+        }
+      },
+      "input_tokens": 2548,
+      "output_tokens": 73,
+      "milliseconds": 206,
+      "source": "live control.monitor replay#jev_monitor-20"
+    },
+    "8d44229f772c3fdc50526b8aa8b9fea104ede2f9580f0bea629ce1aec6340a64": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.2
+        }
+      },
+      "input_tokens": 1680,
+      "output_tokens": 73,
+      "milliseconds": 303,
+      "source": "live control.monitor replay#jev_monitor-6"
+    },
+    "8d5418e1a229cb7104dd33503c735519b224bfdceb058d93d3fa6de35f1e0182": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.49
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1897,
+      "output_tokens": 73,
+      "milliseconds": 184,
+      "source": "live control.monitor replay#jev_monitor-6"
+    },
+    "90abf42d69395317c8cb481729b83bc8a1cdb306c0085249d8b77d56e659030c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.7
+        }
+      },
+      "input_tokens": 2540,
+      "output_tokens": 73,
+      "milliseconds": 305,
+      "source": "live control.monitor replay#jev_monitor-22"
+    },
+    "90b1bf618ab9ee58ab2f0af9a29aeb184d9f1b6a77c6de67d006d1ab630c3602": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.18
+        }
+      },
+      "input_tokens": 1369,
+      "output_tokens": 73,
+      "milliseconds": 182,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "914eeb2f2ca938dcf210317068168bfe03c68851eba02779782680ed40bf9fbc": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1032,
+      "output_tokens": 73,
+      "milliseconds": 158,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "941975b09b9b9d799300962f152167e54cc4b303c2c90c2398d1041ca0b3e8db": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 1589,
+      "output_tokens": 73,
+      "milliseconds": 196,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "966508f3eb994d1fd0d634408f5095ccdcbc2d8edf26d4833f79e6c815cba6b1": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.47
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1063,
+      "output_tokens": 73,
+      "milliseconds": 172,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "970ce23ca6ebccebdb48ce0745d5b0c4d14c08bd62c5adfa208a330fdef45ec7": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.49
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.98
+        }
+      },
+      "input_tokens": 1647,
+      "output_tokens": 73,
+      "milliseconds": 202,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "977fe32dd102e38090b58b8a5ff73477f4c4ce87900e6f797752d11252e6068c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.69
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1323,
+      "output_tokens": 73,
+      "milliseconds": 191,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "9a142e095560c3af9d91abc44f05ccc85702c51ad90fde675d46755075b204b0": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.07
+        }
+      },
+      "input_tokens": 2033,
+      "output_tokens": 73,
+      "milliseconds": 206,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "9ae416f49a89fa2bae81de4655066bbbab2e806b4aea259cd56cff93f16e5301": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.77
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.18
+        }
+      },
+      "input_tokens": 2316,
+      "output_tokens": 73,
+      "milliseconds": 232,
+      "source": "live control.monitor replay#jev_monitor-11"
+    },
+    "9ca54de915860631f8b162ed4bfe5be1adca61c701164928fa06d8664b728f3d": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 1705,
+      "output_tokens": 73,
+      "milliseconds": 263,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "9e4ac7e0e1edcdfbed7fbcc4e98cc3b2cadb4365ad484f95afb718bff4d59c90": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.12
+        }
+      },
+      "input_tokens": 1488,
+      "output_tokens": 73,
+      "milliseconds": 355,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "a11d052f5ee00bb030c69f30eb06fbbce41dd5629f3625dd52ec26ebbe4a8b7c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.54
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1962,
+      "output_tokens": 73,
+      "milliseconds": 263,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "a1a4884035cdf2d8f3b768aac9679985ecc4ef52b2be8dad22f4707852a94f9c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 2249,
+      "output_tokens": 73,
+      "milliseconds": 305,
+      "source": "live control.monitor replay#jev_monitor-13"
+    },
+    "a2dd16263e54bd7b535d254368238832a6da45f70d9b334bb1657bc4f5ca394e": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.09
+        }
+      },
+      "input_tokens": 1575,
+      "output_tokens": 73,
+      "milliseconds": 255,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "a3e93aefcc462a96660e95115543c23e15722f5285f74f7dfb89f35f701f3370": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.95
+        }
+      },
+      "input_tokens": 1642,
+      "output_tokens": 73,
+      "milliseconds": 170,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "a65ac6c7abb32e6c814e4058724e075904c020d2b01920cefe15f851a32ef52a": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.98
+        }
+      },
+      "input_tokens": 1159,
+      "output_tokens": 73,
+      "milliseconds": 192,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "a8da62405feaeba7e1d5feaef68ecd1e001e02a4bd173b70c862188600f0abdb": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.2
+        }
+      },
+      "input_tokens": 1550,
+      "output_tokens": 73,
+      "milliseconds": 161,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "adfef83f7dc4d5645558b9646e80babdcca178562bf133cbfc69933ccd5a94f0": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.98
+        }
+      },
+      "input_tokens": 1651,
+      "output_tokens": 73,
+      "milliseconds": 208,
+      "source": "live control.monitor replay#jev_monitor-6"
+    },
+    "ae85c0200c72d9024b980f67607c74d297bc5aa75cc19132940efbf5488c97d8": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1526,
+      "output_tokens": 73,
+      "milliseconds": 214,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "afcc6e8c34a7781d34689e29650b5e4b50c0b203764c927efb72623fd166e3a2": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.28
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 1308,
+      "output_tokens": 73,
+      "milliseconds": 191,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "b2b1881e5a015b294ef7920884ab93a3bb668512eec22c63abcd3ad5d5a7a419": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.78
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.34
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.96
+        }
+      },
+      "input_tokens": 1650,
+      "output_tokens": 73,
+      "milliseconds": 187,
+      "source": "live control.monitor replay#jev_monitor-6"
+    },
+    "b2ddb4f20cdbcced4ea423b00409e45759e3de2dc341acb172469a75904551d4": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.13
+        }
+      },
+      "input_tokens": 2304,
+      "output_tokens": 73,
+      "milliseconds": 195,
+      "source": "live control.monitor replay#jev_monitor-14"
+    },
+    "b5110051ae5771cc6170e3b7a63d87b0871851dd5eb2e3204c657e220b266419": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.46
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 2395,
+      "output_tokens": 73,
+      "milliseconds": 289,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "b90f19231c70ecd0bbeec4563e03aa179394a5bd8dcca410587618dabbc8b993": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.95
+        }
+      },
+      "input_tokens": 1370,
+      "output_tokens": 73,
+      "milliseconds": 179,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "bb7ef7b75436356d62e5b2e84a07a04347398739832ddd1ce17c92e32e61b697": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.12
+        }
+      },
+      "input_tokens": 1774,
+      "output_tokens": 73,
+      "milliseconds": 198,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "be9891d530fc38fedbe2bce6f8b9c00fada9198c88df21abd77d0b8362cd5f9e": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 939,
+      "output_tokens": 73,
+      "milliseconds": 277,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "bf1fe811b2f775e620416704ef7b96f165b9a6c86d7f8e30c89da9d80913c322": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 1831,
+      "output_tokens": 73,
+      "milliseconds": 186,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "bf78232d9eee67463fb7f1f4286bd2b23b76797a90cc00570b6a1d8c5b1e09f4": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 2297,
+      "output_tokens": 73,
+      "milliseconds": 300,
+      "source": "live control.monitor replay#jev_monitor-6"
+    },
+    "c026f15b453b78cb78354de802fae9fc4a818259c18aaf4c1c03c5da7c018cc8": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 647,
+      "output_tokens": 73,
+      "milliseconds": 183,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "c15119b6f92656f4272f8ec0f697016c06d69cec1ee0326460f13521f33f9a4f": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.21
+        }
+      },
+      "input_tokens": 2289,
+      "output_tokens": 73,
+      "milliseconds": 278,
+      "source": "live control.monitor replay#jev_monitor-12"
+    },
+    "c1da2969a7abec4e4cca25f36bf4e12281d471130b4e7d9a5dfaf8a7b31c9d5b": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 1480,
+      "output_tokens": 73,
+      "milliseconds": 281,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "c303efebb9662589cb9e502c43cb250dea3678306374ffd815e735c6e5b6b18d": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1337,
+      "output_tokens": 73,
+      "milliseconds": 174,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "d0908be124c9afa5f4afd393afab9d70a1b9216e2a0bc8faaca87823572b537e": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 1358,
+      "output_tokens": 73,
+      "milliseconds": 168,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "d19eee7b1822e143baac2552e7af960dcd75f8fcb86bf8674851294982b1322a": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.97
+        }
+      },
+      "input_tokens": 1738,
+      "output_tokens": 73,
+      "milliseconds": 223,
+      "source": "live control.monitor replay#jev_monitor-8"
+    },
+    "d44973e55d4ba2ffaeedff287b08e437f92d830c14b3319902afb0e29e71c680": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.96
+        }
+      },
+      "input_tokens": 2073,
+      "output_tokens": 73,
+      "milliseconds": 292,
+      "source": "live control.monitor replay#jev_monitor-6"
+    },
+    "d9ce358b5393a486611b086d95ecfedb6ee05bb5307230138c84cc4200f01316": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.19
+        }
+      },
+      "input_tokens": 1129,
+      "output_tokens": 73,
+      "milliseconds": 199,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "dc05412ae20f01edf2e3507e60ee125d6661734079dd2d543c8263b75a62c35c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.64
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.32
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1346,
+      "output_tokens": 73,
+      "milliseconds": 171,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "dc22964e144e3bd5ebe018a38fd7d42b1ba9a5471dcc54710c7d639518adf7c0": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.23
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 2515,
+      "output_tokens": 73,
+      "milliseconds": 204,
+      "source": "live control.monitor replay#jev_monitor-18"
+    },
+    "dd1ecc9418ec4d3cec8b26f3ea490574defaaace5b905e04b29438b26b0200fe": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.84
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.05
+        }
+      },
+      "input_tokens": 1079,
+      "output_tokens": 73,
+      "milliseconds": 170,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "dde4f48241ffc1bb808b14c7d468059161aa7f24d2f4c4e49928c6bbe8dd95ca": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 1273,
+      "output_tokens": 73,
+      "milliseconds": 177,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "df34d64f9e1e2ebb5d950a7e296740880fda7c5d669f80969fa9a3111f594a20": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 2400,
+      "output_tokens": 73,
+      "milliseconds": 305,
+      "source": "live control.monitor replay#jev_monitor-5"
+    },
+    "df42439ffba8e78fdfe57dbe5ef1fd08e4d563969fe7586c95ba1b4ae727c27b": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.87
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.59
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "input_tokens": 1484,
+      "output_tokens": 73,
+      "milliseconds": 241,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "e0bb71a1fb1891c4ed5ce16dc77cd2af416b180818b3ad7dc8f0d7c8d5e0d17e": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 916,
+      "output_tokens": 73,
+      "milliseconds": 214,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "e2a627657eb99a7cd8ab2c203a01d8371da1998a93dc18fdf8f88241eb93985d": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.35
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.69
+        }
+      },
+      "input_tokens": 2472,
+      "output_tokens": 73,
+      "milliseconds": 198,
+      "source": "live control.monitor replay#jev_monitor-21"
+    },
+    "e780dd75e252749a4aa597eee742d1ea1e279f7f8a8cf44a49472a204c448122": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.97
+        }
+      },
+      "input_tokens": 1667,
+      "output_tokens": 73,
+      "milliseconds": 188,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "eaca02441473d53eaeafa03b79def20b74af4b443ed6d9111b2cccd6a6579112": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1272,
+      "output_tokens": 73,
+      "milliseconds": 219,
+      "source": "live control.monitor replay#jev_monitor-3"
+    },
+    "ee4c4500bc0114c24a012f98607d5cef39b629795e9984d547187eb8e8f89880": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.18
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 952,
+      "output_tokens": 73,
+      "milliseconds": 305,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "ef3046a9eaf90c35684a73f01dba2cb369cd73f7145b234833b96a78c25341f6": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1520,
+      "output_tokens": 73,
+      "milliseconds": 208,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "f18ebc7656997366ac392f96a17e57041432ee053c372e244687090c3762bda2": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "input_tokens": 762,
+      "output_tokens": 73,
+      "milliseconds": 200,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "f1d4c7fe035e15c6fcdb8f5b725fa7ca3ae0011d4a0dd87aef242522b3503620": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.48
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 1195,
+      "output_tokens": 73,
+      "milliseconds": 278,
+      "source": "live control.monitor replay#jev_monitor-7"
+    },
+    "f302871c98dfb2fb12a31b236bb8c61f6ab42ff5e8c04ae16f59835f37efa7cc": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "input_tokens": 2180,
+      "output_tokens": 73,
+      "milliseconds": 220,
+      "source": "live control.monitor replay#jev_monitor-7"
+    },
+    "f4616158067428a56a6fa68f87a3c6627ec39bd82c28e4ad22edd8a4e1660804": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.12
+        }
+      },
+      "input_tokens": 1433,
+      "output_tokens": 73,
+      "milliseconds": 217,
+      "source": "live control.monitor replay#jev_monitor-4"
+    },
+    "f884c89095a55aea9d161acba62c6fe60eec5296e71de825ae6872f0c77ea67c": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.44
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "input_tokens": 1560,
+      "output_tokens": 73,
+      "milliseconds": 218,
+      "source": "live control.monitor replay#jev_monitor-2"
+    },
+    "fb5db6f116417a4c63c2d0fc6116031ae287c91d9d172e13808a557c581a0e0f": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "input_tokens": 1085,
+      "output_tokens": 73,
+      "milliseconds": 278,
+      "source": "live control.monitor replay#jev_monitor-1"
+    },
+    "fddd44a4604b32ad7aa914e65673f4e45e31ffe54b85f687e9bdc09a11a7c337": {
+      "name": "jev_monitor",
+      "model": "jev-1.13.0",
+      "answers": {
+        "progress": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "repeating": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "rereading": {
+          "type": "noul",
+          "noul": 0.29
+        },
+        "claims_done": {
+          "type": "noul",
+          "noul": 0.17
+        }
+      },
+      "input_tokens": 2373,
+      "output_tokens": 73,
+      "milliseconds": 166,
+      "source": "live control.monitor replay#jev_monitor-16"
+    }
+  }
+}

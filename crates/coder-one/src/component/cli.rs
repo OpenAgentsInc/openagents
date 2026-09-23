@@ -14,6 +14,9 @@ pub const USAGE: &str = "usage: coder-one component list [--json]
                                  [--out DIR | --no-record] [--export FILE] [--json]
        coder-one component extract --traces DIR --arm TEXT --out DIR
        coder-one component replay evidence.pack [--traces DIR] [--out FILE] [--json]
+       coder-one component replay control.monitor [--traces DIR] [--jev recorded|live|off]
+                                  [--recorded FILE] [--save-jev] [--live-limit N] [--sample TEXT]
+                                  [--out FILE] [--json]
 
 --jev defaults to recorded: answers replay from each fixture's jev-recorded.json,
 and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY;
@@ -21,7 +24,14 @@ and a changed state or question set misses. live calls Jev with TYPESAFE_API_KEY
 --export writes each fixture's task and output to FILE, such as the task features
 the Gym's router reads: bench/terminal-bench/profiles/task-features.json.
 Runs record their invocations under ~/.openagents/coder-one/components unless
---out names another directory or --no-record is given.";
+--out names another directory or --no-record is given.
+
+replay control.monitor feeds every retained native stream through the monitor
+one event at a time and labels each judgment by hindsight. Its Jev answers
+replay from --recorded (bench/terminal-bench/monitor/jev-recorded.json); with
+--jev live, the first trial of each task under the traces --sample names (the
+v3 Luna, v2 Opus, and v2 Luna arms by default) is asked live, at most
+--live-limit requests (40), and --save-jev adds the answers to that file.";
 
 /// A live Jev client from `TYPESAFE_API_KEY` or `~/.openagents/jev.json`.
 ///
@@ -53,6 +63,9 @@ struct Flags {
     save_jev: bool,
     record: bool,
     json: bool,
+    recorded: Option<PathBuf>,
+    live_limit: usize,
+    sample: Vec<String>,
 }
 
 impl Flags {
@@ -69,6 +82,9 @@ impl Flags {
             save_jev: false,
             record: true,
             json: false,
+            recorded: None,
+            live_limit: 40,
+            sample: Vec::new(),
         };
         let mut args = args.iter();
         while let Some(arg) = args.next() {
@@ -86,6 +102,13 @@ impl Flags {
                 "--export" => flags.export = Some(value("--export")?.into()),
                 "--jev" => flags.jev = value("--jev")?,
                 "--save-jev" => flags.save_jev = true,
+                "--recorded" => flags.recorded = Some(value("--recorded")?.into()),
+                "--sample" => flags.sample.push(value("--sample")?),
+                "--live-limit" => {
+                    flags.live_limit = value("--live-limit")?
+                        .parse()
+                        .map_err(|_| "--live-limit takes a count".to_string())?;
+                }
                 "--no-record" => flags.record = false,
                 "--json" => flags.json = true,
                 other if other.starts_with("--") => return Err(format!("unknown option {other}")),
@@ -231,9 +254,14 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 extracted.iter().any(|one| one.reproduces == Some(false)),
             ))
         }
+        "replay" if flags.positional.first().map(String::as_str) == Some("control.monitor") => {
+            replay_monitor(&flags).await
+        }
         "replay" => {
             if flags.positional.first().map(String::as_str) != Some("evidence.pack") {
-                return Err(format!("component replay takes evidence.pack\n{USAGE}"));
+                return Err(format!(
+                    "component replay takes evidence.pack or control.monitor\n{USAGE}"
+                ));
             }
             let traces = flags.traces.clone().unwrap_or_else(|| {
                 std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -265,6 +293,76 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         }
         _ => Err(USAGE.to_string()),
     }
+}
+
+/// The checkout's monitor directory: the replay report and its recorded
+/// Jev answers.
+#[must_use]
+pub fn monitor_dir() -> PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench/monitor")
+}
+
+async fn replay_monitor(flags: &Flags) -> Result<i32, String> {
+    let traces = flags.traces.clone().unwrap_or_else(|| {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench/traces")
+    });
+    let recorded_path = flags
+        .recorded
+        .clone()
+        .unwrap_or_else(|| monitor_dir().join("jev-recorded.json"));
+    let recorded = super::jev::Recorded::load(&recorded_path)?;
+    let live = match flags.jev.as_str() {
+        "live" => match flags.choice()? {
+            JevChoice::Live(client) => Some(client),
+            _ => None,
+        },
+        "recorded" | "off" => None,
+        other => return Err(format!("--jev takes live, recorded, or off, not {other}")),
+    };
+    let jev = super::monitor::ReplayJev {
+        live,
+        live_limit: flags.live_limit,
+        sample: if flags.sample.is_empty() {
+            super::monitor::default_sample()
+        } else {
+            flags.sample.clone()
+        },
+        recorded: recorded.clone(),
+        on: flags.jev != "off",
+    };
+    let params = crate::monitor::Params::default();
+    let (report, recorder) = super::monitor::replay_tree(&traces, &params, &jev).await;
+    if flags.save_jev && flags.jev == "live" {
+        let mut recorded = recorded;
+        let added = super::jev::record_answers(
+            &recorder.steps(),
+            "live control.monitor replay",
+            &mut recorded,
+        );
+        if added > 0 {
+            recorded.save(&recorded_path)?;
+        }
+        eprintln!("recorded {added} answers in {}", recorded_path.display());
+    }
+    let value = serde_json::to_value(&report).map_err(|error| error.to_string())?;
+    if let Some(path) = &flags.out {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let text = serde_json::to_string_pretty(&value).map_err(|error| error.to_string())?;
+        crate::record::write_atomic(path, format!("{text}\n").as_bytes())?;
+    }
+    if flags.json {
+        print_json(&value)?;
+    } else {
+        for line in super::monitor::lines(&report) {
+            println!("{line}");
+        }
+        if let Some(path) = &flags.out {
+            println!("written to {}", path.display());
+        }
+    }
+    Ok(0)
 }
 
 fn print_replay(report: &super::replay::Report) {

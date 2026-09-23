@@ -1,0 +1,78 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "control.monitor",
+  "source": {
+    "kind": "synthetic",
+    "note": "reads what the briefing holds and changes nothing, then goes quiet"
+  },
+  "input": {
+    "task": "Fix `parse.py` so that `pytest -q` passes. The parser must read the severity field of each log line, not search the whole line. Write the counts to `summary.csv`.",
+    "briefing": "## The task\n\nFix `parse.py` so that `pytest -q` passes. The parser must read the severity field of each log line, not search the whole line. Write the counts to `summary.csv`.\n\n## Files by relevance\n\n### parse.py (Jev p=0.91)\n\n```\nimport sys\n```\n\n### test_parse.py (Jev p=0.80)\n\n```\ndef test(): ...\n```\n\n### $ pwd && ls -la (Jev p=0.75)\n\n```\n/app\nparse.py test_parse.py\n```\n",
+    "params": {
+      "silence_ms": 2000,
+      "stall_commands": 4
+    },
+    "script": {
+      "schema": "openagents.coder-one.executor-script.v1",
+      "name": "monitor-stall",
+      "events": [
+        {
+          "at_ms": 100,
+          "do": "command",
+          "command": "ls -la",
+          "output": "parse.py test_parse.py",
+          "exit_code": 0
+        },
+        {
+          "at_ms": 200,
+          "do": "command",
+          "command": "cat parse.py",
+          "output": "import sys",
+          "exit_code": 0
+        },
+        {
+          "at_ms": 300,
+          "do": "command",
+          "command": "cat test_parse.py",
+          "output": "def test(): ...",
+          "exit_code": 0
+        },
+        {
+          "at_ms": 400,
+          "do": "command",
+          "command": "grep -n severity parse.py",
+          "output": "",
+          "exit_code": 1
+        },
+        {
+          "at_ms": 500,
+          "do": "command",
+          "command": "python3 -c 'import parse'",
+          "output": "",
+          "exit_code": 0
+        },
+        {
+          "at_ms": 600,
+          "do": "hang"
+        }
+      ]
+    },
+    "onsets": [
+      {
+        "flag": "rereading",
+        "from_ms": 100,
+        "to_ms": 350
+      },
+      {
+        "flag": "stalled",
+        "from_ms": 400
+      }
+    ],
+    "passed": false,
+    "controls": {
+      "deadline_ms": 4000,
+      "tick_ms": 10
+    }
+  },
+  "retained": null
+}

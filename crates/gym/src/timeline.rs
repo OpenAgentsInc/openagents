@@ -20,6 +20,13 @@
 //! update, session started and ended) appear inline among the
 //! invocations, each with its session, process generation, sequence
 //! number, workspace revision, and native stream line.
+//!
+//! Two kinds of control marks overlay the same clock: `control.monitor`
+//! judgments (`monitor_judgment` steps, marked `◆`), each with its
+//! trigger, the version it was asked at, the rules' and Jev's flags, and
+//! whether the answer arrived stale; and `control.handoff` decisions
+//! (`handoff` steps, marked `⇢`), each with its pattern, its trigger, the
+//! executors it moved between, and the brief it carried.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -225,6 +232,148 @@ impl ExecutorEvent {
     }
 }
 
+/// The step extension that holds a `control.monitor` judgment.
+pub const MONITOR_KEY: &str = "monitor_judgment";
+
+/// The step extension that holds a `control.handoff` decision.
+pub const HANDOFF_KEY: &str = "handoff";
+
+/// One control mark on the timeline: a monitor judgment or a handoff.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mark {
+    /// Milliseconds since the timeline's first event.
+    pub offset_ms: u64,
+    /// When it was recorded, in milliseconds since the epoch.
+    pub at: u64,
+    /// `monitor` or `handoff`.
+    pub kind: String,
+    pub summary: String,
+    /// The record as written.
+    pub record: Value,
+}
+
+fn flag_names(flags: &Value) -> Vec<&'static str> {
+    ["stalled", "repeating", "rereading", "claims_done"]
+        .into_iter()
+        .filter(|name| flags.get(*name).and_then(Value::as_bool) == Some(true))
+        .collect()
+}
+
+impl Mark {
+    /// Reads a `monitor_judgment` record.
+    #[must_use]
+    pub fn monitor(record: &Value, at: u64) -> Self {
+        let names = |flags: &Value| {
+            let names = flag_names(flags);
+            if names.is_empty() {
+                "none".to_owned()
+            } else {
+                names.join(",")
+            }
+        };
+        let jev = if record.get("jev_flags").is_some_and(|f| !f.is_null()) {
+            names(&record["jev_flags"])
+        } else {
+            record
+                .get("jev_how")
+                .and_then(Value::as_str)
+                .unwrap_or("—")
+                .to_owned()
+        };
+        let summary = format!(
+            "#{} {} · rules {} · Jev {}{}{}  [#{} rev {}]",
+            record.get("n").and_then(Value::as_u64).unwrap_or(0),
+            record.get("trigger").and_then(Value::as_str).unwrap_or("?"),
+            names(&record["rules"]),
+            jev,
+            record
+                .get("proposal")
+                .and_then(Value::as_str)
+                .map_or(String::new(), |intent| format!(" · proposes {intent}")),
+            if record.get("stale").and_then(Value::as_bool) == Some(true) {
+                " · STALE"
+            } else {
+                ""
+            },
+            record
+                .pointer("/basis/seq")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            record
+                .pointer("/basis/revision")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+        );
+        Mark {
+            offset_ms: 0,
+            at,
+            kind: "monitor".to_owned(),
+            summary,
+            record: record.clone(),
+        }
+    }
+
+    /// Reads a `handoff` record.
+    #[must_use]
+    pub fn handoff(record: &Value, at: u64) -> Self {
+        let text = |key: &str| record.get(key).and_then(Value::as_str).unwrap_or("?");
+        let summary = format!(
+            "{} · {} · {} → {} · {} · brief {} characters",
+            text("pattern"),
+            text("action"),
+            text("from"),
+            text("to"),
+            text("trigger"),
+            record
+                .pointer("/brief/chars")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+        );
+        Mark {
+            offset_ms: 0,
+            at,
+            kind: "handoff".to_owned(),
+            summary,
+            record: record.clone(),
+        }
+    }
+
+    /// Reads whichever mark a step's extensions hold.
+    fn read(extensions: &Value, at: u64) -> Option<Self> {
+        if let Some(record) = extensions.get(MONITOR_KEY) {
+            return Some(Self::monitor(record, at));
+        }
+        extensions
+            .get(HANDOFF_KEY)
+            .map(|record| Self::handoff(record, at))
+    }
+
+    /// The mark as one text row.
+    #[must_use]
+    pub fn row(&self) -> String {
+        format!(
+            "  {:>7}  {:>7}  {} {:<18} {}",
+            seconds(Some(self.offset_ms)),
+            "",
+            if self.kind == "handoff" { "⇢" } else { "◆" },
+            self.kind,
+            clip(&self.summary, 140)
+        )
+    }
+
+    /// The mark as versioned JSON.
+    #[must_use]
+    pub fn to_json(&self) -> Value {
+        json!({
+            "offset_ms": self.offset_ms,
+            "at": self.at,
+            "kind": self.kind,
+            "summary": self.summary,
+            "record": self.record,
+        })
+    }
+}
+
 /// An episode's timeline.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Timeline {
@@ -233,6 +382,8 @@ pub struct Timeline {
     pub entries: Vec<Entry>,
     /// The executor's normalized events, in the order they arrived.
     pub events: Vec<ExecutorEvent>,
+    /// Monitor judgments and handoffs, in the order they were recorded.
+    pub marks: Vec<Mark>,
     /// Whether the log ended and every invocation ended.
     pub complete: bool,
     /// Readable-prefix faults in the log, such as a torn last line.
@@ -260,6 +411,8 @@ impl Timeline {
             "total_usd": self.total_usd(),
             "notes": self.notes,
             "executor_events": self.events.iter().map(ExecutorEvent::to_json).collect::<Vec<_>>(),
+            "monitor_judgments": self.marks.iter().filter(|m| m.kind == "monitor").map(Mark::to_json).collect::<Vec<_>>(),
+            "handoffs": self.marks.iter().filter(|m| m.kind == "handoff").map(Mark::to_json).collect::<Vec<_>>(),
             "invocations": self.entries.iter().map(|entry| json!({
                 "id": entry.id,
                 "parent": entry.parent,
@@ -300,14 +453,40 @@ impl Timeline {
                 self.events.len()
             ));
         }
+        let judgments = self.marks.iter().filter(|m| m.kind == "monitor").count();
+        let handoffs = self.marks.len() - judgments;
+        if judgments > 0 {
+            lines.push(format!(
+                "  {judgments} control.monitor judgments overlaid, marked ◆: trigger, the rules' and Jev's flags, the proposal, staleness, and [#sequence, revision]"
+            ));
+        }
+        if handoffs > 0 {
+            lines.push(format!(
+                "  {handoffs} control.handoff decisions overlaid, marked ⇢: pattern, action, from → to, trigger, and brief size"
+            ));
+        }
         lines.push(
             "  start     took     component / name                                   outcome     cost        spend      parent"
                 .to_owned(),
         );
-        let mut events = self.events.iter().peekable();
+        // Executor events and control marks share one clock; a mark
+        // follows the events recorded at the same moment.
+        let mut overlay: Vec<(u64, u8, String)> = self
+            .events
+            .iter()
+            .map(|event| (event.offset_ms, 0, event.row()))
+            .chain(
+                self.marks
+                    .iter()
+                    .map(|mark| (mark.offset_ms, 1, mark.row())),
+            )
+            .collect();
+        overlay.sort_by_key(|(offset, order, _)| (*offset, *order));
+        let mut events = overlay.into_iter().peekable();
         for entry in &self.entries {
-            while let Some(event) = events.next_if(|event| event.offset_ms < entry.offset_ms) {
-                lines.push(event.row());
+            while let Some((_, _, row)) = events.next_if(|(offset, _, _)| *offset < entry.offset_ms)
+            {
+                lines.push(row);
             }
             let label = format!(
                 "{}{}{}{}",
@@ -337,7 +516,7 @@ impl Timeline {
                 entry.parent.as_deref().unwrap_or("—"),
             ));
         }
-        lines.extend(events.map(ExecutorEvent::row));
+        lines.extend(events.map(|(_, _, row)| row));
         lines
     }
 }
@@ -387,7 +566,16 @@ pub fn read_log(path: &Path) -> Result<Timeline, String> {
         .iter()
         .filter_map(|step| ExecutorEvent::read(step.extensions.get(EXECUTOR_EVENT_KEY)?, step.at))
         .collect();
+    let marks: Vec<Mark> = recording
+        .steps
+        .iter()
+        .filter_map(|step| {
+            let extensions = serde_json::to_value(&step.extensions).ok()?;
+            Mark::read(&extensions, step.at)
+        })
+        .collect();
     attach(&mut timeline, executor);
+    place(&mut timeline, marks);
     timeline.faults = recording.faults.len();
     if !recording.ended() {
         timeline.complete = false;
@@ -442,12 +630,17 @@ pub fn read_trajectory(path: &Path) -> Result<Timeline, String> {
             )
         })
         .collect();
+    let marks: Vec<Mark> = steps
+        .iter()
+        .filter_map(|step| Mark::read(step.get("extra")?, step_ms(step).unwrap_or_default()))
+        .collect();
     let mut timeline = if events.is_empty() {
         derive(path, steps)
     } else {
         build(Source::Trajectory, path, &events)
     };
     attach(&mut timeline, executor);
+    place(&mut timeline, marks);
     Ok(timeline)
 }
 
@@ -468,6 +661,26 @@ fn attach(timeline: &mut Timeline, mut executor: Vec<ExecutorEvent>) {
     }
     executor.sort_by_key(|event| (event.at, event.seq));
     timeline.events = executor;
+}
+
+/// Places control marks on the timeline's clock, in recorded order.
+fn place(timeline: &mut Timeline, mut marks: Vec<Mark>) {
+    let first = timeline
+        .entries
+        .iter()
+        .find_map(|entry| Some(entry.started_at?.saturating_sub(entry.offset_ms)))
+        .or_else(|| {
+            timeline
+                .events
+                .first()
+                .map(|event| event.at.saturating_sub(event.offset_ms))
+        })
+        .or_else(|| marks.iter().map(|mark| mark.at).min())
+        .unwrap_or(0);
+    for mark in &mut marks {
+        mark.offset_ms = mark.at.saturating_sub(first);
+    }
+    timeline.marks = marks;
 }
 
 fn step_ms(step: &Value) -> Option<u64> {
@@ -610,6 +823,7 @@ fn finish(source: Source, path: &Path, mut entries: Vec<Entry>) -> Timeline {
         complete: unfinished.is_empty(),
         entries,
         events: Vec::new(),
+        marks: Vec::new(),
         faults: 0,
         notes,
     }
@@ -877,6 +1091,26 @@ mod tests {
         ))
         .unwrap();
         log.append(&step(
+            1_035,
+            json!({ "monitor_judgment": {
+                "schema": "openagents.coder-one.monitor-judgment.v1", "n": 1,
+                "trigger": "artifact", "basis": { "seq": 2, "revision": 1, "generation": 1 },
+                "rules": { "stalled": false, "repeating": true, "rereading": false, "claims_done": false },
+                "jev_how": "recorded",
+                "jev_flags": { "stalled": true, "repeating": true, "rereading": false, "claims_done": false },
+                "proposal": "steer", "stale": true, "shadow": true,
+            }}),
+        ))
+        .unwrap();
+        log.append(&step(
+            1_040,
+            json!({ "handoff": {
+                "pattern": "escalate", "action": "escalate", "from": "luna", "to": "opus",
+                "trigger": "monitor: stalled", "brief": { "chars": 812 },
+            }}),
+        ))
+        .unwrap();
+        log.append(&step(
             1_050,
             invocation("start", "inv-3", "verify.close", 1_050),
         ))
@@ -904,9 +1138,26 @@ mod tests {
         assert!(at("▸ artifact_changed") < at("verify.close"));
         assert!(lines[at("▸ command_started")].contains("pytest -q"));
         assert!(lines[at("▸ artifact_changed")].contains("[#2 rev 1 line 5]"));
+        // The monitor's judgment and the handoff overlay the same clock.
+        assert!(at("▸ artifact_changed") < at("◆ monitor"));
+        assert!(at("◆ monitor") < at("⇢ handoff"));
+        assert!(at("⇢ handoff") < at("verify.close"));
+        let judgment = &lines[at("◆ monitor")];
+        assert!(judgment.contains("rules repeating"), "{judgment}");
+        assert!(judgment.contains("Jev stalled,repeating"), "{judgment}");
+        assert!(
+            judgment.contains("STALE") && judgment.contains("[#2 rev 1]"),
+            "{judgment}"
+        );
+        assert!(lines[at("⇢ handoff")].contains("luna → opus"));
         let value = timeline.to_json();
         assert_eq!(value["executor_events"][0]["kind"], "command_started");
         assert_eq!(value["executor_events"][1]["session_id"], "s-1");
+        assert_eq!(
+            value["monitor_judgments"][0]["record"]["trigger"],
+            "artifact"
+        );
+        assert_eq!(value["handoffs"][0]["record"]["to"], "opus");
         let _ = std::fs::remove_dir_all(dir);
     }
 
