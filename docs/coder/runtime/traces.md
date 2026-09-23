@@ -65,11 +65,14 @@ it.
 
 | Step | When |
 | --- | --- |
+| `system` with `kind: door` | Once, as the session opens: the door that answers its turns, its model, and why, such as a delegation target that is installed and authenticated or the fallback because none is. The session header holds the door's name and model; this step holds the reason. |
 | `user` | You submit a draft. |
 | `system` | The instructions a generation was given, recorded when they change rather than once a turn; and any note about what the host could not do, such as a missing `TYPESAFE_API_KEY`. |
 | `agent` | Every reply the model produced, with the turn's token counts, wall time, and the model that produced it. A plan is a reply, and it is recorded verbatim. |
 | `agent` with a `shell` call | Every command, its working directory, its whole output, its exit status, and how long it took. |
 | `agent` with a decision call | Every `classify` and every `shell_judge`: which door answered, the state and questions that went out, the typed answers that came back, the digest of that state, and the route the table made of it. |
+| Delegated turn steps | On the delegate door, everything Coder One recorded for the turn, in order: the probe plan and each read-only operation, each Jev call (`jev_requirements`, `jev_probe`, `jev_survey`) with its usage, the executor's normalized events, and the `delegate` call with the briefing's digest, the session, the status, and the reported cost. Call IDs carry a `turn-<n>/` prefix. |
+| `system` with `kind: delegation` | After a delegated turn: the agent, model, status, session, boundary, briefing record, and the turn's cost by component, Jev and the executor. |
 
 A decision call carries `schema: openagents.decision-call.v1` in its
 `extra`, so a reader that wants questions put to a door and not commands

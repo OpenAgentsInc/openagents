@@ -170,6 +170,21 @@ revision, whether the tree was dirty, and the executable it ran. Keys in
 or `source` the file that defines the alias, after changing it.
 `./scripts/test-coderdev.sh` exercises the launcher against a stub Cargo.
 
+To make `coder` on your `PATH` this repository's build, install it:
+
+```bash
+./scripts/install-coder.sh              # build, install, and switch to it
+./scripts/install-coder.sh --rollback   # switch back to the previous build
+coder --version                         # the repository, commit, and tree state
+coder doctor                            # which door a turn uses, and why
+```
+
+With Claude Code or Codex installed and signed in, a turn is answered by
+that executor from a Jev briefing, and the Open Responses door is the
+fallback. [Installing Coder](docs/coder/guides/install.md) covers the
+install, the rollback, and the environment variables, and
+[the delegate door](docs/coder/runtime/delegate-door.md) covers the turn.
+
 `-p` runs one turn without a terminal, writes the reply to standard
 output, and exits 0 for an answer, 2 for a declined turn, and 1 for one
 that did not finish. `docs/coder/guides/headless.md` has the flags and the JSON

@@ -34,11 +34,18 @@ coder -p --json --trace runs/one.atif.jsonl "count the crates"
 | `--programs <SPEC>` | Grant named program slugs, subject to the environment effect ceiling. |
 | `-h`, `--help` | Print the usage text. |
 
-The environment picks the door exactly as it does in the terminal:
-`TYPESAFE_API_KEY` turns classify on, `CODER_DOOR_KEY` with
+The environment picks the door exactly as it does in the terminal. When
+Claude Code or Codex is installed and signed in, the delegate door answers
+the turn from a Jev briefing; `CODER_DELEGATE=off` turns it off and
+`CODER_DELEGATE=always` refuses to start without it. See
+[the delegate door](../runtime/delegate-door.md). Without a target, or
+with delegation off, the fallback is the door the rest of the environment
+names: `TYPESAFE_API_KEY` turns classify on, `CODER_DOOR_KEY` with
 `CODER_DOOR_URL` and `CODER_MODEL` take an own-key door, `CODER_WORKER`
 with `CODER_RELAY` routes the turn through the relay, and with none of
-them set the stub door answers.
+them set the stub door answers. The first line on standard error names the
+door and why, such as
+`door → delegate (claude-code/claude-opus-5-5) because claude-code is installed at … and authenticated (cli_login)`.
 
 The environment also says what a turn may do to the machine, again
 exactly as in the terminal: `CODER_SHELL=off` withdraws execution, and a
@@ -109,6 +116,7 @@ object that closes it:
   "route": "respond",
   "program": null,
   "usage": { "input_tokens": 812, "output_tokens": 24 },
+  "cost_usd": null,
   "error": null,
   "cause": null,
   "refusal": null,
@@ -120,7 +128,9 @@ Each event object carries an `event` name and the values the terminal
 draws, under their own names: `program` (the selected slug), `classified`
 (the verdict's `route` and the `action` answer behind it, a halt's reason
 in `halt`, or the `note` saying classify did not run), `judgment` (a
-remote worker's feedback line), and `shell_proposed`, `shell_outcome`,
+remote worker's feedback line, or a delegated turn's progress line such as
+`survey ▸ 40 files judged …` or `brief ▸ 10537 characters …`), and
+`shell_proposed`, `shell_outcome`,
 and `shell_verdict` — the command and its reason, its status and output,
 and the judge's line. A field an event does not have is `null`, not a
 stand-in. `delta` objects — the reply as it streams — come only with
@@ -129,7 +139,12 @@ worth of deltas is a flood a pipe should opt into.
 
 The summary's keys are always present. `reply`, `route`, and `usage` are
 null when the turn did not finish; `error`, `cause`, and `refusal` are
-null when it did. `events` says whether event lines came before it:
+null when it did. `cost_usd` is what a delegated turn spent in dollars,
+Jev and the executor together, and null for a door that reports tokens
+only or when any part of the cost is unknown; it is never a stand-in zero.
+On a delegated turn, `shell_proposed` and `shell_outcome` are the commands
+the executor ran, and `delta` objects are the executor's text as it
+arrives. `events` says whether event lines came before it:
 `false` means the run ended before the turn started and the object is the
 whole output, so a reader holding only the last line can still tell a
 stream from a bare result.
@@ -182,8 +197,9 @@ reading `the turn did not finish (<cause>): <reason>` before the log
 closes, so a reader holding only the trace does not find a session that
 stops mid-turn with no reason given.
 
-**Standard error** carries where the trace went, every shell command the
-turn ran, and the reason a turn failed. Reply deltas do not stream to
+**Standard error** carries where the trace went, which door answers and
+why, every shell command the turn ran, a delegated turn's progress lines
+and what it spent, and the reason a turn failed. Reply deltas do not stream to
 standard output: a command plan is a reply too, and streaming one would
 put the plan's JSON in the middle of the answer.
 

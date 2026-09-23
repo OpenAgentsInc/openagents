@@ -183,7 +183,14 @@ uses, and marks which are implemented and which are only specified.
   commands at all, built from the route and the operator's setting before
   anything generates and narrowing from there; a reply becomes an
   executable plan only under a permit that runs one, so keep execution
-  policy there rather than in what the model is told.
+  policy there rather than in what the model is told. `delegate_door`
+  answers a turn through Coder One's probes, Jev's judgments, a
+  briefing, and Claude Code or Codex when one is installed and signed in,
+  with the Open Responses door as the fallback; the permit maps to its
+  `coder-boundary` boundary, and `coder-worker` never reaches it. Read
+  `docs/coder/runtime/delegate-door.md` before changing it.
+  `scripts/install-coder.sh` installs the binary as `coder`, and
+  `coder doctor` says which door a turn uses and why.
   `docs/coder/guides/headless.md` covers the headless flags and
   the exit codes. Every conversation records itself to
   `~/.openagents/traces/` as it runs; `docs/coder/runtime/traces.md` covers the
