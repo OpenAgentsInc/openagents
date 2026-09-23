@@ -239,6 +239,13 @@ widens them. `--quota-usd` is required and budgets the Claude quota;
 schedule and checks credentials without starting a trial. The job profile
 is the one the source runs' job names share, such as `panel`, or `tb4`.
 
+`--without-claude` runs both arms with their Claude Code handoff removed,
+as experiment `PROPOSAL_ID-codex`, with the arms `PROPOSAL_ID-base` and
+`PROPOSAL_ID`. A Luna policy then draws only on Codex, so its trials don't
+wait for the host-wide Claude slots other experiments hold. A manifest that
+names Claude Code anywhere else is refused. The comparison is still
+matched: both arms lose the same handoff.
+
 ### The record
 
 A proposal lives under `~/.openagents/coder-one/proposals/<id>/`, or the
