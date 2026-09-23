@@ -473,6 +473,9 @@ pub fn one_lines(entry: &Entry, experiments: &Path) -> Vec<String> {
     for finding in strings(&mini["findings"]) {
         lines.push(format!("    - {finding}"));
     }
+    for limit in strings(&mini["limits"]) {
+        lines.push(format!("    Limit: {limit}."));
+    }
     let live = &result["live"];
     if live.is_null() {
         lines.push(

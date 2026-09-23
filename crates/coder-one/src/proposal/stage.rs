@@ -128,6 +128,23 @@ pub async fn mini_policy(
         }
     }
     let (verdict, findings) = compare(&rows);
+    let changed = |f: fn(&Manifest) -> bool| f(base) != f(candidate);
+    let mut limits = Vec::new();
+    if changed(|m| m.policy.verify.as_ref().is_some_and(|v| v.support)) {
+        limits.push(
+            "verify.support judges requirements with Jev, which the mini stage doesn't call, so \
+             only the live stage shows its effect",
+        );
+    }
+    if changed(|m| m.policy.control.handoff.is_some() || m.policy.control.route.is_some()) {
+        limits.push(
+            "the scripted executor doesn't hand off or route, so only the live stage shows a \
+             control change",
+        );
+    }
+    if base.policy.executor != candidate.policy.executor {
+        limits.push("the scripted executor stands in for the executor either manifest names");
+    }
     json!({
         "kind": "policy",
         "covered": covered,
@@ -140,6 +157,7 @@ pub async fn mini_policy(
         "runs": rows,
         "verdict": verdict,
         "findings": findings,
+        "limits": limits,
         "milliseconds": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
     })
 }

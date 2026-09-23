@@ -424,8 +424,9 @@ pub fn materialize(
         "fields": paths,
         "file": POLICY_FILE,
     });
-    let manifest_value = serde_json::to_value(&manifest).unwrap_or(value);
-    Ok((manifest_value, summary))
+    // The patched file as written, not a round trip through this build's
+    // types, so an artifact built before a field existed still reads it.
+    Ok((value, summary))
 }
 
 /// A drafted issue for a person to file.

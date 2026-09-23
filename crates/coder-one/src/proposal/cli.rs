@@ -346,6 +346,14 @@ pub fn text(proposal: &Value, result: &Value) -> String {
     {
         out.push_str(&format!("  - {finding}\n"));
     }
+    for limit in mini["limits"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        out.push_str(&format!("  Limit: {limit}.\n"));
+    }
     let live = &result["live"];
     if !live.is_null() {
         out.push_str(&format!(
