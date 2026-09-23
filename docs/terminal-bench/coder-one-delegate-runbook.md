@@ -23,7 +23,8 @@ Read [the operating notes](runbook.md) first: they cover this host, the
 credentials, the free lane's rate limit, and job naming.
 
 The tasks are `fix-git` and `build-cython-ext`, the `smoke` profile. Record
-results in [`README.md`](README.md), the one results page. The harness
+results in a detailed report and link it from the [status index](README.md),
+following the [publication procedure](runbook.md#after-each-run). The harness
 itself is described in [the harness runbook](../coder/terminal-bench.md).
 
 ## How delegate mode works
@@ -402,8 +403,9 @@ jq -r 'select(.type == "assistant") | .message.id' "$T/agent/claude-code.txt" | 
 
 ## What each run's analysis covers
 
-Add a subsection to the README's run analyses for each delegate trial, in
-the same shape as the existing Coder One analyses. Cover these points:
+Add a dated report for each experiment, following the
+[earlier Coder One analyses](2026-09-22-run-analyses.md), and link it from
+the [status index](README.md). Cover these points:
 
 - **Identity.** The artifact version and sha256, the Claude Code version
   from the stream's `init` event, the lane, the delegate model, the mode,

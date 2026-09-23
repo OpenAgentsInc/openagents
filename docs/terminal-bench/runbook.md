@@ -9,7 +9,7 @@ the arms you run.
 - Harness mechanics, profiles, and resume: [the harness runbook](../coder/terminal-bench.md).
 - The artifact contract Coder One implements: [`openagents.coder.episode.v1`](../coder/terminal-bench-contract.md).
 - Coder One's delegate arms: [the delegate runbook](coder-one-delegate-runbook.md).
-- Every result: [the results page](README.md).
+- Current status and links to results: [the status index](README.md).
 - Cancellation, timeouts, refusals, resume, image state, and repeated-run statistics: [the resilience page](resilience.md).
 - Inspect attempts and evidence: [the Gym TUI](../gym/terminal-bench-tui.md).
 - Inspect or run from the command line: [the Gym CLI](../gym/terminal-bench-cli.md).
@@ -19,7 +19,7 @@ the arms you run.
 Current trials run on an x86_64 NixOS host with 28 CPUs and native Docker.
 Earlier baselines (Fable 5.1, Sonnet 4.5, Codex 0.153.3, Devin) ran on an
 arm64 Mac, so agent times from the two machines aren't strictly
-comparable. The results page marks times that come from a trajectory
+comparable. Result tables mark times that come from a trajectory
 rather than Harbor's phase timings with †.
 
 - `uv` isn't installed globally. Run the harness through nix:
@@ -442,7 +442,7 @@ new artifact. Pass `--job-name` for anything that must be a separate trial:
   `smoke--coder-one-deep2--fix-git`;
 - a repetition, for example `smoke--claude-code-opus--fix-git-2`.
 
-Record which artifact each job name ran in the results page.
+Record which artifact each job name ran in its result report.
 
 ## Watch a long run
 
@@ -468,7 +468,9 @@ adds the outcome, calls by kind, the generation, Jev, and delegate
 components, the exact Jev cost, and time by kind of step. For a Codex GPT-6
 trial it prints a manual cost.
 
-Pricing rules the results page follows:
+Historical pricing rules for the September 22–23 results follow. See
+[measurement and pricing](measurement.md) for aggregation, missing charges,
+and matched-task comparisons.
 
 - **Jev** is exact: reported Jev input tokens × $0.042 per million. Output
   is free.
@@ -493,7 +495,7 @@ Pricing rules the results page follows:
 
 ## Retain the evidence
 
-For each job you add to the results page, run the retention tool from
+For each job you add to a result report, run the retention tool from
 `bench/terminal-bench`:
 
 ```sh
@@ -547,12 +549,31 @@ count them.
 
 ## After each run
 
-1. Add the row to the task's table and to its **Cheapest first** table,
-   in cost order.
-2. For a Coder One arm, add a run analysis to the results page: cost by
-   component, calls by kind against the other arms, tokens per call, where
-   the time went, and what explains the difference. The delegate runbook
-   lists what a delegate analysis covers.
-3. Note any invalid attempt, such as a rate-limit or setup failure, under
-   **Data problems** rather than as a result.
-4. Commit and push to `main`. The repository runs no gate before a push.
+1. Inspect the result with `uv run tbench inspect <job>` and
+   `python3 tools/trial_metrics.py <job>` from `bench/terminal-bench`.
+   Check the native executor outcome as well as the verifier reward.
+   Identify quota, authentication, setup, and wrong-artifact attempts
+   before computing pass counts. Keep their costs and links to reruns in
+   the [incident record](data-quality.md).
+2. [Retain the evidence](#retain-the-evidence) with
+   `uv run tbench retain <job>`. Inspect the retention record for missing
+   files and unverifiable references before publishing an aggregate.
+3. Add detailed results to the appropriate report: [TB4](tb4-results.md),
+   [development results](development-results.md), or a new dated report.
+   Record the task and artifact pins, policy, host, trial IDs, exclusions,
+   cost provenance, and population. Use Harbor's `agent_execution` time
+   when available and label trajectory spans as lower bounds. Keep
+   missing charges explicit; follow the [measurement definitions](measurement.md).
+4. For Coder One, add a dated analysis of cost by component, calls by
+   kind, tokens per call, time, and differences from matched arms. Follow
+   the [delegate analysis checklist](coder-one-delegate-runbook.md#what-each-runs-analysis-covers)
+   and [earlier examples](2026-09-22-run-analyses.md). Keep original dated
+   findings separate from later corrections and results.
+5. Update the [status index](README.md) with the latest result, material
+   caveats, review date, and links. Keep raw tables and detailed analyses
+   in their reports. TB4 publication currently requires the
+   [quota reconciliation](data-quality.md#current-blocker-tb4-quota-reconciliation).
+6. Check links, paths, retained artifacts, and `git diff --check`, then
+   commit and push to `main`. Documentation-only changes do not require
+   the Rust verification gate. For behavior changes, follow
+   [the repository's verification requirements](../verification.md).

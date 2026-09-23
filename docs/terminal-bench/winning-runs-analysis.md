@@ -10,7 +10,7 @@ Every trial passed. Results: [the results page](README.md).
 ## The two winners against the baselines
 
 The four-task figures are sums of per-task means. Costs are list-price
-figures; see [How to read the columns](README.md#how-to-read-the-columns).
+figures; see [How to read the columns](measurement.md#how-to-read-the-columns).
 
 | Configuration | Four-task cost | Four-task agent time | Delegate turns per task (mean) |
 | --- | --- | --- | --- |
@@ -182,7 +182,7 @@ that.
 Jev-probe v2 shipped changes 1 through 4 above, plus the 40-file survey
 cap, behind `CODER_ONE_PROBE_V2=on` (commit `03401dad74`). It ran three
 trials per task on the four panel tasks and on the four `extended` tasks.
-Full tables: [the results page](README.md#jev-probe-arms-2026-09-22).
+Full tables: [the results page](development-results.md#jev-probe-arms-2026-09-22).
 
 | Configuration | Panel: passed, cost, time | Extended: passed, cost, time |
 | --- | --- | --- |

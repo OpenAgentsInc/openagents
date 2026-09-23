@@ -195,7 +195,7 @@ consumed the space first.
 
 [One retained failure](../../bench/terminal-bench/traces/extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5.json)
 contains both the exact briefing and the closing state. The
-[results analysis](README.md#jev-probe-arms-2026-09-22) reports the observed
+[results analysis](development-results.md#jev-probe-arms-2026-09-22) reports the observed
 parser mistake: counting `ERROR` anywhere instead of the severity field.
 The omitted samples are an actionable mechanism to test, not proof that
 briefing composition alone caused the failure. Direct Luna passed all three
@@ -399,7 +399,7 @@ is a plausible explanation to test, not an observed decision in its reasoning.
 
 #### The specific counting mistake and its reproduced signature
 
-The [earlier results analysis](README.md#jev-probe-arms-2026-09-22) reports
+The [earlier results analysis](development-results.md#jev-probe-arms-2026-09-22) reports
 probe-arm counts of 414 `ERROR` events where the verifier expects 370.
 The pinned [log generator][v3-log-generator] deliberately includes warning
 messages containing the word `ERROR`. An actual record from the offline
