@@ -138,7 +138,8 @@ async def run_tasks(
 "#;
 
 /// A bounded runner that cancels its workers and returns without waiting
-/// for their cleanup.
+/// for their cleanup: `asyncio.wait` doesn't cancel them, and nothing
+/// awaits them after the cancel.
 pub const RUN_EARLY_RETURN: &str = r#"import asyncio
 from collections.abc import Awaitable, Callable
 
@@ -154,7 +155,7 @@ async def run_tasks(
 
     workers = [asyncio.create_task(one(task)) for task in tasks]
     try:
-        await asyncio.gather(*workers)
+        await asyncio.wait(workers)
     except asyncio.CancelledError:
         for worker_task in workers:
             worker_task.cancel()

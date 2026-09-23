@@ -16,7 +16,7 @@ pub const USAGE: &str = "usage: coder-one minitask list [--json]
        coder-one minitask run ID [--executor scripted|claude-code|codex]
                                  [--script good|bad|FILE] [--model MODEL]
                                  [--jev off|live] [--speed X] [--deadline SECONDS]
-                                 [--controls FILE] [--out DIR] [--json]
+                                 [--controls FILE] [--no-checks] [--out DIR] [--json]
 
 run sets the task up in a scratch directory, runs one episode with no
 explore steps, and grades it. The scripted executor (the default) plays the
@@ -25,7 +25,8 @@ gives real milliseconds per scripted one. claude-code and codex run the real
 CLI inside a coder-boundary filesystem boundary; codex with --model
 gpt-6-luna is the Luna arm. --controls names a JSON file of session
 controls (deadline_ms, tick_ms, steer, stop_when, resume) for the scripted
-executor. Runs record under ~/.openagents/coder-one/minitasks unless --out
+executor. verify.checks observes the workspace before the grader runs
+unless --no-checks is given. Runs record under ~/.openagents/coder-one/minitasks unless --out
 names another directory. The exit code is 0 when the grader passed.";
 
 /// Runs a mini-task command and returns the exit code.
@@ -47,6 +48,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let mut controls = None;
     let mut out = None;
     let mut json_output = false;
+    let mut checks = true;
     let mut iter = rest.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -72,6 +74,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "--controls" => controls = Some(PathBuf::from(value("--controls")?)),
             "--out" => out = Some(PathBuf::from(value("--out")?)),
             "--json" => json_output = true,
+            "--no-checks" => checks = false,
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
             other => positional.push(other.to_string()),
         }
@@ -158,6 +161,7 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                 speed,
                 deadline: Duration::from_secs(deadline),
                 controls,
+                checks,
             })
             .await?;
             if json_output {

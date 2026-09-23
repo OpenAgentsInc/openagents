@@ -17,6 +17,7 @@
 //! coder-one component suite evidence.probes [--fixtures DIR] [--jev recorded]
 //! ```
 
+pub mod checks;
 pub mod cli;
 pub mod evidence;
 pub mod extract;
@@ -136,6 +137,7 @@ pub fn registry() -> Vec<Box<dyn Component>> {
         Box::new(Pack),
         Box::new(scripted::ScriptedAdapter),
         Box::new(SystemSelect),
+        Box::new(checks::Checks),
         Box::new(Close),
         Box::new(scripted::MiniTaskRun),
     ]

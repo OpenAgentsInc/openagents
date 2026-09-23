@@ -152,6 +152,7 @@ impl Run {
             "started_at": self.started_at,
             "milliseconds": self.milliseconds,
             "invocations": self.timeline.as_ref().map(|t| t.entries.len()).ok(),
+            "coverage": self.coverage.as_ref().map(crate::coder_coverage::summary),
         });
         if detail {
             value["session"] = self.session.clone();
@@ -159,7 +160,7 @@ impl Run {
                 Ok(timeline) => timeline.to_json(),
                 Err(error) => json!({ "error": error }),
             };
-            value["coverage"] = self.coverage.clone().unwrap_or(Value::Null);
+            value["coverage_report"] = self.coverage.clone().unwrap_or(Value::Null);
         }
         value
     }
@@ -215,6 +216,9 @@ impl Run {
                     .collect::<Vec<_>>()
                     .join(" · ")
             ));
+        }
+        if let Some(coverage) = &self.coverage {
+            lines.extend(crate::coder_coverage::lines(coverage));
         }
         match &self.timeline {
             Ok(timeline) => lines.extend(timeline.lines()),

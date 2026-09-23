@@ -42,7 +42,10 @@ gym coder briefing [QUERY] [--json]
                            and the packer replay's before and after
 gym coder matrix [--json]  the outcome matrix: task by policy, frontiers, oracles
 gym coder router [--json]  task features, router picks, and leave-one-task-out
-                           regret against fixed and hand-written baselines";
+                           regret against fixed and hand-written baselines
+gym coder coverage [--attempt JOB/TRIAL | --run ID] [--json]
+                           verify.checks requirement coverage per attempt and
+                           mini-task run; see gym coder coverage --help";
 
 const SCHEMA: &str = "openagents.gym.coder-policy.v1";
 
@@ -126,6 +129,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("requirements") {
         return gym::coder_requirements::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("coverage") {
+        return gym::coder_coverage::command(&args[1..], out);
     }
     if args.first().map(String::as_str) == Some("minitasks") {
         return gym::coder_minitasks::command(&args[1..], out);

@@ -101,6 +101,27 @@ actions, its executor events by kind, and its invocation timeline.
 [mini-task guide](../coder/guides/coder-one-minitasks.md) covers recording
 runs.
 
+## Read requirement coverage
+
+`gym coder coverage` lists the requirement coverage Coder One's
+`verify.checks` recorded: each retained attempt `coder-one checks recover`
+checked, under `~/.openagents/coder-one/checks/`, and each mini-task run
+that ran checks. A row shows the verifier reward, the scenario verdicts,
+and how many requirements were observed, contradicted, or unverifiable.
+
+```sh
+gym coder coverage
+gym coder coverage --attempt JOB/TRIAL
+gym coder coverage --run latest --json
+```
+
+`--attempt` or `--run` shows one report: each requirement with its
+scenarios, verdicts, and coverage limits, then each diagnostic packet's
+expected relation and hypotheses. `--dir PATH` and `--minitasks-dir PATH`
+read from elsewhere. With `--json`, the schema is
+`openagents.gym.coder-coverage.v1`. The
+[checks guide](../coder/guides/coder-one-checks.md) covers the scenarios.
+
 ## Compare Coder One policy manifests
 
 `gym coder policy` reads the policy manifest every Coder One episode

@@ -1,0 +1,830 @@
+//! `verify.checks`: observations per requirement from admitted scenarios,
+//! run against one named candidate.
+//!
+//! A format check can't tell a log parser that reads the severity field
+//! from one that searches the whole line, a terminal that runs interactive
+//! programs from one that runs builtins, or a runner that awaits cleanup
+//! from one that returns early. Each of those is a scenario type here:
+//!
+//! | Scenario | Expected relation |
+//! | --- | --- |
+//! | `data.message-severity` | Changing only records' messages to carry another severity's word leaves every count unchanged. |
+//! | `data.date-boundaries` | Each period counts exactly the files the public date rule puts in it, at each boundary. |
+//! | `interactive.program` | An interactive program started through the submitted interface reads staged input. |
+//! | `interactive.interrupt` | After control C interrupts a foreground command, the shell runs the next one. |
+//! | `cancel.<how>.<size>` | After an interrupt below, at, or above the limit, every started task finishes its cleanup before the call returns. |
+//!
+//! The component runs in four recorded suboperations: **build** admits the
+//! scenarios whose applicability conditions hold and that a requirement's
+//! own words justify, **select** picks among them within a budget, **run**
+//! executes each in a scratch copy of the candidate, and **record
+//! coverage** turns verdicts into each requirement's state. A failed
+//! scenario leaves a diagnostic packet.
+//!
+//! Every scenario parameter comes from the public instruction, the
+//! observed inputs, or the host's own choice, recorded with how it was
+//! derived. Protected verifier test names, counts, and fixture timings
+//! never enter one.
+
+pub mod cancel;
+pub mod cli;
+pub mod data;
+pub mod interactive;
+pub mod recover;
+pub mod synthetic;
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+use crate::record::{Finish, Implementation, Outcome, Recorder, Start};
+use crate::requirements::{Requirement, RequirementMap};
+
+/// The schema of a checks report.
+pub const SCHEMA: &str = "openagents.coder-one.checks.v1";
+
+/// Where a run keeps its report, relative to its directory.
+pub const COVERAGE_FILE: &str = "verification/checks.json";
+
+/// The task as the checker reads it: its public words only.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TaskText {
+    #[serde(default)]
+    pub title: String,
+    pub instruction: String,
+}
+
+/// An inline program the candidate ran, such as a here-document fed to
+/// `python3 -`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InlineProgram {
+    pub interpreter: String,
+    pub source: String,
+}
+
+/// The candidate revision a check runs against.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Candidate {
+    /// A short label: a mini-task run, a retained trial, a synthetic case.
+    pub label: String,
+    /// Where it came from: `workspace`, `stream`, or `synthetic`.
+    pub origin: String,
+    /// Files the candidate wrote, by the path the task names them with.
+    #[serde(default)]
+    pub files: BTreeMap<String, String>,
+    /// Programs it ran inline.
+    #[serde(default)]
+    pub programs: Vec<InlineProgram>,
+    /// Files the task provided, such as an interface the candidate
+    /// implements. Part of the input, not of the candidate.
+    #[serde(default)]
+    pub provided: BTreeMap<String, String>,
+}
+
+impl Candidate {
+    /// The candidate's identity: the digest of what it wrote and ran.
+    #[must_use]
+    pub fn digest(&self) -> String {
+        atif::digest(&json!({ "files": self.files, "programs": self.programs }))
+    }
+
+    /// The file whose name ends with `name`, by base name.
+    #[must_use]
+    pub fn file_named(&self, name: &str) -> Option<(&String, &String)> {
+        self.files.iter().find(|(path, _)| base_name(path) == name)
+    }
+}
+
+/// A path's last component.
+#[must_use]
+pub fn base_name(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+/// What the host observed of the task's inputs.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Observed {
+    /// Sample records from the task's input files, verbatim.
+    #[serde(default)]
+    pub samples: Vec<String>,
+    /// Where the samples came from.
+    #[serde(default)]
+    pub source: String,
+}
+
+/// How much checking a run may do.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Budget {
+    pub max_scenarios: usize,
+    /// The most seconds the selected scenarios' bounds may add up to.
+    pub seconds: u64,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Budget {
+            max_scenarios: 12,
+            seconds: 180,
+        }
+    }
+}
+
+/// Everything a check reads.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Input {
+    pub task: TaskText,
+    /// The requirement map; the rule-only map of the instruction when
+    /// absent.
+    #[serde(default)]
+    pub requirements: Option<RequirementMap>,
+    pub candidate: Candidate,
+    #[serde(default)]
+    pub observed: Observed,
+    #[serde(default)]
+    pub budget: Budget,
+}
+
+/// A span of the instruction a scenario rests on.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpanRef {
+    pub requirement: String,
+    pub span: String,
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+}
+
+/// What a scenario may cost and change.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Bounds {
+    pub seconds: u64,
+    pub processes: usize,
+}
+
+/// The relation a scenario expects, and where it came from.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Relation {
+    pub statement: String,
+    pub derivation: String,
+}
+
+/// One admitted scenario.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Scenario {
+    pub id: String,
+    /// The scenario type.
+    pub kind: String,
+    /// The requirements it observes, the justifying one first.
+    pub requirements: Vec<String>,
+    pub spans: Vec<SpanRef>,
+    /// The applicability conditions that held.
+    pub applies: Vec<String>,
+    /// The interface it drives the candidate through.
+    pub interface: String,
+    pub bounds: Bounds,
+    pub effects: Vec<String>,
+    /// The candidate's digest.
+    pub candidate: String,
+    /// The digest of the inputs the scenario generates or reads.
+    pub input: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+    pub expected: Relation,
+    /// Parameters, each derived from public text, observed input, or a
+    /// host choice.
+    pub params: Value,
+}
+
+/// A scenario type that didn't apply, and why.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Ineligible {
+    pub kind: String,
+    pub why: String,
+}
+
+/// How a scenario ended.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Verdict {
+    pub scenario: String,
+    /// `passed`, `failed`, `unavailable`, or `inconclusive`.
+    pub verdict: String,
+    pub observations: Vec<Value>,
+    /// What the verdict doesn't establish.
+    pub coverage: Vec<String>,
+    /// For a failure: the explanations the observations leave open.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hypotheses: Vec<String>,
+    /// For a failure: the requirements the failed relation contradicts,
+    /// when that is narrower than every requirement the scenario observes.
+    /// Empty means the justifying requirement.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contradicts: Vec<String>,
+}
+
+impl Verdict {
+    fn new(scenario: &str, verdict: &str) -> Self {
+        Verdict {
+            scenario: scenario.to_string(),
+            verdict: verdict.to_string(),
+            observations: Vec::new(),
+            coverage: Vec::new(),
+            hypotheses: Vec::new(),
+            contradicts: Vec::new(),
+        }
+    }
+
+    /// The verdict as it bears on one requirement the scenario observes: a
+    /// failure contradicts only the requirements its relation names, and
+    /// the scenario's other relations held for the rest.
+    #[must_use]
+    pub fn for_requirement(&self, scenario: &Scenario, requirement: &str) -> &str {
+        if self.verdict != "failed" {
+            return &self.verdict;
+        }
+        let named = if self.contradicts.is_empty() {
+            scenario
+                .requirements
+                .first()
+                .is_some_and(|r| r == requirement)
+        } else {
+            self.contradicts.iter().any(|r| r == requirement)
+        };
+        if named { "failed" } else { "passed" }
+    }
+
+    /// An unavailable verdict: the scenario couldn't run.
+    #[must_use]
+    pub fn unavailable(scenario: &str, why: &str) -> Self {
+        let mut verdict = Verdict::new(scenario, "unavailable");
+        verdict.coverage.push(why.to_string());
+        verdict
+    }
+}
+
+/// The diagnostic a failed scenario leaves for repair and handoff.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Packet {
+    pub requirement: String,
+    pub requirement_text: String,
+    pub candidate: String,
+    pub scenario: String,
+    pub expected: Relation,
+    pub observations: Vec<Value>,
+    pub hypotheses: Vec<String>,
+}
+
+/// One requirement's coverage.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Covered {
+    pub id: String,
+    pub text: String,
+    pub kind: String,
+    /// `observed`, `contradicted`, `unverifiable`, or `unobserved`.
+    pub state: String,
+    pub scenarios: Vec<Value>,
+}
+
+/// A whole check.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Report {
+    pub schema: String,
+    pub implementation: Implementation,
+    pub candidate: Value,
+    pub requirements_method: String,
+    pub ineligible: Vec<Ineligible>,
+    pub scenarios: Vec<Scenario>,
+    pub selection: Value,
+    pub verdicts: Vec<Verdict>,
+    pub coverage: Vec<Covered>,
+    pub packets: Vec<Packet>,
+}
+
+impl Report {
+    /// Counts for a manifest or a list: scenarios by verdict and
+    /// requirements by state.
+    #[must_use]
+    pub fn summary(&self) -> Value {
+        let mut verdicts = BTreeMap::<String, usize>::new();
+        for verdict in &self.verdicts {
+            *verdicts.entry(verdict.verdict.clone()).or_default() += 1;
+        }
+        let mut states = BTreeMap::<String, usize>::new();
+        for covered in &self.coverage {
+            *states.entry(covered.state.clone()).or_default() += 1;
+        }
+        json!({
+            "candidate": self.candidate["digest"],
+            "scenarios": self.scenarios.len(),
+            "verdicts": verdicts,
+            "requirements": states,
+            "packets": self.packets.len(),
+        })
+    }
+
+    /// Whether any scenario failed.
+    #[must_use]
+    pub fn detected(&self) -> bool {
+        self.verdicts.iter().any(|v| v.verdict == "failed")
+    }
+}
+
+/// The implementation: the scenario catalog and its parameters.
+#[must_use]
+pub fn implementation() -> Implementation {
+    Implementation::new(
+        "verify.checks",
+        "admitted scenario catalog, deterministic selector",
+        &json!({
+            "version": 1,
+            "catalog": ["data.message-severity", "data.date-boundaries", "interactive.program", "interactive.interrupt", "cancel.signal", "cancel.internal"],
+            "selector": "one per requirement first, then by catalog order, within the budget",
+            "cancel_limit": cancel::LIMIT,
+            "cancel_sizes": cancel::SIZES,
+        }),
+    )
+}
+
+/// What a builder sees.
+pub struct Context<'a> {
+    pub task: &'a TaskText,
+    pub map: &'a RequirementMap,
+    pub candidate: &'a Candidate,
+    pub observed: &'a Observed,
+}
+
+impl Context<'_> {
+    /// The requirements whose text contains every word in one of `any`,
+    /// case-insensitively: those matching the first word set first, each
+    /// set's matches in map order.
+    #[must_use]
+    pub fn requirements_saying(&self, any: &[&[&str]]) -> Vec<&Requirement> {
+        let mut found: Vec<&Requirement> = Vec::new();
+        for words in any {
+            for requirement in &self.map.requirements {
+                let text = requirement.text.to_lowercase();
+                if words.iter().all(|word| text.contains(word))
+                    && !found.iter().any(|r| r.id == requirement.id)
+                {
+                    found.push(requirement);
+                }
+            }
+        }
+        found
+    }
+
+    /// The spans of `requirements`, with offsets.
+    #[must_use]
+    pub fn spans_of(&self, requirements: &[&Requirement]) -> Vec<SpanRef> {
+        requirements
+            .iter()
+            .flat_map(|r| {
+                r.spans.iter().filter_map(|id| {
+                    self.map
+                        .spans
+                        .iter()
+                        .find(|placed| &placed.span.id == id)
+                        .map(|placed| SpanRef {
+                            requirement: r.id.clone(),
+                            span: id.clone(),
+                            start: placed.span.start,
+                            end: placed.span.end,
+                            text: placed.span.text.clone(),
+                        })
+                })
+            })
+            .collect()
+    }
+}
+
+/// Build: every admitted scenario, and the types that didn't apply.
+#[must_use]
+pub fn build(context: &Context<'_>) -> (Vec<Scenario>, Vec<Ineligible>) {
+    let mut scenarios = Vec::new();
+    let mut ineligible = Vec::new();
+    for built in [
+        data::build(context),
+        interactive::build(context),
+        cancel::build(context),
+    ] {
+        match built {
+            Ok(mut admitted) => scenarios.append(&mut admitted),
+            Err(mut not) => ineligible.append(&mut not),
+        }
+    }
+    (scenarios, ineligible)
+}
+
+/// Select: one scenario per justifying requirement first, then the rest
+/// in catalog order, within the budget.
+#[must_use]
+pub fn select(scenarios: &[Scenario], budget: Budget) -> (Vec<Scenario>, Value) {
+    let mut order: Vec<usize> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for (i, scenario) in scenarios.iter().enumerate() {
+        if seen.insert(scenario.requirements.first().cloned().unwrap_or_default()) {
+            order.push(i);
+        }
+    }
+    for i in 0..scenarios.len() {
+        if !order.contains(&i) {
+            order.push(i);
+        }
+    }
+    let mut selected = Vec::new();
+    let mut skipped = Vec::new();
+    let mut seconds = 0;
+    for i in order {
+        let scenario = &scenarios[i];
+        if selected.len() >= budget.max_scenarios {
+            skipped.push(json!({ "scenario": scenario.id, "why": "the scenario budget is spent" }));
+        } else if seconds + scenario.bounds.seconds > budget.seconds {
+            skipped.push(json!({ "scenario": scenario.id, "why": "its bound exceeds the time left in the budget" }));
+        } else {
+            seconds += scenario.bounds.seconds;
+            selected.push(scenario.clone());
+        }
+    }
+    // Run in catalog order, whatever order admitted them.
+    selected.sort_by_key(|s| scenarios.iter().position(|x| x.id == s.id));
+    let record = json!({
+        "selector": "deterministic",
+        "admitted": scenarios.len(),
+        "selected": selected.iter().map(|s| s.id.clone()).collect::<Vec<_>>(),
+        "skipped": skipped,
+        "bound_seconds": seconds,
+        "budget": budget,
+    });
+    (selected, record)
+}
+
+/// Run: one scenario in its own scratch directory.
+pub async fn run_one(context: &Context<'_>, scenario: &Scenario, scratch: &Path) -> Verdict {
+    if let Err(error) = std::fs::create_dir_all(scratch) {
+        return Verdict::unavailable(&scenario.id, &format!("cannot create scratch: {error}"));
+    }
+    match scenario.kind.as_str() {
+        "data.message-severity" | "data.date-boundaries" => {
+            data::run(context, scenario, scratch).await
+        }
+        "interactive.program" | "interactive.interrupt" => {
+            interactive::run(context, scenario, scratch).await
+        }
+        "cancellation" => cancel::run(context, scenario, scratch).await,
+        other => Verdict::unavailable(&scenario.id, &format!("no runner for {other}")),
+    }
+}
+
+/// Record coverage: each requirement's state from the verdicts of the
+/// scenarios that observe it, and a packet for each failure.
+#[must_use]
+pub fn coverage(
+    map: &RequirementMap,
+    candidate: &str,
+    scenarios: &[Scenario],
+    verdicts: &[Verdict],
+) -> (Vec<Covered>, Vec<Packet>) {
+    let mut covered = Vec::new();
+    for requirement in &map.requirements {
+        let mine: Vec<(&Scenario, &Verdict)> = scenarios
+            .iter()
+            .filter(|s| s.requirements.contains(&requirement.id))
+            .filter_map(|s| verdicts.iter().find(|v| v.scenario == s.id).map(|v| (s, v)))
+            .collect();
+        let words: Vec<&str> = mine
+            .iter()
+            .map(|(s, v)| v.for_requirement(s, &requirement.id))
+            .collect();
+        let state = if words.contains(&"failed") {
+            "contradicted"
+        } else if words.contains(&"passed") {
+            "observed"
+        } else if words.is_empty() {
+            "unobserved"
+        } else {
+            "unverifiable"
+        };
+        covered.push(Covered {
+            id: requirement.id.clone(),
+            text: requirement.text.clone(),
+            kind: requirement.kind.word().to_string(),
+            state: state.to_string(),
+            scenarios: mine
+                .iter()
+                .map(|(s, v)| json!({ "id": s.id, "verdict": v.for_requirement(s, &requirement.id), "scenario_verdict": v.verdict, "coverage": v.coverage, "candidate": candidate }))
+                .collect(),
+        });
+    }
+    let packets = scenarios
+        .iter()
+        .filter_map(|s| {
+            let v = verdicts.iter().find(|v| v.scenario == s.id)?;
+            (v.verdict == "failed").then(|| {
+                let id = v
+                    .contradicts
+                    .first()
+                    .or_else(|| s.requirements.first())
+                    .cloned()
+                    .unwrap_or_default();
+                Packet {
+                    requirement_text: map
+                        .requirements
+                        .iter()
+                        .find(|r| r.id == id)
+                        .map(|r| r.text.clone())
+                        .unwrap_or_default(),
+                    requirement: id,
+                    candidate: candidate.to_string(),
+                    scenario: s.id.clone(),
+                    expected: s.expected.clone(),
+                    observations: v.observations.clone(),
+                    hypotheses: v.hypotheses.clone(),
+                }
+            })
+        })
+        .collect();
+    (covered, packets)
+}
+
+fn stage(recorder: &Recorder, name: &str, input: &Value) -> String {
+    recorder.enter(
+        Start::new(&format!("verify.checks.{name}"), implementation())
+            .named(name)
+            .reading(input),
+    )
+}
+
+/// Runs a whole check under `recorder`: build, select, run, and record
+/// coverage, each its own invocation under one `verify.checks`.
+/// Scenarios run in scratch directories under `scratch`, which the check
+/// removes afterward.
+pub async fn check(input: &Input, recorder: &Recorder, scratch: &Path) -> Report {
+    let map = input
+        .requirements
+        .clone()
+        .unwrap_or_else(|| crate::requirements::mechanical(&input.task.instruction));
+    let candidate_digest = input.candidate.digest();
+    let parent = recorder.enter(
+        Start::new("verify.checks", implementation())
+            .named(&input.candidate.label)
+            .reading(&serde_json::to_value(input).unwrap_or(Value::Null))
+            .with_effects(),
+    );
+    let context = Context {
+        task: &input.task,
+        map: &map,
+        candidate: &input.candidate,
+        observed: &input.observed,
+    };
+
+    let id = stage(recorder, "build", &json!({ "candidate": candidate_digest }));
+    let (scenarios, ineligible) = build(&context);
+    recorder.end(
+        &id,
+        Finish::new(Outcome::Completed)
+            .output(json!({ "admitted": scenarios.iter().map(|s| &s.id).collect::<Vec<_>>(), "ineligible": ineligible }))
+            .cost(crate::record::Cost::none()),
+    );
+
+    let id = stage(recorder, "select", &json!({ "admitted": scenarios.len() }));
+    let (selected, selection) = select(&scenarios, input.budget);
+    recorder.end(
+        &id,
+        Finish::new(Outcome::Completed)
+            .output(selection.clone())
+            .cost(crate::record::Cost::none()),
+    );
+
+    let mut verdicts = Vec::new();
+    for scenario in &selected {
+        let id = recorder.enter(
+            Start::new("verify.checks.run", implementation())
+                .named(&scenario.id)
+                .reading(&serde_json::to_value(scenario).unwrap_or(Value::Null))
+                .with_effects(),
+        );
+        let started = Instant::now();
+        let dir = scratch.join(scenario.id.replace('/', "-"));
+        let verdict = run_one(&context, scenario, &dir).await;
+        let _ = std::fs::remove_dir_all(&dir);
+        recorder.end(
+            &id,
+            Finish::new(match verdict.verdict.as_str() {
+                "passed" => Outcome::Completed,
+                "failed" => Outcome::Failed,
+                _ => Outcome::Skipped,
+            })
+            .output(json!({
+                "verdict": verdict.verdict,
+                "observations": verdict.observations.len(),
+                "coverage": verdict.coverage,
+                "milliseconds": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            }))
+            .cost(crate::record::Cost::none()),
+        );
+        verdicts.push(verdict);
+    }
+
+    let id = stage(recorder, "coverage", &json!({ "verdicts": verdicts.len() }));
+    let (covered, packets) = coverage(&map, &candidate_digest, &selected, &verdicts);
+    recorder.end(
+        &id,
+        Finish::new(Outcome::Completed)
+            .output(json!({ "requirements": covered.iter().map(|c| json!({ "id": c.id, "state": c.state })).collect::<Vec<_>>(), "packets": packets.len() }))
+            .cost(crate::record::Cost::none()),
+    );
+    let report = Report {
+        schema: SCHEMA.to_string(),
+        implementation: implementation(),
+        candidate: json!({
+            "label": input.candidate.label,
+            "origin": input.candidate.origin,
+            "digest": candidate_digest,
+            "files": input.candidate.files.keys().collect::<Vec<_>>(),
+            "programs": input.candidate.programs.len(),
+        }),
+        requirements_method: map.method.clone(),
+        ineligible,
+        scenarios: selected,
+        selection,
+        verdicts,
+        coverage: covered,
+        packets,
+    };
+    recorder.end(
+        &parent,
+        Finish::new(if report.detected() {
+            Outcome::Failed
+        } else {
+            Outcome::Completed
+        })
+        .output(report.summary())
+        .cost(crate::record::Cost::none()),
+    );
+    let _ = std::fs::remove_dir_all(scratch);
+    report
+}
+
+/// The candidate a workspace holds: every regular file under it, up to
+/// 200 files of 256 KiB, without `.git`, as paths relative to it.
+#[must_use]
+pub fn workspace_candidate(label: &str, workdir: &Path) -> Candidate {
+    let mut files = BTreeMap::new();
+    let mut stack = vec![workdir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path
+                .file_name()
+                .is_some_and(|n| n == ".git" || n == "__pycache__")
+            {
+                continue;
+            }
+            if path.is_dir() {
+                stack.push(path);
+            } else if files.len() < 200
+                && std::fs::metadata(&path).is_ok_and(|m| m.len() <= 256 * 1024)
+                && let Ok(text) = std::fs::read_to_string(&path)
+            {
+                let relative = path
+                    .strip_prefix(workdir)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .into_owned();
+                files.insert(relative, text);
+            }
+        }
+    }
+    Candidate {
+        label: label.to_string(),
+        origin: "workspace".to_string(),
+        files,
+        programs: Vec::new(),
+        provided: BTreeMap::new(),
+    }
+}
+
+/// Records whose lines look like data: from the files a candidate reads
+/// under `dir`, the first 20 lines of up to five files.
+#[must_use]
+pub fn sample_records(dir: &Path) -> Vec<String> {
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    paths.sort();
+    paths
+        .iter()
+        .take(5)
+        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .flat_map(|text| {
+            text.lines()
+                .take(20)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Checks a mini-task's workspace after its episode, writes the report to
+/// `<dir>/verification/checks.json`, and returns it.
+pub async fn check_workspace(
+    task: &crate::minitask::MiniTask,
+    workdir: &Path,
+    dir: &Path,
+    recorder: &Recorder,
+) -> Report {
+    let mut candidate = workspace_candidate(&format!("mini-task {}", task.id), workdir);
+    let mut observed = Observed::default();
+    // What the task provided is input, not candidate.
+    for provided in ["base_terminal.py"] {
+        if let Some(text) = candidate.files.remove(provided) {
+            candidate.provided.insert(provided.to_string(), text);
+        }
+    }
+    let logs: Vec<String> = candidate
+        .files
+        .keys()
+        .filter(|path| path.starts_with("logs/"))
+        .cloned()
+        .collect();
+    if !logs.is_empty() {
+        observed.samples = sample_records(&workdir.join("logs"));
+        observed.source = "the first lines of the files under logs/".to_string();
+        for path in logs {
+            candidate.files.remove(&path);
+        }
+    }
+    let input = Input {
+        task: TaskText {
+            title: format!("mini-task {}", task.id),
+            instruction: task.instruction.to_string(),
+        },
+        requirements: None,
+        candidate,
+        observed,
+        budget: Budget::default(),
+    };
+    let report = check(&input, recorder, &dir.join("checks-scratch")).await;
+    if let Ok(text) = serde_json::to_string_pretty(&report) {
+        let _ = crate::record::write_atomic(&dir.join(COVERAGE_FILE), text.as_bytes());
+    }
+    report
+}
+
+/// Days since 1970-01-01 of a civil date.
+#[must_use]
+pub fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// The civil date of a day number.
+#[must_use]
+pub fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    (yoe + era * 400 + i64::from(month <= 2), month, day)
+}
+
+/// `YYYY-MM-DD` of a day number.
+#[must_use]
+pub fn iso_day(days: i64) -> String {
+    let (y, m, d) = civil_from_days(days);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// The day number of a `YYYY-MM-DD` date.
+#[must_use]
+pub fn parse_day(text: &str) -> Option<i64> {
+    let mut parts = text.split('-');
+    let y = parts.next()?.parse().ok()?;
+    let m = parts.next()?.parse().ok()?;
+    let d = parts.next()?.parse().ok()?;
+    ((1..=12).contains(&m) && (1..=31).contains(&d)).then(|| days_from_civil(y, m, d))
+}
+
+#[cfg(test)]
+mod tests;

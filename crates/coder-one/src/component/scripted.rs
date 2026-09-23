@@ -192,6 +192,9 @@ struct MiniInput {
     variant: String,
     /// The grade the variant should get.
     expect: String,
+    /// Whether verify.checks runs before the grader.
+    #[serde(default)]
+    checks: bool,
 }
 
 /// `task.mini`: a whole mini-task episode with the scripted executor.
@@ -232,6 +235,7 @@ impl Component for MiniTaskRun {
                 speed: 0.0,
                 deadline: Duration::from_secs(60),
                 controls: Controls::default(),
+                checks: input.checks,
             })
             .await;
             let _ = std::fs::remove_dir_all(&out);
@@ -253,6 +257,14 @@ impl Component for MiniTaskRun {
                     json!(ran.grade.verdict == input.expect)
                 },
             );
+            if input.checks {
+                metrics.insert(
+                    "checks_detected".to_string(),
+                    ran.manifest["checks"]["verdicts"]
+                        .get("failed")
+                        .map_or(json!(false), |n| json!(n.as_u64().unwrap_or(0) > 0)),
+                );
+            }
             metrics.insert(
                 "under_ten_seconds".to_string(),
                 json!(ran.milliseconds < 10_000),

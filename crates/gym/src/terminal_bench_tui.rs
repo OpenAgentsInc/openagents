@@ -116,6 +116,8 @@ pub struct App {
     /// router's leave-one-task-out evaluation on it.
     matrix: crate::coder_matrix::Matrix,
     router: crate::coder_router::Evaluation,
+    /// verify.checks reports for attempts, by job and trial.
+    coverage: BTreeMap<(String, String), crate::coder_coverage::Attempt>,
 }
 
 impl App {
@@ -157,6 +159,7 @@ impl App {
             requirements: None,
             minitasks: (Vec::new(), Vec::new()),
             briefing: None,
+            coverage: BTreeMap::new(),
         }
     }
 
@@ -164,6 +167,16 @@ impl App {
     #[must_use]
     pub fn with_briefing(mut self, report: crate::coder_briefing::Report) -> Self {
         self.briefing = Some(report);
+        self
+    }
+
+    /// Adds recovered attempts' requirement coverage.
+    #[must_use]
+    pub fn with_coverage(
+        mut self,
+        coverage: BTreeMap<(String, String), crate::coder_coverage::Attempt>,
+    ) -> Self {
+        self.coverage = coverage;
         self
     }
 
@@ -739,6 +752,17 @@ impl App {
             a.evidence_health(),
             missing_summary(a)
         ));
+        match self.coverage.get(&(a.job.clone(), a.trial.clone())) {
+            Some(crate::coder_coverage::Attempt {
+                report: Some(report),
+                ..
+            }) => lines.extend(crate::coder_coverage::lines(report)),
+            Some(checked) => lines.push(format!(
+                "Requirement coverage: unavailable · {}",
+                checked.unavailable.as_deref().unwrap_or("no check ran")
+            )),
+            None => {}
+        }
         match crate::timeline::for_attempt(a) {
             Some(Ok(timeline)) => lines.extend(timeline.lines()),
             Some(Err(error)) => lines.push(format!("Episode timeline unreadable: {error}")),
@@ -974,6 +998,31 @@ mod tests {
         assert!(text.contains("evidence.pack"), "{text}");
         assert!(text.contains("isolated: no recorded runs"), "{text}");
         assert_eq!(View::from_digit('7'), Some(View::Components));
+    }
+
+    #[test]
+    fn an_attempt_shows_its_requirement_coverage() {
+        let mut records = Records::default();
+        let attempt = crate::terminal_bench::test_attempt();
+        let key = (attempt.job.clone(), attempt.trial.clone());
+        records.attempts.push(attempt);
+        let mut coverage = BTreeMap::new();
+        coverage.insert(
+            key.clone(),
+            crate::coder_coverage::Attempt {
+                job: key.0,
+                trial: key.1,
+                reward: Some(0.0),
+                report: Some(crate::coder_coverage::tests::report()),
+                unavailable: None,
+            },
+        );
+        let mut app = App::new(records).with_coverage(coverage);
+        app.open(View::History);
+        app.inspect();
+        let text = app.to_text(160, 60);
+        assert!(text.contains("Requirement coverage"), "{text}");
+        assert!(text.contains("Packet · R1"), "{text}");
     }
 
     #[test]

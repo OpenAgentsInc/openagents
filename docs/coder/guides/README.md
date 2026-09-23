@@ -7,6 +7,7 @@ Configure Coder, run work, and verify retained artifacts.
 | Document | Topic |
 | --- | --- |
 | [artifact-verification](artifact-verification.md) | Verify a retained artifact |
+| [coder-one-checks](coder-one-checks.md) | Check claimed behavior with admitted scenarios |
 | [coder-one-components](coder-one-components.md) | Run a Coder One component alone on fixtures |
 | [coder-one-minitasks](coder-one-minitasks.md) | Run Coder One on a mini-task with the scripted executor or a real one |
 | [decision-profiles](decision-profiles.md) | Configure Coder's decision client |

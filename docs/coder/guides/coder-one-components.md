@@ -22,10 +22,12 @@ The design is in [Coder as a tunable system](../../optimization/coder-components
 | `exec.scripted` | How the host starts, observes, steers, stops, and resumes a scripted session. | None |
 | `exec.system` | The executor's system prompt: the manifest's sections, plus the optional sections the task needs. | One request |
 | `verify.close` | Whether the delegate's report and the changes show the task done. | One request |
+| `verify.checks` | Which requirements admitted scenarios observe, contradict, or can't verify against the candidate. | None |
 | `task.mini` | A whole mini-task episode with the scripted executor, graded. | None |
 
 `exec.scripted` and `task.mini` are covered in
-[Run Coder One on a mini-task](coder-one-minitasks.md).
+[Run Coder One on a mini-task](coder-one-minitasks.md), and `verify.checks` in
+[Check claimed behavior with admitted scenarios](coder-one-checks.md).
 
 Each component is a function from a serializable input to an output and
 named metrics. To add one, implement `coder_one::component::Component`

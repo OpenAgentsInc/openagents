@@ -444,8 +444,13 @@ def job(i):
             await asyncio.sleep(0.1)
             note(f"cleaned {i}")
     return task
+async def main():
+    try:
+        await run_tasks([job(i) for i in range(3)], 2)
+    finally:
+        note("returned")
 try:
-    asyncio.run(run_tasks([job(i) for i in range(3)], 2))
+    asyncio.run(main())
 except KeyboardInterrupt:
     pass
 note("exited")
@@ -479,7 +484,9 @@ async fn grade_cancel(workdir: &Path, scratch: &Path) -> Grade {
     )
     .await;
     let text = std::fs::read_to_string(&log).unwrap_or_default();
-    let cleaned = text.matches("cleaned").count();
+    // Only cleanup that finished before run_tasks returned counts.
+    let before = text.split("returned").next().unwrap_or_default();
+    let cleaned = before.matches("cleaned").count();
     if !interrupted.ready {
         return Grade::failed(format!(
             "two tasks never started: {}",
@@ -490,7 +497,7 @@ async fn grade_cancel(workdir: &Path, scratch: &Path) -> Grade {
         Grade::passed("both started tasks cleaned up after the interrupt")
     } else {
         Grade::failed(format!(
-            "{cleaned} of 2 started tasks cleaned up{}",
+            "{cleaned} of 2 started tasks cleaned up before run_tasks returned{}",
             if interrupted.ran.killed {
                 "; the process did not exit"
             } else {

@@ -21,6 +21,7 @@
 pub mod action;
 pub mod agent;
 pub mod capture;
+pub mod checks;
 pub mod collect;
 pub mod component;
 pub mod credentials;

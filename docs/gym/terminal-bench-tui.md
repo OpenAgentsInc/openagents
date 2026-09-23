@@ -69,7 +69,11 @@ failure, while a missing reward stays unknown. Below the counts, the
 **episode timeline** lists every component invocation in start order:
 setup, probes, each Jev request, the briefing, the executor session, and
 the closing check, each with its duration, outcome, cost, and the spend
-accumulated so far. It reads the attempt's invocation log when one was
+accumulated so far. When `coder-one checks recover` checked the attempt,
+its **requirement coverage** appears above the timeline: each requirement
+with its scenarios and verdicts, and the diagnostic packets. It reads
+`~/.openagents/coder-one/checks/`; `--checks-dir PATH` reads elsewhere and
+`--no-checks` omits it. The timeline reads the attempt's invocation log when one was
 retained and derives the timeline from trajectory steps otherwise, and it
 says which. An interrupted episode's timeline reads as incomplete.
 
@@ -96,7 +100,8 @@ from elsewhere and `--no-runs` omits them. The
 `~/.openagents/coder-one/minitasks/`, labeled as mini-tasks rather than
 Terminal-Bench attempts, with each run's task, executor, outcome, and grade.
 Below the list, the selected run shows its session-control actions, its
-executor events by kind, and its invocation timeline.
+executor events by kind, its requirement coverage when checks ran, and its
+invocation timeline.
 `--minitasks-dir PATH` reads runs from elsewhere and `--no-minitasks` omits
 them. The [mini-task guide](../coder/guides/coder-one-minitasks.md) records
 runs.

@@ -1,0 +1,15 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "task.mini",
+  "source": {
+    "kind": "synthetic",
+    "note": "the bad script with verify.checks before the grader"
+  },
+  "input": {
+    "task": "log-severity",
+    "variant": "bad",
+    "expect": "failed",
+    "checks": true
+  },
+  "retained": null
+}

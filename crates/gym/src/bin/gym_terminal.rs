@@ -60,7 +60,8 @@ Usage:
   gym-terminal --print    Write all five decision views to stdout and exit.
   gym-terminal --terminal-bench [--print] [--jobs-dir PATH] [--traces-dir PATH] [--samples-dir PATH]
                             [--runs-dir PATH] [--minitasks-dir PATH] [--no-jobs] [--no-traces]
-                            [--no-samples] [--no-runs] [--no-minitasks]
+                            [--checks-dir PATH] [--no-samples] [--no-runs] [--no-minitasks]
+                            [--no-checks]
   gym-terminal --help     Print this message.
 
 The default decision-model views open a built-in fixture. Terminal-Bench
@@ -89,6 +90,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
     let mut samples = Some(repo.join("samples"));
     let mut runs = gym::coder_components::default_runs_dir();
     let mut minitasks = gym::coder_minitasks::default_runs_dir();
+    let mut checks = gym::coder_coverage::default_dir();
     let mut print_only = false;
     let mut index = 0;
     while index < arguments.len() {
@@ -100,7 +102,9 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
             "--no-samples" => samples = None,
             "--no-runs" => runs = None,
             "--no-minitasks" => minitasks = None,
-            "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--runs-dir" | "--minitasks-dir" => {
+            "--no-checks" => checks = None,
+            "--jobs-dir" | "--traces-dir" | "--samples-dir" | "--runs-dir" | "--minitasks-dir"
+            | "--checks-dir" => {
                 let Some(path) = arguments.get(index + 1) else {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
@@ -112,6 +116,7 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
                     "--traces-dir" => traces = Some(path.into()),
                     "--runs-dir" => runs = Some(path.into()),
                     "--minitasks-dir" => minitasks = Some(path.into()),
+                    "--checks-dir" => checks = Some(path.into()),
                     _ => samples = Some(path.into()),
                 }
                 index += 1;
@@ -133,7 +138,13 @@ fn terminal_bench_mode(arguments: &[String]) -> io::Result<()> {
         .with_components(components)
         .with_requirements(requirements)
         .with_minitasks(minitask_runs, minitask_errors)
-        .with_briefing(briefing);
+        .with_briefing(briefing)
+        .with_coverage(
+            checks
+                .as_deref()
+                .map(gym::coder_coverage::load_dir)
+                .unwrap_or_default(),
+        );
     if print_only {
         let mut out = stdout().lock();
         for view in terminal_bench_tui::View::ALL {

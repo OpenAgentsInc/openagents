@@ -1,0 +1,12 @@
+{
+  "schema": "openagents.coder-one.component-fixture.v1",
+  "component": "verify.checks",
+  "source": {
+    "kind": "synthetic",
+    "note": "a known-good or known-bad candidate from coder_one::checks::synthetic"
+  },
+  "input": {
+    "synthetic": "log-whole-line-search"
+  },
+  "retained": null
+}

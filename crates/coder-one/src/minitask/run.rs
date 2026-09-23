@@ -9,6 +9,7 @@
 //!   work/                       the scratch directory the task runs in
 //!   artifacts/                  the briefing and the executor's native stream
 //!   verification/grade.json     the mini-task grader's verdict
+//!   verification/checks.json    verify.checks' coverage, when checks ran
 //! ```
 //!
 //! The episode runs the same explore-then-delegate path a Terminal-Bench
@@ -72,6 +73,8 @@ pub struct Options {
     pub deadline: Duration,
     /// Session control during the scripted executor's run.
     pub controls: Controls,
+    /// Whether `verify.checks` observes the workspace before the grader.
+    pub checks: bool,
 }
 
 /// What a run left.
@@ -413,6 +416,12 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         (ExecutorChoice::Scripted { .. }, None) => unreachable!("a scripted choice has a script"),
     };
 
+    let checks = if options.checks {
+        Some(crate::checks::check_workspace(&task, &work, &dir, &recorder).await)
+    } else {
+        None
+    };
+
     let grading = recorder.enter(
         Start::new(
             "task.grade",
@@ -478,12 +487,14 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         "outcome": outcome,
         "grade": grade,
         "reward": grade.reward(),
+        "checks": checks.as_ref().map(crate::checks::Report::summary),
         "started_at": atif::document::iso(at),
         "milliseconds": milliseconds,
         "version": crate::episode::version(),
         "files": {
             "invocation_log": crate::episode::INVOCATION_LOG,
             "grade": "verification/grade.json",
+            "checks": checks.as_ref().map(|_| crate::checks::COVERAGE_FILE),
             "workdir": "work",
             "artifacts": "artifacts",
         },
@@ -535,6 +546,7 @@ mod tests {
             speed: 0.0,
             deadline: Duration::from_secs(60),
             controls: Controls::default(),
+            checks: false,
         }
     }
 
@@ -591,6 +603,41 @@ mod tests {
                 }
             }
         }
+        let _ = std::fs::remove_dir_all(out);
+    }
+
+    #[tokio::test]
+    async fn checks_run_before_the_grader_and_leave_coverage_the_gym_reads() {
+        if crate::minitask::process::python().is_none() {
+            return;
+        }
+        let out = out("checks");
+        let mut options = options("log-severity", "bad", &out);
+        options.checks = true;
+        let ran = run(options).await.unwrap();
+        assert_eq!(ran.grade.verdict, "failed");
+        assert_eq!(
+            ran.manifest["files"]["checks"],
+            json!(crate::checks::COVERAGE_FILE)
+        );
+        assert_eq!(ran.manifest["checks"]["verdicts"]["failed"], json!(1));
+        let report: crate::checks::Report = serde_json::from_str(
+            &std::fs::read_to_string(ran.dir.join(crate::checks::COVERAGE_FILE)).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            report
+                .packets
+                .iter()
+                .any(|p| p.scenario == "data.message-severity")
+        );
+        let log = atif::log::read_whole(&ran.dir.join(crate::episode::INVOCATION_LOG)).unwrap();
+        let order: Vec<String> = crate::record::invocations(&log.steps)
+            .into_iter()
+            .map(|i| i.component)
+            .filter(|c| c == "verify.checks" || c == "task.grade")
+            .collect();
+        assert_eq!(order, ["verify.checks", "task.grade"]);
         let _ = std::fs::remove_dir_all(out);
     }
 }
