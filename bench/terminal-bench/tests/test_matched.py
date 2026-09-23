@@ -72,9 +72,10 @@ def test_cost_comes_from_cli_result(tmp_path):
                          policy=str(EXPERIMENT / "coder-policy.json"))
     (tmp_path / "claude-code.txt").write_text(json.dumps({"type": "result",
         "total_cost_usd": 1.23, "usage": {"input_tokens": 12,
-        "cache_read_input_tokens": 34, "output_tokens": 56}}) + "\n")
+        "cache_read_input_tokens": 34, "cache_creation_input_tokens": 5,
+        "output_tokens": 56}}) + "\n")
     context = SimpleNamespace()
     agent.populate_context_post_run(context)
     assert context.cost_usd == 1.23
-    assert context.n_input_tokens == 12 and context.n_cache_tokens == 34
+    assert context.n_input_tokens == 51 and context.n_cache_tokens == 34
     assert context.n_output_tokens == 56

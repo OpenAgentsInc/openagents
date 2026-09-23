@@ -104,7 +104,12 @@ class MatchedPlain(CoderOneDelegate):
             if item.get("type") == "result":
                 usage = item.get("usage") or {}
                 context.cost_usd = item.get("total_cost_usd")
-                context.n_input_tokens = usage.get("input_tokens")
+                # Harbor counts all prompt tokens here, including cache
+                # reads and writes; the native stream keeps each category.
+                uncached = usage.get("input_tokens")
+                context.n_input_tokens = None if uncached is None else (
+                    uncached + (usage.get("cache_read_input_tokens") or 0)
+                    + (usage.get("cache_creation_input_tokens") or 0))
                 context.n_cache_tokens = usage.get("cache_read_input_tokens")
                 context.n_output_tokens = usage.get("output_tokens")
 
