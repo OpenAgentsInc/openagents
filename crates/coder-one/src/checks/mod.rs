@@ -13,6 +13,8 @@
 //! | `interactive.program` | An interactive program started through the submitted interface reads staged input. |
 //! | `interactive.interrupt` | After control C interrupts a foreground command, the shell runs the next one. |
 //! | `cancel.<how>.<size>` | After an interrupt below, at, or above the limit, every started task finishes its cleanup before the call returns. |
+//! | `generic.output`, `generic.parse` | An output file a requirement asks for exists, isn't empty, and parses as its format. |
+//! | `generic.public-command`, `generic.claimed-command` | A test the instruction names, or one the executor ran and saw pass, exits 0 on the final state. |
 //!
 //! The component runs in four recorded suboperations: **build** admits the
 //! scenarios whose applicability conditions hold and that a requirement's
@@ -29,6 +31,7 @@
 pub mod cancel;
 pub mod cli;
 pub mod data;
+pub mod generic;
 pub mod interactive;
 pub mod recover;
 pub mod synthetic;
@@ -145,6 +148,10 @@ pub struct Input {
     pub observed: Observed,
     #[serde(default)]
     pub budget: Budget,
+    /// The live workspace the generic scenarios run in; `None` runs only
+    /// the scratch-copy scenarios.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<generic::Workspace>,
 }
 
 /// A span of the instruction a scenario rests on.
@@ -339,7 +346,7 @@ pub fn implementation() -> Implementation {
         "admitted scenario catalog, deterministic selector",
         &json!({
             "version": 1,
-            "catalog": ["data.message-severity", "data.date-boundaries", "interactive.program", "interactive.interrupt", "cancel.signal", "cancel.internal"],
+            "catalog": ["data.message-severity", "data.date-boundaries", "interactive.program", "interactive.interrupt", "cancel.signal", "cancel.internal", "generic.output", "generic.parse", "generic.public-command", "generic.claimed-command"],
             "selector": "one per requirement first, then by catalog order, within the budget",
             "cancel_limit": cancel::LIMIT,
             "cancel_sizes": cancel::SIZES,
@@ -353,6 +360,8 @@ pub struct Context<'a> {
     pub map: &'a RequirementMap,
     pub candidate: &'a Candidate,
     pub observed: &'a Observed,
+    /// The live workspace, for the generic scenarios.
+    pub workspace: Option<&'a generic::Workspace>,
 }
 
 impl Context<'_> {
@@ -408,6 +417,7 @@ pub fn build(context: &Context<'_>) -> (Vec<Scenario>, Vec<Ineligible>) {
         data::build(context),
         interactive::build(context),
         cancel::build(context),
+        generic::build(context),
     ] {
         match built {
             Ok(mut admitted) => scenarios.append(&mut admitted),
@@ -473,6 +483,7 @@ pub async fn run_one(context: &Context<'_>, scenario: &Scenario, scratch: &Path)
             interactive::run(context, scenario, scratch).await
         }
         "cancellation" => cancel::run(context, scenario, scratch).await,
+        kind if generic::KINDS.contains(&kind) => generic::run(context, scenario).await,
         other => Verdict::unavailable(&scenario.id, &format!("no runner for {other}")),
     }
 }
@@ -577,6 +588,7 @@ pub async fn check(input: &Input, recorder: &Recorder, scratch: &Path) -> Report
         map: &map,
         candidate: &input.candidate,
         observed: &input.observed,
+        workspace: input.workspace.as_ref(),
     };
 
     let id = stage(recorder, "build", &json!({ "candidate": candidate_digest }));
@@ -682,10 +694,17 @@ pub fn workspace_candidate(label: &str, workdir: &Path) -> Candidate {
             .collect();
         entries.sort();
         for path in entries {
-            if path
-                .file_name()
-                .is_some_and(|n| n == ".git" || n == "__pycache__")
-            {
+            if path.file_name().is_some_and(|n| {
+                [
+                    ".git",
+                    "__pycache__",
+                    "node_modules",
+                    ".venv",
+                    ".pytest_cache",
+                ]
+                .iter()
+                .any(|skip| n == *skip)
+            }) {
                 continue;
             }
             if path.is_dir() {
@@ -737,41 +756,92 @@ pub fn sample_records(dir: &Path) -> Vec<String> {
         .collect()
 }
 
+/// What a workspace check reads besides the workspace's files: the task,
+/// what the task provided, and, for a live check, the executor's commands.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Subject {
+    pub label: String,
+    pub task: TaskText,
+    /// The requirement map; the rule-only map when `None`.
+    pub requirements: Option<RequirementMap>,
+    /// Files the task provided, relative to the workspace: input, not
+    /// candidate.
+    pub provided: Vec<String>,
+    /// A directory of input records, relative to the workspace, observed
+    /// rather than counted as candidate.
+    pub inputs: Option<String>,
+    pub budget: Budget,
+    /// The generic scenarios' live workspace; its `dir` is set to the
+    /// checked workspace. `None` runs only the scratch-copy scenarios.
+    pub live: Option<generic::Workspace>,
+}
+
+impl Subject {
+    /// A mini-task's subject: its instruction, `base_terminal.py` as a
+    /// provided file, and `logs/` as input records.
+    #[must_use]
+    pub fn mini(task: &crate::minitask::MiniTask) -> Self {
+        let label = format!("mini-task {}", task.id);
+        Subject {
+            task: TaskText {
+                title: label.clone(),
+                instruction: task.instruction.to_string(),
+            },
+            label,
+            requirements: None,
+            provided: vec!["base_terminal.py".to_string()],
+            inputs: Some("logs".to_string()),
+            budget: Budget::default(),
+            live: None,
+        }
+    }
+
+    /// The check input for `workdir`: the candidate is what it holds, less
+    /// what the task provided and its input records.
+    #[must_use]
+    pub fn input(&self, workdir: &Path) -> Input {
+        let mut candidate = workspace_candidate(&self.label, workdir);
+        let mut observed = Observed::default();
+        for provided in &self.provided {
+            if let Some(text) = candidate.files.remove(provided) {
+                candidate.provided.insert(provided.clone(), text);
+            }
+        }
+        if let Some(inputs) = &self.inputs {
+            let prefix = format!("{}/", inputs.trim_end_matches('/'));
+            let records: Vec<String> = candidate
+                .files
+                .keys()
+                .filter(|path| path.starts_with(&prefix))
+                .cloned()
+                .collect();
+            if !records.is_empty() {
+                observed.samples = sample_records(&workdir.join(inputs));
+                observed.source = format!("the first lines of the files under {prefix}");
+                for path in records {
+                    candidate.files.remove(&path);
+                }
+            }
+        }
+        Input {
+            task: self.task.clone(),
+            requirements: self.requirements.clone(),
+            candidate,
+            observed,
+            budget: self.budget,
+            workspace: self.live.clone().map(|mut live| {
+                live.dir = workdir.to_string_lossy().into_owned();
+                live
+            }),
+        }
+    }
+}
+
 /// The check input for a mini-task's workspace: the candidate is what the
 /// workspace holds, less what the task provided and its log inputs.
 #[must_use]
 pub fn workspace_input(task: &crate::minitask::MiniTask, workdir: &Path) -> Input {
-    let mut candidate = workspace_candidate(&format!("mini-task {}", task.id), workdir);
-    let mut observed = Observed::default();
-    // What the task provided is input, not candidate.
-    for provided in ["base_terminal.py"] {
-        if let Some(text) = candidate.files.remove(provided) {
-            candidate.provided.insert(provided.to_string(), text);
-        }
-    }
-    let logs: Vec<String> = candidate
-        .files
-        .keys()
-        .filter(|path| path.starts_with("logs/"))
-        .cloned()
-        .collect();
-    if !logs.is_empty() {
-        observed.samples = sample_records(&workdir.join("logs"));
-        observed.source = "the first lines of the files under logs/".to_string();
-        for path in logs {
-            candidate.files.remove(&path);
-        }
-    }
-    Input {
-        task: TaskText {
-            title: format!("mini-task {}", task.id),
-            instruction: task.instruction.to_string(),
-        },
-        requirements: None,
-        candidate,
-        observed,
-        budget: Budget::default(),
-    }
+    Subject::mini(task).input(workdir)
 }
 
 /// Checks a mini-task's workspace after its episode, writes the report to
@@ -796,7 +866,19 @@ pub async fn check_workspace_as(
     recorder: &Recorder,
     file: &str,
 ) -> (Input, Report) {
-    let input = workspace_input(task, workdir);
+    check_subject_as(&Subject::mini(task), workdir, dir, recorder, file).await
+}
+
+/// Checks `subject` against `workdir` and writes the report to
+/// `<dir>/<file>`; returns the input and the report.
+pub async fn check_subject_as(
+    subject: &Subject,
+    workdir: &Path,
+    dir: &Path,
+    recorder: &Recorder,
+    file: &str,
+) -> (Input, Report) {
+    let input = subject.input(workdir);
     let report = check(&input, recorder, &dir.join("checks-scratch")).await;
     if let Ok(text) = serde_json::to_string_pretty(&report) {
         let _ = crate::record::write_atomic(&dir.join(file), text.as_bytes());

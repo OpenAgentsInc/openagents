@@ -200,6 +200,35 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
             executor.deadline_sec
         );
         problems.extend(check_delegate(&settings).await);
+        // A route or a handoff can dispatch to another CLI: check each one
+        // the manifest names beyond its own executor.
+        let own = executor.agent.agent();
+        let mut seen = vec![own];
+        for tier in crate::compose::tiers(policy) {
+            let Ok(agent) = Agent::parse(&tier.agent) else {
+                continue;
+            };
+            if seen.contains(&agent) {
+                continue;
+            }
+            seen.push(agent);
+            let env = |name: &str| {
+                std::env::var(name)
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            };
+            let (binary, credential) = delegate::resolve(agent, env);
+            problems.extend(
+                check_cli(
+                    agent,
+                    binary.as_deref(),
+                    credential,
+                    tier.version.as_deref(),
+                )
+                .await,
+            );
+        }
     }
 
     if problems.is_empty() {
@@ -217,10 +246,25 @@ const CLAUDE_MIN: (u64, u64, u64) = (2, 1, 280);
 /// Checks that the delegate's `--version` runs, that Claude Code is new
 /// enough, and that a credential is present, without any inference.
 async fn check_delegate(settings: &Settings) -> Vec<String> {
+    check_cli(
+        settings.policy().policy.executor.agent.agent(),
+        settings.delegate_bin.as_deref(),
+        settings.credential,
+        settings.policy().policy.executor.version.as_deref(),
+    )
+    .await
+}
+
+/// Checks one CLI: its `--version` runs, matches `pinned`, and is new
+/// enough, and a credential is present, without any inference.
+async fn check_cli(
+    agent: Agent,
+    binary: Option<&Path>,
+    credential: Credential,
+    pinned: Option<&str>,
+) -> Vec<String> {
     let mut problems = Vec::new();
-    let agent = settings.policy().policy.executor.agent.agent();
-    let pinned = settings.policy().policy.executor.version.as_deref();
-    match &settings.delegate_bin {
+    match binary {
         None => problems.push(format!(
             "no {} binary: set {} or put it on PATH",
             agent.word(),
@@ -274,7 +318,7 @@ async fn check_delegate(settings: &Settings) -> Vec<String> {
             }
         }
     }
-    match (settings.credential, agent) {
+    match (credential, agent) {
         (Credential::Missing, Agent::ClaudeCode) => problems.push(
             "no delegate credential: set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY".to_string(),
         ),
@@ -336,15 +380,14 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
     };
     // The monitor asks Jev through its own handle, beside the judge's.
     let monitor_jev = jev_client.clone();
-    if let Some(handoff) = policy
-        .policy
-        .control
-        .handoff
-        .as_ref()
-        .filter(|handoff| handoff.pattern != crate::handoff::Pattern::Single)
-    {
+    if let Some(handoff) = policy.policy.control.handoff.as_ref().filter(|handoff| {
+        matches!(
+            handoff.pattern,
+            crate::handoff::Pattern::Steer | crate::handoff::Pattern::Race
+        )
+    }) {
         return Err(format!(
-            "control.handoff {} runs on mini-tasks in this build (coder-one handoff run); a Terminal-Bench episode still runs one executor",
+            "control.handoff {} runs on mini-tasks in this build (coder-one handoff run); a Terminal-Bench episode runs single, escalate, or planner-worker",
             handoff.pattern.word()
         ));
     }
@@ -458,6 +501,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         episode: deadline.clone(),
     };
 
+    let mut composition: Option<Value> = None;
     let (ended, delegated) = if policy.mode() == Mode::Off {
         let session = recorder.enter(
             Start::new(
@@ -515,19 +559,7 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
             });
         }
         if let Some(soft) = policy.protected.ceilings.spend_soft_usd {
-            // The soft bound is checked before a dispatch starts. A running
-            // dispatch can pass it: no adapter reserves a known maximum.
-            let spent = recorder.clone();
-            executor.gate = Some(Box::new(move || {
-                let known = usage(&spent.steps(), true)["cost"]["lower_bound_usd"]
-                    .as_f64()
-                    .unwrap_or(0.0);
-                (known >= soft).then(|| {
-                    format!(
-                        "the soft spend bound of ${soft:.4} is reached: ${known:.4} is known spent"
-                    )
-                })
-            }));
+            executor.gate = Some(spend_gate(&recorder, soft));
         }
         let plan = Plan {
             mode: policy.mode(),
@@ -551,18 +583,72 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
                 eprintln!("coder-one: cannot write the bundle: {error}");
             }
         };
-        delegate::explore_then_delegate(
-            &mut state,
-            &plan,
-            &mut judge,
-            &mut door,
-            &mut shell,
-            &mut executor,
-            &recorder,
-            &mut checkpoint,
-        )
-        .await
+        if crate::compose::composes(&policy) {
+            // The composition makes each dispatch's executor itself, from
+            // the tier it routes, escalates, or repairs to.
+            drop(executor);
+            let total = deadline.remaining().map(|left| left.as_secs());
+            let horizon = policy.policy.control.horizon.clone().unwrap_or_default();
+            let mut factory = CliFactory {
+                workdir: workdir.clone(),
+                artifacts: args.output_dir.join("artifacts"),
+                recorder: recorder.clone(),
+                episode: deadline.clone(),
+                system: policy.policy.executor.system.clone(),
+                session: policy.policy.executor.session.clone(),
+                soft: policy.protected.ceilings.spend_soft_usd,
+                command_env: match horizon.long_command_sec {
+                    Some(seconds) if horizon.long(total) => vec![(
+                        "BASH_MAX_TIMEOUT_MS".to_string(),
+                        (seconds * 1_000).to_string(),
+                    )],
+                    _ => Vec::new(),
+                },
+            };
+            let setup = crate::compose::Setup {
+                manifest: &policy,
+                instruction: &instruction,
+                workdir: &workdir,
+                dir: &args.output_dir,
+                recorder: &recorder,
+                deadline: &deadline,
+                jev: monitor_jev.clone().map_or(
+                    crate::component::jev::JevMode::Off,
+                    crate::component::jev::JevMode::Live,
+                ),
+                profile: None,
+                base: bundle.base.as_deref(),
+            };
+            let composed = crate::compose::run(
+                &setup,
+                &mut state,
+                &plan,
+                &mut judge,
+                &mut door,
+                &mut shell,
+                &mut factory,
+                &mut checkpoint,
+            )
+            .await?;
+            composition = Some(composed.record);
+            (composed.ended, composed.delegated)
+        } else {
+            delegate::explore_then_delegate(
+                &mut state,
+                &plan,
+                &mut judge,
+                &mut door,
+                &mut shell,
+                &mut executor,
+                &recorder,
+                &mut checkpoint,
+            )
+            .await
+        }
     };
+    if let Some(record) = composition {
+        bundle.attach("composition", crate::compose::FILE, record);
+    }
     if let Some(pack) = delegated.as_ref().and_then(|d| d.pack.clone()) {
         let mut record = pack;
         record["schema"] = json!(crate::pack::RECORD_SCHEMA);
@@ -614,6 +700,98 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         delegated.as_ref(),
     )?;
     Ok(code)
+}
+
+/// The soft spend bound's check before each dispatch. A running dispatch
+/// can pass it: no adapter reserves a known maximum.
+fn spend_gate(recorder: &Recorder, soft: f64) -> Box<dyn Fn() -> Option<String>> {
+    let spent = recorder.clone();
+    Box::new(move || {
+        let known = usage(&spent.steps(), true)["cost"]["lower_bound_usd"]
+            .as_f64()
+            .unwrap_or(0.0);
+        (known >= soft).then(|| {
+            format!("the soft spend bound of ${soft:.4} is reached: ${known:.4} is known spent")
+        })
+    })
+}
+
+/// Makes each composed dispatch's CLI executor from its tier, with the
+/// manifest's system prompt, session rules, and spend bound.
+struct CliFactory {
+    workdir: PathBuf,
+    artifacts: PathBuf,
+    recorder: Recorder,
+    episode: Deadline,
+    system: Option<crate::system::Policy>,
+    session: Option<crate::policy::SessionPolicy>,
+    soft: Option<f64>,
+    /// Variables a long task sets for Claude Code, such as its shell
+    /// command cap.
+    command_env: Vec<(String, String)>,
+}
+
+impl crate::compose::Factory for CliFactory {
+    fn make(
+        &mut self,
+        tier: &crate::handoff::Tier,
+        deadline: Duration,
+        runs: u32,
+    ) -> Result<crate::compose::Exec, String> {
+        let agent = Agent::parse(&tier.agent)?;
+        let env = |name: &str| {
+            std::env::var(name)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        };
+        let (binary, credential) = delegate::resolve(agent, env);
+        // The task container is the boundary, and the agent often runs as
+        // root there, where the CLI refuses to bypass permissions unless
+        // told it is in a sandbox.
+        let mut child_env = vec![("IS_SANDBOX".to_string(), "1".to_string())];
+        if agent == Agent::ClaudeCode {
+            child_env.extend(self.command_env.iter().cloned());
+        }
+        let system = self
+            .system
+            .clone()
+            .filter(|system| system.validate(agent).is_empty())
+            .map(|system| crate::system::Variant::new(agent, system));
+        let claude = agent == Agent::ClaudeCode;
+        Ok(crate::compose::Exec::Cli(Box::new(delegate::Cli {
+            agent,
+            binary,
+            model: tier.model.clone(),
+            deadline,
+            workdir: self.workdir.clone(),
+            artifacts: self.artifacts.clone(),
+            artifacts_label: "artifacts".to_string(),
+            env: child_env,
+            credential,
+            effort: tier.effort.clone(),
+            tools: tier.tools.clone().filter(|_| claude),
+            prompt_cache_ttl: tier.prompt_cache_ttl.clone().filter(|_| claude),
+            system,
+            episode: self.episode.clone(),
+            gate: self.soft.map(|soft| spend_gate(&self.recorder, soft)),
+            granted: None,
+            runs,
+            control: delegate::Control {
+                recorder: Some(self.recorder.clone()),
+                controls: self
+                    .session
+                    .as_ref()
+                    .filter(|session| {
+                        let (demonstrated, _) = crate::adapter::capabilities(agent);
+                        session.uses().iter().all(|c| demonstrated.has(*c))
+                    })
+                    .map(crate::policy::SessionPolicy::controls),
+                last: None,
+                monitor: None,
+            },
+        })))
+    }
 }
 
 /// A judge that rewrites the bundle before every step, so a killed
@@ -901,9 +1079,17 @@ impl Bundle {
             manifest["spend"]["exceeded"] =
                 json!(usage["cost"]["lower_bound_usd"].as_f64().unwrap_or(0.0) >= soft);
         }
-        manifest["verification"] = json!({
-            "note": "Coder One runs no independent verification of its own; the task's verifier is the grader.",
-        });
+        manifest["verification"] = match self.records.borrow().get("composition") {
+            Some((_, record)) => json!({
+                "note": "The composition's checks observe requirements; the task's verifier is still the only grader.",
+                "checks": record["checks"],
+                "support": record["support"],
+                "repair": record["repair"],
+            }),
+            None => json!({
+                "note": "Coder One runs no independent verification of its own; the task's verifier is the grader.",
+            }),
+        };
         if let Some(Ended::Finished { title, summary, .. }) = ended {
             manifest["result"] = json!({ "title": title, "summary": summary });
         }

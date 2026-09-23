@@ -828,6 +828,9 @@ impl App {
             ));
         }
         lines.extend(crate::coder_calls::lines(&a.ledger, a.deadline.as_ref()));
+        if let Some(composition) = &a.composition {
+            lines.extend(crate::coder_composition::detail_lines(composition));
+        }
         lines.push(format!(
             "Counts: {}",
             a.counts

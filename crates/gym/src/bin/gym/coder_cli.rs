@@ -50,6 +50,10 @@ gym coder briefing [QUERY] [--json]
                            and the packer replay's before and after
 gym coder matrix [--json]  the outcome matrix: task by policy, frontiers, oracles,
                            and the mini-task handoff patterns as policies
+gym coder composition [QUERY] [--json]
+                           Terminal-Bench attempts that ran the tunable
+                           composition: route, dispatches, handoffs, checks,
+                           support, and repair
 gym coder handoff [--json] control.handoff's patterns on the mini-tasks: pass, modeled
                            cost, episode time, and the objective per policy
 gym coder router [--json]  task features, router picks, and leave-one-task-out
@@ -175,6 +179,9 @@ fn execute(args: &[String], out: &mut impl Write) -> Result<i32, String> {
     }
     if args.first().map(String::as_str) == Some("handoff") {
         return gym::coder_handoff::command(&args[1..], out);
+    }
+    if args.first().map(String::as_str) == Some("composition") {
+        return gym::coder_composition::command(&args[1..], out);
     }
     let (Some("policy"), Some(command)) = (
         args.first().map(String::as_str),

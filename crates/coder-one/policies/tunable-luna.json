@@ -1,0 +1,126 @@
+{
+  "schema": "openagents.coder-one.policy.v1",
+  "name": "coder-one-tunable-luna",
+  "note": "Codex on GPT-6 Luna with the headless core system prompt, verify.checks on the live workspace, escalation to lean Claude Code on Opus 5.5 on a stall, a failed check, or no answer, and one verify.repair from the diagnostic packets. control.horizon sizes every dispatch from the task's own timeout.",
+  "policy": {
+    "jev": {
+      "mode": "deep",
+      "model": "jev-1.13.0",
+      "question_sets": "builtin-v1"
+    },
+    "evidence": {
+      "probes": "v2",
+      "survey_files": 40
+    },
+    "control": {
+      "delegate": "always",
+      "explore_steps": 0,
+      "max_steps": 50,
+      "command_timeout_sec": 300,
+      "lane": "free",
+      "error_streak": 3,
+      "unchanged_steps": 6,
+      "monitor": {
+        "on_operation": true,
+        "on_artifact": true,
+        "on_claim": true,
+        "silence_ms": 300000,
+        "window": 8,
+        "event_chars": 300,
+        "requirements": 10,
+        "threshold": 0.5,
+        "jev": true,
+        "stall_commands": 12,
+        "latency_ms": 800
+      },
+      "handoff": {
+        "pattern": "escalate",
+        "to": {
+          "agent": "claude-code",
+          "model": "claude-opus-5-5",
+          "effort": "low",
+          "tools": "Bash,Read,Edit,Write,Glob,Grep",
+          "prompt_cache_ttl": "5m",
+          "version": "2.1.280"
+        },
+        "on": [
+          "stalled",
+          "repeating"
+        ],
+        "after": 3,
+        "max_handoffs": 1,
+        "brief": {
+          "requirements": true,
+          "diff": true,
+          "errors": true,
+          "packets": true
+        },
+        "monitor": {
+          "on_operation": true,
+          "on_artifact": true,
+          "on_claim": true,
+          "silence_ms": 300000,
+          "window": 8,
+          "event_chars": 300,
+          "requirements": 10,
+          "threshold": 0.5,
+          "jev": true,
+          "stall_commands": 12,
+          "latency_ms": 800
+        }
+      },
+      "horizon": {
+        "first_share": 0.55,
+        "later_share": 0.75,
+        "min_dispatch_sec": 300,
+        "check_share": 0.05,
+        "long_after_sec": 3600,
+        "long_effort": "medium",
+        "long_command_sec": 3600
+      }
+    },
+    "brief": {
+      "cap": 12000,
+      "directions": "batch-checked"
+    },
+    "executor": {
+      "agent": "codex",
+      "version": "0.155.1",
+      "model": "gpt-6-luna",
+      "effort": null,
+      "tools": null,
+      "prompt_cache_ttl": null,
+      "deadline_sec": 600,
+      "system": {
+        "mode": "replace",
+        "sections": [
+          "role",
+          "security",
+          "authority",
+          "verify",
+          "report",
+          "code-style"
+        ]
+      }
+    },
+    "verify": {
+      "checks": true,
+      "support": false,
+      "repair": {
+        "brief": "packet",
+        "trigger": "detected"
+      }
+    }
+  },
+  "protected": {
+    "isolation": "task-container",
+    "effect_policy": "executor-bypasses-its-own-sandbox",
+    "acceptance": "task-verifier",
+    "ceilings": {
+      "episode_deadline_sec": null,
+      "reserve_sec": 30,
+      "spend_soft_usd": null,
+      "spend_hard_usd": null
+    }
+  }
+}

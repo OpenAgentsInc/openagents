@@ -394,7 +394,11 @@ report what you changed.\n",
 
 /// Where a repair works and records.
 pub struct Place<'a> {
-    pub task: &'a MiniTask,
+    /// The mini-task, when the repair runs on one; a scripted repair
+    /// profile needs it.
+    pub task: Option<&'a MiniTask>,
+    /// What the recheck reads besides the workspace.
+    pub subject: &'a checks::Subject,
     /// The workspace the candidate lives in, repaired in place.
     pub work: &'a Path,
     /// The run's directory: `verification/` goes under it.
@@ -598,7 +602,7 @@ pub async fn attempt<E: Executor>(
     record["session"] = session_record;
 
     // The candidate the repair left, and what its change invalidates.
-    let after_input = checks::workspace_input(place.task, place.work);
+    let after_input = place.subject.input(place.work);
     let after = after_input.candidate.digest();
     let changed = after != input.candidate.digest();
     record["candidate_after"] = json!(after);
@@ -620,8 +624,8 @@ pub async fn attempt<E: Executor>(
     }
     record["invalidated"] = json!(invalidated);
     let recheck = if changed {
-        let (input, report) = checks::check_workspace_as(
-            place.task,
+        let (input, report) = checks::check_subject_as(
+            place.subject,
             place.work,
             place.dir,
             place.recorder,
@@ -741,8 +745,11 @@ pub async fn with_profile(
 ) -> Result<Repaired, String> {
     match profile {
         Profile::Scripted(name) => {
-            let script = scripts::script(place.task, name)
-                .ok_or_else(|| format!("no {name} repair script for {}", place.task.id))?;
+            let task = place.task.ok_or_else(|| {
+                format!("the scripted repair profile {name} runs only on a mini-task")
+            })?;
+            let script = scripts::script(task, name)
+                .ok_or_else(|| format!("no {name} repair script for {}", task.id))?;
             attempt(place, before, support, policy, |granted| {
                 let mut executor = crate::scripted::Scripted::new(script, place.work.to_path_buf());
                 executor.artifacts = Some(place.artifacts.to_path_buf());

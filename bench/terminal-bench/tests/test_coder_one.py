@@ -5,7 +5,13 @@ import hashlib
 
 import pytest
 
-from tbench.coder_one import CoderOne, CoderOneDelegate
+from tbench.coder_one import (
+    CoderOne,
+    CoderOneDelegate,
+    CoderOneTunable,
+    harbor_agent_timeout_sec,
+    merge_setup,
+)
 from tbench.coder_v05 import ArtifactIdentityError, CoderV05, EpisodeContractError
 
 
@@ -310,3 +316,152 @@ def test_an_exec_timeout_becomes_the_episodes_own_deadline_inside_it(tmp_path):
     unbounded = CoderOne(logs_dir=tmp_path, artifact_path=path, artifact_sha256=digest)
     assert "CODER_ONE_EPISODE_DEADLINE" not in unbounded._episode_env()
     assert "CODER_ONE_SPEND_SOFT_USD" in CoderOne.EPISODE_ENV
+
+
+TUNABLE_POLICY = "crates/coder-one/policies/tunable.json"
+
+
+def _trial(tmp_path, timeout_sec: float = 28800.0, **lock) -> "object":
+    """A trial directory as Harbor lays it out: the lock, and the task's
+    configuration it names."""
+    task = tmp_path / "task"
+    task.mkdir()
+    (task / "task.toml").write_text(
+        f"[agent]\ntimeout_sec = {timeout_sec}\n\n[verifier]\ntimeout_sec = 900.0\n"
+    )
+    trial = tmp_path / "trial"
+    (trial / "agent").mkdir(parents=True)
+    import json
+
+    body = {"task": {"path": str(task)}, "timeout_multiplier": 1.0, "agent": {}}
+    body.update(lock)
+    (trial / "lock.json").write_text(json.dumps(body))
+    return trial / "agent"
+
+
+def test_harbors_agent_timeout_comes_from_the_lock_and_the_task(tmp_path):
+    logs = _trial(tmp_path)
+    assert harbor_agent_timeout_sec(logs) == 28800.0
+    assert harbor_agent_timeout_sec(tmp_path / "nowhere" / "agent") is None
+
+
+def test_the_timeout_honors_the_override_ceiling_and_multiplier(tmp_path):
+    logs = _trial(
+        tmp_path,
+        agent={"override_timeout_sec": 1200, "max_timeout_sec": 1000},
+        agent_timeout_multiplier=2.0,
+    )
+    assert harbor_agent_timeout_sec(logs) == 2000.0
+
+
+def test_an_eight_hour_task_runs_its_episode_inside_harbors_timeout(tmp_path):
+    logs = _trial(tmp_path)
+    path, digest = _binary(tmp_path)
+    agent = CoderOne(logs_dir=logs, artifact_path=path, artifact_sha256=digest)
+    # The process runs 60 s inside Harbor's timeout, the episode 60 s
+    # inside that.
+    assert agent._episode_timeout_sec == 28740
+    assert agent._episode_env()["CODER_ONE_EPISODE_DEADLINE"] == "28680"
+
+
+def _tunable(tmp_path, **kwargs) -> CoderOneTunable:
+    path, digest = _binary(tmp_path)
+    return CoderOneTunable(
+        logs_dir=tmp_path,
+        artifact_path=path,
+        artifact_sha256=digest,
+        policy=TUNABLE_POLICY,
+        **kwargs,
+    )
+
+
+def test_the_tunable_arm_installs_every_cli_its_manifest_names(tmp_path):
+    agent = _tunable(tmp_path)
+    assert CoderOneTunable.name() == "coder-one-tunable"
+    assert agent._agents == {"claude-code": "2.1.280", "codex": "0.155.1"}
+    assert agent._codex_version == "0.155.1"
+    assert agent._claude_code_version == "2.1.280"
+    agent._claude_bin = "/root/.local/bin/claude"
+    agent._codex_bin = "/usr/local/bin/codex"
+    env = agent._episode_env()
+    assert env["CODER_ONE_CLAUDE_BIN"] == "/root/.local/bin/claude"
+    assert env["CODER_ONE_CODEX_BIN"] == "/usr/local/bin/codex"
+    assert env["CODEX_HOME"] == "/tmp/codex-home"
+    import json
+
+    manifest = json.loads(env["CODER_ONE_POLICY"])
+    assert manifest["policy"]["control"]["route"]["cheap"]["agent"] == "codex"
+    # The manifest carries the configuration; the switches stay unset.
+    for name in ("CODER_ONE_DELEGATE", "CODER_ONE_DELEGATE_AGENT", "CODER_ONE_DELEGATE_TIMEOUT"):
+        assert name not in env
+
+
+def test_the_tunable_arm_refuses_a_pin_that_disagrees_or_no_policy(tmp_path):
+    with pytest.raises(EpisodeContractError, match="pins codex at both"):
+        _tunable(tmp_path, executors={"codex": "0.154.0"})
+    path, digest = _binary(tmp_path)
+    with pytest.raises(EpisodeContractError, match="needs a policy"):
+        CoderOneTunable(logs_dir=tmp_path, artifact_path=path, artifact_sha256=digest)
+    # An extra CLI with the same pin is fine.
+    assert _tunable(tmp_path, executors={"claude-code": "2.1.280", "codex": "0.155.1"})
+
+
+class _TunableEnvironment(_CodexEnvironment):
+    """Answers both CLIs' version probes."""
+
+    async def exec(self, command: str, env=None, **_: object) -> _Result:
+        if "readlink" in command:
+            self.commands.append(command)
+            self.envs.append(dict(env or {}))
+            return _Result("/root/.local/share/claude/versions/2.1.280\n2.1.280 (Claude Code)\n")
+        return await super().exec(command, env=env)
+
+
+def test_the_tunable_install_places_both_clis_and_one_setup_record(tmp_path, monkeypatch):
+    import json
+
+    auth = tmp_path / "auth.json"
+    auth.write_text("{}")
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth))
+    agent = _tunable(tmp_path)
+    placed = []
+
+    async def place(self, environment, agent_name):
+        placed.append(agent_name)
+        return {
+            "schema": "openagents.tbench.toolchain-setup.v1",
+            "mode": "prebuilt",
+            "cache": "warm",
+            "platform": "linux-x64",
+            "layers": [{"key": agent_name, "cache": "warm"}],
+            "phases_ms": {"copy": 5},
+            "install_ms": 5,
+            "versions": {agent_name: "v"},
+            "note": None,
+        }
+
+    monkeypatch.setattr(CoderOneTunable, "_install_toolchain_for", place)
+    environment = _TunableEnvironment()
+    asyncio.run(agent.install(environment))
+    assert placed == ["claude-code", "codex"]
+    assert (str(auth), "/tmp/codex-secrets/auth.json") in environment.uploads
+    record = json.loads((tmp_path / "toolchain-setup.json").read_text())
+    assert record["versions"] == {"claude-code": "v", "codex": "v"}
+    assert record["phases_ms"] == {"claude-code:copy": 5, "codex:copy": 5}
+    assert record["cache"] == "warm"
+    doctor_env = next(
+        env
+        for command, env in zip(environment.commands, environment.envs)
+        if "episode doctor" in command
+    )
+    assert doctor_env["CODER_ONE_CLAUDE_BIN"] == "/root/.local/share/claude/versions/2.1.280"
+    assert doctor_env["CODER_ONE_CODEX_BIN"] == "/usr/local/bin/codex"
+
+
+def test_merged_setup_is_cold_when_any_layer_was():
+    warm = {"mode": "prebuilt", "layers": [{"cache": "warm"}], "phases_ms": {"a": 1}, "versions": {"codex": "1"}}
+    cold = {"mode": "network", "layers": [{"cache": "cold"}], "phases_ms": {"a": 2}, "versions": {"claude-code": "2"}}
+    merged = merge_setup([warm, cold])
+    assert merged["mode"] == "mixed"
+    assert merged["cache"] == "cold"
+    assert merged["install_ms"] == 3

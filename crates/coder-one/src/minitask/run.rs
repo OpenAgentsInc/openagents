@@ -530,8 +530,10 @@ pub async fn run(options: Options) -> Result<Ran, String> {
     // is left of the episode's deadline, then a recheck.
     let repaired = match (&options.repair, &checked) {
         (Some(plan), Some((input, report))) => {
+            let subject = crate::checks::Subject::mini(&task);
             let place = crate::repair::Place {
-                task: &task,
+                task: Some(&task),
+                subject: &subject,
                 work: &work,
                 dir: &dir,
                 artifacts: &artifacts,

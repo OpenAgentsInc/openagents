@@ -36,6 +36,16 @@ network in the trial. ``toolchain=network`` keeps the network install, with
 Node pinned and at most ``install_concurrency`` installs at a time. The
 adapter writes ``toolchain-setup.json`` beside its logs with the mode, the
 cold or warm cache state, and the install phases.
+
+``CoderOneTunable`` runs the tunable composition (``control.route``,
+``control.handoff``, ``control.horizon``, and ``verify``): its manifest can
+dispatch to Claude Code and to Codex in one episode, so it installs both
+CLIs from prebuilt layers and places both credentials.
+
+Every arm sizes its episode from the task's own agent timeout: the adapter
+reads the trial's ``lock.json`` and the task's ``task.toml`` for Harbor's
+timeout, runs the episode process 60 seconds inside it, and the episode
+keeps its own deadline 60 seconds inside that.
 """
 
 from __future__ import annotations
@@ -45,6 +55,7 @@ import json
 import os
 import shlex
 import time
+import tomllib
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar
 
@@ -70,6 +81,45 @@ def load_policy(path: str) -> dict[str, Any]:
     if not isinstance(manifest, dict) or manifest.get("schema") != POLICY_SCHEMA:
         raise EpisodeContractError(f"policy {file} is not a {POLICY_SCHEMA} manifest")
     return manifest
+
+
+def harbor_agent_timeout_sec(logs_dir: Path) -> float | None:
+    """Harbor's agent timeout for this trial, or ``None`` when unknown.
+
+    Harbor writes the trial's ``lock.json`` before it builds the agent. The
+    timeout is the agent override or the task's ``[agent] timeout_sec``,
+    capped by ``max_timeout_sec`` and scaled by the multiplier, as Harbor's
+    trial resolves it. Only the task's configuration is read, never its
+    tests.
+    """
+    try:
+        lock = json.loads((Path(logs_dir).parent / "lock.json").read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(lock, dict):
+        return None
+    agent = lock.get("agent") or {}
+    base = agent.get("override_timeout_sec")
+    if base is None:
+        task_path = (lock.get("task") or {}).get("path")
+        if not task_path:
+            return None
+        try:
+            task = tomllib.loads((Path(task_path) / "task.toml").read_text())
+        except (OSError, ValueError):
+            return None
+        base = (task.get("agent") or {}).get("timeout_sec")
+    if not isinstance(base, (int, float)) or base <= 0:
+        return None
+    ceiling = agent.get("max_timeout_sec")
+    if isinstance(ceiling, (int, float)) and ceiling > 0:
+        base = min(base, ceiling)
+    multiplier = lock.get("agent_timeout_multiplier")
+    if multiplier is None:
+        multiplier = lock.get("timeout_multiplier", 1.0)
+    return float(base) * float(multiplier or 1.0)
+
+
 from tbench.toolchain import (
     NODE_VERSION,
     ToolchainError,
@@ -110,6 +160,15 @@ class CoderOne(CoderV05):
         policy = kwargs.pop("policy", None)
         self._policy: dict[str, Any] | None = load_policy(policy) if policy else None
         super().__init__(*args, **kwargs)
+        # Without an explicit exec timeout, the process runs 60 seconds
+        # inside Harbor's own agent timeout, so the episode ends and its
+        # bundle is collected before Harbor cancels the run.
+        self._harbor_timeout_sec = harbor_agent_timeout_sec(self.logs_dir)
+        if not self._episode_timeout_sec and self._harbor_timeout_sec:
+            self._episode_timeout_sec = max(
+                int(self._harbor_timeout_sec) - self.DEADLINE_MARGIN_SEC,
+                2 * self.DEADLINE_MARGIN_SEC,
+            )
 
     def _episode_env(self) -> dict[str, str]:
         env = super()._episode_env()
@@ -376,44 +435,43 @@ class CoderOneDelegate(CoderOne):
 
     async def _install_toolchain(self, environment: BaseEnvironment) -> None:
         """Place the delegate CLI from prebuilt layers, or install it."""
-        version = (
-            self._codex_version
-            if self._delegate_agent == "codex"
-            else self._claude_code_version
-        )
+        record = await self._install_toolchain_for(environment, self._delegate_agent)
+        write_setup(self.logs_dir, record)
+
+    def _version_of(self, agent: str) -> str:
+        return self._codex_version if agent == "codex" else self._claude_code_version
+
+    async def _install_toolchain_for(
+        self, environment: BaseEnvironment, agent: str
+    ) -> dict[str, Any]:
+        """Place one CLI from prebuilt layers, or install it; its setup record."""
+        version = self._version_of(agent)
         started = time.monotonic()
         fallback = None
         if self._toolchain == "prebuilt":
             try:
-                record = await place_toolchain(
-                    self, environment, self._delegate_agent, version
-                )
-                write_setup(self.logs_dir, record)
-                return
+                return await place_toolchain(self, environment, agent, version)
             except ToolchainError as exc:
                 fallback = (
                     f"prebuilt layers unavailable, installed from the network: {exc}"
                 )
         async with _install_guard(self._install_concurrency):
             waited = time.monotonic()
-            if self._delegate_agent == "codex":
+            if agent == "codex":
                 await self._install_codex_network(environment)
             else:
                 await self._install_claude_network(environment)
         finished = time.monotonic()
-        write_setup(
-            self.logs_dir,
-            setup_record(
-                mode="network",
-                platform=None,
-                layers=[],
-                phases_ms={
-                    "guard_wait": int((waited - started) * 1000),
-                    "network_install": int((finished - waited) * 1000),
-                },
-                versions={self._delegate_agent: version},
-                note=fallback,
-            ),
+        return setup_record(
+            mode="network",
+            platform=None,
+            layers=[],
+            phases_ms={
+                "guard_wait": int((waited - started) * 1000),
+                "network_install": int((finished - waited) * 1000),
+            },
+            versions={agent: version},
+            note=fallback,
         )
 
     async def _install_codex(self, environment: BaseEnvironment) -> None:
@@ -424,6 +482,10 @@ class CoderOneDelegate(CoderOne):
                 "naming an existing auth.json"
             )
         await self._install_toolchain(environment)
+        await self._place_codex(environment, auth)
+
+    async def _place_codex(self, environment: BaseEnvironment, auth: Path) -> None:
+        """Check the installed Codex and place its credential."""
         found = await environment.exec(command=f"{CODEX_BIN} --version")
         words = (found.stdout or "").strip().split()
         if found.return_code != 0 or len(words) < 2:
@@ -467,6 +529,13 @@ class CoderOneDelegate(CoderOne):
             await super().install(environment)
             return
         await self._install_toolchain(environment)
+        await self._check_claude(environment)
+        # The episode doctor then checks `claude --version` and the
+        # credential from inside the episode's own environment.
+        await super().install(environment)
+
+    async def _check_claude(self, environment: BaseEnvironment) -> None:
+        """Check the installed Claude Code and remember its path."""
         found = await environment.exec(command=self._CLAUDE_PATH_COMMAND)
         lines = (found.stdout or "").strip().splitlines()
         if found.return_code != 0 or len(lines) < 2:
@@ -481,9 +550,6 @@ class CoderOneDelegate(CoderOne):
                 f"{self._claude_code_version}"
             )
         self._claude_bin = lines[-2].strip()
-        # The episode doctor then checks `claude --version` and the
-        # credential from inside the episode's own environment.
-        await super().install(environment)
 
     async def run(self, instruction: str, environment: BaseEnvironment, context) -> None:
         try:
@@ -523,4 +589,160 @@ class CoderOneDelegate(CoderOne):
         # Zero is a real bound: it skips the explore phase entirely.
         if self._explore_steps is not None:
             env["CODER_ONE_EXPLORE_STEPS"] = str(int(self._explore_steps))
+        return env
+
+
+def merge_setup(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """One setup record for several CLIs: every layer, each phase under its
+    executor's name, and the cache warm only when every layer was."""
+    layers = [layer for record in records for layer in record.get("layers") or []]
+    phases: dict[str, int] = {}
+    versions: dict[str, str] = {}
+    notes = []
+    for record in records:
+        executor = ",".join(sorted((record.get("versions") or {}).keys())) or "executor"
+        for name, ms in (record.get("phases_ms") or {}).items():
+            phases[f"{executor}:{name}"] = ms
+        versions.update(record.get("versions") or {})
+        if record.get("note"):
+            notes.append(record["note"])
+    modes = {record.get("mode") for record in records}
+    caches = {layer.get("cache") for layer in layers}
+    merged = dict(records[0]) if records else {}
+    merged.update(
+        {
+            "mode": modes.pop() if len(modes) == 1 else "mixed",
+            "cache": "none" if not layers else ("warm" if caches == {"warm"} else "cold"),
+            "platform": next((r.get("platform") for r in records if r.get("platform")), None),
+            "layers": layers,
+            "phases_ms": phases,
+            "install_ms": sum(phases.values()),
+            "versions": versions,
+            "note": "; ".join(notes) or None,
+        }
+    )
+    return merged
+
+
+def manifest_tiers(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every executor a manifest can dispatch to: its own, the route's two,
+    and the handoff's second, as ``{agent, model, version}``."""
+    policy = manifest.get("policy") or {}
+    control = policy.get("control") or {}
+    tiers = [policy.get("executor") or {}]
+    route = control.get("route") or {}
+    tiers += [route[key] for key in ("cheap", "strong") if route.get(key)]
+    handoff = control.get("handoff") or {}
+    if handoff.get("to"):
+        tiers.append(handoff["to"])
+    return [tier for tier in tiers if tier.get("agent")]
+
+
+class CoderOneTunable(CoderOneDelegate):
+    """The tunable composition: route, checks, support, escalation, and
+    repair, with both Claude Code and Codex installed.
+
+    Adapter kwargs, set by the arm's profile:
+
+    - ``policy``: a policy manifest. Required. Its executor, its
+      ``control.route`` tiers, and its ``control.handoff.to`` decide which
+      CLIs install, at the versions each tier pins.
+    - ``executors``: more CLIs to install beside the manifest's, as
+      ``{agent: version}``, so every arm carries both CLIs. A version must
+      agree with the manifest's pin for the same agent.
+    - ``toolchain``: ``prebuilt`` (the default) or ``network``.
+    - ``install_concurrency``: the most network installs at once.
+    """
+
+    EPISODE_ENV: ClassVar[tuple[str, ...]] = CoderOneDelegate.EPISODE_ENV
+
+    @staticmethod
+    def name() -> str:
+        return "coder-one-tunable"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        policy = kwargs.get("policy")
+        if not policy:
+            raise EpisodeContractError("coder-one-tunable needs a policy manifest")
+        manifest = load_policy(policy)
+        extra = kwargs.pop("executors", None) or {}
+        self._agents: dict[str, str] = {}
+        tiers = manifest_tiers(manifest) + [
+            {"agent": agent, "version": version} for agent, version in extra.items()
+        ]
+        for tier in tiers:
+            agent = tier["agent"]
+            version = tier.get("version")
+            if agent not in DELEGATE_AGENTS:
+                raise EpisodeContractError(
+                    f"coder-one-tunable runs claude-code and codex, not {agent!r}"
+                )
+            if not version:
+                raise EpisodeContractError(
+                    f"the manifest's {agent} tier pins no version; the adapter installs a pinned CLI"
+                )
+            known = self._agents.setdefault(agent, str(version))
+            if known != str(version):
+                raise EpisodeContractError(
+                    f"the manifest pins {agent} at both {known} and {version}"
+                )
+        super().__init__(*args, **kwargs)
+        if "codex" in self._agents:
+            self._codex_version = self._agents["codex"]
+        if "claude-code" in self._agents:
+            self._claude_code_version = self._agents["claude-code"]
+
+    def _preflight(self) -> None:
+        super()._preflight()
+        if "claude-code" in getattr(self, "_agents", {}):
+            version = _version_tuple(self._agents["claude-code"])
+            if version is None or version < CLAUDE_CODE_MIN:
+                raise EpisodeContractError(
+                    f"claude-code {self._agents['claude-code']!r} is older than "
+                    f"{'.'.join(map(str, CLAUDE_CODE_MIN))}; the API refuses Opus 5.5 to it"
+                )
+
+    async def install(self, environment: BaseEnvironment) -> None:
+        """Install every CLI the manifest can dispatch to, place their
+        credentials, then Coder One and its doctor."""
+        auth = None
+        if "codex" in self._agents:
+            auth = self.codex_auth_path()
+            if auth is None or not auth.is_file():
+                raise EpisodeContractError(
+                    "the Codex tier needs CODEX_AUTH_JSON_PATH or CODEX_FORCE_AUTH_JSON "
+                    "naming an existing auth.json"
+                )
+        records = []
+        for agent in sorted(self._agents):
+            records.append(await self._install_toolchain_for(environment, agent))
+        write_setup(self.logs_dir, merge_setup(records))
+        if auth is not None:
+            await self._place_codex(environment, auth)
+        if "claude-code" in self._agents:
+            await self._check_claude(environment)
+        # Coder One itself, and its doctor, which checks every CLI the
+        # manifest names from inside the episode's environment.
+        await CoderOne.install(self, environment)
+
+    async def run(self, instruction: str, environment: BaseEnvironment, context) -> None:
+        try:
+            await CoderOne.run(self, instruction, environment, context)
+        finally:
+            if "codex" in self._agents:
+                try:
+                    await self.exec_as_root(
+                        environment, command=f"rm -rf {CODEX_SECRETS} {CODEX_HOME}"
+                    )
+                except Exception:
+                    pass
+
+    def _episode_env(self) -> dict[str, str]:
+        env = CoderOne._episode_env(self)
+        if self._claude_bin:
+            env["CODER_ONE_CLAUDE_BIN"] = self._claude_bin
+        if "codex" in self._agents:
+            env["CODEX_HOME"] = str(CODEX_HOME)
+            if self._codex_bin:
+                env["CODER_ONE_CODEX_BIN"] = self._codex_bin
         return env

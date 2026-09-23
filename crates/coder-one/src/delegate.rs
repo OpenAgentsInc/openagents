@@ -266,6 +266,9 @@ pub enum Reason {
     /// A check left a requirement contradicted, and one repair session
     /// runs from its diagnostic packet.
     Repair,
+    /// `control.handoff` moved the work to another executor, for the
+    /// stated trigger.
+    Handoff(String),
 }
 
 impl Reason {
@@ -279,6 +282,7 @@ impl Reason {
             Reason::Unchanged(_) => "checkout_unchanged",
             Reason::GenerationFailed => "generation_failed",
             Reason::Repair => "repair",
+            Reason::Handoff(_) => "handoff",
         }
     }
 }
@@ -299,6 +303,7 @@ impl std::fmt::Display for Reason {
             }
             Reason::GenerationFailed => write!(f, "the explorer's generation failed"),
             Reason::Repair => write!(f, "a check left a requirement contradicted"),
+            Reason::Handoff(trigger) => write!(f, "control.handoff moved the work: {trigger}"),
         }
     }
 }
