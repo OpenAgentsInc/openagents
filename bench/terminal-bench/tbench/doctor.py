@@ -363,6 +363,35 @@ def check_credentials(report: Report, profiles: list[AgentProfile]) -> None:
             )
 
 
+def check_claude_setup_token(report: Report, path: Path | None = None) -> Check:
+    """Whether the long-lived Claude token is in place. Never reads it aloud."""
+    from . import credentials
+
+    status = credentials.setup_token_status(path or credentials.SETUP_TOKEN)
+    if status["usable"]:
+        return report.add(
+            Check(
+                "claude-setup-token",
+                PASS,
+                f"present, mode {status['mode']}, written {status['age_days']:g} days ago "
+                "(value not shown)",
+            )
+        )
+    if not status["present"]:
+        return report.add(
+            Check(
+                "claude-setup-token",
+                WARN,
+                "missing; Claude trials fall back to the login token, which a "
+                "login refresh revokes, and `tbench experiment` refuses to start",
+                credentials.SETUP_TOKEN_HINT,
+            )
+        )
+    return report.add(
+        Check("claude-setup-token", FAIL, status["problem"], credentials.SETUP_TOKEN_HINT)
+    )
+
+
 def check_host_agents(report: Report) -> None:
     """Host agent installs are informational; they prove nothing about the container."""
     for binary in ("claude", "codex", "coder"):
@@ -397,5 +426,6 @@ def run_doctor(
     check_task_configs(report, panel, checkout)
     check_images(report, panel, online)
     check_credentials(report, agents)
+    check_claude_setup_token(report)
     check_host_agents(report)
     return report

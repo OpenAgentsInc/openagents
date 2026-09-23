@@ -62,7 +62,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import host, paths, usage_limit
+from . import credentials, host, paths, usage_limit
 from .panel import Task
 from .results import TrialPaths
 
@@ -297,6 +297,9 @@ class Trial:
     waiting_since: float | None = None
     failed_moves: list[str] = field(default_factory=list)
     usage_limits: int = 0
+    credential_failures: int = 0
+    # The agent profile this trial runs, when a schedule has several arms.
+    arm: str | None = None
 
     @property
     def cpus(self) -> int:
@@ -329,6 +332,8 @@ class Trial:
             "gpus": self.gpus,
             "failed_moves": self.failed_moves,
             "usage_limits": self.usage_limits,
+            "credential_failures": self.credential_failures,
+            **({"arm": self.arm} if self.arm else {}),
         }
 
 
@@ -336,13 +341,14 @@ class Trial:
 class JobState:
     """What a job directory says about its trial."""
 
-    # new | finished | usage_limited | setup_timeout | interrupted |
-    # incomplete | refused
+    # new | finished | usage_limited | credentials | setup_timeout |
+    # interrupted | incomplete | refused
     kind: str
     reward: float | None = None
     exception: str | None = None
     reason: str | None = None
     usage_limit: dict[str, Any] | None = None
+    credential_failure: dict[str, Any] | None = None
     # When the trial finished, in epoch seconds, when its result says.
     finished_at: float | None = None
 
@@ -398,6 +404,12 @@ def inspect_job(job_dir: Path) -> JobState:
             )
         elif exception in SETUP_TIMEOUTS:
             states.append(JobState("setup_timeout", exception=exception))
+        elif (
+            failure := credentials.trial_credential_failure(trial, result)
+        ) is not None:
+            states.append(
+                JobState("credentials", exception=exception, credential_failure=failure)
+            )
         else:
             states.append(
                 JobState(
@@ -406,7 +418,14 @@ def inspect_job(job_dir: Path) -> JobState:
                     exception=exception,
                 )
             )
-    for kind in ("usage_limited", "finished", "setup_timeout", "interrupted", "incomplete"):
+    for kind in (
+        "usage_limited",
+        "credentials",
+        "finished",
+        "setup_timeout",
+        "interrupted",
+        "incomplete",
+    ):
         for state in states:
             if state.kind == kind:
                 return state
@@ -496,11 +515,14 @@ class Host:
 
 
 CLAUDE_CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
-CLAUDE_SETUP_TOKEN = Path.home() / ".openagents" / "claude-setup-token"
+CLAUDE_SETUP_TOKEN = credentials.SETUP_TOKEN
 
 
 def fresh_environment(
-    base: Mapping[str, str], credentials: Path = CLAUDE_CREDENTIALS
+    base: Mapping[str, str],
+    login: Path = CLAUDE_CREDENTIALS,
+    *,
+    login_fallback: bool = True,
 ) -> dict[str, str]:
     """The environment for one job, with a current Claude access token.
 
@@ -509,24 +531,22 @@ def fresh_environment(
     `CLAUDE_CODE_OAUTH_TOKEN`, each job gets the token the Claude CLI's
     credential file holds now, which the CLI refreshes, rather than the one
     the scheduler started with. The value is never logged.
+
+    With ``login_fallback`` off, only the long-lived token replaces the
+    scheduler's value; a targeted experiment that started on the long-lived
+    token never switches to the expiring login.
     """
     env = dict(base)
     if "CLAUDE_CODE_OAUTH_TOKEN" not in env:
         return env
     # A long-lived token from `claude setup-token` outlives the host's
     # login refreshes, which revoke the access token a running trial holds.
-    try:
-        long_lived = CLAUDE_SETUP_TOKEN.read_text().strip()
-    except OSError:
-        long_lived = ""
+    long_lived = credentials.read_setup_token(CLAUDE_SETUP_TOKEN)
     if long_lived:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = long_lived
         return env
-    try:
-        token = json.loads(credentials.read_text())["claudeAiOauth"]["accessToken"]
-    except (OSError, ValueError, KeyError, TypeError):
-        return env
-    if isinstance(token, str) and token:
+    token = credentials.login_token(login) if login_fallback else ""
+    if token:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = token
     return env
 
@@ -542,15 +562,21 @@ class Launcher:
         logs: Path,
         extra_args: list[str] | None = None,
         python: str = sys.executable,
+        arm_args: Mapping[str, list[str]] | None = None,
+        login_fallback: bool = True,
     ) -> None:
         self.profile = profile
         self.arm = arm
+        # Flags for one arm's trials only, when a schedule has several arms.
+        self.arm_args = {name: list(flags) for name, flags in (arm_args or {}).items()}
+        self.login_fallback = login_fallback
         self.logs = logs
         self.extra_args = list(extra_args or [])
         self.python = python
         self.children: dict[int, subprocess.Popen[bytes]] = {}
 
     def command(self, trial: Trial, verb: str) -> list[str]:
+        arm = trial.arm or self.arm
         return [
             self.python,
             "-m",
@@ -559,12 +585,13 @@ class Launcher:
             "--profile",
             self.profile,
             "--agent",
-            self.arm,
+            arm,
             "--task",
             trial.task.id,
             "--job-name",
             trial.job,
             *self.extra_args,
+            *self.arm_args.get(arm, []),
         ]
 
     def start(
@@ -585,7 +612,7 @@ class Launcher:
             stdin=subprocess.DEVNULL,
             start_new_session=True,
             cwd=paths.PACKAGE_DIR,
-            env=fresh_environment(os.environ),
+            env=fresh_environment(os.environ, login_fallback=self.login_fallback),
             pass_fds=holds,
         )
         log.close()
@@ -676,6 +703,9 @@ class Scheduler:
         self.pauses = pauses or pause_path()
         self.wall = wall
         self.paused_note: str | None = None
+        # Providers whose credentials failed a trial: no trial that bills
+        # one starts again until the operator fixes them and restarts.
+        self.blocked: dict[str, str] = {}
         self.trials = [
             Trial(task, attempt, job_name(profile, arm, task.id, attempt))
             for task in tasks
@@ -716,7 +746,11 @@ class Scheduler:
             "state": (
                 "done"
                 if all(t.state in TERMINAL for t in self.trials)
-                else ("stopping" if self.stopping else "running")
+                else (
+                    "stopping"
+                    if self.stopping
+                    else ("held" if self.done() else "running")
+                )
             ),
             "started_at": self.started_at,
             "updated_at": utc_now(),
@@ -733,6 +767,8 @@ class Scheduler:
             "providers": sorted(self.providers),
             "paused": self.paused(),
             "usage_limited": sum(t.usage_limits for t in self.trials),
+            "credential_failures": sum(t.credential_failures for t in self.trials),
+            "blocked": dict(self.blocked),
             "pruned": self.pruned,
             "trials": [t.to_json() for t in self.trials],
             "events": self.events[-50:],
@@ -781,6 +817,10 @@ class Scheduler:
                 self._move_aside(trial, state)
             elif state.kind == "usage_limited":
                 self._usage_limited(trial, state)
+            elif state.kind == "credentials":
+                # Found on a restart, after the operator fixed what the
+                # failure named: set it aside and run the trial again.
+                self._credential_failure(trial, state, block=False)
             else:
                 # New, interrupted, incomplete, or refused on an earlier
                 # start: all run again now. A refusal is retried because
@@ -883,6 +923,39 @@ class Scheduler:
             f"limit ({why})"
         )
         self.event(f"{trial.job}: usage limit, moved to {target}; {trial.reason}")
+
+    def trial_providers(self, trial: Trial) -> frozenset[str]:
+        """The providers one trial's sessions bill."""
+        return self.providers
+
+    def hold_reason(self, trial: Trial) -> str | None:
+        """Why no trial from ``trial`` on in the order starts now, or ``None``."""
+        blocked = sorted(self.trial_providers(trial) & set(self.blocked))
+        if blocked:
+            return "; ".join(f"{name} {self.blocked[name]}" for name in blocked)
+        return None
+
+    def _credential_failure(self, trial: Trial, state: JobState, *, block: bool = True) -> None:
+        """Set a trial its credentials failed aside, and queue it again.
+
+        A credential failure says nothing about the agent, so it is never a
+        result. Credentials don't recover by waiting, so no further trial
+        on the provider starts until the operator fixes them and restarts.
+        """
+        failure = state.credential_failure or {}
+        target = self._set_aside(trial, "credentials")
+        trial.credential_failures += 1
+        trial.state = PENDING
+        trial.reward = None
+        trial.exception = state.exception
+        trial.reason = f"requeued after a credential failure ({failure.get('message')})"
+        if block:
+            for name in sorted(self.trial_providers(trial)):
+                self.blocked[name] = (
+                    f"credentials failed in {trial.job} ({failure.get('source')}); "
+                    "fix them and restart"
+                )
+        self.event(f"{trial.job}: credential failure, moved to {target}; {trial.reason}")
 
     def paused(self) -> dict[str, dict[str, Any]]:
         """This arm's providers that are paused now, with each pause."""
@@ -1009,6 +1082,12 @@ class Scheduler:
                 trial.waiting_since = now
         disk_checked = False
         for trial in pending:
+            held = self.hold_reason(trial)
+            if held:
+                if trial.reason != held:
+                    trial.reason = held
+                    self.event(f"not starting {trial.job}: {held}")
+                break
             running = [t for t in self.trials if t.state == RUNNING]
             fits = self._fits(trial, running) and self._image_gate(trial, running)
             if fits and trial.gpus and not disk_checked:
@@ -1019,7 +1098,7 @@ class Scheduler:
                     break
             claude: int | None = None
             slots = self.budget.max_claude_concurrent
-            if fits and slots > 0 and "anthropic" in self.providers:
+            if fits and slots > 0 and "anthropic" in self.trial_providers(trial):
                 claude = self.host.claude_slot(trial.job, slots)
                 if claude is None:
                     reason = (
@@ -1105,6 +1184,8 @@ class Scheduler:
                 self._move_aside(trial, state)
             elif state.kind == "usage_limited":
                 self._usage_limited(trial, state)
+            elif state.kind == "credentials":
+                self._credential_failure(trial, state)
             elif state.kind == "refused":
                 self._apply(trial, state)
                 self.event(f"refused {trial.job}: {state.reason}")
@@ -1184,7 +1265,14 @@ class Scheduler:
     def done(self) -> bool:
         if self.stopping:
             return not any(t.state == RUNNING for t in self.trials)
-        return all(t.state in TERMINAL for t in self.trials)
+        if all(t.state in TERMINAL for t in self.trials):
+            return True
+        # With nothing running, a hold can't lift by itself: the schedule
+        # ends and a restart picks up the held trials.
+        if any(t.state == RUNNING for t in self.trials):
+            return False
+        pending = [t for t in self.trials if t.state == PENDING]
+        return bool(pending) and all(self.hold_reason(t) for t in pending)
 
     def run(self, *, interval: float = 15.0, sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
         self.reconcile()
@@ -1234,6 +1322,8 @@ def status_lines(status: dict[str, Any]) -> list[str]:
             f"Claude slots {budget['max_claude_concurrent'] or 'uncapped'} · "
             f"usage-limited {status.get('usage_limited', 0)}"
         )
+    for name, why in sorted((status.get("blocked") or {}).items()):
+        lines.append(f"  blocked  {name}: {why}")
     for name, pause in sorted((status.get("paused") or {}).items()):
         lines.append(
             f"  paused   {name} until {pause.get('until_iso')}: {pause.get('reason')}"

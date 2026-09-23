@@ -566,6 +566,326 @@ def cmd_suite(args: argparse.Namespace) -> int:
     return 0
 
 
+def _experiment_spec(args: argparse.Namespace):
+    """The experiment's spec: pinned on disk, or built from the flags."""
+    from . import experiment
+
+    pinned = experiment.load_spec(args.id)
+    arm_args: dict[str, list[str]] = {}
+    for pair in args.arm_kwarg or []:
+        arm, _, kwarg = pair.partition(":")
+        if not kwarg or "=" not in kwarg:
+            raise RunError(f"--arm-kwarg wants ARM:key=value, got {pair!r}")
+        arm_args.setdefault(arm, []).extend(["--agent-kwarg", kwarg])
+    tasks = [t.strip() for part in args.tasks or [] for t in part.split(",") if t.strip()]
+    if pinned is not None and not (args.profile or args.arm or tasks):
+        spec = experiment.Spec.from_pinned(pinned, args.quota_usd)
+    else:
+        if not (args.profile and args.arm and tasks):
+            raise RunError(
+                f"experiment {args.id} isn't pinned yet; give --profile, --arm "
+                "(twice or more), and --tasks"
+            )
+        spec = experiment.Spec(
+            id=args.id,
+            profile=args.profile,
+            arms=list(args.arm),
+            tasks=tasks,
+            attempts=args.attempts,
+            arm_args=arm_args,
+            quota_usd=args.quota_usd,
+        )
+    spec.validate()
+    for name in spec.arm_args:
+        if name not in spec.arms:
+            raise RunError(f"--arm-kwarg names {name!r}, which isn't an arm")
+    return spec
+
+
+def _experiment_credentials(
+    arm_agents: dict, providers: dict, *, allow_login: bool, strict: bool
+) -> tuple[str | None, list[str]]:
+    """Choose the Claude credential and check every arm's, by name only.
+
+    Returns the credential source and warnings. Raises ``RunError`` when
+    ``strict`` and a credential is missing. A token's value is set in this
+    process's environment for the trials and never printed.
+    """
+    from . import credentials, suite
+    from .runner import RunRefused, _check_credentials
+
+    warnings: list[str] = []
+    source = None
+
+    def refuse(message: str) -> None:
+        if strict:
+            raise RunError(message)
+        warnings.append(message)
+
+    if any("anthropic" in p for p in providers.values()):
+        status = credentials.setup_token_status()
+        if status["usable"]:
+            os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = credentials.read_setup_token()
+            source = credentials.SOURCE_SETUP_TOKEN
+        elif allow_login:
+            token = credentials.login_token(suite.CLAUDE_CREDENTIALS)
+            if not token:
+                refuse("no Claude login to fall back to; " + credentials.SETUP_TOKEN_HINT)
+            else:
+                os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = token
+                source = credentials.SOURCE_LOGIN
+                warnings.append(
+                    f"{status['problem']}; running on the expiring Claude login, so "
+                    "a login refresh can revoke running trials' token. To avoid "
+                    "that, " + credentials.SETUP_TOKEN_HINT
+                )
+        else:
+            refuse(
+                f"{status['problem']}. Claude trials in an experiment use the "
+                f"long-lived token: {credentials.SETUP_TOKEN_HINT}. "
+                "--allow-login-token runs on the expiring login instead."
+            )
+    # The Coder One arms' door and Jev keys, from the host's usual files.
+    credentials.fill_host_credentials(os.environ)
+    for arm, agent in arm_agents.items():
+        mode = (
+            "subscription-oauth"
+            if source
+            and "subscription-oauth" in agent.auth_modes
+            and "anthropic" in providers[arm]
+            else None
+        )
+        try:
+            _check_credentials(agent, mode)
+        except RunRefused as exc:
+            refuse(f"arm {arm}: {exc}")
+    return source, warnings
+
+
+def _experiment_scheduler(args: argparse.Namespace, *, dry_run: bool = False):
+    from . import credentials, experiment, suite, usage_limit
+
+    spec = _experiment_spec(args)
+    agents = load_agents()
+    unknown = [arm for arm in spec.arms if arm not in agents]
+    if unknown:
+        raise RunError(
+            f"unknown arms {', '.join(unknown)}; known: {', '.join(sorted(agents))}"
+        )
+    profile = load_job_profile(spec.profile)
+    panel = load_panel(catalog=profile.catalog)
+    tasks = {task_id: panel.task(task_id) for task_id in spec.tasks}
+    excluded = [task for task in tasks.values() if task.excluded]
+    if excluded:
+        raise RunError(
+            "excluded tasks can't run: "
+            + "; ".join(f"{t.id}: {t.excluded_reason_text}" for t in excluded)
+        )
+    checkout = panel.checkout()
+    if not (checkout / ".git").exists() and not dry_run:
+        raise RunError(f"no task checkout at {checkout}; run `tbench tasks checkout` first")
+    arm_agents = {arm: agents[arm] for arm in spec.arms}
+    providers = {arm: usage_limit.arm_providers(agent) for arm, agent in arm_agents.items()}
+    source, warnings = _experiment_credentials(
+        arm_agents, providers, allow_login=args.allow_login_token, strict=not dry_run
+    )
+    for warning in warnings:
+        print(f"experiment: warning: {warning}", file=sys.stderr)
+    arm_args = {arm: list(flags) for arm, flags in spec.arm_args.items()}
+    if source is not None:
+        for arm, agent in arm_agents.items():
+            if "anthropic" in providers[arm] and "subscription-oauth" in agent.auth_modes:
+                arm_args.setdefault(arm, []).extend(["--auth-mode", "subscription-oauth"])
+    directory = experiment.experiment_dir(spec.id)
+    if not dry_run:
+        experiment.pin(spec, directory)
+    budget = suite.Budget(
+        max_cpus=args.max_cpus,
+        max_mem_gb=args.max_mem_gb,
+        min_free_disk_gb=args.min_free_disk_gb,
+        max_concurrent=args.max_concurrent,
+        max_gpus=args.max_gpus,
+        order="listed",
+        max_claude_concurrent=args.max_claude_concurrent,
+        usage_backoff_sec=args.usage_backoff_min * 60,
+    )
+    launcher = suite.Launcher(
+        profile=spec.profile,
+        arm=spec.arms[0],
+        logs=directory / "logs",
+        arm_args=arm_args,
+        # On the long-lived token, a trial never switches to the login.
+        login_fallback=source != credentials.SOURCE_SETUP_TOKEN,
+    )
+    host_ = suite.Host.docker(checkout)
+    if dry_run:
+        host_.remove_images = lambda names: []
+        host_.prune_build_cache = lambda: False
+    return experiment.ExperimentScheduler(
+        spec=spec,
+        tasks=tasks,
+        arm_providers=providers,
+        credential_source=source,
+        budget=budget,
+        jobs_dir=paths.jobs_dir(),
+        directory=directory,
+        launcher=launcher,
+        host_=host_,
+        pin_={
+            "git_url": panel.git_url,
+            "git_commit_id": panel.git_commit_id,
+            "ref": panel.ref,
+            "catalog": panel.catalog,
+        },
+    )
+
+
+def cmd_experiment(args: argparse.Namespace) -> int:
+    """Run, plan, inspect, or stop a targeted experiment."""
+    import signal as signals
+
+    from . import experiment, suite
+
+    directory = experiment.experiment_dir(args.id)
+    if args.experiment_command == "status":
+        status = experiment.read_status(args.id)
+        if status is None:
+            print(f"experiment: no status under {directory}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps(status, indent=2))
+        else:
+            for line in experiment.status_lines(status):
+                print(line)
+        return 0
+    if args.experiment_command == "stop":
+        try:
+            pid = int((directory / "lock").read_text().strip())
+        except (OSError, ValueError):
+            print("experiment: no scheduler pid recorded", file=sys.stderr)
+            return 1
+        if not suite.pid_alive(pid):
+            print(f"experiment: scheduler {pid} isn't running")
+            return 0
+        os.kill(pid, signals.SIGTERM)
+        print(f"experiment: asked scheduler {pid} to stop; a restart resumes its trials")
+        return 0
+    try:
+        scheduler = _experiment_scheduler(args, dry_run=args.experiment_command == "plan")
+    except (RunError, KeyError, ValueError, experiment.ExperimentError) as exc:
+        print(f"experiment: {exc}", file=sys.stderr)
+        return 1
+    if args.experiment_command == "plan":
+        spec = scheduler.spec
+        print(
+            f"experiment {spec.id}: {len(spec.arms)} arms × {len(spec.tasks)} tasks × "
+            f"{spec.attempts} attempts = {len(scheduler.trials)} trials, interleaved; "
+            f"Claude credential {scheduler.credential_source or 'none needed'}; "
+            + (
+                f"Claude quota budget ${spec.quota_usd:.2f}"
+                if spec.quota_usd is not None
+                else "no Claude quota budget"
+            )
+        )
+        for index, trial in enumerate(scheduler.trials, 1):
+            print(f"{index:>4}  r{trial.attempt}  {trial.task.id:<32} {trial.arm}")
+        print("plan: nothing was started")
+        return 0
+    if args.detach:
+        directory.mkdir(parents=True, exist_ok=True)
+        argv = [a for a in sys.argv[1:] if a != "--detach"]
+        log = (directory / "scheduler.log").open("ab")
+        process = subprocess.Popen(
+            [sys.executable, "-m", "tbench", *argv],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=paths.PACKAGE_DIR,
+        )
+        print(
+            f"experiment: scheduler {process.pid} runs in the background; "
+            f"status {directory / 'status.json'}, log {directory / 'scheduler.log'}"
+        )
+        return 0
+    try:
+        with suite.suite_lock(scheduler.directory):
+            for signum in (signals.SIGINT, signals.SIGTERM, signals.SIGHUP):
+                signals.signal(signum, lambda *_: scheduler.stop())
+            status = scheduler.run(interval=args.interval)
+    except suite.SuiteError as exc:
+        print(f"experiment: {exc}", file=sys.stderr)
+        return 1
+    for line in experiment.status_lines(status):
+        print(line)
+    return 0
+
+
+def add_experiment_parser(sub) -> None:
+    experiment_parser = sub.add_parser(
+        "experiment",
+        help="run a targeted experiment: several arms, repeated, interleaved",
+    )
+    experiment_sub = experiment_parser.add_subparsers(
+        dest="experiment_command", required=True
+    )
+    for name, helptext in (
+        ("run", "schedule every trial; resumable and safe to restart"),
+        ("plan", "print the interleaved schedule and check credentials; start nothing"),
+        ("status", "print an experiment's status file"),
+        ("stop", "stop a running experiment; a restart resumes it"),
+    ):
+        p = experiment_sub.add_parser(name, help=helptext)
+        p.add_argument("--id", required=True, help="experiment id, such as v7-vs-cc")
+        if name == "status":
+            p.add_argument("--json", action="store_true", help="print JSON")
+        if name not in ("run", "plan"):
+            continue
+        p.add_argument("--profile", help="job profile id (pinned on the first run)")
+        p.add_argument("--arm", action="append", help="agent profile id; give two or more")
+        p.add_argument(
+            "--tasks", action="append", help="task ids, comma-separated or repeated"
+        )
+        p.add_argument(
+            "--attempts", type=int, default=3, help="attempts per task per arm (default 3)"
+        )
+        p.add_argument(
+            "--arm-kwarg", action="append", help="ARM:key=value adapter kwarg for one arm"
+        )
+        p.add_argument(
+            "--quota-usd",
+            type=float,
+            help="Claude quota budget, as the list-price value Claude Code reports; "
+            "no Claude trial starts once it's used",
+        )
+        p.add_argument(
+            "--allow-login-token",
+            action="store_true",
+            help="run Claude trials on the expiring login when there is no "
+            "long-lived token in ~/.openagents/claude-setup-token",
+        )
+        p.add_argument("--max-cpus", type=float, default=24)
+        p.add_argument("--max-mem-gb", type=float, default=100)
+        p.add_argument("--min-free-disk-gb", type=float, default=40)
+        p.add_argument("--max-concurrent", type=int, help="cap on trials at once")
+        p.add_argument("--max-gpus", type=int, default=1)
+        p.add_argument(
+            "--max-claude-concurrent",
+            type=int,
+            default=3,
+            help="Claude trials at once across the host (default 3)",
+        )
+        p.add_argument("--usage-backoff-min", type=float, default=30.0)
+        p.add_argument("--interval", type=float, default=15.0)
+        if name == "run":
+            p.add_argument(
+                "--detach",
+                action="store_true",
+                help="run the scheduler in the background and return",
+            )
+    experiment_parser.set_defaults(func=cmd_experiment)
+
+
 def cmd_reference(args: argparse.Namespace) -> int:
     """Fetch the public TB4 leaderboard's per-task results."""
     from .reference import HarborHubReader, fetch_reference, write_reference
@@ -986,6 +1306,8 @@ def build_parser() -> argparse.ArgumentParser:
                 help="run the scheduler in the background and return",
             )
     suite_parser.set_defaults(func=cmd_suite)
+
+    add_experiment_parser(sub)
 
     reference_parser = sub.add_parser(
         "reference",
