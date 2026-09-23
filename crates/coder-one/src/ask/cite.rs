@@ -27,6 +27,8 @@ pub struct RunFacts {
     /// `job/trial`.
     pub id: String,
     pub job: String,
+    /// The task the run attempted, such as `cad-model`.
+    pub task: String,
     /// How many transcript steps the run has.
     pub steps: usize,
     /// Each judgment's probability, when Jev judged the run.
@@ -47,6 +49,11 @@ impl RunFacts {
         Some(RunFacts {
             id: format!("{job}/{trial}"),
             job,
+            task: shown
+                .pointer("/run/task")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
             steps: shown["transcript"].as_array().map_or(0, Vec::len),
             judgments,
         })
@@ -281,6 +288,7 @@ mod tests {
         let unjudged = RunFacts {
             id: "tb4--b/b__1".to_string(),
             job: "tb4--b".to_string(),
+            task: "b".to_string(),
             steps: 0,
             judgments: None,
         };

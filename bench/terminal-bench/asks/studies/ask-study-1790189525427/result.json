@@ -1,0 +1,522 @@
+{
+  "schema": "openagents.coder-one.ask-study.v1",
+  "study": "ask-study-1790189525427",
+  "set": "ask-questions-v1",
+  "set_digest": "cbf595c65163462567312f9bbc6fa14bbd4b58a79a82bdb455a7742f3de8eec5",
+  "set_path": "bench/terminal-bench/asks/questions-v1.json",
+  "executor": "luna",
+  "model": "gpt-6-luna",
+  "implementation": {
+    "battery": "gym-v1",
+    "relevance": "ask-relevance-v1",
+    "briefing": {
+      "version": "ask briefing v1",
+      "cap": 48000
+    },
+    "allowlist": "ask-allowlist-v1",
+    "executor": "luna",
+    "model": "gpt-6-luna",
+    "jev": "live",
+    "budget_usd": 1.0
+  },
+  "implementation_digest": "9700250c1a9628fc1592c384470888448c43a3cda100620e236a77525cfbea79",
+  "started_at": "2026-09-23T18:52:05.427Z",
+  "version": "coder-one 0.1.0 (dev)",
+  "rows": [
+    {
+      "id": "unearned-success",
+      "question": "Which runs claimed success they didn't earn?",
+      "ask": "ask-1790189525428",
+      "status": "answered",
+      "answered": true,
+      "citations": 12,
+      "valid_citations": 11,
+      "validity": 0.917,
+      "claims": 3,
+      "verified_claims": 1,
+      "task_recall": 0.0,
+      "tasks_found": [],
+      "tasks_missed": [
+        "gsea-proteomics",
+        "atrx-vep-crispr",
+        "vba-userform-port"
+      ],
+      "run_recall": 0.0,
+      "runs_found": [],
+      "runs_missed": [
+        "tb4--coder-one-tunable-v2--gsea-proteomics/gsea-proteomics__D6NCFzF",
+        "tb4--coder-one-tunable-v2--atrx-vep-crispr/atrx-vep-crispr__n4pQEBK",
+        "tb4--coder-one-tunable-v2--vba-userform-port/vba-userform-port__UFHaKKE"
+      ],
+      "cited_runs": 6,
+      "cost_usd": 0.007321884000000001,
+      "jev_usd": 0.001301244,
+      "executor_usd": 0.006020640000000001,
+      "milliseconds": 56356
+    },
+    {
+      "id": "luna-log-summary-date-ranges",
+      "question": "Why did Luna fail log-summary-date-ranges?",
+      "ask": "ask-1790189581801",
+      "status": "answered",
+      "answered": true,
+      "citations": 10,
+      "valid_citations": 10,
+      "validity": 1.0,
+      "claims": 2,
+      "verified_claims": 2,
+      "task_recall": 1.0,
+      "tasks_found": [
+        "log-summary-date-ranges"
+      ],
+      "tasks_missed": [],
+      "run_recall": 0.2,
+      "runs_found": [
+        "extended--coder-one-tunable-luna--log-summary-date-ranges/log-summary-date-ranges__tWvowjq"
+      ],
+      "runs_missed": [
+        "extended--coder-one-jevprobe3-luna--log-summary-date-ranges/log-summary-date-ranges__XWSKgz5",
+        "extended--coder-one-jevprobe3-luna--log-summary-date-ranges-2/log-summary-date-ranges__ocBe8jz",
+        "extended--coder-one-jevprobe3-luna--log-summary-date-ranges-3/log-summary-date-ranges__sEQeiWX",
+        "extended--coder-one-tunable-luna--log-summary-date-ranges-3/log-summary-date-ranges__MGUR8qz"
+      ],
+      "cited_runs": 2,
+      "cost_usd": 0.006915544,
+      "jev_usd": 0.001291164,
+      "executor_usd": 0.00562438,
+      "milliseconds": 33271
+    },
+    {
+      "id": "output-path-failures",
+      "question": "Which failures come down to output paths?",
+      "ask": "ask-1790189615118",
+      "status": "answered",
+      "answered": true,
+      "citations": 12,
+      "valid_citations": 12,
+      "validity": 1.0,
+      "claims": 3,
+      "verified_claims": 3,
+      "task_recall": 0.5,
+      "tasks_found": [
+        "roy-polymorph-cn"
+      ],
+      "tasks_missed": [
+        "react-lead-form"
+      ],
+      "run_recall": 0.5,
+      "runs_found": [
+        "tb4--coder-one-tunable-v2--roy-polymorph-cn/roy-polymorph-cn__De3ie25"
+      ],
+      "runs_missed": [
+        "tb4--coder-one-tunable-v2--react-lead-form/react-lead-form__b2MsQ4F"
+      ],
+      "cited_runs": 6,
+      "cost_usd": 0.007018388,
+      "jev_usd": 0.0013912080000000001,
+      "executor_usd": 0.005627180000000001,
+      "milliseconds": 38986
+    },
+    {
+      "id": "failures-no-check-flags",
+      "question": "Which failed runs did no check catch?",
+      "ask": "ask-1790189654120",
+      "status": "answered",
+      "answered": true,
+      "citations": 20,
+      "valid_citations": 20,
+      "validity": 1.0,
+      "claims": 3,
+      "verified_claims": 2,
+      "task_recall": 0.231,
+      "tasks_found": [
+        "atrx-vep-crispr",
+        "gsea-proteomics",
+        "html-js-filter"
+      ],
+      "tasks_missed": [
+        "bun-sourcemap-leak",
+        "glycan-ms2-elucidation",
+        "heat-pump-warranty",
+        "music-harmony",
+        "mvcc-lsm-compaction",
+        "ontology-kg-querying",
+        "protein-autointerp-disulfide",
+        "sglang-qwen-burst",
+        "vf2-speedup-networkx",
+        "vllm-deepseek-streaming"
+      ],
+      "run_recall": 0.077,
+      "runs_found": [
+        "tb4--coder-one-tunable-v2--gsea-proteomics/gsea-proteomics__D6NCFzF"
+      ],
+      "runs_missed": [
+        "tb4--coder-one-tunable-v6--atrx-vep-crispr/atrx-vep-crispr__dQsvJqp",
+        "tb4--coder-one-tunable-v2--bun-sourcemap-leak/bun-sourcemap-leak__UEEnDnL",
+        "tb4--coder-one-tunable-v2--glycan-ms2-elucidation/glycan-ms2-elucidation__SJyggQr",
+        "tb4--coder-one-tunable-v2--heat-pump-warranty/heat-pump-warranty__AfdurXo",
+        "tb4--coder-one-tunable-v3--html-js-filter/html-js-filter__eCVVDAg",
+        "tb4--coder-one-tunable-v2--music-harmony/music-harmony__foosfLn",
+        "tb4--coder-one-tunable-v2--mvcc-lsm-compaction/mvcc-lsm-compaction__nhUf8R2",
+        "tb4--coder-one-tunable-v2--ontology-kg-querying/ontology-kg-querying__iZQFjNF",
+        "tb4--coder-one-tunable-v2--protein-autointerp-disulfide/protein-autointerp-disulfide__mFaPwNz",
+        "tb4--coder-one-tunable-v2--sglang-qwen-burst/sglang-qwen-burst__ioERXod",
+        "tb4--coder-one-tunable-v2--vf2-speedup-networkx/vf2-speedup-networkx__ArPJp6A",
+        "tb4--coder-one-tunable-v2--vllm-deepseek-streaming/vllm-deepseek-streaming__usfxVic"
+      ],
+      "cited_runs": 5,
+      "cost_usd": 0.006569898000000001,
+      "jev_usd": 0.0013011180000000002,
+      "executor_usd": 0.005268780000000001,
+      "milliseconds": 49576
+    },
+    {
+      "id": "failures-checks-flag",
+      "question": "Which failed runs would the new checks have caught, and how?",
+      "ask": "ask-1790189703713",
+      "status": "answered",
+      "answered": true,
+      "citations": 10,
+      "valid_citations": 10,
+      "validity": 1.0,
+      "claims": 4,
+      "verified_claims": 4,
+      "task_recall": 0.3,
+      "tasks_found": [
+        "atrx-vep-crispr",
+        "cargo-flight-dispatch",
+        "html-js-filter"
+      ],
+      "tasks_missed": [
+        "cad-model",
+        "data-anonymization",
+        "foodstuff-beta-activity",
+        "ks-solver-cpp",
+        "music-harmony",
+        "production-planning",
+        "wal-recovery-ordering"
+      ],
+      "run_recall": 0.214,
+      "runs_found": [
+        "tb4--coder-one-tunable-v2--atrx-vep-crispr/atrx-vep-crispr__n4pQEBK",
+        "tb4--coder-one-tunable-v5--cargo-flight-dispatch/cargo-flight-dispatch__kS32Mq7",
+        "tb4--coder-one-tunable-v2--html-js-filter/html-js-filter__LCP4hV7"
+      ],
+      "runs_missed": [
+        "tb4--coder-one-tunable-v2--cad-model/cad-model__93HTQVd",
+        "tb4--coder-one-tunable-v2--cargo-flight-dispatch/cargo-flight-dispatch__DRH9R9E",
+        "tb4--coder-one-tunable-v6--cargo-flight-dispatch/cargo-flight-dispatch__GEa4vKX",
+        "tb4--coder-one-tunable-v2--data-anonymization/data-anonymization__nyv2W9N",
+        "tb4--coder-one-tunable-v2--foodstuff-beta-activity/foodstuff-beta-activity__E3RY23V",
+        "tb4--coder-one-tunable-v2--ks-solver-cpp/ks-solver-cpp__VoHECwg",
+        "tb4--coder-one-tunable-v3--ks-solver-cpp/ks-solver-cpp__ZnfrMxv",
+        "tb4--coder-one-tunable-v4--music-harmony/music-harmony__6Jk4UFX",
+        "tb4--coder-one-tunable-v2--production-planning/production-planning__c6E8jPq",
+        "tb4--coder-one-tunable-v4--production-planning/production-planning__8AzrC5r",
+        "tb4--coder-one-tunable-v2--wal-recovery-ordering/wal-recovery-ordering__BYcFKPX"
+      ],
+      "cited_runs": 6,
+      "cost_usd": 0.007270314,
+      "jev_usd": 0.001308174,
+      "executor_usd": 0.00596214,
+      "milliseconds": 41198
+    },
+    {
+      "id": "check-false-alarms",
+      "question": "Which runs did a check flag even though they passed?",
+      "ask": "ask-1790189744932",
+      "status": "answered",
+      "answered": true,
+      "citations": 5,
+      "valid_citations": 5,
+      "validity": 1.0,
+      "claims": 1,
+      "verified_claims": 1,
+      "task_recall": 0.25,
+      "tasks_found": [
+        "roy-polymorph-cn"
+      ],
+      "tasks_missed": [
+        "interleaved-vigenere",
+        "react-lead-form",
+        "mvcc-lsm-compaction"
+      ],
+      "run_recall": 0.2,
+      "runs_found": [
+        "tb4--coder-one-tunable-v2--roy-polymorph-cn/roy-polymorph-cn__De3ie25"
+      ],
+      "runs_missed": [
+        "tb4--coder-one-tunable-v2--interleaved-vigenere/interleaved-vigenere__RsGcrb3",
+        "tb4--coder-one-tunable-v3--interleaved-vigenere/interleaved-vigenere__yfy8vrD",
+        "tb4--coder-one-tunable-v2--react-lead-form/react-lead-form__b2MsQ4F",
+        "tb4--coder-one-tunable-v4--mvcc-lsm-compaction/mvcc-lsm-compaction__JiQV4ft"
+      ],
+      "cited_runs": 1,
+      "cost_usd": 0.011126332,
+      "jev_usd": 0.001311492,
+      "executor_usd": 0.00981484,
+      "milliseconds": 43216
+    },
+    {
+      "id": "cad-model-failure",
+      "question": "Why did Coder One fail cad-model?",
+      "ask": "ask-1790189788179",
+      "status": "answered",
+      "answered": true,
+      "citations": 12,
+      "valid_citations": 12,
+      "validity": 1.0,
+      "claims": 2,
+      "verified_claims": 2,
+      "task_recall": 1.0,
+      "tasks_found": [
+        "cad-model"
+      ],
+      "tasks_missed": [],
+      "run_recall": 1.0,
+      "runs_found": [
+        "tb4--coder-one-tunable-v2--cad-model/cad-model__93HTQVd"
+      ],
+      "runs_missed": [],
+      "cited_runs": 1,
+      "cost_usd": 0.0060606900000000005,
+      "jev_usd": 0.0013030500000000003,
+      "executor_usd": 0.0047576400000000005,
+      "milliseconds": 33258
+    },
+    {
+      "id": "cargo-flight-dispatch-failure",
+      "question": "Why did cargo-flight-dispatch fail?",
+      "ask": "ask-1790189821453",
+      "status": "answered",
+      "answered": true,
+      "citations": 8,
+      "valid_citations": 8,
+      "validity": 1.0,
+      "claims": 3,
+      "verified_claims": 3,
+      "task_recall": 1.0,
+      "tasks_found": [
+        "cargo-flight-dispatch"
+      ],
+      "tasks_missed": [],
+      "run_recall": 0.0,
+      "runs_found": [],
+      "runs_missed": [
+        "tb4--coder-one-tunable-v2--cargo-flight-dispatch/cargo-flight-dispatch__DRH9R9E",
+        "tb4--claude-code-opus--cargo-flight-dispatch/cargo-flight-dispatch__cEAoH4r"
+      ],
+      "cited_runs": 2,
+      "cost_usd": 0.006986318,
+      "jev_usd": 0.001298178,
+      "executor_usd": 0.00568814,
+      "milliseconds": 42779
+    },
+    {
+      "id": "bun-sourcemap-leak-failure",
+      "question": "Why did both agents fail bun-sourcemap-leak?",
+      "ask": "ask-1790189864251",
+      "status": "answered",
+      "answered": true,
+      "citations": 10,
+      "valid_citations": 10,
+      "validity": 1.0,
+      "claims": 3,
+      "verified_claims": 3,
+      "task_recall": 1.0,
+      "tasks_found": [
+        "bun-sourcemap-leak"
+      ],
+      "tasks_missed": [],
+      "run_recall": 1.0,
+      "runs_found": [
+        "tb4--coder-one-tunable-v2--bun-sourcemap-leak/bun-sourcemap-leak__UEEnDnL",
+        "tb4--claude-code-opus--bun-sourcemap-leak/bun-sourcemap-leak__7UX7Eha"
+      ],
+      "runs_missed": [],
+      "cited_runs": 3,
+      "cost_usd": 0.006786130000000001,
+      "jev_usd": 0.0012278700000000003,
+      "executor_usd": 0.005558260000000001,
+      "milliseconds": 41039
+    },
+    {
+      "id": "vba-userform-port-zero-reward",
+      "question": "Why did vba-userform-port score zero when all its tests passed?",
+      "ask": "ask-1790189905309",
+      "status": "answered",
+      "answered": true,
+      "citations": 12,
+      "valid_citations": 12,
+      "validity": 1.0,
+      "claims": 3,
+      "verified_claims": 3,
+      "task_recall": 1.0,
+      "tasks_found": [
+        "vba-userform-port"
+      ],
+      "tasks_missed": [],
+      "run_recall": 0.667,
+      "runs_found": [
+        "tb4--coder-one-tunable-v2--vba-userform-port/vba-userform-port__UFHaKKE",
+        "tb4--coder-one-tunable-v3--vba-userform-port/vba-userform-port__EumaQXp"
+      ],
+      "runs_missed": [
+        "tb4--claude-code-opus--vba-userform-port/vba-userform-port__i4Jsof6"
+      ],
+      "cited_runs": 2,
+      "cost_usd": 0.0061647080000000005,
+      "jev_usd": 0.000724248,
+      "executor_usd": 0.00544046,
+      "milliseconds": 33009
+    },
+    {
+      "id": "nextjs-matched-failure",
+      "question": "Why did Coder fail the first nextjs-performance attempt in the matched pilot?",
+      "ask": "ask-1790189938333",
+      "status": "answered",
+      "answered": true,
+      "citations": 9,
+      "valid_citations": 9,
+      "validity": 1.0,
+      "claims": 3,
+      "verified_claims": 3,
+      "task_recall": 1.0,
+      "tasks_found": [
+        "nextjs-performance"
+      ],
+      "tasks_missed": [],
+      "run_recall": 0.5,
+      "runs_found": [
+        "matched-20260923--nextjs-performance--r1--coder/nextjs-performance__ajfrZR6"
+      ],
+      "runs_missed": [
+        "matched-20260923--nextjs-performance--r1--plain/nextjs-performance__5A4s7Pz"
+      ],
+      "cited_runs": 3,
+      "cost_usd": 0.004395822000000001,
+      "jev_usd": 0.001399062,
+      "executor_usd": 0.0029967600000000002,
+      "milliseconds": 29547
+    },
+    {
+      "id": "v7-targets-zero-passes",
+      "question": "Why did the v7 run on the nine target tasks pass nothing?",
+      "ask": "ask-1790189967898",
+      "status": "answered",
+      "answered": true,
+      "citations": 21,
+      "valid_citations": 21,
+      "validity": 1.0,
+      "claims": 3,
+      "verified_claims": 3,
+      "task_recall": 0.778,
+      "tasks_found": [
+        "heat-pump-warranty",
+        "html-js-filter",
+        "production-planning",
+        "protein-autointerp-disulfide",
+        "risk-scorer-replay",
+        "rs-archive-clone",
+        "wal-recovery-ordering"
+      ],
+      "tasks_missed": [
+        "ks-solver-cpp",
+        "sglang-qwen-burst"
+      ],
+      "run_recall": 0.778,
+      "runs_found": [
+        "try--coder-one-tunable-v7--targets-9568b/heat-pump-warranty__bgPdMox",
+        "try--coder-one-tunable-v7--targets-9568b/html-js-filter__aZvBopx",
+        "try--coder-one-tunable-v7--targets-9568b/production-planning__rmraruG",
+        "try--coder-one-tunable-v7--targets-9568b/protein-autointerp-disulfide__BTX75Mq",
+        "try--coder-one-tunable-v7--targets-9568b/risk-scorer-replay__xWMSei4",
+        "try--coder-one-tunable-v7--targets-9568b/rs-archive-clone__MgL93Lo",
+        "try--coder-one-tunable-v7--targets-9568b/wal-recovery-ordering__rojNpSF"
+      ],
+      "runs_missed": [
+        "try--coder-one-tunable-v7--targets-9568b/ks-solver-cpp__z5fa8Zp",
+        "try--coder-one-tunable-v7--targets-9568b/sglang-qwen-burst__Unf9hcE"
+      ],
+      "cited_runs": 7,
+      "cost_usd": 0.0075998920000000005,
+      "jev_usd": 0.0012955319999999998,
+      "executor_usd": 0.00630436,
+      "milliseconds": 60878
+    },
+    {
+      "id": "unreadable-instruction-file",
+      "question": "Which runs never started because the agent couldn't read its instructions?",
+      "ask": "ask-1790190028795",
+      "status": "answered",
+      "answered": true,
+      "citations": 3,
+      "valid_citations": 3,
+      "validity": 1.0,
+      "claims": 1,
+      "verified_claims": 1,
+      "task_recall": 0.0,
+      "tasks_found": [],
+      "tasks_missed": [
+        "rs-archive-clone",
+        "risk-scorer-replay"
+      ],
+      "run_recall": 0.0,
+      "runs_found": [],
+      "runs_missed": [
+        "tb4--coder-one-tunable-v2--rs-archive-clone/rs-archive-clone__yjunKjH",
+        "tb4--coder-one-tunable-v4--risk-scorer-replay/risk-scorer-replay__zPm6vdi",
+        "tb4--coder-one-tunable-v5--risk-scorer-replay/risk-scorer-replay__wtTVWth"
+      ],
+      "cited_runs": 3,
+      "cost_usd": 0.007176382,
+      "jev_usd": 0.001313802,
+      "executor_usd": 0.00586258,
+      "milliseconds": 36998
+    },
+    {
+      "id": "roy-polymorph-cn-win",
+      "question": "Why did Coder One pass roy-polymorph-cn when Claude Code failed it?",
+      "ask": "ask-1790190065811",
+      "status": "answered",
+      "answered": true,
+      "citations": 18,
+      "valid_citations": 18,
+      "validity": 1.0,
+      "claims": 3,
+      "verified_claims": 3,
+      "task_recall": 1.0,
+      "tasks_found": [
+        "roy-polymorph-cn"
+      ],
+      "tasks_missed": [],
+      "run_recall": 1.0,
+      "runs_found": [
+        "tb4--coder-one-tunable-v2--roy-polymorph-cn/roy-polymorph-cn__De3ie25",
+        "tb4--claude-code-opus--roy-polymorph-cn/roy-polymorph-cn__voNWS9H"
+      ],
+      "runs_missed": [],
+      "cited_runs": 2,
+      "cost_usd": 0.003962206,
+      "jev_usd": 0.001191666,
+      "executor_usd": 0.00277054,
+      "milliseconds": 31022
+    }
+  ],
+  "totals": {
+    "questions": 14,
+    "answered": 14,
+    "citations": 162.0,
+    "valid_citations": 161.0,
+    "citation_validity": 0.994,
+    "mean_validity": 0.994,
+    "mean_task_recall": 0.647,
+    "mean_run_recall": 0.438,
+    "cost_usd": 0.0954,
+    "jev_usd": 0.0177,
+    "mean_milliseconds": 40795.0,
+    "max_milliseconds": 60878,
+    "under_a_minute": 13
+  },
+  "dir": "bench/terminal-bench/asks/studies/ask-study-1790189525427"
+}

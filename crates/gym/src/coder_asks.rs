@@ -6,6 +6,14 @@
 //! briefing, the executor's stream, and the answer. This view reads the
 //! manifests; `gym coder asks ID` prints one answer with its claims and
 //! the marks the citation check gave them.
+//!
+//! `coder-one ask study` measures the ask on a question set whose answers
+//! are written down, and records an `openagents.coder-one.ask-study.v1`
+//! result under `~/.openagents/coder-one/ask-studies/` or retained under
+//! `bench/terminal-bench/asks/studies/`. `gym coder asks --studies` lists
+//! them side by side, and `--study ID` prints one study's rows, so a change
+//! to the probes, the questions, or the executor compares against the
+//! baseline like any other component.
 
 use std::path::{Path, PathBuf};
 
@@ -19,15 +27,25 @@ pub const ASK_SCHEMA: &str = "openagents.coder-one.ask.v1";
 /// This view's JSON schema.
 pub const SCHEMA: &str = "openagents.gym.coder-asks.v1";
 
+/// An ask study's result schema.
+pub const STUDY_SCHEMA: &str = "openagents.coder-one.ask-study.v1";
+
 const HELP: &str = "\
 gym coder asks [ID|latest] [--dir PATH] [--limit N] [--json]
+gym coder asks --studies [--study ID] [--studies-dir PATH] [--json]
 
 The questions `coder-one ask` answered, newest first: when, the executor,
 whether it answered, how many citations checked and claims were verified,
 the cost, the time, and the question. ID (or a prefix, or `latest`) prints
 one ask's answer with each claim marked ✓ when its citations checked and ?
 when one didn't. Asks are read from ~/.openagents/coder-one/asks unless
---dir names another directory.";
+--dir names another directory.
+
+--studies lists the ask studies `coder-one ask study` recorded, local ones
+from ~/.openagents/coder-one/ask-studies and retained ones from
+bench/terminal-bench/asks/studies: the question set, the executor, the
+citation validity, the recall of the expected tasks and runs, the cost, and
+the mean time. --study ID prints one study's rows.";
 
 /// Where asks are recorded.
 #[must_use]
@@ -52,6 +70,160 @@ pub fn load(dir: &Path) -> Vec<Value> {
         .collect();
     asks.sort_by(|a, b| b["id"].as_str().cmp(&a["id"].as_str()));
     asks
+}
+
+/// The local and retained study directories.
+#[must_use]
+pub fn study_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) {
+        dirs.push(PathBuf::from(home).join(".openagents/coder-one/ask-studies"));
+    }
+    dirs.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench/asks/studies"),
+    );
+    dirs
+}
+
+/// Every ask study under `dirs`, one per study id, local first, then
+/// newest first.
+#[must_use]
+pub fn load_studies(dirs: &[PathBuf]) -> Vec<Value> {
+    let mut studies: Vec<Value> = Vec::new();
+    for dir in dirs {
+        let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path().join("result.json"))
+            .filter(|path| path.is_file())
+            .collect();
+        paths.sort();
+        for path in paths {
+            let Some(value) = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            else {
+                continue;
+            };
+            if value["schema"] == STUDY_SCHEMA
+                && !studies.iter().any(|study| study["study"] == value["study"])
+            {
+                studies.push(value);
+            }
+        }
+    }
+    studies.sort_by(|a, b| b["study"].as_str().cmp(&a["study"].as_str()));
+    studies
+}
+
+fn fraction(value: &Value) -> String {
+    value
+        .as_f64()
+        .map_or_else(|| "—".to_owned(), |v| format!("{v:.2}"))
+}
+
+fn studies_lines(studies: &[Value]) -> Vec<String> {
+    let mut lines = vec![
+        format!("Coder One ask studies: {}", studies.len()),
+        String::new(),
+        format!(
+            "{:<26} {:<18} {:<18} {:>8} {:>9} {:>6} {:>6} {:>8} {:>7}  {}",
+            "study",
+            "set",
+            "executor",
+            "answered",
+            "citations",
+            "tasks",
+            "runs",
+            "cost",
+            "mean",
+            "implementation"
+        ),
+    ];
+    for study in studies {
+        let t = &study["totals"];
+        lines.push(format!(
+            "{:<26} {:<18} {:<18} {:>8} {:>9} {:>6} {:>6} {:>8} {:>6.1}s  {}",
+            study["study"].as_str().unwrap_or("?"),
+            study["set"].as_str().unwrap_or("?"),
+            format!(
+                "{} {}",
+                study["executor"].as_str().unwrap_or("?"),
+                study["model"].as_str().unwrap_or("")
+            ),
+            format!("{}/{}", t["answered"], t["questions"]),
+            fraction(&t["citation_validity"]),
+            fraction(&t["mean_task_recall"]),
+            fraction(&t["mean_run_recall"]),
+            t["cost_usd"].as_f64().map_or_else(|| "—".to_owned(), money),
+            t["mean_milliseconds"].as_f64().unwrap_or(0.0) / 1000.0,
+            study["implementation_digest"]
+                .as_str()
+                .map_or("?", |digest| &digest[..digest.len().min(12)]),
+        ));
+    }
+    lines.push(String::new());
+    lines.push(
+        "citations is the share of citations the check held; tasks and runs are the mean recall of the expected ones."
+            .to_owned(),
+    );
+    lines
+}
+
+fn study_lines(study: &Value) -> Vec<String> {
+    let mut lines = vec![
+        format!(
+            "{} · {} · {} {}",
+            study["study"].as_str().unwrap_or("?"),
+            study["set"].as_str().unwrap_or("?"),
+            study["executor"].as_str().unwrap_or("?"),
+            study["model"].as_str().unwrap_or("")
+        ),
+        String::new(),
+        format!(
+            "{:<32} {:>9} {:>6} {:>6} {:>8} {:>7}  missed tasks",
+            "question", "citations", "tasks", "runs", "cost", "time"
+        ),
+    ];
+    for row in study["rows"].as_array().into_iter().flatten() {
+        let missed: Vec<&str> = row["tasks_missed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        lines.push(format!(
+            "{:<32} {:>9} {:>6} {:>6} {:>8} {:>6.1}s  {}",
+            clip_words(row["id"].as_str().unwrap_or("?"), 32),
+            format!("{}/{}", row["valid_citations"], row["citations"]),
+            fraction(&row["task_recall"]),
+            fraction(&row["run_recall"]),
+            row["cost_usd"]
+                .as_f64()
+                .map_or_else(|| "—".to_owned(), money),
+            row["milliseconds"].as_f64().unwrap_or(0.0) / 1000.0,
+            if row["answered"] == true {
+                missed.join(", ")
+            } else {
+                format!("no answer: {}", row["error"].as_str().unwrap_or("?"))
+            }
+        ));
+    }
+    let t = &study["totals"];
+    lines.push(String::new());
+    lines.push(format!(
+        "{} of {} answered · citations {}/{} valid · task recall {} · run recall {} · {} · {} under a minute",
+        t["answered"],
+        t["questions"],
+        t["valid_citations"],
+        t["citations"],
+        fraction(&t["mean_task_recall"]),
+        fraction(&t["mean_run_recall"]),
+        t["cost_usd"].as_f64().map_or_else(|| "—".to_owned(), money),
+        t["under_a_minute"],
+    ));
+    lines
 }
 
 fn started_ms(ask: &Value) -> Option<i64> {
@@ -181,6 +353,9 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
     let mut json_output = false;
     let mut limit = 40usize;
     let mut id: Option<String> = None;
+    let mut studies = false;
+    let mut study: Option<String> = None;
+    let mut studies_dirs = study_dirs();
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -189,6 +364,19 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
                 return Ok(0);
             }
             "--json" => json_output = true,
+            "--studies" => studies = true,
+            "--study" => {
+                studies = true;
+                study = Some(args.get(index + 1).ok_or("--study needs a value")?.clone());
+                index += 1;
+            }
+            "--studies-dir" => {
+                studies = true;
+                studies_dirs = vec![PathBuf::from(
+                    args.get(index + 1).ok_or("--studies-dir needs a value")?,
+                )];
+                index += 1;
+            }
             "--dir" => {
                 dir = Some(PathBuf::from(
                     args.get(index + 1).ok_or("--dir needs a value")?,
@@ -207,11 +395,58 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
         }
         index += 1;
     }
-    let dir = dir.ok_or("no --dir and no HOME")?;
-    let asks = load(&dir);
     let write = |out: &mut dyn std::io::Write, text: &str| {
         writeln!(out, "{text}").map_err(|error| error.to_string())
     };
+    if studies {
+        let loaded = load_studies(&studies_dirs);
+        if let Some(id) = study {
+            let one = loaded
+                .iter()
+                .find(|s| {
+                    s["study"]
+                        .as_str()
+                        .is_some_and(|name| name.starts_with(&id))
+                })
+                .ok_or_else(|| format!("no ask study matches {id}"))?;
+            if json_output {
+                write(
+                    out,
+                    &serde_json::to_string_pretty(one).map_err(|e| e.to_string())?,
+                )?;
+            } else {
+                for line in study_lines(one) {
+                    write(out, &line)?;
+                }
+            }
+            return Ok(0);
+        }
+        if json_output {
+            let value = json!({
+                "schema": "openagents.gym.coder-ask-studies.v1",
+                "studies": loaded.iter().map(|s| json!({
+                    "study": s["study"],
+                    "set": s["set"],
+                    "set_digest": s["set_digest"],
+                    "executor": s["executor"],
+                    "model": s["model"],
+                    "implementation_digest": s["implementation_digest"],
+                    "totals": s["totals"],
+                })).collect::<Vec<_>>(),
+            });
+            write(
+                out,
+                &serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?,
+            )?;
+        } else {
+            for line in studies_lines(&loaded) {
+                write(out, &line)?;
+            }
+        }
+        return Ok(0);
+    }
+    let dir = dir.ok_or("no --dir and no HOME")?;
+    let asks = load(&dir);
     if let Some(id) = id {
         let ask = if id == "latest" {
             asks.first()
@@ -254,6 +489,46 @@ pub fn command(args: &[String], out: &mut impl std::io::Write) -> Result<i32, St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn studies_list_side_by_side_and_one_prints_its_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        for (id, validity) in [("ask-study-1", 1.0), ("ask-study-2", 0.9)] {
+            let study = dir.path().join(id);
+            std::fs::create_dir_all(&study).unwrap();
+            let result = json!({
+                "schema": STUDY_SCHEMA,
+                "study": id,
+                "set": "ask-questions-v1",
+                "executor": "luna",
+                "model": "gpt-6-luna",
+                "implementation_digest": "0123456789abcdef",
+                "rows": [{"id": "unearned-success", "answered": true, "valid_citations": 9, "citations": 9,
+                          "task_recall": 0.67, "run_recall": 0.33, "cost_usd": 0.01, "milliseconds": 50_000,
+                          "tasks_missed": ["vba-userform-port"]}],
+                "totals": {"questions": 1, "answered": 1, "valid_citations": 9, "citations": 9,
+                           "citation_validity": validity, "mean_task_recall": 0.67, "mean_run_recall": 0.33,
+                           "cost_usd": 0.01, "mean_milliseconds": 50_000.0, "under_a_minute": 1},
+            });
+            std::fs::write(study.join("result.json"), result.to_string()).unwrap();
+        }
+        let run = |extra: &[&str]| {
+            let mut args: Vec<String> = extra.iter().map(|s| (*s).to_owned()).collect();
+            args.extend(["--studies-dir".to_owned(), dir.path().display().to_string()]);
+            let mut out = Vec::new();
+            command(&args, &mut out).unwrap();
+            String::from_utf8(out).unwrap()
+        };
+        let text = run(&["--studies"]);
+        assert!(text.contains("Coder One ask studies: 2"), "{text}");
+        assert!(text.find("ask-study-2").unwrap() < text.find("ask-study-1").unwrap());
+        assert!(text.contains("0.90"), "{text}");
+        let one = run(&["--study", "ask-study-1"]);
+        assert!(one.contains("unearned-success"), "{one}");
+        assert!(one.contains("vba-userform-port"), "{one}");
+        let value: Value = serde_json::from_str(&run(&["--studies", "--json"])).unwrap();
+        assert_eq!(value["studies"].as_array().unwrap().len(), 2);
+    }
 
     #[test]
     fn asks_list_newest_first_and_one_reads_with_its_marks() {

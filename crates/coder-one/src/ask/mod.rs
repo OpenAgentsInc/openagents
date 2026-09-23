@@ -36,6 +36,7 @@ pub mod brief;
 pub mod cite;
 pub mod executor;
 pub mod gather;
+pub mod study;
 pub mod tools;
 
 use std::collections::{BTreeMap, HashSet};
@@ -788,6 +789,11 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
         "proposed_change": answer.as_ref().and_then(|a| a["proposed_change"].as_str()).filter(|s| !s.trim().is_empty()),
         "claims": claims.iter().map(cite::Claim::to_json).collect::<Vec<_>>(),
         "citations": totals,
+        "cited_runs": facts.iter().map(|(cited, fact)| json!({
+            "cited": cited,
+            "run": fact.as_ref().map(|f| f.id.clone()),
+            "task": fact.as_ref().map(|f| f.task.clone()),
+        })).collect::<Vec<_>>(),
         "cost": {
             "usd": total_usd,
             "jev_usd": jev_cost,
@@ -1337,6 +1343,9 @@ pub fn text(record: &Value) -> String {
 /// Returns a message when the arguments don't parse or the ask can't
 /// start.
 pub async fn command(args: &[String]) -> Result<i32, String> {
+    if args.first().map(String::as_str) == Some("study") {
+        return study::command(&args[1..]).await;
+    }
     let options = Options::parse(args)?;
     let progress = Progress {
         events: options.events,

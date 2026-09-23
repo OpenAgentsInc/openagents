@@ -147,6 +147,56 @@ temporary directory instead and says so. Run that way on 2026-09-23, the
 turn selected `review-runs`, read `gym runs`, and answered through Luna in
 43 seconds for $0.0057, with 34 of 34 citations checked.
 
+## Measure the ask
+
+`coder-one ask study` asks every question in a question set whose answers
+are already written down and scores each answer by code:
+
+- **Citation validity:** the share of the answer's citations the check held.
+- **Task recall:** the share of the tasks the written answer names that the
+  answer cites a run of.
+- **Run recall:** the share of the runs the written answer names that the
+  answer cites.
+- **Cost and time:** what the ask reported, Jev included.
+
+```sh
+coder-one ask study --retain bench/terminal-bench/asks/studies    # Luna, every question
+coder-one ask study --executor opus --only cad-model-failure
+gym coder asks --studies                                          # studies side by side
+gym coder asks --study ask-study-1790189525427                    # one study's rows
+```
+
+The set is
+[`bench/terminal-bench/asks/questions-v1.json`](../../../bench/terminal-bench/asks/questions-v1.json):
+14 questions whose answers the 2026-09-23 Terminal-Bench reports record,
+each with the tasks and runs a good answer cites, checked against the Gym.
+Each result (`openagents.coder-one.ask-study.v1`) carries a digest of the
+implementation (the battery, the relevance questions, the briefing, the
+allowlist, and the executor), so a change to any of them is a new row to
+compare against the baseline.
+
+The baseline, `ask-study-1790189525427`, ran on 2026-09-23 with Luna and
+is retained under
+[`bench/terminal-bench/asks/studies/`](../../../bench/terminal-bench/asks/studies/):
+
+| Measure | Value |
+| --- | ---: |
+| Answered | 14 of 14 |
+| Citations checked | 161 of 162 (0.994) |
+| Mean task recall | 0.647 |
+| Mean run recall | 0.438 |
+| Cost, all 14 | $0.0954 |
+| Mean time | 40.8 s; 13 of 14 under a minute, the slowest 60.9 s |
+
+Citations are almost always valid; what the ask misses is coverage. It finds
+every task on the 8 questions about one task or one pair of runs, and falls
+short on the questions whose answer is a list: which runs claimed success
+they didn't earn (0 of 3 tasks; the Gym gives `unearned_success` to 125
+runs, and the answer cites other ones), which failures no check caught (3
+of 13), which failures the new checks flag (3 of 10), and which runs
+couldn't read their instructions (0 of 2). Those are the questions to
+improve the battery on first.
+
 ## The record
 
 Each ask records itself under `~/.openagents/coder-one/asks/ask-<ms>/`, or
