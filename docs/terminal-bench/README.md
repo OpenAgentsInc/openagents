@@ -1061,6 +1061,20 @@ Cutting time means fewer model turns, which the delegate arms deliver.
 
 ## Data problems
 
+- **24 `coder-one-tunable-luna-v2` trials on 2026-09-23 are invalid.** A
+  runner script mapped the arm to an older artifact that predates policy
+  manifests; it ignored the policy and ran Coder One's original Gemini loop,
+  so the trials measured neither arm. They are under `failed/` as
+  `*-wrong-artifact-*` and were rerun on artifact `753a17ed975f`.
+- **The root disk filled on 2026-09-23 at about 06:39 UTC.** Terminal-Bench
+  4.0's ML task images and their build cache outgrew the scheduler's 40 GB
+  free-disk floor with several builds at once. Both suite schedulers
+  crashed on `ENOSPC`, and four Luna-first trials ended with empty result
+  files; those are under `failed/` as `*-enospc-*` and were rerun. After
+  pruning, the suites restarted with a 60 GB floor, at most five and three
+  concurrent trials, and smallest tasks first, and a watchdog now prunes
+  dangling images and old build cache below 50 GB free.
+
 - Twelve `coder-one-jevprobe2-opus-lean-low-5m` attempts and four
   `coder-one-jevprobe3-*` attempts ended in `AgentSetupTimeoutError` with
   eight trials installing Claude Code at once. The runner retried each once;
