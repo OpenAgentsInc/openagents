@@ -62,6 +62,15 @@ EPISODE_DIR = INSTALL_ROOT / "episode"
 INSTRUCTION_PATH = INSTALL_ROOT / "instruction.txt"
 
 
+# Exit codes a finished episode reports when it ends without a local
+# success; the verifier still grades the environment.
+OUTCOME_EXIT_CODES = {
+    3: "step_limit",
+    4: "generation_failed",
+    5: "delegate_failed",
+}
+
+
 class EpisodeContractError(RuntimeError):
     """The artifact broke the episode contract before inference ran."""
 
@@ -320,7 +329,19 @@ class CoderV05(BaseInstalledAgent):
                     await tail.finish()
             await self._collect_bundle(environment)
 
-        if result.return_code != 0:
+        # An outcome code says the episode ran to its end without a local
+        # success: it hit its step limit (3), its generation failed (4), or
+        # its delegate didn't answer (5). The work in the environment is
+        # still graded, as Harbor grades other agents whatever their CLI
+        # exits with; the code is kept as evidence. Any other nonzero exit
+        # is a crash and ends the trial as an agent error.
+        if result.return_code in OUTCOME_EXIT_CODES:
+            with contextlib.suppress(OSError):
+                (self.logs_dir / "episode-exit.txt").write_text(
+                    f"exit {result.return_code}: "
+                    f"{OUTCOME_EXIT_CODES[result.return_code]}\n"
+                )
+        elif result.return_code != 0:
             raise NonZeroAgentExitCodeError(
                 f"episode exited {result.return_code}: "
                 f"{(result.stderr or result.stdout or '')[-2000:]}"

@@ -448,3 +448,19 @@ def test_each_job_gets_the_current_claude_token(tmp_path):
     assert fresh_environment({"CLAUDE_CODE_OAUTH_TOKEN": "stale"}, creds) == {
         "CLAUDE_CODE_OAUTH_TOKEN": "stale"
     }
+
+
+def test_a_long_lived_setup_token_wins_over_the_refreshed_login(tmp_path, monkeypatch):
+    import tbench.suite as suite
+
+    creds = tmp_path / "creds.json"
+    creds.write_text('{"claudeAiOauth": {"accessToken": "refreshed"}}')
+    setup = tmp_path / "setup-token"
+    monkeypatch.setattr(suite, "CLAUDE_SETUP_TOKEN", setup)
+    assert suite.fresh_environment({"CLAUDE_CODE_OAUTH_TOKEN": "x"}, creds)[
+        "CLAUDE_CODE_OAUTH_TOKEN"
+    ] == "refreshed"
+    setup.write_text("long-lived\n")
+    assert suite.fresh_environment({"CLAUDE_CODE_OAUTH_TOKEN": "x"}, creds)[
+        "CLAUDE_CODE_OAUTH_TOKEN"
+    ] == "long-lived"

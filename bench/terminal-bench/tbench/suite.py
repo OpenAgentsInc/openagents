@@ -365,6 +365,7 @@ class Host:
 
 
 CLAUDE_CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
+CLAUDE_SETUP_TOKEN = Path.home() / ".openagents" / "claude-setup-token"
 
 
 def fresh_environment(
@@ -380,6 +381,15 @@ def fresh_environment(
     """
     env = dict(base)
     if "CLAUDE_CODE_OAUTH_TOKEN" not in env:
+        return env
+    # A long-lived token from `claude setup-token` outlives the host's
+    # login refreshes, which revoke the access token a running trial holds.
+    try:
+        long_lived = CLAUDE_SETUP_TOKEN.read_text().strip()
+    except OSError:
+        long_lived = ""
+    if long_lived:
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = long_lived
         return env
     try:
         token = json.loads(credentials.read_text())["claudeAiOauth"]["accessToken"]

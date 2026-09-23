@@ -514,3 +514,10 @@ def test_an_artifact_that_ignores_the_policy_is_refused(tmp_path):
 def test_an_arm_without_a_policy_accepts_any_doctor_report(tmp_path):
     path, digest = _binary(tmp_path)
     CoderOne(logs_dir=tmp_path, artifact_path=path, artifact_sha256=digest)._check_doctor_report("ok\n")
+
+
+def test_outcome_exit_codes_are_graded_not_errors():
+    from tbench.coder_v05 import OUTCOME_EXIT_CODES
+
+    assert OUTCOME_EXIT_CODES == {3: "step_limit", 4: "generation_failed", 5: "delegate_failed"}
+    assert 1 not in OUTCOME_EXIT_CODES
